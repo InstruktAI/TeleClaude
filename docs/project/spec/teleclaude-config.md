@@ -14,13 +14,26 @@ The Teleclaude Config surface defines how TeleClaude configuration is initialize
 
 These surfaces are related but not interchangeable. The config wizard, `_ADAPTER_ENV_VARS`, and `GuidanceRegistry` cover the user-facing `teleclaude.yml` / environment-variable surface. Daemon-only `config.yml` keys are documented here for runtime correctness, but they do not automatically imply new wizard steps or env-var registry entries.
 
-### Two config files, three levels
+<!-- planned-change:config-kind-declaration -->
+### One filename, four levels
 
-Configuration lives in two files. `GlobalConfig` and `ProjectConfig` are
-separate Pydantic models: global config owns the machine-wide keys, while the
-project config owns repository-local metadata and explicitly rejects
-global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
+Configuration lives in one filename at four locations. `GlobalConfig`,
+`ProjectConfig`, `PersonConfig`, and `CompanyConfig` are separate Pydantic
+models: global config owns the machine-wide keys, while the project config owns
+repository-local metadata and explicitly rejects global-only keys (`people`,
+`ops`, `creds`, `notifications`, `timezone`). See
 `teleclaude/config/schema.py` for the authoritative model definitions.
+<!-- change:config-kind-declaration -->
+### One filename, four levels
+
+Configuration lives in one filename at four locations, and each file declares
+which of the four it is. `GlobalConfig`, `ProjectConfig`, `PersonConfig`, and
+`CompanyConfig` are separate Pydantic models: global config owns the
+machine-wide keys, while the project config owns repository-local metadata and
+explicitly rejects global-only keys (`people`, `ops`, `creds`,
+`notifications`, `timezone`). See `teleclaude/config/schema.py` for the
+authoritative model definitions.
+<!-- /planned-change:config-kind-declaration -->
 
 | File              | Location                       | Model          | Owns                                                                       |
 | ----------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------- |
@@ -31,6 +44,29 @@ global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
 
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `owner` (folder-discovered; composed alongside `project`) |
+
+<!-- planned:config-kind-declaration -->
+#### Tier declaration and editor schemas
+
+Every one of the four files carries a `kind` key naming its own tier —
+`global`, `project`, `person`, or `company`. It is a declared, validated field
+of each tier's model, and each model accepts only its own value, so a file
+declaring another tier fails validation rather than loading as that tier.
+Resolution reads this key; it never infers a tier from where the file sits. The
+resolution contract is `project/spec/feature/config/tier-declaration`.
+
+The machine runtime `config.yml` is outside this: it carries a different
+filename and takes no part in tier resolution.
+
+One JSON Schema per tier is committed at repo-root
+`schemas/teleclaude-{global,project,person,company}.schema.json` and deployed
+under `~/.teleclaude/schemas/`, beside the MCP registry schema and generated
+from the same models the runtime validates against. A file points at its schema
+with a `# yaml-language-server: $schema=<ref>` modeline — a portable relative
+reference where the schema is reachable relatively, an absolute reference to
+the deployed copy otherwise. The modeline serves the editor only: loading reads
+`kind` alone, and a file with no modeline resolves identically.
+<!-- /planned:config-kind-declaration -->
 
 Release-channel settings (`deployment.channel`, `deployment.pinned_minor`) are not
 project-level keys. They govern TeleClaude's own self-update — a machine-wide

@@ -38,6 +38,15 @@ TeleClaudeNext.
   for systems configured by those settings.
 - **Published contracts:** validated configuration models and `telec config`
   commands; consumers never reinterpret missing or invalid values.
+<!-- planned:config-kind-declaration -->
+- **Also published:** the two root resolvers — which tier governs an invocation
+  (read from the file's own declaration) and where a project's shared state
+  lives (read from that project root's git metadata). Both answer facts about a
+  configured entity, so both are owned here; consumers call them and never walk
+  the ancestor chain, read a tier declaration, or interpret git metadata
+  themselves. The decomposition is
+  `project/design/architecture/config-tier-resolution`.
+<!-- /planned:config-kind-declaration -->
 
 ## See Also
 
