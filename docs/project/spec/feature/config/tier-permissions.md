@@ -49,10 +49,12 @@ Per tier:
   shared home history. It carries no project subscriptions.
 
 A project root may sit inside a person's personal space. Resolution takes the
-nearest declaration, so such a root is a project on every axis while the
-enclosing person context continues to supply the acting identity. Ownership of
-such a project follows from where it sits: it belongs to that person, and no
-assignment mapping is consulted.
+nearest declaration, so such a root is a project on every axis: it registers as
+a project, its own repository holds its history, and it carries project
+lifecycle behavior. Its position inside a personal space grants it nothing and
+takes nothing from it. Whom it belongs to is a declared relationship like any
+other, never read off its location, and the acting caller's identity is
+resolved independently of the enclosing person context.
 
 ## Canonical fields
 
@@ -98,14 +100,23 @@ And its material participates in documentation
 And no project subscription and no project lifecycle behavior is available there
 ```
 
-#### UC-TIERP-5: A project inside a personal space is a project
+#### UC-TIERP-5: A project inside a personal space is an ordinary project
 
 ```
 Given a project declaration at a root inside a person's personal space
 When an agent invokes from that project root
 Then the invocation resolves to that project on every permission axis
-And the enclosing person context supplies the acting identity
-And the project is owned by that person with no assignment mapping consulted
+And the project's own repository holds its history
+And the acting caller's identity is resolved independently of the enclosing person context
+```
+
+#### UC-TIERP-6: Location never establishes ownership
+
+```
+Given a project root inside a person's personal space
+When the owner of that project is resolved
+Then the owner is taken from the project's declared ownership relationship
+And containment within that person's space is not what makes it theirs
 ```
 
 ## Known caveats
