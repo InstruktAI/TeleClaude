@@ -130,48 +130,6 @@ Then it is advanced to carry its correct tier declaration before the load reads 
 And loading it again leaves the file unchanged
 ```
 
-#### UC-CFG-WSD12: An unavailable registered root is advanced when it returns
-
-```
-Given a registered project root that is unavailable while other roots are advanced
-When that root becomes available and its configuration file is loaded
-Then that file is advanced before the load reads it
-And no advancement state recorded while it was unavailable prevents this
-And an unwritable file at one root leaves every other root resolving
-```
-
-#### UC-CFG-WSD10: A declared file missing its schema reference is repaired
-
-```
-Given a same-named configuration file the tier registries name
-And that file carries a valid tier declaration and no schema reference
-And that file's schema is in place
-When that file is advanced
-Then the file is advanced to carry its schema reference
-And its existing tier declaration is left as it stands
-```
-
-#### UC-CFG-WSD11: A file that cannot be written fails its own load
-
-```
-Given a same-named configuration file the tier registries name
-And that file is not writable by the invoking user
-And that file carries no tier declaration
-When that file is loaded
-Then loading fails with an error naming the file and the declaration it needs
-And the file is never loaded as any tier
-```
-
-#### UC-CFG-WSD13: A schema reference is never written ahead of its schema
-
-```
-Given a configuration file whose schema is not yet in place at its root
-When that file is advanced
-Then its tier declaration is written
-And no schema reference is written
-And the schema reference is written by a later advance once the schema is in place
-```
-
 #### UC-CFG-WSD7: An undeclared file fails wherever it sits
 
 ```
@@ -202,6 +160,48 @@ And no context root is anchored at the company folder
 And it is never treated as an anchoring tier
 And invocation from within the company folder behaves as invocation with no context root
 And company configuration composes alongside its member projects through their declared company membership
+```
+
+#### UC-CFG-WSD10: A declared file missing its schema reference is repaired
+
+```
+Given a same-named configuration file the tier registries name
+And that file carries a valid tier declaration and no schema reference
+And that file's schema is in place
+When that file is advanced
+Then the file is advanced to carry its schema reference
+And its existing tier declaration is left as it stands
+```
+
+#### UC-CFG-WSD11: A file that cannot be written fails its own load
+
+```
+Given a same-named configuration file the tier registries name
+And that file is not writable by the invoking user
+And that file carries no tier declaration
+When that file is loaded
+Then loading fails with an error naming the file and the declaration it needs
+And the file is never loaded as any tier
+```
+
+#### UC-CFG-WSD12: An unavailable registered root is advanced when it returns
+
+```
+Given a registered project root that is unavailable while other roots are advanced
+When that root becomes available and its configuration file is loaded
+Then that file is advanced before the load reads it
+And no advancement state recorded while it was unavailable prevents this
+And an unwritable file at one root leaves every other root resolving
+```
+
+#### UC-CFG-WSD13: A schema reference is never written ahead of its schema
+
+```
+Given a configuration file whose schema is not yet in place at its root
+When that file is advanced
+Then its tier declaration is written
+And no schema reference is written
+And the schema reference is written by a later advance once the schema is in place
 ```
 
 ### Cross-context references
