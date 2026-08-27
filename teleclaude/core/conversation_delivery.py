@@ -66,6 +66,7 @@ from teleclaude.utils.transcript import (
     _parse_timestamp,
     extract_real_user_text_from_entry,
     native_entry_id,
+    normalize_runtime_user_text,
 )
 
 if TYPE_CHECKING:
@@ -218,7 +219,13 @@ async def _collect_visible_conversation_segments_since(
                             reason=ConversationDeliveryRefusalReason.BUNDLE_AUTHOR_INVALID,
                         ) from exc
                     continue
-            normalized_text = raw_text.strip()
+            normalized_text = (
+                normalize_runtime_user_text(agent_name, raw_text).strip()
+                if block.role == TranscriptChannel.USER
+                else raw_text.strip()
+            )
+            if not normalized_text:
+                continue
             block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
             if current_role == block.role and current_author == block.author:
                 current_parts.append(normalized_text)
