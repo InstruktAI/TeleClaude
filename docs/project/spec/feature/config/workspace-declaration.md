@@ -1,5 +1,5 @@
 ---
-description: 'Every same-named configuration file (global, project, person, company) declares its own kind, and workspace resolution reads that declaration — the nearest declaration anchors the workspace; git topology only locates shared state.'
+description: 'Every same-named configuration file (global, project, person, company) declares its own kind, and workspace resolution reads that declaration — the nearest workspace-kind declaration anchors the workspace, a company declaration marks a registry entry and anchors none, and git topology only locates shared state.'
 delivered_by:
   - config-kind-declaration
 ---
@@ -26,9 +26,10 @@ Workspace resolution reads declarations instead of inferring from location:
   declaration (global, project, or person) is the workspace root, and that
   file's declared kind is the workspace kind. A company declaration
   identifies a company registry entry, never a workspace root: discovery
-  recognizes it and continues the walk unanchored. No workspace-kind
-  declaration among the ancestors means no workspace: read surfaces proceed
-  with global-scope information only.
+  recognizes it and terminates without anchoring a workspace, so invocation
+  from within a company folder behaves as invocation outside any workspace.
+  No workspace-kind declaration among the ancestors means no workspace: read
+  surfaces proceed with global-scope information only.
 - **Shared state** (project workspaces only) — the git metadata at the
   workspace root decides where shared project state lives: a primary checkout
   owns its own state; a linked worktree's shared state lives at the owning
