@@ -138,15 +138,17 @@ And no company is supplied as a default
 #### UC-CFG-MEMBER-8: A declaration naming an unregistered company or project is refused
 
 ```gherkin
+Scenario Outline: An unregistered referent is refused at write time
 Given a human administrator operating the people-configuration surface
-When the administrator declares a membership or assignment naming something that is not registered
+When the administrator declares a membership or assignment naming a <referent> that is not registered
 Then the declaration is refused at the point it is written
-And the refusal names what could not be resolved
+And the refusal names the <referent> that could not be resolved
 And nothing is persisted for that person
+
 Examples:
-  | referent | value                        |
-  | company  | a company slug not registered |
-  | project  | a project slug not registered |
+  | referent |
+  | company  |
+  | project  |
 ```
 
 #### UC-CFG-MEMBER-9: The platform role is unchanged by organizational membership
