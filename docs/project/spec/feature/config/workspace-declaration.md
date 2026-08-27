@@ -35,6 +35,18 @@ declaration is an error.
 
 ## Canonical fields
 
+### Declaration shape
+
+- Every file in the configuration family carries a `kind` field declaring
+  what it is. The workspace-bearing kinds are `global`, `project`, and
+  `person`; the company overlay is audited under the same doctrine and either
+  receives a declaration or records a reasoned exemption at delivery.
+- Every file references its published editor schema, so an editor validates
+  the file as its declared kind. The schema files are published by this
+  repository alongside the existing MCP-registry schema.
+- The declaration is a declared, validated field of each layer's typed
+  schema — never an unvalidated passenger key.
+
 ### Use cases
 
 #### UC-CFG-WSD1: Declared kind governs, not location
@@ -108,6 +120,10 @@ Then loading fails with an error naming the file and the missing declaration
   kind replaces path-shape detection as the dispatch signal.
 - Directories with no declaration ancestor keep the delivered global-only
   read behavior of the docs surfaces.
+
+## Allowed values
+
+- `kind`: `global`, `project`, `person`.
 
 ## Known caveats
 

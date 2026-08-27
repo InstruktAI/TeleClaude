@@ -37,6 +37,7 @@ project file; the global file is always loaded.
 
 #### UC-CFG-OVERLAY-1: Project workspace composes global plus project
 
+<!-- planned-change:config-kind-declaration -->
 ```
 Given a workspace at /repos/my-project that is not under ~/.teleclaude/people
 And ~/.teleclaude/teleclaude.yml exists with a global config
@@ -47,6 +48,18 @@ And the project overlay is read from /repos/my-project/teleclaude.yml
 And the per-person layer is left as None
 And the returned app config holds the global overlay, the project overlay, and no person overlay
 ```
+<!-- change:config-kind-declaration -->
+```
+Given a workspace at /repos/my-project
+And ~/.teleclaude/teleclaude.yml exists with a global config
+And /repos/my-project/teleclaude.yml exists with a project config declaring itself a project configuration
+When the config loading API is invoked for the workspace path
+Then the global overlay is read from ~/.teleclaude/teleclaude.yml
+And the project overlay is read from /repos/my-project/teleclaude.yml
+And the per-person layer is left as None
+And the returned app config holds the global overlay, the project overlay, and no person overlay
+```
+<!-- /planned-change:config-kind-declaration -->
 
 #### UC-CFG-OVERLAY-2: Person workspace composes global plus per-person
 
@@ -140,4 +153,8 @@ And the result is returned without warning
 <!-- /planned-change:config-kind-declaration -->
 - **No filesystem watcher.** The config bounded context reads overlays on demand at each load call; there is no event emitted when any overlay file changes. Long-lived consumers cache results at their own discretion.
 - **Two different "absent" representations exist.** The generic overlay loader returns a default instance for a missing file; the workspace composer returns None for a missing optional layer. Consumers must know which entry point they are calling.
+<!-- planned-change:config-kind-declaration -->
 - **Read order is global → person/project.** The global file is read first; the workspace-specific file is read second (person or project depending on path shape). There is no opportunity for the workspace file to influence which global file loads.
+<!-- change:config-kind-declaration -->
+- **Read order is global → person/project.** The global file is read first; the workspace-specific file is read second (person or project according to the file's declared kind). There is no opportunity for the workspace file to influence which global file loads.
+<!-- /planned-change:config-kind-declaration -->
