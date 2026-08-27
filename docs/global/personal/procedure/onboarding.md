@@ -47,10 +47,15 @@ record of what was completed so a later run continues rather than restarts.
    one at a time, and wait. Never paste a credential into a message, a log, or a
    commit; the tool ingests it from a path.
 
-5. **Confirm the grant is what was agreed** by exercising it. Run one permitted
-   read and one operation the mandate excludes; the second failing is the
-   evidence, and its absence means the grant is wider than what was described in
-   step 3. Report both results.
+5. **Confirm the grant is what was agreed, and read the evidence carefully.**
+   Exercise it: one permitted read, and one operation the mandate excludes. The
+   read succeeding shows the grant works. The excluded operation is evidence
+   only when its refusal came from the provider — a tool that blocked the
+   command locally has proven its own configuration and said nothing about the
+   width of the grant, and an entirely unrestricted grant can sit behind such a
+   refusal. Where the provider offers a way to read the granted scopes back
+   directly, prefer that over inferring them from any failure. Report what each
+   result does and does not establish.
 
 6. **Mine their own correspondence for a first draft of who they are.** From
    their sent mail: the addresses they send from and what each is for, the
@@ -88,6 +93,10 @@ record of what was completed so a later run continues rather than restarts.
   person is a normal state, not a broken one; the next run resumes there.
 - **The excluded operation in step 5 succeeds.** The grant is wider than agreed.
   Say so plainly, do not proceed to mining, and re-authorize narrowly.
+- **The excluded operation fails locally rather than at the provider.** The grant
+  is unverified, not confirmed. Say that, and either reach the provider by
+  another route or record the width of the grant as unknown. Never let a local
+  refusal stand in for evidence about what was granted.
 - **Mining finds too little to propose** — a thin sent folder, or one identity
   used for everything. Propose what there is and say what is missing. An
   assistant with one confirmed example is better than one with five invented.

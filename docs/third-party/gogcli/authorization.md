@@ -119,10 +119,19 @@ gog gmail labels list                 # must succeed
 gog gmail settings filters list       # must fail
 ```
 
-The second failing is the proof that the settings scopes are absent. That the
-narrow grant drives gog's Gmail client successfully is established as far as
-gog's own code goes; Google's response to a `gmail.modify`-only grant is
-confirmed by this probe rather than assumed.
+The second command is evidence only when Google is what refused it. gog can
+block `gmail.settings` locally through `--disable-commands` or a safety-profile
+build, and such a refusal never reaches Google — it demonstrates the binary's
+configuration while leaving the width of the grant entirely unknown. Run the
+probe against a build with no local guard over that surface, and read the error:
+gog surfaces a provider-side insufficient-scope denial distinctly, because its
+transport recognises Google's `insufficient authentication scopes`,
+`insufficientPermissions`, and `access token scope insufficient` responses and
+retries once after a refresh before reporting.
+
+That the narrow grant drives gog's Gmail client successfully is established as
+far as gog's own code goes; Google's response to a `gmail.modify`-only grant is
+what this probe confirms rather than assumes.
 
 ## Verification
 
