@@ -169,8 +169,11 @@ and an unauthorized machine shows `warn tokens no OAuth tokens stored`. Exit cod
 - **An unticked consent checkbox mints a valid token that can do nothing.**
   Google's consent screen presents a checkbox per permission. Boxes left
   unticked still produce a working refresh token: `gog auth doctor --check`
-  reports `status ok` and the refresh exchange succeeds, while every API call
-  returns `403 insufficientPermissions`. gog detects the 403, refreshes, and
+  reports `status ok` and the refresh exchange succeeds, while every call needing
+  a permission that was left unticked returns `403 insufficientPermissions`.
+  Observed with one permission ticked and another not: calls under the granted
+  one worked while calls under the ungranted one failed, so a partial consent
+  presents as a healthy account with one surface silently dead. gog detects the 403, refreshes, and
   retries once — which cannot help, because a refresh never widens a token's
   scopes. Verify against the permissions page, not against the doctor.
 - **gog cannot use a narrowed calendar scope.** There is a `--gmail-scope` flag
@@ -179,14 +182,13 @@ and an unauthorized machine shows `warn tokens no OAuth tokens stored`. Exit cod
   and confirmed on the permissions page, `gog calendar events <id>` still
   returns `403 insufficientPermissions`, including after gog's own
   refresh-and-retry. `calendar.events` is a documented valid scope for
-  `events.list`, so the constraint is gog's rather than Google's. Calendar
+  `events.list`, which points at gog rather than Google as the constraint. That
+  attribution is inferred from the probe, not read from gog's source, and it is
+  the one claim here that has not been verified at its cause. Calendar
   therefore requires `--services calendar`, which grants full calendar access —
   seeing, editing, sharing, and permanently deleting calendars. Narrowing that
   surface has to be done by disabling commands rather than by scope.
 
-- **Re-consent replaces rather than adds.** Any narrowed grant disables
-  `include_granted_scopes`, so a re-run must name every service and scope
-  wanted, not only the new one.
 - **`--force-consent` adds `prompt=consent`** and is the recovery for a token
   issued while the app was still in Testing, after publishing it.
 - **`invalid_grant`** means the refresh token was revoked, expired, or blocked by
