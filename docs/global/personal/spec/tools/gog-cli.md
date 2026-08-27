@@ -35,17 +35,24 @@ binary.
 - **Calendar operations** — creating, updating, moving, cancelling events, and
   answering invitations.
 - **Attachments** — saving what arrives into the person's workspace.
+- **Sending** — available only to carry out a send the person asked for. What
+  the agent composed of its own accord is left as a draft instead.
 
 All of these are ordinary writes governed by the mandate rule, not by this
 spec: the tool permits them, and the conduct policy decides when they run.
 
 ### Refused by the tool
 
-Two things only: sending, and every settings operation. These are not in any allowlist, a
-persistent per-account guard blocks sending independently, and the policy that
-compiles into the binary can hold the same rule where no flag or environment
-variable can lift it. An agent that receives a refusal reports it; it does not
-look for another route.
+Every settings operation, on every path — send-as identities, forwarding,
+filters, vacation responders, anything that silently reroutes future mail. These
+appear in no allowlist, and the policy compiled into the binary holds the rule
+where no flag, environment variable, or configuration can lift it.
+
+Sending is refused on the same terms in an unattended run, which uses a build
+that has no send at all. Where the stronger wall is wanted for an attended run
+too, a persistent per-account guard holds it.
+
+An agent that receives a refusal reports it; it does not look for another route.
 
 ## Known caveats
 
