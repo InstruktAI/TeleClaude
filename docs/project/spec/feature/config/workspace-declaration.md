@@ -1,5 +1,5 @@
 ---
-description: 'Each of the three workspace configuration files (global, project, person) declares its own kind, and workspace resolution reads that declaration — the nearest declaration anchors the workspace; git topology only locates shared state.'
+description: 'Every same-named configuration file (global, project, person, company) declares its own kind, and workspace resolution reads that declaration — the nearest declaration anchors the workspace; git topology only locates shared state.'
 delivered_by:
   - config-kind-declaration
 ---
@@ -12,11 +12,12 @@ delivered_by:
 
 ## What it is
 
-Each of the three same-named workspace configuration files states what it is:
-a workspace-kind declaration inside the file identifies it as the global,
-project, or person configuration, and an editor schema reference lets editors
-validate the file as its declared kind. Meaning comes from the file, never
-from where it sits.
+Every same-named configuration file states what it is: a kind declaration
+inside the file identifies it as the global, project, person, or company
+configuration, and an editor schema reference lets editors validate the file
+as its declared kind. Meaning comes from the file, never from where it sits.
+The company file participates in self-identification only — what a company
+configuration composes and how it layers is unchanged by this contract.
 
 Workspace resolution reads declarations instead of inferring from location:
 
@@ -37,10 +38,10 @@ without a valid declaration is an error and is never loaded as another tier.
 
 ### Declaration shape
 
-- Each of the three workspace configuration files carries a `kind` field
-  declaring which tier it is: `global`, `project`, or `person`. Other
-  configuration surfaces (the company overlay, the machine configuration
-  file) are outside this contract.
+- Every same-named configuration file carries a `kind` field declaring which
+  tier it is: `global`, `project`, `person`, or `company`. The machine
+  configuration file is outside this contract — it carries a different
+  filename and never participates in workspace-marker discovery.
 - Every file references its published editor schema, so an editor validates
   the file as its declared kind. The schema files are published by this
   repository alongside the existing MCP-registry schema.
@@ -98,9 +99,9 @@ Then resolution fails with a clear error naming the workspace root
 #### UC-CFG-WSD6: The transition brings existing files to the declared state
 
 ```
-Given existing workspace configuration files authored before kind declarations existed
+Given existing same-named configuration files authored before kind declarations existed
 When the operator runs the sanctioned transition
-Then each workspace configuration file receives its correct kind declaration
+Then each of those files receives its correct kind declaration
 And repeating the transition leaves already-declared files unchanged
 ```
 
@@ -120,6 +121,16 @@ Given a workspace configuration file whose declaration names an unknown or tier-
 When that file is loaded
 Then loading fails with a clear error naming the file and the invalid declaration
 And the file is never loaded as another configuration tier
+```
+
+#### UC-CFG-WSD9: A company configuration is recognized, never misclassified
+
+```
+Given a company configuration file declaring itself a company configuration
+When workspace discovery encounters it
+Then it is recognized as company configuration
+And it is never treated as a workspace configuration of another tier
+And company configuration composition behaves as it did before this contract
 ```
 
 ### Cross-context references
