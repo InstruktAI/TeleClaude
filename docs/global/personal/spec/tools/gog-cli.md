@@ -30,12 +30,18 @@ binary.
   original was addressed to, together with the thread and quoting flags, so a
   reply lands in its thread from the right identity. Fresh outbound names the
   address explicitly, chosen from the person's identity registry.
-- **Triage operations** — labelling, archiving, marking read — under the mandate
-  rule like any other write.
+- **Mailbox operations** — labelling and label management, filing, archiving,
+  marking read or unread, trashing and restoring.
+- **Calendar operations** — creating, updating, moving, cancelling events, and
+  answering invitations.
+- **Attachments** — saving what arrives into the person's workspace.
+
+All of these are ordinary writes governed by the mandate rule, not by this
+spec: the tool permits them, and the conduct policy decides when they run.
 
 ### Refused by the tool
 
-Sending, and every settings operation. These are not in any allowlist, a
+Two things only: sending, and every settings operation. These are not in any allowlist, a
 persistent per-account guard blocks sending independently, and the policy that
 compiles into the binary can hold the same rule where no flag or environment
 variable can lift it. An agent that receives a refusal reports it; it does not
