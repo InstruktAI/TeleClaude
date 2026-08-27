@@ -745,15 +745,15 @@ def _print_commit_review_guidance(project_root: Path) -> None:
     agent_artifact_patterns = ", ".join(CHECKPOINT_BASE_AGENTS_BINDING.scope.include)
     if reviewer_session_id:
         review_dispatch = (
-            "   Reuse the reviewer already open for this series — never spawn a second; else start one\n"
-            "   (--mode fast for doc-hygiene, --mode med for code review):\n"
-            "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --agent <agent> --mode <fast|med>\n"
+            "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
+            "   gets its own reviewer (--mode fast for doc-hygiene, --mode med for code review):\n"
+            "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
             f"     reuse open: telec sessions send {reviewer_session_id} 'review commits <sha1,sha2,...>'\n"
         )
     else:
         review_dispatch = (
             "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode med for code review):\n"
-            "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --agent <agent> --mode <fast|med>\n"
+            "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
         )
     print(
         "COMMIT GATE ACTIVE — CONTINUE NOW\n"

@@ -296,6 +296,7 @@ async def enforce_driver_start_guard(
     working_slug: str | None,
     command: str | None,
     caller_session_id: str | None,
+    thinking_mode: str,
 ) -> DriverStartGuardResult:
     """Refuse a create-door driver start that would duplicate a live driver.
 
@@ -316,6 +317,7 @@ async def enforce_driver_start_guard(
             launch_class=launch_class,
             caller_session_id=caller_session_id,
             command=normalized_command,
+            thinking_mode=thinking_mode,
         )
     except ReviewerConflict as conflict:
         raise RunSessionRefusal(
@@ -345,6 +347,7 @@ async def guard_generic_create_session(
         working_slug=resolve_working_slug_from_subdir(request.subdir) or cmd.working_slug,
         command=_leading_command(request.message),
         caller_session_id=identity.session_id,
+        thinking_mode=cmd.launch_intent.thinking_mode if cmd.launch_intent else "",
     )
 
 
@@ -827,6 +830,7 @@ async def _run_session(
             working_slug=plan.working_slug,
             command=request.command,
             caller_session_id=plan.initiator_session_id,
+            thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
         )
     except RunSessionRefusal as exc:
         emit_run_outcome(

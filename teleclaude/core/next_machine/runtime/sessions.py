@@ -243,20 +243,35 @@ async def find_live_commit_reviewer_for_initiator(
     project_path: str | Path,
     initiator_session_id: str,
     command_value: str,
+    thinking_mode: str | None = None,
 ) -> str | None:
-    """Return the newest live commit-review session for this project and initiator.
+    """Return the newest live commit-review session for this project, initiator, and mode.
 
     Commit review carries no todo slug — its subject is a commit series whose SHA
     set changes every remediation round, so slug-keyed dedup cannot reach it. Its
-    subject is identified by the project and the driver (``initiator_session_id``)
-    that opened the review instead, scoped by :func:`_same_project_root` the same
-    way the orchestrator-owner signal is, and filtered at the query layer via
-    ``list_sessions(initiator_session_id=...)`` rather than a second in-process pass.
+    subject is identified by the project, the driver (``initiator_session_id``)
+    that opened the review, and the thinking mode the review runs at, scoped by
+    :func:`_same_project_root` the same way the orchestrator-owner signal is, and
+    filtered at the query layer via ``list_sessions(initiator_session_id=...)``
+    rather than a second in-process pass.
+
+    Mode belongs to the subject because the review lanes differ in cost and in
+    what they read: doc-hygiene runs at ``fast`` over snippet conformance, code
+    review at ``med`` over behavior. A mode-blind subject collapses them, so the
+    cheap lane is refused as a duplicate of the expensive one and its work lands
+    on the wrong reviewer. Two live reviewers at the same mode remain one
+    subject and still dedup.
+
+    ``thinking_mode`` is required by the dedup guard, which decides a subject.
+    It is omitted only by the commit gate's advisory reuse hint, which reports
+    any open reviewer and leaves the lane match to the reader.
     """
     project_root = Path(project_path).resolve()
     sessions = await db.list_sessions(include_closed=False, initiator_session_id=initiator_session_id)
     for session in sessions:
         if not _same_project_root(session.project_path, project_root):
+            continue
+        if thinking_mode is not None and session.thinking_mode != thinking_mode:
             continue
         if _matches_command_only_title(session.title, command_value):
             return session.session_id

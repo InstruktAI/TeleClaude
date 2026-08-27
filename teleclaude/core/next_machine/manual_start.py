@@ -233,6 +233,7 @@ async def _guard_reviewer_start(
     *,
     command: SlashCommand | None,
     caller_session_id: str | None,
+    thinking_mode: str,
     db: Db | None,
 ) -> None:
     """Refuse a reviewer create-door start that would duplicate a live reviewer.
@@ -242,7 +243,10 @@ async def _guard_reviewer_start(
     reviewer (``/next-review-build``, ``/next-review-plan``,
     ``/next-review-architecture``) is keyed by exact ``(project, slug, command)``;
     commit review (``/next-review-commits``, no todo slug) is keyed by
-    ``(project, initiating driver, command)``. Silent no-op only when the
+    ``(project, initiating driver, command, thinking mode)`` — mode is part of
+    that subject because the doc-hygiene lane runs at ``fast`` and the code lane
+    at ``med``, and a mode-blind subject refuses the cheap lane as a duplicate of
+    the expensive one. Silent no-op only when the
     command cannot be resolved — a slugless subject with no caller identity is
     refused rather than silently admitted, since a web-origin caller's identity
     is never persisted as ``initiator_session_id`` and so can never be found as
@@ -262,11 +266,11 @@ async def _guard_reviewer_start(
         )
         subject = f"/{command_value} {slug}"
     else:
-        subject = f"/{command_value} for this project and driver"
+        subject = f"/{command_value} at {thinking_mode} for this project and driver"
         if not caller_session_id:
             raise ReviewerIdentityUnresolved(subject=subject)
         holder = await find_live_commit_reviewer_for_initiator(
-            runtime_db, project_path, caller_session_id, command_value
+            runtime_db, project_path, caller_session_id, command_value, thinking_mode
         )
     if holder is None:
         return
@@ -280,6 +284,7 @@ async def guard_driver_start(
     launch_class: DriverLaunchClass,
     caller_session_id: str | None,
     command: SlashCommand | None = None,
+    thinking_mode: str,
     db: Db | None = None,
 ) -> DriverStartGuardResult:
     """Refuse a create-door driver start that would duplicate a live driver.
@@ -318,6 +323,7 @@ async def guard_driver_start(
             slug,
             command=command,
             caller_session_id=caller_session_id,
+            thinking_mode=thinking_mode,
             db=db,
         )
         return DriverStartGuardResult()
