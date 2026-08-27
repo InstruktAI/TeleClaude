@@ -29,11 +29,8 @@ architecture, implementation-plan, or reviewer verdict — and is drafted by
 
 ## Known caveats
 
-- A todo created directly with `telec todo create --kind task` bypasses
-  `/analyze-todo-input`'s classification entirely (that procedure's
-  precondition is an unset kind). `/next-prepare-task` is the only remaining
-  check before human authorization, and independently verifies this boundary
-  before drafting a `task-plan`.
+- `/next-prepare-task` is the only remaining check before human authorization,
+  and independently verifies this boundary before drafting a `task-plan`.
 - `task` carries no exemption from the general minimal duplicate-check every
   todo creation owes (`software-development/policy/todo-creation-discipline`).
   It does not, however, have a kind-specific home for **deep** landscape
