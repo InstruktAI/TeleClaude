@@ -123,7 +123,7 @@ Given a person tier whose declaration says it carries documentation
 And a Source authored in that tier's documentation tree
 When the index build runs over the configuration surface
 Then that tier's catalog is written
-And the Source appears in it with its tier-derived identity
+And an agent session permitted to read that tier finds the Source in it under its tier-derived identity
 ```
 
 #### UC-DIB4: A doc-capable company tier gets its catalog built
@@ -133,7 +133,7 @@ Given a company tier whose declaration says it carries documentation
 And a Source authored in that tier's documentation tree
 When the index build runs over the configuration surface
 Then that company's catalog is written
-And the Source appears in it with an identity that names which company it belongs to
+And an agent session permitted to read that tier finds the Source in it under an identity that names which company it belongs to
 ```
 
 #### UC-DIB5: Catalog building follows the tier's own declaration

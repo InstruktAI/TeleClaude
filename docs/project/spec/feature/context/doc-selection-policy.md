@@ -48,8 +48,8 @@ And visibility: internal snippets are excluded
 #### UC-DSP6: Without a relationship, the snippet's own declaration is the gate
 
 ```
-Given a caller who is not a platform administrator
-And a tier the caller holds no declared relationship to
+Given an agent session running under the identity of a person who is not a platform administrator
+And a tier that identity holds no declared relationship to
 When the Selection policy resolves visibility for that tier
 Then only snippets declaring themselves public are included
 And snippets declaring themselves internal are excluded
@@ -69,12 +69,12 @@ When the Selection policy resolves visibility
 Then the caller is treated as non-admin and only public snippets are returned
 ```
 <!-- change:docs-tier-layering -->
-#### UC-DSP7: An unresolvable caller receives the outsider's view
+#### UC-DSP7: An agent session with no resolvable identity receives the outsider's view
 
 ```
-Given a caller whose identity cannot be resolved
+Given an agent session whose identity cannot be resolved
 When the Selection policy resolves the read
-Then the caller holds no relationship to any tier
+Then the session holds no relationship to any tier
 And only snippets declaring themselves public are returned
 And the absent identity never widens the read
 ```
@@ -170,35 +170,35 @@ And third-party entries are silenced
 #### UC-DSP8: Read scope follows the caller, not the working directory
 
 ```
-Given the same caller invoking documentation discovery from two different directories
-When the Selection policy resolves what that caller is permitted to see
+Given an agent session invoking documentation discovery from two different directories under one resolved identity
+When the Selection policy resolves what that identity is permitted to see
 Then the permitted set is identical in both invocations
 And the working directory determines only which project's material is offered by default
 ```
 
-#### UC-DSP9: A caller reads their own person tier in full
+#### UC-DSP9: An agent session reads its own person tier in full
 
 ```
-Given a caller whose identity resolves to a registered person
+Given an agent session whose identity resolves to a registered person
 When the Selection policy resolves the read
-Then that person's own tier is included in full without the caller naming it
+Then that person's own tier is included in full without the session naming it
 And no declaration on those snippets withholds them from their owner
 ```
 
 #### UC-DSP10: Belonging to a company opens that company's material in full
 
 ```
-Given a caller holding a declared relationship to a company
+Given an agent session running under the identity of a person holding a declared relationship to a company
 When the Selection policy resolves that company's tier
 Then every snippet of that company is included regardless of its own visibility declaration
-And the role the caller holds in that company does not change what is included
+And the role that person holds in that company does not change what is included
 ```
 
 #### UC-DSP11: A project's owning company is read at the caller's own relationship
 
 ```
-Given a caller working in a project that declares an owning company
-And the caller holds no declared relationship to that company
+Given an agent session working in a project that declares an owning company
+And the session's identity holds no declared relationship to that company
 When the Selection policy resolves that company's tier
 Then only snippets declaring themselves public are included
 And the project's declaration of its owner still brings that company's tier into scope
@@ -207,26 +207,36 @@ And the project's declaration of its owner still brings that company's tier into
 #### UC-DSP12: Assignment opens a project; company membership alone does not
 
 ```
-Given a caller holding a declared relationship to a company that owns several projects
-And the caller is assigned to one of those projects
+Given an agent session running under the identity of a person holding a declared relationship to a company that owns several projects
+And that person is assigned to one of those projects
 When the Selection policy resolves those projects
 Then the assigned project is included in full
-And the company's other projects are read as tiers the caller holds no relationship to
+And the company's other projects are read as tiers the identity holds no relationship to
 ```
 
-#### UC-DSP13: The person and company selectors are reserved to platform administrators
+#### UC-DSP13: A platform administrator reaches a named person or company tier
 
 ```
-Given a caller naming another person's tier or a named company's tier explicitly
+Given an agent session running under the identity of a platform administrator
+And the session names another person's tier or a named company's tier explicitly
 When the Selection policy resolves the request
-Then a platform administrator receives that tier in full
-And a caller who is not a platform administrator is refused the selector
+Then that named tier is returned in full
+```
+
+#### UC-DSP17: A non-administrator is refused the person and company selectors
+
+```
+Given an agent session running under the identity of a person who is not a platform administrator
+And the session names another person's tier or a named company's tier explicitly
+When the Selection policy resolves the request
+Then the selector is refused
+And the refusal does not fall back to a narrower read of that tier
 ```
 
 #### UC-DSP14: Membership in several companies stays unambiguous
 
 ```
-Given a caller holding declared relationships to more than one company
+Given an agent session running under the identity of a person holding declared relationships to more than one company
 And two of those companies publish material on the same subject
 When the Selection policy resolves the read
 Then each company's material remains separately addressable
@@ -236,7 +246,7 @@ And neither company's material shadows or displaces the other's
 #### UC-DSP15: Scope filter keeps only person snippets
 
 ```
-Given --scope person passed by the caller
+Given an agent session passing --scope person
 When the Selection policy applies the scope filter
 Then only snippets in the person tier are returned
 And snippets of every other tier are excluded
@@ -245,7 +255,7 @@ And snippets of every other tier are excluded
 #### UC-DSP16: Scope filter keeps only company snippets
 
 ```
-Given --scope company passed by the caller
+Given an agent session passing --scope company
 When the Selection policy applies the scope filter
 Then only snippets in the company tier are returned
 And snippets of every other tier are excluded
