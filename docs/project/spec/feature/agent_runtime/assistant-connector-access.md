@@ -138,6 +138,23 @@ When an agent session acting as one of them invokes that connector
 Then it cannot read the other person's stored credentials even when it seeks them
 ```
 
+#### UC-ACA-12: An account authorized before confinement is no longer reachable from elsewhere
+
+```gherkin
+Given a person's account that was authorized while its credentials were kept in a store shared across the machine
+When that account has been brought under the person's own confined store
+Then a state root holding only the connector's client identification cannot reach that person's mailbox
+And the attempt fails because the account cannot be resolved, not for any incidental reason
+```
+
+#### UC-ACA-13: The secret that confines a person's store is not observable
+
+```gherkin
+Given an agent session acting as a resolved person
+When the boundary invokes a connector whose secret store is confined by a per-person secret
+Then that secret does not appear in the invocation's arguments, in its environment as listed to an observer, or in anything the run writes out
+```
+
 #### UC-ACA-10: An invocation not bound to a declared account is refused
 
 ```gherkin
@@ -184,6 +201,12 @@ And the person remains resolvable as a person
   connector offering one satisfies UC-ACA-9.
 - The accounts a person may act as are declared in the configuration that owns
   person data; this boundary consumes that declaration and never restates it.
+- Directing a connector's state at a person's own location does not by itself
+  confine that person's secrets: a connector may resolve an account from a store
+  shared across the machine regardless of where its state is directed, which
+  presents as isolation while providing none. UC-ACA-9 is what settles
+  confinement, and UC-ACA-12 is what settles it for accounts that were authorized
+  before the confined store was in force.
 
 ## See Also
 

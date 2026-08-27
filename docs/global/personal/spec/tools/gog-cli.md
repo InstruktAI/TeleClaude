@@ -51,6 +51,7 @@ spec: the tool permits them, and the conduct policy decides when they run.
 
 ### Refused by the tool
 
+<!-- planned-change:personal-mail-tool-launcher -->
 Every settings operation, on every path — send-as identities, forwarding,
 filters, vacation responders, anything that silently reroutes future mail. These
 appear in no allowlist, and the policy compiled into the binary holds the rule
@@ -59,6 +60,19 @@ where no flag, environment variable, or configuration can lift it.
 Sending is refused on the same terms in an unattended run, which uses a build
 that has no send at all. Where the stronger wall is wanted for an attended run
 too, a persistent per-account guard holds it.
+<!-- change:personal-mail-tool-launcher -->
+Every settings operation, on every path — send-as identities, forwarding,
+filters, vacation responders, anything that silently reroutes future mail. The
+tool carries these commands, so the refusal is held in two places outside them.
+The account's authorization grant excludes the Gmail settings scopes, so the API
+refuses them whatever is invoked. And the boundary that launches the tool
+constructs every invocation with the tool's own command restrictions already
+applied, so the commands are unreachable before they are attempted.
+
+Sending is held the same way rather than by the tool's own disposition: the tool
+can send, and the launch boundary is what withholds it, constructing an
+unattended invocation with sending blocked.
+<!-- /planned-change:personal-mail-tool-launcher -->
 
 An agent that receives a refusal reports it; it does not look for another route.
 
@@ -71,8 +85,11 @@ An agent that receives a refusal reports it; it does not look for another route.
   accounts.
 <!-- change:personal-mail-tool-launcher -->
 - The person's tokens live in their own state root, and their stored secrets are
-  confined to that root, so people sharing one operating-system account cannot
-  read each other's credentials.
+  confined to it because every invocation is constructed with the tool's
+  file-backed secret store and that person's own store password. A state root on
+  its own does not separate people: it relocates configuration while account
+  resolution still reaches the machine-wide secret store, which looks like
+  isolation and is not.
 <!-- /planned-change:personal-mail-tool-launcher -->
 - Google's authorization is a one-time human ceremony per account. Until it is
   done, every command fails for that account and the assistant says so instead
