@@ -241,17 +241,18 @@ Then the notification names that computer and every suggested command carries th
 
 
 <!-- planned:session-distress-ingestion -->
-#### UC-SS10: An unwatched session's distress falls back to its human-facing channel
+#### UC-SS10: A session no distress-recipient is watching reports to its human-facing channel
 
 ```gherkin
-Given a target session has no live subscriber
+Given a target session has no live persistent subscriber
+And any subscribers it has are one-shot and outside the distress audience
 When the target session enters a distress state
 Then the distress notification is delivered to that session's human-facing channel
 And the notification names the target session and the distress kind
 
-Given a target session has at least one live subscriber
+Given a target session has at least one live persistent subscriber
 When the target session enters a distress state
-Then the distress notification is delivered to its subscribers only
+Then the distress notification is delivered to its persistent subscribers only
 And the session's human-facing channel receives nothing from this mechanism
 ```
 <!-- /planned:session-distress-ingestion -->
