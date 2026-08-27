@@ -17,8 +17,8 @@ reaches the mail and calendar connectors. An agent never touches a connector
 binary directly, and no route available to an agent session reaches one except
 this boundary: an invocation arrives at a mediated launch that consumes the
 resolved acting person, binds the invocation to one mail account that person has
-declared, keeps the connector's credential and connection state with that person
-alone, and applies the two prohibitions the
+declared, directs the connector's credential and connection state at that
+person's own store, and applies the two prohibitions the
 personal-assistant conduct policy declares — no send the person did not ask
 for, and no settings change. It applies them to what an invocation is
 determined to reach, so a generic pass-through request is judged by the
@@ -42,9 +42,10 @@ and by the conduct policy's mandate rule.
 where the tool runs. Connectors differ in what they enforce for themselves, and
 one that isolates nothing will, on a missed configuration, write one person's
 credentials into another's store and act as the wrong identity. Placing
-resolution and the two gates at the single launch boundary makes the promise
-true for every connector the platform fronts, so adopting a new one becomes a
-doctrine question rather than a safety question.
+resolution and the two gates at one boundary is what stops that, and it makes
+each connector's remaining exposure a stated property of that connector rather
+than an unexamined one — which is what adopting a new connector has to be
+judged on.
 
 ## Canonical fields
 
@@ -65,7 +66,7 @@ And no credential or connection state is created or modified anywhere
 ```gherkin
 Given an agent session acting as a resolved person
 When the session invokes a connector operation that reads or writes credential or connection state
-Then that state is read and written only within that person's own store
+Then the state location and connection the operation is directed at are that person's own
 And no state is left in a shared or default location
 And no other person's stored state is changed
 ```
@@ -140,11 +141,11 @@ Then it cannot read the other person's stored credentials even when it seeks the
 #### UC-ACA-10: An invocation not bound to a declared account is refused
 
 ```gherkin
-Given an agent session acting as a resolved person who has declared more than one mail account
-When the session invokes a fronted connector without naming which of those accounts it acts as
+Given an agent session acting as a resolved person who has declared one or more mail accounts
+When the session invokes a fronted connector without naming which account it acts as
 Then the invocation is refused before the connector runs
 And the refusal states that no account was named
-And no account is chosen on the invocation's behalf
+And no account is chosen on the invocation's behalf, even where the person has declared only one
 ```
 
 #### UC-ACA-11: A person's identity address is not a mailbox
