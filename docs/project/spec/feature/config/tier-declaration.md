@@ -71,6 +71,8 @@ tier.
   file: either is supplied or repaired without regard to the other. Only the
   declaration is load-bearing, and a file never references a schema that is not
   in place.
+- A file carrying its schema reference has been advanced. Such a file missing
+  its declaration fails; the declaration is not restored.
 
 ### Use cases
 
@@ -124,6 +126,7 @@ Then resolution fails with a clear error naming the project root
 
 ```
 Given a same-named configuration file authored before tier declarations existed
+And that file carries neither a tier declaration nor a schema reference
 And the tier registries name its location
 When that file is loaded
 Then it is advanced to carry its correct tier declaration before the load reads it
@@ -202,6 +205,18 @@ When that file is advanced
 Then its tier declaration is written
 And no schema reference is written
 And the schema reference is written by a later advance once the schema is in place
+```
+
+#### UC-CFG-WSD14: A declaration removed after advancement is not restored
+
+```
+Given a same-named configuration file that carries its schema reference
+And its tier declaration has been removed
+And the tier registries name its location
+When that file is loaded
+Then loading fails with an error naming the file and the missing declaration
+And no tier declaration is restored
+And the file is never loaded as any tier
 ```
 
 ### Cross-context references

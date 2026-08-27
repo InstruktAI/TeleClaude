@@ -178,6 +178,14 @@ person, and company files, and the project manifest for project roots. A path
 the registries do not name is not advanced, so it reaches loading undeclared and
 fails there.
 
+A file that has already been advanced is never advanced again, and its evidence
+is the file itself: the schema association is written only by advancement or by
+a writer, so a file carrying its association has been through both. Such a file
+missing its declaration has had the declaration removed, and it fails rather
+than having one restored. A file carrying neither property has been through
+neither, and it is advanced. Strictness therefore arrives per file, evidenced by
+that file — the same reason no separate record is kept.
+
 A best-effort sweep advances every root the registries reach, at the
 boundaries where a full pass is already natural: daemon start, reconciliation,
 and project registration. The sweep is an optimization over the per-file
@@ -208,9 +216,10 @@ model-inconsistent value fails rather than being replaced.
 ## Failure modes
 
 - **A same-named configuration file carries no declaration.** Loading fails
-  naming the file and the missing declaration, wherever the file sits. A file
-  the tier registries do not name reaches this by construction, and its remedy
-  is to declare itself.
+  naming the file and the missing declaration, wherever the file sits. Two
+  files reach this by construction: one the tier registries do not name, and one
+  carrying its schema association, whose declaration was removed after it was
+  advanced. The remedy for both is to declare the file.
 - **Advancement cannot write a file the registries name.** That file's load
   fails, naming it and the declaration it needs, rather than substituting a
   value that leaves the stored file undeclared. Other roots are unaffected.
