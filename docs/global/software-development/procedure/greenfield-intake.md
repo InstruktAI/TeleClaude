@@ -74,8 +74,20 @@ every production default ships silently from the applicable baseline.
    branches — as the contract. Baseline items appear as delivered scope, not
    questions. On approval, the brief feeds the normal prepare/PRD machinery.
 
-6. **Scaffold via the flavor's own generator** (see the flavor's scaffolding
-   snippet), wire the quality gates and CI _before_ feature work — for sites,
+6. **Scaffold via the flavor's own generator**, then wire the quality gates
+   and CI _before_ feature work. The flavor selects its scaffolding procedure:
+
+   - Python → `software-development/procedure/scaffolding/python`
+   - Rust → `software-development/procedure/scaffolding/rust`
+   - TypeScript → `software-development/procedure/scaffolding/typescript`, plus
+     the platform's own snippet:
+     `software-development/procedure/scaffolding/typescript-platforms/astro`,
+     `software-development/procedure/scaffolding/typescript-platforms/next-js`,
+     `software-development/procedure/scaffolding/typescript-platforms/node-js`,
+     `software-development/procedure/scaffolding/typescript-platforms/vite`, or
+     `software-development/procedure/scaffolding/typescript-platforms/hono`.
+
+   For sites,
    follow `software-development/procedure/setup-visual-regression` — and end
    by running `telec projects init` for the TeleClaude plumbing.
 
