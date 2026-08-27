@@ -581,37 +581,6 @@ And the message carries Human-Involved: false, since no agent declares involveme
 And the message carries no Co-Authored-By line
 ```
 
-### Thin hook backstop
-
-#### UC-TH-1 — Thin hook partial-staging backstop
-
-```
-Given agent bypasses telec and invokes raw git commit with partially staged files
-When the thin .git/hooks/pre-commit runs
-Then it detects the overlap via NUL-safe Python (no unquoted shell expansion)
-And exits non-zero naming the partially staged paths
-And no INSTALL_PYTHON is present in .git/hooks/pre-commit
-```
-
-#### UC-TH-2 — Thin hook passes clean commits
-
-```
-Given working tree has no partially staged files
-When raw git commit is attempted
-Then .git/hooks/pre-commit exits 0
-And the commit proceeds (gates were enforced in-process by telec code commit)
-```
-
-#### UC-TH-3 — Thin hook fails closed on git status probe failure
-
-```
-Given the git status probe (git status --porcelain=v1 -uall -z) returns nonzero
-When the thin .git/hooks/pre-commit runs
-Then the hook exits nonzero immediately
-And the commit is aborted
-And the partial-staging check is NOT silently bypassed
-```
-
 <!-- planned:person-tier-homes -->
 
 #### UC-NCR-1 — Change inspection from a context root below the repository root
@@ -670,6 +639,37 @@ And no partial or combined commit is produced
 ```
 
 <!-- /planned:person-tier-homes -->
+
+### Thin hook backstop
+
+#### UC-TH-1 — Thin hook partial-staging backstop
+
+```
+Given agent bypasses telec and invokes raw git commit with partially staged files
+When the thin .git/hooks/pre-commit runs
+Then it detects the overlap via NUL-safe Python (no unquoted shell expansion)
+And exits non-zero naming the partially staged paths
+And no INSTALL_PYTHON is present in .git/hooks/pre-commit
+```
+
+#### UC-TH-2 — Thin hook passes clean commits
+
+```
+Given working tree has no partially staged files
+When raw git commit is attempted
+Then .git/hooks/pre-commit exits 0
+And the commit proceeds (gates were enforced in-process by telec code commit)
+```
+
+#### UC-TH-3 — Thin hook fails closed on git status probe failure
+
+```
+Given the git status probe (git status --porcelain=v1 -uall -z) returns nonzero
+When the thin .git/hooks/pre-commit runs
+Then the hook exits nonzero immediately
+And the commit is aborted
+And the partial-staging check is NOT silently bypassed
+```
 
 ## See also
 
