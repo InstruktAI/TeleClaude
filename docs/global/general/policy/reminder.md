@@ -141,71 +141,27 @@ choice. Event-triggered profiles have no cadence to override.
   `NOOP`-answered firing cancels the reminder.
 - **Invocation:** `telec reminders set goal-drive` (uses the default intent) or `telec reminders set goal-drive --intent <intent>`.
 
-#### Reminder: coordinator-sweep
+#### Role-owned profiles classified under the rule
 
-- **Owner:** the coordinator role; singleton per project.
-- **Parameters:** `--after <seconds>` (optional interval override).
-- **Recurrence:** recurring. The coordinator's condition never expires — the
-  fleet is always live — so this is the one profile whose arming premise cannot
-  lapse. It is not an exemption from the next-move rule; it is the case where
-  the next move is permanently the holder's.
-- **Firing behavior:** perform the sweep and go dormant. The coordinator always
-  holds a duty, not always a task: a sweep that completes and surfaces nothing
-  is the function succeeding, never evidence the reminder is obsolete. Fatigue,
-  repetition, and a long run of empty sweeps are never grounds for cancellation.
-- **Cadence:** adaptive. Quiet sweeps lengthen the interval by replacing the
-  slug's own schedule (replacement is atomic, so the watcher never passes
-  through an unarmed gap); a material finding or new fleet activity resets it
-  to the responsive rate. Ceiling: thirty minutes.
-- **Cancellation:** none. The exit is session end, never cancellation: a
-  coordinator that cannot perform its function — source-truth surfaces
-  unreachable, or another session holds the coordinator role — ends with a
-  signal naming what it could not observe and why. The distinction that gates
-  that exit is _cannot observe_ versus _observed nothing_; only the first is
-  terminal.
-- **Invocation:** `telec reminders set coordinator-sweep [--after <seconds>]`.
+`coordinator-sweep`, `integrator-main-clearance`,
+`integrator-candidate-settledness`, and `integrator-queue-watch` are declared
+beside their owners — the coordinate and integrate lifecycle procedures — and
+those declarations are authoritative for parameters, cadence, intent, and
+invocation. This policy adds only their classification under the next-move
+rule:
 
-#### Reminder: integrator-main-clearance
-
-- **Owner:** the integrator role.
-- **Parameters:** `--after <seconds>` (optional interval override).
-- **Recurrence:** recurring — the gate is other sessions' work on repo-root
-  main, externally owned and unbounded, so the integrator must keep looking.
-- **Firing behavior:** recheck whether repo-root main is clear without touching
-  another session's work. If clear, resume integration.
-- **Cancellation:** waiting and escalating are different states with opposite
-  reminder consequences. While waiting, the next move is still the
-  integrator's: keep the reminder. On escalating, the next move passes to a
-  human: cancel the reminder and hold as a beacon — a session nagging itself
-  about something only a human can move is noise that hides real signals.
-- **Invocation:** `telec reminders set integrator-main-clearance [--after <seconds>]`.
-
-#### Reminder: integrator-candidate-settledness
-
-- **Owner:** the integrator role.
-- **Parameters:** `--after <seconds>` (the caller-owned settledness interval).
-- **Recurrence:** one-shot — the gate is time, which is certain to elapse, so
-  the question resolves at the firing either way.
-- **Firing behavior:** recheck the integration queue. A candidate that settled
-  continues the drain; an empty queue takes the integration procedure's
-  queue-empty outcome. Both branches are terminal for this reminder — the
-  one-shot firing has already consumed it, and re-arming is justified only by a
-  new settledness interval, never by reluctance to take the queue-empty
-  outcome.
-- **Invocation:** `telec reminders set integrator-candidate-settledness --after <seconds>`.
-
-#### Reminder: integrator-queue-watch
-
-- **Owner:** the integrator role.
-- **Parameters:** `--after <seconds>` (optional interval override).
-- **Recurrence:** recurring — the gate is the arrival of integration
-  candidates, externally owned and unbounded.
-- **Firing behavior:** recheck the integration queue from current source truth.
-  A ready candidate ends the watch: cancel this reminder and continue the
-  drain. Otherwise remain parked under the integration procedure.
-- **Cancellation:** at the transition — the firing that finds a ready candidate
-  cancels the watch as part of acting on it, per its own intent.
-- **Invocation:** `telec reminders set integrator-queue-watch [--after <seconds>]`.
+- `coordinator-sweep` — the one profile whose arming premise cannot lapse: the
+  fleet is always live, so the next move is permanently the holder's. Recurring,
+  with caller-owned backoff. An empty sweep is the function succeeding, never
+  grounds for retirement.
+- `integrator-main-clearance` — recurring: the gate is other sessions' work,
+  externally owned and unbounded. Waiting keeps the reminder; escalating to a
+  human passes the next move and cancels it.
+- `integrator-candidate-settledness` — one-shot: the gate is time, certain to
+  elapse, so the firing resolves the question either way.
+- `integrator-queue-watch` — recurring: the gate is candidate arrival. The
+  firing that finds a ready candidate cancels the watch as part of acting on
+  it.
 
 ## Rationale
 

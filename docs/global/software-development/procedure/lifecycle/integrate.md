@@ -267,9 +267,9 @@ brake and makes no claim about path intent.
 - **Recurrence:** recurring while repo-root main remains blocked.
 - **Arm condition:** set on first dirty-main block before yielding.
 <!-- planned-change:telec-code-dirty-path-owners -->
-- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration; otherwise continue the prescribed wait and escalation discipline.`
+- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. While waiting, keep this reminder; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
 <!-- change:telec-code-dirty-path-owners -->
-- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration; otherwise continue the prescribed wait and post-window ownership discipline.`
+- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. While waiting, keep this reminder and follow the post-window ownership discipline; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
 <!-- /planned-change:telec-code-dirty-path-owners -->
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the

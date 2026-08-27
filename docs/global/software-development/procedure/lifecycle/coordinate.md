@@ -221,15 +221,17 @@ session's accumulating transcript is the human's standing signal surface;
 between sweeps it sits open with its findings and a live reminder, which is
 what resting means here — on watch, not done. Never end this session and never
 cancel `coordinator-sweep`: only the human ends a coordinator, and the sole
-self-end is the step-0 yield. A coordinator that genuinely cannot continue
-stops where it is; an open coordinator whose reminder has died is itself a
-signal the human reads.
+routine self-end is the step-0 yield. A coordinator that cannot perform its
+function at all — source-truth surfaces unreachable, not merely quiet — ends
+with a signal naming what it could not observe and why; the distinction that
+gates that exit is cannot-observe versus observed-nothing, and only the first
+is terminal. An empty sweep is the function succeeding.
 
 #### Reminder: coordinator-sweep
 
 - **Owner:** Coordinate procedure.
-- **Parameters:** none; project and coordinator session derive from the
-  authenticated caller.
+- **Parameters:** optional `--after <seconds>` interval override; project and
+  coordinator session derive from the authenticated caller.
 - **Activation anchor:** immediately after each completed fleet sweep.
 - **Duration:** the current interval selected by this procedure's quiet-sweep
   backoff; timer values remain owned by the calling context.
@@ -240,8 +242,8 @@ signal the human reads.
 - **Intent:** `Reassess the live project fleet from current source truth. Restore missing ownership or attention, record only material findings, and carry only human-owned need.`
 - **Firing behavior:** perform a complete current-source sweep without treating
   elapsed time as evidence of a defect.
-- **Cancellation:** only when the human ends the coordinator or step 0 yields to
-  an incumbent coordinator.
+- **Cancellation:** only when the human ends the coordinator, step 0 yields to
+  an incumbent coordinator, or the session takes the cannot-observe exit above.
 - **Invocation:** `telec reminders set coordinator-sweep`.
 
 ### Tools
