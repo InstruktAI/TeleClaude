@@ -9,17 +9,19 @@ delivered_by:
 ## What it is
 
 Organizational membership is a person's declared relationship to the businesses
-and projects of the platform. Two facts are declared, per person, and neither is
-derived from the other:
+and projects of the platform. Two facts are declared for each person:
 
 - **Company membership** — which companies this person belongs to, and the role
   held in each business.
 - **Project assignment** — which projects this person is assigned to work in.
 
-Belonging to a company grants no project. Being assigned to a project asserts no
-membership. The single exception is a person holding a company's administrative
-role, who reaches every project that company owns without a per-project
-assignment naming each one.
+Belonging to a company confers no project assignment. The single exception is a
+person holding a company's administrative role, whose membership covers every
+project that company owns without a per-project entry naming each one.
+
+These are declared facts and the answers resolution reports about them. Nothing
+here permits or refuses an operation: a consumer that turns these facts into
+permission owns that decision itself.
 
 Organizational membership is independent of the platform role. The platform role
 governs authority over TeleClaude itself and decides who may maintain a
@@ -50,10 +52,10 @@ business system — is owned by that consumer.
 : The role a person holds inside one business, drawn from the platform's declared company-role vocabulary. Independent of the platform role, and never a visibility tier.
 
 **Project assignment**
-: A person's declared authorization to work in one registered project. Authoritative on its own; never inferred from company membership.
+: A person's declared assignment to work in one registered project. Authoritative on its own; never inferred from company membership.
 
 **Company administrative role**
-: The company role whose holder reaches every project that company owns without a per-project assignment. The sole role-derived reach in the model.
+: The company role whose holder's membership covers every project that company owns, with no per-project entry. The sole place a company role affects what resolution reports.
 
 **Undeclared person**
 : A person carrying no company membership and no project assignment. Resolves to no company relationship and an empty assignment set.
@@ -64,7 +66,7 @@ business system — is owned by that consumer.
 
 ```gherkin
 Given a registered company and a person who holds no membership in it
-And a human administrator operating the people-configuration surface
+And a human administrator operating the organizational-membership configuration surface
 When the administrator declares that the person belongs to that company holding a stated company role
 Then the declaration is accepted and persisted
 And resolving that person reports the company among their memberships with the stated role
@@ -75,7 +77,7 @@ And no file was edited by hand to achieve it
 
 ```gherkin
 Given a person who belongs to a registered company
-And a human administrator operating the people-configuration surface
+And a human administrator operating the organizational-membership configuration surface
 When the administrator withdraws that membership
 Then the declaration is removed
 And resolving that person no longer reports that company among their memberships
@@ -86,7 +88,7 @@ And the person's remaining memberships are unchanged
 
 ```gherkin
 Given a registered project and a person not assigned to it
-And a human administrator operating the people-configuration surface
+And a human administrator operating the organizational-membership configuration surface
 When the administrator assigns the person to that project
 Then the assignment is accepted and persisted
 And resolving that person reports the project among their assignments
@@ -115,14 +117,14 @@ And their project assignments are empty
 And the projects that company owns are not among them
 ```
 
-#### UC-CFG-MEMBER-6: A company's administrator reaches that company's projects without assignment
+#### UC-CFG-MEMBER-6: A company's administrative role covers that company's projects without per-project entries
 
 ```gherkin
 Given a person who belongs to a company holding that company's administrative role
 And the person carries no project assignment naming any of that company's projects
 When an agent resolves that person's organizational membership
-Then every project that company owns resolves as reachable by that person
-And no other company's projects resolve as reachable
+Then every project that company owns is reported as covered by that membership
+And no other company's projects are reported as covered
 ```
 
 #### UC-CFG-MEMBER-7: An undeclared person holds no company relationship
@@ -139,7 +141,7 @@ And no company is supplied as a default
 
 ```gherkin
 Scenario Outline: An unregistered referent is refused at write time
-Given a human administrator operating the people-configuration surface
+Given a human administrator operating the organizational-membership configuration surface
 When the administrator declares a membership or assignment naming a <referent> that is not registered
 Then the declaration is refused at the point it is written
 And the refusal names the <referent> that could not be resolved
@@ -166,9 +168,12 @@ And holding any platform role confers no company membership and no project assig
 - The company-role vocabulary is a closed set whose values are the business
   owner's to ratify. Until that ratification lands, scenarios here name the
   administrative role by its function rather than by a literal value.
-- The administrative reach in UC-CFG-MEMBER-6 is the only place a company role
-  determines what a person reaches. Any further derivation from company role is
-  a change to this contract, not an implementation detail.
+- UC-CFG-MEMBER-6 is the only place a company role affects what resolution
+  reports. Any further derivation from company role is a change to this
+  contract, not an implementation detail.
+- Which configuration file is authoritative for these declarations is an open
+  product decision at the time of authoring. The contract above holds either
+  way: it states the facts and the answers, and names no file.
 
 ## See Also
 
