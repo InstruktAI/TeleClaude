@@ -2,8 +2,8 @@
 
 Every machine-originated injection into a session uses the canonical bracket:
 
-    [Role - Category (session_id) on computer]
-    [Role (session_id) on computer]   # category omitted
+    [Role - Category (session_id) on computer · utc-minute]
+    [Role (session_id) on computer · utc-minute]   # category omitted
 
 ``Role`` is a stable taxonomy: ``MachineRoleLabel`` values for machine-role API
 callers and resolved session-originated callers with no machine role,
@@ -199,9 +199,15 @@ def format_identity_header(
     role: str,
     session_id: str,
     computer: str,
+    occurred_at: datetime,
     category: str | None = None,
 ) -> str:
-    """Build the canonical identity bracket for a machine-originated message."""
+    """Build the canonical identity bracket for a machine-originated message.
+
+    Occurrence time is rendered once, into the opening, in the same UTC-minute
+    grammar the peer and action envelopes use. The paired closing is derived
+    from this rendered opening, so the two can never disagree.
+    """
     category_segment = _CATEGORY_PREFIX_TEMPLATE.format(category=category) if category else _EMPTY_CATEGORY
     return envelope_bracket_opening(
         semantic_envelope(
@@ -211,6 +217,7 @@ def format_identity_header(
                 EnvelopeField.CATEGORY: category_segment,
                 EnvelopeField.SESSION_ID: session_id,
                 EnvelopeField.COMPUTER: computer,
+                EnvelopeField.OCCURRED_AT: ensure_utc(occurred_at).strftime(_UTC_MINUTE_FORMAT),
             },
         )
     )

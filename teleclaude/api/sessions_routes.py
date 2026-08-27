@@ -679,6 +679,7 @@ async def _resolve_caller_event_identity(
         category=" · ".join(category_parts) or None,
         session_id=caller_session_id,
         computer=computer or config.computer.name,
+        occurred_at=datetime.now(UTC),
     )
     logger.info(
         _SESSION_EVENT_IDENTITY_RESOLVED_EVENT,

@@ -138,7 +138,7 @@ _WAKE_BRACKET_OPENING = "[TeleClaude Wake]"
 _RESTART_CONTINUATION_BRACKET_OPENING = "[TeleClaude Restart Continuation]"
 _PEER_BRACKET_OPENING = "[Peer ({session_id} · {author_token} · {occurred_at})]"
 _LEGACY_PEER_BRACKET_OPENING = "[TeleClaude - Peer ({session_id}) · {author_token} · {occurred_at}]"
-_CALLER_IDENTITY_BRACKET_OPENING = "[{role}{category} ({session_id}) on {computer}]"
+_CALLER_IDENTITY_BRACKET_OPENING = "[{role}{category} ({session_id}) on {computer} · {occurred_at}]"
 _REMINDER_BRACKET_OPENING = "[Reminder {slug} {occurrence_key}]"
 _ACTION_BRACKET_OPENING = "[Action ({topic} · {occurred_at})]"
 _CHECKPOINT_BRACKET_CLOSING = "[/TeleClaude Checkpoint]"
@@ -146,7 +146,7 @@ _NOTIFICATION_BRACKET_CLOSING = "[/TeleClaude Notification]"
 _RESTART_CONTINUATION_BRACKET_CLOSING = "[/TeleClaude Restart Continuation]"
 _PEER_BRACKET_CLOSING = "[/TeleClaude - Peer]"
 _LEGACY_PEER_BRACKET_CLOSING = "[/TeleClaude - Peer]"
-_CALLER_IDENTITY_BRACKET_CLOSING = "[/{role}{category} ({session_id}) on {computer}]"
+_CALLER_IDENTITY_BRACKET_CLOSING = "[/{role}{category} ({session_id}) on {computer} · {occurred_at}]"
 _REMINDER_BRACKET_CLOSING = "[/Reminder {slug} {occurrence_key}]"
 _ACTION_BRACKET_CLOSING = "[/Action]"
 _CHECKPOINT_XML_TAG = "teleclaude-checkpoint"
@@ -166,7 +166,9 @@ _CALLER_IDENTITY_OPENING_RE = re.compile(
     r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+\]"
 )
 _REMINDER_OPENING_RE = re.compile(r"\[Reminder [^\]\n]+\]")
-_IDENTITY_FIELDS = frozenset({EnvelopeField.ROLE, EnvelopeField.SESSION_ID, EnvelopeField.COMPUTER})
+_IDENTITY_FIELDS = frozenset(
+    {EnvelopeField.ROLE, EnvelopeField.SESSION_ID, EnvelopeField.COMPUTER, EnvelopeField.OCCURRED_AT}
+)
 _PEER_FIELDS = frozenset({EnvelopeField.SESSION_ID, EnvelopeField.AUTHOR_TOKEN, EnvelopeField.OCCURRED_AT})
 _REMINDER_FIELDS = frozenset({EnvelopeField.SLUG, EnvelopeField.OCCURRENCE_KEY})
 _ACTION_FIELDS = frozenset({EnvelopeField.TOPIC, EnvelopeField.OCCURRED_AT})
