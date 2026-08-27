@@ -1,4 +1,6 @@
 project_name: TeleClaude
+# Owning company. The association is stated here by the project itself and is
+# never inferred from where the checkout sits.
 company: instrukt-ai
 env_allow_list: []
 frontend_root: frontend
