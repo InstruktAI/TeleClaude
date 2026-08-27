@@ -40,10 +40,8 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 7.  Organize content inside those valid sections. Use subordinate headings such as `###` when they improve readability; do not flatten useful structure just to avoid internal headings.
 8.  If validation rejects a heading, first ask whether it should be downgraded under an existing schema section rather than deleted or flattened.
 
-
 9.  After any doc change, run `telec sync` to deploy all artifacts. Commit the regenerated index files as part of the task — they are build outputs of the sync step and reflect the current truth of the docs directory.
 10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
-
 
 11. Avoid creating index.md files; only baseline.md manifests are allowed.
 12. **Changing an existing snippet — bounded vs wholesale.** A live snippet is never overwritten in place to describe a change before it is delivered. Match the pending carrier to the shape of the change: bounded additions, replacements, and removals stay in body markers; wholesale reworks use a companion. The pending carrier names the delivering `<slug>`.
@@ -84,7 +82,17 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 
         - **Related-file discovery.** Before editing a live parent `<stem>.md`, list sibling files by stripping `.md` and globbing the stem (`ls docs/.../<stem>.*`). If a pending companion `<stem>.<slug>.md` exists, mirror the parent edit into that companion or coordinate ownership. A parent edit that leaves its pending companion unsynced is a defect.
 
-13. **ADR discipline (decision capture).** Specs, procedures, and principles describe the _current state_; they hold no reasoning logs. An ADR is reserved for a real, contestable decision and the default is none — consult `general/policy/adr-discipline` for the bar before writing one.
+13. **Every rule reaches its reason in one hop.** A normative rule you author is
+    traceable to its reason — inline in one clause, via a rationale paragraph that
+    specifically maps to it, or via a cited principle or ADR — and the reason names
+    the invariant protected or the failure prevented, never a restatement of the
+    rule. This is what lets a future reader apply the rule to a novel case, contest
+    it with evidence, or retire it when its reason has died; a rule that can reach
+    no reason is a deletion candidate, not a mystery to preserve. Reviewers treat a
+    new why-less rule as a finding; the existing corpus is retrofitted
+    progressively as rules are touched, never as a campaign.
+
+14. **ADR discipline (decision capture).** Specs, procedures, and principles describe the _current state_; they hold no reasoning logs. An ADR is reserved for a real, contestable decision and the default is none — consult `general/policy/adr-discipline` for the bar before writing one.
 
 ## Outputs
 
