@@ -75,6 +75,15 @@ public reminder ID. A same-session same-slug set replaces the row in one store
 transaction and increments its generation. Distinct slugs are distinct
 aggregates and no session-level singleton or numeric cap exists.
 
+<!-- planned:reminder-lifecycle-mechanisms -->
+The current aggregate generation also carries a monotonically increasing firing
+count. Claiming a previously unclaimed occurrence increments that count in the
+same transaction that appends the firing entry, and the entry snapshots the
+resulting firing number. Retrying the claimed occurrence reuses that number.
+Same-slug replacement starts a new generation with a zero count, so both the
+ordinal and elapsed-since-armed presentation restart at the replacement.
+<!-- /planned:reminder-lifecycle-mechanisms -->
+
 An append-only typed reminder-entry record carries each material transition:
 armed, replaced, cancelled, and firing. It stores the aggregate identity,
 generation, transition, structured trigger/schedule fields, canonical instant,
@@ -133,6 +142,16 @@ no authored content beyond the `NOOP` sentinel. On a match the service cancels
 the aggregate and records the cancellation with its auto-cancel reason in its
 durable reminder records. Only firings use delivery; reminder-command
 responses acknowledge minimally.
+
+<!-- planned:reminder-lifecycle-mechanisms -->
+Profiles may independently declare cancellation protection. Public one-slug and
+all-session cancellation consult that registry metadata inside the service's
+mutation gate. If any selected live reminder is protected, the whole public
+cancellation operation fails before mutation; cancellation is never partially
+applied. Same-slug set remains replacement, not cancellation, and session-end
+cleanup deliberately bypasses profile protection so an ended session retains no
+live reminder.
+<!-- /planned:reminder-lifecycle-mechanisms -->
 
 The answering turn is resolved from the firing entry's occurrence-specific
 registered header. The shared cutter then extracts assistant messages until the
@@ -277,6 +296,14 @@ idempotent; only actual removals append cancelled entries. Session cleanup calls
 the same all-session clear operation in cleanup mode after input workers are
 expired. Cleanup emits body-free structured operational evidence and does not
 append or submit input to the ended session.
+
+<!-- planned:reminder-lifecycle-mechanisms -->
+Before public deletion, the service resolves the selected live profiles and
+rejects the operation atomically if any declares cancellation protection. The
+rejection records a typed protected outcome and the protected slugs without
+creating lifecycle entries. Cleanup mode remains an unconditional session clear
+and therefore removes protected reminders as part of ownership teardown.
+<!-- /planned:reminder-lifecycle-mechanisms -->
 
 ### Agent delivery and inspection
 

@@ -130,6 +130,7 @@ And the response identifies the prescribed profile surface
 And a non-prescribed valid slug remains available for arbitrary self-reminders
 ```
 
+<!-- planned-change:reminder-lifecycle-mechanisms -->
 #### UC-RMS6: A session inspects and cancels its own reminders
 
 ```gherkin
@@ -140,6 +141,19 @@ When it cancels one slug or atomically cancels all
 Then the selected live reminders and their pending event anchors are removed idempotently
 And already accepted session input is not recalled
 ```
+<!-- change:reminder-lifecycle-mechanisms -->
+#### UC-RMS6: A session inspects and cancels its own reminders
+
+```gherkin
+Given a session owns live time-scheduled and event-anchored reminders
+When it lists reminders
+Then it sees only its own reminders with slug, intent, schedule, recurrence, and next firing time when one exists
+When it cancels one slug or atomically cancels all
+Then every selected reminder and its pending event anchor is removed idempotently when every selected profile permits cancellation
+And an operation selecting a reminder whose profile protects cancellation is rejected before any selected reminder is removed
+And already accepted session input is not recalled
+```
+<!-- /planned-change:reminder-lifecycle-mechanisms -->
 
 #### UC-RMS7: A firing one-shot reminder is handed to control delivery once
 
@@ -325,6 +339,32 @@ And a transient downstream delivery failure still holds its consumer cursor for 
 And reminder projection failure neither terminates native polling nor becomes human-facing polling feedback
 And the immutable historical entry remains unchanged as audit truth
 ```
+
+<!-- planned:reminder-lifecycle-mechanisms -->
+#### UC-RMS25: A cancellation-protected reminder remains continuously armed
+
+```gherkin
+Given an agent session owns a live reminder whose prescribed profile protects cancellation
+When that session cancels the protected slug or atomically cancels all reminders
+Then the protected reminder remains live
+And the cancellation is rejected before any other selected reminder is removed
+When the session schedules the protected slug again
+Then the live reminder is atomically replaced without an unarmed gap
+When the owning session ends
+Then the protected reminder is removed with the session
+```
+
+#### UC-RMS26: A firing exposes its occurrence history
+
+```gherkin
+Given an agent session owns a live reminder
+When an occurrence fires
+Then the delivered reminder entry states its occurrence number since the current arming
+And it states the elapsed time since that arming
+When the reminder is atomically replaced and later fires
+Then the occurrence number and elapsed time are measured from the replacement
+```
+<!-- /planned:reminder-lifecycle-mechanisms -->
 
 ## Known caveats
 
