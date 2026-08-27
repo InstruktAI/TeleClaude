@@ -60,25 +60,6 @@ And the refusal states that no acting person was resolved
 And no credential or connection state is created or modified anywhere
 ```
 
-#### UC-ACA-10: An invocation not bound to a declared account is refused
-
-```gherkin
-Given an agent session acting as a resolved person who has declared more than one mail account
-When the session invokes a fronted connector without naming which of those accounts it acts as
-Then the invocation is refused before the connector runs
-And the refusal states that no account was named
-And no account is chosen on the invocation's behalf
-```
-
-#### UC-ACA-11: A person's identity address is not a mailbox
-
-```gherkin
-Given a person whose identifying address is not among their declared mail accounts
-When an agent session acting as that person invokes a fronted connector as that address
-Then the invocation is refused before the connector runs
-And the person remains resolvable as a person
-```
-
 #### UC-ACA-2: Connector state stays inside the acting person's own store
 
 ```gherkin
@@ -154,6 +135,25 @@ Given two people whose assistants operate under one operating-system account on 
 And the connector offers a secret store that can be confined to a single person
 When an agent session acting as one of them invokes that connector
 Then it cannot read the other person's stored credentials even when it seeks them
+```
+
+#### UC-ACA-10: An invocation not bound to a declared account is refused
+
+```gherkin
+Given an agent session acting as a resolved person who has declared more than one mail account
+When the session invokes a fronted connector without naming which of those accounts it acts as
+Then the invocation is refused before the connector runs
+And the refusal states that no account was named
+And no account is chosen on the invocation's behalf
+```
+
+#### UC-ACA-11: A person's identity address is not a mailbox
+
+```gherkin
+Given a person whose identifying address is not among their declared mail accounts
+When an agent session acting as that person invokes a fronted connector as that address
+Then the invocation is refused before the connector runs
+And the person remains resolvable as a person
 ```
 
 ## Known caveats
