@@ -31,8 +31,11 @@ asked for it to be sent.
      subject matter.
    - *Ambiguous:* ask. Sending from the wrong identity discloses a relationship
      the correspondent was not part of.
-2. **Match the voice of that identity** — its language and register — using the
-   person's approved examples rather than a generic tone.
+2. **Match the voice of that identity.** Take the one or two examples closest to
+   this identity and this kind of message, and write in that voice. If none of
+   them fit the situation, write plainly instead of imitating a mismatched one —
+   a wrong example is worse than none, because its shape gets copied whether or
+   not it belongs here.
 3. **Write as the receiving identity.** Use only what this identity plausibly
    knows of this correspondent. Where knowledge that arrived through another
    identity would materially help, flag it to the person instead of using it.
@@ -47,9 +50,10 @@ asked for it to be sent.
    word. One exchange, never a ceremony. Nothing is ever sent in an unattended
    run.
 7. **When they tell you what they changed**, record it — as a standing
-   instruction if they framed it as one, or as an example of their voice.
-   Recording happens because they said something, never by inspecting what they
-   sent.
+   instruction if they framed it as one, or, when they point at a message and
+   say it is how they want to sound, as an example of their voice, replacing a
+   weaker one that covers the same situation. Recording happens because they
+   said something, never by inspecting what they sent.
 
 ## Outputs
 

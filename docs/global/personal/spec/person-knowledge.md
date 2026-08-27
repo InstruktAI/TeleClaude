@@ -33,9 +33,24 @@ rather than assumes.
   stacked beside it.
 - **Priorities** — who always matters, what is always noise, what the person
   wants surfaced rather than handled.
-- **Examples** — real correspondence the person has approved as representative
-  of their voice, kept as plain files outside the documentation taxonomy and
-  referenced from here.
+- **Examples of their voice** — a handful of messages per identity that the
+  person has approved as representative, held in their workspace like the rest
+  of their data. They carry the voice directly rather than through anyone's
+  description of it, which is why there is no style summary here: a description
+  is an interpretation, and an interpretation is wrong in every draft at once.
+
+  What an example is: **only what the person wrote** — no quoted thread beneath
+  it, no auto-appended signature. Short and substantive beats long. Each carries
+  one line saying which identity sent it and what kind of message it is — a
+  client update, a decline, a piece of scheduling — because without that the set
+  averages together and the identities blur.
+
+  The set is produced once, during onboarding, from the person's own sent mail.
+  After that it changes only when they ask: telling an agent "more like this
+  one" makes that message an example. When a new one covers a situation already
+  represented, it replaces the weaker example rather than joining it — an
+  accumulating set costs context in every draft and drifts back toward an
+  average, which is the failure examples exist to avoid.
 
 ## Known caveats
 
