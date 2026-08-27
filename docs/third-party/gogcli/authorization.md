@@ -159,6 +159,21 @@ and an unauthorized machine shows `warn tokens no OAuth tokens stored`. Exit cod
 
 ## Known caveats
 
+- **"Send-as" names two capabilities and only one needs the settings scopes.**
+  Sending _from_ a verified alias — putting it in a message's `From` — is part
+  of composing the message and works under `gmail.modify`; Google validates the
+  address against the account's verified aliases and accepts it. Verified live:
+  a draft created with `--from` on an alias carried that alias in its `From`
+  header under a grant holding no settings scope. `gog gmail drafts create` also
+  offers `--auto-from-addressed-alias`, which replies from whichever alias the
+  original was addressed to. What requires `gmail.settings.basic` and
+  `gmail.settings.sharing` is _managing_ the alias configuration — adding,
+  verifying, changing signatures and defaults, granting delegation. Listing the
+  aliases is a settings read and works under `gmail.modify` like the others.
+  Someone told an assistant must "send as" an alias therefore needs no settings
+  scope, and granting one to satisfy that request hands over forwarding and
+  delegation authority for no gain.
+
 - **Re-consent cannot narrow an existing grant; only revocation can.** The
   authorization URL carries `include_granted_scopes=true`, so a second consent
   is additive to whatever the account already granted. Re-authorizing with a
