@@ -130,7 +130,7 @@ Given a company configuration file declaring itself a company configuration
 When workspace discovery encounters it
 Then it is recognized as company configuration
 And it is never treated as a workspace configuration of another tier
-And company configuration composition behaves as it did before this contract
+And company configuration composes alongside its member projects unchanged by the declaration
 ```
 
 ### Cross-context references
@@ -143,7 +143,7 @@ And company configuration composition behaves as it did before this contract
 
 ## Allowed values
 
-- `kind`: `global`, `project`, `person`.
+- `kind`: `global`, `project`, `person`, `company`.
 
 ## Known caveats
 
