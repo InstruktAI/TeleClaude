@@ -17,11 +17,9 @@ visibility: 'public'
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
-<!-- planned:remove-refuses-live-work -->
 
 Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded, and slug-keyed dispatch leases are deleted with the removal so a lapsed lease cannot refuse work on a successor Todo that reuses the slug. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
 
-<!-- /planned:remove-refuses-live-work -->
 
 A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. Reactivation restores the exact captured documentation material as pending before the Todo returns to its pre-removal status; an unsafe restoration faults without reporting success. After the retention window elapses, routine maintenance verifies that abandonment is complete, clears the retained restoration material, and hard-purges the removed entry by durable identity. Retained state and artifact history cascade to deletion only after that sequence succeeds.
 
@@ -161,7 +159,6 @@ And the sweep raises no error for the directory
 And project-checkout trusted directories are still swept
 ```
 
-<!-- planned:remove-refuses-live-work -->
 
 #### UC-TR-REFUSES-LIVE-WORK: Removal refuses while live work holds the slug
 
@@ -211,7 +208,6 @@ And the error is distinguishable from the error for a slug that never existed
 And "telec todo artifacts write" exits non-zero on the refused write
 ```
 
-<!-- /planned:remove-refuses-live-work -->
 
 #### UC-TR-REMOVE-CLEANS-PENDING-MARKERS: Removal retires its pending documentation markers
 
@@ -246,11 +242,9 @@ And automation-only marker cleanup creates no snippet-review obligation
 
 - A holder is not removable: it sits outside the todo lifecycle, and removal targets todos only. Children are removed individually, no cascade runs in either direction, and a holder whose children have all been retired simply stops rendering while its row and frozen artifacts remain as evidence of the split.
 
-<!-- planned:remove-refuses-live-work -->
 
 - Artifact reads addressed to a removed slug return empty content, indistinguishable from an absent artifact; the removed-state refusal applies to artifact writes. The live-work guard reads sessions and operations from the daemon store, so a removal issued while the daemon store is unavailable fails rather than proceeding unguarded.
 
-<!-- /planned:remove-refuses-live-work -->
 
 - The remote branch delete uses a short timeout and is non-fatal — a slow or unreachable origin will not block the operation from reporting completed, but may leave a stale remote branch that must be cleaned up out of band.
 - The receipt-backed dispatch means the removal returns before the cascade has executed; callers that need a synchronous outcome must poll the receipt (the CLI does this automatically).
