@@ -1,5 +1,5 @@
 ---
-description: 'Sealed commit interface for agent sessions inside the host pane. The git wrapper blocks raw `git add` / `git commit` and redirects to `telec code commit`, which constructs a pathspec-scoped commit from the resolved workspace scope plus declared `--include` paths. New untracked files, unmerged-index files, and partial-staged tracked files are explicitly accepted by `telec code add`. Cross-session work cannot leak into a commit by construction.'
+description: 'Sealed commit interface for agent sessions inside the host pane. The git wrapper blocks raw `git add` / `git commit` and redirects to `telec code commit`, which constructs a pathspec-scoped commit from the resolved workspace scope plus declared `--include` paths. New untracked files, unmerged-index files, and partial-staged tracked files are explicitly accepted by `telec code add`. A path enters scope by being read as well as written, so a session that reads a file another session is concurrently editing can carry that session’s uncommitted work.'
 visibility: 'public'
 ---
 
@@ -23,7 +23,19 @@ The contract resolves four classes of file state at commit time:
 3. **Partial-staged tracked** files (staged hunks + later working-tree delta) in the pathspec are **blocked** by the partial-staging guard. The diagnostic directs the agent at `telec code add <path>` as the recovery: it fully restages the file so the staged version matches the working tree, removing the ambiguity, after which the commit proceeds cleanly.
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
+<!-- planned-change:person-tier-homes -->
+
 The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
+
+A path is touched by being **read** as well as by being written. So the intersection does not isolate concurrent sessions: when one session reads a file that another is editing, the reader's own commit carries the writer's uncommitted work, under a message that does not describe it. Pin the pathspec with `--only <path>` when other sessions are live in the same repository.
+
+<!-- change:person-tier-homes -->
+
+The scope itself is strictly `(paths this session modified) ∩ (currently dirty paths)`. Reading a file does not place it in scope, so a session that inspects a file another session is editing cannot carry that session's work. A deletion of a file the session did not modify is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
+
+Where two sessions have modified the same path and both changes are uncommitted, the commit fails naming the overlap rather than combining them.
+
+<!-- /planned-change:person-tier-homes -->
 
 On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
