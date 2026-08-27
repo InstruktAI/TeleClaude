@@ -40,12 +40,6 @@ Then the invocation reaches the connector only through the mediated boundary
 And the gates that boundary enforces apply to it
 ```
 
-## Known caveats
-
-- This contract carries one scenario, numbered as it was when the boundary's
-  own behavior was still described here. Identity outlives tidiness, so the
-  number stays with the scenario it was assigned to.
-
 ## See Also
 
 - docs/project/spec/feature/integration/assistant-connector-invocation.md — what the mediated boundary does once an invocation reaches it.
