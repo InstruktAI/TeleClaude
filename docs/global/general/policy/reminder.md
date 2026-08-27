@@ -28,15 +28,16 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 - A due reminder whose intent is already satisfied or obsolete warrants no
   authored output beyond the sentinel. A one-shot firing has already consumed
   its reminder and ends with exactly `NOOP`. A recurring firing from an
-  auto-cancel profile takes no tool action and ends with exactly `NOOP`, which
-  cancels it. A recurring firing without auto-cancel first cancels its own slug,
+  auto-cancel profile ends with exactly `NOOP`, which cancels it. A recurring firing without auto-cancel first cancels its own slug,
   then ends with exactly `NOOP`. None authors a summary, status, or confirmation.
   The platform never delivers a bare `NOOP` turn to peers, projected surfaces,
   or notifications.
 - A prescribed profile may declare auto-cancel. A `NOOP`-answered firing of a
-  declaring profile — a turn with no tool actions and no authored content
-  beyond the sentinel — cancels that reminder. Every firing of a declaring
-  profile states this consequence in its envelope.
+  declaring profile — a turn whose authored content is nothing but the
+  sentinel — cancels that reminder. Establishing that an intent is obsolete may
+  require reading current state, so the answer is judged on what the agent
+  authored, never on whether it used a tool to reach that judgement. Every
+  firing of a declaring profile states this consequence in its envelope.
 
 ### Reminder identity and lifecycle
 
@@ -131,6 +132,14 @@ independent subgoals, and cancellation prevents completed work from returning
 as zombie activity.
 
 Goal drive supplies a low-noise alignment rhythm during sustained work.
+
+The sentinel is a declaration, so cancellation reads only what the agent
+authored. A firing asks the agent to establish whether current state has made
+the intent obsolete, and establishing that routinely means reading that state;
+disqualifying the answer because a tool was used to reach it would reward
+guessing over checking. The guard against a working turn retiring a live
+reminder is the sentinel's exclusivity: an agent still pursuing the intent
+writes about it, and that turn cancels nothing.
 
 Yielding instead of terminal-waiting keeps the session receptive to the human
 and lets the platform own re-entry. A terminal process is an execution surface,

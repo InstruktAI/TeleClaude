@@ -563,6 +563,7 @@ class AgentCoordinator(
                     session_id=context.session_id,
                     event_id=f"{context.event_type}:{stop_timestamp}",
                     anchor=ReminderEventAnchor.AGENT_STOP,
+                    authored_bare_sentinel=output_suppressed,
                 )
             )
 

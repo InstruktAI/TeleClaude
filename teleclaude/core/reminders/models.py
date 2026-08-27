@@ -216,3 +216,5 @@ class ReminderEvent:
     session_id: str
     event_id: str
     anchor: ReminderEventAnchor
+    authored_bare_sentinel: bool = False
+    """Whether the turn's authored output was nothing but the no-output sentinel."""

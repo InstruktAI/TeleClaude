@@ -28,8 +28,8 @@ _SATISFIED_ONE_SHOT_INTENT = (
     f"`{NOOP_SENTINEL}` and no other text. This one-shot firing has already consumed the reminder."
 )
 _SATISFIED_AUTO_CANCEL_INTENT = (
-    "If later input or current state shows this intent is already satisfied or obsolete, take no reminder-driven "
-    "tool action and author no message — no summary, no status, no confirmation. End the turn with exactly "
+    "If later input or current state shows this intent is already satisfied or obsolete, author no message — no "
+    "summary, no status, no confirmation. End the turn with exactly "
     f"`{NOOP_SENTINEL}` and no other text."
 )
 _SATISFIED_MANUAL_CANCEL_INTENT = (

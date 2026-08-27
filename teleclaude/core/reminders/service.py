@@ -11,9 +11,6 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.session_output import assistant_messages_are_bare_noop
-from teleclaude.utils.transcript import extract_reminder_turn_assistant_messages
-
 from .models import (
     PrescribedReminderSlug,
     Reminder,
@@ -153,10 +150,8 @@ class ReminderService:
         """Evaluate typed predicates and directly fire every matching anchor."""
         reminders = await self._db.list_reminders(session_id=event.session_id)
         pending = await self._db.list_pending_answer_reminders(session_id=event.session_id)
-        session = await self._db.get_session(event.session_id)
-        transcript_path = session.native_log_file if session is not None else None
         for reminder in pending:
-            await self._evaluate_pending_answer(reminder, transcript_path=transcript_path)
+            await self._evaluate_pending_answer(reminder, authored_bare_sentinel=event.authored_bare_sentinel)
         observe_auto_cancel_sweep(event, considered=reminders, correlated=pending)
         reminders = await self._db.list_event_reminders(session_id=event.session_id)
         fired = 0
@@ -315,31 +310,13 @@ class ReminderService:
         self,
         reminder: Reminder,
         *,
-        transcript_path: str | None,
+        authored_bare_sentinel: bool,
     ) -> bool:
-        """Resolve one firing against only the assistant output bound to its accepted input."""
-        outcome = ReminderAutoCancelOutcome.UNRESOLVED
-        session = await self._db.get_session(reminder.session_id)
-        messages = (
-            extract_reminder_turn_assistant_messages(
-                transcript_path,
-                runtime=session.active_agent,
-                slug=reminder.slug,
-                occurrence_key=reminder.pending_answer_occurrence_key,
-            )
-            if transcript_path is not None
-            and session is not None
-            and session.active_agent is not None
-            and reminder.pending_answer_occurrence_key is not None
-            else None
-        )
-        if not messages:
-            observe_auto_cancel_evaluation(reminder, outcome=outcome)
+        """Resolve one firing against the authored-output fact carried by its answering turn."""
+        if reminder.pending_answer_occurrence_key is None:
+            observe_auto_cancel_evaluation(reminder, outcome=ReminderAutoCancelOutcome.UNRESOLVED)
             return False
-        elif assistant_messages_are_bare_noop(messages):
-            outcome = ReminderAutoCancelOutcome.CANCELLED
-        else:
-            outcome = ReminderAutoCancelOutcome.ANSWERED
+        outcome = ReminderAutoCancelOutcome.CANCELLED if authored_bare_sentinel else ReminderAutoCancelOutcome.ANSWERED
 
         async with self._mutation_lock:
             if outcome is ReminderAutoCancelOutcome.CANCELLED:
