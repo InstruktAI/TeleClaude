@@ -612,6 +612,65 @@ And the commit is aborted
 And the partial-staging check is NOT silently bypassed
 ```
 
+<!-- planned:person-tier-homes -->
+
+#### UC-NCR-1 — Change inspection from a context root below the repository root
+
+```
+Given an agent session whose context root sits below the root of the repository that contains it
+When the agent inspects the changes in scope
+Then the paths reported are the ones the session changed, expressed relative to its own context root
+And no path is reported that the session did not change
+```
+
+#### UC-NCR-2 — A commit from a nested context root lands only that context's changes
+
+```
+Given an agent session whose context root sits below the root of the repository that contains it
+And the session has changes in scope
+When the agent commits through the sealed surface
+Then the commit contains exactly those changes
+And the commit is recorded in the repository that contains the context root
+```
+
+#### UC-NCR-3 — Concurrent work elsewhere in the same history is untouched
+
+```
+Given one repository containing several context roots
+And another session has uncommitted work under a different context root
+When an agent commits from its own context root
+Then the other session's work is neither included in the commit nor altered
+```
+
+#### UC-NCR-4 — A foreign nested root is not carried
+
+```
+Given a context root containing a nested root owned by someone else
+And that nested root has uncommitted changes
+When an agent commits from the enclosing context root
+Then the nested root's changes are not carried by the commit
+```
+
+#### UC-NCR-5 — The eligible change set is inspectable before committing
+
+```
+Given an agent session whose context root sits below the root of the repository that contains it
+When the agent asks what a commit would carry
+Then it is shown exactly the eligible changes for its own context
+And material owned by another context, a foreign nested root, or excluded from the repository's retained set is absent from that set
+```
+
+#### UC-NCR-6 — Genuinely overlapping work fails rather than combining
+
+```
+Given two context roots whose in-scope changes overlap on the same path
+When an agent commits from one of them
+Then the commit fails with a clear result naming the overlap
+And no partial or combined commit is produced
+```
+
+<!-- /planned:person-tier-homes -->
+
 ## See also
 
 - docs/project/design/code-commit.md

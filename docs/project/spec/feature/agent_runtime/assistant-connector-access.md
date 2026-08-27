@@ -1,5 +1,5 @@
 ---
-description: "How an agent session reaches a person's mail and calendar connectors: a mediated launch that binds every invocation to one resolved person's store and enforces the two structural personal-assistant gates, fail-closed, on every path the connector offers."
+description: "How an agent session reaches a person's mail and calendar connectors: a mediated launch that binds every invocation to one resolved person's store and applies the two personal-assistant prohibitions to what each invocation is determined to reach, composing with whatever the connector itself refuses."
 delivered_by:
   - personal-mail-tool-launcher
 ---
@@ -17,12 +17,19 @@ reaches the mail and calendar connectors. An agent never touches a connector
 binary directly, and no route available to an agent session reaches one except
 this boundary: an invocation arrives at a mediated launch that consumes the
 resolved acting person, binds the connector's credential and connection
-state to that person alone, and enforces the two structural gates the
+state to that person alone, and applies the two prohibitions the
 personal-assistant conduct policy declares — no send the person did not ask
-for, and no settings change — on every path the connector offers, including a
-generic pass-through request whose target is invisible in the command name. An
-invocation whose reach with respect to those two effect classes cannot be
-determined is refused rather than attempted.
+for, and no settings change. It applies them to what an invocation is
+determined to reach, so a generic pass-through request is judged by the
+endpoint it reaches rather than by its command name, and an invocation whose
+reach cannot be determined is refused rather than attempted.
+
+How strong the resulting gate is depends on the connector. Where the
+connector's own build or authorization grant refuses a gated effect outright,
+this boundary composes with that structural refusal and the gate holds
+whatever the invocation looks like. Where it does not, the gate rests on
+determining reach from the invocation itself, which is defeasible; such a
+connector is fronted only on the terms its own doctrine sets.
 
 The boundary enforces two prohibitions and nothing more. Which permitted
 operations an assistant should reach for is connector doctrine, owned in the
@@ -73,7 +80,7 @@ And the refusal states that no instruction to send was given
 And no mail leaves
 ```
 
-#### UC-ACA-4: A settings change is refused on every path and in every session
+#### UC-ACA-4: A settings change is refused whether or not the command name shows it
 
 ```gherkin
 Given an agent session acting as a resolved person
@@ -137,15 +144,12 @@ Then it cannot read the other person's stored credentials even when it seeks the
 - Whether a run is attended is established from the platform's own session
   context. Where it cannot be established the run is treated as unattended, so
   the send gate holds.
-- The gates are uniform in intent and unequal in strength. Where a connector's
-  own build or authorization grant refuses a gated effect outright, this
-  boundary composes with that structural refusal. Where it does not, the
-  boundary's determination of an invocation's reach is argument-level, so an
-  endpoint alias or encoding it does not recognize is a route by which a gated
-  effect could still run. UC-ACA-5 bounds what the boundary can see; it does
-  not turn an argument-level gate into a structural one, and a connector whose
-  gates rest on argument inspection alone is fronted only on the terms its own
-  doctrine sets.
+- Where a gate rests on determining reach from the invocation itself, an
+  endpoint alias or encoding the boundary does not recognize is read as
+  reaching nothing gated, and the effect runs. UC-ACA-5 covers reach that is
+  recognized as undeterminable; it cannot cover reach that is misread as
+  harmless. This is why the strength of a gate is a property of the connector
+  and not of this boundary.
 - Confinement of stored credentials is a property of the connector's secret
   store, not of where its state is routed. Routing state per person prevents an
   invocation from selecting another person's store (UC-ACA-8); it does not make
