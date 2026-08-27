@@ -166,7 +166,7 @@ and an unauthorized machine shows `warn tokens no OAuth tokens stored`. Exit cod
   To drop a scope, the human removes the app's access at
   `myaccount.google.com/permissions` and authorizes again from clean, where
   additive-to-nothing is exact.
-- **An unticked consent checkbox mints a valid token that can do nothing.**
+- **An unticked consent checkbox mints a healthy-looking token with a dead surface.**
   Google's consent screen presents a checkbox per permission. Boxes left
   unticked still produce a working refresh token: `gog auth doctor --check`
   reports `status ok` and the refresh exchange succeeds, while every call needing
