@@ -35,7 +35,7 @@ description: Decide whether a todo should exist, audit that decision at preparat
   directly merely because the filesystem permits it. If ownership cannot be
   established, resolve it before dispatching or filing rather than letting the
   current working directory decide.
-- **Execute small, settled code work in context.** When the approach is known,
+- **Execute small, settled code work in context (5m rule).** When the approach is known,
   the edit is bounded, and the work needs neither a plan, a builder, nor a
   handoff, make the change on `main` in the human-present session and route the
   commit through review. Importance does not decide this boundary; remaining
@@ -53,19 +53,15 @@ description: Decide whether a todo should exist, audit that decision at preparat
   seen, requested, or shaped by a human passes `--human-involved`. Omitting the
   flag declares the filing agent-initiated for later audit.
 
-- **The bug filing surface interrogates before filing.** Filing is pipeline
+- **The creation surfaces interrogate before creating.** Creation is pipeline
   entry for every kind: the lifecycle runner dispatches preparation as soon as
   a todo exists, ungated by the autostart policy, which governs only automatic
-  entry into the work lane. The creation check above is therefore enforced at
-  the bug filing surface itself: a `telec bugs report`
-  invocation carrying only the report payload does not file — it presents the
-  pre-filing decisions (fix-directly-in-context per the five-minute rule;
-  duplication against the todo list, in-flight bug lanes, and suppressions;
-  ordering behind or dependency on work already in flight; validity of the
-  trigger evidence and the owning project) and only that output names how to
-  complete the filing. The surface verifies the decisions were faced, never
-  that the answers are true; judging the answers stays with intelligence.
-  Change and feature creation are not interrogated this way.
+  entry into the work lane. The decisions above are therefore enforced at the
+  creation surfaces themselves. A `telec todo create` or `telec bugs report`
+  invocation carrying only its payload creates nothing — it presents the
+  pre-creation decisions and only that output names how to complete the
+  creation. The surface verifies the decisions were faced, never that the
+  answers are true; judging the answers stays with intelligence.
 
 ### Audit at preparation entry
 

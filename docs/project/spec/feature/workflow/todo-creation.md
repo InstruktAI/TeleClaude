@@ -272,6 +272,17 @@ And only that output names how to complete the filing
 And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
 ```
 
+#### UC-WTC28: Todo creation interrogates before creating
+
+```gherkin
+Given an agent invokes `telec todo create <slug> <content>` without the acknowledgment flag
+When the command runs
+Then it prints the pre-creation decisions to stderr: the five-minute rule, doc-only routing, an existing home to amend, and ownership plus process-change authority
+And exits 0 without creating a todo — serving the interrogation is the successful outcome of that invocation
+And only that output names how to complete the creation
+And the surface verifies the decisions were faced, never that the answers are true — judging the answers stays with intelligence
+```
+
 #### UC-WTC8: Direct human filing records the human root alone
 
 ```gherkin
