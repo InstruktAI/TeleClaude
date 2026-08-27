@@ -1,5 +1,5 @@
 ---
-description: 'Every TeleClaude config file declares its own kind, and workspace resolution reads that declaration — the nearest declaration anchors the workspace; git topology only locates shared state.'
+description: 'Each of the three workspace configuration files (global, project, person) declares its own kind, and workspace resolution reads that declaration — the nearest declaration anchors the workspace; git topology only locates shared state.'
 delivered_by:
   - config-kind-declaration
 ---
