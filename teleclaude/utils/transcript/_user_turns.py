@@ -247,7 +247,11 @@ def is_runtime_artifact_entry(entry: Mapping[str, object], agent_name: AgentName
     if text is None:
         return False
     if agent == AgentName.CODEX.value:
-        return is_runtime_artifact_text(agent, text)
+        if _is_teleclaude_control_text(text):
+            return True
+        if not is_runtime_artifact_text(agent, text):
+            return False
+        return not normalize_runtime_user_text(agent, text).strip()
     if agent == AgentName.GEMINI.value:
         return _is_gemini_internal_user_entry(text)
     if agent == AgentName.DEEPSEEK.value:
