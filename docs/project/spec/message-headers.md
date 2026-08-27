@@ -83,24 +83,27 @@ occupies it, and that reservation is what makes control recognition sound: a
 control test can never match authored content, and content can never be mistaken
 for machine text.
 
-| Header                                         | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
-| ---------------------------------------------- | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
-| `[TeleClaude Notification]`                    | legacy notification entries   | control  | paired      | no               | no                         |
-| `[TeleClaude Wake]`                            | control-delivery idle wake    | control  | auto-closed | no               | no                         |
-| `[TeleClaude Restart Continuation]`            | agent restart                 | control  | paired      | no               | no                         |
-| `[TeleClaude Checkpoint]`                      | checkpoint surface            | control  | paired      | no               | no                         |
-| `[Peer (session · author-token · utc-minute)]` | peer segment header           | identity | paired      | yes              | yes                        |
-| `[Orchestrator (session) on computer]`         | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Integrator (session) on computer]`           | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[System (session) on computer]`               | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Worker (session) on computer]`               | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Tasker (session) on computer]`               | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Job Runner (session) on computer]`           | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Agent - <agent> (session) on computer]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
+| Header                                                 | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
+| ------------------------------------------------------ | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
+| `[TeleClaude Notification]`                            | legacy notification entries   | control  | paired      | no               | no                         |
+| `[TeleClaude Wake]`                                    | control-delivery idle wake    | control  | auto-closed | no               | no                         |
+| `[TeleClaude Restart Continuation]`                    | agent restart                 | control  | paired      | no               | no                         |
+| `[TeleClaude Checkpoint]`                              | checkpoint surface            | control  | paired      | no               | no                         |
+| `[Peer (session · author-token · utc-minute)]`         | peer segment header           | identity | paired      | yes              | yes                        |
+| `[Orchestrator (session) on computer · utc-minute]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Integrator (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[System (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Worker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Tasker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Job Runner (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Agent - <agent> (session) on computer · utc-minute]` | caller-origin identity header | identity | paired      | yes              | yes                        |
 
 A caller-origin identity header may carry an optional category segment, rendered
-as `[<role> - <category> (session) on computer]`; the agent form uses that
-segment to name the authoring agent.
+as `[<role> - <category> (session) on computer · utc-minute]`; the agent form uses
+that segment to name the authoring agent. `utc-minute` is the send-moment
+occurrence time truncated to the minute in UTC — the same shared element the peer
+and action envelopes carry. It is rendered once into the opening and the paired
+close is derived from it, so the two never disagree.
 
 ### One model, two codecs
 

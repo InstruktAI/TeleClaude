@@ -110,6 +110,8 @@ Then a caller whose session runs an agent has its message prepended with an iden
 And a caller whose session runs no agent has its message prepended with an identity header naming its machine-role label and session
 And a caller whose session does not resolve at all has the send refused with an explicit error, because no truthful identity can be composed for it
 And no fabricated role label, and no human identity, is ever substituted to force a header
+And every composed header additionally carries the send-moment occurrence time, truncated to the minute in UTC
+And that occurrence time is rendered once into the opening delimiter, with the paired closing derived from it
 And the rendered identity matches what every other surface resolves for the same caller
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
