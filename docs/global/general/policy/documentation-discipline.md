@@ -78,7 +78,9 @@ visibility: public
   shared surface resolves to contract, never to copy. The preceding rule's escape
   hatch inverts here: that no test binds such text is what makes the change
   higher-risk, not lower, because nothing downstream catches it. Reflect it and
-  review it as a behavioral delta. A commit that rewrites what an agent does is
+  review it as a behavioral delta. Those two are the whole remedy this rule
+  owes: the snippet edit is the reflection, and independent review of the commit
+  is the review. A commit that rewrites what an agent does is
   never labelled copy-only, wording, or "no logic change" — that label is itself
   the defect, because it routes a behavioral change away from every gate built to
   catch one.
@@ -106,6 +108,14 @@ visibility: public
   change (refactor, migration, tooling with no contract delta) gets no feature
   spec. Silence on the question means unclassified — it is asked, never
   defaulted.
+- **A feature spec is owed only for behavioral work delivered through a todo,
+  against the bounded context that owns the behavior.** Feature specs are
+  project-scoped and concept-named; there is no global feature-spec home. Global
+  doctrine — a policy, principle, procedure, or spec that agents read and act
+  on — is therefore reflected and reviewed as a behavioral delta under the
+  directive-text rule above, and authors no use case. Demanding one for
+  doc-only work asks for an artifact that has nowhere to live and is reachable
+  only through a todo this policy forbids.
 - **Agent artifacts (commands, skills, agents) are not doc snippets** — they have
   no code to be pending against, so they carry no planned markers and no
   `delivered_by`. Their authoring lifecycle (human-decided, authored on `main`,
@@ -140,6 +150,15 @@ and an agent in a worktree through one string, so "who reads it" admits both
 answers and a reviewer under time pressure takes the permissive one — classifying
 an instruction as copy and exiting the lane. What the words do is readable from
 the string itself, so the ambiguous case resolves the same way for every reviewer.
+
+Naming that cut's remedy closes the gap it opened. Classifying doctrine as
+executable contract is correct and says nothing about which artifacts follow, so
+a reviewer completing the inference on its own arrives at a feature spec — and
+the two rules then contradict each other, since a feature spec is produced at
+prepare inside a todo and doc-only work may never become one. A reading that can
+only be satisfied by violating a neighbouring rule is not a stricter reading of
+the policy; it is a defect in it. The remedy is stated where the classification
+is made so no one has to derive it.
 
 ## Scope
 
