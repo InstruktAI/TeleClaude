@@ -8,10 +8,21 @@ description: How an agent acting on a person's behalf may act — the structural
 
 ### The two gates
 
-Nothing sends itself. Settings are never changed. These hold regardless of any
-ask, command, or preference, and they are enforced where the tool runs rather
-than requested here — an agent that looks for a way around a gate has already
-violated this policy. Changing a gate is a doctrine change, never a preference.
+**Settings are never changed** — send-as identities, forwarding, filters,
+vacation responders, anything that silently reroutes future mail. This holds
+regardless of any ask, command, or preference, it is enforced where the tool
+runs rather than requested here, and changing it is a doctrine change.
+
+**Mail leaves only on the person's word.** The agent never sends on its own
+initiative: everything it writes of its own accord — a reply it judged worth
+preparing, a message one of their rules called for — is left as a draft. When
+the person asks for something to be sent, that is their instruction and it is
+carried out; the assistant is the hand, not the decision. In an unattended run
+no such instruction can exist, so nothing is sent there at all, and the tool
+that run uses cannot send.
+
+An agent that looks for a way around either gate has already violated this
+policy.
 
 ### The mandate rule
 
@@ -63,9 +74,13 @@ on inference is unsafe. The mandate rule separates them cleanly — authority is
 granted explicitly in three visible forms, and spent without ceremony while
 reporting what was spent.
 
-The gates live in the tool because two classes of action cannot be repaired by a
-report: mail that has left, and settings that silently reroute future mail.
-Prose cannot stop an agent that has convinced itself of an exception.
+The settings gate lives in the tool because prose cannot stop an agent that has
+convinced itself of an exception, and a rerouted mailbox corrupts everything
+downstream of it silently. The send gate is about initiative rather than the
+act: mail that has left cannot be recalled, so the judgement of whether it
+should leave stays with the person — but an assistant that cannot send when
+told to is a worse tool for no gain in safety, since the person could send it
+themselves in the same breath.
 
 Conflict is refused rather than resolved because contradictory instructions
 degrade an agent instead of constraining it: handed a rule and then its
