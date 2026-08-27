@@ -115,6 +115,38 @@ When telec docs index renders the parent line
 Then the line includes " (superseded by: <slugs>)"
 ```
 
+<!-- planned:docs-tier-layering -->
+#### UC-DIB3: A doc-capable person tier gets its catalog built
+
+```
+Given a person tier whose declaration says it carries documentation
+And a Source authored in that tier's documentation tree
+When the index build runs over the configuration surface
+Then that tier's catalog is written
+And the Source appears in it with its tier-derived identity
+```
+
+#### UC-DIB4: A doc-capable company tier gets its catalog built
+
+```
+Given a company tier whose declaration says it carries documentation
+And a Source authored in that tier's documentation tree
+When the index build runs over the configuration surface
+Then that company's catalog is written
+And the Source appears in it with an identity that names which company it belongs to
+```
+
+#### UC-DIB5: Catalog building follows the tier's own declaration
+
+```
+Given a tier that is not a project
+When the index build decides whether to build a catalog for it
+Then the decision reads that tier's own capability declaration
+And a tier whose declaration does not carry documentation gets no catalog
+And the decision is never inferred from the tier's location on disk
+```
+<!-- /planned:docs-tier-layering -->
+
 ### Cross-context references
 
 - **config** — supplies the project slug (from `teleclaude.yml`
