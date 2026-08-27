@@ -6,23 +6,22 @@ delivered_by:
 
 # Headless Session Identity — Spec
 
+## Required reads
+
+- @docs/project/spec/domain/identity.md
+- @docs/project/spec/identity-and-auth.md
+
 ## What it is
 
-Sessions the daemon launches receive their caller identity at bootstrap; a
-session hosted anywhere else — a foreign harness, a scheduled run, a manual
-agent CLI invocation — historically had no session-scoped identity at all. Its
-processes could be observed as a headless session record, but every
-authenticated operation either failed closed ("unauthenticated caller
-session") or fell through to the machine-global last-login identity, which
-names the human without naming the calling session.
-
-This capability closes that gap: an externally hosted agent session carries a
-session identity the identity context can verify, for the life of the session,
+An agent session hosted outside the daemon's own launch flow — a foreign
+harness, a scheduled run, a manual agent CLI invocation — carries a session
+identity the identity context can verify, for the life of the session,
 inherited by every process the session spawns. Authenticated operations —
 arming a reminder, a sealed commit, dispatching a review — resolve to the
 session itself, with the same fail-closed guarantees managed sessions have. An
 identity claim the platform cannot verify is rejected; the machine-global
-last-login identity never stands in for a session identity.
+last-login identity, which names a human without naming any calling session,
+never stands in for a session identity on a session-scoped operation.
 
 ## Canonical fields
 
