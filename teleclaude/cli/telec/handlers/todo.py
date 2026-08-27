@@ -65,6 +65,37 @@ class _TodoStampBody(TypedDict):
     cwd: str
 
 
+_CREATION_ACK_FLAG = "--approved"
+
+_TODO_CREATION_GATE = (
+    "Nothing was created. Face these before this work enters the lifecycle\n"
+    "(software-development/policy/todo-creation-discipline governs every one):\n"
+    "\n"
+    "1. Five-minute rule - approach known, edit bounded, needing neither a\n"
+    "   plan, a builder, nor a handoff? Make the change on main in this\n"
+    "   human-present session and route the commit through review\n"
+    "   (/next-review-commits); create no todo. Importance does not decide\n"
+    "   this boundary; remaining judgment does.\n"
+    "\n"
+    "2. Doc-only - documentation, ADRs, README, agent artifacts? Execute it\n"
+    "   in-context per general/policy/documentation-discipline; create no\n"
+    "   todo, whatever its size.\n"
+    "\n"
+    "3. Existing home - already covered, or a small addition to a todo that\n"
+    "   has not started build? Amend it instead of creating a sibling:\n"
+    "     telec todo list\n"
+    "     telec todo artifacts read <slug> input\n"
+    "\n"
+    "4. Ownership & authority - owning project of the changed files correct\n"
+    "   (--project-root)? A process-layer change carries a live human\n"
+    "   decision per software-development/policy/process-change-authority?\n"
+    "   A human who shaped this filing declared (--human-involved)?\n"
+    "\n"
+    "Only once these are faced, create with:\n"
+    f"  telec todo create {_CREATION_ACK_FLAG} <slug> <content> --kind <feature|change|bug|task>\n"
+)
+
+
 @dataclass(frozen=True)
 class _ParsedTodoCreate:
     slug: str | None
@@ -78,6 +109,7 @@ class _ParsedTodoCreate:
     hold: bool
     human_involved: bool
     kind_value: str | None
+    approved: bool
 
 
 __all__ = [
@@ -287,6 +319,7 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
     plan = False
     hold = False
     human_involved = False
+    approved = False
     schedule: str | None = None
     kind_value: str | None = None
 
@@ -331,6 +364,9 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
         elif arg == "--human-involved":
             human_involved = True
             i += 1
+        elif arg == _CREATION_ACK_FLAG:
+            approved = True
+            i += 1
         elif arg == "--kind" and i + 1 < len(args):
             kind_value = args[i + 1]
             i += 2
@@ -365,6 +401,7 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
         hold=hold,
         human_involved=human_involved,
         kind_value=kind_value,
+        approved=approved,
     )
 
 
@@ -382,6 +419,15 @@ def _handle_todo_create(args: list[str]) -> None:
         print("Error: <content> is required and must not be empty")
         print(_usage("todo", "create"))
         raise SystemExit(1)
+
+    # The interrogation gate: a complete creation request without the
+    # acknowledgment flag is the designed discovery moment (mirrors the bug
+    # filing gate) - serving it is the successful outcome, so this exits 0
+    # and creates nothing. The gate verifies the pre-creation decisions were
+    # faced, never that the answers are true.
+    if not parsed.approved:
+        print(_TODO_CREATION_GATE, file=sys.stderr, end="")
+        return
 
     if parsed.kind_value is not None and parsed.kind_value not in ALL_DUMP_KINDS:
         print(f"Error: invalid --kind '{parsed.kind_value}'. Valid values: {_VALID_KINDS_STR}")

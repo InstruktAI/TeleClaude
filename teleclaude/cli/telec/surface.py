@@ -530,7 +530,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
@@ -545,6 +545,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "when creating via the CLI — agents classify their own todos; omitting it is the "
                             "TUI dump path only. --kind task is side-effect-only and never touches the repo "
                             "(software-development/spec/todo-kind-task) — code work is change/feature/bug."
+                        ),
+                    ),
+                    Flag(
+                        "--approved",
+                        desc=(
+                            "Declares the pre-creation decisions were faced. Without it a complete creation "
+                            "request creates nothing and prints those decisions instead — the five-minute "
+                            "rule, doc-only routing, an existing home to amend, and ownership plus "
+                            "process-change authority."
                         ),
                     ),
                     Flag("--icebox", desc="Create future todo parked in the icebox; does not auto-spawn"),
