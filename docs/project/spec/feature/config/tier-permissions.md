@@ -5,7 +5,7 @@ description: Permission is answered per declared tier along three independent ax
   in a surface, and whether it carries optional project subscriptions — so no tier
   inherits another tier default and no answer on one axis grants anything on another.
 delivered_by:
-- person-home-repository
+  - person-tier-declarations
 ---
 
 # Tier Permissions — Spec

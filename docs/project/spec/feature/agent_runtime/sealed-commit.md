@@ -23,19 +23,19 @@ The contract resolves four classes of file state at commit time:
 3. **Partial-staged tracked** files (staged hunks + later working-tree delta) in the pathspec are **blocked** by the partial-staging guard. The diagnostic directs the agent at `telec code add <path>` as the recovery: it fully restages the file so the staged version matches the working tree, removing the ambiguity, after which the commit proceeds cleanly.
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
-<!-- planned-change:person-home-repository -->
+<!-- planned-change:tier-aware-commit-authority -->
 
 The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
 A path is touched by being **read** as well as by being written. So the intersection does not isolate concurrent sessions: when one session reads a file that another is editing, the reader's own commit carries the writer's uncommitted work, under a message that does not describe it. Pin the pathspec with `--only <path>` when other sessions are live in the same repository.
 
-<!-- change:person-home-repository -->
+<!-- change:tier-aware-commit-authority -->
 
 The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation's context-root subtree)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
 The third term is what separates sessions working under different context roots of one repository: a path outside the invoking context root's subtree is absent from the scope whatever the transcript claims, so another person's, another company's, the home's own, and a nested foreign root's work cannot be carried. Within a single context root the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
 
-<!-- /planned-change:person-home-repository -->
+<!-- /planned-change:tier-aware-commit-authority -->
 
 On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
@@ -593,7 +593,7 @@ And the message carries Human-Involved: false, since no agent declares involveme
 And the message carries no Co-Authored-By line
 ```
 
-<!-- planned:person-home-repository -->
+<!-- planned:tier-aware-commit-authority -->
 
 #### UC-NCR-1 — Change inspection from a context root below the repository root
 
@@ -650,7 +650,7 @@ Then that path is absent from the reported scope
 And the commit does not carry it
 ```
 
-<!-- /planned:person-home-repository -->
+<!-- /planned:tier-aware-commit-authority -->
 
 ### Thin hook backstop
 

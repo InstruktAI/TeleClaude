@@ -6,7 +6,9 @@ description: One local-only repository at the TeleClaude home holding several ow
   coordinate, non-project commits compose their own gates, and a person-owned project
   keeps its own repository outside the home.
 delivered_by:
-- person-home-repository
+  - person-home-repository
+  - person-tier-declarations
+  - tier-aware-commit-authority
 ---
 
 # Home Repository — Design
