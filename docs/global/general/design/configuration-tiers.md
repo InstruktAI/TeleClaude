@@ -44,6 +44,13 @@ implies, and the portion of those sources the caller may see.
 - **Platform role and company role are independent axes.** The platform role
   governs authority over TeleClaude itself; a company role states one person's
   relationship to one business. Neither follows from the other.
+<!-- planned:company-member-roster -->
+- **The company tier carries who operates the business.** A company's
+  configuration declares its people, the role each holds, and which of that
+  company's projects each is assigned to. The person tier declares no company
+  membership, so there is one authoritative place to read the relationship from
+  and one place to change it.
+<!-- /planned:company-member-roster -->
 <!-- planned-change:docs-tier-layering -->
 - **Today, authorization to read is one gate.** A caller resolves to a person
   and their platform role. An admin sees every snippet; everyone else sees only
@@ -94,10 +101,19 @@ implies, and the portion of those sources the caller may see.
   never a wider coverage answer computed from a role. Which declarations
   establish an assignment, and where they are declared, belong to the
   configuration tier; what documentation does with them belongs here.
-- **A caller's scope is exactly three things.** Their own person tier, the
-  projects they are assigned to, and the documentation of every company they
-  belong to. A platform admin is outside this and reaches everything, including
-  every company they own.
+- **A caller's relationship-derived scope is exactly three things.** Their own
+  person tier, the projects they are assigned to, and the documentation of every
+  company they belong to. Those three travel with the caller and are in scope
+  wherever they are working. A platform admin is outside this and reaches
+  everything, including every company they own.
+- **Reach is wider than the relationship-derived part, and depth is not.** Global
+  documentation is in every caller's scope because global is nobody's
+  relationship, and the invocation itself offers the project it resolves to and
+  the company that project declares as its owner. Those sources enter reach
+  without a relationship; what they do not do is grant the depth a relationship
+  grants. A caller holding no relationship to a source reads it at whatever its
+  snippets declare about themselves, which is what lets a help desk answer public
+  questions about a company it does not belong to.
 - **Where there is no relationship, the snippet decides.** Each snippet declares
   itself public or internal, and that declaration is the only gate an outsider
   meets. Public material is readable by anyone with a legitimate reason to reach
@@ -133,8 +149,9 @@ wherever they are working, independently of the directory they are in.
 Someone with no relationship to a company is not shut out of it — they meet the
 snippet's own declaration and read what is public, which is how a help desk
 running inside a project registered to a company answers public questions for
-people who do not belong to it. Explicit selectors naming a person or a company
-override the derived scope and are available to platform admins only.
+people who do not belong to it. Explicit selectors naming a person, a company, or
+a project override the derived scope and are available to platform admins only,
+whatever relationship the caller holds to the tier they name.
 <!-- /planned:docs-tier-layering -->
 
 ## Failure modes

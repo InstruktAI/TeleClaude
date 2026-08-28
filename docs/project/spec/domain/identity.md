@@ -39,6 +39,12 @@ TeleClaudeNext.
   server, the session binding an externally hosted session establishes from that
   attestation, and the identity facts authorization decisions consume.
 <!-- /planned-change:external-session-identity -->
+<!-- planned:company-member-roster -->
+- **Also owns:** organizational relationship resolution — what a person's
+  company membership, company role, and project assignment mean, and what
+  resolving them reports. The declarations themselves are config's; identity
+  reads them and reinterprets nothing.
+<!-- /planned:company-member-roster -->
 - **Does not own:** provider payload parsing, message delivery, session action,
   or workflow transitions merely because they carry a principal.
 - **Published contracts:** resolved-principal and authentication-evidence types

@@ -38,6 +38,20 @@ TeleClaudeNext.
   for systems configured by those settings.
 - **Published contracts:** validated configuration models and `telec config`
   commands; consumers never reinterpret missing or invalid values.
+<!-- planned:personal-assistant-launch -->
+- **Also published:** person-workspace containment — whether a given path lies
+  inside any person's workspace, answered for the composed destination rather
+  than for a directory's own name. Consumers call it and never read the
+  person-directory layout themselves.
+<!-- /planned:personal-assistant-launch -->
+<!-- planned:company-member-roster -->
+- **Also owns:** the company tier's organizational roster — which people belong
+  to a company, the role each holds, and which of that company's projects each
+  is assigned to — as a declared setting: its schema, its validation against
+  registered companies and projects, and its operator mutation. Owning the
+  declaration is not owning what the facts mean; resolution belongs to
+  `project/spec/domain/identity`.
+<!-- /planned:company-member-roster -->
 <!-- planned:config-kind-declaration -->
 - **Also published:** the context-root resolver — which tier governs an
   invocation, read from the nearest ancestor configuration file's own
