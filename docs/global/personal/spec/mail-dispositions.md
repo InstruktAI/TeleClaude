@@ -21,9 +21,8 @@ person.
 
 - **Exactly one.** Dispositions are mutually exclusive. A person acting on a
   message in one place has acted on it everywhere, and a message never appears
-  under two proposals at once. A message already carrying one has been considered:
-  a later sweep reaching it leaves the disposition standing rather than replacing
-  it, and only the person's own handling changes it.
+  under two proposals at once. A standing disposition is left as it is by any later
+  sweep; only the person's own handling changes it.
 - **Absence is read against what runs covered.** A message carrying no assistant
   marker is one of two things, and only the windows sweeps recorded separate them:
   mail inside a covered window was considered and needs nothing; mail outside every
