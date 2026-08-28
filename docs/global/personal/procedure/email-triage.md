@@ -66,7 +66,11 @@ them. The cases a sweep is answerable for are specified in
 ## Outputs
 
 - An inbox handled as far as their rules reach.
-- A briefing covering the window: what was done, what awaits them, what is proposed.
+- A briefing covering the window: what was done, what awaits them, what is
+  proposed. Disposed classes are reported as counts, never enumerated — a person
+  asked to read several hundred lines about mail they will never look at has been
+  handed the inbox back. What is named individually is what needs them, what was
+  uncertain, and anything a person wrote.
 - Any drafts prepared, identified so the person can open them.
 
 ## Recovery
