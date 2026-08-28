@@ -258,7 +258,9 @@ design states the contract rather than assuming one.
 credential-adjacent data, and it is held with that person's data rather than in
 the global entry, which already refuses credentials-adjacent keys. It is
 generated when a person's connector state is first confined rather than chosen by
-a human, since nothing about it is a preference.
+a human, since nothing about it is a preference. It is drawn from a
+cryptographically secure random source, per
+`software-development/policy/security-awareness` §Cryptography.
 
 **Retrieval.** Configuration publishes a typed read returning the secret for one
 person to a caller already holding that person's validated binding. Both the
@@ -268,8 +270,11 @@ is bound to.
 
 **Rotation.** Rotation re-keys the person's store through the connector's own
 export and import path — the same transfer the migration performs — so it carries
-no mechanism of its own and inherits the same crash states. It is not scheduled;
-it exists so a disclosed secret has a remedy.
+no mechanism of its own and inherits the same crash states. It runs on a schedule
+and immediately on suspected disclosure, per
+`software-development/policy/security-awareness` §Secrets management. Because it
+reuses the migration's transfer, a rotation interrupted partway recovers the same
+way and needs no separate recovery path.
 
 **Not in the session environment.** The secret reaches the connector process the
 boundary spawns and nothing else. It is not added to the agent session's own
