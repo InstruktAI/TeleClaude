@@ -135,13 +135,13 @@ def expand_requires(snippet_id, visited=set()):
 | domain  | 2        | Domain-specific rules constrain projects    |
 | project | 3        | Project details reference global foundation |
 <!-- change:docs-tier-layering -->
-| Scope   | Priority | Rationale                                        |
-| ------- | -------- | ------------------------------------------------ |
-| global  | 1        | Foundational policies apply universally          |
-| domain  | 2        | Domain-specific rules constrain everything below |
-| company | 3        | A company's rules constrain its own work         |
-| project | 4        | Project details reference the foundations above  |
-| person  | 5        | The individual's own material is closest to them |
+| Scope   | Priority |
+| ------- | -------- |
+| global  | 1        |
+| domain  | 2        |
+| company | 3        |
+| project | 4        |
+| person  | 5        |
 <!-- /planned-change:docs-tier-layering -->
 
 <!-- planned:docs-tier-layering -->

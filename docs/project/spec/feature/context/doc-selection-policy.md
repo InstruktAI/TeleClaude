@@ -142,7 +142,6 @@ And the caller is authorized to name a tier explicitly
 When the caller references that ID without a selector
 Then the cross-project Source is loaded
 And visibility gating still applies
-And an unauthorized caller is refused
 ```
 <!-- /planned-change:docs-tier-layering -->
 
@@ -264,9 +263,9 @@ Then that named tier is returned in full
 
 ```
 Given an agent session running under the identity of a person who is not a platform administrator
-And the session names a person, a company, or a project tier explicitly
+And the session reaches for a tier outside its derived scope, by selector or by an identity its assembled catalogs do not contain
 When the Selection policy resolves the request
-Then the selector is refused before the named tier is looked up
+Then the reach is refused before the named tier is looked up
 And the refusal does not fall back to a narrower read of that tier
 And the refusal is identical whether or not the named tier exists
 ```
