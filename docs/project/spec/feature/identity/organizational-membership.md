@@ -6,6 +6,10 @@ delivered_by:
 
 # Organizational Membership — Spec
 
+## Required reads
+
+- @docs/project/spec/domain/identity.md
+
 ## What it is
 
 Organizational membership is a person's relationship to the businesses and

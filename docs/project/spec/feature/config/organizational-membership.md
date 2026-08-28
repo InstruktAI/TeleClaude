@@ -6,6 +6,11 @@ delivered_by:
 
 # Organizational Membership Declaration — Spec
 
+## Required reads
+
+- @docs/project/spec/domain/config.md
+- @docs/project/spec/feature/identity/organizational-membership.md
+
 ## What it is
 
 Organizational membership is declared configuration: which companies a person
@@ -96,17 +101,12 @@ Examples:
 
 ## Known caveats
 
-- Use-case identifiers 4 through 7 and 9 were assigned in an earlier revision of
-  this contract and moved to
-  `project/spec/feature/identity/organizational-membership` before either
-  contract was delivered, because they state resolution meaning rather than
-  declaration. They are not reused here.
-- Two organizational declarations already exist in the configuration schema and
-  are inert: a per-person company-membership list, and a per-company owner
-  reference. Neither has a resolver and neither is populated. The owner
-  reference states the same relationship a membership declaration carrying the
-  administrative role states, so it is subsumed by this contract rather than
-  kept as a second home for that fact.
+- Use-case identifiers 4 through 7 and 9 are not in use in this contract and are
+  not reused.
+- Two inert organizational declarations sit in the configuration schema: a
+  per-person company-membership list and a per-company owner reference. Neither
+  has a resolver and neither is populated. This contract is the single home for
+  the owner relationship; the owner reference is not a second one.
 - The company-role vocabulary is a closed set whose values are the business
   owner's to ratify.
 
