@@ -15,9 +15,15 @@ follows from which one it is.
 **Where the authoritative record lives elsewhere, the message is a
 notification.** A booking, an order, a delivery, a social interaction — the
 service holds the state and the person reads it there. The mail announces a
-change to something it does not contain. It has no archival value at any point
-in the sequence, first step or last, because nothing is lost by dropping it. The
-service still knows.
+change to something it does not contain.
+
+That classification is a claim about the world and it has to hold before it is
+acted on. The external record must be both authoritative and complete for what
+the message carries: a confirmation whose figures, terms, or attachments are not
+retrievable from the service is not a notification about them, whatever else it
+announces. Where that cannot be established the message is treated as a record,
+because the classification is cheap to get wrong in one direction and permanent
+in the other.
 
 **Where nothing else holds it, the message is the record.** Security and account
 changes, credentials, invoices and receipts a person needs for accounting or
@@ -33,7 +39,10 @@ no more valuable than the rest.
 
 **A machine writing with no external system and no terminal state is a
 notification stream.** Agent output, monitoring, scheduled reports. These are
-worth removing, and worth ending at the source rather than removing forever.
+worth ending at the source rather than removing forever. Removing them is safe
+only where nothing depends on them as history — audit trails, delivery evidence,
+and anything a person may need to show someone else are records that happen to be
+machine-written.
 
 **Anything a person wrote is never disposed of on judgement.** The cost of being
 wrong about a human correspondent is asymmetric and, once a message is gone,
@@ -67,10 +76,14 @@ yet. So the informative corpus is the old one, and the shape of it per sender is
 the signal — which classes from a service persist over years and which have no
 survivors at all.
 
-That shape is where absence speaks. A service whose old account and security mail
-is still there while none of its old booking or delivery mail is tells you
-plainly what the person keeps from it, without a single discard ever being
-recorded. The gap between the two classes is the evidence.
+That shape is where absence speaks, though it speaks quietly. A service whose old
+account and security mail is still there while none of its old booking mail is
+suggests what the person keeps from it, without a single discard ever being
+recorded. It is corroborating evidence and never proof: a gap is equally
+consistent with a mailbox migration, a provider's own retention limit, a sender
+that changed address or stopped writing, or a period the person simply was not
+using that service. Absence supports a classification reached on other grounds;
+it does not establish one, and disposal is never decided by it alone.
 
 The same reading fails on recent mail, and inverts. Where most of a sender's
 recent mail has been disposed of and a few messages remain, the survivors are far
@@ -96,10 +109,13 @@ record-or-notification question generalizes, because it asks about the mail's
 relationship to the truth rather than about its contents — and it is answerable
 for a sender never seen before.
 
-It also puts the effort where it lasts. Most of what arrives is notification,
-so most handling effort is spent on mail that never needed handling. Reducing
-that at the source is the only intervention that compounds; every other move
-manages a volume that returns tomorrow.
+It also puts the effort where it lasts. Where a mailbox is observably dominated
+by notification — a proportion to be measured in that mailbox, not assumed — most
+handling effort is spent on mail that never needed handling, and reducing it at
+the source is the only intervention that compounds. Every other move manages a
+volume that returns tomorrow. Changing what a service sends, or whether it sends
+at all, alters what reaches the person in future and is theirs to decide rather
+than an agent's to infer.
 
 The asymmetry between machine and human authorship is the safety rail that makes
 the rest of it safe to automate. Every other distinction here can be wrong in
