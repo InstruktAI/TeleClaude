@@ -61,6 +61,8 @@ for tmux callers.
 
 **Caller paths:**
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 A commit reaches git through one of three contexts in this repository: the human
 shell outside tmux, an autonomous agent inside tmux within a telec-registered
 project, and an agent inside tmux operating in a repo that is not telec-registered.
@@ -70,6 +72,23 @@ project, and an agent inside tmux operating in a repo that is not telec-register
 | Outside tmux (human shell)                 | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec.                |
 | Inside tmux, autonomous agent (registered) | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                                             |
 | Inside tmux, repo not telec-registered     | `git commit ...`                   | No `teleclaude.yml` in the working tree → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux. |
+
+<!-- change:tier-aware-commit-authority -->
+
+A commit reaches git through one of four contexts in this repository: the human
+shell outside tmux, an autonomous agent inside tmux within a telec-registered
+project, an agent inside tmux within a repository whose own root is a declared
+invocation context that is not a project, and an agent inside tmux operating in a
+repository whose own root carries no declaration.
+
+| Caller context                                  | Command                            | Why telec is or isn't involved                                                                                                                             |
+| ----------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Outside tmux (human shell)                      | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec.                                            |
+| Inside tmux, autonomous agent (registered)      | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                                                                         |
+| Inside tmux, repository root a declared context | `telec code commit --approved ...` | Sealed on the repository's own declaration rather than on project subscriptions; an invocation beneath it resolving to no context root is refused.         |
+| Inside tmux, repository root undeclared         | `git commit ...`                   | The repository's own root carries no declaration → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux.                    |
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 Inside tmux there is **no env-var bypass on `git commit`**. The wrapper
 redirects every `git commit` invocation to `telec code commit` with no
@@ -153,7 +172,15 @@ op wins.
 | `git status`, `git log`, `git show`, `git diff <ref>..<ref>`, `git rev-parse` | ✅ allowed                     | ✅ allowed                            | ✅ allowed                          | Read-only inspection. |
 
 | `git add` (any form) | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | Staging is telec's job; sealed-commit pathspec depends on it. Also the resolved-conflict recovery path during an active merge. |
+<!-- planned-change:tier-aware-commit-authority -->
+
 | `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ⚠️ `telec code commit` (full commit, no pathspec) | Sealed commit contract; no env-var bypass. Mid-merge, git refuses any pathspec-scoped commit (`fatal: cannot do a partial commit during a merge`) regardless of pathspec completeness, so `telec code commit` detects `MERGE_HEAD` and degrades to a full-index commit — safe because `MERGE_HEAD` already forces the entire resolved index in atomically; no partial-scope risk remains to guard against. |
+
+<!-- change:tier-aware-commit-authority -->
+
+| `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ⚠️ `telec code commit` (full commit, no pathspec — single-owner trees only) | Sealed commit contract; no env-var bypass. Mid-merge, git refuses any pathspec-scoped commit (`fatal: cannot do a partial commit during a merge`) regardless of pathspec completeness, so in a single-owner tree `telec code commit` degrades to a full-index commit, which carries only that one owner's resolved state. In a repository whose own root is a declared invocation context the tree has more than one owner, and there the commit preserves the eligible set or is refused; it never degrades to the whole index. |
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 | `git reset HEAD <path>` / `git reset -- <path>` (pathspec) | ✅ allowed | ✅ allowed | ✅ allowed | Path-scoped unstage; index-only effect. |
 | `git reset` (no pathspec) | ❌ blocked | ❌ blocked | ❌ blocked | Discards staged state non-locally. |
@@ -391,10 +418,23 @@ telec code commit --approved "chore(<slug>): reconcile with origin/main"
   → commit gate satisfied (--approved present)
   → lock acquired
   → wait_for_index_lock_clear
+<!-- planned-change:tier-aware-commit-authority -->
+
   → MERGE_HEAD detected (repo.git_dir)
   → assert no remaining unmerged paths (all conflicts telec code add-ed)
      — error, no commit, if any remain
   → quality_paths = full merge diff (merge-base..MERGE_HEAD), not the pathspec
+
+<!-- change:tier-aware-commit-authority -->
+
+  → MERGE_HEAD detected (repo.git_dir)
+  → repository root is not a declared invocation context (single-owner tree)
+     — otherwise the eligible set is preserved, or the commit is refused
+  → assert no remaining unmerged paths (all conflicts telec code add-ed)
+     — error, no commit, if any remain
+  → quality_paths = full merge diff (merge-base..MERGE_HEAD), not the pathspec
+
+<!-- /planned-change:tier-aware-commit-authority -->
   → handle_format(quality_paths)                     (in-process, no stash)
   → handle_lint(quality_paths)                        (in-process, no stash)
   → real git commit --no-verify -F <msg>              (no pathspec — full index)

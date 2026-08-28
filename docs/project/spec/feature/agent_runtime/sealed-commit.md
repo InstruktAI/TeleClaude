@@ -79,6 +79,8 @@ And exits non-zero without staging anything
 And inspection commands (`git diff`, `git status`, `git log`) remain available
 ```
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 #### Wrapper passes through transparently outside a telec-registered project
 
 ```
@@ -89,6 +91,22 @@ Then the wrapper execs the real git binary unmodified
 And no seal or role-guard error is printed
 And the command's exit status and output are git's own
 ```
+
+<!-- change:tier-aware-commit-authority -->
+
+#### Wrapper passes through transparently in an undeclared repository
+
+```
+Given an agent session running inside its host pane (identity present)
+And the working directory is a git repo whose own root carries no declaration
+When the agent invokes `git add`, `git commit`, `git rebase`, or `git push` in any form
+Then the wrapper execs the real git binary unmodified
+And no seal or role-guard error is printed
+And the command's exit status and output are git's own
+But a repository whose own root is a declared invocation context is sealed rather than passed through, wherever beneath it the invocation sits
+```
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 <!-- planned-change:split-review-routing-from-sync-scope -->
 #### Bare telec code commit on main surfaces the commit-first review-routing gate
