@@ -6,13 +6,22 @@ description: How to tell what a person's mail is worth — the record-or-news qu
 
 ## What
 
-The useful question about any message is not what it is about. It is whether the
-message **is** the thing, or is **news about** a thing kept somewhere else.
+Two questions, in order, decide what any message is worth.
 
-A booking confirmation is news; the booking lives in the service. A contract is
-the thing. Most mail is news, most news needs nothing, and an assistant that
-sorts by topic or urgency instead will produce a different answer for every
-sender and a general answer for none.
+**Does it carry a fact this person has a stake in?** Much mail carries none. A
+newsletter, a promotion, a digest of things happening to other people — nothing
+is announced and nothing is contained, so there is no fact to keep or lose. This
+class is large and it is settled by the first question alone.
+
+**If it does, is the fact held elsewhere, or only here?** A booking confirmation
+is news about a booking that lives in the service. A contract is the thing
+itself. Most mail carrying a stake is news, most news needs nothing, and an
+assistant that sorts by topic or urgency instead will produce a different answer
+for every sender and a general answer for none.
+
+The order matters. Asked the other way round, broadcast mail looks like a record
+— nothing else holds it, so losing it would seem to lose something — when in
+truth it holds nothing to lose.
 
 Nothing here can be verified. There is no way to ask a service what it retains,
 and no inspection that settles the question. It is inferred — from the sender,
@@ -30,6 +39,19 @@ An account exists behind it and the person can log in and see the same fact. The
 message announces a change rather than containing one. It belongs to a recurring
 series that reads the same way each time. A machine wrote it. Nothing in it would
 be missed by someone reconstructing events from the service itself.
+
+Machine authorship is worth reading properly, because it carries several of these
+at once. The headers say it directly where they carry a bulk precedence, an
+auto-generated marker, or an unsubscribe target. Behaviour says it more reliably:
+a fixed cadence, an identical skeleton across messages, and — strongest of all —
+never having responded to a reply. Someone wrote back and nothing human returned.
+An address beginning `info@` or `noreply@` is a weak hint on its own and settles
+nothing.
+
+Where a machine sends a stream with no per-message stake, the most recent one
+carries something the older ones do not: evidence the pipeline still runs. A
+person who glances at these is checking liveness, not reading news, and the
+latest instance serves that where the rest cannot.
 
 ### Signals that a message is the thing
 

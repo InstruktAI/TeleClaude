@@ -38,10 +38,21 @@ them.
    Where this ask, the invoked command's contract, or a standing instruction
    covers them, do them and name them in the briefing; do not come back with
    questions about mail they already told you how to treat.
-5. **Propose the rest**, named precisely enough that "yes" is a complete answer.
-6. **Prepare replies their rules call for**, following the drafting procedure.
+5. **Put what needs them where only you put things.** What is surfaced for the
+   person goes under a label the assistant owns and nothing else writes to.
+   Never signal by marking read or unread: reading is the person's own act and
+   carries their meaning, so an assistant spending that state destroys the
+   signal it most wants to read next time.
+6. **Read what happened to the last selection before deciding this one.** What
+   the person did to what was surfaced is the correction: a reply is the
+   strongest endorsement available, a message trashed says it should not have
+   been surfaced, a label removed is dismissal, and a message left alone says
+   least of all. Deletions are visible only for a limited window, so a sweep
+   that runs rarely will see fewer of them than one that runs often.
+7. **Propose the rest**, named precisely enough that "yes" is a complete answer.
+8. **Prepare replies their rules call for**, following the drafting procedure.
    Drafts are prepared; sending is theirs.
-7. **Report once.** What arrived, what was done, where the drafts are, what
+9. **Report once.** What arrived, what was done, where the drafts are, what
    awaits them, and what is proposed. One briefing, not a running commentary.
 
 ## Outputs

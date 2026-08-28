@@ -38,6 +38,14 @@ rather than assumes.
   stacked beside it.
 - **Priorities** — who always matters, what is always noise, what the person
   wants surfaced rather than handled.
+- **What has been concluded about their senders** — the standing read of each
+  correspondent and service, and the evidence that produced it. This is derived
+  rather than declared: it is written by the assistant from what the person's own
+  mail shows, refined each time their handling corrects it, and it holds only
+  until better evidence arrives. Keeping it is what stops every run re-deriving
+  the same conclusions from the whole history. A person states only where they
+  diverge from what their behaviour shows, because a conclusion drawn from
+  evidence stays true as they change and a written rule does not.
 - **Examples of their voice** — a handful of messages per identity that the
   person has approved as representative, held in their workspace like the rest
   of their data. They carry the voice directly; no summary or description of how
