@@ -59,11 +59,10 @@ And the returned app config holds the global overlay, no project overlay, and th
 #### UC-CFG-OVERLAY-3: Missing optional layer yields None
 
 ```
-Given a context root at /repos/empty-project
-And /repos/empty-project/teleclaude.yml does NOT exist
+Given a context root whose declared tier is the global tier
 When the config loading API is invoked for that context root
-Then the project overlay loader is NOT called for that context
-And the returned app config's project field is None (not a default-constructed overlay)
+Then neither the project overlay loader nor the per-person overlay loader is called for that context
+And the returned app config's project and person fields are both None (not default-constructed overlays)
 ```
 
 #### UC-CFG-OVERLAY-4: Missing config file in overlay loader yields default instance
