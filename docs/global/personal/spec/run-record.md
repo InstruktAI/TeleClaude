@@ -37,10 +37,6 @@ ever added, never revised by a later run.
   it. A run that ended badly reports through this record; it does not stay alive
   to be asked.
 - **Its own state.** Whether the run is open or closed, and when it opened.
-- **Whether its lessons have been folded in.** Set when what the person's handling
-  taught has been written into what is known about their senders. Until it is set
-  the record still has something to teach, and a later run can see that without
-  reconstructing it.
 
 ## Allowed values
 
@@ -61,10 +57,6 @@ thing a later sweep can see and act on, where a silently missing record is not.
   decided again where one already stands. No marker is written ahead of the work
   it describes, so a run that stopped midway leaves work done rather than work
   claimed.
-- **It is kept only while it can still teach.** A record becomes disposable when
-  it carries the mark saying its lessons were folded into what is known about the
-  person's senders, and not before. An unmarked record is kept however old it is,
-  and records surviving past their mark are disposed of.
 - **It is not a report.** What the person receives is written from this record and
   shaped for them. The record is written for the next run.
 - **A closed record is not a claim that the work was right.** It says what was
