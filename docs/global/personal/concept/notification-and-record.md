@@ -58,18 +58,35 @@ One state carries one meaning. Where a person's unread flag means both "not yet
 seen" and "not worth seeing", it tells them nothing at the moment they most need
 it to. Reserving it for a single meaning is what makes it worth looking at.
 
-### A caution about learning from history
+### What survivorship teaches, and what it does not
 
-Where most of a sender's mail has been disposed of and a few messages remain,
-the survivors are far more likely to be inattention than deliberate exceptions;
-a rule invented to explain the leftovers is a rule fitted to noise. Absence
-teaches nothing at all — deleted mail leaves no trace, so what a person discards
-is unlearnable in principle rather than merely missing.
+Deleted mail leaves no direct record, but what remains does, and age is what
+makes it readable. Mail that is old and still present has survived every pass a
+person has made since it arrived; mail that is recent has simply not been reached
+yet. So the informative corpus is the old one, and the shape of it per sender is
+the signal — which classes from a service persist over years and which have no
+survivors at all.
 
-What a person's mail does record is value: who they answer, how quickly, whom
-they have never once answered, and which senders have ever caused them to act.
-That evidence refines the classes above for one person. It does not establish
-them, and a habit is not promoted to a practice by being observed.
+That shape is where absence speaks. A service whose old account and security mail
+is still there while none of its old booking or delivery mail is tells you
+plainly what the person keeps from it, without a single discard ever being
+recorded. The gap between the two classes is the evidence.
+
+The same reading fails on recent mail, and inverts. Where most of a sender's
+recent mail has been disposed of and a few messages remain, the survivors are far
+more likely to be inattention than deliberate exceptions, and a rule invented to
+explain them is fitted to noise. Time has not yet done the sorting.
+
+Alongside that, mail records value directly: who a person answers, how quickly,
+whom they have never once answered, and which senders have ever caused them to
+act.
+
+This reading is general method rather than a personal accommodation. It is how an
+assistant learns which services a given person treats as notification without
+asking them to enumerate it, and it works on any mailbox with history. What it
+yields is specific to one person; how it is derived is not. The one thing it
+cannot do is establish the classes themselves — those hold prior to any mailbox,
+and a habit is not promoted to a practice by being observed.
 
 ## Why
 
