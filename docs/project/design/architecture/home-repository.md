@@ -25,9 +25,10 @@ root avoids carrying another's work (SC-5 through SC-7), and what a person's own
 project is when it sits inside that tree (SC-10, SC-11).
 
 It owns the relationship among the participating contexts and nothing else.
-Retained-content eligibility and the tier permission answer resolve to `config`;
-convergence of the home to that declaration resolves to `reconciliation`; the
-person-to-registry binding to `identity`; the commit surface to `agent_runtime`.
+Retained-content eligibility resolves to `reconciliation`, which owns both the
+decision and its source of truth; the tier permission answer and the schemas
+carrying every declaration resolve to `config`; the person-to-registry binding to
+`identity`; the commit surface to `agent_runtime`.
 The context-root walk and the project shared-state resolver are consumed from
 `config` and `workflow` as published contracts.
 
@@ -58,24 +59,41 @@ The other contexts consume its answer and restate nothing:
 | `config`         | Owns only the schemas it already owns. It gains no retained-content declaration.                                                               |
 | `agent_runtime`  | Consumes the eligibility answer at commit construction and refuses a path the owner rejects. It never defaults or reinterprets the rule.       |
 
-The published contract is a single query — _is this path admissible to the home's
-history?_ — answered from the admitted-path record. One decision point, one
-owner, one contract.
+The published contract answers two questions that must not be collapsed, because
+collapsing them makes admission circular — a new path could never be admitted,
+since it is by definition absent from the record:
+
+- **Admissible?** A structural and security test on a path, independent of the
+  record: it resolves inside the home, no component escapes it, no symlink in it
+  points outward, and it lies under no root carrying its own repository. A
+  brand-new path is answerable here.
+- **Admitted?** Membership in the admitted-path record.
+
+Admission is the transition between them, and it is atomic: an explicitly named
+path is tested for admissibility, recorded on success, and only then does the
+commit boundary consume the updated membership answer. A failed test records
+nothing. One owner holds both questions and the transition; consumers ask, and
+supply a default for neither.
 
 ### What reaches history is decided by admission, not by exclusion
 
 Nothing enters the home's history except by an act that names it and is
 recorded. Two acts admit, and there are no others:
 
-- **First activation admits what is already there, by recorded confirmation.**
-  Convergence proposes a candidate set — the authored material under the tier
-  roots the registries name — and shows what it refuses and why. The operator
-  confirms, and the confirmed paths become the admitted-path record. Nothing is
-  admitted by the proposal alone; the record is written from the confirmation.
+- **First activation admits what is already there, path by path, by explicit
+  selection.** Convergence enumerates every candidate under the tier roots the
+  registries name and reports each one's admissibility, but admits nothing on its
+  own: the operator names the exact paths to admit, and only those are tested and
+  recorded. No classifier decides which existing files are "authored" or "safe",
+  because none could be trusted with the consequence — the operator is the
+  judgment at adoption, which is the model the surveyed prior art uses.
+
   This is what makes activation over a populated home fail closed
-  (`@prd#success-criteria` SC-2, SC-3): a candidate nobody confirmed is not
-  admitted, so a credential store or database sitting under a tier root at
-  activation time stays out even if the refusal rules never named it.
+  (`@prd#success-criteria` SC-2, SC-3), and the reason is selection rather than
+  refusal: a credential file under a tier root stays out because nobody named it,
+  not because a rule anticipated it. Unselected is unadmitted, with no appeal to
+  the hygiene rules, which are never the selector.
+
 - **Afterwards, the ordinary commit act admits.** The sealed commit surface
   already requires an explicit declaration for a new untracked file
   (`project/spec/feature/agent_runtime/sealed-commit`), and that declaration
@@ -159,16 +177,33 @@ TeleClaude neither owns nor can narrow, and its shell-derived component
 classifies free-text command text by pattern. Isolation resting on that set
 rests on someone else's data structure.
 
-**The guarantee this design delivers is therefore bounded, and the bound is
-stated rather than papered over.** Containment separates _different_ context
-roots — every case `@prd#success-criteria` SC-6 enumerates, since global, a
-company, another person, and a foreign nested root are each a different root. It
-does not separate two sessions editing the same path inside one root. That case
-needs to know which live session claims a dirty path, which is the ownership
-attribution contract owned by the commit surface and being built adjacently; this
-design consumes that contract when it exists and claims nothing about it now. No
-contract authored by this delivery may promise modified-path scoping or
-same-root overlap failure, because no mechanism here provides either.
+**Containment carries most of `@prd#success-criteria` SC-6, and a consumed
+contract carries the rest.** Containment separates _different_ context roots —
+every case SC-6 enumerates, since global, a company, another person, and a
+foreign nested root are each a different root. It cannot separate two sessions
+editing the same path inside one root: that needs to know which live session
+claims a dirty path, which is dirty-path ownership attribution, owned by the
+commit surface and delivered by `telec-code-dirty-path-owners`.
+
+That work is a **blocking dependency** of this one rather than a hope. SC-6 is an
+approved outcome, and neither narrowing it here nor absorbing another context's
+mechanism is available: architecture may not shrink what the product intent
+already accepted, and ownership does not transfer to whoever noticed the gap.
+
+**The contract consumed** is a per-path query over live sessions in the
+repository, returning the earliest still-uncommitted live claimant of a dirty
+path, or none. The commit boundary asks it for every path in the pathspec; a
+claimant that is not the committing session is an overlap, and the commit fails
+naming the path and the claimant rather than combining two sessions' work. A
+committed claim is cleared, so a path nobody currently claims commits normally.
+
+**A known imprecision travels with it**, and the plan must see it rather than
+discover it: that query is computed from the same transcript-derived attribution
+whose read-is-a-touch weakness this design documents, so a session that merely
+read a dirty path can be reported as its claimant and refuse an otherwise valid
+commit. That failure direction is safe — it refuses rather than silently
+combining, which is what SC-6 asks for — but it is a usability cost owned by the
+attribution contract and not corrected here.
 
 ### Location grants nothing, and ownership is a closed declaration
 
@@ -177,17 +212,28 @@ invocation context, surface participation, project subscriptions — are answere
 independently (`project/spec/feature/config/tier-permissions`). A project inside
 a person's space is an ordinary project on every axis.
 
-**Whom a project belongs to is one closed declaration with exactly one shape.**
-Today `ProjectConfig` carries an optional company slug; adding a second optional
-person field would make two simultaneous owners representable, which is the
-illegal state to design out. The owner becomes a single declared relationship
-naming its kind — company or person — so exactly one owner exists by
-construction. Existing company-declaring projects migrate forward into the
-company shape and the old field is removed rather than kept beside it
+**Whom a project belongs to is one optional declaration that names exactly one
+owner when present.** Today the project model carries an optional company slug,
+and a project under no company is valid — a contract this delivery preserves,
+because no approved outcome changes it. Adding a second optional person field
+beside it would make two simultaneous owners representable, which is the illegal
+state to design out. So the two collapse into one optional declared relationship
+that names its kind:
+
+| Current shape      | Migrated shape                                          | Resulting invariant                                                          |
+| ------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| A declared company | An owner declaration of kind company carrying that slug | Behavior unchanged for every existing company-owned project                  |
+| No company         | No owner declaration                                    | Ownerless projects stay representable and compose no company, exactly as now |
+| —                  | An owner declaration of kind person                     | The person-owned case this delivery adds                                     |
+
+Absent means ownerless; present means exactly one owner of one kind, so two
+owners are unrepresentable rather than merely forbidden. The old field is removed
+rather than kept beside the new one
 (`software-development/policy/backward-compatibility-hygiene`: owned
-configuration migrates forward, never branches). Its four current consumers —
-the context selector's company resolution, the app-config company composition,
-and the hook receiver's company lookup — read the migrated shape.
+configuration migrates forward, never branches), and its four current consumers —
+the context selector's company resolution, the app-config company composition and
+its unresolved-company warning, and the hook receiver's company lookup — read the
+migrated shape.
 
 Registration validates the declaration: a person-owned project's declared owner
 is checked against the person registry through `identity`, never inferred from
@@ -231,9 +277,11 @@ Its activation surface is a CLI verb in a new `telec home` namespace, authored
 per `software-development/procedure/cli-command-authoring`. One action converges
 the home, and its contract is:
 
-- **Invocation** — idempotent, safe to repeat, and safe to run on an already
-  converged home. A confirmation flag distinguishes proposing from admitting, so
-  the first run over a populated home can be read before it records anything.
+- **Invocation** — `telec home converge`, idempotent and safe to repeat. Bare, it
+  admits nothing: it reports the proposal and exits, so a populated home can be
+  read before anything is recorded. `telec home converge --admit <path>...`
+  admits exactly the named paths and no others, mirroring the explicit per-path
+  declaration the commit surface already requires for a new file.
 - **Result** — three sets: the paths admitted or already admitted; the paths
   refused, each with the reason it failed the eligibility query; and the breach
   set, being tracked paths the query rejects. An empty breach set is the healthy

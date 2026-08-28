@@ -46,7 +46,9 @@ Per tier:
   contract establishes. Its material participates in documentation. It carries
   no project subscriptions.
 - The **global** tier is the invocation context of last resort and owns the
-  shared home history. It carries no project subscriptions.
+  shared home history. Its material participates in documentation, which is what
+  makes global documentation readable from every context. It carries no project
+  subscriptions.
 
 A project root may sit inside a person's personal space. Resolution takes the
 nearest declaration, so such a root is a project on every axis: it registers as
@@ -68,6 +70,17 @@ When an agent asks whether the root is an invocation context, whether its materi
 Then each question is answered from the declared tier
 And no question fails with an error
 And no answer is derived from where the root sits
+```
+
+#### UC-TIERP-7: The global tier answers all three questions
+
+```
+Given a root declaring itself the global configuration
+When an agent asks whether the root is an invocation context, whether its material participates in documentation, and whether it carries project subscriptions
+Then the root is an invocation context
+And its material participates in documentation
+And it carries no project subscriptions
+And no answer is inferred from another tier
 ```
 
 #### UC-TIERP-2: A tier never inherits another tier's answers
