@@ -58,53 +58,18 @@ structurally true instead of conventionally assumed.
 
 ### Prior art and adopt-vs-build
 
-The design introduces a credential-isolation boundary, so its mechanism is
-surveyed rather than invented.
+The mechanisms this boundary uses are the connector's own, verified against the
+installed command surface rather than assumed: which account an invocation acts
+as, where its state is directed, and the levers that block sending, restrict the
+command set, or refuse mutations. None is compiled into the tool; each holds only
+if the invocation is constructed with it, which is what makes a boundary that
+constructs invocations the right place for the prohibitions.
 
-- **Vendor documentation** — the consolidated connector authorization facts,
-  confirmed against the installed command surface. The connector confines
-  secrets to the person's own state root only when its file-backed keyring is
-  selected together with a per-person store secret; its default backend resolves
-  accounts from a store shared across the machine irrespective of state root. It
-  exposes token export, import, and delete operations over stored refresh
-  credentials, and accepts a short-lived access token directly, bypassing stored
-  refresh credentials entirely.
-- **Reference implementation** — a password-store import extension that moves
-  credentials between stores: it establishes the shape this migration follows,
-  in which the destination store must exist and be usable before import, and
-  entries are transferred through the tools' own export and import paths rather
-  than by reaching into either store's format. This design adopts that shape and
-  differs in one respect: it also evicts from the source, because the source here
-  is a shared store whose continued possession of the credential is the defect
-  being repaired.
-- **The surveyed alternative** — the broker credential-source pattern: a service
-  owns refresh state and returns a short-lived access token per request, so the
-  runtime holds no refresh credential, with single-flight refresh per identity to
-  avoid rotation races. The evidence for it is an open proposal against an agent
-  runtime and integration platforms' accounts of managing OAuth refresh at scale,
-  not a reference implementation this design could copy. The adopted mechanism is
-  vendor-native and needs none.
-- **Comparable production architecture** — multi-tenant OAuth deployments wrap a
-  per-record data key with a per-tenant key; and an agent runtime sharing one
-  credential store across processes has been reported revoking valid credentials
-  through concurrent refresh rotation. That is the same class of failure a
-  machine-wide shared store produces here, in a deployment of the same shape.
-
-**Adopt, do not build.** The connector's own confined store plus a per-person
-secret reaches the approved outcome for the connector in scope. Per-person
-confinement removes the rotation race _between people_, since no two people
-share a store to race over; it does nothing for two concurrent invocations on
-behalf of the same person, which still share that person's store and can still
-rotate a refresh credential under each other. No coordination for that case is
-specified here — same-person concurrency is outside the approved scope, which
-leaves it as the connector's native behavior — so it stands as an accepted
-unresolved risk rather than a solved one. A broker is the stronger isolation,
-supplies the single-flight coordination that would close it, and is
-infrastructure this horizon excludes; it becomes the escalation path if a
-connector without a confined store is fronted, if credentials must be reached
-from more than one machine, or if same-person concurrency stops being
-acceptable. The tool's short-lived-token entry is what makes that
-escalation cheap later, and is not used now.
+Nothing here is bespoke infrastructure, so there is no adopt-versus-build
+decision to record. The one place this design deliberately does not build is
+credential confinement: a per-person secret store is an owned concern elsewhere,
+and the alternative shape for it — a broker owning refresh state and issuing
+short-lived tokens — is surveyed by that owner's work rather than by this.
 
 ## Inputs/Outputs
 
@@ -119,15 +84,13 @@ send, or reach that could not be determined.
 
 ### Layer placement
 
-| Responsibility                                                                                           | Layer                                                            | Owner                          |
-| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------ |
-| Entry point published on the agent tool surface                                                          | Artifact / tool surface                                          | agent runtime                  |
-| Reading the workspace's person declaration, the named account, and the attendance fact into typed inputs | Injection                                                        | agent runtime                  |
-| Account lookup against the person's declared list                                                        | Core service, via configuration's published read                 | configuration                  |
-| Store-secret resolution for a person                                                                     | Core service, via the person-secret owner's published resolution | the person-scoped secret store |
-| Reach determination, prohibition application, invocation construction                                    | Core service                                                     | integration                    |
-| Credential migration for one person and account                                                          | Core service, behind a published operation                       | integration                    |
-| Connector process execution and store-secret delivery to it                                              | Infrastructure, behind its owning service                        | integration                    |
+| Responsibility                                                                                           | Layer                                            | Owner         |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
+| Entry point published on the agent tool surface                                                          | Artifact / tool surface                          | agent runtime |
+| Reading the workspace's person declaration, the named account, and the attendance fact into typed inputs | Injection                                        | agent runtime |
+| Account lookup against the person's declared list                                                        | Core service, via configuration's published read | configuration |
+| Reach determination, prohibition application, invocation construction                                    | Core service                                     | integration   |
+| Connector process execution                                                                              | Infrastructure, behind its owning service        | integration   |
 
 These responsibilities do not fit an existing root. The platform's adapter root
 holds inbound and outbound UI adapters, and its integration core holds the
@@ -211,84 +174,21 @@ flowchart TD
     E -- nothing prohibited --> G[execute against the person's confined state]
 ```
 
-### Confinement, and the migration it implies
+### Confinement is not delivered here
 
-Selecting a confined store governs authorizations made after it is in force. An
-account authorized earlier keeps its credential in the shared store and stays
-reachable from anywhere, so confinement is not reached for that account until its
-credential is moved into the person's own store and removed from the shared one.
+Directing a connector's state at a person's own location is not confinement: a
+connector may resolve an account from a store shared across the machine
+regardless of where its state is directed. Closing that needs a per-person secret
+store, which is an owned concern elsewhere — its contract covers secrets held per
+person, resolution bound to a verified identity, refusal rather than fallback to
+a global secret or another person's, and non-exposure through catalogs, logs,
+errors, or serialized person configuration.
 
-**Owner.** The migration belongs to integration, not to configuration: what
-moves is external-provider credential state whose lifecycle and operations change
-with the connector, and configuration owns the declared account input and nothing
-about the credential behind it. It is published as an operator-invoked operation
-over one person and account, exposed on the platform's own command surface rather
-than as a connector flag, and it consumes validated person and account inputs
-like any other crossing.
-
-It is not part of an invocation: the boundary refuses to run an unconfined
-account rather than migrating it inline, so a mail command never becomes a
-credential mutation.
-
-**Ordering, and why it is import-before-evict.** Import into the person's store
-precedes eviction from the shared one. The reverse order has a window in which
-neither store holds a usable credential and the account requires re-consent; this
-order's window instead has both, which is recoverable. Rotation makes that window
-the hazard rather than a convenience: a refresh credential used from two stores
-can rotate under one and be revoked for the other, so the account is not used
-between import and eviction.
-
-**Idempotency and crash recovery.** Each step is checked before it is applied:
-import is skipped when the person's store already resolves the account, eviction
-is skipped when the shared store no longer holds it, and any intermediate left
-behind is removed before a re-run re-exports. A crash therefore leaves one of
-four states — nothing done, an intermediate written, imported, or evicted — and
-re-running from the start reaches the terminal state from any of them without
-re-consent. The terminal state is observable directly: the account resolves from
-the person's store and no longer resolves from a state root carrying only the
-connector's client identification.
-
-### Where the store secret comes from
-
-Confinement needs a per-person secret, and this design defines no storage for
-one. A person-scoped secret store is already an owned concern: its contract
-covers secrets held per person, resolution bound to a verified person identity,
-refusal rather than fallback to a global secret or another person's, failure when
-the identity or the secret cannot be resolved, and non-exposure through catalogs,
-logs, errors, or serialized person configuration. Those are exactly the
-properties this boundary needs, and defining a second secret mechanism beside
-them would make this work a second owner of person-secret policy.
-
-The boundary and the migration therefore consume that owner's published
-resolution for one person, holding that person's validated binding. Neither
-reaches a person's files directly, and neither can ask for a person other than
-the one it is bound to.
-
-The secret's generation, rotation, and operator surface belong to that owner and
-are not specified here.
-
-The one property this boundary owns is where the secret goes: it reaches the
-connector process the boundary spawns and nothing else. It is never added to the
-agent session's own environment, where every later command in that session would
-inherit it.
-
-**Secret surfaces, including the intermediate the connector requires.** The
-credential moves between stores through the connector's own export and import
-operations, and export writes it to a file; the connector offers no
-store-to-store path, so the intermediate exists by the tool's shape. That file is
-treated as the credential it contains: it is
-created inside the person's own workspace, which already holds their
-environment-scoped secrets and is already excluded from version control; it is
-readable only by its owner; and it is removed once import is confirmed.
-
-Crash recovery removes it too: any intermediate left by an interrupted run is
-deleted before the run proceeds rather than reused, per
-`software-development/policy/security-awareness` §Secrets management, and because
-a re-run re-exports there is nothing to salvage from one.
-
-Nothing else carries the credential: it is not placed in the arguments the
-migration constructs, and not written out in any report it produces. A failure
-names the account and the step, never the credential.
+This boundary therefore makes no confinement claim and defines no secret storage.
+Building a second mechanism beside that owner would make this work a second owner
+of person-secret policy. When confinement is delivered it brings its own
+migration for accounts authorized beforehand, since selecting a confined store
+governs only authorizations made after it is in force.
 
 ## Failure modes
 
@@ -320,16 +220,9 @@ names the account and the step, never the credential.
   than at the boundary. The boundary binds an invocation to a declaration; it does
   not verify the declaration was ever consented to.
 
-## Sources
-
-- [pass-import](https://github.com/roddhjav/pass-import) — the implemented credential-store import extension whose transfer shape this migration adopts.
-- [Proposal: generic OAuth broker credential source](https://github.com/NousResearch/hermes-agent/issues/23944) — the broker pattern surveyed as the alternative; an open proposal, not an implementation.
-- [Multi-agent OAuth refresh race on a shared auth store](https://github.com/openclaw/openclaw/issues/3611) — the comparable deployment whose shared credential store revoked valid credentials.
-- [Token isolation is the easy half of multi-tenant OAuth](https://workos.com/blog/multi-tenant-oauth-beyond-token-isolation) — the per-tenant key-wrapping architecture and the refresh-lifecycle half it names as harder.
-
 ## See Also
 
 - ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the prohibitions this boundary applies, and the workspace scope it inherits.
 - docs/project/spec/feature/agent_runtime/person-workspace-dispatch.md — the launch contract that establishes the person binding this boundary consumes.
 - docs/project/design/architecture/layer-ownership.md — the layer contract the placement table follows.
-- docs/third-party/gogcli/authorization.md — the vendor evidence for confinement, its per-person secret, and the token operations the migration uses.
+- docs/third-party/gogcli/authorization.md — the vendor evidence for the connector's account selection, state root, and caller-supplied levers.

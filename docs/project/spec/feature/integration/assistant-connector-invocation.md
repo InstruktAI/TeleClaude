@@ -134,32 +134,6 @@ Then the send executes from that person's own store
 And the message leaves
 ```
 
-#### UC-ACI-10: One person's stored credentials are unreadable by another's invocation
-
-```gherkin
-Given two people whose assistants operate under one operating-system account on the same machine
-And the connector offers a secret store that can be confined to a single person
-When a connector invocation is made on behalf of one of them
-Then it cannot read the other person's stored credentials even when it seeks them
-```
-
-#### UC-ACI-11: An account authorized before confinement is no longer reachable from elsewhere
-
-```gherkin
-Given a person's account that was authorized while its credentials were kept in a store shared across the machine
-When that account has been brought under the person's own confined store
-Then a connector invocation carrying only the connector's client identification cannot reach that person's mailbox
-And the attempt fails because the account cannot be resolved
-```
-
-#### UC-ACI-12: What confines a person's store is not disclosed
-
-```gherkin
-Given a connector whose secret store is confined by a per-person secret
-When an invocation on that person's behalf is made
-Then that secret does not appear in the invocation's arguments, nor in anything the run writes out
-```
-
 #### UC-ACI-13: A send by someone present carries an attributable claim
 
 ```gherkin
@@ -181,12 +155,9 @@ And an invocation carrying no such claim does not send
 - Directing a connector's state at a person's own location does not by itself
   confine that person's secrets: a connector may resolve an account from a store
   shared across the machine regardless of where its state is directed, which
-  presents as isolation while providing none. UC-ACI-10 settles confinement, and
-  UC-ACI-11 settles it for accounts authorized before the confined store was in
-  force.
-- A connector that requires its confining secret to be present in the invoked
-  process cannot also hide it from that process. UC-ACI-12 covers the surfaces
-  this boundary controls.
+  presents as isolation while providing none. This contract states direction and
+  makes no confinement claim; confinement belongs to whoever owns the per-person
+  secret store.
 
 ## See Also
 
