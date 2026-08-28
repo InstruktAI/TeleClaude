@@ -10,11 +10,25 @@ description: The permitted gog invocations for personal Gmail and Calendar work,
 mail and calendar, and preparing drafts. It is never reached through an MCP
 server: one pathway means one place the gates live.
 
+<!-- planned-change:personal-mail-tool-launcher -->
 Every person has their own state root under their workspace, holding their
 accounts, tokens, aliases and per-account settings. Which person's mail a
 command touches is decided entirely by that root, and it is selected for the
 agent — an agent does not choose an account, and does not see the unwrapped
 binary.
+<!-- change:personal-mail-tool-launcher -->
+Every person has their own state root under their workspace, holding their
+accounts, tokens, aliases and per-account settings. Which person's mail a
+command touches is decided entirely by that root, and the root is selected for
+the agent rather than by it: an agent cannot act as a person other than the one
+whose workspace it is in, and does not see the unwrapped binary.
+
+Within that person, an invocation names which of their own declared accounts it
+acts as. That is not free choice — the reachable set is the person's own
+declaration and nothing outside it — and it is required rather than defaulted,
+so that declaring a second account never silently changes what an existing
+invocation means.
+<!-- /planned-change:personal-mail-tool-launcher -->
 
 ## Canonical fields
 
