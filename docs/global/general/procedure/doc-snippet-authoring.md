@@ -92,8 +92,10 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
     traceable to its reason — and the reason names the invariant protected or the
     failure prevented, never a restatement of the rule. Which route is available
     depends on the taxonomy: where the type has a `Rationale` section the reason
-    goes there, or inline in one clause. Where the type has none — procedure,
-    spec, concept — the only route is a cited principle, policy, or ADR, because
+    goes there, or inline in one clause. A `concept` carries its reasoning in `Why`,
+    which serves the same purpose under a different name. Where the type has no
+    such section — procedure and spec — the only route is a cited principle,
+    policy, or ADR, because
     `general/policy/snippet-value-contract` drops rationale from a body whose type
     provides no home for it. Reaching for an inline clause in those types is the
     common way this rule and that one are made to collide. This is what lets a future reader apply the rule to a novel case, contest
