@@ -44,8 +44,12 @@ destination inside a person workspace. That contract is the authority for who a
 session acts as.
 
 This boundary therefore performs no person resolution and accepts no parameter
-naming a person. It reads the binding the session already carries and refuses when
-the session is not in a person's workspace at all. A non-person workspace never
+naming a person. It reads the person the workspace declares of itself — the
+workspace-kind declaration that names the workspace a person's and carries that
+person's slug — and refuses when the session is not in a person's workspace at
+all. That declaration is the binding's only source: a path is not identity, and
+inferring a person from a directory name is the impersonation surface the
+declaration exists to close. A non-person workspace never
 becomes a mail execution origin, and the boundary never opens a workspace other
 than the one it is running in. Consuming that binding rather than re-deriving it is
 what keeps the conduct policy's scope — an agent acting in that person's workspace —
@@ -64,6 +68,14 @@ surveyed rather than invented.
   exposes token export, import, and delete operations over stored refresh
   credentials, and accepts a short-lived access token directly, bypassing stored
   refresh credentials entirely.
+- **Reference implementation** — a password-store import extension that moves
+  credentials between stores: it establishes the shape this migration follows,
+  in which the destination store must exist and be usable before import, and
+  entries are transferred through the tools' own export and import paths rather
+  than by reaching into either store's format. This design adopts that shape and
+  differs in one respect: it also evicts from the source, because the source here
+  is a shared store whose continued possession of the credential is the defect
+  being repaired.
 - **The surveyed alternative** — the broker credential-source pattern: a service
   owns refresh state and returns a short-lived access token per request, so the
   runtime holds no refresh credential, with single-flight refresh per identity to
@@ -141,24 +153,34 @@ contain.
 - A connector's state location and its secret store are separate concerns, and
   directing the first without confining the second yields no isolation at all.
 
-### Attributing an instructed send
+### The send gate, in two regimes
 
-Distinguishing an instructed send from initiative cannot be read from session
-state: identity carries the session, its token, and its roles, and none of them
-records what the person asked for. Nor can attendance stand in for it — a human
-being present is not a human having asked.
+No context publishes a fact carrying what a person asked for, so instruction
+itself is not readable at the boundary. Attendance is: whether a human is present
+to the session is an authority-backed fact the identity context already owns, and
+the boundary consumes it rather than inferring it. The gate therefore has two
+regimes, and only one of them is structural.
 
-The attribution is therefore an explicit declaration the agent makes per
-invocation, following the platform's established shape for exactly this problem:
-the involvement declaration on commits is likewise the acting agent's own
-statement, never derived, defaulting to the safe value when absent, and answered
-by the durable record when false. Absence of the declaration refuses the send. An
-unattended run cannot carry one, because no instruction can exist there, so the
-unattended case needs no separate rule.
+**Where attendance cannot be established, sending is made impossible at the
+tool.** The invocation is constructed with the connector's own send-blocking
+lever engaged, so the process that runs cannot send whatever it is asked to do,
+and no declaration by the acting agent lifts it. Where a connector offers no such
+lever, no send-capable invocation is constructed for it at all. This is what
+carries the conduct policy's requirement that the tool an unattended run uses
+cannot send.
 
-This is detection rather than prevention, and it is the same guarantee the
-platform already accepts elsewhere: an agent can declare falsely, and the
-declaration makes that falsehood attributable to the session that made it.
+**Where attendance is established, sending is available and the claim is
+recorded.** Every send carries the acting agent's declaration that the person
+asked for it — the same shape as the platform's involvement declaration on
+commits: the agent's own statement, never derived, absent by default, and
+answered by the durable record when false. The conduct policy's mandate rule
+governs the judgment; this boundary makes the claim attributable rather than
+preventing a false one.
+
+The asymmetry is the conduct policy's own: it holds that an assistant which
+cannot send when told is a worse tool for no gain in safety, since the person
+could send it themselves in the same breath. Prevention is therefore spent where
+no instruction can exist, and attribution where one can.
 
 ## Primary flows
 
@@ -185,10 +207,17 @@ account authorized earlier keeps its credential in the shared store and stays
 reachable from anywhere, so confinement is not reached for that account until its
 credential is moved into the person's own store and removed from the shared one.
 
-**Owner.** The migration is a configuration-context operation over person data,
-executed once per already-authorized account. It is not part of an invocation:
-the boundary refuses to run an unconfined account rather than migrating it
-inline, so a mail command never becomes a credential mutation.
+**Owner.** The migration belongs to integration, not to configuration: what
+moves is external-provider credential state whose lifecycle and operations change
+with the connector, and configuration owns the declared account input and nothing
+about the credential behind it. It is published as an operator-invoked operation
+over one person and account, exposed on the platform's own command surface rather
+than as a connector flag, and it consumes validated person and account inputs
+like any other crossing.
+
+It is not part of an invocation: the boundary refuses to run an unconfined
+account rather than migrating it inline, so a mail command never becomes a
+credential mutation.
 
 **Ordering, and why it is import-before-evict.** Import into the person's store
 precedes eviction from the shared one. The reverse order has a window in which
@@ -218,9 +247,9 @@ environment-scoped secrets and is already excluded from version control; it is
 readable only by its owner; and it is removed once import is confirmed.
 
 Crash recovery removes it too: any intermediate left by an interrupted run is
-deleted before the run proceeds rather than reused, because a re-run re-exports
-and a retained one is both an unowned secret and possibly a credential rotation
-has already invalidated.
+deleted before the run proceeds rather than reused, per
+`software-development/policy/security-awareness` §Secrets management, and because
+a re-run re-exports there is nothing to salvage from one.
 
 Nothing else carries the credential: it is not placed in the arguments the
 migration constructs, and not written out in any report it produces. A failure
@@ -258,7 +287,8 @@ names the account and the step, never the credential.
 
 ## Sources
 
-- [Proposal: generic OAuth broker credential source](https://github.com/NousResearch/hermes-agent/issues/23944) — the broker credential-source pattern surveyed as the reference implementation.
+- [pass-import](https://github.com/roddhjav/pass-import) — the implemented credential-store import extension whose transfer shape this migration adopts.
+- [Proposal: generic OAuth broker credential source](https://github.com/NousResearch/hermes-agent/issues/23944) — the broker pattern surveyed as the alternative; an open proposal, not an implementation.
 - [Multi-agent OAuth refresh race on a shared auth store](https://github.com/openclaw/openclaw/issues/3611) — the comparable deployment whose shared credential store revoked valid credentials.
 - [Token isolation is the easy half of multi-tenant OAuth](https://workos.com/blog/multi-tenant-oauth-beyond-token-isolation) — the per-tenant key-wrapping architecture and the refresh-lifecycle half it names as harder.
 
