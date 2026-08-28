@@ -115,7 +115,8 @@ And a human administrator operating the maintenance surface
 When the administrator assigns the person to that project
 Then the declaration is refused at the point it is written
 And the refusal names the company the person does not belong to
-And nothing is persisted for that person
+And no assignment declaration is persisted for that person
+And the person's existing membership declarations remain unchanged
 ```
 
 ## Known caveats
