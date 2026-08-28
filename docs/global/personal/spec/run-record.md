@@ -56,17 +56,15 @@ thing a later sweep can see and act on, where a silently missing record is not.
   what it covered and neither edits the other, so coverage is what their closed
   windows together contain. Nothing here is a lock, and an open record is not one:
   it says a run started, not that another may not.
-- **Overlap is absorbed per message, not prevented.** Coverage merges; actions do
-  not. Each action is therefore checked against its own result rather than against
-  a record of having performed it: a reply is not drafted where a draft addressing
-  that message already exists, and a disposition is not decided again where one
-  already stands. No marker is written ahead of the work it describes, and none
-  needs to be, since the work is what is looked for.
+- **Overlap is absorbed per message, not prevented.** Every action is checked
+  against its own result, never against a record of having performed it: a reply
+  is not drafted where a draft addressing that message already exists, and a
+  disposition is not decided again where one already stands. No marker is written
+  ahead of the work it describes.
 - **A run that dies leaves its window open.** An unclosed window claims no
-  coverage, so what it touched is read again by a later run. That re-reading is
-  the recovery path, and it is safe because every action is checked against its
-  own result. What a failed run leaves behind is work already done, never a claim
-  that work was done.
+  coverage, and what it touched is read again by a later run. That re-reading is
+  the recovery path. A failed run leaves work already done, never a claim that
+  work was done.
 - **It is kept only while it can still teach.** A record becomes disposable when
   it carries the mark saying its lessons were folded into what is known about the
   person's senders, and not before. An unmarked record is kept however old it is,
