@@ -39,9 +39,11 @@ A path is touched by being **read** as well as by being written. So the intersec
 
 <!-- change:tier-aware-commit-authority -->
 
-The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation's context-root subtree)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
+The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
-The third term is what separates sessions working under different context roots of one repository: a path outside the invoking context root's subtree is absent from the scope whatever the transcript claims, so another person's, another company's, the home's own, and a nested foreign root's work cannot be carried. Within a single context root the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
+A context root's **own material** is what lies under it minus what lies under any nested root that establishes a context of its own. The two halves answer different failures and neither substitutes for the other. Containment under the acting root is what separates sessions working under *different* context roots of one repository: another person's context, the global context's own material, and company material all sit outside the acting root, so a path there is absent from the scope whatever the transcript claims. Subtraction of nested roots is what excludes a *foreign root inside* the acting one — a person-owned project keeping its own repository, say — which containment alone cannot reach, because such a root sits within the very subtree the first half admits.
+
+Within a single context root, and outside any nested root, the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
 
 <!-- /planned-change:tier-aware-commit-authority -->
 
@@ -182,7 +184,7 @@ And the mandated TeleClaude trailer is appended to the message if absent (idempo
 Given an agent session whose transcript has touched paths {P1, P2, ..., Pn}
 And another agent session is concurrently live on the same shared checkout
 When the agent invokes `telec code commit --approved "<message>"`
-Then the resolved scope = (touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's subtree)
+Then the resolved scope = (touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material)
 And new untracked paths in scope are dropped from the pathspec
 And the final commit runs with pathspec = (scope minus untracked-not-staged)
 And anything else in the index (foreign-staged, crash residue) is left untouched
@@ -681,7 +683,7 @@ And material owned by another context, a foreign nested root, or excluded from t
 #### UC-NCR-6 — Containment outranks the session's own path set
 
 ```
-Given an agent session whose transcript-derived path set names a dirty path outside its context root's subtree
+Given an agent session whose transcript-derived path set names a dirty path outside its context root's own material
 When the agent inspects its scope and commits
 Then that path is absent from the reported scope
 And the commit does not carry it
