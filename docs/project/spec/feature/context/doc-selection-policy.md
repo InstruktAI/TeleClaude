@@ -140,6 +140,7 @@ And global-scoped snippets are excluded
 
 #### UC-DSP3: Project filter keeps only the queried project's snippets
 
+<!-- planned-change:docs-tier-layering -->
 ```
 Given --project <slug> matching a registered project in the cross-project catalog
 When the Selection policy applies the project filter
@@ -147,6 +148,16 @@ Then only snippets whose source project is <slug> are returned
 And global snippets and the current project's snippets are excluded
 And the filter composes with --areas, --domains, --baseline-only, --scope, and --target
 ```
+<!-- change:docs-tier-layering -->
+```
+Given --project <slug> matching a registered project in the cross-project catalog
+And the caller is authorized to name a tier explicitly
+When the Selection policy applies the project filter
+Then only snippets whose source project is <slug> are returned
+And global snippets and the current project's snippets are excluded
+And the filter composes with --areas, --domains, --baseline-only, --scope, and --target
+```
+<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP4: Project filter on an unknown slug returns nothing
 
@@ -209,28 +220,29 @@ And the project's declaration of its owner still brings that company's tier into
 ```
 Given an agent session running under the identity of a person holding a declared relationship to a company that owns several projects
 And that person is assigned to one of those projects
-When the Selection policy resolves those projects
-Then the assigned project is included in full
-And the company's other projects are read as tiers the identity holds no relationship to
+When the Selection policy resolves the caller's project set
+Then the assigned project enters that set and is read in full
+And the company's other projects do not enter it, because belonging to the company brings no project into reach
 ```
 
-#### UC-DSP13: A platform administrator reaches a named person or company tier
+#### UC-DSP13: A platform administrator reaches any named tier
 
 ```
 Given an agent session running under the identity of a platform administrator
-And the session names another person's tier or a named company's tier explicitly
+And the session names a person, a company, or a project tier explicitly
 When the Selection policy resolves the request
 Then that named tier is returned in full
 ```
 
-#### UC-DSP17: A non-administrator is refused the person and company selectors
+#### UC-DSP17: A non-administrator is refused every tier selector
 
 ```
 Given an agent session running under the identity of a person who is not a platform administrator
-And the session names another person's tier or a named company's tier explicitly
+And the session names a person, a company, or a project tier explicitly
 When the Selection policy resolves the request
 Then the selector is refused
 And the refusal does not fall back to a narrower read of that tier
+And naming a tier by a snippet identity rather than by a selector is refused the same way
 ```
 
 #### UC-DSP14: Membership in several companies stays unambiguous

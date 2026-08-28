@@ -116,11 +116,21 @@ def expand_requires(snippet_id, visited=set()):
 
 ### 4. Scope Priority Ordering
 
+<!-- planned-change:docs-tier-layering -->
 | Scope   | Priority | Rationale                                   |
 | ------- | -------- | ------------------------------------------- |
 | global  | 1        | Foundational policies apply universally     |
 | domain  | 2        | Domain-specific rules constrain projects    |
 | project | 3        | Project details reference global foundation |
+<!-- change:docs-tier-layering -->
+| Scope   | Priority | Rationale                                        |
+| ------- | -------- | ------------------------------------------------ |
+| global  | 1        | Foundational policies apply universally          |
+| domain  | 2        | Domain-specific rules constrain everything below |
+| company | 3        | A company's rules constrain its own work         |
+| project | 4        | Project details reference the foundations above  |
+| person  | 5        | The individual's own material is closest to them |
+<!-- /planned-change:docs-tier-layering -->
 
 <!-- planned:docs-tier-layering -->
 ### 5. Caller-Scope Resolution
@@ -140,12 +150,20 @@ caller and passes it inward; it decides no reach. The resolution stage decides.
 Catalog loading executes what it decided. A surface that inspects a relationship
 to choose what to load has taken a decision that is not its own.
 
-**Selector authorization.** Naming a person or a company tier explicitly is
-reserved to platform administrators, and the refusal is a refusal rather than a
-silent narrowing — a caller who may not use the selector is told so instead of
-receiving a smaller answer that looks like the tier is empty. This gate lives
-here rather than with command clearance: clearance authorizes a verb, and this
-authorizes what one argument to that verb may reach.
+**Selector authorization.** One rule covers every selector that names a tier —
+a person, a company, or a project: naming a tier explicitly is reserved to
+platform administrators. A caller who is not one reads their derived scope,
+narrowed by the filters that name no tier. Reaching a named tier by its
+snippet's identity rather than by a selector is the same act and meets the same
+rule; otherwise the identity form becomes a way around the selector.
+
+The refusal is a refusal rather than a silent narrowing — a caller who may not
+name a tier is told so instead of receiving a smaller answer that looks like the
+tier is empty. Naming a tier that does not exist returns nothing, which is not a
+refusal and discloses nothing about a tier's existence.
+
+This gate lives here rather than with command clearance: clearance authorizes a
+verb, and this authorizes what one argument to that verb may reach.
 
 ### 6. Tier-Qualified Identity
 
@@ -168,11 +186,14 @@ tier marker in front and the identity behind it is what avoids that collision.
 
 ### 7. Tier Catalog Construction
 
-Every tier that carries documentation has its catalog built by the same
-publication pass that builds the project and global catalogs. Whether a
-non-project tier carries documentation is read from that tier's own capability
+Every tier whose material participates in the documentation surface has its
+catalog built by the same publication pass that builds the project and global
+catalogs. Whether a non-project tier participates is read from that tier's own
 declaration, never inferred from its location on disk — inferring it from
 location is the meaning-from-location model the tier design exists to remove.
+Participation is answered per tier by the tier-permissions contract, on an axis
+independent of whether the tier is an invocation context or carries project
+subscriptions.
 
 A tier whose catalog is never built is indistinguishable from a tier holding no
 content, and a builder that nothing calls produces exactly that. Construction is

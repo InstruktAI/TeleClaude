@@ -15,9 +15,19 @@ The Index is the authoritative pre-computed catalog of every Source snippet in
 a scope.
 
 
+<!-- planned-change:docs-tier-layering -->
 Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
 each Source's path, renders portable paths, and writes per-scope `index.yaml`
 files — one for the project, one for global baseline, one for third-party.
+<!-- change:docs-tier-layering -->
+Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
+each Source's path, renders portable paths, and writes one `index.yaml` per
+catalog: the project, the global baseline, third-party, and one for every person
+and company tier whose declaration says its material participates in
+documentation. A tier that participates and has no catalog is indistinguishable
+from a tier holding nothing, so construction covers every participating tier
+rather than a fixed list.
+<!-- /planned-change:docs-tier-layering -->
 
 
 The
@@ -141,8 +151,8 @@ And an agent session permitted to read that tier finds the Source in it under an
 ```
 Given a tier that is not a project
 When the index build decides whether to build a catalog for it
-Then the decision reads that tier's own capability declaration
-And a tier whose declaration does not carry documentation gets no catalog
+Then the decision reads that tier's declared participation in the documentation surface
+And a tier whose material does not participate gets no catalog
 And the decision is never inferred from the tier's location on disk
 ```
 <!-- /planned:docs-tier-layering -->
