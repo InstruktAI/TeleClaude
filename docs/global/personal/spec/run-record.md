@@ -17,8 +17,7 @@ rather than by name, like everything else there. It is the person's data and nev
 leaves their workspace.
 
 A record is opened when a run starts and closed when it ends. Records are only
-ever added, never revised by a later run, so runs that overlap produce two
-records rather than a contested one.
+ever added, never revised by a later run.
 
 ## Canonical fields
 
@@ -52,19 +51,17 @@ thing a later sweep can see and act on, where a silently missing record is not.
 
 ## Known caveats
 
-- **Runs do not exclude each other.** Two sweeps may run at once. Each records
-  what it covered and neither edits the other, so coverage is what their closed
-  windows together contain. Nothing here is a lock, and an open record is not one:
-  it says a run started, not that another may not.
-- **Overlap is absorbed per message, not prevented.** Every action is checked
-  against its own result, never against a record of having performed it: a reply
-  is not drafted where a draft addressing that message already exists, and a
-  disposition is not decided again where one already stands. No marker is written
-  ahead of the work it describes.
+- **One sweeper.** Sweeping belongs to the schedule that declares it, and runs one
+  at a time. Records accumulate across runs; they are not a device for reconciling
+  runs that overlap, because none do.
 - **A run that dies leaves its window open.** An unclosed window claims no
-  coverage, and what it touched is read again by a later run. That re-reading is
-  the recovery path. A failed run leaves work already done, never a claim that
-  work was done.
+  coverage, and the next scheduled run reads that ground again. A failed run
+  leaves work already done, never a claim that work was done.
+- **Repeated ground costs nothing.** Every action is checked against its own
+  result, never against a record of having performed it: a reply is not drafted
+  where a draft addressing that message already exists, and a disposition is not
+  decided again where one already stands. No marker is written ahead of the work
+  it describes.
 - **It is kept only while it can still teach.** A record becomes disposable when
   it carries the mark saying its lessons were folded into what is known about the
   person's senders, and not before. An unmarked record is kept however old it is,
