@@ -28,6 +28,9 @@ direct-message handlers, from the person behind the conversation, and the
 personal-assistant launch, from the person behind the authenticated caller. All
 five converge on one session-creation command.
 
+The dispatch rule's ownership is stated in this cross-cutting design. The
+agent-runtime domain anchor carries no forward architecture.
+
 ### Prior art for the derived subject
 
 The launch is a security boundary and takes an established shape rather than a
