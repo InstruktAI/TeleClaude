@@ -19,17 +19,17 @@ and no inspection that settles the question. It is inferred — from the sender,
 from the content, from what the person's own mailbox has done with that sender
 before. What follows are signals worth reading, not conditions to satisfy.
 
+The sender is a prior and not a verdict. Plenty of services emit both kinds from
+one address — a bank sends statements and marketing, a marketplace sends receipts
+and recommendations — so a per-sender answer will carry some of a mailbox and
+never all of it. Where a sender emits both, the question returns to the message.
+
 ### Signals that a message is news
 
 An account exists behind it and the person can log in and see the same fact. The
 message announces a change rather than containing one. It belongs to a recurring
 series that reads the same way each time. A machine wrote it. Nothing in it would
 be missed by someone reconstructing events from the service itself.
-
-Where a thing moves through states — ordered, shipped, delivered; requested,
-confirmed — later states imply earlier ones, so earlier ones are the first to be
-worth nothing. A pointer, not a rule: where the whole sequence lives in a
-service, the last state is news too.
 
 ### Signals that a message is the thing
 
@@ -44,12 +44,21 @@ until it mattered.
 Correlation is the strongest instrument available, and for most senders the only
 one.
 
-Read age. Mail that is old and still present has survived every pass the person
-has made; mail from this month has simply not been reached. The informative
-corpus is the old one, and its shape per sender — which classes persist for
-years, which have no survivors — says more than any single message. Where old
-account mail from a service persists and none of its old delivery mail does, that
-is the person's own answer about that service.
+Read age, but establish first that there is anything to read. Survival only means
+something where the person removes things: mail that is old and still present has
+survived their passes, and mail from this month has simply not been reached. So
+before trusting it, look at whether passes happen at all — a mailbox holding
+years of intact promotional mail has no curator, and there survival is residue
+rather than endorsement.
+
+Where that check fails the instrument is empty and says nothing. It does not
+degrade gracefully; read literally against someone who never prunes it will
+report that four-year-old marketing was valued, because it is still there. A
+person who has never curated is not an edge case here. They are the likeliest
+person to be asking for an assistant at all.
+
+Where passes do happen, the shape of the old corpus per sender — which classes
+persist for years, which have no survivors — says more than any single message.
 
 Read it the other way round on recent mail, where survivors are far more likely
 to be inattention than intent. A rule invented to explain this week's leftovers
@@ -57,8 +66,16 @@ is a rule fitted to noise.
 
 Read behaviour. Who does the person answer, how fast, and whom have they never
 once answered across everything they have sent. Which senders have ever caused
-them to do anything. A sender that has never produced an action in years is
-producing news, whatever its subject line claims.
+them to do anything.
+
+These instruments differ in kind and should not be weighed alike. Having ever
+caused an action is close to conclusive when it fires and silent for almost
+everyone — a veto with high precision and little reach, useful for the few
+senders it names and no help at all with the rest. A read or reply rate
+discriminates across the whole corpus but only where the flag still reflects
+what the person did; where they mark mail read in bulk, that rate measures when
+they last swept rather than what they opened, and it is worthless before the
+sweep line and informative after it.
 
 ### When the signals do not agree
 
