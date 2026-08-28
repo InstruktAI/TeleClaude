@@ -118,13 +118,23 @@ send, or reach that could not be determined.
 
 ### Layer placement
 
-| Responsibility                                                               | Layer                                            | Owner         |
-| ---------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
-| Entry point published on the agent tool surface                              | Artifact / tool surface                          | agent runtime |
-| Reading the session's person binding and the named account into typed inputs | Injection                                        | agent runtime |
-| Account lookup against the person's declared list                            | Core service, via configuration's published read | configuration |
-| Reach determination, prohibition application, invocation construction        | Core service                                     | integration   |
-| Store-secret retrieval and connector process execution                       | Infrastructure, behind its owning service        | integration   |
+| Responsibility                                                                                           | Layer                                            | Owner         |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
+| Entry point published on the agent tool surface                                                          | Artifact / tool surface                          | agent runtime |
+| Reading the workspace's person declaration, the named account, and the attendance fact into typed inputs | Injection                                        | agent runtime |
+| Account lookup against the person's declared list                                                        | Core service, via configuration's published read | configuration |
+| Store-secret resolution for a person                                                                     | Core service, via configuration's published read | configuration |
+| Reach determination, prohibition application, invocation construction                                    | Core service                                     | integration   |
+| Credential migration for one person and account                                                          | Core service, behind a published operation       | integration   |
+| Connector process execution and store-secret delivery to it                                              | Infrastructure, behind its owning service        | integration   |
+
+These responsibilities do not fit an existing root. The platform's adapter root
+holds inbound and outbound UI adapters, and its integration core holds the
+code-delivery state machine; neither is a home for connector invocation, and
+placing this there would make a cohesive concern a tenant of an unrelated one.
+The connector boundary is therefore a new module under the integration context,
+and the plan names it as new rather than adapting a root whose subject is
+something else.
 
 The integration core receives fully resolved typed inputs and reads neither the
 environment nor the filesystem to fill them; that resolution is the injection
@@ -236,6 +246,34 @@ re-running from the start reaches the terminal state from any of them without
 re-consent. The terminal state is observable directly: the account resolves from
 the person's store and no longer resolves from a state root carrying only the
 connector's client identification.
+
+### Where the store secret comes from
+
+Confinement needs a per-person secret, and none exists in the platform today: the
+person configuration model declares none, and agent-session environment assembly
+draws on global and project allowlists rather than person configuration. The
+design states the contract rather than assuming one.
+
+**Owner and persistence.** Configuration owns it, as it owns the person's other
+credential-adjacent data, and it is held with that person's data rather than in
+the global entry, which already refuses credentials-adjacent keys. It is
+generated when a person's connector state is first confined rather than chosen by
+a human, since nothing about it is a preference.
+
+**Retrieval.** Configuration publishes a typed read returning the secret for one
+person to a caller already holding that person's validated binding. Both the
+invocation boundary and the migration consume that read; neither reaches the
+person's files directly, and no caller can ask for a person other than the one it
+is bound to.
+
+**Rotation.** Rotation re-keys the person's store through the connector's own
+export and import path — the same transfer the migration performs — so it carries
+no mechanism of its own and inherits the same crash states. It is not scheduled;
+it exists so a disclosed secret has a remedy.
+
+**Not in the session environment.** The secret reaches the connector process the
+boundary spawns and nothing else. It is not added to the agent session's own
+environment, where every later command in that session would inherit it.
 
 **Secret surfaces, including the intermediate the connector requires.** The
 credential moves between stores through the connector's own export and import
