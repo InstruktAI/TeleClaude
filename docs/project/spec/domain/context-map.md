@@ -58,6 +58,14 @@ contracts and never creates shared ownership.
 <!-- /planned-change:telec-code-dirty-path-owners -->
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
+
+<!-- planned:docs-tier-layering -->
+- `context` resolves a caller's documentation reach from `identity`'s resolved
+  person and `config`'s declared person-to-company and person-to-project
+  relationships. Those two contexts own the declarations and their meaning;
+  `context` owns only what a given set of relationships permits a caller to
+  read, and never infers a relationship the declarations do not state.
+<!-- /planned:docs-tier-layering -->
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web
 frontend are `presentation`'s hosting surfaces. Existing placement outside

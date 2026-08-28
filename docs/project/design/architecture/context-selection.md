@@ -122,6 +122,69 @@ def expand_requires(snippet_id, visited=set()):
 | domain  | 2        | Domain-specific rules constrain projects    |
 | project | 3        | Project details reference global foundation |
 
+<!-- planned:docs-tier-layering -->
+### 5. Caller-Scope Resolution
+
+Source assembly is preceded by resolving the caller into a set of reachable
+tiers. The stage takes the resolved person from identity and the declared
+relationships from configuration, and returns the tiers in reach paired with the
+depth each is read at. Nothing downstream re-derives reach: assembly loads the
+tiers the stage named, and the include predicate applies the depth it assigned.
+
+The stage is the only place the two inputs meet, which is what keeps the
+relationship facts owned by their declaring contexts while the reach rule stays
+here.
+
+**Layer placement.** The command surface translates a call into a resolved
+caller and passes it inward; it decides no reach. The resolution stage decides.
+Catalog loading executes what it decided. A surface that inspects a relationship
+to choose what to load has taken a decision that is not its own.
+
+**Selector authorization.** Naming a person or a company tier explicitly is
+reserved to platform administrators, and the refusal is a refusal rather than a
+silent narrowing — a caller who may not use the selector is told so instead of
+receiving a smaller answer that looks like the tier is empty. This gate lives
+here rather than with command clearance: clearance authorizes a verb, and this
+authorizes what one argument to that verb may reach.
+
+### 6. Tier-Qualified Identity
+
+A snippet's identity carries its tier as the first segment. For the person and
+company tiers the identity also carries which person or which company it belongs
+to, because more than one tier of the same kind can be present in one assembled
+index at the same time — a caller belonging to several companies always
+assembles several, and an administrator naming another person's tier assembles
+theirs alongside their own. An unqualified identity would make that state
+ambiguous, so the qualification is what keeps two tiers from naming the same
+thing.
+
+This deliberately diverges from how a foreign project's identity is formed,
+where the tier marker is exchanged for the project's slug at load time. That
+form works there because exactly one project tier is ever the caller's own and
+project slugs are registered in a single manifest. Neither holds for companies:
+there is no own company, and a bare slug segment would put company identities
+into the same namespace as project identities, where a company and a project
+sharing a name would collide. Keeping the tier marker in front and adding the
+identity behind it avoids inventing that collision.
+
+The company tier's current identity form is unqualified. Changing it is free
+today because no company snippet exists anywhere on disk, and the cost of
+changing it rises with the first one authored.
+
+### 7. Tier Catalog Construction
+
+Every tier that carries documentation has its catalog built by the same
+publication pass that builds the project and global catalogs. Whether a
+non-project tier carries documentation is read from that tier's own capability
+declaration, never inferred from its location on disk — inferring it from
+location is the meaning-from-location model the tier design exists to remove.
+
+A tier whose catalog is never built is indistinguishable from a tier with no
+content, which is the failure the company tier has been in since it landed: its
+builder exists, nothing calls it, and no company catalog has ever been written.
+Wiring construction is therefore part of introducing a tier, not a later step.
+<!-- /planned:docs-tier-layering -->
+
 ## Failure modes
 
 - **Snippet Not Found**: Requested ID not in index. Returns error with missing ID list. Client must re-select.
@@ -130,3 +193,15 @@ def expand_requires(snippet_id, visited=set()):
 - **Index Not Found**: `docs/index.yaml` missing. Returns empty result with error message. Agent cannot proceed.
 - **Context Too Large**: Expanded content exceeds AI context window. No automatic truncation. Client must reduce selection.
 - **Session Context Loss**: Persisted IDs not found in index after regeneration. Falls back to phase 1 discovery.
+
+<!-- planned:docs-tier-layering -->
+- **Unresolvable Caller**: The call carries no identity that resolves to a
+  person. The caller holds no relationship to any tier and reads only what
+  snippets declare public. Absent identity never widens a read.
+- **Declared-but-absent tier**: A relationship names a person or company with no
+  configuration present. The misconfiguration is surfaced rather than silently
+  producing an empty tier, which is indistinguishable from a correctly empty one.
+- **Scope read from location**: Deriving reach from the working directory
+  produces an authorization answer that changes when someone changes directory,
+  which is not an authorization answer at all.
+<!-- /planned:docs-tier-layering -->

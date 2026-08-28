@@ -31,6 +31,24 @@ replacement architecture is authoritative only in TeleClaudeNext.
 - **Published contracts:** validated snippet and artifact packages, publication
   indexes, and context-selection results.
 
+<!-- planned:docs-tier-layering -->
+- **Also owns:** the resolved read scope — which documentation tiers a caller
+  may reach, how deeply each is read, and the authorization of the selectors
+  that name a tier explicitly. These are rules about documentation reach, so
+  they resolve here rather than to the contexts that supply their inputs.
+- **Also does not own:** the relationships those rules read. Which companies a
+  person belongs to, which projects they are assigned to, and which company owns
+  a project are declarations belonging to `config`; which person a call resolves
+  to belongs to `identity`. This context consumes all four through their
+  published contracts and restates none of them.
+
+**Resolved read scope** — for one caller, the set of documentation tiers in
+reach paired with the depth each is read at. Depth is one of two values: a tier
+the caller holds a declared relationship to is read in full, and a tier they
+hold none to is read at whatever its snippets declare about themselves. The
+scope is a property of the caller, never of the invocation's directory.
+<!-- /planned:docs-tier-layering -->
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

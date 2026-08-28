@@ -16,7 +16,16 @@ Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path
 - `id` — unique snippet identifier. **Derived** from the snippet's path below the docs root.
 - `type` — taxonomy type (see table below). **Derived** from the taxonomy directory path and checked against the H1 type-suffix by validation.
 - `domain` — knowledge domain (`general`, `<domain>` such as `software-development`, or `project`). **Derived** as the first path segment of the id.
+<!-- planned-change:docs-tier-layering -->
 - `scope` — `global` or `project`. **Derived** from the path (`docs/global/**` → `global`, `docs/project/**` → `project`).
+<!-- change:docs-tier-layering -->
+- `scope` — the tier the snippet belongs to: `global`, `project`, `person`, or
+  `company`. **Derived** from the path. Snippets under a person's or a company's
+  documentation tree carry that tier and an identity that names which person or
+  which company, because more than one tier of the same kind can be assembled
+  into a single index at once and an unqualified identity would be ambiguous
+  between them.
+<!-- /planned-change:docs-tier-layering -->
 
 Frontmatter (required, authored):
 
@@ -24,7 +33,15 @@ Frontmatter (required, authored):
 
 Frontmatter (optional, authored):
 
+<!-- planned-change:docs-tier-layering -->
 - `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
+<!-- change:docs-tier-layering -->
+- `visibility` — access classification: `public` or `internal`. Defaults to
+  `internal` when omitted. It gates a caller who holds no declared relationship
+  to the snippet's tier: such a caller sees only `public` snippets. A caller who
+  holds a relationship to that tier reads it in full, and a platform admin reads
+  every tier in full.
+<!-- /planned-change:docs-tier-layering -->
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 
 - `delivered_by` — list of todo slugs that materialize a **brand-new** snippet's intended state. Optional and non-empty when present; absence means the snippet describes the current platform contract. A snippet carrying `delivered_by` is **pending** and `telec docs index` flags it inline with a `(delivered by: <slugs>)` suffix (never hidden; the slug name is coordination metadata, not content). `telec docs index --target <slug>` narrows the listing to one todo's new snippets. The pending **body** stays invisible until active. Lifecycle code owns roadmap relationship checks and clears `delivered_by` on delivery (see `software-development/principle/documentation-first-development` §10); `telec sync` validates frontmatter shape and indexes the source state it receives. `delivered_by` is the **only** pending-state frontmatter field. A change to an already-live snippet is **never** marked in frontmatter: its pending material lives in a companion filename (`<stem>.<slug>.md`), an in-body `&lt;!-- planned:slug --&gt;` block, or an in-body `&lt;!-- planned-change:slug --&gt;` block. The index derives the parallel `(superseded by: <slugs>)` suffix on the parent's line from companions, planned blocks, and planned-change blocks, not from any field.
@@ -115,7 +132,11 @@ do not accumulate by default.
 ## Allowed values
 
 - `type`: principle, concept, policy, procedure, design, spec, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
+<!-- planned-change:docs-tier-layering -->
 - `scope`: global, project.
+<!-- change:docs-tier-layering -->
+- `scope`: global, project, person, company.
+<!-- /planned-change:docs-tier-layering -->
 - `visibility`: public, internal. Default: `internal`.
 
 ## Known caveats
