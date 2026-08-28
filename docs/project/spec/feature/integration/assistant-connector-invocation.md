@@ -82,12 +82,13 @@ Then the state location and connection it is directed at are that person's own
 And it is never directed at a default location instead
 ```
 
-#### UC-ACI-5: An invocation is never directed at another person's stored state
+#### UC-ACI-5: An invocation never reaches an account outside its person's declaration
 
 ```gherkin
-Given two people whose assistants operate on the same machine
-When a connector invocation is made on behalf of one of them
-Then nothing it does writes to the state the other person's assistant established
+Given a connector invocation on a person's behalf
+When it reads or writes connector state
+Then it does so only for an account that person has declared
+And it does not reach state belonging to any account outside that declaration
 ```
 
 #### UC-ACI-7: A settings change is refused whether or not the command name shows it
