@@ -49,9 +49,15 @@ identity-owned and read-only; it resolves declarations and writes nothing.
 
 ## Invariants
 
-**Locality makes one rule structural and the other merely local.** An assignment
-is recorded inside the member's entry, so an assignment without a membership has
-no entry to live in — that rule is enforced by shape. The other rule is not.
+**What locality can enforce depends on the open decision.** Under the
+recommended reading — an assignment requires membership in the owning company —
+an assignment is recorded inside the member's entry, so an assignment without a
+membership has no entry to live in and that rule is enforced by shape. If the
+other answer is taken, the entry shape changes with it: a person assigned to a
+company's project without belonging to that company still needs somewhere to be
+recorded, so an entry exists with no role rather than not existing at all. The
+storage shape is therefore a consequence of the decision, not an input to it.
+The ownership rule is not enforced by locality under either answer.
 Nesting a project slug under a company constrains nothing about that project: a
 project's owner is a separate declaration on the project itself, so a roster can
 name a project any other company owns, and a project's owner can change after the
@@ -119,11 +125,10 @@ flowchart TD
     C -- no --> R2[refuse, naming the person]
     C -- yes --> D[write member entry into that company's roster]
 
-    E[operator assigns person to project] --> F{project registered<br/>and owned by this company?}
-    F -- no --> R3[refuse, naming the project or its owner]
-    F -- yes --> G{person has a member entry here?}
-    G -- no --> R4[refuse: assignment requires membership]
-    G -- yes --> H[append project to that member entry]
+    E[operator assigns person to project] --> F{project registered?}
+    F -- no --> R3[refuse, naming the project]
+    F -- yes --> G[record the assignment]
+    G -.-> P((constraints on which<br/>project and which person<br/>await the open decision))
 
     I[agent resolves a person] --> J[read every company roster]
     J --> K[collect memberships and explicit assignments]
@@ -132,6 +137,11 @@ flowchart TD
     L -- yes --> N[read project registry for that company's projects]
     N --> O[report them as covered, separately from assignments]
 ```
+
+The assignment path shows only what holds under either answer: the project must
+exist. Whether the assignment is further constrained to a project the enclosing
+company owns, and to a person already holding a membership there, is the open
+decision. Both refusal paths are authored when it lands.
 
 **Declaration** is an operator act on the company tier, reached through the
 configuration surface an administrator already uses for people. The surface is
@@ -166,9 +176,11 @@ one later is a change with its own evidence rather than a precaution taken now.
   under a company constrains which project it may name, and skipping the
   ownership check on that belief. Nesting says where the fact is stored and
   nothing about what it may reference.
-- **Checking ownership only on write.** A project's owner can change after an
-  assignment is recorded, so a write-time check alone yields a roster that was
-  valid once and silently is not.
+- **Checking ownership only on write, if ownership is constrained at all.** Under
+  the recommended reading a project's owner can change after an assignment is
+  recorded, so a write-time check alone would leave a roster that was valid once
+  and silently is not. Whether that check exists is the open decision's to
+  settle.
 - **Reading ownership from location.** A project's owner is its own declaration.
   Inferring it from the directory containing the project, or from who is
   assigned to it, produces coverage answers that change when files move.
