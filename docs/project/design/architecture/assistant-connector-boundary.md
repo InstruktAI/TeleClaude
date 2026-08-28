@@ -10,6 +10,7 @@ delivered_by:
 
 - @docs/project/spec/feature/integration/assistant-connector-invocation.md
 - @docs/project/spec/feature/config/person-mail-accounts.md
+- @docs/project/spec/teleclaude-config.md
 
 ## Purpose
 
@@ -263,11 +264,8 @@ resolution for one person, holding that person's validated binding. Neither
 reaches a person's files directly, and neither can ask for a person other than
 the one it is bound to.
 
-Two consequences follow. The secret's generation, rotation, and operator surface
-belong to that owner and are not specified here. And the owning work is currently
-frozen, so SC-9 and SC-12 have no delivery path until it is unfrozen — recorded
-as a dependency rather than worked around, because working around it would mean
-building the thing it owns.
+The secret's generation, rotation, and operator surface belong to that owner and
+are not specified here.
 
 The one property this boundary owns is where the secret goes: it reaches the
 connector process the boundary spawns and nothing else. It is never added to the
