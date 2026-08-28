@@ -35,11 +35,26 @@ The staging model is asymmetric and follows git's data model:
   are staged internally via `_stage_files` so the integrator's conflict
   resolution flow runs through the same sealed path.
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 `telec code commit` runs format then lint in-process against `quality_paths`
 (the commit pathspec filtered to existing files) before `git commit --no-verify`.
 No framework stash, no working-tree reset outside the pathspec. The installed
 `.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
 partial-staging check as a backstop for raw `git commit` invocations.
+
+<!-- change:tier-aware-commit-authority -->
+
+`telec code commit` runs the gates carried by the acting invocation context's
+declared tier. Where that tier carries project subscriptions, it runs format then
+lint in-process against `quality_paths` (the commit pathspec filtered to existing
+files) before `git commit --no-verify`; where it carries none, neither runs and
+nothing is applied in their place. No framework stash, no working-tree reset
+outside the pathspec. The installed `.git/hooks/pre-commit` is a thin telec-owned
+guard that performs only a partial-staging check as a backstop for raw
+`git commit` invocations.
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 The git wrapper redirects raw `git commit` (and `git add`) to this command
 for tmux callers.
@@ -66,6 +81,8 @@ the resolved workspace scope, and the agent must name every path it claims.
 The git wrapper enforces the intent layer for every git invocation in a
 tmux session. `telec code commit` runs on top of these guarantees.
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 Every row below presupposes the git invocation targets a telec-registered
 project that subscribes `code` or `docs` — a working tree under a checkout
 carrying `teleclaude.yml` whose manifest subscribes at least one of `code` or
@@ -75,6 +92,23 @@ worktree and branch-discipline rows additionally require `code`. When the
 project subscribes neither,
 the wrapper decides nothing from this matrix: it execs the real git binary
 unmodified, the same transparent passthrough it applies outside tmux.
+
+<!-- change:tier-aware-commit-authority -->
+
+Every row below presupposes the git invocation targets a sealed repository. A
+telec-registered project that subscribes `code` or `docs` — a working tree under
+a checkout carrying `teleclaude.yml` whose manifest subscribes at least one of
+`code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — is
+one; the commit-interception rows follow that `code ∨ docs` condition, while the
+worktree and branch-discipline rows additionally require `code`. A repository
+whose own root is a declared invocation context is also one, and there the seal
+covers the whole repository: an invocation beneath it resolving to no context root
+is refused rather than passed through. When the project subscribes neither, or the
+repository's own root carries no declaration at all, the wrapper decides nothing
+from this matrix: it execs the real git binary unmodified, the same transparent
+passthrough it applies outside tmux.
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 <!-- planned-change:capability-state-read-from-declaration -->
 
@@ -238,6 +272,8 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    call uses the real git binary (via GitPython) so the wrapper's redirect does
    not loop back into telec.
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 9. **`MERGE_HEAD`-aware commit degrades the pathspec boundary, deliberately.**
    When `MERGE_HEAD` is present (resolved via `repo.git_dir`, not a literal
    `.git/` path, so this holds inside worktrees), Invariant 3's pathspec
@@ -253,6 +289,33 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    resolved index into one atomic commit; the pathspec boundary exists to
    stop a commit from silently sweeping in unrelated concurrent state, and a
    worker's own worktree is single-owner, so that risk does not apply here.
+
+<!-- change:tier-aware-commit-authority -->
+
+9. **`MERGE_HEAD`-aware commit degrades the pathspec boundary where the tree has
+   one owner.** When `MERGE_HEAD` is present (resolved via `repo.git_dir`, not a
+   literal `.git/` path, so this holds inside worktrees), git categorically
+   refuses a pathspec-scoped commit during an active merge, independent of
+   whether the pathspec happens to cover the entire resolved index. In a
+   single-owner tree — a worker's own worktree, the integration worktree, a
+   project checkout — Invariant 3's pathspec boundary therefore does not apply:
+   `telec code commit` requires every unmerged path already resolved
+   (`telec code add`-ed) — it errors out listing any that remain rather than
+   committing an unresolved conflict — then runs the acting tier's gates over the
+   full merge diff (not the caller's pathspec) and commits with no pathspec at
+   all: `git commit -F <msg> --no-verify` with no trailing `-- <pathspec>`. The
+   degradation is safe there because `MERGE_HEAD` already forces the entire
+   resolved index into one atomic commit, and the boundary it drops exists to stop
+   a commit from sweeping in unrelated concurrent state that a single-owner tree
+   does not hold.
+
+   That premise fails in a repository whose own root is a declared invocation
+   context: such a tree is multi-context and concurrently dirty by design, so the
+   resolved index can hold another context's material. There a commit taken mid-
+   merge preserves the eligible set or is refused; it never degrades to recording
+   the whole index.
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 ## Primary flows
 

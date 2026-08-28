@@ -468,6 +468,8 @@ Then SystemExit(1) and no commit occurs
 And on any other branch SystemExit(2)
 ```
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 #### UC-CGIP-10 — Merge commit degrades to a full-index commit with no pathspec
 
 ```
@@ -479,6 +481,23 @@ And handle_format(quality_paths) is called before handle_lint(quality_paths)
 And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
 And the resulting commit records origin/main as a merge parent
 ```
+
+<!-- change:tier-aware-commit-authority -->
+
+#### UC-CGIP-10 — Merge commit degrades to a full-index commit with no pathspec in a single-owner tree
+
+```
+Given MERGE_HEAD is present (an active merge, resolved via repo.git_dir so it holds inside worktrees)
+And the repository's own root is not a declared invocation context
+And every conflicted path has been resolved and staged (no remaining unmerged-index entries)
+When agent invokes telec code commit --approved "<msg>"
+Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
+And the acting tier's gates run over quality_paths, format before lint where that tier carries them
+And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
+And the resulting commit records origin/main as a merge parent
+```
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 #### UC-CGIP-11 — Unresolved conflict during merge commit is rejected
 
