@@ -20,7 +20,7 @@ The seal is scoped to telec-registered projects that subscribe `code` or `docs` 
 
 <!-- change:tier-aware-commit-authority -->
 
-The seal is scoped to context roots that are commit-capable. A telec-registered project subscribing `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) is one — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and so is a declared non-project context root whose declaration carries commit capability. When the working directory carries no such declaration, or carries one that establishes no commit capability, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. A context carrying none keeps ordinary git.
+The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `project/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Where invocation resolves to no context root — a plain git repo carrying no declaration, or a declaration that establishes no invocation context — the wrapper enforces nothing and execs the real git binary unmodified, the same transparent passthrough it applies outside tmux.
 
 <!-- /planned-change:tier-aware-commit-authority -->
 
@@ -159,6 +159,8 @@ But with no such reviewer open the gate prints only the form that starts one
 ```
 <!-- /planned-change:split-review-routing-from-sync-scope -->
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 #### Approved commit produces a pathspec commit on the resolved scope
 
 ```
@@ -171,6 +173,23 @@ And the final commit runs with pathspec = (scope minus untracked-not-staged)
 And anything else in the index (foreign-staged, crash residue) is left untouched
 And the mandated TeleClaude trailer is appended to the message if absent (idempotent)
 ```
+
+<!-- change:tier-aware-commit-authority -->
+
+#### Approved commit produces a pathspec commit on the resolved scope
+
+```
+Given an agent session whose transcript has touched paths {P1, P2, ..., Pn}
+And another agent session is concurrently live on the same shared checkout
+When the agent invokes `telec code commit --approved "<message>"`
+Then the resolved scope = (touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's subtree)
+And new untracked paths in scope are dropped from the pathspec
+And the final commit runs with pathspec = (scope minus untracked-not-staged)
+And anything else in the index (foreign-staged, crash residue) is left untouched
+And the mandated TeleClaude trailer is appended to the message if absent (idempotent)
+```
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 #### Modified-tracked files ride the pathspec without staging
 
@@ -355,10 +374,11 @@ partial-staging check as a backstop for raw `git commit` invocations.
 
 <!-- planned:tier-aware-commit-authority -->
 
-Which of those gates run is read from the acting context root's own declaration.
-Where that declaration carries project subscriptions, format and lint run as above.
-Where it carries none, neither runs and no check is applied in their place; the
-commit proceeds directly.
+Which of those gates run is read from the project-subscription axis of the acting
+invocation context root's declared tier
+(`project/spec/feature/config/tier-permissions`). Where that tier carries project
+subscriptions, format and lint run as above. Where it carries none, neither runs
+and no check is applied in their place; the commit proceeds directly.
 
 <!-- /planned:tier-aware-commit-authority -->
 
@@ -667,23 +687,31 @@ Then that path is absent from the reported scope
 And the commit does not carry it
 ```
 
-#### UC-NCR-7 — The seal holds at a commit-capable context root that is not a project
+#### UC-NCR-7 — The seal holds at an invocation context root that is not a project
 
 ```
-Given a context root that is commit-capable and is not a telec-registered project
+Given an invocation context root whose tier carries no project subscriptions
 When an agent working there invokes raw `git commit` or `git add`
 Then the wrapper refuses and points at the sealed surface
 And the raw invocation produces neither a commit nor a staged change
 ```
 
-#### UC-NCR-8 — A context declaring no project subscriptions commits with no gates and no substitute
+#### UC-NCR-8 — An invocation context carrying no project subscriptions commits with no gates and no substitute
 
 ```
-Given an agent working in a context root whose declaration carries no project subscriptions
+Given an agent working in an invocation context root whose tier carries no project subscriptions
 And that context root has changes in scope
 When the agent commits through the sealed surface
 Then no subscription-gated check runs, and no check is applied in place of one
 And the commit is produced
+```
+
+#### UC-NCR-9 — A context root that is also the repository root is unchanged
+
+```
+Given an agent session whose invocation context root is itself the root of the repository containing it
+When the agent inspects its changes and commits through the sealed surface
+Then the reported paths and the commit's contents are what they were before the context root became a separate coordinate
 ```
 
 <!-- /planned:tier-aware-commit-authority -->
