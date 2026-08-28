@@ -12,7 +12,7 @@ business:
     - slug: creative
       trigger: Generating images, designing visuals, or producing creative or moodboard artifacts
     - slug: personal
-      trigger: Acting as someone's personal assistant on their own mail, calendar, and standing instructions
+      trigger: Work on a person's own mail, calendar and standing instructions. Only an agent started in that person's own workspace does this; asked elsewhere, an agent spawns one there rather than serving it.
 
 # TeleClaude's own checkpoint maintenance, dogfooded through the same project
 # overlay it hands every onboarded project. The platform-universal base (docs →

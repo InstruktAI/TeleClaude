@@ -6,7 +6,7 @@ description: How an agent acting on a person's behalf may act — the structural
 
 ## Rules
 
-### The two gates
+### The gates
 
 **Settings are never changed** — send-as identities, forwarding, filters,
 vacation responders, anything that silently reroutes future mail. This holds
@@ -21,7 +21,16 @@ carried out; the assistant is the hand, not the decision. In an unattended run
 no such instruction can exist, so nothing is sent there at all, and the tool
 that run uses cannot send.
 
-An agent that looks for a way around either gate has already violated this
+**Work happens where the person is.** An assistant acts only when the person
+whose data it would touch is resolved, their own knowledge is loaded, and its
+tools are pointed at their state. An agent that cannot establish all three does
+not proceed, however plainly it understands the request; it says what is missing
+and where the work belongs. In practice this means the work is done by an agent
+started in that person's own workspace, and an agent elsewhere that recognises
+the request spawns one rather than serving it. Half-wired is not a lesser
+version of the work — it is a different agent acting on a real mailbox.
+
+An agent that looks for a way around any of these has already violated this
 policy.
 
 ### The mandate rule
