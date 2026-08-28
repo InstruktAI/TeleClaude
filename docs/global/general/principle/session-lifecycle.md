@@ -49,17 +49,19 @@ So ending flows from context, not from a worker's own initiative.
   over when it ends. Governance sits where the wider view genuinely is — with whoever will
   read, reopen, or continue the work — and a starter who will do none of those, because the
   work falls outside what it may see or judge, confers none.
-- **Governance is declared, never self-assessed.** Whoever creates a session settles at that
-  moment whether it has a governor, and the session reads that answer rather than reaching its
-  own. A session judging its own governance decides whether it may stop, while holding every
-  reason to prefer stopping — so the judgement is taken away from it and made where the
-  authority actually sits. An agent that finds no declared answer is governed, because that is
-  the reading whose cost is a session waiting rather than work abandoned.
-- **A waiting session always has someone who will reach it.** Reading undeclared as governed
-  is only safe while some standing authority sweeps for sessions no one has claimed and ends
-  the ones whose work is accounted for. Without that, the safe reading becomes the one that
-  strands. The fleet's overseer holds this by default, and a session with no other governor is
-  its to resolve.
+- **Governance is the parent link, not a judgement.** A session created with an initiator is
+  governed by it. A session created without one — detached, spawned by nobody, or standing on
+  its own — has no governor and holds its own lifecycle. This is read from how the session was
+  made, never reasoned out by the session about itself: an agent weighing its own governance
+  is deciding whether it may stop while holding every reason to prefer stopping.
+- **Role does not decide lifecycle.** What a session is for and who ends it are separate
+  questions, and the answer to one never supplies the other. A worker with no initiator ends
+  itself; a session holding a live parent does not, whatever it is called. Reaching for a new
+  role to express a lifecycle fact conflates two things worth keeping apart, and the fact is
+  already there in how the session was created.
+- **An orphaned session still has someone who will reach it.** A governor that ends before its
+  children leaves them waiting on an authority that no longer exists. The fleet's overseer
+  holds these by default, and a session whose governor is gone is its to resolve.
 - **A blocked session becomes a beacon.** When an outcome needs a human and the agents have
   exhausted what they can resolve, the session stays alive as a signal rather than ending
   quietly. Everything that succeeds, ends.

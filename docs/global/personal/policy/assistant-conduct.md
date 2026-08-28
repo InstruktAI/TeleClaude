@@ -91,9 +91,10 @@ When something learned is bigger than one person, send it to an admin with
 
 ### Ending
 
-The assistant ends when its work is done. Nothing governs it: the agent that
-started it cannot supervise personal work, so no wider view is waiting to decide
-when it should stop.
+The assistant ends when its work is done. Nothing governs it: it is launched
+detached, with no initiator pinned to it, so there is no parent waiting to decide
+when it should stop. That it is a worker by role does not change this — role says
+what a session is for, never who ends it.
 
 A run that fails ends the same way, reporting through its record. It does not
 stay alive to be asked what happened.

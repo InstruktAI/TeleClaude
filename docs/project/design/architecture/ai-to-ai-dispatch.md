@@ -48,6 +48,9 @@ This design covers the dispatch journey. Storage internals for the listener regi
   `start` refuse a path resolving inside one.
 - **No caller identity, no launch.** A caller resolving to no person is refused,
   never defaulted.
+- **The launched session is detached.** No initiator is pinned to it and no
+  listener is registered for it, so it has no governor and ends itself. The
+  caller's identity resolves the person and does not become a parent link.
 <!-- /planned:personal-assistant-launch -->
 - **Initiator pinning.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. This is the canonical link from child to parent and survives daemon restart.
 - **Listener kind.** Dispatch registers a persistent listener (`one_shot=false`). Repeat dispatches against the same target are deduplicated by `(caller, target)`.
