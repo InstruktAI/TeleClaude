@@ -35,6 +35,11 @@ The prohibitions belong to the conduct policy and the account declaration to the
 configuration that owns person data. This contract owns neither; it owns what
 happens at the boundary where an external connector is actually reached.
 
+The two prohibitions do not reach equal strength. Settings are refused outright.
+Sending is made impossible only where no person is established as present to
+instruct; where one is, nothing published carries what that person asked for, so
+the boundary records an attributable claim rather than preventing a false one.
+
 **Business value:** a connector that isolates nothing will, on a missed
 configuration, act as the wrong identity and leave one person's credentials
 where another's assistant finds them. Placing account binding, state direction
@@ -92,13 +97,13 @@ When a connector invocation is made on behalf of one of them
 Then nothing it does writes to the state the other person's assistant established
 ```
 
-#### UC-ACI-6: A send the person did not ask for does not leave
+#### UC-ACI-6: Sending is impossible where no one is present to ask for it
 
 ```gherkin
-Given a connector invocation on behalf of a person who has not asked for anything to be sent
+Given a connector invocation on a person's behalf where no person is established as present to instruct
 When it would cause mail to leave — whether through the connector's own send, reply, or forward operation or a generic pass-through request reaching one of those endpoints
-Then it does not reach the connector
-And the refusal states that no instruction to send was given
+Then the connector runs unable to send at all
+And no assertion carried by the invocation makes sending available
 And no mail leaves
 ```
 
@@ -153,6 +158,16 @@ And the attempt fails because the account cannot be resolved
 Given a connector whose secret store is confined by a per-person secret
 When an invocation on that person's behalf is made
 Then that secret does not appear in the invocation's arguments, nor in anything the run writes out
+```
+
+#### UC-ACI-13: A send by someone present carries an attributable claim
+
+```gherkin
+Given a connector invocation on behalf of a person established as present to instruct
+When it would cause mail to leave
+Then it proceeds only when it carries the acting agent's claim that the person asked for it
+And that claim is recorded against the session that made it
+And an invocation carrying no such claim does not send
 ```
 
 ## Known caveats
