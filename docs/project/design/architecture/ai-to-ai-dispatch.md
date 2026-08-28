@@ -54,20 +54,16 @@ This design covers the dispatch journey. Storage internals for the listener regi
 - **The brief is carried as a request made in the moment.** What `run-pa` starts
   serves that request. Work a schedule already declares is not reachable this way.
 - **Derivation and refusal sit at different layers.** The person is resolved where
-  the caller is authenticated; the destination is refused where every creation
-  path converges. Neither layer does the other's work: the authenticated edge sees
-  one route at a time, and the convergence point carries no caller identity.
-- **The refusal needs no identity because it exempts nobody.** A destination inside
-  a person workspace is refused for every caller, so the check reads only the
-  destination. This is what allows it to sit below the layer where identity stops
-  being available.
+  the caller is authenticated. The destination is refused where every creation
+  path converges. The authenticated edge sees one route at a time; the convergence
+  point carries no caller identity.
+- **The refusal reads only the destination.** No caller is exempt from it, and no
+  caller identity is consulted to apply it.
 - **The destination checked is the composed one.** A project path and any
-  subdirectory beneath it resolve to one destination before the check, so a
-  subdirectory cannot walk into a person workspace from a permitted root.
+  subdirectory beneath it resolve to a single destination before the check.
 - **Permission to land in a person workspace is constructed, never requested.** It
-  exists only on the internal command the daemon builds for `run-pa`, and no
-  request model carries it. There is therefore no field a caller can set to reach
-  a person workspace through the general verbs.
+  exists only on the internal command the daemon builds for `run-pa`. No request
+  model carries it.
 - **Person-workspace location and person resolution are consumed, not restated.**
   Which paths are person workspaces is answered by the configuration owner; which
   person a caller is resolves through the identity contract. Dispatch owns only
