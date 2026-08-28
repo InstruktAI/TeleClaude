@@ -279,7 +279,7 @@ Given an agent session running under the identity of a person holding a company 
 And that person holds no declared assignment to one of those projects
 When the Selection policy resolves the caller's project set
 Then that project does not enter the set
-And the caller reads it only as a tier they hold no relationship to
+And no identity from it is assembled for this caller
 ```
 
 #### UC-DSP13: A platform administrator reaches any named tier
