@@ -14,15 +14,19 @@ a person invokes `telec sessions run-pa "<brief>"` — a sibling of `run` and
 `start` — and the session it starts lands in that person's workspace carrying
 the brief.
 
-The call carries a brief and nothing else. The person, the workspace, and the
+The caller supplies a brief and nothing else. The person, the workspace, and the
 computer are derived from the authenticated caller, and the surface exposes no
-parameter naming a person in any form. A platform admin's invocation takes the
+parameter naming a person in any form. Asking through this call does not cause
+work that a schedule already owns to run. A platform admin's invocation takes the
 same single form and reaches that admin's own workspace. A caller that resolves
 to no person is refused rather than defaulted.
 
 The general session verbs, which each carry a target path, refuse a destination
 resolving inside a person workspace. That refusal holds whether or not the
 destination belongs to the caller's own person.
+
+The session the launch starts has no parent. Nothing waits on it and nothing
+decides its ending but itself; it reports by sending a message and then ends.
 
 ## Canonical fields
 
@@ -85,6 +89,25 @@ Given an agent recognises work that belongs to a person
 When it invokes the personal-assistant launch command
 Then it states the need in the brief and names no command or procedure to run
 And the launched session determines for itself which of the person's procedures the brief calls for
+```
+
+#### UC-PWD7: The launched session has no parent and ends itself
+
+```gherkin
+Given an agent invokes the personal-assistant launch command
+When the session it starts finishes the work the brief described
+Then no parent was recorded for that session
+And the session ends itself rather than waiting to be ended
+And anything the person needs to see was delivered as a message rather than as a result a caller collects
+```
+
+#### UC-PWD8: A schedule's work is not reachable by asking
+
+```gherkin
+Given a person's recurring work is owned by a schedule
+When an agent invokes the personal-assistant launch command with a brief that would touch that work
+Then the launched session does not run the work the schedule owns
+And the schedule remains the only thing that causes that work to run
 ```
 
 ## See Also

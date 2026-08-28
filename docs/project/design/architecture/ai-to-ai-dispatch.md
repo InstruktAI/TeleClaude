@@ -52,9 +52,26 @@ This design covers the dispatch journey. Storage internals for the listener regi
   listener is registered for it, so it has no governor and ends itself. The
   caller's identity resolves the person and does not become a parent link.
 - **The brief is carried as a request made in the moment.** What `run-pa` starts
-  serves that request. Work a schedule already declares is not reachable this way,
-  and the launch says so alongside the brief rather than leaving the assistant to
-  infer it.
+  serves that request. Work a schedule already declares is not reachable this way.
+- **Derivation and refusal sit at different layers.** The person is resolved where
+  the caller is authenticated; the destination is refused where every creation
+  path converges. Neither layer does the other's work: the authenticated edge sees
+  one route at a time, and the convergence point carries no caller identity.
+- **The refusal needs no identity because it exempts nobody.** A destination inside
+  a person workspace is refused for every caller, so the check reads only the
+  destination. This is what allows it to sit below the layer where identity stops
+  being available.
+- **The destination checked is the composed one.** A project path and any
+  subdirectory beneath it resolve to one destination before the check, so a
+  subdirectory cannot walk into a person workspace from a permitted root.
+- **Permission to land in a person workspace is constructed, never requested.** It
+  exists only on the internal command the daemon builds for `run-pa`, and no
+  request model carries it. There is therefore no field a caller can set to reach
+  a person workspace through the general verbs.
+- **Person-workspace location and person resolution are consumed, not restated.**
+  Which paths are person workspaces is answered by the configuration owner; which
+  person a caller is resolves through the identity contract. Dispatch owns only
+  the rule that binds them.
 <!-- /planned:personal-assistant-launch -->
 - **Initiator pinning.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. This is the canonical link from child to parent and survives daemon restart.
 - **Listener kind.** Dispatch registers a persistent listener (`one_shot=false`). Repeat dispatches against the same target are deduplicated by `(caller, target)`.
@@ -123,6 +140,56 @@ sequenceDiagram
     ConvDelivery->>Initiator: bundled turn output via direct link
 ```
 
+<!-- planned:personal-assistant-launch -->
+
+### 4a. Personal-assistant launch
+
+```mermaid
+sequenceDiagram
+    participant Caller as Any session
+    participant API as Sessions API
+    participant Identity as Identity contract
+    participant Config as Workspace classification
+    participant Create as Session creation
+    participant PA as Assistant tmux
+
+    Caller->>API: run-pa { brief }<br/>authenticated caller only
+    API->>Identity: resolve person for this caller
+    alt no person resolves
+        Identity-->>API: none
+        API-->>Caller: refused — no person for caller
+    else person resolves
+        Identity-->>API: person
+        API->>Config: workspace for this person
+        Config-->>API: destination
+        API->>Create: command carrying destination,<br/>person-workspace permission,<br/>and no parent
+        Create->>Create: destination is a person workspace,<br/>permission present → allowed
+        Create->>PA: spawn with the brief
+        Create-->>API: session id
+    end
+```
+
+### 4b. A general verb aimed at a person workspace
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Run as run route
+    participant Start as start route
+    participant Create as Session creation
+    participant Config as Workspace classification
+
+    Caller->>Run: run { path, subfolder }
+    Caller->>Start: start { path }
+    Run->>Create: command (no person-workspace permission)
+    Start->>Create: command (no person-workspace permission)
+    Create->>Config: is the composed destination inside a person workspace?
+    Config-->>Create: yes
+    Create-->>Caller: refused — reach it with the personal-assistant launch
+```
+
+<!-- /planned:personal-assistant-launch -->
+
 ### 4. Caller cleanup
 
 ```mermaid
@@ -147,6 +214,20 @@ sequenceDiagram
 - **Shipping `run-pa` while `run` still accepts a person-workspace path.** The
   new verb then sits beside an open door rather than replacing it, and the
   boundary it exists to enforce is no more enforced than before.
+- **Refusing on one route only.** `run` and `start` are separate routes that do
+  not meet before a session is created. A refusal placed on either alone reads as
+  enforcement while the other stays open.
+- **Checking the project path and not the composed destination.** A permitted root
+  with a subdirectory naming a person workspace lands inside one while the check
+  reports a permitted path.
+- **Treating existing detachment as absence of a parent.** Detachment and parentage
+  are independent: a detached launch still records the caller that started it and
+  only forgoes the dispatch-time subscription. A launch that reuses detachment
+  alone produces an assistant with a parent that never listens, which is neither
+  the governed shape nor the parentless one.
+- **Carrying the person-workspace permission on a request model.** Once the
+  permission is something a caller can send, the derived launch has been reduced
+  to a convention and the absence of a person parameter no longer bounds anything.
 <!-- /planned:personal-assistant-launch -->
 
 - **Worker session crashes before any turn completes.** No `agent_stop` ever fires for it; the listener row remains until caller cleanup or explicit unsubscribe. Diagnose via `telec sessions tail <worker_id>` and lifecycle status in the sessions table.
