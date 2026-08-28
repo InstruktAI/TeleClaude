@@ -109,6 +109,15 @@ Then that root's contents are not part of the home's retained set
 And asking whether a path under that root belongs to the home returns that it does not
 ```
 
+#### UC-HOME-7: Excluded material never enters the record
+
+```
+Given a home directory that is not yet under version control and holds material the retained-set rule excludes
+When the home's history is activated
+Then that material is absent from the record the activation creates
+And it is absent because it was never recorded, not because it was recorded and then dropped
+```
+
 ## Known caveats
 
 - Backup and resilience are deliberately absent. Introducing a remote,
