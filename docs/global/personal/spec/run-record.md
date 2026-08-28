@@ -51,20 +51,16 @@ thing a later sweep can see and act on, where a silently missing record is not.
 
 ## Known caveats
 
-- **One sweeper.** Sweeping is dispatched by the schedule that declares it and by
-  nothing else. Records accumulate across runs rather than reconciling them.
-- **A sweep is scheduled only where a run is not dispatched over an open one.**
-  Runs of a sweep do not overlap, and this is a requirement on the schedule rather
-  than something the record arranges. A schedule that would start a second run
-  while the first is open does not carry this work.
+- **Records accumulate.** A run adds its own and revises no earlier one.
 - **A run that dies leaves its window open.** An unclosed window claims no
   coverage, and the next scheduled run reads that ground again. A failed run
   leaves work already done, never a claim that work was done.
-- **Repeated ground costs nothing.** Every action is checked against its own
+- **Ground read again costs nothing.** Every action is checked against its own
   result, never against a record of having performed it: a reply is not drafted
   where a draft addressing that message already exists, and a disposition is not
   decided again where one already stands. No marker is written ahead of the work
-  it describes.
+  it describes, so a run that stopped midway leaves work done rather than work
+  claimed.
 - **It is kept only while it can still teach.** A record becomes disposable when
   it carries the mark saying its lessons were folded into what is known about the
   person's senders, and not before. An unmarked record is kept however old it is,
