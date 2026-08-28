@@ -126,23 +126,21 @@ contain.
   as, and never reaches into a workspace other than its own.
 - The prohibitions are applied to what an invocation is determined to reach, not
   to the name it was called by; reach that cannot be determined is refused.
-- No invocation this boundary constructs can send, and nothing an invocation
-  carries lifts that. No branch of this design distinguishes runs by who began
-  them, because no published fact separates them.
+- This boundary makes no decision about sending. No branch of this design
+  distinguishes runs by who began them or by whether anyone is present, because
+  no published fact separates them.
 - Nothing above this boundary names a vendor tool.
 - A connector's state location and its secret store are separate concerns.
   This boundary directs the first and makes no claim about the second, so
   directing state is never presented as isolation between people.
 
-### Sending is unavailable
+### Sending is left as the conduct policy governs it
 
-Every invocation is constructed with the connector's send-blocking lever
-engaged, and nothing an invocation carries lifts it. Where a connector offers no
-such lever, no send-capable invocation is constructed for it at all.
-
-The boundary does not distinguish invocations by who began the run or by whether
-anyone is present to it. No value an invocation carries, and no property of the
-session it runs in, makes sending available.
+This boundary neither enables nor withholds sending. It does not engage the
+connector's send-blocking lever, and it constructs no invocation that makes
+sending available where the connector would not have it. What restrains an
+assistant from sending on its own initiative is the conduct policy's mandate
+rule, unchanged by this boundary.
 
 ## Primary flows
 
@@ -156,7 +154,6 @@ flowchart TD
     D -- yes --> E{what does this invocation reach?}
     E -- settings --> R2[refuse: prohibition applies]
     E -- undeterminable --> R3[refuse: reach undetermined]
-    E -- a send --> R4[connector runs with sending unavailable]
     E -- nothing prohibited --> G[execute against the person's own state]
 ```
 
@@ -191,8 +188,8 @@ governs only authorizations made after it is in force.
   restriction lever, the prohibitions rest on determining reach from the
   invocation, and an unrecognized endpoint alias or encoding is read as reaching
   nothing prohibited.
-- **An assistant cannot carry out a send the person asked for.** The person sends
-  what the assistant drafted.
+- **Sending is ungated at this boundary.** An assistant sending on its own
+  initiative is restrained by the mandate rule and not by anything here.
 - **Directed state reads as isolation.** Every invocation going to its own
   person's location looks like separation between people and is not: the
   connector can still resolve an account from a store shared across the machine.
