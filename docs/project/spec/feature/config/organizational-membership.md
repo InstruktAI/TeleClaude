@@ -50,7 +50,7 @@ with a valid one.
 : A company or project that exists in the platform's own registries. Every declaration names one; a declaration naming anything else is invalid.
 
 **Company role**
-: One of `admin`, `member`, `contributor`. Every membership declaration carries one.
+: The role a person holds in the business, drawn from the platform's closed company-role vocabulary. Every membership declaration carries one.
 
 **Maintenance surface**
 : The ordinary administrator-facing configuration surface through which declarations are written and withdrawn, so no declaration requires editing a file by hand.
@@ -127,10 +127,12 @@ And the person's existing membership declarations remain unchanged
   per-person company-membership list and a per-company owner reference. Neither
   has a resolver and neither is populated. This contract is the single home for
   the owner relationship; the owner reference is not a second one.
-- The company-role vocabulary is the closed set `admin`, `member`,
-  `contributor`. `admin` is the company's own administrator and owner.
-  `contributor` names a relationship to the business that carries no stake in
-  it.
+- The company-role vocabulary is closed, and its exact values are an open
+  product decision. Scenarios here name the administrative role by its function
+  rather than by a literal value until that decision lands.
+- Whether an assignment may name a project of a company the person does not
+  belong to is an open product decision. UC-CFG-MEMBER-10 states the refusal
+  that follows if membership is required, and does not hold if it is not.
 
 ## See Also
 

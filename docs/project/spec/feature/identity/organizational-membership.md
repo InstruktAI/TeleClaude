@@ -59,13 +59,13 @@ assignment. Absence resolves to nothing, never to a default company.
 : A person's belonging to one registered company, carrying the role that person holds in that business.
 
 **Company role**
-: The role a person holds inside one business, one of `admin`, `member`, `contributor`. Independent of the platform role, and never a visibility tier.
+: The role a person holds inside one business, drawn from the platform's closed company-role vocabulary. Independent of the platform role, and never a visibility tier.
 
 **Project assignment**
 : A person's assignment to work in one registered project. Never inferred from company membership.
 
 **Company administrative role**
-: `admin` — the company role whose holder's membership covers every project that company owns, with no per-project entry. The owner of that business. The sole place a company role affects what resolution reports.
+: The company role whose holder's membership covers every project that company owns, with no per-project entry. The owner of that business. The sole place a company role affects what resolution reports.
 
 **Undeclared person**
 : A person carrying no company membership and no project assignment. Resolves to no company relationship and an empty assignment set.
@@ -138,9 +138,12 @@ And holding any platform role confers no company membership and no project assig
 - UC-ORGID-3 is the only place a company role affects what resolution reports.
   Any further derivation from company role is a change to this contract, not an
   implementation detail.
-- The relation is asymmetric. Membership does not imply assignment: belonging to
-  a company confers no project. Assignment does imply membership: an assignment
-  requires membership in the company owning the project it names.
+- Membership does not imply assignment: belonging to a company confers no
+  project. That direction is settled. Whether the reverse holds — whether an
+  assignment requires membership in the company owning the project — is an open
+  product decision, and this contract does not decide it.
+- The exact values of the closed company-role vocabulary are an open product
+  decision; the administrative role is named here by its function.
 
 ## See Also
 
