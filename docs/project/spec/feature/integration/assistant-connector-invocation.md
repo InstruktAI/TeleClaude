@@ -35,8 +35,7 @@ configuration that owns person data. This contract owns neither; it owns what
 happens at the boundary where an external connector is actually reached.
 
 The two prohibitions do not reach equal strength. Settings are refused outright.
-This contract governs the settings prohibition and leaves sending as the conduct
-policy governs it, neither enabling nor withholding it.
+This contract governs the settings prohibition.
 
 **Business value:** a connector that isolates nothing will, on a missed
 configuration, act as the wrong identity and leave one person's credentials
