@@ -51,9 +51,12 @@ thing a later sweep can see and act on, where a silently missing record is not.
 
 ## Known caveats
 
-- **One sweeper.** Sweeping belongs to the schedule that declares it, and runs one
-  at a time. Records accumulate across runs; they are not a device for reconciling
-  runs that overlap, because none do.
+- **One sweeper.** Sweeping is dispatched by the schedule that declares it and by
+  nothing else. Records accumulate across runs rather than reconciling them.
+- **Nothing here rests on runs never overlapping.** No mechanism serializes them,
+  and none is claimed. Where a schedule fires over a run still working, each
+  action is still checked against its own result and each window still claims only
+  the ground it covered, so what overlap costs is ground read twice.
 - **A run that dies leaves its window open.** An unclosed window claims no
   coverage, and the next scheduled run reads that ground again. A failed run
   leaves work already done, never a claim that work was done.
