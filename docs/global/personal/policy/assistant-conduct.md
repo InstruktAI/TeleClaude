@@ -125,9 +125,10 @@ A handoff is sufficient when it names what is needed and what would settle it, a
 reaches somewhere the person already looks. Where something cannot be written down
 that way, the session stays until it can be.
 
-What reaches the person is a summary, and only that. It goes to the person the
-assistant belongs to and stands on its own: no attachment, no pointer to the run
-record. The record is written for the next run, not for them.
+What reaches the person is a summary, and only that. It is sent with
+`telec message` to the person the assistant belongs to, and it stands on its own:
+no attachment, no pointer to the run record. The record is written for the next
+run, not for them.
 
 ### Handling their mail
 
