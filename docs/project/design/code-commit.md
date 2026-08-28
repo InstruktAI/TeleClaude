@@ -478,10 +478,23 @@ agent did not declare is precisely what the pathspec boundary prevents.
 changes. Exit code 2 — the agent's declaration must match reality; we don't
 quietly drop unreachable claims.
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 **In-process gate failure.** Format or lint fails on `quality_paths` before
 `git commit --no-verify` is invoked. `telec code commit` exits non-zero with
 the gate output. No commit is produced; files remain in their current state
 for the agent to fix and retry.
+
+<!-- change:tier-aware-commit-authority -->
+
+**In-process gate failure.** A gate the acting tier carries fails on
+`quality_paths` before `git commit --no-verify` is invoked — format or lint,
+where that tier carries project subscriptions. `telec code commit` exits non-zero
+with the gate output. No commit is produced; files remain in their current state
+for the agent to fix and retry. A tier carrying no project subscriptions runs no
+gate, so this failure mode does not arise there.
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 **Forgotten commit gate.** A non-integrator agent on main passes a message
 without `--approved`. Exit with commit-first guidance and no commit. The agent

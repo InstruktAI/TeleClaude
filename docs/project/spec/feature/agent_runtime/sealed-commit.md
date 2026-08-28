@@ -391,21 +391,28 @@ And this is justified because every change the integrator commits was individual
 
 ### Commit-time gates — in-process, no framework stash
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 `telec code commit` runs format then lint in-process against `quality_paths`
 (the commit pathspec filtered to existing files) before `git commit --no-verify`.
 No framework stash occurs; files outside the pathspec are not touched. The
 installed `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
 partial-staging check as a backstop for raw `git commit` invocations.
 
-<!-- planned:tier-aware-commit-authority -->
+<!-- change:tier-aware-commit-authority -->
 
-Which of those gates run is read from the project-subscription axis of the acting
-invocation context root's declared tier
+`telec code commit` runs the gates read from the project-subscription axis of the
+acting invocation context root's declared tier
 (`project/spec/feature/config/tier-permissions`). Where that tier carries project
-subscriptions, format and lint run as above. Where it carries none, neither runs
-and no check is applied in their place; the commit proceeds directly.
+subscriptions, it runs format then lint in-process against `quality_paths` (the
+commit pathspec filtered to existing files) before `git commit --no-verify`; where
+it carries none, neither runs, no check is applied in their place, and the commit
+proceeds directly. No framework stash occurs; files outside the pathspec are not
+touched. The installed `.git/hooks/pre-commit` is a thin telec-owned guard
+performing only a partial-staging check as a backstop for raw `git commit`
+invocations.
 
-<!-- /planned:tier-aware-commit-authority -->
+<!-- /planned-change:tier-aware-commit-authority -->
 
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
 
