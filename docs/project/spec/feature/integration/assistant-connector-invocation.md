@@ -36,7 +36,7 @@ configuration that owns person data. This contract owns neither; it owns what
 happens at the boundary where an external connector is actually reached.
 
 The two prohibitions do not reach equal strength. Settings are refused outright.
-Sending is impossible from a run the platform started on a schedule; elsewhere it
+Sending is impossible from a run no person began; where a person began the run it
 requires an attributable claim the boundary records rather than verifies.
 
 **Business value:** a connector that isolates nothing will, on a missed
@@ -96,10 +96,10 @@ When a connector invocation is made on behalf of one of them
 Then nothing it does writes to the state the other person's assistant established
 ```
 
-#### UC-ACI-6: A scheduled run cannot send
+#### UC-ACI-6: A run no person began cannot send
 
 ```gherkin
-Given a connector invocation made from a run the platform started on a schedule
+Given a connector invocation made from a session that no person began
 When it would cause mail to leave — whether through the connector's own send, reply, or forward operation or a generic pass-through request reaching one of those endpoints
 Then the connector runs with sending unavailable
 And nothing the invocation carries makes sending available
@@ -128,16 +128,16 @@ And the refusal states that the invocation's reach could not be determined
 
 ```gherkin
 Given a connector invocation on behalf of a person who asked for a message to be sent
-And the run was not started on a schedule
+And that person began the session
 When the invocation carries the acting agent's claim that the person asked for it
 Then the send executes from that person's own store
 And the message leaves
 ```
 
-#### UC-ACI-13: A send outside a scheduled run carries an attributable claim
+#### UC-ACI-13: A send from a person-begun run carries an attributable claim
 
 ```gherkin
-Given a connector invocation that was not started on a schedule
+Given a connector invocation from a session a person began
 When it would cause mail to leave
 Then it proceeds only when it carries the acting agent's claim that the person asked for it
 And that claim is recorded against the session that made it
