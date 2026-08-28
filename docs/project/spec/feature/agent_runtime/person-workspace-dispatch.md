@@ -16,9 +16,8 @@ the brief.
 
 The caller supplies a brief and nothing else. The person, the workspace, and the
 computer are derived from the authenticated caller, and the surface exposes no
-parameter naming a person in any form. A launch arrives carrying the fact that it
-is an in-the-moment request, so work a schedule already owns stays with that
-schedule. A platform admin's invocation takes the
+parameter naming a person in any form. Work that a schedule already owns stays
+with that schedule; an ad-hoc launch does not perform it. A platform admin's invocation takes the
 same single form and reaches that admin's own workspace. A caller that resolves
 to no person is refused rather than defaulted.
 
