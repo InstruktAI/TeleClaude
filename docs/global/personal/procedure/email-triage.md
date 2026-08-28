@@ -8,6 +8,7 @@ activation_trigger: Use when the person asks what is in their inbox, asks to tri
 ## Required reads
 
 @~/.teleclaude/docs/personal/policy/assistant-conduct.md
+@~/.teleclaude/docs/personal/concept/notification-and-record.md
 @~/.teleclaude/docs/personal/spec/mail-dispositions.md
 @~/.teleclaude/docs/personal/spec/feature/mail-sweep.md
 @~/.teleclaude/docs/personal/spec/person-knowledge.md
