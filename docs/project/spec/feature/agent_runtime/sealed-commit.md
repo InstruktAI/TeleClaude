@@ -14,7 +14,15 @@ visibility: 'public'
 
 The **sealed commit contract** is the agent-facing channel for landing changes in git. Inside an agent_runtime host pane, agents do not run `git add` or `git commit` directly: the git wrapper intercepts both and redirects to `telec code commit` (and to `telec code add` for the rare cases git's data model genuinely requires staging). The wrapper enforces the seal at the shell level; `telec code commit` enforces the contract internally; the final commit runs with an explicit pathspec so foreign work in the index cannot be swept in.
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 The seal is scoped to telec-registered projects that subscribe `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences. When the working directory is a plain git repo with no `teleclaude.yml`, or is a registered project subscribing neither `code` nor `docs`, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. A project subscribing neither keeps ordinary git.
+
+<!-- change:tier-aware-commit-authority -->
+
+The seal is scoped to context roots that are commit-capable. A telec-registered project subscribing `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) is one — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and so is a declared non-project context root whose declaration carries commit capability. When the working directory carries no such declaration, or carries one that establishes no commit capability, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. A context carrying none keeps ordinary git.
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 The contract resolves four classes of file state at commit time:
 
@@ -345,6 +353,15 @@ No framework stash occurs; files outside the pathspec are not touched. The
 installed `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
 partial-staging check as a backstop for raw `git commit` invocations.
 
+<!-- planned:tier-aware-commit-authority -->
+
+Which of those gates run is read from the acting context root's own declaration.
+Where that declaration carries project subscriptions, format and lint run as above.
+Where it carries none, neither runs and no check is applied in their place; the
+commit proceeds directly.
+
+<!-- /planned:tier-aware-commit-authority -->
+
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
 
 ```
@@ -648,6 +665,25 @@ Given an agent session whose transcript-derived path set names a dirty path outs
 When the agent inspects its scope and commits
 Then that path is absent from the reported scope
 And the commit does not carry it
+```
+
+#### UC-NCR-7 — The seal holds at a commit-capable context root that is not a project
+
+```
+Given a context root that is commit-capable and is not a telec-registered project
+When an agent working there invokes raw `git commit` or `git add`
+Then the wrapper refuses and points at the sealed surface
+And the raw invocation produces neither a commit nor a staged change
+```
+
+#### UC-NCR-8 — A context declaring no project subscriptions commits with no gates and no substitute
+
+```
+Given an agent working in a context root whose declaration carries no project subscriptions
+And that context root has changes in scope
+When the agent commits through the sealed surface
+Then no subscription-gated check runs, and no check is applied in place of one
+And the commit is produced
 ```
 
 <!-- /planned:tier-aware-commit-authority -->
