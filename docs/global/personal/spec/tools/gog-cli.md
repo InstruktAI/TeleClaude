@@ -18,10 +18,12 @@ agent — an agent does not choose an account, and does not see the unwrapped
 binary.
 <!-- change:personal-mail-tool-launcher -->
 Every person has their own state root under their workspace, holding their
-accounts, tokens, aliases and per-account settings. Which person's mail a
-command touches is decided entirely by that root, and the root is selected for
-the agent rather than by it: an agent cannot act as a person other than the one
-whose workspace it is in, and does not see the unwrapped binary.
+configuration, aliases and per-account settings. Which mail a command touches is
+decided by the account the invocation names, not by that root alone: the root
+directs where operational state is read and written, while the tool's default
+secret store uses one namespace shared across the machine and binds neither a
+person nor an account. The root is selected for the agent rather than by it, and
+an agent does not see the unwrapped binary.
 
 Within that person, an invocation names which of their own declared accounts it
 acts as. That is not free choice — the reachable set is the person's own

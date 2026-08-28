@@ -37,7 +37,7 @@ Three contexts participate, and the split follows meaning rather than hosting:
 The prohibitions remain the conduct policy's. This design changes where they are
 applied, never what they say.
 
-### The person is inherited, never resolved here
+### The person is validated elsewhere and consumed here
 
 A session reaches a person's workspace only through the launch call that derives
 the person from the authenticated caller, and the general session verbs refuse a
@@ -45,12 +45,17 @@ destination inside a person workspace. That contract is the authority for who a
 session acts as.
 
 This boundary therefore performs no person resolution and accepts no parameter
-naming a person. It reads the person the workspace declares of itself — the
-workspace-kind declaration that names the workspace a person's and carries that
-person's slug — and refuses when the session is not in a person's workspace at
-all. That declaration is the binding's only source: a path is not identity, and
-inferring a person from a directory name is the impersonation surface the
-declaration exists to close. A non-person workspace never
+naming a person. Nor is a workspace's own declaration the binding: a file
+declaring itself a person configuration states what the file is, not that the
+person exists and not who is acting. Identity owns turning those separate facts
+into one validated binding against the person registry, and publishes it; an
+unknown, ambiguous, or disagreeing claim fails closed there and confers no
+person-scoped authority at all.
+
+What this boundary consumes is that published binding, carried to it by the
+injection layer. It refuses when no validated binding is present. The binding is
+an input to whether this boundary acts, never the decision itself — that decision
+is this boundary's, and it is the two prohibitions and the account rule below. A non-person workspace never
 becomes a mail execution origin, and the boundary never opens a workspace other
 than the one it is running in. Consuming that binding rather than re-deriving it is
 what keeps the conduct policy's scope — an agent acting in that person's workspace —
@@ -73,9 +78,9 @@ short-lived tokens — is surveyed by that owner's work rather than by this.
 
 ## Inputs/Outputs
 
-**In:** the person binding the session already carries; that person's declared
-accounts; the account this invocation names; the person's state location and
-store secret; and an explicit declaration when a send was instructed.
+**In:** identity's validated person binding for this session; that person's
+declared accounts and the account this invocation names; that person's state
+location; and an explicit declaration when a send was instructed.
 
 **Out:** a constructed invocation of the real connector executed against that
 person's own state, or a refusal naming which condition failed — not in a
@@ -84,13 +89,14 @@ send, or reach that could not be determined.
 
 ### Layer placement
 
-| Responsibility                                                                                           | Layer                                            | Owner         |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
-| Entry point published on the agent tool surface                                                          | Artifact / tool surface                          | agent runtime |
-| Reading the workspace's person declaration, the named account, and the attendance fact into typed inputs | Injection                                        | agent runtime |
-| Account lookup against the person's declared list                                                        | Core service, via configuration's published read | configuration |
-| Reach determination, prohibition application, invocation construction                                    | Core service                                     | integration   |
-| Connector process execution                                                                              | Infrastructure, behind its owning service        | integration   |
+| Responsibility                                                                                       | Layer                                            | Owner         |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
+| Entry point published on the agent tool surface                                                      | Artifact / tool surface                          | agent runtime |
+| Validating that a person context belongs to exactly one registered person                            | Core service, published as an identity fact      | identity      |
+| Carrying identity's validated binding, the named account, and the send declaration into typed inputs | Injection                                        | agent runtime |
+| Account lookup against the person's declared list                                                    | Core service, via configuration's published read | configuration |
+| Reach determination, prohibition application, invocation construction                                | Core service                                     | integration   |
+| Connector process execution                                                                          | Infrastructure, behind its owning service        | integration   |
 
 These responsibilities do not fit an existing root. The platform's adapter root
 holds inbound and outbound UI adapters, and its integration core holds the
@@ -122,40 +128,39 @@ contain.
   to the name it was called by; reach that cannot be determined is refused.
 - A send leaves only when the invocation carries an explicit instructed-send
   declaration. The declaration is the acting agent's own statement, recorded with
-  the invocation; it is never derived from attendance, role, or lineage.
+  the invocation; it is never derived from a role, a launch path, or lineage, and
+  its absence is the default. No branch of this design distinguishes an attended
+  run from an unattended one, because no contract publishes that fact.
 - Nothing above this boundary names a vendor tool.
 - A connector's state location and its secret store are separate concerns.
   This boundary directs the first and makes no claim about the second, so
   directing state is never presented as isolation between people.
 
-### The send gate, in two regimes
+### The send gate rests on a declaration, and nothing structural
 
-No context publishes a fact carrying what a person asked for, so instruction
-itself is not readable at the boundary. Attendance is: whether a human is present
-to the session is an authority-backed fact the identity context already owns, and
-the boundary consumes it rather than inferring it. The gate therefore has two
-regimes, and only one of them is structural.
+Two facts would be needed to make sending structurally impossible in the runs
+where no instruction can exist: what a person asked for, and whether a person was
+present to ask. Neither is published. Instruction is not carried by any contract.
+Attendance is not either — no identity contract, no dispatch contract, and no
+session model states whether a human is present to a session, and inferring it
+from a session's roles or from how it was launched would be exactly the
+directory-shaped inference the identity contract refuses for person binding.
 
-**Where attendance cannot be established, sending is made impossible at the
-tool.** The invocation is constructed with the connector's own send-blocking
-lever engaged, so the process that runs cannot send whatever it is asked to do,
-and no declaration by the acting agent lifts it. Where a connector offers no such
-lever, no send-capable invocation is constructed for it at all. This is what
-carries the conduct policy's requirement that the tool an unattended run uses
-cannot send.
+So the gate is one regime, not two. An invocation sends only when it carries the
+acting agent's explicit declaration that the person asked for it — absent by
+default, so an invocation that says nothing does not send. The declaration is the
+agent's own statement in the shape the platform already uses for involvement on
+commits: never derived, and answered by the durable record when false. Every send
+is constructed with the connector's send-blocking lever engaged unless that
+declaration is present, so the block is the default state of the invocation
+rather than a decision taken against it.
 
-**Where attendance is established, sending is available and the claim is
-recorded.** Every send carries the acting agent's declaration that the person
-asked for it — the same shape as the platform's involvement declaration on
-commits: the agent's own statement, never derived, absent by default, and
-answered by the durable record when false. The conduct policy's mandate rule
-governs the judgment; this boundary makes the claim attributable rather than
-preventing a false one.
-
-The asymmetry is the conduct policy's own: it holds that an assistant which
-cannot send when told is a worse tool for no gain in safety, since the person
-could send it themselves in the same breath. Prevention is therefore spent where
-no instruction can exist, and attribution where one can.
+What this does not do is prevent a false declaration, in any run. The conduct
+policy's requirement that the tool an unattended run uses cannot send is
+therefore not met structurally by this design, and the gap is recorded rather
+than papered over: it closes when some context publishes an attendance fact this
+boundary can branch on, and the product contract states the weaker guarantee
+until then.
 
 ## Primary flows
 
@@ -169,8 +174,8 @@ flowchart TD
     D -- yes --> E{what does this invocation reach?}
     E -- settings --> R2[refuse: prohibition applies]
     E -- undeterminable --> R3[refuse: reach undetermined]
-    E -- a send --> F{instructed-send declaration present?}
-    F -- no --> R4[refuse: no instruction declared]
+    E -- a send --> F{instructed-send declaration carried?}
+    F -- no --> R4[connector runs with sending blocked]
     F -- yes --> G
     E -- nothing prohibited --> G[execute against the person's own state]
 ```
@@ -206,9 +211,11 @@ governs only authorizations made after it is in force.
   restriction lever, the prohibitions rest on determining reach from the
   invocation, and an unrecognized endpoint alias or encoding is read as reaching
   nothing prohibited.
-- **A false instructed-send declaration sends mail.** The declaration is
-  detection, not prevention. What it buys is attribution: the send is recorded
-  against the session that declared it.
+- **A false instructed-send declaration sends mail, in any run.** The declaration
+  is detection, not prevention, and there is no attendance fact to make an
+  unattended run structurally different. What it buys is attribution: the send is
+  recorded against the session that declared it. This is the design's weakest
+  guarantee and the one most worth closing.
 - **Directed state reads as isolation.** Every invocation going to its own
   person's location looks like separation between people and is not: the
   connector can still resolve an account from a store shared across the machine.

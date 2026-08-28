@@ -36,9 +36,9 @@ configuration that owns person data. This contract owns neither; it owns what
 happens at the boundary where an external connector is actually reached.
 
 The two prohibitions do not reach equal strength. Settings are refused outright.
-Sending is made impossible only where no person is established as present to
-instruct; where one is, nothing published carries what that person asked for, so
-the boundary records an attributable claim rather than preventing a false one.
+Sending is blocked by default and released only by a claim the acting agent
+carries, which the boundary records rather than verifies — nothing published
+carries what a person asked for, or whether one was present to ask.
 
 **Business value:** a connector that isolates nothing will, on a missed
 configuration, act as the wrong identity and leave one person's credentials
@@ -97,13 +97,12 @@ When a connector invocation is made on behalf of one of them
 Then nothing it does writes to the state the other person's assistant established
 ```
 
-#### UC-ACI-6: Sending is impossible where no one is present to ask for it
+#### UC-ACI-6: An invocation carrying no claim cannot send
 
 ```gherkin
-Given a connector invocation on a person's behalf where no person is established as present to instruct
+Given a connector invocation on a person's behalf carrying no claim that the person asked for a send
 When it would cause mail to leave — whether through the connector's own send, reply, or forward operation or a generic pass-through request reaching one of those endpoints
 Then the connector runs unable to send at all
-And no assertion carried by the invocation makes sending available
 And no mail leaves
 ```
 
@@ -134,14 +133,12 @@ Then the send executes from that person's own store
 And the message leaves
 ```
 
-#### UC-ACI-13: A send by someone present carries an attributable claim
+#### UC-ACI-13: A send carries an attributable claim
 
 ```gherkin
-Given a connector invocation on behalf of a person established as present to instruct
-When it would cause mail to leave
-Then it proceeds only when it carries the acting agent's claim that the person asked for it
-And that claim is recorded against the session that made it
-And an invocation carrying no such claim does not send
+Given a connector invocation carrying the acting agent's claim that the person asked for a send
+When it causes mail to leave
+Then that claim is recorded against the session that made it
 ```
 
 ## Known caveats

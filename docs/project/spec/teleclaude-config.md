@@ -246,6 +246,15 @@ settings:
     tool_calls: null | off | mobile | web | both
 ```
 
+<!-- planned:personal-mail-tool-launcher -->
+`accounts` is an additional per-person key: the list of mail accounts a person's
+assistant may act as. Each entry declares the connector it belongs to, drawn from
+the platform's own vocabulary (`google | microsoft`) rather than any vendor tool
+name, and the address itself. The list may be empty, and a person's `email`
+identity is not one of these accounts unless it also appears here. An entry
+naming a connector outside that vocabulary is rejected at load.
+<!-- /planned:personal-mail-tool-launcher -->
+
 `creds.discord.nick` is optional. When present, it is the Discord-facing display name for
 reflected human input. Personal workspace resolution uses the canonical `people[].slug`;
 `people[].name` is a display field, and identity/authorization resolve on `email` and `role`.
