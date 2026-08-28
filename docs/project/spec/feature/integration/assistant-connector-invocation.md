@@ -41,7 +41,7 @@ policy governs it, neither enabling nor withholding it.
 **Business value:** a connector that isolates nothing will, on a missed
 configuration, act as the wrong identity and leave one person's credentials
 where another's assistant finds them. Placing account binding, state direction
-and the two prohibitions at the one boundary where connectors are reached is
+and the settings prohibition at the one boundary where connectors are reached is
 what prevents that, and it makes each connector's remaining exposure a stated
 property of that connector rather than an unexamined one.
 
