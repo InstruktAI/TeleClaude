@@ -143,6 +143,15 @@ Then it proceeds only when it carries the acting agent's claim that the person a
 And that claim is recorded against the session that made it
 ```
 
+#### UC-ACI-14: An unenumerated producer cannot send
+
+```gherkin
+Given a connector invocation from a session whose producer is not among those declared to be person-begun
+When it would cause mail to leave
+Then the connector runs with sending unavailable
+And this holds for a producer introduced after the declaration was written
+```
+
 ## Known caveats
 
 - Where a gate rests on determining reach from the invocation itself, an

@@ -142,6 +142,15 @@ The discriminator is which producer began this session, drawn from the platform'
 closed vocabulary of session producers and written when the session is created.
 No agent supplies it.
 
+That vocabulary distinguishes producers; it does not classify them as
+person-begun or not, and this boundary does not infer the partition from a
+producer's name. The partition is declared: the producers a person begins are
+enumerated, and every producer outside that enumeration blocks sending. A
+producer added to the vocabulary later is therefore blocked until it is
+deliberately enumerated, which is the safe direction for a gate to fail. Where the
+session-producer contract grows a typed person-begun classification of its own,
+this boundary consumes that instead of keeping an enumeration.
+
 **Where no person began the run, sending is impossible at the tool.** The
 invocation is constructed with the connector's send-blocking lever engaged, so
 the process cannot send whatever it is asked to do, and nothing the invocation
