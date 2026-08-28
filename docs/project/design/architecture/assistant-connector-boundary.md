@@ -78,9 +78,10 @@ short-lived tokens — is surveyed by that owner's work rather than by this.
 
 ## Inputs/Outputs
 
-**In:** identity's validated person binding for this session; that person's
-declared accounts and the account this invocation names; that person's state
-location; and an explicit declaration when a send was instructed.
+**In:** identity's validated person binding for this session; the platform's
+record of whether this run was started from a schedule; that person's declared
+accounts and the account this invocation names; that person's state location; and
+an explicit declaration when a send was instructed.
 
 **Out:** a constructed invocation of the real connector executed against that
 person's own state, or a refusal naming which condition failed — not in a
@@ -89,14 +90,14 @@ send, or reach that could not be determined.
 
 ### Layer placement
 
-| Responsibility                                                                                       | Layer                                            | Owner         |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
-| Entry point published on the agent tool surface                                                      | Artifact / tool surface                          | agent runtime |
-| Validating that a person context belongs to exactly one registered person                            | Core service, published as an identity fact      | identity      |
-| Carrying identity's validated binding, the named account, and the send declaration into typed inputs | Injection                                        | agent runtime |
-| Account lookup against the person's declared list                                                    | Core service, via configuration's published read | configuration |
-| Reach determination, prohibition application, invocation construction                                | Core service                                     | integration   |
-| Connector process execution                                                                          | Infrastructure, behind its owning service        | integration   |
+| Responsibility                                                                                                                         | Layer                                            | Owner         |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
+| Entry point published on the agent tool surface                                                                                        | Artifact / tool surface                          | agent runtime |
+| Validating that a person context belongs to exactly one registered person                                                              | Core service, published as an identity fact      | identity      |
+| Carrying identity's validated binding, the run's scheduled-start record, the named account, and the send declaration into typed inputs | Injection                                        | agent runtime |
+| Account lookup against the person's declared list                                                                                      | Core service, via configuration's published read | configuration |
+| Reach determination, prohibition application, invocation construction                                                                  | Core service                                     | integration   |
+| Connector process execution                                                                                                            | Infrastructure, behind its owning service        | integration   |
 
 These responsibilities do not fit an existing root. The platform's adapter root
 holds inbound and outbound UI adapters, and its integration core holds the
@@ -137,31 +138,21 @@ contain.
 
 ### The send gate turns on the run's provenance
 
-The conduct policy draws its own line: a person asking for something to be sent,
-against a run that was scheduled, where no such instruction can exist and the
-tool that run uses cannot send. The discriminator is therefore not whether
-somebody is watching — which nothing publishes and which this design does not
-infer — but whether the platform started this run from a schedule. That is a
-record the platform writes when it starts the run, carried on the session, and no
-agent supplies it.
+The discriminator is whether the platform started this run from a schedule. That
+is a record the platform writes when it starts the run, carried on the session as
+a typed entry point, and no agent supplies it. It is not a statement about
+whether anyone is watching.
 
-**From a scheduled run, sending is made impossible at the tool.** The invocation
-is constructed with the connector's send-blocking lever engaged, so the process
+**From a scheduled run, sending is impossible at the tool.** The invocation is
+constructed with the connector's send-blocking lever engaged, so the process
 cannot send whatever it is asked to do, and nothing the invocation carries lifts
 it. Where a connector offers no such lever, no send-capable invocation is
 constructed for it at all.
 
 **Elsewhere, sending is available and the claim is recorded.** A send carries the
-acting agent's declaration that the person asked for it — absent by default, in
+acting agent's declaration that the person asked for it, absent by default, in
 the shape the platform already uses for involvement on commits: never derived,
-and answered by the durable record when false. The conduct policy's mandate rule
-governs the judgment there; this boundary makes the claim answerable rather than
-preventing a false one.
-
-Prevention is spent where the policy puts it, on the run that cannot carry an
-instruction. Attribution carries the rest, which is what the policy asks for when
-it holds that an assistant unable to send when told is a worse tool for no gain
-in safety.
+and answered by the durable record when false.
 
 ## Primary flows
 

@@ -36,10 +36,8 @@ configuration that owns person data. This contract owns neither; it owns what
 happens at the boundary where an external connector is actually reached.
 
 The two prohibitions do not reach equal strength. Settings are refused outright.
-Sending is made impossible from a run the platform started on a schedule, where
-no instruction to send can exist; elsewhere nothing published carries what a
-person asked for, so the boundary records an attributable claim rather than
-preventing a false one.
+Sending is impossible from a run the platform started on a schedule; elsewhere it
+requires an attributable claim the boundary records rather than verifies.
 
 **Business value:** a connector that isolates nothing will, on a missed
 configuration, act as the wrong identity and leave one person's credentials

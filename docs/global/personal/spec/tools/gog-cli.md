@@ -90,9 +90,8 @@ applied, so the commands are unreachable before they are attempted.
 Sending is held the same way rather than by the tool's own disposition: the tool
 can send, and the launch boundary is what withholds it, constructing an
 invocation from a scheduled run with sending unavailable. Which runs those are is
-the platform's own record of how a run started, not a judgement about who is
-watching. Elsewhere the tool can send, and what an assistant writes of its own
-accord still stays a draft.
+the platform's own record of how a run started. Elsewhere the tool can send, and
+what an assistant writes of its own accord still stays a draft.
 <!-- /planned-change:personal-mail-tool-launcher -->
 
 An agent that receives a refusal reports it; it does not look for another route.
