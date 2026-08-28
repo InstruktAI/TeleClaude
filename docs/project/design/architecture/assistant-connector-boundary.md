@@ -126,39 +126,33 @@ contain.
   as, and never reaches into a workspace other than its own.
 - The prohibitions are applied to what an invocation is determined to reach, not
   to the name it was called by; reach that cannot be determined is refused.
-- A send leaves only when the invocation carries an explicit instructed-send
-  declaration. The declaration is the acting agent's own statement, recorded with
-  the invocation; it is never derived from a role, a launch path, or lineage, and
-  its absence is the default. No branch of this design distinguishes an attended
-  run from an unattended one, because no contract publishes that fact.
+- No invocation this boundary constructs can send. Nothing an invocation carries
+  releases that, and no branch of this design distinguishes a run with a person
+  present from one without, because no contract publishes that fact.
 - Nothing above this boundary names a vendor tool.
 - A connector's state location and its secret store are separate concerns.
   This boundary directs the first and makes no claim about the second, so
   directing state is never presented as isolation between people.
 
-### The send gate rests on a declaration, and nothing structural
+### The send gate is whole
 
-Two facts would be needed to make sending structurally impossible in the runs
-where no instruction can exist: what a person asked for, and whether a person was
-present to ask. Neither is published. Instruction is not carried by any contract.
-Attendance is not either — no identity contract, no dispatch contract, and no
-session model states whether a human is present to a session, and inferring it
-from a session's roles or from how it was launched would be exactly the
-directory-shaped inference the identity contract refuses for person binding.
+The conduct policy's gate requires that a run with nobody present to instruct
+cannot send at all, and it admits no exception. Honouring it selectively — sending
+unavailable where no one is present, available where someone is — needs a
+published fact stating whether a person is present. None exists: session identity
+carries the session, its token, and its roles, and neither the dispatch contract
+nor the session model adds presence. Inferring it from a role or a launch path is
+the same directory-shaped inference the identity contract refuses for person
+binding.
 
-So the gate is one regime, not two. An invocation sends only when it carries the
-acting agent's explicit declaration that the person asked for it — absent by
-default, so an invocation that says nothing does not send. The declaration is the
-agent's own statement in the shape the platform already uses for involvement on
-commits: never derived, and answered by the durable record when false. Every send
-is constructed with the connector's send-blocking lever engaged unless that
-declaration is present, so the block is the default state of the invocation
-rather than a decision taken against it.
+So the boundary constructs every invocation with the connector's send-blocking
+lever engaged, and nothing carried by an invocation releases it. Where a
+connector offers no such lever, the boundary constructs no send-capable
+invocation for it at all. What an assistant writes is left as a draft, which is
+the conduct policy's own default, and the person sends it.
 
-What this does not do is prevent a false declaration, in any run. The conduct
-policy's requirement that the tool an unattended run uses cannot send is not met
-structurally by this design. Meeting it requires a published attendance fact for
-this boundary to branch on, which no context provides.
+This costs the policy's other expectation, that an assistant carries out a send
+the person asked for. That capability is not delivered here.
 
 ## Primary flows
 
@@ -172,9 +166,7 @@ flowchart TD
     D -- yes --> E{what does this invocation reach?}
     E -- settings --> R2[refuse: prohibition applies]
     E -- undeterminable --> R3[refuse: reach undetermined]
-    E -- a send --> F{instructed-send declaration carried?}
-    F -- no --> R4[connector runs with sending blocked]
-    F -- yes --> G
+    E -- a send --> R4[connector runs with sending unavailable]
     E -- nothing prohibited --> G[execute against the person's own state]
 ```
 
@@ -209,10 +201,10 @@ governs only authorizations made after it is in force.
   restriction lever, the prohibitions rest on determining reach from the
   invocation, and an unrecognized endpoint alias or encoding is read as reaching
   nothing prohibited.
-- **A false instructed-send declaration sends mail, in any run.** The declaration
-  is detection, not prevention, and no attendance fact makes an unattended run
-  structurally different. What it buys is attribution: the send is recorded
-  against the session that declared it.
+- **An assistant cannot carry out a send the person asked for.** The conduct
+  policy expects that capability and this boundary does not provide it, because
+  providing it selectively needs a presence fact no context publishes. The person
+  sends what the assistant drafted.
 - **Directed state reads as isolation.** Every invocation going to its own
   person's location looks like separation between people and is not: the
   connector can still resolve an account from a store shared across the machine.

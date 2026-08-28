@@ -88,8 +88,10 @@ constructs every invocation with the tool's own command restrictions already
 applied, so the commands are unreachable before they are attempted.
 
 Sending is held the same way rather than by the tool's own disposition: the tool
-can send, and the launch boundary is what withholds it, constructing an
-unattended invocation with sending blocked.
+can send, and the launch boundary is what withholds it, constructing every
+invocation with sending unavailable. It is withheld on every run rather than only
+where nobody is present to ask, because nothing states whether anyone is present.
+What the assistant writes stays a draft and the person sends it.
 <!-- /planned-change:personal-mail-tool-launcher -->
 
 An agent that receives a refusal reports it; it does not look for another route.
