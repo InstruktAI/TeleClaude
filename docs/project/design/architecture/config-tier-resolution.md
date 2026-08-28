@@ -246,9 +246,10 @@ model-inconsistent value fails rather than being replaced.
 - **Advancement cannot write a file the registries name.** That file's load
   fails, naming it and the declaration it needs, rather than substituting a
   value that leaves the stored file undeclared. Other roots are unaffected.
-- **A registered project root is unavailable.** It is absent from the manifest
-  the sweep loads. Nothing is recorded about it and nothing else is blocked; it
-  is advanced when it returns and is next read.
+- **A registered project root is unavailable.** It stays pending in the epoch,
+  which captured it as eligible whether or not it could be reached. No
+  completion is recorded for it and nothing else is blocked; it is advanced when
+  it returns and is next read.
 - **A schema association is absent, stale, or unresolvable.** Not an error: the
   association serves the editor, and loading reads the declaration alone.
 - **A declaration names an unknown tier, or a tier the model does not accept.**
