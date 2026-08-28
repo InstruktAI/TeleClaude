@@ -1,6 +1,6 @@
 ---
 description: Work a person's inbox on their behalf — handle what their rules cover, prepare what needs writing, and give them one briefing of the rest.
-activation_trigger: Use when the person asks what is in their inbox, asks to triage, clear, file, archive, or catch up on mail, or when a scheduled run of their assistant covers their mail.
+activation_trigger: Use when running the scheduled mail sweep, which the sweep-email command dispatches. Not for a request made in the moment — handling one message, drafting a reply, or answering what arrived is served without this pass.
 ---
 
 # Email Triage — Procedure
