@@ -10,9 +10,10 @@ YAML Language Server is the language-server implementation behind YAML editing
 support in VS Code and other LSP clients. Among other things it validates a YAML
 document against a JSON Schema and offers completion from that schema.
 
-Upstream documents six association surfaces, in decreasing locality.
+Upstream documents the schema-selection surfaces below, in decreasing
+locality, plus one suppression control that is not itself an association.
 
-**Carried by the document itself:**
+**Association carried by the document itself:**
 
 - **Modeline comment** — `# yaml-language-server: $schema=<uri>` as a comment.
   Applies to the file that carries it.
@@ -23,14 +24,12 @@ Upstream documents six association surfaces, in decreasing locality.
   is visible to every other reader of the file and to any schema that rejects
   unknown keys.
 
-**Carried by the client:**
+**Association carried by the client:**
 
 - **`yaml.schemas` setting** — maps schema URIs to file globs. Accepts remote
   URLs, local paths, relative paths, and the reserved `kubernetes` keyword.
-- **`yaml.disableSchemaDetection`** — globs that suppress automatic detection
-  for matching files.
 
-**Carried by the protocol or upstream catalogue:**
+**Association carried by the protocol or upstream catalogue:**
 
 - **`json/schemaAssociations` notification** — the client sends
   schema-to-pattern mappings, replacing previous associations.
@@ -41,6 +40,11 @@ Upstream documents six association surfaces, in decreasing locality.
   common YAML patterns from the public catalogue.
 - **Kubernetes CRD store** — validates Kubernetes custom resources against
   remote CRD schemas when enabled.
+
+**Suppression, not association:**
+
+- **`yaml.disableSchemaDetection`** — globs that prevent automatic detection for
+  matching files. It selects no schema; it withholds one.
 
 ## Canonical fields
 
