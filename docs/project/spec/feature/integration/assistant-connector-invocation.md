@@ -36,8 +36,9 @@ configuration that owns person data. This contract owns neither; it owns what
 happens at the boundary where an external connector is actually reached.
 
 The two prohibitions do not reach equal strength. Settings are refused outright.
-Sending is impossible from a run no person began; where a person began the run it
-requires an attributable claim the boundary records rather than verifies.
+Sending is unavailable on every invocation. It is withheld because no published
+fact identifies a run in which a person's instruction can exist, not because the
+conduct policy forbids an instructed send; that capability is undelivered.
 
 **Business value:** a connector that isolates nothing will, on a missed
 configuration, act as the wrong identity and leave one person's credentials
@@ -96,10 +97,10 @@ When a connector invocation is made on behalf of one of them
 Then nothing it does writes to the state the other person's assistant established
 ```
 
-#### UC-ACI-6: A run no person began cannot send
+#### UC-ACI-6: No invocation can send
 
 ```gherkin
-Given a connector invocation made from a session that no person began
+Given any connector invocation this boundary constructs
 When it would cause mail to leave — whether through the connector's own send, reply, or forward operation or a generic pass-through request reaching one of those endpoints
 Then the connector runs with sending unavailable
 And nothing the invocation carries makes sending available
@@ -122,34 +123,6 @@ Given a connector invocation on a person's behalf
 When its reach with respect to sending or changing settings cannot be determined
 Then it is refused before the connector runs
 And the refusal states that the invocation's reach could not be determined
-```
-
-#### UC-ACI-9: An instructed send is carried out
-
-```gherkin
-Given a connector invocation on behalf of a person who asked for a message to be sent
-And that person began the session
-When the invocation carries the acting agent's claim that the person asked for it
-Then the send executes from that person's own store
-And the message leaves
-```
-
-#### UC-ACI-13: A send from a person-begun run carries an attributable claim
-
-```gherkin
-Given a connector invocation from a session a person began
-When it would cause mail to leave
-Then it proceeds only when it carries the acting agent's claim that the person asked for it
-And that claim is recorded against the session that made it
-```
-
-#### UC-ACI-14: An unenumerated producer cannot send
-
-```gherkin
-Given a connector invocation from a session whose producer is not among those declared to be person-begun
-When it would cause mail to leave
-Then the connector runs with sending unavailable
-And this holds for a producer introduced after the declaration was written
 ```
 
 ## Known caveats

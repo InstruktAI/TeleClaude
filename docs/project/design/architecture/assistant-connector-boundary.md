@@ -78,8 +78,7 @@ short-lived tokens — is surveyed by that owner's work rather than by this.
 
 ## Inputs/Outputs
 
-**In:** identity's validated person binding for this session; the platform's
-record of which producer began this session; that person's declared
+**In:** identity's validated person binding for this session; that person's declared
 accounts and the account this invocation names; that person's state location; and
 an explicit declaration when a send was instructed.
 
@@ -90,14 +89,14 @@ send, or reach that could not be determined.
 
 ### Layer placement
 
-| Responsibility                                                                                                                      | Layer                                            | Owner         |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
-| Entry point published on the agent tool surface                                                                                     | Artifact / tool surface                          | agent runtime |
-| Validating that a person context belongs to exactly one registered person                                                           | Core service, published as an identity fact      | identity      |
-| Carrying identity's validated binding, the session's producer record, the named account, and the send declaration into typed inputs | Injection                                        | agent runtime |
-| Account lookup against the person's declared list                                                                                   | Core service, via configuration's published read | configuration |
-| Reach determination, prohibition application, invocation construction                                                               | Core service                                     | integration   |
-| Connector process execution                                                                                                         | Infrastructure, behind its owning service        | integration   |
+| Responsibility                                                                | Layer                                            | Owner         |
+| ----------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
+| Entry point published on the agent tool surface                               | Artifact / tool surface                          | agent runtime |
+| Validating that a person context belongs to exactly one registered person     | Core service, published as an identity fact      | identity      |
+| Carrying identity's validated binding and the named account into typed inputs | Injection                                        | agent runtime |
+| Account lookup against the person's declared list                             | Core service, via configuration's published read | configuration |
+| Reach determination, prohibition application, invocation construction         | Core service                                     | integration   |
+| Connector process execution                                                   | Infrastructure, behind its owning service        | integration   |
 
 These responsibilities do not fit an existing root. The platform's adapter root
 holds inbound and outbound UI adapters, and its integration core holds the
@@ -127,47 +126,30 @@ contain.
   as, and never reaches into a workspace other than its own.
 - The prohibitions are applied to what an invocation is determined to reach, not
   to the name it was called by; reach that cannot be determined is refused.
-- An invocation from a run no person began cannot send, and nothing it carries
-  lifts that. Where a person began the run, a send requires the acting agent's
-  declaration, absent by default. The branch is the recorded producer, never an
-  inference about who is watching.
+- No invocation this boundary constructs can send, and nothing an invocation
+  carries lifts that. No branch of this design distinguishes runs by who began
+  them, because no published fact separates them.
 - Nothing above this boundary names a vendor tool.
 - A connector's state location and its secret store are separate concerns.
   This boundary directs the first and makes no claim about the second, so
   directing state is never presented as isolation between people.
 
-### The send gate turns on who began the run
+### Sending is unavailable, and why no gate can yet permit it
 
-The discriminator is which producer began this session, drawn from the platform's
-closed vocabulary of session producers and written when the session is created.
-No agent supplies it.
+Every invocation is constructed with the connector's send-blocking lever
+engaged, and nothing an invocation carries lifts it. Where a connector offers no
+such lever, no send-capable invocation is constructed for it at all.
 
-That vocabulary distinguishes producers; it does not classify them as
-person-begun or not. The partition is a declaration this boundary carries, not an
-inference from a producer's name, and its membership rule is that the producer
-represents a person's own act of starting the session — a person addressing the
-platform through a channel they use. A producer that represents the platform,
-a schedule, or another agent starting the session is outside it. The declaration
-enumerates the members; every producer outside it blocks sending, including one
-added to the vocabulary after the declaration was written. Where the
-session-producer contract grows a typed person-begun classification of its own,
-this boundary consumes that instead of carrying the declaration.
+Permitting a send safely requires knowing that a person's instruction can exist
+in this run, and the platform publishes no fact establishing that. Presence is
+recorded nowhere. Scheduled provenance identifies only some of the runs no person
+began. The session-producer record does not separate the remainder: every
+non-scheduled creation carries one generic producer value whether a person or an
+agent made it. A gate branching on any of these would be inferring the fact
+rather than reading it.
 
-**Where no person began the run, sending is impossible at the tool.** The
-invocation is constructed with the connector's send-blocking lever engaged, so
-the process cannot send whatever it is asked to do, and nothing the invocation
-carries lifts it. Scheduled, agent-dispatched, and system-started runs are all
-such runs. Where a connector offers no such lever, no send-capable invocation is
-constructed for it at all.
-
-**Where a person began the run, sending is available and the claim is recorded.**
-A send carries the acting agent's declaration that the person asked for it,
-absent by default, in the shape the platform already uses for involvement on
-commits: never derived, and answered by the durable record when false.
-
-The record establishes that a person originated the run, which is what makes an
-instruction possible. It does not establish that anyone is watching when a send
-is made.
+The conduct policy expects an assistant to carry out a send the person asked for.
+That capability is not delivered here.
 
 ## Primary flows
 
@@ -181,11 +163,7 @@ flowchart TD
     D -- yes --> E{what does this invocation reach?}
     E -- settings --> R2[refuse: prohibition applies]
     E -- undeterminable --> R3[refuse: reach undetermined]
-    E -- a send --> F{did a person begin this run?}
-    F -- no --> R4[connector runs with sending unavailable]
-    F -- yes --> H{send declaration carried?}
-    H -- no --> R5[refuse: no instruction declared]
-    H -- yes --> G
+    E -- a send --> R4[connector runs with sending unavailable]
     E -- nothing prohibited --> G[execute against the person's own state]
 ```
 
@@ -220,12 +198,10 @@ governs only authorizations made after it is in force.
   restriction lever, the prohibitions rest on determining reach from the
   invocation, and an unrecognized endpoint alias or encoding is read as reaching
   nothing prohibited.
-- **A false declaration in a person-begun run sends mail.** The declaration is
-  detection, not prevention. What it buys is attribution: the send is recorded
-  against the session that declared it. A run no person began is not exposed this
-  way, because there the block is at the tool.
-- **Beginning a run is not watching it.** The producer record establishes that a
-  person originated the session, not that they are present when a send is made.
+- **An assistant cannot carry out a send the person asked for.** The conduct
+  policy expects that capability; permitting it needs a published fact
+  identifying a run in which an instruction can exist, and none is published. The
+  person sends what the assistant drafted.
 - **Directed state reads as isolation.** Every invocation going to its own
   person's location looks like separation between people and is not: the
   connector can still resolve an account from a store shared across the machine.
