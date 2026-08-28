@@ -42,9 +42,8 @@ capability rather than building URLs independently.
   `@me` guild segment: `https://discord.com/channels/@me/<channel_id>`. Such a
   link resolves only for a viewer who participates in that DM.
 - A thread-bound origin with no stored guild resolves its guild segment from the
-  configured guild, because a thread only ever lives in a guild and the `@me`
-  form could not open it. When no guild is configured, no address is
-  constructed and the origin takes the observable miss path below.
+  configured guild. When no guild is configured, no address is constructed and
+  the origin takes the observable miss path below.
 - The optional trailing `<message_id>` pins a specific message; without it
   the link opens the thread or channel.
 - The origin session and its Discord identifiers travel as structured
