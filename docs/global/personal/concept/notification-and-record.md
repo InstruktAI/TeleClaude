@@ -1,131 +1,106 @@
 ---
-description: The distinction that decides what a person's mail is worth — whether a message is the record of something or a notification about a record held elsewhere — and the handling that follows from it.
+description: How to tell what a person's mail is worth — the record-or-news question, the signals that answer it, and what to do with an answer you are not sure of.
 ---
 
 # Notification and Record — Concept
 
 ## What
 
-Every message is one of two things. Either it **is** the record — the thing
-itself, with no copy anywhere else — or it is a **notification** about a record
-held somewhere else: an app, a portal, an account page, a system the person
-already uses. Almost everything that matters about how to treat a message
-follows from which one it is.
+The useful question about any message is not what it is about. It is whether the
+message **is** the thing, or is **news about** a thing kept somewhere else.
 
-**Where the authoritative record lives elsewhere, the message is a
-notification.** A booking, an order, a delivery, a social interaction — the
-service holds the state and the person reads it there. The mail announces a
-change to something it does not contain.
+A booking confirmation is news; the booking lives in the service. A contract is
+the thing. Most mail is news, most news needs nothing, and an assistant that
+sorts by topic or urgency instead will produce a different answer for every
+sender and a general answer for none.
 
-That classification is a claim about the world and it has to hold before it is
-acted on. The external record must be both authoritative and complete for what
-the message carries: a confirmation whose figures, terms, or attachments are not
-retrievable from the service is not a notification about them, whatever else it
-announces. Where that cannot be established the message is treated as a record.
+Nothing here can be verified. There is no way to ask a service what it retains,
+and no inspection that settles the question. It is inferred — from the sender,
+from the content, from what the person's own mailbox has done with that sender
+before. What follows are signals worth reading, not conditions to satisfy.
 
-**Where nothing else holds it, the message is the record.** Security and account
-changes, credentials, invoices and receipts a person needs for accounting or
-tax, contracts and legal documents, and anything from a party that has no portal
-at all. Losing it loses the fact.
+### Signals that a message is news
 
-**Within records that move through states, only the terminal state survives.**
-Ordered, shipped, delivered; requested, confirmed; issued, paid. The final state
-implies the ones before it, so the intermediate steps carry nothing once it
-arrives. This applies only where the message is the record; where the state is
-held in a service, the whole sequence is notification and the terminal state is
-no more valuable than the rest.
+An account exists behind it and the person can log in and see the same fact. The
+message announces a change rather than containing one. It belongs to a recurring
+series that reads the same way each time. A machine wrote it. Nothing in it would
+be missed by someone reconstructing events from the service itself.
 
-**A machine writing with no external system and no terminal state is a
-notification stream.** Agent output, monitoring, scheduled reports. These are
-worth ending at the source rather than removing forever. Removing them is safe
-only where nothing depends on them as history — audit trails, delivery evidence,
-and anything a person may need to show someone else are records that happen to be
-machine-written.
+Where a thing moves through states — ordered, shipped, delivered; requested,
+confirmed — later states imply earlier ones, so earlier ones are the first to be
+worth nothing. A pointer, not a rule: where the whole sequence lives in a
+service, the last state is news too.
 
-**Anything a person wrote is never disposed of on judgement.** The cost of being
-wrong about a human correspondent is asymmetric and, once a message is gone,
-unrecoverable. Value is inferred for machines and asked about for people.
+### Signals that a message is the thing
 
-### What follows for handling
+It carries something no system holds: an attachment, a figure, a term, a
+decision, a promise. A person wrote it. There is no account behind the sender at
+all. The person might one day need it to show someone else what was agreed —
+that last one catches invoices, receipts, and correspondence that looked routine
+until it mattered.
 
-Volume is reduced at its source before it is managed. A notification stream that
-recurs is ended by unsubscribing or by silencing it at the service; sweeping the
-same sender forever is work that never finishes, and the person pays it every
-time. This is the only move here with lasting effect.
+### What the mailbox itself says
 
-Notifications are disposed of as they are recognised, not filed. Filing a thing
-that carries no information spends a gesture to buy a shorter list, and a list is
-not what anyone searches.
+Correlation is the strongest instrument available, and for most senders the only
+one.
 
-Records are kept and made findable. Findable means retrievable by search, not
-sorted into a hierarchy — a person looking for last year's invoice searches for
-it, and the folder it was in never helped.
+Read age. Mail that is old and still present has survived every pass the person
+has made; mail from this month has simply not been reached. The informative
+corpus is the old one, and its shape per sender — which classes persist for
+years, which have no survivors — says more than any single message. Where old
+account mail from a service persists and none of its old delivery mail does, that
+is the person's own answer about that service.
 
-One state carries one meaning. Where a person's unread flag means both "not yet
-seen" and "not worth seeing", it tells them nothing at the moment they most need
-it to. Reserving it for a single meaning is what makes it worth looking at.
+Read it the other way round on recent mail, where survivors are far more likely
+to be inattention than intent. A rule invented to explain this week's leftovers
+is a rule fitted to noise.
 
-### What survivorship teaches, and what it does not
+Read behaviour. Who does the person answer, how fast, and whom have they never
+once answered across everything they have sent. Which senders have ever caused
+them to do anything. A sender that has never produced an action in years is
+producing news, whatever its subject line claims.
 
-Deleted mail leaves no direct record, but what remains does, and age is what
-makes it readable. Mail that is old and still present has survived every pass a
-person has made since it arrived; mail that is recent has simply not been reached
-yet. So the informative corpus is the old one, and the shape of it per sender is
-the signal — which classes from a service persist over years and which have no
-survivors at all.
+### When the signals do not agree
 
-That shape is where absence speaks, though it speaks quietly. A service whose old
-account and security mail is still there while none of its old booking mail is
-suggests what the person keeps from it, without a single discard ever being
-recorded. It is corroborating evidence and never proof: a gap is equally
-consistent with a mailbox migration, a provider's own retention limit, a sender
-that changed address or stopped writing, or a period the person simply was not
-using that service. Absence supports a classification reached on other grounds;
-it does not establish one, and disposal is never decided by it alone.
+Keep it, or ask. Keeping something worthless costs a line in a list; discarding
+something irreplaceable cannot be undone. Confidence should be proportionate to
+what the mistake would cost, and it costs nothing to be uncertain out loud.
 
-The same reading fails on recent mail, and inverts. Where most of a sender's
-recent mail has been disposed of and a few messages remain, the survivors are far
-more likely to be inattention than deliberate exceptions, and a rule invented to
-explain them is fitted to noise. Time has not yet done the sorting.
+Never dispose of what a person wrote on inference alone.
 
-Alongside that, mail records value directly: who a person answers, how quickly,
-whom they have never once answered, and which senders have ever caused them to
-act.
+### What is worth doing about it
 
-This reading is general method rather than a personal accommodation. It is how an
-assistant learns which services a given person treats as notification without
-asking them to enumerate it, and it works on any mailbox with history. What it
-yields is specific to one person; how it is derived is not. The one thing it
-cannot do is establish the classes themselves — those hold prior to any mailbox,
-and a habit is not promoted to a practice by being observed.
+Volume is reduced at its source before it is managed. A recurring stream ended
+once costs less than sweeping it forever, and it is the only move that compounds
+— though what a service sends is the person's decision, not an assistant's to
+make quietly.
+
+News is disposed of rather than filed. Filing something that carries no
+information spends a gesture to buy a shorter list, and a list is not what anyone
+searches.
+
+Records are kept findable by search rather than sorted into a hierarchy.
+
+And one state carries one meaning. Where a flag means both "not yet seen" and
+"not worth seeing", it tells its owner nothing at the moment they most need it
+to.
 
 ## Why
 
-Sorting mail by topic, sender reputation, or apparent urgency produces a
-different answer for every service and generalizes to none of them. The
-record-or-notification question generalizes, because it asks about the mail's
-relationship to the truth rather than about its contents — and it is answerable
-for a sender never seen before.
+The record-or-news question generalizes where topic and urgency do not, because
+it asks about a message's relationship to the truth rather than about its
+contents — and it can be asked of a sender never seen before.
 
-It also puts the effort where it lasts. Where a mailbox is observably dominated
-by notification — a proportion to be measured in that mailbox, not assumed — most
-handling effort is spent on mail that never needed handling, and reducing it at
-the source is the only intervention that compounds. Every other move manages a
-volume that returns tomorrow. Changing what a service sends, or whether it sends
-at all, alters what reaches the person in future and is theirs to decide rather
-than an agent's to infer.
-
-Uncertainty defaults to retention for the same reason the human rail exists.
-Keeping a notification by mistake costs a line in a list; discarding a record by
-mistake destroys the only copy. Where the two errors differ that sharply, the
-classification does not have to be right so much as it has to fail in the
-survivable direction.
-
-The asymmetry between machine and human authorship is the safety rail that makes
-the rest of it safe to automate. Every other distinction here can be wrong in
-both directions at small cost; disposing of a person's letter cannot.
+It is inferential all the way down, and that is a property of the domain rather
+than a gap to be closed. An assistant that waits for certainty here will never
+act; one that manufactures certainty will eventually destroy something that
+mattered. The way through is to read the signals, hold the answer loosely, and
+let the cost of being wrong set how much confidence is required — which is why
+uncertainty resolves toward keeping and toward asking, and why a person's own
+letters are never decided by inference at all.
 
 ## See Also
 
-- ~/.teleclaude/docs/personal/procedure/email-triage.md — where these classes are applied to a window of mail.
-- ~/.teleclaude/docs/personal/spec/person-knowledge.md — the person's own priorities, which override these defaults wherever they speak.
+- ~/.teleclaude/docs/personal/procedure/email-triage.md — where these signals are applied to a window of mail.
+- ~/.teleclaude/docs/personal/spec/person-knowledge.md — the person's own priorities, which override any of this wherever they speak.
+- ~/.teleclaude/docs/general/principle/intelligence-boundaries.md — why this stays a judgement rather than becoming a checklist.
