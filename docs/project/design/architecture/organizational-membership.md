@@ -1,5 +1,5 @@
 ---
-description: How the company-tier roster is stored, validated, mutated, and resolved — config declaring the relationship and identity answering what it means, with the company-side home making the settled rules structural rather than checked.
+description: How the company-tier roster is stored, validated, mutated, and resolved — config declaring the relationship and identity answering what it means, with membership structural by locality and project ownership verified at the write and load boundaries.
 delivered_by:
   - company-member-roster
 ---
@@ -102,8 +102,8 @@ already admits. Reusing a surface is not inheriting the boundary it advertises.
 preserve unknown keys, so deleting a typed attribute does not stop the old key
 being read, kept, and written back — it converts it into a silent extra. Retiring
 the per-person company list and the per-company owner reference therefore means
-rejecting or stripping those keys explicitly at the load boundary before domain
-use, so the single home stays single. Absence of the attribute is not absence of
+rejecting those keys explicitly at the load boundary, so the single home stays
+single and a stale file fails loudly instead of being silently carried forward. Absence of the attribute is not absence of
 the field.
 
 ## Primary flows
