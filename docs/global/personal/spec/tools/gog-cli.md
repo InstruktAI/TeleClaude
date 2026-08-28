@@ -25,9 +25,9 @@ whose workspace it is in, and does not see the unwrapped binary.
 
 Within that person, an invocation names which of their own declared accounts it
 acts as. That is not free choice — the reachable set is the person's own
-declaration and nothing outside it — and it is required rather than defaulted,
-so that declaring a second account never silently changes what an existing
-invocation means.
+declaration and nothing outside it — and it is required rather than defaulted:
+an invocation means the same thing before and after that person declares a
+second account.
 <!-- /planned-change:personal-mail-tool-launcher -->
 
 ## Canonical fields
