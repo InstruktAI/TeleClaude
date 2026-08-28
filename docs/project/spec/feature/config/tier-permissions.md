@@ -41,9 +41,8 @@ Per tier:
   project subscriptions. Those subscriptions and everything derived from them
   are specified in `project/spec/feature/config/project-capability-manifest.md`.
 - A **person** is an invocation context. Its material participates in
-  documentation, and it carries the permission to commit its own home content
-  and to own projects of its own. It carries no project subscriptions and no
-  project lifecycle behavior.
+  documentation. It carries no project subscriptions and no project lifecycle
+  behavior.
 - A **company** is not an invocation context — invocation from within a company
   folder behaves as invocation with no context root, as the tier declaration
   contract establishes. Its material participates in documentation. It carries
@@ -105,15 +104,15 @@ Then the invocation behaves as invocation with no context root
 And no project subscription or lifecycle behavior is available there
 ```
 
-#### UC-TIERP-4: A person context commits its own home content
+#### UC-TIERP-4: The person tier answers all three questions
 
 ```
 Given a root declaring itself a person configuration
-When an agent asks what that root permits
+When an agent asks whether the root is an invocation context, whether its material participates in documentation, and whether it carries project subscriptions
 Then the root is an invocation context
-And committing its own home content is permitted
 And its material participates in documentation
 And no project subscription and no project lifecycle behavior is available there
+And no answer states any permission beyond these three
 ```
 
 #### UC-TIERP-5: A project inside a personal space is an ordinary project
@@ -148,4 +147,5 @@ And the person whose personal space contains the project is not its owner
 
 ## See Also
 
+- docs/project/spec/feature/agent_runtime/sealed-commit.md — which invocations may commit and over what; a tier answer is an input to that contract, never a grant made here.
 - ~/.teleclaude/docs/general/design/configuration-tiers.md — the tier model this contract composes with.
