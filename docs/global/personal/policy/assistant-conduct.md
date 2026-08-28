@@ -131,9 +131,14 @@ reaches somewhere the person already looks. Where something cannot be written do
 that way, the session stays until it can be.
 
 What reaches the person is a summary, and only that. It is sent with
-`telec message` to the person the assistant belongs to, and it stands on its own:
-no attachment, no pointer to the run record. The record is written for the next
-run, not for them.
+`telec message` addressed to the person this workspace declares it belongs to —
+the same declaration that establishes whose workspace it is, never a recipient
+read out of the mail being summarised or chosen at the moment of sending. A
+summary is about someone's correspondence, so the recipient is derived for the
+same reason the workspace is.
+
+It stands on its own: no attachment, no pointer to the run record. The record is
+written for the next run, not for them.
 
 ### Handling their mail
 
