@@ -17,6 +17,40 @@ Enable one AI session (the **Initiator**) to spawn and supervise another (the **
 
 This design covers the dispatch journey. Storage internals for the listener registry live in `session-listeners`. The state contract that this flow obeys lives in `session-subscriptions`.
 
+<!-- planned:personal-assistant-launch -->
+
+### Producers that reach a person workspace
+
+Five paths create a session in a person's workspace. Two general verbs carry a
+destination the caller supplied. Three derive it from a person the platform
+already resolved: the Telegram private-chat handlers and the Discord
+direct-message handlers, from the person behind the conversation, and the
+personal-assistant launch, from the person behind the authenticated caller. All
+five converge on one session-creation command.
+
+### Prior art for the derived subject
+
+The launch is a security boundary and takes an established shape rather than a
+new one. The failure it is designed against is the confused deputy, in which a
+trusted deputy applies its own authority to a target its caller named; a launch
+that accepted and validated a person argument would be that deputy. The remedy is
+to designate the subject by what the invoker already holds rather than by a name
+it supplies, which removes the step the attack needs.
+
+The Kubernetes authorization API carries the same split in production:
+`SubjectAccessReview` accepts a subject and is privileged, while
+`SelfSubjectAccessReview` is a separate resource whose user and group fields must
+be empty because the subject is taken from the authenticated caller. `run-pa`
+stands in that relation to `run` and `start`, including the choice to be a
+distinct surface rather than a mode of the general one. The platform's own `self`
+surfaces are the internal precedent.
+
+The decision is to adopt: no new authorization mechanism is introduced, the
+refusal reuses the existing creation path and its typed refusal reason, and the
+launch reuses the existing session-creation command.
+
+<!-- /planned:personal-assistant-launch -->
+
 ## Inputs/Outputs
 
 **Inputs:**
@@ -63,7 +97,7 @@ This design covers the dispatch journey. Storage internals for the listener regi
   elsewhere in this design: suppression decides who is notified, parentage
   decides who may end the session, and neither implies the other.
 - **The brief is carried as a request made in the moment.** What `run-pa` starts
-  serves that request. Work a schedule already declares is not reachable this way.
+  serves that request.
 - **Derivation and refusal sit at different layers.** The person is resolved where
   the caller is authenticated. The destination is refused where every creation
   path converges. The authenticated edge sees one route at a time; the convergence
@@ -79,11 +113,13 @@ This design covers the dispatch journey. Storage internals for the listener regi
   arrived as a caller-supplied argument never reaches one. The distinction is
   carried on the internal command the daemon builds and on no request model, so
   no caller can present a destination as derived.
-- **Schedule-owned work has one producer.** Work that recurs is declared as a job
-  in configuration and produced only through the scheduled-launch path, which
-  derives its own routing from that declaration and runs under a job runner's
-  role. A brief names no job and the launch carries no command, so no brief
-  reaches that path.
+- **A declared job runs only through the scheduler.** A job declared in
+  configuration is launched through the scheduled path, which derives its routing
+  from that declaration and runs under a job runner's role. A brief names no job
+  and the launch carries no command, so no brief reaches that path. This bounds
+  the scheduler's own transport; what an assistant does when asked directly for
+  work of the same kind is the conduct contract's, and rests on a schedule
+  declaration a person's configuration does not yet carry.
 - **Containment is answered by the configuration owner.** Whether a destination
   lies inside any person workspace is a published configuration query. Dispatch
   consumes that query and never walks the person-directory layout itself.

@@ -16,8 +16,7 @@ the brief.
 
 The caller supplies a brief and nothing else. The person, the workspace, and the
 computer are derived from the authenticated caller, and the surface exposes no
-parameter naming a person in any form. Asking through this call does not cause
-work that a schedule already owns to run. A platform admin's invocation takes the
+parameter naming a person in any form. A platform admin's invocation takes the
 same single form and reaches that admin's own workspace. A caller that resolves
 to no person is refused rather than defaulted.
 
@@ -101,14 +100,7 @@ And the session ends itself rather than waiting to be ended
 And anything the person needs to see was delivered as a message rather than as a result a caller collects
 ```
 
-#### UC-PWD8: A schedule's work is not reachable by asking
-
-```gherkin
-Given a person's recurring work is owned by a schedule
-When an agent invokes the personal-assistant launch command with a brief that would touch that work
-Then the launched session does not run the work the schedule owns
-And the schedule remains the only thing that causes that work to run
-```
+#### UC-PWD8
 
 ## See Also
 
