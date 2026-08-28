@@ -24,8 +24,8 @@ This design covers the dispatch journey. Storage internals for the listener regi
 - `telec sessions run` or `telec sessions start` invocation from the Initiator (CLI or API). Carries target computer, project path, command or message, and (when relevant) `--direct`.
 <!-- planned:personal-assistant-launch -->
 - `telec sessions run-pa` invocation from any session. Carries a brief and
-  nothing else: no path, no subfolder, no computer, and no person. Every one of
-  those is derived from the caller rather than accepted from it.
+  nothing else: no path, no subfolder, no computer, and no person. Each of those
+  is derived from the authenticated caller.
 <!-- /planned:personal-assistant-launch -->
 - Initiator's session identity (`X-Caller-Session-Id` header / equivalent) — pins the dispatcher identity on the new session.
 - Worker `agent_stop` events from the agent CLI hook receiver.
@@ -40,19 +40,14 @@ This design covers the dispatch journey. Storage internals for the listener regi
 
 <!-- planned:personal-assistant-launch -->
 - **A person is derived, never addressed.** `run-pa` resolves its target from the
-  authenticated caller's own identity. There is no parameter naming a person, so
-  no input to the dispatching session — a brief, a quoted message, a document it
-  was asked to read — can select whose workspace opens. The absence is the
-  mechanism; a validated person argument would be the same door with a lock that
-  argues back.
-- **A platform admin gets their own assistant.** Elevation changes nothing here,
-  because there is no wider form of the call to elevate into.
+  authenticated caller's identity. The surface exposes no parameter naming a
+  person, in any form.
+- **A platform admin gets their own assistant.** The call has one form and
+  elevation does not widen it.
 - **Person workspaces are unreachable through the general verbs.** `run` and
-  `start` refuse a path resolving inside one. Without that refusal `run-pa` is a
-  convenience beside an open door rather than the only way through it.
-- **No caller identity, no launch.** A caller that resolves to no person is
-  refused rather than defaulted, since every available default is somebody's
-  real mailbox.
+  `start` refuse a path resolving inside one.
+- **No caller identity, no launch.** A caller resolving to no person is refused,
+  never defaulted.
 <!-- /planned:personal-assistant-launch -->
 - **Initiator pinning.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. This is the canonical link from child to parent and survives daemon restart.
 - **Listener kind.** Dispatch registers a persistent listener (`one_shot=false`). Repeat dispatches against the same target are deduplicated by `(caller, target)`.
@@ -136,6 +131,16 @@ sequenceDiagram
 ```
 
 ## Failure modes
+
+<!-- planned:personal-assistant-launch -->
+- **Accepting a person argument and validating it.** This reads as the same
+  guarantee reached more flexibly and is a different one: anything a caller can
+  pass is something a caller can be talked into passing by content it was asked
+  to read. The security property is that no such parameter exists.
+- **Shipping `run-pa` while `run` still accepts a person-workspace path.** The
+  new verb then sits beside an open door rather than replacing it, and the
+  boundary it exists to enforce is no more enforced than before.
+<!-- /planned:personal-assistant-launch -->
 
 - **Worker session crashes before any turn completes.** No `agent_stop` ever fires for it; the listener row remains until caller cleanup or explicit unsubscribe. Diagnose via `telec sessions tail <worker_id>` and lifecycle status in the sessions table.
 - **Initiator tmux gone before notify.** `deliver_listener_message` logs the failure; the listener row is still removed when it is `one_shot=true`, retained when persistent. Persistent listeners with no live tmux become silent — caller cleanup is the resolution.
