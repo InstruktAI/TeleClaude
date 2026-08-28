@@ -106,23 +106,10 @@ Examples:
   | project  |
 ```
 
-#### UC-CFG-MEMBER-10: An assignment outside the person's memberships is refused
-
-```gherkin
-Given a person who belongs to one registered company
-And a registered project owned by a different company the person does not belong to
-And a human administrator operating the maintenance surface
-When the administrator assigns the person to that project
-Then the declaration is refused at the point it is written
-And the refusal names the company the person does not belong to
-And no assignment declaration is persisted for that person
-And the person's existing membership declarations remain unchanged
-```
-
 ## Known caveats
 
-- Use-case identifiers 4 through 7 and 9 are not in use in this contract and are
-  not reused.
+- Use-case identifiers 4 through 7, 9, and 10 are not in use in this contract
+  and are not reused.
 - Two inert organizational declarations sit in the configuration schema: a
   per-person company-membership list and a per-company owner reference. Neither
   has a resolver and neither is populated. This contract is the single home for
@@ -131,8 +118,8 @@ And the person's existing membership declarations remain unchanged
   product decision. Scenarios here name the administrative role by its function
   rather than by a literal value until that decision lands.
 - Whether an assignment may name a project of a company the person does not
-  belong to is an open product decision. UC-CFG-MEMBER-10 states the refusal
-  that follows if membership is required, and does not hold if it is not.
+  belong to is an open product decision. No scenario here decides it; the
+  scenario that would state the refusal is authored once the decision lands.
 
 ## See Also
 

@@ -133,8 +133,6 @@ And holding any platform role confers no company membership and no project assig
 
 ## Known caveats
 
-- Assignment is a narrowing inside a business, never a standing granted outside
-  one.
 - UC-ORGID-3 is the only place a company role affects what resolution reports.
   Any further derivation from company role is a change to this contract, not an
   implementation detail.
