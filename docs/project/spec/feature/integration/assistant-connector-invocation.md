@@ -15,10 +15,9 @@ delivered_by:
 The behavioral contract for reaching an external mail or calendar connector on a
 person's behalf. Every such invocation is bound to one mail account that person
 has declared, is directed at that person's own connector state, and carries the
-two prohibitions the personal-assistant conduct policy declares — no send the
-person did not ask for, and no settings change.
+settings prohibition the personal-assistant conduct policy declares.
 
-The prohibitions are applied to what an invocation is determined to reach, so a
+That prohibition is applied to what an invocation is determined to reach, so a
 generic pass-through request is judged by the endpoint it reaches rather than by
 its command name, and an invocation whose reach cannot be determined is refused
 rather than attempted. The platform's connector vocabulary is translated into a
@@ -36,8 +35,8 @@ configuration that owns person data. This contract owns neither; it owns what
 happens at the boundary where an external connector is actually reached.
 
 The two prohibitions do not reach equal strength. Settings are refused outright.
-Sending is unavailable on every invocation, and no property of the session an
-invocation runs in makes it available.
+This contract governs the settings prohibition and leaves sending as the conduct
+policy governs it, neither enabling nor withholding it.
 
 **Business value:** a connector that isolates nothing will, on a missed
 configuration, act as the wrong identity and leave one person's credentials
@@ -96,16 +95,6 @@ When a connector invocation is made on behalf of one of them
 Then nothing it does writes to the state the other person's assistant established
 ```
 
-#### UC-ACI-6: No invocation can send
-
-```gherkin
-Given any connector invocation this boundary constructs
-When it would cause mail to leave — whether through the connector's own send, reply, or forward operation or a generic pass-through request reaching one of those endpoints
-Then the connector runs with sending unavailable
-And nothing the invocation carries makes sending available
-And no mail leaves
-```
-
 #### UC-ACI-7: A settings change is refused whether or not the command name shows it
 
 ```gherkin
@@ -119,7 +108,7 @@ And the account's settings are unchanged
 
 ```gherkin
 Given a connector invocation on a person's behalf
-When its reach with respect to sending or changing settings cannot be determined
+When its reach with respect to changing settings cannot be determined
 Then it is refused before the connector runs
 And the refusal states that the invocation's reach could not be determined
 ```

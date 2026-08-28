@@ -87,10 +87,10 @@ refuses them whatever is invoked. And the boundary that launches the tool
 constructs every invocation with the tool's own command restrictions already
 applied, so the commands are unreachable before they are attempted.
 
-Sending is held the same way rather than by the tool's own disposition: the tool
-can send, and the launch boundary is what withholds it, constructing an
-invocation with sending unavailable, on every run. What an assistant writes stays
-a draft and the person sends it.
+Sending has no such structural refusal. The grant permits it, the tool performs
+it, and the flags that would withhold it are supplied by the caller rather than
+compiled in. What restrains it is the conduct policy's mandate rule, under which
+what an assistant writes of its own accord stays a draft.
 <!-- /planned-change:personal-mail-tool-launcher -->
 
 An agent that receives a refusal reports it; it does not look for another route.
