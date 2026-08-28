@@ -31,12 +31,28 @@ TeleClaudeNext repository.
 
 ### Ownership boundary
 
+<!-- planned-change:external-session-identity -->
 - **Owns:** live-session acceptance and input execution, supervised agent
   processes, runtime status, and session lifecycle transitions.
+<!-- change:external-session-identity -->
+- **Owns:** live-session acceptance and input execution, supervised agent
+  processes, runtime status, session lifecycle transitions, and the
+  owning-process identity recorded for a session whose agent process this
+  runtime did not launch.
+<!-- /planned-change:external-session-identity -->
 - **Does not own:** provider transport or presentation, caller-identity policy,
   todo workflow, or durable historical projections.
+<!-- planned-change:external-session-identity -->
 - **Published contracts:** session commands, queries, and lifecycle signals
   exposed to integration, workflow, identity, and session mirrors.
+<!-- change:external-session-identity -->
+- **Published contracts:** session commands, queries, and lifecycle signals
+  exposed to integration, workflow, identity, and session mirrors. Two serve
+  caller attestation: a command recording a session's owning-process identity,
+  and a query resolving an attested process ancestry to the session that owns
+  it. The identity context reaches both only through these contracts, never by
+  reading hook internals, the native-session map, or session storage directly.
+<!-- /planned-change:external-session-identity -->
 
 ## See Also
 
