@@ -53,12 +53,10 @@ thing a later sweep can see and act on, where a silently missing record is not.
 
 - **One sweeper.** Sweeping is dispatched by the schedule that declares it and by
   nothing else. Records accumulate across runs rather than reconciling them.
-- **Concurrent sweeps are neither prevented nor safe.** No mechanism serializes
-  runs, and none is claimed. Checking a result and then acting on it is not one
-  step, so two sweeps reaching the same message can both find no draft and both
-  write one. What overlap cannot do is destroy: filing and disposal reach the same
-  state whichever run performs them, and nothing is sent without the person asking
-  for it. The cost is a duplicated draft, and it is visible.
+- **A sweep is scheduled only where a run is not dispatched over an open one.**
+  Runs of a sweep do not overlap, and this is a requirement on the schedule rather
+  than something the record arranges. A schedule that would start a second run
+  while the first is open does not carry this work.
 - **A run that dies leaves its window open.** An unclosed window claims no
   coverage, and the next scheduled run reads that ground again. A failed run
   leaves work already done, never a claim that work was done.
