@@ -133,14 +133,14 @@ And holding any platform role confers no company membership and no project assig
 
 ## Known caveats
 
-- An assignment names a project of a company the person belongs to. Assignment
-  is a narrowing inside a business, never a standing granted outside one.
+- Assignment is a narrowing inside a business, never a standing granted outside
+  one.
 - UC-ORGID-3 is the only place a company role affects what resolution reports.
   Any further derivation from company role is a change to this contract, not an
   implementation detail.
-- Belonging to a company confers no project, and an assignment presupposes the
-  membership it narrows. The two rules run in opposite directions and neither
-  implies the other.
+- The relation is asymmetric. Membership does not imply assignment: belonging to
+  a company confers no project. Assignment does imply membership: an assignment
+  requires membership in the company owning the project it names.
 
 ## See Also
 
