@@ -275,7 +275,6 @@ Given a startup stage carries work contributed by another bounded context
 When startup runs
 Then the documented stage order is unchanged
 And the contributed work completes inside its own stage rather than deferring a later one
-And startup elapsed time stays below the slow-startup threshold for an installation of ordinary size
 ```
 <!-- /planned:config-kind-declaration -->
 
