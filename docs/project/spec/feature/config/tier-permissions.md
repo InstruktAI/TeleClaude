@@ -23,8 +23,11 @@ answered from that root's declared tier:
 - **Invocation context** — whether the tier establishes a root that an agent or
   human can work from, so that configuration and documentation compose for
   invocations beneath it.
-- **Surface participation** — whether the tier's material takes part in a given
-  platform surface, such as documentation.
+- **Surface participation** — whether the tier's material takes part in a named
+  platform surface. The surfaces this axis answers for are a closed set, and
+  today that set is documentation alone. Adding a surface to it means stating
+  every declared tier's answer for that surface; until then the axis has no
+  answer to give for one, and none is inferred.
 - **Project subscriptions** — whether the tier carries the optional per-project
   capability subscriptions that govern the code, docs, and agents plumbing.
 

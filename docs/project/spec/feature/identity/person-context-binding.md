@@ -30,9 +30,16 @@ closed: the failure is reported clearly, and the context receives neither
 person-scoped visibility nor person-scoped write authority. Nothing degrades to
 a partial grant.
 
-The stakes are what make this fail closed rather than warn. A person context is
-commit-capable over that person's own material, so a claim accepted without
-validation carries write authority into someone else's home. Inferring the
+A validated binding is a published identity fact and nothing more. It is what
+any person-scoped authority requires before it may be decided, never what
+decides one: the surface that would act on a person's material owns whether it
+acts, and reads this binding as an input. So validation grants nothing, and the
+absence of a grant here is not an omission to be filled downstream by treating
+the binding as permission.
+
+The stakes are what make the failure path fail closed rather than warn. Every
+person-scoped authority rests on this binding, so a claim accepted without
+validation would carry each of them toward someone else's home. Inferring the
 binding from where a directory sits would make any directory of the right shape
 into an assertion of somebody's identity.
 
@@ -47,7 +54,8 @@ Given a root declaring itself a person configuration and naming a person
 And that person is present in the person registry
 When the binding is validated
 Then the context is accepted as belonging to exactly that person
-And person-scoped visibility and write authority follow for that person only
+And that validated binding is published as an identity fact
+And no visibility and no authority follow from the validation itself
 ```
 
 #### UC-PCB-2: An unregistered person fails closed
