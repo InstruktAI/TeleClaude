@@ -78,6 +78,10 @@ flowchart LR
 - **TeleClaude Registry Source**: MCP routes read from the effective TeleClaude MCP registry, assembled from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc`; native agent MCP config files are not the API source of truth.
 - **Secret-Safe MCP Output**: MCP routes resolve placeholder environment variables inside the daemon process and never return resolved secret values to callers.
 
+<!-- planned:external-session-identity -->
+- **Kernel-Attested Peer Identity**: Requests arriving on the Unix socket carry the connecting process's kernel-supplied pid and uid, read from the peer socket and kept distinguishable from every client-supplied identity header. The identity context consumes it as authentication evidence; routes never accept it from the request itself. See `docs/project/design/architecture/local-caller-attestation.md`.
+<!-- /planned:external-session-identity -->
+
 ## Primary flows
 
 ### 1. Resource Read (Sessions Example)
