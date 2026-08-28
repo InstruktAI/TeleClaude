@@ -156,11 +156,9 @@ declaration is present, so the block is the default state of the invocation
 rather than a decision taken against it.
 
 What this does not do is prevent a false declaration, in any run. The conduct
-policy's requirement that the tool an unattended run uses cannot send is
-therefore not met structurally by this design, and the gap is recorded rather
-than papered over: it closes when some context publishes an attendance fact this
-boundary can branch on, and the product contract states the weaker guarantee
-until then.
+policy's requirement that the tool an unattended run uses cannot send is not met
+structurally by this design. Meeting it requires a published attendance fact for
+this boundary to branch on, which no context provides.
 
 ## Primary flows
 
@@ -212,10 +210,9 @@ governs only authorizations made after it is in force.
   invocation, and an unrecognized endpoint alias or encoding is read as reaching
   nothing prohibited.
 - **A false instructed-send declaration sends mail, in any run.** The declaration
-  is detection, not prevention, and there is no attendance fact to make an
-  unattended run structurally different. What it buys is attribution: the send is
-  recorded against the session that declared it. This is the design's weakest
-  guarantee and the one most worth closing.
+  is detection, not prevention, and no attendance fact makes an unattended run
+  structurally different. What it buys is attribution: the send is recorded
+  against the session that declared it.
 - **Directed state reads as isolation.** Every invocation going to its own
   person's location looks like separation between people and is not: the
   connector can still resolve an account from a store shared across the machine.
