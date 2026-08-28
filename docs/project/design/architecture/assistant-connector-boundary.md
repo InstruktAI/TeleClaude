@@ -64,11 +64,13 @@ surveyed rather than invented.
   exposes token export, import, and delete operations over stored refresh
   credentials, and accepts a short-lived access token directly, bypassing stored
   refresh credentials entirely.
-- **Reference implementation** — the broker credential-source pattern, as
-  proposed for agent runtimes and as described by integration platforms managing
-  OAuth refresh at scale: a service owns refresh state and returns a short-lived
-  access token per request, so the runtime holds no refresh credential, with
-  single-flight refresh per identity to avoid rotation races.
+- **The surveyed alternative** — the broker credential-source pattern: a service
+  owns refresh state and returns a short-lived access token per request, so the
+  runtime holds no refresh credential, with single-flight refresh per identity to
+  avoid rotation races. The evidence for it is an open proposal against an agent
+  runtime and integration platforms' accounts of managing OAuth refresh at scale,
+  not a reference implementation this design could copy. The adopted mechanism is
+  vendor-native and needs none.
 - **Comparable production architecture** — multi-tenant OAuth deployments wrap a
   per-record data key with a per-tenant key; and an agent runtime sharing one
   credential store across processes has been reported revoking valid credentials
@@ -208,17 +210,17 @@ connector's client identification.
 
 **Secret surfaces, including the intermediate the connector requires.** The
 credential moves between stores through the connector's own export and import
-operations, and export writes it to a file — the connector offers no
-store-to-store path, so a secret-bearing intermediate is unavoidable rather than
-a design choice. That file is treated as the credential it contains: it is
+operations, and export writes it to a file; the connector offers no
+store-to-store path, so the intermediate exists by the tool's shape. That file is
+treated as the credential it contains: it is
 created inside the person's own workspace, which already holds their
 environment-scoped secrets and is already excluded from version control; it is
 readable only by its owner; and it is removed once import is confirmed.
 
-Crash recovery removes it too. Because a re-run re-exports, any intermediate left
-by an interrupted run is deleted before the run proceeds rather than being reused
-— a stale intermediate is a secret with no owner, and reusing one would also risk
-importing a credential that rotation has since invalidated.
+Crash recovery removes it too: any intermediate left by an interrupted run is
+deleted before the run proceeds rather than reused, because a re-run re-exports
+and a retained one is both an unowned secret and possibly a credential rotation
+has already invalidated.
 
 Nothing else carries the credential: it is not placed in the arguments the
 migration constructs, and not written out in any report it produces. A failure
