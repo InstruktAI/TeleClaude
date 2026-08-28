@@ -94,7 +94,7 @@ And the command's exit status and output are git's own
 
 <!-- change:tier-aware-commit-authority -->
 
-#### Wrapper passes through transparently in an undeclared repository
+#### UC-NCR-13 — Wrapper passes through transparently in an undeclared repository
 
 ```
 Given an agent session running inside its host pane (identity present)
@@ -103,7 +103,6 @@ When the agent invokes `git add`, `git commit`, `git rebase`, or `git push` in a
 Then the wrapper execs the real git binary unmodified
 And no seal or role-guard error is printed
 And the command's exit status and output are git's own
-But a repository whose own root is a declared invocation context is sealed rather than passed through, wherever beneath it the invocation sits
 ```
 
 <!-- /planned-change:tier-aware-commit-authority -->
