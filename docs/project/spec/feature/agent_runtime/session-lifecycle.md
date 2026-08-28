@@ -171,6 +171,31 @@ And the snapshot reports `agent_status="idle"` even when `last_agent_stop_at` is
 And the snapshot still preserves the lifecycle `status` field as `closing` or `closed`
 ```
 
+<!-- planned:session-jump-links -->
+
+#### UC-SL31: A listed session carries the address of its own conversation
+
+```gherkin
+Given an agent lists sessions
+And a listed session has a conversation whose address resolves
+When the listing answer is returned
+Then that session's entry carries the address of its own conversation
+And that address opens the same conversation as the backlink already appended to outbound messages originating from that session
+```
+
+#### UC-SL32: A session whose address does not resolve is listed without one
+
+```gherkin
+Given an agent lists sessions
+And a listed session has no conversation whose address resolves
+When the listing answer is returned
+Then that session's entry carries no address
+And no placeholder, empty value, or unopenable address stands in its place
+And the rest of that entry is unchanged
+```
+
+<!-- /planned:session-jump-links -->
+
 #### UC-SL23: An activity hook activates an initializing session
 
 ```
@@ -300,6 +325,12 @@ And the conversation link operates orthogonally to stop-listener subscriptions
 - **config** — the computer name, host-pane binary, help-desk directory, enabled agents and defaults flow in via configuration resolution.
 - **session_mirrors** — downstream consumer of the session-lifecycle events emitted as the Session moves through `initializing -> active -> closed`. The lifecycle write here is the source of those events.
 - **workflow** — orchestrators dispatched as child sessions via this surface receive completion notifications through the one-shot stop-listener wired during create-session.
+
+<!-- planned:session-jump-links -->
+
+- **integration** — the Discord-owned session-address capability constructs the address a listed session carries; this surface consumes that contract and never builds an address itself.
+
+<!-- /planned:session-jump-links -->
 
 ## Known caveats
 

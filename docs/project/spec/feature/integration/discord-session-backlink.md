@@ -15,7 +15,16 @@ originates from a session can jump straight into that session's Discord
 context — its forum thread, team channel, or DM channel — without searching.
 
 This capability is the single construction point for Discord session
-backlinks. Person-addressed delivery (`telec message`) renders it when the
+backlinks.
+
+<!-- planned:session-jump-links -->
+
+Session enumeration carries a listed session's own address, so an agent holds
+that address at the moment it has identified the session it cares about.
+
+<!-- /planned:session-jump-links -->
+
+Person-addressed delivery (`telec message`) renders it when the
 request carries an originating session; any surface that later renders a
 session backlink on Discord (session-output presentation, owner
 notifications, operational action cards) constructs it through this same
@@ -29,9 +38,13 @@ capability rather than building URLs independently.
 - Identifier precedence: the session's `thread_id` when present, else its
   `channel_id` — the most specific context wins (a forum session stores the
   forum as `channel_id` and its own thread as `thread_id`).
-- A guild-less origin (a DM-scoped session, where `guild_id` is absent) uses
-  the `@me` guild segment: `https://discord.com/channels/@me/<channel_id>`.
-  Such a link resolves only for a viewer who participates in that DM.
+- A channel-bound origin with no stored guild — a DM-scoped session — uses the
+  `@me` guild segment: `https://discord.com/channels/@me/<channel_id>`. Such a
+  link resolves only for a viewer who participates in that DM.
+- A thread-bound origin with no stored guild resolves its guild segment from the
+  configured guild, because a thread only ever lives in a guild and the `@me`
+  form could not open it. When no guild is configured, no address is
+  constructed and the origin takes the observable miss path below.
 - The optional trailing `<message_id>` pins a specific message; without it
   the link opens the thread or channel.
 - The origin session and its Discord identifiers travel as structured
@@ -106,9 +119,12 @@ Then the delivered message ends with the @me-form jump link for that DM channel
 - Any delayed or queued Discord delivery carries the structured origin and
   identifiers through retry — a redelivery renders the same backlink from
   the same structured metadata, never from a re-parse of message text.
-- The backlink targets Discord context only. An origin session whose home
-  surface is not Discord has no Discord identifiers and resolves to the
-  observable miss path; no cross-platform link is constructed.
+- The backlink targets Discord context only, and what decides constructability
+  is whether the session has stored a Discord destination — never how the
+  session was started or where its input arrives. A session of any origin is
+  addressable once that context exists, and a session without it resolves to
+  the observable miss path whatever its origin. No cross-platform link is
+  constructed.
 
 ## See Also
 
