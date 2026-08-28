@@ -10,20 +10,15 @@ A sweep is one pass over a person's mail on their behalf. It reads what it did
 last time, reads what the person did since, classifies what has arrived, and
 leaves one report.
 
-The cases below are what a sweep is answerable for. They say what an observer
-sees, never why — the reasoning is the concept's, the steps are the procedure's,
-and the outcomes a message may receive are the disposition contract's.
+The cases below are what a sweep is answerable for, stated as what an observer
+sees.
 
 ## Canonical fields
 
-Four cases are written because sweeps have exercised them. Four are named without
-scenarios because no sweep has produced one yet, and specifying behaviour never
-observed would be inventing it. They are listed so the map is complete, and they
-are filled in from the first real occurrence.
-
-Named, not yet specified: a set carrying a fact none of its members carries; a
-disposition graduating to action; a message too ambiguous to place; a message a
-person wrote.
+Cases carrying a scenario are binding. Cases named without one are within a
+sweep's remit and not yet specified: a set carrying a fact none of its members
+carries; a disposition graduating to action; a message too ambiguous to place; a
+message a person wrote.
 
 ### Use cases
 
@@ -77,9 +72,8 @@ And the report names what changed and what evidence changed it
 - **A case is watched, not tested.** These bind an assistant's observable
   behaviour in a person's mailbox; there is no harness, and a sweep either
   exhibits a case or does not.
-- **Absence of a scenario is deliberate.** The four named cases carry no
-  scenario because none has occurred. A scenario written ahead of the first
-  occurrence would describe a guess.
+- **A named case without a scenario binds nothing yet.** It marks remit, and an
+  assistant meeting one is not in breach of a contract that has not been written.
 
 ## See Also
 

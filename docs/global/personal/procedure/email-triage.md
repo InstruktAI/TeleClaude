@@ -42,9 +42,7 @@ them. The cases a sweep is answerable for are specified in
    covers them, do them and name them in the briefing; do not come back with
    questions about mail they already told you how to treat.
 5. **Leave every message you considered with one disposition**, per the
-   disposition contract. Nothing is left unmarked as a remainder, because mail
-   that is merely unmarked is indistinguishable from mail never reached, and that
-   is where a backlog comes from.
+   disposition contract, and record the point this sweep reached.
 6. **Read what happened to the last selection before deciding this one.** What
    the person did to what was surfaced is the correction: a reply is the
    strongest endorsement available, a message trashed says it should not have

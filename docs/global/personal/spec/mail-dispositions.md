@@ -6,10 +6,10 @@ description: The outcomes a sweep may assign to a message, the channel that carr
 
 ## What it is
 
-Every message a sweep considers leaves it with exactly one disposition. There is
-no unconsidered remainder: a message the assistant could not decide about has the
-disposition for that, and a message needing nothing keeps the one that means
-nothing was proposed.
+Every message a sweep considers leaves it with exactly one disposition. A message
+the assistant could not decide about has the disposition for that, and a message
+needing nothing carries no marker at all — which is legible only because each run
+records the point it swept to.
 
 A disposition is carried in a channel the assistant owns and nothing else writes
 to. What that channel is belongs to the tool contract for the person's provider —
@@ -22,9 +22,12 @@ person.
 - **Exactly one.** Dispositions are mutually exclusive. A person acting on a
   message in one place has acted on it everywhere, and a message never appears
   under two proposals at once.
-- **Absence is a disposition.** A message carrying no assistant marker has been
-  considered and needs nothing. It is not an unswept remainder, and a later run
-  does not reconsider it without new reason.
+- **Absence is read against a watermark.** A message carrying no assistant marker
+  is one of two things, and only the time a sweep last ran separates them: mail
+  that arrived before that point was considered and needs nothing; mail that
+  arrived after it has not been reached. Absence alone carries no meaning, and a
+  claim that nothing is left unconsidered rests on the watermark being recorded,
+  not on the marker being missing.
 - **The reason lives elsewhere.** The disposition records where a message landed.
   Why it landed there belongs to the run record, which holds the reasoning the
   marker cannot.
