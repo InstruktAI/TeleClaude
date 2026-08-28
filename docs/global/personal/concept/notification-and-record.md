@@ -21,9 +21,7 @@ That classification is a claim about the world and it has to hold before it is
 acted on. The external record must be both authoritative and complete for what
 the message carries: a confirmation whose figures, terms, or attachments are not
 retrievable from the service is not a notification about them, whatever else it
-announces. Where that cannot be established the message is treated as a record,
-because the classification is cheap to get wrong in one direction and permanent
-in the other.
+announces. Where that cannot be established the message is treated as a record.
 
 **Where nothing else holds it, the message is the record.** Security and account
 changes, credentials, invoices and receipts a person needs for accounting or
@@ -116,6 +114,12 @@ the source is the only intervention that compounds. Every other move manages a
 volume that returns tomorrow. Changing what a service sends, or whether it sends
 at all, alters what reaches the person in future and is theirs to decide rather
 than an agent's to infer.
+
+Uncertainty defaults to retention for the same reason the human rail exists.
+Keeping a notification by mistake costs a line in a list; discarding a record by
+mistake destroys the only copy. Where the two errors differ that sharply, the
+classification does not have to be right so much as it has to fail in the
+survivable direction.
 
 The asymmetry between machine and human authorship is the safety rail that makes
 the rest of it safe to automate. Every other distinction here can be wrong in
