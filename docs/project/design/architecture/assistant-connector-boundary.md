@@ -1,5 +1,5 @@
 ---
-description: 'How an agent session reaches an external mail or calendar connector: the person binding it inherits rather than resolves, the layer each responsibility sits in, how an instructed send is distinguished from initiative, and where connector state is directed for each person.'
+description: 'How an agent session reaches an external mail or calendar connector: the person binding it inherits rather than resolves, the layer each responsibility sits in, and where connector state is directed for each person.'
 delivered_by:
   - personal-mail-tool-launcher
 ---
@@ -80,12 +80,12 @@ short-lived tokens — is surveyed by that owner's work rather than by this.
 
 **In:** identity's validated person binding for this session; that person's declared
 accounts and the account this invocation names; that person's state location; and
-an explicit declaration when a send was instructed.
+the account this invocation names.
 
 **Out:** a constructed invocation of the real connector executed against that
 person's own state, or a refusal naming which condition failed — not in a
 person's workspace, no named account, a reached prohibition, an uninstructed
-send, or reach that could not be determined.
+or reach that could not be determined.
 
 ### Layer placement
 
@@ -126,21 +126,12 @@ contain.
   as, and never reaches into a workspace other than its own.
 - The prohibitions are applied to what an invocation is determined to reach, not
   to the name it was called by; reach that cannot be determined is refused.
-- This boundary makes no decision about sending. No branch of this design
-  distinguishes runs by who began them or by whether anyone is present, because
-  no published fact separates them.
+- No branch of this design distinguishes runs by who began them or by whether
+  anyone is present.
 - Nothing above this boundary names a vendor tool.
 - A connector's state location and its secret store are separate concerns.
   This boundary directs the first and makes no claim about the second, so
   directing state is never presented as isolation between people.
-
-### Sending is left as the conduct policy governs it
-
-This boundary neither enables nor withholds sending. It does not engage the
-connector's send-blocking lever, and it constructs no invocation that makes
-sending available where the connector would not have it. What restrains an
-assistant from sending on its own initiative is the conduct policy's mandate
-rule, unchanged by this boundary.
 
 ## Primary flows
 
@@ -188,8 +179,6 @@ governs only authorizations made after it is in force.
   restriction lever, the prohibitions rest on determining reach from the
   invocation, and an unrecognized endpoint alias or encoding is read as reaching
   nothing prohibited.
-- **Sending is ungated at this boundary.** An assistant sending on its own
-  initiative is restrained by the mandate rule and not by anything here.
 - **Directed state reads as isolation.** Every invocation going to its own
   person's location looks like separation between people and is not: the
   connector can still resolve an account from a store shared across the machine.
