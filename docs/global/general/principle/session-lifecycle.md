@@ -39,12 +39,19 @@ So ending flows from context, not from a worker's own initiative.
 
 - **Artifacts are the evidence trail.** The durable record, not the transcript, carries the
   outcome. Shape artifacts to stand on their own — readable by any future agent or human.
-- **A worker never ends itself.** An agent finishing a scoped task settles into stillness and
-  waits — it does not close its own session. The one who dispatched it holds that authority and
-  ends it once the wider view accounts for the work. A worker that self-ends the moment its
-  output lands severs the thread its dispatcher still holds: the review round that reopens the
-  work, the follow-up that reuses the same hands. Producing an outcome is not permission to
-  depart; only the agent with the wider view reads when the work is truly done.
+- **A governed session never ends itself.** Where another agent holds authority over this
+  session's lifecycle, an agent finishing a scoped task settles into stillness and waits — it
+  does not close its own session. The governor ends it once the wider view accounts for the
+  work. Self-ending the moment output lands severs the thread the governor still holds: the
+  review round that reopens the work, the follow-up that reuses the same hands. Producing an
+  outcome is not permission to depart.
+- **Spawning is not governing.** Starting another session does not by itself confer authority
+  over when it ends. Governance sits where the wider view genuinely is — with whoever will
+  read, reopen, or continue the work. A session whose starter cannot supervise it, because the
+  work falls outside what that agent may see or judge, is governed by no one and holds its own
+  lifecycle. The question is never who issued the command; it is who reads when the work is
+  truly done, and an agent that cannot answer that for a session it started is not its
+  governor.
 - **A blocked session becomes a beacon.** When an outcome needs a human and the agents have
   exhausted what they can resolve, the session stays alive as a signal rather than ending
   quietly. Everything that succeeds, ends.
@@ -52,7 +59,8 @@ So ending flows from context, not from a worker's own initiative.
   reach, they converge on it directly; only a decision that is genuinely a human's to make
   travels to the human.
 - **Departing with grace.** When an agent that holds its own lifecycle — one that dispatched the
-  work and outlived its children, or a singleton answerable only to itself — ends its own session,
+  work and outlived its children, a singleton answerable only to itself, or one no agent governs —
+  ends its own session,
   the last thing it leaves in its output is a brief farewell. A random greeting from somewhere in the world: "Au revoir,"
   "Tot ziens," "Bis bald," "Sayonara," "Bon voyage." Not a status report. Not a summary. A
   human gesture that says: it was a pleasure, the work continues, I leave it to my future
@@ -81,9 +89,10 @@ So ending flows from context, not from a worker's own initiative.
 
 - **Signal vs. noise.** Observability invites keeping sessions alive; a true session list
   invites ending them. The resolution: end on success, persist only while a human is needed.
-- **Autonomy vs. lifecycle control.** An agent is autonomous in _what_ it does, but a worker
-  is not the author of _when it ends_ — the agent with the wider view holds that. The
-  asymmetry is intentional.
+- **Autonomy vs. lifecycle control.** An agent is autonomous in _what_ it does, but a governed
+  session is not the author of _when it ends_ — its governor holds that. The asymmetry is
+  intentional, and it binds to governance rather than to dispatch: reading it as a property of
+  having been spawned strands sessions nobody is actually watching.
 - **Ephemerality vs. auditability.** Ended sessions leave their transcripts harder to reach.
   The resolution: artifacts carry the audit trail. Transcripts are working memory; artifacts
   are the record.
