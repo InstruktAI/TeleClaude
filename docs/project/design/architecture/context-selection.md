@@ -150,9 +150,12 @@ snippet, not a scope of its own, and the ordering never treats it as one.
 ### 5. Caller-Scope Resolution
 
 Source assembly is preceded by resolving the caller into a set of reachable
-tiers. The stage takes the resolved person from identity and the declared
-relationships from configuration, and returns the tiers in reach paired with the
-depth each is read at. Nothing downstream re-derives reach: assembly loads the
+tiers. The stage takes the resolved person and the resolved organizational
+membership from identity, and a project's declared owning company from
+configuration, and returns the tiers in reach paired with the depth each is read
+at. The membership facts are read where they are resolved, not where they are
+declared: configuration owns the declarations and publishes them to identity,
+which owns what they mean. Nothing downstream re-derives reach: assembly loads the
 tiers the stage named, and the include predicate applies the depth it assigned.
 
 The stage is the only place the two inputs meet. The relationship facts stay

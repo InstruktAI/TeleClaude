@@ -61,10 +61,11 @@ contracts and never creates shared ownership.
 
 <!-- planned:docs-tier-layering -->
 - `context` resolves a caller's documentation reach from `identity`'s resolved
-  person and `config`'s declared person-to-company and person-to-project
-  relationships. Those two contexts own the declarations and their meaning;
-  `context` owns only what a given set of relationships permits a caller to
-  read, and never infers a relationship the declarations do not state.
+  person and resolved organizational membership, and from `config`'s project-tier
+  declaration of an owning company. `identity` owns what those facts mean;
+  `config` owns the declarations behind them; `context` owns only what a given
+  set of relationships permits a caller to read, and never infers a relationship
+  the resolved facts do not state.
 <!-- /planned:docs-tier-layering -->
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web

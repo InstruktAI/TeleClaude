@@ -36,11 +36,11 @@ replacement architecture is authoritative only in TeleClaudeNext.
   may reach, how deeply each is read, and the authorization of the selectors
   that name a tier explicitly. These are rules about documentation reach, so
   they resolve here rather than to the contexts that supply their inputs.
-- **Also does not own:** the relationships those rules read. Which companies a
-  person belongs to, which projects they are assigned to, and which company owns
-  a project are declarations belonging to `config`; which person a call resolves
-  to belongs to `identity`. This context consumes all four through their
-  published contracts and restates none of them.
+- **Also does not own:** the relationships those rules read. Which person a call
+  resolves to, which companies that person belongs to, and which projects they
+  are assigned to are resolved facts belonging to `identity`; which company owns
+  a project is a declaration belonging to `config`. This context consumes both
+  through their published contracts and restates neither.
 
 **Resolved read scope** — for one caller, the set of documentation tiers in
 reach paired with the depth each is read at. Depth is one of two values: a tier
