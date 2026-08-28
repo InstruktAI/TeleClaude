@@ -31,18 +31,6 @@ person that no registry knows is refused, so ownership never resolves to a
 referent that does not exist. Refusal is the whole outcome: no partial owner is
 recorded and no fallback owner is inferred from the project's surroundings.
 
-Ownership answers whose project this is. It does not answer who may work in it;
-that is a separate declaration with its own contract, and neither settles the
-other. Ownership likewise confers no permission of its own: what a project root
-permits is answered from its declared tier.
-
-Making a second simultaneous owner unrepresentable rather than merely
-discouraged follows the structural-model rule in
-`software-development/policy/code-quality-practices` — illegal states are
-excluded by the model rather than detected after the fact, because a state that
-can be written is a state some consumer will eventually read and resolve its
-own way.
-
 ## Canonical fields
 
 ### The declaration
@@ -116,5 +104,6 @@ And the project is left with no owner rather than a partial one
 
 ## See Also
 
+- ~/.teleclaude/docs/software-development/policy/code-quality-practices.md — the structural-model rule under which a second simultaneous owner is excluded by the model rather than detected after the fact.
 - docs/project/spec/feature/config/tier-permissions.md — the permission axes a project root answers, including a project that sits inside a person's personal space.
 - docs/project/spec/feature/config/organizational-membership.md — project assignment, which states who may work in a project and never whose it is.
