@@ -24,7 +24,12 @@ one way: this contract publishes validated declarations, and the identity
 contract resolves them.
 
 The declarations are carried by the company's own configuration tier, alongside
-the business they describe.
+the business they describe. An assignment therefore concerns a project that
+company owns.
+
+Assignment is not ownership. Which person or company owns a project is declared
+on the project itself and owned by another contract; this one states only who
+may work in a project, and never settles or implies whose project it is.
 
 A declaration is refused rather than stored when it names a company or project
 that is not registered. Refusing an invalid declaration at write time is this

@@ -27,7 +27,10 @@ reads the declared facts through that contract and reinterprets nothing.
 
 Belonging to a company confers no project assignment. The single exception is a
 person holding a company's administrative role, whose membership covers every
-project that company owns without a per-project entry naming each one.
+project that company owns without a per-project entry naming each one. Which
+projects a company owns is read from each project's own declaration of its
+owner; this contract never infers ownership from a project's location or from
+anyone's assignment to it.
 
 Resolution reports facts. Nothing here grants or denies permission to a consumer
 operation: a consumer that turns these facts into permission — documentation
