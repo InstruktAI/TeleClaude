@@ -60,6 +60,15 @@ Everything else — activation metadata (todo id, plan digest, delivered commit,
 runtime revision), evidence-state vocabulary, record format, privacy — lives in
 this contract or in the delivery record, never per entry.
 
+Not every field applies to every surface. Before treating any of them as owed,
+read **The map binds the surface's existing evidence** below: native output is
+itself evidence where that is what a surface produces, no delivery ever authors
+instrumentation to make an entry armable, and `correlate` and `within` presume a
+gap between two records that an atomic synchronous act does not have. An entry
+that cannot state a structured predicate states its native observation and the
+authority that reads it, and is armable as stated. A field invented to satisfy
+the table is worse than the field's absence.
+
 ### The denominator is recomputed, never trusted
 
 A map that covers every use case its own plan declares is not complete — it is
