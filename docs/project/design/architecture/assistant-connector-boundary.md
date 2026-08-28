@@ -143,13 +143,15 @@ closed vocabulary of session producers and written when the session is created.
 No agent supplies it.
 
 That vocabulary distinguishes producers; it does not classify them as
-person-begun or not, and this boundary does not infer the partition from a
-producer's name. The partition is declared: the producers a person begins are
-enumerated, and every producer outside that enumeration blocks sending. A
-producer added to the vocabulary later is therefore blocked until it is
-deliberately enumerated, which is the safe direction for a gate to fail. Where the
+person-begun or not. The partition is a declaration this boundary carries, not an
+inference from a producer's name, and its membership rule is that the producer
+represents a person's own act of starting the session — a person addressing the
+platform through a channel they use. A producer that represents the platform,
+a schedule, or another agent starting the session is outside it. The declaration
+enumerates the members; every producer outside it blocks sending, including one
+added to the vocabulary after the declaration was written. Where the
 session-producer contract grows a typed person-begun classification of its own,
-this boundary consumes that instead of keeping an enumeration.
+this boundary consumes that instead of carrying the declaration.
 
 **Where no person began the run, sending is impossible at the tool.** The
 invocation is constructed with the connector's send-blocking lever engaged, so
