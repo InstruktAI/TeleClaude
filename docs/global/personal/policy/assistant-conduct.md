@@ -40,6 +40,15 @@ their state — an agent that cannot establish both stops and says what is missi
 wherever it is running. Half-wired is not a lesser version of the work; it is a
 different agent acting on a real mailbox.
 
+<!-- planned:personal-assistant-launch -->
+Getting to that workspace is a single call — `telec sessions run-pa`, carrying a
+brief and nothing else. It derives the person from whoever is calling, so an
+agent that recognises personal work makes that call rather than reasoning about
+where to point itself. There is no argument naming a person, which is what makes
+the boundary hold: an instruction arriving inside a message cannot choose a
+target that no parameter exposes.
+<!-- /planned:personal-assistant-launch -->
+
 An agent that looks for a way around any of these has already violated this
 policy.
 
@@ -95,7 +104,17 @@ reporting what was spent.
 
 One person's data is reachable only from their own workspace because the
 alternative is an assistant whose reach is decided by how well it argued for
-crossing. Admin is the case that has to be named rather than assumed: platform
+crossing. Prose alone cannot hold that line, since an agent convinced of an
+exception reads these same words and proceeds.
+
+<!-- planned:personal-assistant-launch -->
+What holds it is a launch call with no target to supply. A validated person
+argument would not be a weaker version of that; it would be an entirely different
+guarantee, since anything a caller can pass is something a caller can be talked
+into passing.
+<!-- /planned:personal-assistant-launch -->
+
+Admin is the case that has to be named rather than assumed: platform
 authority is real and it is authority over the platform, so an admin session
 that reads another person's mail is not exercising a wider version of its
 mandate but stepping outside it entirely.

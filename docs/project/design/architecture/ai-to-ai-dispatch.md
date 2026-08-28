@@ -22,6 +22,11 @@ This design covers the dispatch journey. Storage internals for the listener regi
 **Inputs:**
 
 - `telec sessions run` or `telec sessions start` invocation from the Initiator (CLI or API). Carries target computer, project path, command or message, and (when relevant) `--direct`.
+<!-- planned:personal-assistant-launch -->
+- `telec sessions run-pa` invocation from any session. Carries a brief and
+  nothing else: no path, no subfolder, no computer, and no person. Every one of
+  those is derived from the caller rather than accepted from it.
+<!-- /planned:personal-assistant-launch -->
 - Initiator's session identity (`X-Caller-Session-Id` header / equivalent) — pins the dispatcher identity on the new session.
 - Worker `agent_stop` events from the agent CLI hook receiver.
 
@@ -33,6 +38,22 @@ This design covers the dispatch journey. Storage internals for the listener regi
 
 ## Invariants
 
+<!-- planned:personal-assistant-launch -->
+- **A person is derived, never addressed.** `run-pa` resolves its target from the
+  authenticated caller's own identity. There is no parameter naming a person, so
+  no input to the dispatching session — a brief, a quoted message, a document it
+  was asked to read — can select whose workspace opens. The absence is the
+  mechanism; a validated person argument would be the same door with a lock that
+  argues back.
+- **A platform admin gets their own assistant.** Elevation changes nothing here,
+  because there is no wider form of the call to elevate into.
+- **Person workspaces are unreachable through the general verbs.** `run` and
+  `start` refuse a path resolving inside one. Without that refusal `run-pa` is a
+  convenience beside an open door rather than the only way through it.
+- **No caller identity, no launch.** A caller that resolves to no person is
+  refused rather than defaulted, since every available default is somebody's
+  real mailbox.
+<!-- /planned:personal-assistant-launch -->
 - **Initiator pinning.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. This is the canonical link from child to parent and survives daemon restart.
 - **Listener kind.** Dispatch registers a persistent listener (`one_shot=false`). Repeat dispatches against the same target are deduplicated by `(caller, target)`.
 - **No destructive coupling.** Opening a direct link to the Worker does not remove the dispatch-time listener. The link toggles delivery (suppression rule) but never mutates the listener row. Refuted code paths: `unregister_listener(...)` calls inside `_link_direct_sessions` and `_create_direct_link`.
