@@ -23,12 +23,10 @@ authorization excludes the settings scopes. An operation outside the permitted
 set does not run, whether or not the platform has seen it before. The platform's connector vocabulary is translated into a
 particular tool here and nowhere above.
 
-How strong the resulting gate is depends on the connector. Where the connector's
-own build or authorization grant refuses a gated effect outright, this contract
-composes with that structural refusal and the gate holds whatever the invocation
-looks like. Where it does not, the gate rests on determining reach from the
-invocation itself, which is defeasible; such a connector is invoked only on the
-terms its own doctrine sets.
+A connector is invoked only where it offers the controls this prohibition rests
+on: an authorization grant that excludes the settings scopes and a permitted set
+of operations the invocation is constructed with. A connector offering neither is
+invoked on the terms its own doctrine sets.
 
 The prohibitions belong to the conduct policy and the account declaration to the
 configuration that owns person data. This contract owns neither; it owns what
@@ -114,12 +112,9 @@ And this holds for an operation never seen before as well as one recognised as p
 
 ## Known caveats
 
-- Where a gate rests on determining reach from the invocation itself, an
-  endpoint alias or encoding that is not recognized is read as reaching nothing
-  gated, and the effect runs. UC-ACI-8 covers reach that is recognized as
-  undeterminable; it cannot cover reach that is misread as harmless. This is why
-  the strength of a gate is a property of the connector rather than of this
-  contract.
+- The permitted set is what an operation must appear in to run, so an operation
+  the platform has never seen is refused without anything having to recognise it
+  as dangerous. Nothing here inspects an invocation to judge what it would reach.
 - Directing a connector's state at a person's own location does not by itself
   confine that person's secrets: a connector may resolve an account from a store
   shared across the machine regardless of where its state is directed, which
