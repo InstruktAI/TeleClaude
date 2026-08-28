@@ -8,7 +8,8 @@ delivered_by:
 
 ## Required reads
 
-@docs/project/spec/domain/agent_runtime.md
+- @docs/project/spec/domain/agent_runtime.md
+- @docs/project/spec/feature/agent_runtime/session-input-delivery.md
 
 ## What it is
 
@@ -95,5 +96,4 @@ And no context the session was started with supplies the missing word
 ## See Also
 
 - ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the conduct rule that makes a person's own word the condition for mail leaving, and the mandate rule that scopes an ask to the session it was made in.
-- docs/project/spec/feature/agent_runtime/session-input-delivery.md — the accepted-input authorship this fact is read from, and why a header in message content carries no attribution authority.
 - docs/project/spec/feature/agent_runtime/dispatch-involvement.md — the separate, declared dispatch fact this one is not, and which never authorizes an operation.
