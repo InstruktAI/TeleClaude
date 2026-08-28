@@ -45,6 +45,8 @@ does not police cross-project ownership.
 ### Use cases
 
 
+#### UC-DIB6: A project's catalog is written from its sources
+
 ```
 Given a project with valid snippet sources under docs/
 When the operator runs telec sync
@@ -54,12 +56,16 @@ And docs/third-party/index.yaml is written when third-party sources exist
 ```
 
 
+#### UC-DIB7: Classification is derived from the source's path
+
 ```
 Given a valid Source under docs/
 When the index-build phase writes its entry
 Then the entry carries id, type, scope, and domain derived from the Source's path
 And a procedure Source's entry additionally carries its activation_trigger
 ```
+
+#### UC-DIB8: A non-derivable path fails the build loudly
 
 ```
 Given a Source whose path cannot derive id/type/scope (placement outside any known taxonomy root)
@@ -68,12 +74,16 @@ Then a hard build error is raised naming the path and the reason it is non-deriv
 And the sync build fails
 ```
 
+#### UC-DIB9: A source missing its authored description fails the build
+
 ```
 Given a snippet file missing the authored description frontmatter
 When validation runs ahead of the index build
 Then a missing-description finding is reported for that file
 And the sync exits with a non-zero status
 ```
+
+#### UC-DIB10: H1 suffix correctness is left to validation
 
 ```
 Given a Source whose H1 heading lacks the type suffix (e.g. "— Policy")
@@ -82,6 +92,8 @@ Then a title-suffix finding is reported for that file
 And the sync exits with a non-zero status
 ```
 
+#### UC-DIB11: An unchanged catalog is not rewritten
+
 ```
 Given a built index whose rendered YAML equals the on-disk file
 When the index-build phase writes the result
@@ -89,11 +101,15 @@ Then the file is NOT rewritten (idempotent write)
 And the mtime is preserved
 ```
 
+#### UC-DIB12: A snippet without lifecycle metadata carries none
+
 ```
 Given a snippet with no lifecycle metadata
 When the lifecycle-metadata copy step runs
 Then delivered_by is omitted from the index entry
 ```
+
+#### UC-DIB13: A pending snippet's delivering slug reaches its entry
 
 ```
 Given a snippet with delivered_by: [slug-a]

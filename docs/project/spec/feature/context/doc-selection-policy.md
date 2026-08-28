@@ -56,6 +56,8 @@ And snippets declaring themselves internal are excluded
 ```
 <!-- /planned-change:docs-tier-layering -->
 
+#### UC-DSP20: A platform administrator reads every visibility
+
 ```
 Given a caller with the admin role
 When the Selection policy resolves visibility
@@ -80,6 +82,8 @@ And the absent identity never widens the read
 ```
 <!-- /planned-change:docs-tier-layering -->
 
+#### UC-DSP21: A project-prefixed identity in the global tree is excluded
+
 ```
 Given a global snippet under ~/.teleclaude/docs/ whose ID is project-prefixed
 When the Selection policy filters the global tree
@@ -87,11 +91,15 @@ Then the snippet is excluded
 And only general/* or domain-prefixed IDs survive
 ```
 
+#### UC-DSP22: Areas filter keeps only the requested taxonomy
+
 ```
 Given --areas policy passed by the caller
 When the Selection policy applies the type filter
 Then only snippets with frontmatter type: policy are returned
 ```
+
+#### UC-DSP23: Without a domains filter every published domain stays visible
 
 ```
 Given no --domains flag
@@ -100,11 +108,15 @@ Then every global snippet stays universally visible and the project's own snippe
 And the cross-project domain prefixes are the union of registered publishers' business.publishes
 ```
 
+#### UC-DSP24: Baseline anchoring keeps only manifest-reachable identities
+
 ```
 Given --baseline-only is set
 When the Selection policy applies baseline anchoring
 Then it loads the relevant baseline.md manifest(s) and keeps only IDs reachable via @-refs
 ```
+
+#### UC-DSP25: Target filter keeps only the named slug's snippets
 
 ```
 Given --target <slug> is set
