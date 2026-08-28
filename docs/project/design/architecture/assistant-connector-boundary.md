@@ -1,5 +1,5 @@
 ---
-description: 'How an agent session reaches an external mail or calendar connector: the person binding it inherits rather than resolves, the layer each responsibility sits in, and where connector state is directed for each person.'
+description: "How an agent session reaches an external mail or calendar connector: the person binding it consumes rather than derives, the layer each responsibility sits in, and how the settings prohibition is held by the connector's own controls."
 delivered_by:
   - personal-mail-tool-launcher
 ---
@@ -10,190 +10,164 @@ delivered_by:
 
 - @docs/project/spec/feature/integration/assistant-connector-invocation.md
 - @docs/project/spec/feature/config/person-mail-accounts.md
-- @docs/project/spec/teleclaude-config.md
 
 ## Purpose
 
-An assistant reaches a person's mail and calendar through external command-line
-connectors. Those connectors carry the operations the personal-assistant conduct
-policy prohibits and do not hold the prohibitions themselves. This design places
-the prohibitions, the account binding, and per-person state direction at the one
-boundary where a connector is reached, and states which context and which layer
-owns each part.
+An agent acting as someone's assistant reaches mail and calendar through an
+external command-line connector. This design places, at the one boundary where
+that connector is reached, the binding of an invocation to one declared account
+of one person, the direction of that person's connector state, and the conduct
+policy's settings prohibition.
 
 Three contexts participate, and the split follows meaning rather than hosting:
 
 - **Configuration** owns what a person may declare — their mail accounts, each
-  naming a connector from the platform's vocabulary and an address. It sits with
-  the person's other operational data rather than in the global identity entry,
-  which already refuses credentials-adjacent keys.
-- **Integration** owns the boundary: translating the platform's vocabulary into a
+  naming a connector from the platform's vocabulary and an address — and it sits
+  with the person's other operational data rather than in the global identity
+  entry, which already refuses credentials-adjacent keys.
+- **Integration** owns the boundary: translating that vocabulary into a
   particular tool, binding an invocation to one declared account, directing that
-  person's state, determining what an invocation reaches, and applying the two
-  prohibitions.
-- **Agent runtime** owns that a session reaches the boundary rather than the tool,
-  and owns the person binding the boundary consumes.
+  person's state, and constructing the invocation so the connector's own
+  controls hold the settings prohibition.
+- **Agent runtime** owns that a session reaches the boundary rather than the raw
+  tool, and carries the facts the boundary consumes.
 
-The prohibitions remain the conduct policy's. This design changes where they are
-applied, never what they say.
+Sending is not this design's subject; `assistant-instructed-send` owns it.
 
-### The person is validated elsewhere and consumed here
+### The person is consumed, never derived
 
-A session reaches a person's workspace only through the launch call that derives
-the person from the authenticated caller, and the general session verbs refuse a
-destination inside a person workspace. That contract is the authority for who a
-session acts as.
+The boundary performs no person resolution and accepts no parameter naming a
+person. It consumes the validated workspace-person binding — the fact that this
+workspace belongs to exactly one registered person, checked against the person
+registry and failing closed on an unknown, ambiguous, or disagreeing claim — and
+refuses when that fact is absent.
 
-This boundary therefore performs no person resolution and accepts no parameter
-naming a person. Nor is a workspace's own declaration the binding: a file
-declaring itself a person configuration states what the file is, not that the
-person exists and not who is acting. Identity owns turning those separate facts
-into one validated binding against the person registry, and publishes it; an
-unknown, ambiguous, or disagreeing claim fails closed there and confers no
-person-scoped authority at all.
-
-What this boundary consumes is that published binding, carried to it by the
-injection layer. It refuses when no validated binding is present. The binding is
-an input to whether this boundary acts, never the decision itself — that decision
-is this boundary's, and it is the two prohibitions and the account rule below. A non-person workspace never
-becomes a mail execution origin, and the boundary never opens a workspace other
-than the one it is running in. Consuming that binding rather than re-deriving it is
-what keeps the conduct policy's scope — an agent acting in that person's workspace —
-structurally true instead of conventionally assumed.
+That fact establishes whose workspace this is. It does not authenticate whoever
+started the session, and this boundary does not treat it as though it did:
+whether a caller was entitled to reach this workspace is settled by the contract
+that launches sessions into person workspaces, before the boundary runs.
 
 ### Prior art and adopt-vs-build
 
-The mechanisms this boundary uses are the connector's own, verified against the
-installed command surface rather than assumed: which account an invocation acts
-as, where its state is directed, and the levers that block sending, restrict the
-command set, or refuse mutations. None is compiled into the tool; each holds only
-if the invocation is constructed with it, which is what makes a boundary that
-constructs invocations the right place for the prohibitions.
+The settings prohibition is held by controls the connector already provides,
+verified against the installed command surface: an authorization grant that
+excludes the settings scopes, so the provider refuses those operations whatever
+is invoked, and a command allowlist that restricts an invocation to named
+command prefixes. Neither is compiled into the tool; each holds only when the
+invocation is constructed with it, which is what makes a boundary that
+constructs invocations the right place for it.
 
-Nothing here is bespoke infrastructure, so there is no adopt-versus-build
-decision to record. The one place this design deliberately does not build is
-credential confinement: a per-person secret store is an owned concern elsewhere,
-and the alternative shape for it — a broker owning refresh state and issuing
-short-lived tokens — is surveyed by that owner's work rather than by this.
+Nothing bespoke is introduced. The boundary builds no classifier of its own that
+inspects arguments or endpoints to judge what an invocation would reach: such a
+classifier fails open on any encoding or alias it does not recognize, which is
+the wrong direction for a security control and would require prior-art evidence
+this design does not have. An allowlist of permitted commands refuses the
+unrecognized by construction, so the unknown case is closed rather than judged.
 
 ## Inputs/Outputs
 
-**In:** identity's validated person binding for this session; that person's declared
-accounts and the account this invocation names; that person's state location; and
-the account this invocation names.
+**In:** the validated workspace-person binding; that person's declared accounts
+and the account this invocation names; and that person's connector state
+location.
 
-**Out:** a constructed invocation of the real connector executed against that
-person's own state, or a refusal naming which condition failed — not in a
-person's workspace, no named account, a reached prohibition, an uninstructed
-or reach that could not be determined.
+**Out:** a constructed invocation of the connector, executed against that
+person's own state with the settings prohibition held by the connector's own
+controls; or a refusal naming which condition failed — no validated binding, no
+named account, or an account the person has not declared.
 
 ### Layer placement
 
-| Responsibility                                                                | Layer                                            | Owner         |
-| ----------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
-| Entry point published on the agent tool surface                               | Artifact / tool surface                          | agent runtime |
-| Validating that a person context belongs to exactly one registered person     | Core service, published as an identity fact      | identity      |
-| Carrying identity's validated binding and the named account into typed inputs | Injection                                        | agent runtime |
-| Account lookup against the person's declared list                             | Core service, via configuration's published read | configuration |
-| Reach determination, prohibition application, invocation construction         | Core service                                     | integration   |
-| Connector process execution                                                   | Infrastructure, behind its owning service        | integration   |
+| Responsibility                                                                          | Layer                                            | Owner         |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------- |
+| Entry point published on the agent tool surface                                         | Artifact / tool surface                          | agent runtime |
+| Carrying the validated workspace-person binding and the named account into typed inputs | Injection                                        | agent runtime |
+| Validating that a workspace belongs to exactly one registered person                    | Core service, published as an identity fact      | identity      |
+| Account lookup against the person's declared list                                       | Core service, via configuration's published read | configuration |
+| Invocation construction, vocabulary translation, state direction, control selection     | Core service                                     | integration   |
+| Connector process execution                                                             | Infrastructure, behind its owning service        | integration   |
 
 These responsibilities do not fit an existing root. The platform's adapter root
 holds inbound and outbound UI adapters, and its integration core holds the
-code-delivery state machine; neither is a home for connector invocation, and
-placing this there would make a cohesive concern a tenant of an unrelated one.
-The connector boundary is therefore a new module under the integration context,
-and the plan names it as new rather than adapting a root whose subject is
-something else.
+code-delivery state machine; neither is a home for connector invocation. The
+connector boundary is therefore a new module under the integration context.
 
 The integration core receives fully resolved typed inputs and reads neither the
 environment nor the filesystem to fill them; that resolution is the injection
-layer's, as the layer contract requires. Every crossing goes through the owning
-context's published read rather than direct access to its state.
+layer's. Every crossing goes through the owning context's published read.
 
-The entry point carries no logic of its own. This follows the no-inline-logic
-contract rather than an existing example: the platform's git entry point is a
-several-hundred-line behavioral shell wrapper, not a delegation, and is a
-precedent for _where_ such an entry point is published, not for _what_ it may
-contain.
+The entry point carries no logic. This follows the no-inline-logic contract
+rather than an existing example: the platform's git entry point is a
+several-hundred-line behavioral wrapper, and is a precedent for where such an
+entry point is published, not for what it may contain.
 
 ## Invariants
 
-- An invocation not bound to both an inherited person and one of that person's
-  declared accounts does not reach a connector. Neither is inferred, neither has
-  a default, including where the person declared exactly one account.
+- An invocation not bound to both a validated workspace-person binding and one
+  of that person's declared accounts does not reach a connector. Neither is
+  inferred, neither has a default, including where the person declared exactly
+  one account.
 - The boundary never resolves, accepts, or overrides which person a session acts
   as, and never reaches into a workspace other than its own.
-- The prohibitions are applied to what an invocation is determined to reach, not
-  to the name it was called by; reach that cannot be determined is refused.
-- No branch of this design distinguishes runs by who began them or by whether
-  anyone is present.
+- Settings operations are refused by controls the connector itself applies, not
+  by this boundary's judgment of what an invocation would reach.
 - Nothing above this boundary names a vendor tool.
-- A connector's state location and its secret store are separate concerns.
-  This boundary directs the first and makes no claim about the second, so
-  directing state is never presented as isolation between people.
+- A connector's state location and its secret store are separate concerns. This
+  boundary directs the first and makes no claim about the second, so directing
+  state is never presented as isolation between people.
 
 ## Primary flows
 
 ```mermaid
 flowchart TD
-    A[agent session invokes a connector] --> B{in a person's workspace?}
-    B -- no --> R0[refuse: not a person workspace]
-    B -- yes --> C[inherit the person binding]
-    C --> D{bound to a declared account?}
-    D -- no --> R1[refuse: no account named]
-    D -- yes --> E{what does this invocation reach?}
-    E -- settings --> R2[refuse: prohibition applies]
-    E -- undeterminable --> R3[refuse: reach undetermined]
-    E -- nothing prohibited --> G[execute against the person's own state]
+    A[agent session invokes a connector] --> B{validated workspace-person binding present?}
+    B -- no --> R0[refuse: no validated binding]
+    B -- yes --> C{account named and declared by that person?}
+    C -- no --> R1[refuse: no declared account named]
+    C -- yes --> D[construct the invocation]
+    D --> E[account, state location, and the connector's own settings controls]
+    E --> F[execute against that person's own state]
 ```
 
-### Confinement is not delivered here
+### What confines credentials, and what does not
 
-Directing a connector's state at a person's own location is not confinement: a
-connector may resolve an account from a store shared across the machine
-regardless of where its state is directed. Closing that needs a per-person secret
-store, which is an owned concern elsewhere — its contract covers secrets held per
-person, resolution bound to a verified identity, refusal rather than fallback to
-a global secret or another person's, and non-exposure through catalogs, logs,
-errors, or serialized person configuration.
+Directing a connector's state at a person's own location is not confinement: the
+connector resolves stored secrets from a namespace shared across the machine
+regardless of where its state is directed.
 
-This boundary therefore makes no confinement claim and defines no secret storage.
-Building a second mechanism beside that owner would make this work a second owner
-of person-secret policy. When confinement is delivered it brings its own
-migration for accounts authorized beforehand, since selecting a confined store
-governs only authorizations made after it is in force.
+What keeps one person's invocation away from another's credentials is the
+account binding rather than the state location. Stored secrets are keyed by
+address, and an invocation may name only an address the acting person has
+declared, so it resolves that person's own credential and no other. Reaching
+another person's credential would require naming their address, which no
+person's declaration contains.
+
+Confinement in the stronger sense — a store one person's process cannot read at
+all — belongs to whoever owns the per-person secret store, and this design
+defines none.
 
 ## Failure modes
 
 - **The platform's routes are not the only physical routes.** The agent shell
-  front-pins the platform's tool directory, so the published entry point wins name
-  resolution — and a package manager publishes its own executable on the same
-  path, which an absolute invocation reaches. Relocating that executable does not
-  fix it either: a process holding the person's own authority can obtain and run a
-  connector regardless. Genuine unreachability requires the session to hold less
-  authority than the person, which is process isolation the platform does not
-  impose. The product contract states what the platform provides and records the
-  isolation as a dependency.
-- **A defeasible gate reads as a structural one.** Where a connector offers no
-  restriction lever, the prohibitions rest on determining reach from the
-  invocation, and an unrecognized endpoint alias or encoding is read as reaching
-  nothing prohibited.
+  front-pins the platform's tool directory, so the published entry point wins
+  name resolution, while a package manager publishes its own executable on the
+  same path. A process holding the person's own operating-system authority can
+  execute a connector regardless of what the platform publishes. Genuine
+  unreachability requires the session to hold less authority than the person,
+  which is process isolation the platform does not impose.
 - **Directed state reads as isolation.** Every invocation going to its own
-  person's location looks like separation between people and is not: the
-  connector can still resolve an account from a store shared across the machine.
-  Nothing fails to reveal that, which is why this design states direction and
-  makes no isolation claim rather than leaving a reader to infer one.
+  person's location looks like separation between people and is not; the shared
+  secret namespace is untouched by it. What the account binding prevents is
+  reaching another person's credential, not the store being shared.
+- **A declared account that was never authorized** fails at the connector rather
+  than at the boundary. The boundary binds an invocation to a declaration; it
+  does not verify the declaration was ever consented to.
 - **Two concurrent invocations for one person can rotate a credential under each
   other.** The connector's native behavior governs it, and nothing here
   serializes refreshes.
-- **A declared account that was never authorized** fails at the connector rather
-  than at the boundary. The boundary binds an invocation to a declaration; it does
-  not verify the declaration was ever consented to.
 
 ## See Also
 
-- ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the prohibitions this boundary applies, and the workspace scope it inherits.
-- docs/project/spec/feature/agent_runtime/person-workspace-dispatch.md — the launch contract that establishes the person binding this boundary consumes.
+- ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the settings prohibition this boundary holds, and the workspace scope it inherits.
+- docs/project/spec/feature/identity/person-context-binding.md — the validated binding this boundary consumes.
 - docs/project/design/architecture/layer-ownership.md — the layer contract the placement table follows.
-- docs/third-party/gogcli/authorization.md — the vendor evidence for the connector's account selection, state root, and caller-supplied levers.
+- docs/third-party/gogcli/authorization.md — the vendor evidence for the connector's account selection, state root, and caller-supplied controls.

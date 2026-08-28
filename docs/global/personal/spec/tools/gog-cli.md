@@ -22,8 +22,9 @@ configuration, aliases and per-account settings. Which mail a command touches is
 decided by the account the invocation names, not by that root alone: the root
 directs where operational state is read and written, while the tool's default
 secret store uses one namespace shared across the machine and binds neither a
-person nor an account. The root is selected for the agent rather than by it, and
-an agent does not see the unwrapped binary.
+person nor an account. The root is selected for the agent rather than by it. The
+platform publishes one route to the tool, the mediated one; a process holding the
+person's own operating-system authority can still execute the binary directly.
 
 Within that person, an invocation names which of their own declared accounts it
 acts as. That is not free choice — the reachable set is the person's own
@@ -97,10 +98,19 @@ An agent that receives a refusal reports it; it does not look for another route.
 
 ## Known caveats
 
+<!-- planned-change:personal-mail-tool-launcher -->
 - The person's tokens live in their own state root. On a machine with a single
   operating-system account, separation between persons is organizational rather
   than enforced by the system — real isolation means separate machines or
   accounts.
+<!-- change:personal-mail-tool-launcher -->
+- The person's state root holds their configuration and per-account settings;
+  their stored secrets live in a namespace shared across the machine, keyed by
+  address rather than by person. What keeps one person's invocation away from
+  another's credential is that it may name only an address that person has
+  declared. On a machine with a single operating-system account, separation
+  between persons is otherwise organizational rather than enforced.
+<!-- /planned-change:personal-mail-tool-launcher -->
 - Google's authorization is a one-time human ceremony per account. Until it is
   done, every command fails for that account and the assistant says so instead
   of working around it.
