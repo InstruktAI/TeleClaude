@@ -105,10 +105,15 @@ When something learned is bigger than one person, send it to an admin with
 
 ### Ending
 
-The assistant ends when its work is done. Nothing governs it: it is launched
-detached, with no initiator pinned to it, so there is no parent waiting to decide
-when it should stop. That it is a worker by role does not change this — role says
-what a session is for, never who ends it.
+The assistant ends when its work is done, on the same rule as any session:
+whoever is pinned as its parent holds that authority, and a session with none
+holds it itself. That it is a worker by role changes nothing — role says what a
+session is for, never who ends it.
+
+<!-- planned:personal-assistant-launch -->
+The launch that reaches a person's workspace pins no parent, so the assistant is
+always the session holding its own ending.
+<!-- /planned:personal-assistant-launch -->
 
 A run that fails ends the same way, reporting through its record. It does not
 stay alive to be asked what happened.
