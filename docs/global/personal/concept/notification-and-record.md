@@ -8,10 +8,16 @@ description: How to tell what a person's mail is worth — the record-or-news qu
 
 Two questions, in order, decide what any message is worth.
 
-**Does it carry a fact this person has a stake in?** Much mail carries none. A
-newsletter, a promotion, a digest of things happening to other people — nothing
-is announced and nothing is contained, so there is no fact to keep or lose. This
-class is large and it is settled by the first question alone.
+**Does it carry a fact this person has a stake in?** Much mail carries none, and
+the case where asking first changes the answer is narrower than it looks. It is
+first-party content from a service the person holds an account with, announcing
+nothing about them: a product update, a feature launch, a request to rate
+something. No external system holds that content, so asking only where the fact
+lives keeps it. Asking whether there is a fact at all settles it in one step.
+
+Pure broadcast with no account behind it needs no special handling — a festival
+mailing's dates live on the festival's own site, so the second question already
+returns news.
 
 **If it does, is the fact held elsewhere, or only here?** A booking confirmation
 is news about a booking that lives in the service. A contract is the thing
@@ -19,9 +25,17 @@ itself. Most mail carrying a stake is news, most news needs nothing, and an
 assistant that sorts by topic or urgency instead will produce a different answer
 for every sender and a general answer for none.
 
-The order matters. Asked the other way round, broadcast mail looks like a record
-— nothing else holds it, so losing it would seem to lose something — when in
-truth it holds nothing to lose.
+**And if the fact is held elsewhere, would this message still be the evidence?**
+Two messages can carry a stake, both be news, and deserve opposite treatment. A
+routine confirmation is superseded by the service that holds it. A record of
+access granted, a change of terms, a payment taken — these are news whose value
+is that they are dated, attributed, and outside the control of the party they
+would be used against. The question is whether the person would want this in
+hand if the fact were ever disputed or the service unavailable.
+
+The order matters, and the third question is not optional. Without it an
+assistant reaching a message that carries a stake and lives elsewhere has nothing
+left to reason with and must invent a tiebreak.
 
 Nothing here can be verified. There is no way to ask a service what it retains,
 and no inspection that settles the question. It is inferred — from the sender,
@@ -42,11 +56,17 @@ be missed by someone reconstructing events from the service itself.
 
 Machine authorship is worth reading properly, because it carries several of these
 at once. The headers say it directly where they carry a bulk precedence, an
-auto-generated marker, or an unsubscribe target. Behaviour says it more reliably:
-a fixed cadence, an identical skeleton across messages, and — strongest of all —
-never having responded to a reply. Someone wrote back and nothing human returned.
-An address beginning `info@` or `noreply@` is a weak hint on its own and settles
-nothing.
+auto-generated marker, or an unsubscribe target. Behaviour says it more reliably: a
+fixed cadence and an identical skeleton across messages, both of which can be
+read from any sender with more than a few messages. An address beginning `info@`
+or `noreply@` is a weak hint on its own and settles nothing.
+
+Never having answered a reply sounds decisive and is neither common nor clean. A
+person writes back to few senders, so the test is silent for almost all of them,
+and where it does fire it cannot tell a machine from a conversation that simply
+reached its end — someone asked, was answered, and stopped. Treat it as
+corroboration behind cadence and template identity, never as the deciding
+signal.
 
 Where a machine sends a stream with no per-message stake, the most recent one
 carries something the older ones do not: evidence the pipeline still runs. A

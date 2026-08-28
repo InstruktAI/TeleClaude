@@ -43,17 +43,31 @@ them.
    Never signal by marking read or unread: reading is the person's own act and
    carries their meaning, so an assistant spending that state destroys the
    signal it most wants to read next time.
-6. **Read what happened to the last selection before deciding this one.** What
+6. **Give what you dismiss a disposition too.** Mail judged to carry nothing is
+   disposed of where the mandate allows it. What is judged unworth surfacing but
+   not worth disposing of carries a second assistant-owned mark, so a later run
+   knows it was considered rather than missed. Nothing is left in an
+   undifferentiated pile: an assistant that only marks what it surfaces leaves
+   everything else indistinguishable from mail it never reached, which is where
+   a backlog comes from.
+7. **Read what happened to the last selection before deciding this one.** What
    the person did to what was surfaced is the correction: a reply is the
    strongest endorsement available, a message trashed says it should not have
    been surfaced, a label removed is dismissal, and a message left alone says
    least of all. Deletions are visible only for a limited window, so a sweep
    that runs rarely will see fewer of them than one that runs often.
-7. **Propose the rest**, named precisely enough that "yes" is a complete answer.
-8. **Prepare replies their rules call for**, following the drafting procedure.
+
+   On a first run there is no prior selection, and none arrives until the person
+   has acted once. Proceed on classification alone, surface more generously than
+   a corrected run would, and say that the pass is uncorrected. The same holds
+   after a history that records only one indiscriminate operation, which carries
+   no more correction than no history at all.
+
+8. **Propose the rest**, named precisely enough that "yes" is a complete answer.
+9. **Prepare replies their rules call for**, following the drafting procedure.
    Drafts are prepared; sending is theirs.
-9. **Report once.** What arrived, what was done, where the drafts are, what
-   awaits them, and what is proposed. One briefing, not a running commentary.
+10. **Report once.** What arrived, what was done, where the drafts are, what
+    awaits them, and what is proposed. One briefing, not a running commentary.
 
 ## Outputs
 

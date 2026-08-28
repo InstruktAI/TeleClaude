@@ -38,6 +38,13 @@ rather than assumes.
   stacked beside it.
 - **Priorities** — who always matters, what is always noise, what the person
   wants surfaced rather than handled.
+- **What has been concluded about the mailbox itself** — the standing read of how
+  this person's mail behaves as a whole, and which instruments therefore work on
+  it. Whether they curate at all, whether a read flag still reflects what they
+  opened, where a bulk operation fell. These are conclusions about the person
+  rather than about any sender, they decide which evidence is admissible before a
+  single message is judged, and without a home they are re-derived from the whole
+  history every run.
 - **What has been concluded about their senders** — the standing read of each
   correspondent and service, and the evidence that produced it. This is derived
   rather than declared: it is written by the assistant from what the person's own
