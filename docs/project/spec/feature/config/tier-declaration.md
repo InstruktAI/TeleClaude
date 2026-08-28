@@ -71,9 +71,11 @@ tier.
   file: either is supplied or repaired without regard to the other. Only the
   declaration is load-bearing, and a file never references a schema that is not
   in place.
-- A file carrying its schema reference has been advanced. Such a file missing
-  its declaration fails, and that failure is settled before any repair is
-  attempted, so the declaration is not restored.
+- Advancement is recorded per root. A root recorded as advanced is strict: a
+  file there missing or misdeclaring its tier fails, that failure is settled
+  before any repair is attempted, and no declaration is restored. The schema
+  reference carries no evidential weight and its absence never makes an advanced
+  root eligible for advancement again.
 
 ### Use cases
 
@@ -127,10 +129,11 @@ Then resolution fails with a clear error naming the project root
 
 ```
 Given a same-named configuration file authored before tier declarations existed
-And that file carries neither a tier declaration nor a schema reference
+And its root carries no advancement record
 And the tier registries name its location
 When that file is loaded
 Then it is advanced to carry its correct tier declaration before the load reads it
+And its root is recorded as advanced
 And loading it again leaves the file unchanged
 ```
 
@@ -194,7 +197,7 @@ And the file is never loaded as any tier
 Given a registered project root that is unavailable while other roots are advanced
 When that root becomes available and its configuration file is loaded
 Then that file is advanced before the load reads it
-And no advancement state recorded while it was unavailable prevents this
+And no record written while it was unavailable claims it was advanced
 And an unwritable file at one root leaves every other root resolving
 ```
 
@@ -211,14 +214,25 @@ And the schema reference is written by a later advance once the schema is in pla
 #### UC-CFG-WSD14: A declaration removed after advancement is not restored
 
 ```
-Given a same-named configuration file that carries its schema reference
-And its tier declaration has been removed
-And the tier registries name its location
+Given a root recorded as advanced
+And its configuration file's tier declaration has been removed
+And the tier registries name that root
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
 And the failure is reached before any repair is attempted
 And no tier declaration is restored
 And the file is never loaded as any tier
+```
+
+#### UC-CFG-WSD15: Removing the schema reference too does not reopen advancement
+
+```
+Given a root recorded as advanced
+And its configuration file carries neither a tier declaration nor a schema reference
+When that file is loaded
+Then loading fails with an error naming the file and the missing declaration
+And no tier declaration is restored
+And editing the file does not return its root to the unadvanced state
 ```
 
 ### Cross-context references

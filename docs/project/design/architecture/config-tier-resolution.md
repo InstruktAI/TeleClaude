@@ -168,9 +168,13 @@ another machine.
 it is loaded. Advancement supplies what the file lacks — its tier declaration,
 its schema association, or both — and each is an independent idempotent repair,
 so a file carrying a valid declaration and no association gains the association
-alone and a file carrying both is untouched. The file is its own record of
-having been advanced; no separate durable state exists to go stale, be
-invalidated, or disagree with the files it describes.
+alone and a file carrying both is untouched.
+
+Advancement is recorded per root, in config-owned durable state in the home,
+keyed by the root and by the identity of the advancement itself so a later
+advancement neither collides with this one nor inherits its records. There is no
+record spanning roots, and therefore no state that claims anything about a root
+it has not seen.
 
 Advancement obtains an absent tier by asking the tier registries the model
 already defines — the designated locations for the home's own configuration,
@@ -178,23 +182,25 @@ person, and company files, and the project manifest for project roots. A path
 the registries do not name is not advanced, so it reaches loading undeclared and
 fails there.
 
-Whether a file has already been advanced is settled before any repair is
-attempted, and an already-advanced file is never advanced again. Its evidence is
-the file itself: the schema association is written only by advancement or by
-a writer, so a file carrying its association has been through both. Such a file
-missing its declaration has had the declaration removed, and it fails rather
-than having one restored. A file carrying neither property has been through
-neither, and it is advanced. Strictness therefore arrives per file, evidenced by
-that file — the same reason no separate record is kept.
+Whether a root has already been advanced is settled from its record before any
+repair is attempted. A root holding a record is strict: a file there missing or
+misdeclaring its tier fails, and no declaration is restored, whatever else the
+file does or does not carry. A root holding no record is advanced, and its
+record is written with it. Strictness therefore arrives per root, the moment
+that root is advanced, and editing a file cannot return it to the unadvanced
+state — the record is not in the file.
+
+The schema association carries no evidential weight. It serves the editor, it is
+repaired independently at any point, and its absence never makes an advanced
+root eligible for advancement again.
 
 A best-effort sweep advances every root the registries reach, at the
 boundaries where a full pass is already natural: daemon start, reconciliation,
-and project registration. The sweep is an optimization over the per-file
+and project registration. The sweep is an optimization over the per-root
 guarantee, never a precondition of it. A registered root that is temporarily
-unavailable is absent from the manifest the sweep loads, which is neither an
-error nor a completion claim about that root: when it returns, the per-file
-advance reaches it before its first load. Nothing about one root's advancement
-affects another's.
+unavailable is absent from the manifest the sweep loads, so no record is written
+for it and nothing is claimed about it: when it returns, it is advanced before
+its first load. Nothing about one root's advancement affects another's.
 
 A file advancement cannot write fails that file's load, naming the file and the
 declaration it needs. The failure is scoped to that file; every other root
@@ -217,10 +223,14 @@ model-inconsistent value fails rather than being replaced.
 ## Failure modes
 
 - **A same-named configuration file carries no declaration.** Loading fails
-  naming the file and the missing declaration, wherever the file sits. Two
-  files reach this by construction: one the tier registries do not name, and one
-  carrying its schema association, whose declaration was removed after it was
-  advanced. The remedy for both is to declare the file.
+  naming the file and the missing declaration, wherever the file sits. Two files
+  reach this by construction: one at a root the tier registries do not name, and
+  one at a root already recorded as advanced. The remedy for both is to declare
+  the file.
+- **A root's advancement record is lost.** That root is advanced again, which is
+  the same outcome as a root first seen on a new machine. The record is an
+  advancement fact about one root, not an authority other roots or other
+  machines depend on.
 - **Advancement cannot write a file the registries name.** That file's load
   fails, naming it and the declaration it needs, rather than substituting a
   value that leaves the stored file undeclared. Other roots are unaffected.
