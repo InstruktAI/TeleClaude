@@ -30,7 +30,7 @@ person.
   not on the marker being missing.
 - **The reason lives elsewhere.** The disposition records where a message landed.
   Why it landed there belongs to the run record, which holds the reasoning the
-  marker cannot.
+  marker cannot and the watermark this absence is read against.
 
 ## Allowed values
 
@@ -63,3 +63,7 @@ an admin and never authored by a person's own assistant.
   action taken rather than one offered. Sustained accuracy alone does not earn
   this; a disposition that could hold something irreplaceable does not graduate
   however clean its record.
+
+## See Also
+
+- ~/.teleclaude/docs/personal/spec/run-record.md — the record carrying the reasoning, the watermark, and the claim that a sweep is in progress.

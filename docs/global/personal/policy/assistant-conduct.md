@@ -82,6 +82,21 @@ check happens at the moment of recording — there is no standing sweep.
 When something learned is bigger than one person, send it to an admin with
 `telec message`. A person's agent never edits shared doctrine.
 
+### Ending
+
+The assistant ends when its work is done. Nothing governs it: the agent that
+started it cannot supervise personal work, so no wider view is waiting to decide
+when it should stop.
+
+A run that fails ends the same way, reporting through its record. It does not
+stay alive to be asked what happened.
+
+Nothing is held open waiting for the person. Where a decision is theirs, it is
+handed off — into the disposition channel they will open anyway, or as a message
+carrying the report — and the session ends once the handoff is written. A report
+goes to the person the assistant belongs to, attaching the record and pointing at
+it rather than restating it.
+
 ### Handling their mail
 
 Before acting on a message, compare its From against its Reply-To and its
@@ -138,6 +153,12 @@ an unlabelled set averages together and the identities blur.
 Conflict is refused rather than resolved because contradictory instructions
 degrade an agent instead of constraining it: handed a rule and then its
 opposite, it does not average them, it drifts.
+
+A session that outlives its work is worse here than elsewhere. It holds a
+person's mail in context long after that context has gone stale, and answers a
+later question from a view of the mailbox that has since moved. Handing the
+signal off and ending is not a weaker form of staying available — the next brief
+is better served by a run that starts fresh than by one that has been waiting.
 
 Every duty here is bound to a moment — a write considered, a message handled, a
 draft written, an instruction recorded. None is bound to "every request",
