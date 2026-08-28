@@ -186,11 +186,20 @@ And the filter composes with --areas, --domains, --baseline-only, --scope, and -
 
 #### UC-DSP4: Project filter on an unknown slug returns nothing
 
+<!-- planned-change:docs-tier-layering -->
 ```
 Given --project <slug> matching no project in the cross-project catalog
 When the Selection policy applies the project filter
 Then no snippets are returned
 ```
+<!-- change:docs-tier-layering -->
+```
+Given --project <slug> matching no project in the cross-project catalog
+And the caller is authorized to name a tier explicitly
+When the Selection policy applies the project filter
+Then no snippets are returned
+```
+<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP5: Domains filter keeps only snippets in the requested published domains
 

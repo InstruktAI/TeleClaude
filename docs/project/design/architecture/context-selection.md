@@ -138,10 +138,12 @@ def expand_requires(snippet_id, visited=set()):
 | Scope   | Priority |
 | ------- | -------- |
 | global  | 1        |
-| domain  | 2        |
-| company | 3        |
-| project | 4        |
-| person  | 5        |
+| company | 2        |
+| project | 3        |
+| person  | 4        |
+
+Within the global tier, `domain` is the secondary key. It is metadata on a global
+snippet, not a scope of its own, and the ordering never treats it as one.
 <!-- /planned-change:docs-tier-layering -->
 
 <!-- planned:docs-tier-layering -->
