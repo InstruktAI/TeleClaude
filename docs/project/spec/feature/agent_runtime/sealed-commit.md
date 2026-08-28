@@ -39,9 +39,13 @@ A path is touched by being **read** as well as by being written. So the intersec
 
 <!-- change:tier-aware-commit-authority -->
 
-The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
+The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
-A context root's **own material** is what lies under it minus what lies under any nested root that establishes a context of its own. The two halves answer different failures and neither substitutes for the other. Containment under the acting root is what separates sessions working under *different* context roots of one repository: another person's context, the global context's own material, and company material all sit outside the acting root, so a path there is absent from the scope whatever the transcript claims. Subtraction of nested roots is what excludes a *foreign root inside* the acting one — a person-owned project keeping its own repository, say — which containment alone cannot reach, because such a root sits within the very subtree the first half admits.
+A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
+
+The two halves answer different failures and neither substitutes for the other. Containment under the acting root separates sessions working under *different* context roots of one repository, so a path outside the acting root is absent from the scope whatever the transcript claims. Subtraction of foreign-owned roots excludes what sits *inside* the acting root, which containment alone cannot reach.
+
+The retained set is the fourth term and is not this contract's to decide: the repository's owner publishes which of its paths are retained, and a path outside that answer is ineligible here however it is reached. Where a repository publishes no such answer, the term admits everything and the first three terms carry the bound alone.
 
 Containment bounds every path that reaches inspection, staging, or commit — not only the computed scope. A path named through an explicit declaration or subset channel is subject to the same bound: naming a path does not admit material outside the acting context root's own material, and such a path is refused rather than carried.
 
@@ -186,7 +190,7 @@ And the mandated TeleClaude trailer is appended to the message if absent (idempo
 Given an agent session whose transcript has touched paths {P1, P2, ..., Pn}
 And another agent session is concurrently live on the same shared checkout
 When the agent invokes `telec code commit --approved "<message>"`
-Then the resolved scope = (touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material)
+Then the resolved scope = (touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set)
 And new untracked paths in scope are dropped from the pathspec
 And the final commit runs with pathspec = (scope minus untracked-not-staged)
 And anything else in the index (foreign-staged, crash residue) is left untouched
@@ -714,8 +718,10 @@ And the commit is produced
 
 ```
 Given an agent session whose invocation context root is itself the root of the repository containing it
+And that checkout holds no foreign-owned nested root and its repository publishes no retained set
 When the agent inspects its changes and commits through the sealed surface
 Then the reported paths and the commit's contents are what they were before the context root became a separate coordinate
+And the gates that run are the ones that ran before
 ```
 
 #### UC-NCR-10 — A declared path outside the acting context's own material is refused
@@ -726,6 +732,16 @@ And a dirty path that lies outside that context root's own material
 When the agent names that path through any explicit declaration or subset channel
 Then the command refuses, naming the path
 And no commit or staged change carries it
+```
+
+#### UC-NCR-12 — A commit taken mid-merge does not escape the bound
+
+```
+Given a repository whose own root is a declared invocation context
+And a merge is in progress in that repository
+When an agent commits through the sealed surface
+Then the commit carries no material outside the acting context's eligible set, or the commit is refused
+And no commit state falls back to recording the whole index
 ```
 
 #### UC-NCR-11 — A location with no context root inside a sealed repository cannot reach raw git
