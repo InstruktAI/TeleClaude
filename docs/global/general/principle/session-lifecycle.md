@@ -47,11 +47,14 @@ So ending flows from context, not from a worker's own initiative.
   outcome is not permission to depart.
 - **Spawning is not governing.** Starting another session does not by itself confer authority
   over when it ends. Governance sits where the wider view genuinely is — with whoever will
-  read, reopen, or continue the work. A session whose starter cannot supervise it, because the
-  work falls outside what that agent may see or judge, is governed by no one and holds its own
-  lifecycle. The question is never who issued the command; it is who reads when the work is
-  truly done, and an agent that cannot answer that for a session it started is not its
-  governor.
+  read, reopen, or continue the work — and a starter who will do none of those, because the
+  work falls outside what it may see or judge, confers none.
+- **Governance is declared, never self-assessed.** Whoever creates a session settles at that
+  moment whether it has a governor, and the session reads that answer rather than reaching its
+  own. A session judging its own governance decides whether it may stop, while holding every
+  reason to prefer stopping — so the judgement is taken away from it and made where the
+  authority actually sits. An agent that finds no declared answer is governed, because that is
+  the reading whose cost is a session waiting rather than work abandoned.
 - **A blocked session becomes a beacon.** When an outcome needs a human and the agents have
   exhausted what they can resolve, the session stays alive as a signal rather than ending
   quietly. Everything that succeeds, ends.

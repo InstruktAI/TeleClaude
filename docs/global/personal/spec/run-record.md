@@ -41,6 +41,10 @@ records rather than a contested one.
   it. A run that ended badly reports through this record; it does not stay alive
   to be asked.
 - **Its own state.** Whether the run is open or closed, and when it opened.
+- **Whether its lessons have been folded in.** Set when what the person's handling
+  taught has been written into what is known about their senders. Until it is set
+  the record still has something to teach, and a later run can see that without
+  reconstructing it.
 
 ## Allowed values
 
@@ -56,11 +60,13 @@ thing a later sweep can see and act on, where a silently missing record is not.
   windows together contain and overlap costs duplicated reading rather than a
   false claim. Nothing here is a lock, and an open record is not one: it says a
   run started, not that another may not.
-- **It is kept only while it can still teach.** A record earns its place until the
-  person's handling of its dispositions has been read back into what is known
-  about their senders. After that its conclusions live in that durable knowledge
-  and the record itself is disposable. Records that accumulate past this are the
-  clerking the assistant exists to avoid.
+- **It is kept only while it can still teach.** A record becomes disposable when
+  it carries the mark saying its lessons were folded into what is known about the
+  person's senders, and not before. The mark is what makes this decidable: without
+  it a later run would have to infer from the knowledge whether one particular
+  record had already contributed to it, which nothing answers. An unmarked record
+  is kept however old it is. Records surviving past their mark are the clerking
+  the assistant exists to remove.
 - **It is not a report.** What the person receives is written from this record and
   shaped for them. The record is written for the next run.
 - **A closed record is not a claim that the work was right.** It says what was

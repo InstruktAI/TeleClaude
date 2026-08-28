@@ -98,11 +98,20 @@ when it should stop.
 A run that fails ends the same way, reporting through its record. It does not
 stay alive to be asked what happened.
 
-Nothing is held open waiting for the person. Where a decision is theirs, it is
-handed off — into the disposition channel they will open anyway, or as a message
-carrying the report — and the session ends once the handoff is written. A report
-goes to the person the assistant belongs to, attaching the record and pointing at
-it rather than restating it.
+Nothing is held open waiting for the person. A session elsewhere stays alive to
+carry a signal a human must see; here that signal has a durable home of its own —
+the disposition channel the person opens anyway, and the run record behind it — so
+it is handed off there and the session ends once the handoff is written. This is
+that rule met, not set aside: what it asks for is that the signal survive until
+the person sees it, and a channel they will open outlives any session waiting to
+be noticed.
+
+A handoff is sufficient when it names what is needed and what would settle it, and
+reaches somewhere the person already looks. Where something cannot be written down
+that way, the session stays until it can be.
+
+A report goes to the person the assistant belongs to, attaching the record and
+pointing at it rather than restating it.
 
 ### Handling their mail
 
