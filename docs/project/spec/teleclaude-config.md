@@ -43,7 +43,11 @@ authoritative model definitions.
 
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
 
+<!-- planned-change:company-member-roster -->
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `owner` (folder-discovered; composed alongside `project`) |
+<!-- change:company-member-roster -->
+| **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members` (folder-discovered; composed alongside `project`) |
+<!-- /planned-change:company-member-roster -->
 
 <!-- planned:config-kind-declaration -->
 #### Tier declaration and editor schemas
@@ -189,12 +193,26 @@ its own folder-discovered tier (`~/.teleclaude/companies/<slug>/teleclaude.yml`;
 the value-object contract lives in `project/spec/domain/config`), not a field of
 this global `teleclaude.yml`.
 
+<!-- planned-change:company-member-roster -->
 The company config file (`~/.teleclaude/companies/<slug>/teleclaude.yml`, model
 `CompanyConfig`, `extra="allow"`) owns the company-tier keys: `name`, `slug`,
 `git`, `description`, `erp_id`, `owner` (a `PersonConfig.slug`). It is
 folder-discovered (the `COMPANIES_ROOT` tree) and composed into the effective
 config alongside `project`. A company-level `.env` in the same folder holds
 service credentials, read through the `load_company_credentials(slug)` seam.
+<!-- change:company-member-roster -->
+The company config file (`~/.teleclaude/companies/<slug>/teleclaude.yml`, model
+`CompanyConfig`, `extra="allow"`) owns the company-tier keys: `name`, `slug`,
+`git`, `description`, `erp_id`, `members`. `members` is the company's roster:
+each entry names a registered person, the company role they hold, and the
+projects of this company they are assigned to. It replaces the former `owner`
+key, whose relationship the administrative role now carries; `owner` and the
+former per-person `companies` list are rejected at the load boundary rather than
+retained as permissive extras. It is folder-discovered (the `COMPANIES_ROOT`
+tree) and composed into the effective config alongside `project`. A
+company-level `.env` in the same folder holds service credentials, read through
+the `load_company_credentials(slug)` seam.
+<!-- /planned-change:company-member-roster -->
 
 `ProjectConfig` gains an optional `company` key — a kebab-case, validated,
 at-most-one company slug — the single determinant of the project's company

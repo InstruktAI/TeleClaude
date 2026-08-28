@@ -36,17 +36,38 @@ about it.
 
 - For a person: the companies they belong to with the role held in each, the
   projects they are assigned to, and — for an administrative role — the projects
-  that role covers.
+  that role covers. Explicit assignments and derived coverage are separate fields
+  of that answer, never merged.
 - For an operator: acceptance or a refusal naming what could not be resolved.
+
+**The agent-facing surface is a CLI query.** An agent asks for a named person's
+organizational membership through the configuration command namespace that
+already lists people, and receives the answer above in a machine-readable shape.
+This is the observable half of the product outcome: without a published command
+the resolution exists only in-process and no agent can reach it. The query is
+identity-owned and read-only; it resolves declarations and writes nothing.
 
 ## Invariants
 
-**The roster's locality makes both settled rules structural.** An assignment is
-recorded inside the member's entry, inside the company that owns the project.
-An assignment naming a project of another company therefore has nowhere to be
-written, and an assignment without a membership has no entry to live in. Both
-rules the product contract settles are enforced by shape rather than by a check
-that could be forgotten, which is the strongest layer available for them.
+**Locality makes one rule structural and the other merely local.** An assignment
+is recorded inside the member's entry, so an assignment without a membership has
+no entry to live in — that rule is enforced by shape. The other rule is not.
+Nesting a project slug under a company constrains nothing about that project: a
+project's owner is a separate declaration on the project itself, so a roster can
+name a project any other company owns, and a project's owner can change after the
+assignment is written. That rule needs a check, and the check has to run at more
+than one moment.
+
+**Assignment-to-project is dynamic referential integrity.** Every assignment
+names a project whose owning company must be the company whose roster carries it.
+That relation is read through the project owner's published contract, never
+inferred from location or from the roster itself, and it is verified at two
+boundaries: when an assignment is written, and when a roster is loaded for
+domain use. Write-time verification alone would leave assignments that were valid
+when written and false afterward, because the project tier can retire or reassign
+an owner without consulting any roster. A load-time assignment whose project no
+longer resolves to the enclosing company fails loudly rather than resolving as
+though it held.
 
 **One home per fact.** The company tier is the only place a membership or
 assignment is declared. The person tier declares no company relationship, and
@@ -67,6 +88,23 @@ for project ownership, which the project tier already owns.
 **Resolution reports; it never permits.** No consumer's authorization decision
 lives here. Explicit assignment and derived coverage are reported as separate
 facts so a consumer may read one without the other.
+
+**Roster writes are gated where they act, not where they are declared.** The
+maintenance surface declares an administrator-only human band, but the executed
+handler for that surface enforces only a customer exclusion, so every other human
+role reaches it today. Extending that surface with roster mutation without
+closing the gap would let a non-administrator rewrite company roles and project
+assignments. The write path therefore carries its own point-of-action check
+enforcing the declared human band, while preserving the agent band the surface
+already admits. Reusing a surface is not inheriting the boundary it advertises.
+
+**Removal is a boundary, not an omission.** Both configuration models accept and
+preserve unknown keys, so deleting a typed attribute does not stop the old key
+being read, kept, and written back — it converts it into a silent extra. Retiring
+the per-person company list and the per-company owner reference therefore means
+rejecting or stripping those keys explicitly at the load boundary before domain
+use, so the single home stays single. Absence of the attribute is not absence of
+the field.
 
 ## Primary flows
 
@@ -98,6 +136,16 @@ person-shaped because that is how an administrator thinks about it; the storage
 is company-side because that is where the human placed it. Surface shape and
 storage shape need not match, and here they deliberately do not.
 
+**The structured roster stays out of the reflected editor.** Company
+configuration is rendered schema-driven in the configuration TUI's companies
+tab, so a new structured field acquires an editing surface by reflection alone.
+An empty roster would reflect as a single generic leaf and a populated one as
+indexed fields the company save path cannot traverse safely — an accidental
+mutation surface nobody designed. The roster is therefore excluded from that
+reflection and is written only through the designed maintenance command. A
+member-by-member editor is a later change with its own write semantics, not a
+side effect of adding a field.
+
 **Resolution** walks the company tier. The set is small and folder-discovered,
 so the walk is cheap; no index is introduced for a scan of this size, and adding
 one later is a change with its own evidence rather than a precaution taken now.
@@ -111,10 +159,13 @@ one later is a change with its own evidence rather than a precaution taken now.
   covered projects as though they were explicit assignments destroys the
   distinction a consuming context depends on, and cannot be undone by that
   consumer.
-- **Validating what the shape already prevents.** Adding a runtime check that an
-  assignment's project belongs to the enclosing company restates the structure
-  rather than enforcing anything, and invites the structure to be loosened later
-  because "the check will catch it."
+- **Mistaking locality for enforcement.** Believing that nesting an assignment
+  under a company constrains which project it may name, and skipping the
+  ownership check on that belief. Nesting says where the fact is stored and
+  nothing about what it may reference.
+- **Checking ownership only on write.** A project's owner can change after an
+  assignment is recorded, so a write-time check alone yields a roster that was
+  valid once and silently is not.
 - **Reading ownership from location.** A project's owner is its own declaration.
   Inferring it from the directory containing the project, or from who is
   assigned to it, produces coverage answers that change when files move.

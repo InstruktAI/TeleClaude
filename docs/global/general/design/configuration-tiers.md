@@ -51,19 +51,20 @@ implies, and the portion of those sources the caller may see.
   membership, so there is one authoritative place to read the relationship from
   and one place to change it.
 <!-- /planned:company-member-roster -->
-<!-- planned-change:docs-tier-layering -->
+<!-- planned-change:company-member-roster -->
 - **Today, authorization to read is one gate.** A caller resolves to a person
   and their platform role. An admin sees every snippet; everyone else sees only
   snippets declaring themselves public. There is no membership or ownership
   dimension in the read path — `PersonConfig.companies` is modelled and
   validated but has no consumer and no values on disk.
-<!-- change:docs-tier-layering -->
-- **Authorization to read is answered per tier.** A caller resolves to a person,
-  their platform role, and their declared relationships. A tier the caller holds
-  a relationship to is read in full; a tier they hold none to is read at whatever
-  its snippets declare about themselves; a platform admin reads every tier in
-  full.
-<!-- /planned-change:docs-tier-layering -->
+<!-- change:company-member-roster -->
+- **Today, authorization to read is one gate.** A caller resolves to a person
+  and their platform role. An admin sees every snippet; everyone else sees only
+  snippets declaring themselves public. There is no membership or ownership
+  dimension in the read path: the company tier declares who belongs to a
+  business and which of its projects each person is assigned to, and no read
+  path consults it.
+<!-- /planned-change:company-member-roster -->
 <!-- planned-change:config-kind-declaration -->
 - **Today, invocation resolution is anchored on git.** Resolving the root for an
   invocation walks upward for a `.git` directory and only then requires
