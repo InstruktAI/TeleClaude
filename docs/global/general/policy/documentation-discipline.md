@@ -109,13 +109,16 @@ visibility: public
   spec. Silence on the question means unclassified — it is asked, never
   defaulted.
 - **A feature spec is owed only for behavioral work delivered through a todo,
-  against the bounded context that owns the behavior.** Feature specs are
-  project-scoped and concept-named; there is no global feature-spec home. Global
-  doctrine — a policy, principle, procedure, or spec that agents read and act
-  on — is therefore reflected and reviewed as a behavioral delta under the
-  directive-text rule above, and authors no use case. Demanding one for
-  doc-only work asks for an artifact that has nowhere to live and is reachable
-  only through a todo this policy forbids.
+  against the bounded context that owns the behavior.** Global doctrine — a
+  policy, principle, procedure, or spec that agents read and act on — is
+  reflected and reviewed as a behavioral delta under the directive-text rule
+  above, and authors no use case. Demanding one for doc-only work asks for an
+  artifact reachable only through a todo this policy forbids.
+
+  What is owed is bounded here; where a feature spec may live is not. Placement
+  follows the taxonomy and `general/policy/artifact-scope`, which admit a feature
+  spec at any scope its owning context sits at.
+
 - **Agent artifacts (commands, skills, agents) are not doc snippets** — they have
   no code to be pending against, so they carry no planned markers and no
   `delivered_by`. Their authoring lifecycle (human-decided, authored on `main`,
