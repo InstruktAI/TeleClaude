@@ -1,5 +1,5 @@
 ---
-description: How the company-tier roster is stored, validated, mutated, and resolved — config declaring the relationship and identity answering what it means, with membership structural by locality and project ownership verified at the write and load boundaries.
+description: How the company-tier roster is stored, validated, mutated, and resolved — config declaring the relationship, identity answering what it means, and the constraints on an assignment following from the open product decision about it.
 delivered_by:
   - company-member-roster
 ---
