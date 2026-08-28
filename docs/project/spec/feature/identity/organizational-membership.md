@@ -59,13 +59,13 @@ assignment. Absence resolves to nothing, never to a default company.
 : A person's belonging to one registered company, carrying the role that person holds in that business.
 
 **Company role**
-: The role a person holds inside one business, drawn from the platform's company-role vocabulary. Independent of the platform role, and never a visibility tier.
+: The role a person holds inside one business, one of `admin`, `member`, `contributor`. Independent of the platform role, and never a visibility tier.
 
 **Project assignment**
 : A person's assignment to work in one registered project. Never inferred from company membership.
 
 **Company administrative role**
-: The company role whose holder's membership covers every project that company owns, with no per-project entry. The owner of that business. The sole place a company role affects what resolution reports.
+: `admin` — the company role whose holder's membership covers every project that company owns, with no per-project entry. The owner of that business. The sole place a company role affects what resolution reports.
 
 **Undeclared person**
 : A person carrying no company membership and no project assignment. Resolves to no company relationship and an empty assignment set.
@@ -133,16 +133,14 @@ And holding any platform role confers no company membership and no project assig
 
 ## Known caveats
 
-- The company-role vocabulary is a closed set whose values are the business
-  owner's to ratify. Until that ratification lands, scenarios here name the
-  administrative role by its function rather than by a literal value.
+- An assignment names a project of a company the person belongs to. Assignment
+  is a narrowing inside a business, never a standing granted outside one.
 - UC-ORGID-3 is the only place a company role affects what resolution reports.
   Any further derivation from company role is a change to this contract, not an
   implementation detail.
-- Whether an assignment may name a project of a company the person does not
-  belong to is an open product decision. This contract states only the ruled
-  direction — belonging confers no project — and decides nothing about the
-  reverse relation.
+- Belonging to a company confers no project, and an assignment presupposes the
+  membership it narrows. The two rules run in opposite directions and neither
+  implies the other.
 
 ## See Also
 

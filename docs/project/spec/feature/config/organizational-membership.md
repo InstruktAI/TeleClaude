@@ -49,6 +49,9 @@ with a valid one.
 **Registered referent**
 : A company or project that exists in the platform's own registries. Every declaration names one; a declaration naming anything else is invalid.
 
+**Company role**
+: One of `admin`, `member`, `contributor`. Every membership declaration carries one.
+
 **Maintenance surface**
 : The ordinary administrator-facing configuration surface through which declarations are written and withdrawn, so no declaration requires editing a file by hand.
 
@@ -103,6 +106,18 @@ Examples:
   | project  |
 ```
 
+#### UC-CFG-MEMBER-10: An assignment outside the person's memberships is refused
+
+```gherkin
+Given a person who belongs to one registered company
+And a registered project owned by a different company the person does not belong to
+And a human administrator operating the maintenance surface
+When the administrator assigns the person to that project
+Then the declaration is refused at the point it is written
+And the refusal names the company the person does not belong to
+And nothing is persisted for that person
+```
+
 ## Known caveats
 
 - Use-case identifiers 4 through 7 and 9 are not in use in this contract and are
@@ -111,8 +126,10 @@ Examples:
   per-person company-membership list and a per-company owner reference. Neither
   has a resolver and neither is populated. This contract is the single home for
   the owner relationship; the owner reference is not a second one.
-- The company-role vocabulary is a closed set whose values are the business
-  owner's to ratify.
+- The company-role vocabulary is the closed set `admin`, `member`,
+  `contributor`. `admin` is the company's own administrator and owner.
+  `contributor` names a relationship to the business that carries no stake in
+  it.
 
 ## See Also
 
