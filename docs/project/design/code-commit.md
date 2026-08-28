@@ -275,12 +275,28 @@ The pathspec commit is built internally from `workspace scope plus
    "foreign-staged" check; the pathspec alone enforces the boundary. Agents
    must not unstage foreign files they see in the index.
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 4. **Format + lint run in-process before `git commit --no-verify`.** `telec
 code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    (the commit pathspec filtered to existing files) before invoking
    `git commit --no-verify`. Deletion-only commits (empty `quality_paths`) skip
    both steps. The thin `.git/hooks/pre-commit` performs only a partial-staging
    backstop; it does not re-run format or lint.
+
+<!-- change:tier-aware-commit-authority -->
+
+4. **The gates the acting tier carries run in-process before `git commit --no-verify`.**
+   Where the acting invocation context's declared tier carries project
+   subscriptions, `telec code commit` runs `handle_format` then `handle_lint`
+   against `quality_paths` (the commit pathspec filtered to existing files)
+   before invoking `git commit --no-verify`. Where that tier carries none,
+   neither runs and nothing is applied in their place. Deletion-only commits
+   (empty `quality_paths`) skip both steps wherever they would otherwise run. The
+   thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does
+   not re-run format or lint.
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 5. **Commit-first gate on main.** Non-integrator agents on main use the bare
    `telec code commit` invocation to surface commit-first and post-commit
@@ -341,6 +357,12 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
 <!-- /planned-change:tier-aware-commit-authority -->
 
 ## Primary flows
+
+<!-- planned:tier-aware-commit-authority -->
+
+Every walkthrough below traces an acting context whose declared tier carries project subscriptions, so its gate steps are the ones that tier carries. In a context whose tier carries none, the same flows run with no gate step at all.
+
+<!-- /planned:tier-aware-commit-authority -->
 
 ### Agent commit (worktree)
 

@@ -415,6 +415,8 @@ When agent invokes telec code commit --approved "<bad-message>"
 Then SystemExit(1) before format/lint/git-commit invoked
 ```
 
+<!-- planned-change:tier-aware-commit-authority -->
+
 #### UC-CGIP-2 — Gates run format-before-lint against quality_paths
 
 ```
@@ -423,6 +425,20 @@ When agent invokes telec code commit --approved "<msg>"
 Then quality_paths = pathspec filtered to existing files only
 And handle_format(quality_paths) is called before handle_lint(quality_paths)
 ```
+
+<!-- change:tier-aware-commit-authority -->
+
+#### UC-CGIP-2 — Gates run format-before-lint against quality_paths
+
+```
+Given the acting invocation context's tier carries project subscriptions
+And pathspec contains existing and deleted files
+When agent invokes telec code commit --approved "<msg>"
+Then quality_paths = pathspec filtered to existing files only
+And handle_format(quality_paths) is called before handle_lint(quality_paths)
+```
+
+<!-- /planned-change:tier-aware-commit-authority -->
 
 #### UC-CGIP-3 — Deletion-only commit bypasses format/lint
 
