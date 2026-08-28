@@ -17,10 +17,9 @@ person's behalf. Every such invocation is bound to one mail account that person
 has declared, is directed at that person's own connector state, and carries the
 settings prohibition the personal-assistant conduct policy declares.
 
-That prohibition is held by the connector's own controls: the invocation is
-constructed so the connector permits only named operations and so its
-authorization excludes the settings scopes. An operation outside the permitted
-set does not run, whether or not the platform has seen it before. The platform's connector vocabulary is translated into a
+Settings changes do not run, and neither does an operation outside the permitted
+set — including one never seen before, which fails closed rather than being
+judged harmless. The platform's connector vocabulary is translated into a
 particular tool here and nowhere above.
 
 A connector is invoked only where the settings prohibition can be held for it. A
@@ -111,17 +110,16 @@ And this holds for an operation never seen before as well as one recognised as p
 
 ## Known caveats
 
-- The permitted set is what an operation must appear in to run, so an operation
-  the platform has never seen is refused without anything having to recognise it
-  as dangerous. Nothing here inspects an invocation to judge what it would reach.
+- An operation the platform has never seen is refused without anything having to
+  recognise it as dangerous.
 - Directing a connector's state at a person's own location does not by itself
   confine that person's secrets: a connector may resolve an account from a store
   shared across the machine regardless of where its state is directed, which
   presents as isolation while providing none. This contract states direction and
   makes no confinement claim; confinement belongs to whoever owns the per-person
-  secret store. What keeps one person's invocation away from another's credential
-  is the account binding: stored secrets are keyed by address, and an invocation
-  may name only an address the acting person declared.
+  secret store. What an invocation cannot reach is an account outside the acting
+  person's declaration; two people declaring the same account share whatever is
+  stored for it.
 
 ## See Also
 
