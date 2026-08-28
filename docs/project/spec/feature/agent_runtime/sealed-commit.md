@@ -492,7 +492,7 @@ And the repository's own root is not a declared invocation context
 And every conflicted path has been resolved and staged (no remaining unmerged-index entries)
 When agent invokes telec code commit --approved "<msg>"
 Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
-And the acting tier's gates run over quality_paths, format before lint where that tier carries them
+And the gates the acting tier carries run over the full merge diff, and a tier carrying none runs no gate
 And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
 And the resulting commit records origin/main as a merge parent
 ```

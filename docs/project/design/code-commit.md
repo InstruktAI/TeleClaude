@@ -303,14 +303,10 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    (`telec code add`-ed) — it errors out listing any that remain rather than
    committing an unresolved conflict — then runs the acting tier's gates over the
    full merge diff (not the caller's pathspec) and commits with no pathspec at
-   all: `git commit -F <msg> --no-verify` with no trailing `-- <pathspec>`. The
-   degradation is safe there because `MERGE_HEAD` already forces the entire
-   resolved index into one atomic commit, and the boundary it drops exists to stop
-   a commit from sweeping in unrelated concurrent state that a single-owner tree
-   does not hold.
+   all: `git commit -F <msg> --no-verify` with no trailing `-- <pathspec>`.
 
-   That premise fails in a repository whose own root is a declared invocation
-   context: such a tree is multi-context and concurrently dirty by design, so the
+   In a repository whose own root is a declared invocation
+   context the tree has more than one owner: such a tree is multi-context and concurrently dirty by design, so the
    resolved index can hold another context's material. There a commit taken mid-
    merge preserves the eligible set or is refused; it never degrades to recording
    the whole index.
