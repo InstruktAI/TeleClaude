@@ -113,6 +113,16 @@ Then it is refused before the connector runs
 And the refusal states that the invocation's reach could not be determined
 ```
 
+#### UC-ACI-9: A second person's connector state stops the boundary
+
+```gherkin
+Given a connector whose stored secrets are not confined to one person
+And a second person on this machine has connector state
+When any invocation is made on any person's behalf
+Then it is refused before the connector runs
+And the refusal states that a second person's connector state is present without confinement
+```
+
 ## Known caveats
 
 - Where a gate rests on determining reach from the invocation itself, an
@@ -126,7 +136,8 @@ And the refusal states that the invocation's reach could not be determined
   shared across the machine regardless of where its state is directed, which
   presents as isolation while providing none. This contract states direction and
   makes no confinement claim; confinement belongs to whoever owns the per-person
-  secret store.
+  secret store. UC-ACI-9 is what keeps the gap from being reachable: the boundary
+  stops before a second person's connector state exists rather than after.
 
 ## See Also
 
