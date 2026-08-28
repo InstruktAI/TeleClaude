@@ -21,13 +21,14 @@ person.
 
 - **Exactly one.** Dispositions are mutually exclusive. A person acting on a
   message in one place has acted on it everywhere, and a message never appears
-  under two proposals at once.
+  under two proposals at once. A message already carrying one has been considered:
+  a later sweep reaching it leaves the disposition standing rather than replacing
+  it, and only the person's own handling changes it.
 - **Absence is read against what runs covered.** A message carrying no assistant
   marker is one of two things, and only the windows sweeps recorded separate them:
   mail inside a covered window was considered and needs nothing; mail outside every
-  one of them has not been reached. Absence alone carries no meaning, and a claim
-  that nothing is left unconsidered rests on those windows, not on the marker being
-  missing.
+  one of them has not been reached. A claim that nothing is left unconsidered rests
+  on those windows, never on the marker being missing.
 - **The reason lives elsewhere.** The disposition records where a message landed.
   Why it landed there belongs to the run record, which holds the reasoning the
   marker cannot and the window this absence is read against.

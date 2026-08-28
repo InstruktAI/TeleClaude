@@ -26,12 +26,9 @@ records rather than a contested one.
   stopped, and whether it reached the end of what it set out to cover. A run that
   stopped early says so here rather than leaving it to be inferred.
 - **What the window means once closed.** A closed window is the claim that
-  everything in it was considered. It is written once the window is genuinely
-  covered, never when the run begins, because a claim written in advance covers
-  ground the run has not yet walked. Whether any given message was considered is
-  answered by whether some run's closed window contains it — never by a single
-  moving marker, which one run can advance across ground another was still
-  working.
+  everything in it was considered, written once the window is covered and never
+  when the run begins. Whether a given message was considered is answered by
+  whether some run's closed window contains it.
 - **The judgement calls.** For messages where the answer was not obvious, what
   was decided and what made it close. Routine calls need no entry — a record that
   narrates every disposition is a second inbox.
@@ -57,16 +54,18 @@ thing a later sweep can see and act on, where a silently missing record is not.
 
 - **Runs do not exclude each other.** Two sweeps may run at once. Each records
   what it covered and neither edits the other, so coverage is what their closed
-  windows together contain and overlap costs duplicated reading rather than a
-  false claim. Nothing here is a lock, and an open record is not one: it says a
-  run started, not that another may not.
+  windows together contain. Nothing here is a lock, and an open record is not one:
+  it says a run started, not that another may not.
+- **Overlap is absorbed per message, not prevented.** Coverage merges; actions do
+  not. A message already carrying a disposition has been considered, and a sweep
+  reaching it again leaves it as it stands rather than deciding it a second time.
+  A reply already drafted is not drafted again. What overlap costs is re-reading,
+  and it costs that only because each message's own state is what settles whether
+  work is owed on it.
 - **It is kept only while it can still teach.** A record becomes disposable when
   it carries the mark saying its lessons were folded into what is known about the
-  person's senders, and not before. The mark is what makes this decidable: without
-  it a later run would have to infer from the knowledge whether one particular
-  record had already contributed to it, which nothing answers. An unmarked record
-  is kept however old it is. Records surviving past their mark are the clerking
-  the assistant exists to remove.
+  person's senders, and not before. An unmarked record is kept however old it is,
+  and records surviving past their mark are disposed of.
 - **It is not a report.** What the person receives is written from this record and
   shaped for them. The record is written for the next run.
 - **A closed record is not a claim that the work was right.** It says what was

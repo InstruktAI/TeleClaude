@@ -55,6 +55,11 @@ So ending flows from context, not from a worker's own initiative.
   reason to prefer stopping — so the judgement is taken away from it and made where the
   authority actually sits. An agent that finds no declared answer is governed, because that is
   the reading whose cost is a session waiting rather than work abandoned.
+- **A waiting session always has someone who will reach it.** Reading undeclared as governed
+  is only safe while some standing authority sweeps for sessions no one has claimed and ends
+  the ones whose work is accounted for. Without that, the safe reading becomes the one that
+  strands. The fleet's overseer holds this by default, and a session with no other governor is
+  its to resolve.
 - **A blocked session becomes a beacon.** When an outcome needs a human and the agents have
   exhausted what they can resolve, the session stays alive as a signal rather than ending
   quietly. Everything that succeeds, ends.
