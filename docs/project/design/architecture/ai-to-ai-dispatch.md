@@ -96,8 +96,13 @@ launch reuses the existing session-creation command.
   Parentage is distinct from the listener suppression that `detach` expresses
   elsewhere in this design: suppression decides who is notified, parentage
   decides who may end the session, and neither implies the other.
-- **The brief is carried as a request made in the moment.** What `run-pa` starts
-  serves that request.
+- **The brief is carried as a request made in the moment, and the launch says so.**
+  What `run-pa` starts serves that request, and the launch states that framing
+  alongside the brief rather than leaving the assistant to infer which kind of
+  request it received. The rule the framing invokes — that work a schedule
+  declares is done by that schedule and nothing else — belongs to the assistant's
+  conduct contract, which already carries it. Dispatch owes the framing, not the
+  refusal.
 - **Derivation and refusal sit at different layers.** The person is resolved where
   the caller is authenticated. The destination is refused where every creation
   path converges. The authenticated edge sees one route at a time; the convergence
@@ -117,9 +122,8 @@ launch reuses the existing session-creation command.
   configuration is launched through the scheduled path, which derives its routing
   from that declaration and runs under a job runner's role. A brief names no job
   and the launch carries no command, so no brief reaches that path. This bounds
-  the scheduler's own transport; what an assistant does when asked directly for
-  work of the same kind is the conduct contract's, and rests on a schedule
-  declaration a person's configuration does not yet carry.
+  the scheduler's own transport only; what an assistant does when asked directly
+  for work of the same kind is settled by the conduct contract it loads.
 - **Containment is answered by the configuration owner.** Whether a destination
   lies inside any person workspace is a published configuration query. Dispatch
   consumes that query and never walks the person-directory layout itself.
