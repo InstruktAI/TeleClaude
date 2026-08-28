@@ -45,31 +45,55 @@ The context-root walk and the project shared-state resolver are consumed from
 
 ## Invariants
 
+### Retained-content eligibility has one owner
+
+Whether a path may enter the home's history is one decision with one owner:
+`reconciliation`. It is an installation-state question — what belongs in this
+machine's durable home — which is the comparison reconciliation already owns.
+The other contexts consume its answer and restate nothing:
+
+| Context          | Role                                                                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reconciliation` | **Owns** the decision and its source of truth: the admitted-path record, the eligibility query over it, and the convergence that maintains it. |
+| `config`         | Owns only the schemas it already owns. It gains no retained-content declaration.                                                               |
+| `agent_runtime`  | Consumes the eligibility answer at commit construction and refuses a path the owner rejects. It never defaults or reinterprets the rule.       |
+
+The published contract is a single query — _is this path admissible to the home's
+history?_ — answered from the admitted-path record. One decision point, one
+owner, one contract.
+
 ### What reaches history is decided by admission, not by exclusion
 
-Nothing enters the home's history except by an explicit act that names it. The
-platform already owns that act: the sealed commit surface builds every commit
-from an explicit pathspec, and a new untracked file reaches a commit only when
-an agent declares it (`project/spec/feature/agent_runtime/sealed-commit`). The
-retained-set test is therefore enforced where the platform controls the write —
-in the pathspec the commit surface constructs — and a path failing the test is
-refused there.
+Nothing enters the home's history except by an act that names it and is
+recorded. Two acts admit, and there are no others:
 
-This is what makes `@prd#success-criteria` SC-2 hold in the direction it claims.
-Material appearing in the home later is outside history because nothing admitted
-it, not because a rule anticipated it. No enumeration has to keep pace with the
-home's growth.
+- **First activation admits what is already there, by recorded confirmation.**
+  Convergence proposes a candidate set — the authored material under the tier
+  roots the registries name — and shows what it refuses and why. The operator
+  confirms, and the confirmed paths become the admitted-path record. Nothing is
+  admitted by the proposal alone; the record is written from the confirmation.
+  This is what makes activation over a populated home fail closed
+  (`@prd#success-criteria` SC-2, SC-3): a candidate nobody confirmed is not
+  admitted, so a credential store or database sitting under a tier root at
+  activation time stays out even if the refusal rules never named it.
+- **Afterwards, the ordinary commit act admits.** The sealed commit surface
+  already requires an explicit declaration for a new untracked file
+  (`project/spec/feature/agent_runtime/sealed-commit`), and that declaration
+  extends the admitted-path record once the eligibility query accepts it.
 
-Exclusion rules remain, demoted to what they are: hygiene that keeps untracked
-runtime state, caches, databases, and links out of status output and out of a
-careless broad add. They are generated from the tier registries so a newly
-onboarded person or company needs no hand edit. They are not the boundary, and
-the design does not lean on them as one.
+Refusal is definite regardless of confirmation: a path that resolves outside the
+home, a symlink whose target leaves the home, and any path under a root carrying
+its own repository are refused and cannot be confirmed into the record.
+
+Exclusion rules remain, demoted to what they are: hygiene generated from the
+tier registries that keeps untracked runtime state, caches, databases, and links
+out of status output and out of a careless broad add. They are not the boundary
+and nothing in this design leans on them as one.
 
 Already-tracked content is a separate problem with a separate answer. Ignore
-rules provably cannot reach it, so SC-4's breach report is produced by testing
-the _tracked_ set against the retained-set test and reporting what fails —
-never by adding an exclusion and calling it resolved.
+rules provably cannot reach it, so the breach report (`@prd#success-criteria`
+SC-4) is produced by testing the _tracked_ set against the eligibility query and
+reporting what fails — never by adding an exclusion and calling it resolved.
 
 #### Prior art and adopt-vs-build
 
@@ -133,36 +157,66 @@ not a statement of what the session modified: for one agent runtime it is
 dominated by a vendor-owned file-history structure whose membership rule
 TeleClaude neither owns nor can narrow, and its shell-derived component
 classifies free-text command text by pattern. Isolation resting on that set
-rests on someone else's data structure. Containment removes the dependency for
-every case where the two roots differ; it does not resolve two sessions working
-the same path inside one root, which stays with the attribution contract and is
-named under Failure modes.
+rests on someone else's data structure.
 
-### Location grants nothing
+**The guarantee this design delivers is therefore bounded, and the bound is
+stated rather than papered over.** Containment separates _different_ context
+roots — every case `@prd#success-criteria` SC-6 enumerates, since global, a
+company, another person, and a foreign nested root are each a different root. It
+does not separate two sessions editing the same path inside one root. That case
+needs to know which live session claims a dirty path, which is the ownership
+attribution contract owned by the commit surface and being built adjacently; this
+design consumes that contract when it exists and claims nothing about it now. No
+contract authored by this delivery may promise modified-path scoping or
+same-root overlap failure, because no mechanism here provides either.
+
+### Location grants nothing, and ownership is a closed declaration
 
 A tier's permissions follow from its declaration, and the three axes —
 invocation context, surface participation, project subscriptions — are answered
 independently (`project/spec/feature/config/tier-permissions`). A project inside
-a person's space is an ordinary project on every axis. Its owner is a declared
-relationship carried in the project's own configuration, exactly as that
-configuration already declares an owning company (`ProjectConfig.company`,
-`teleclaude/config/schema.py`), and registration validates that declaration
-against the person registry rather than reading the enclosing directory. Caller
-identity is resolved by `identity` without reference to the enclosing context.
+a person's space is an ordinary project on every axis.
 
-The person-owned project's sublocation is `people/<slug>/projects/<name>/` —
-the sibling convention to the tier directories the registries already name,
-chosen so the home's generated hygiene rules can address it as a class and so no
-new discovery mechanism is introduced: the project registers itself in the
-project manifest like every other project.
+**Whom a project belongs to is one closed declaration with exactly one shape.**
+Today `ProjectConfig` carries an optional company slug; adding a second optional
+person field would make two simultaneous owners representable, which is the
+illegal state to design out. The owner becomes a single declared relationship
+naming its kind — company or person — so exactly one owner exists by
+construction. Existing company-declaring projects migrate forward into the
+company shape and the old field is removed rather than kept beside it
+(`software-development/policy/backward-compatibility-hygiene`: owned
+configuration migrates forward, never branches). Its four current consumers —
+the context selector's company resolution, the app-config company composition,
+and the hook receiver's company lookup — read the migrated shape.
+
+Registration validates the declaration: a person-owned project's declared owner
+is checked against the person registry through `identity`, never inferred from
+the directory containing it. Caller identity is resolved by `identity`
+independently of the enclosing context.
+
+The sublocation is `people/<slug>/projects/<name>/` — the sibling convention to
+the tier directories the registries already name — and the project is created
+and registered through the existing project-initialization surface operating at
+that path, which writes the owner declaration and registers the root in the
+project manifest like any other project. No new discovery mechanism appears.
 
 ### Person-scoped authority requires a validated binding
 
-A person root's declaration says what the file is. Before anything person-scoped
-follows from it — visibility, or authority to commit into that person's own
-material — `identity` (`teleclaude/core/identity.py`) validates that the declared
-person is registered. An unknown, ambiguous, or disagreeing claim fails closed
-(`project/spec/feature/identity/person-context-binding`).
+A person root's declaration says what the file is; the tier declaration
+supplied upstream carries the tier and nothing else. **Which person the root
+belongs to is a separate typed claim**, and it does not exist today: the person
+configuration model carries credentials, settings, and memberships but no
+identity of its own. So the person configuration gains one declared, validated
+claim naming the person the root belongs to — owned by `config` as the schema
+owner, alongside the tier declaration and acquired by existing overlays through
+the same advancement the tier declaration already uses, so no second migration
+mechanism appears. A newly created person overlay is written carrying it.
+
+`identity` (`teleclaude/core/identity.py`) then compares that claim against the
+canonical person registry before any person-scoped visibility or write authority
+follows. An unknown, ambiguous, or disagreeing claim fails closed
+(`project/spec/feature/identity/person-context-binding`). The claim is a
+statement in a file and never authenticates a caller.
 
 ## Primary flows
 
@@ -174,11 +228,23 @@ configures no remote. It is idempotent because it compares against a derived
 target rather than accumulating edits.
 
 Its activation surface is a CLI verb in a new `telec home` namespace, authored
-per `software-development/procedure/cli-command-authoring`, so an operator can
-initialize, repeat, and inspect it and receive the breach report as its result.
-The installer invokes the same verb, so a machine converges without a separate
-code path. A CLI surface is required rather than installer-only execution
-because the outcome must be inspectable and repeatable on demand
+per `software-development/procedure/cli-command-authoring`. One action converges
+the home, and its contract is:
+
+- **Invocation** — idempotent, safe to repeat, and safe to run on an already
+  converged home. A confirmation flag distinguishes proposing from admitting, so
+  the first run over a populated home can be read before it records anything.
+- **Result** — three sets: the paths admitted or already admitted; the paths
+  refused, each with the reason it failed the eligibility query; and the breach
+  set, being tracked paths the query rejects. An empty breach set is the healthy
+  outcome; a non-empty one is reported, never silently narrowed away.
+- **Effects** — initializes the history when absent, writes confirmed
+  admissions into the admitted-path record, regenerates the hygiene rules from
+  the tier registries, and configures no remote under any invocation.
+
+The installer invokes the same verb, so a machine converges through one code
+path. A CLI surface is required rather than installer-only execution because the
+outcome must be inspectable and repeatable on demand
 (`software-development/principle/architectural-defaults`, CLI-first agency).
 
 **Committing from a person context.** The commit surface resolves both roots,
@@ -200,6 +266,46 @@ in its own configuration, and that declaration is validated against the person
 registry. Its own repository holds its history; the home's hygiene rules exclude
 its path and the retained-set test refuses it, so the home neither versions its
 contents nor records a reference to it.
+
+### Affected surfaces, per unit
+
+Verified against source; the blast-radius query over these anchors reports a
+broad transitive radius, so the bounded consumer selection below is what a plan
+works from rather than the raw dependent set.
+
+| Unit                       | Adapted                                                                                                                                                                                          | Reused unchanged                                                               | Explicit non-consumers                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Tier-dispatched permission | `teleclaude/capabilities.py` and its five call sites: the sync entry points, the code-surface capability gate, the checkpoint hook's capability state, and the project-init flow                 | The project subscription semantics and their derivation rules                  | Every project-only path stays on today's answer; no project changes behavior  |
+| Person claim and binding   | `teleclaude/config/schema.py` person model and its schema export; `teleclaude/core/identity.py` for the registry comparison                                                                      | The person registry and slug validation, which already exist and are canonical | Credential, notification, and subscription fields on the person model         |
+| Two-root resolution        | `teleclaude/project_root.py` result shape; `teleclaude/cli/telec/handlers/code.py` capability and scope call sites; `teleclaude/quality/scope.py` dirty-path anchoring and pathspec construction | `resolve_git_root`'s ancestor walk, which already does the discovery           | Worktree shared-state resolution, owned by the workflow context and untouched |
+| Admission and hygiene      | The commit pathspec construction in the code surface; the reconciliation-owned admitted-path record and eligibility query                                                                        | The sealed commit surface's existing explicit-declaration act for new files    | The project capability manifest and its toggles                               |
+| Home convergence           | A new `telec home` surface registered in the CLI surface table; the installer entry point                                                                                                        | The tier registries and project manifest as read-only inputs                   | Project-scoped initialization, which keeps its own flow                       |
+| Person-owned project       | `teleclaude/config/schema.py` project owner declaration and its four company consumers; the project-initialization flow                                                                          | The project manifest's root registration                                       | Company composition semantics, which the migration preserves                  |
+
+**Blind spot recorded:** the blast-radius graph does not model configuration-key
+consumers reached through dynamic attribute access, so the owner-declaration
+migration's consumer set above was established by direct source search rather
+than by the graph alone.
+
+### Decomposition
+
+1. **Tier-dispatched permission** — answer the three axes from the declared tier
+   for every tier; stop interpreting non-project overlays as project overlays.
+2. **Person claim and registry binding** — the typed claim in the person schema
+   and its validation at the identity boundary, failing closed.
+3. **Two-root resolution** — carry the context root beside the repository root
+   and route each consumer to the coordinate its question needs. This is the
+   containment property the isolation invariant rests on.
+4. **Admission** — the reconciliation-owned record and eligibility query, and
+   its enforcement in the commit pathspec.
+5. **Home convergence** — the CLI action and its result contract, hygiene
+   generation, and the breach report.
+6. **Person-owned project** — the closed owner declaration, its forward
+   migration, and creation at the sublocation through the existing project
+   initialization surface.
+
+Unit 3 is what makes units 4, 5, and 6 safe to exercise; unit 1 gates whether
+the commit surface may run in a person context at all.
 
 ```mermaid
 flowchart TD

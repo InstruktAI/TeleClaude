@@ -31,9 +31,9 @@ A path is touched by being **read** as well as by being written. So the intersec
 
 <!-- change:person-tier-homes -->
 
-The scope itself is strictly `(paths this session modified) ∩ (currently dirty paths)`. Reading a file does not place it in scope, so a session that inspects a file another session is editing cannot carry that session's work. A deletion of a file the session did not modify is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
+The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation's context-root subtree)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
-Where two sessions have modified the same path and both changes are uncommitted, the commit fails naming the overlap rather than combining them.
+The third term is what separates sessions working under different context roots of one repository: a path outside the invoking context root's subtree is absent from the scope whatever the transcript claims, so another person's, another company's, the home's own, and a nested foreign root's work cannot be carried. Within a single context root the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
 
 <!-- /planned-change:person-tier-homes -->
 
@@ -600,8 +600,8 @@ And the message carries no Co-Authored-By line
 ```
 Given an agent session whose context root sits below the root of the repository that contains it
 When the agent inspects the changes in scope
-Then the paths reported are the ones the session changed, expressed relative to its own context root
-And no path is reported that the session did not change
+Then the reported paths are expressed relative to its own context root
+And every reported path lies inside that context root's subtree
 ```
 
 #### UC-NCR-2 — A commit from a nested context root lands only that context's changes
@@ -641,13 +641,13 @@ Then it is shown exactly the eligible changes for its own context
 And material owned by another context, a foreign nested root, or excluded from the repository's retained set is absent from that set
 ```
 
-#### UC-NCR-6 — Genuinely overlapping work fails rather than combining
+#### UC-NCR-6 — Containment outranks the session's own path set
 
 ```
-Given two context roots whose in-scope changes overlap on the same path
-When an agent commits from one of them
-Then the commit fails with a clear result naming the overlap
-And no partial or combined commit is produced
+Given an agent session whose transcript-derived path set names a dirty path outside its context root's subtree
+When the agent inspects its scope and commits
+Then that path is absent from the reported scope
+And the commit does not carry it
 ```
 
 <!-- /planned:person-tier-homes -->
