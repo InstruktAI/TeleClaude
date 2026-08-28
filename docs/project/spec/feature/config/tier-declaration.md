@@ -71,11 +71,12 @@ tier.
   file: either is supplied or repaired without regard to the other. Only the
   declaration is load-bearing, and a file never references a schema that is not
   in place.
-- Advancement runs against an epoch opened once per installation, whose
-  eligible set is captured from the registries when it opens and includes
-  manifest entries that are unavailable at that moment. Only a root in that set
-  is ever advanced, and completion is recorded per root. Every other root is
-  strict, as is a root already recorded complete: a file there missing or
+- Advancement runs against an epoch, opened only by the versioned installation
+  upgrade that introduces it and never by a load. Its eligible set is captured
+  from the registries when it opens and includes manifest entries that are
+  unavailable at that moment. Only a root in that set is ever advanced, and
+  completion is recorded per root. With no open epoch every root is strict, as
+  is any root outside the set and any root already recorded complete: a file there missing or
   misdeclaring its tier fails, that failure is settled before any repair is
   attempted, and no declaration is restored. The schema reference carries no
   evidential weight and its absence never makes a root eligible again.
@@ -255,6 +256,17 @@ And its repository is cloned to a machine where its root is not in an eligible s
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
 And no tier declaration is restored on that machine
+```
+
+#### UC-CFG-WSD18: No open epoch means every root is strict
+
+```
+Given an installation with no open advancement epoch
+And a same-named configuration file carrying no tier declaration
+When that file is loaded
+Then loading fails with an error naming the file and the missing declaration
+And no epoch is opened by the load
+And no tier declaration is supplied from the file's location
 ```
 
 ### Cross-context references

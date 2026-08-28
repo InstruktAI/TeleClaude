@@ -172,13 +172,18 @@ alone and a file carrying both is untouched.
 
 Advancement runs against an epoch, held in config-owned durable state in the
 home and keyed by the identity of the advancement itself, so a later advancement
-neither collides with this one nor inherits its state. An epoch is opened once
-per installation, and opening it captures the eligible set from the registries
-as they stand at that moment: the home's own configuration, every person and
-company folder at its designated location, and every entry in the project
-manifest — including entries whose directory is unavailable, which are carried
-as pending rather than omitted. Completion is recorded per root, so no record
-claims anything about a root it has not seen.
+neither collides with this one nor inherits its state. An epoch is opened only
+by the versioned installation upgrade that introduces that advancement, running
+over an established installation. Nothing at runtime opens one: a load that
+finds no epoch is strict, which is also the correct answer for an installation
+new enough that its files were born declared.
+
+Opening an epoch captures the eligible set from the registries as they stand at
+that moment: the home's own configuration, every person and company folder at
+its designated location, and every entry in the project manifest — including
+entries whose directory is unavailable, which are carried as pending rather than
+omitted. Completion is recorded per root, so no record claims anything about a
+root it has not seen.
 
 Eligibility is decided by that captured set and never by first encounter. A root
 in the set is advanced when it is reached, whenever that is. A root outside it —
@@ -194,9 +199,9 @@ the registries do not name is not advanced, so it reaches loading undeclared and
 fails there.
 
 Whether a root may still be advanced is settled from the epoch before any
-repair is attempted: a root outside the eligible set, or one already recorded
-complete, is strict, and a file there missing or misdeclaring its tier fails
-whatever else it does or does not carry. Strictness therefore arrives for a root
+repair is attempted: with no open epoch, or for a root outside the eligible set
+or already recorded complete, the root is strict, and a file there missing or
+misdeclaring its tier fails whatever else it does or does not carry. Strictness therefore arrives for a root
 the moment its advancement completes, and for every other root immediately.
 Editing a file cannot return its root to the eligible state, because neither the
 epoch nor its completion records live in the file.
@@ -238,11 +243,10 @@ model-inconsistent value fails rather than being replaced.
   files reach this by construction: one at a root the tier registries do not
   name, one at a root outside the epoch's eligible set, and one at a root
   already recorded complete. The remedy for all three is to declare the file.
-- **The epoch's state is lost.** An absent epoch is indistinguishable from an
-  installation that has never opened one, so advancement opens an epoch over the
-  registries as they then stand. The config context's durable state is therefore
-  part of an installation's integrity; no repository movement reaches this, only
-  loss of that state.
+- **The epoch's state is lost.** Nothing reopens it at runtime: every root is
+  strict, so an undeclared file fails loud rather than being repaired against
+  registries captured after the fact. Recovery is the explicit installation
+  upgrade action, which is the only thing that opens an epoch.
 - **Advancement cannot write a file the registries name.** That file's load
   fails, naming it and the declaration it needs, rather than substituting a
   value that leaves the stored file undeclared. Other roots are unaffected.
