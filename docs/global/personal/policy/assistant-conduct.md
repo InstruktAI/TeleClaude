@@ -79,6 +79,13 @@ one, check it against what is already in force; if it contradicts something, say
 what it contradicts and ask whether that should change. Never store both. That
 check happens at the moment of recording — there is no standing sweep.
 
+What is already in force is what the person had established, not what another
+run happens to be writing at the same moment. Two instructions arriving together
+were each authored against a set holding neither, so neither reverses the other
+and both are kept. Reconciling them is a reading of what the person meant, made
+when someone next works with them; it is never prevented by refusing one of the
+writes.
+
 When something learned is bigger than one person, send it to an admin with
 `telec message`. A person's agent never edits shared doctrine.
 
@@ -153,6 +160,13 @@ an unlabelled set averages together and the identities blur.
 Conflict is refused rather than resolved because contradictory instructions
 degrade an agent instead of constraining it: handed a rule and then its
 opposite, it does not average them, it drifts.
+
+That refusal is aimed at reversal, which is a response to something standing.
+Writes that cross in time are not that, and treating them as conflict would
+discard something the person asked for on the evidence of nothing more than its
+timing. Where the two really cannot both hold, that is a person who said two
+things rather than a collision to be locked out, and it surfaces the same way any
+other contradiction does.
 
 A session that outlives its work is worse here than elsewhere. It holds a
 person's mail in context long after that context has gone stale, and answers a

@@ -16,19 +16,22 @@ It lives in the person's workspace beside their knowledge, discovered by listing
 rather than by name, like everything else there. It is the person's data and never
 leaves their workspace.
 
-A record is opened when a run starts and closed when it ends. An open record is
-therefore also the statement that a run is underway, which is what lets a second
-sweep know to defer rather than collide.
+A record is opened when a run starts and closed when it ends. Records are only
+ever added, never revised by a later run, so runs that overlap produce two
+records rather than a contested one.
 
 ## Canonical fields
 
 - **The window swept.** What the run considered: where it started, where it
   stopped, and whether it reached the end of what it set out to cover. A run that
   stopped early says so here rather than leaving it to be inferred.
-- **The watermark it advanced to.** The point absence becomes meaningful up to.
-  It is written once the window is genuinely covered, never at the moment the run
-  begins, because a watermark written in advance claims coverage the run has not
-  yet earned.
+- **What the window means once closed.** A closed window is the claim that
+  everything in it was considered. It is written once the window is genuinely
+  covered, never when the run begins, because a claim written in advance covers
+  ground the run has not yet walked. Whether any given message was considered is
+  answered by whether some run's closed window contains it — never by a single
+  moving marker, which one run can advance across ground another was still
+  working.
 - **The judgement calls.** For messages where the answer was not obvious, what
   was decided and what made it close. Routine calls need no entry — a record that
   narrates every disposition is a second inbox.
@@ -48,13 +51,11 @@ thing a later sweep can see and act on, where a silently missing record is not.
 
 ## Known caveats
 
-- **The record is the lease.** A sweep that finds an open record does not start a
-  second one. This is what keeps two runs from both advancing the watermark, where
-  the later timestamp would silently claim coverage of a window the earlier run
-  never finished. Recording a standing instruction takes the same care for the
-  same reason: the check that instructions do not conflict reads the whole set
-  before writing to it, so two runs performing it at once can both pass and still
-  produce the pair it exists to prevent.
+- **Runs do not exclude each other.** Two sweeps may run at once. Each records
+  what it covered and neither edits the other, so coverage is what their closed
+  windows together contain and overlap costs duplicated reading rather than a
+  false claim. Nothing here is a lock, and an open record is not one: it says a
+  run started, not that another may not.
 - **It is kept only while it can still teach.** A record earns its place until the
   person's handling of its dispositions has been read back into what is known
   about their senders. After that its conclusions live in that durable knowledge

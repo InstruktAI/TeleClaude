@@ -22,15 +22,15 @@ person.
 - **Exactly one.** Dispositions are mutually exclusive. A person acting on a
   message in one place has acted on it everywhere, and a message never appears
   under two proposals at once.
-- **Absence is read against a watermark.** A message carrying no assistant marker
-  is one of two things, and only the time a sweep last ran separates them: mail
-  that arrived before that point was considered and needs nothing; mail that
-  arrived after it has not been reached. Absence alone carries no meaning, and a
-  claim that nothing is left unconsidered rests on the watermark being recorded,
-  not on the marker being missing.
+- **Absence is read against what runs covered.** A message carrying no assistant
+  marker is one of two things, and only the windows sweeps recorded separate them:
+  mail inside a covered window was considered and needs nothing; mail outside every
+  one of them has not been reached. Absence alone carries no meaning, and a claim
+  that nothing is left unconsidered rests on those windows, not on the marker being
+  missing.
 - **The reason lives elsewhere.** The disposition records where a message landed.
   Why it landed there belongs to the run record, which holds the reasoning the
-  marker cannot and the watermark this absence is read against.
+  marker cannot and the window this absence is read against.
 
 ## Allowed values
 
@@ -66,4 +66,4 @@ an admin and never authored by a person's own assistant.
 
 ## See Also
 
-- ~/.teleclaude/docs/personal/spec/run-record.md — the record carrying the reasoning, the watermark, and the claim that a sweep is in progress.
+- ~/.teleclaude/docs/personal/spec/run-record.md — the record carrying the reasoning behind a call and the window a run covered.
