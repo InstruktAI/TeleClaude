@@ -245,8 +245,10 @@ model-inconsistent value fails rather than being replaced.
   already recorded complete. The remedy for all three is to declare the file.
 - **The epoch's state is lost.** Nothing reopens it at runtime: every root is
   strict, so an undeclared file fails loud rather than being repaired against
-  registries captured after the fact. Recovery is the explicit installation
-  upgrade action, which is the only thing that opens an epoch.
+  registries captured after the fact. A completed transition survives this
+  untouched, because the declarations it wrote live in the files themselves.
+  What is lost is the pending remainder, and the remedy for each such file is
+  the one its failure names — declare it.
 - **Advancement cannot write a file the registries name.** That file's load
   fails, naming it and the declaration it needs, rather than substituting a
   value that leaves the stored file undeclared. Other roots are unaffected.
