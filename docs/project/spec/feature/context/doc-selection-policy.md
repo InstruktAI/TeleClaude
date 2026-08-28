@@ -272,6 +272,16 @@ Then that project enters the set and is read in full
 And the company's other projects do not enter it
 ```
 
+#### UC-DSP26: A company role that covers projects elsewhere opens none here
+
+```
+Given an agent session running under the identity of a person holding a company role that covers that company's projects for other purposes
+And that person holds no declared assignment to one of those projects
+When the Selection policy resolves the caller's project set
+Then that project does not enter the set
+And the caller reads it only as a tier they hold no relationship to
+```
+
 #### UC-DSP13: A platform administrator reaches any named tier
 
 ```

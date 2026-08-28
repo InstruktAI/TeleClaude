@@ -158,6 +158,12 @@ tiers the stage named, and the include predicate applies the depth it assigned.
 The stage is the only place the two inputs meet. The relationship facts stay
 owned by their declaring contexts; the reach rule stays here.
 
+A company role may cover that company's projects for purposes outside
+documentation. Documentation reach does not consume that coverage: it consumes
+the explicit person-to-project assignment and nothing derived from a role. Where
+the relationship contract offers both a coverage answer and the assignment facts
+behind it, this stage reads the assignments.
+
 Reach and depth are separate answers and are never traded for one another. Reach
 decides which tiers are assembled; depth decides how much of an assembled tier is
 read. A caller with no declared relationship to a tier may still meet that tier

@@ -86,11 +86,14 @@ implies, and the portion of those sources the caller may see.
   relationship to a company — member, contributor, whatever the role — reads that
   company's documentation in full. There are no levels of allowance inside a
   company.
-- **Company membership does not by itself carry that company's projects.**
-  Belonging opens the company's own documentation. What opens a project is a
-  separate declared relationship between a person and that project, and reading
-  scope consumes that relationship rather than deriving it. Which declarations
-  establish it, and where they are declared, belong to the configuration tier.
+- **Company membership does not carry that company's projects.** Belonging opens
+  the company's own documentation. What opens a project's documentation is the
+  explicit declared assignment of a person to that project, and nothing else —
+  including a company role broad enough to cover that company's projects for
+  other purposes. Documentation reach consumes the assignment fact specifically,
+  never a wider coverage answer computed from a role. Which declarations
+  establish an assignment, and where they are declared, belong to the
+  configuration tier; what documentation does with them belongs here.
 - **A caller's scope is exactly three things.** Their own person tier, the
   projects they are assigned to, and the documentation of every company they
   belong to. A platform admin is outside this and reaches everything, including
