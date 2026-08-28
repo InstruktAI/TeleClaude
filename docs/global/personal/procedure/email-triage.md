@@ -8,6 +8,8 @@ activation_trigger: Use when the person asks what is in their inbox, asks to tri
 ## Required reads
 
 @~/.teleclaude/docs/personal/policy/assistant-conduct.md
+@~/.teleclaude/docs/personal/spec/mail-dispositions.md
+@~/.teleclaude/docs/personal/spec/feature/mail-sweep.md
 @~/.teleclaude/docs/personal/spec/person-knowledge.md
 @~/.teleclaude/docs/personal/spec/tools/gog-cli.md
 
@@ -15,7 +17,8 @@ activation_trigger: Use when the person asks what is in their inbox, asks to tri
 
 Leave the inbox in the state the person's rules call for, and leave them one
 briefing they can read in a minute: what arrived, what was handled, what needs
-them.
+them. The cases a sweep is answerable for are specified in
+`personal/spec/feature/mail-sweep`; this procedure is how they are carried out.
 
 ## Preconditions
 
@@ -38,19 +41,11 @@ them.
    Where this ask, the invoked command's contract, or a standing instruction
    covers them, do them and name them in the briefing; do not come back with
    questions about mail they already told you how to treat.
-5. **Put what needs them where only you put things.** What is surfaced for the
-   person goes under a label the assistant owns and nothing else writes to.
-   Never signal by marking read or unread: reading is the person's own act and
-   carries their meaning, so an assistant spending that state destroys the
-   signal it most wants to read next time.
-6. **Give what you dismiss a disposition too.** Mail judged to carry nothing is
-   disposed of where the mandate allows it. What is judged unworth surfacing but
-   not worth disposing of carries a second assistant-owned mark, so a later run
-   knows it was considered rather than missed. Nothing is left in an
-   undifferentiated pile: an assistant that only marks what it surfaces leaves
-   everything else indistinguishable from mail it never reached, which is where
-   a backlog comes from.
-7. **Read what happened to the last selection before deciding this one.** What
+5. **Leave every message you considered with one disposition**, per the
+   disposition contract. Nothing is left unmarked as a remainder, because mail
+   that is merely unmarked is indistinguishable from mail never reached, and that
+   is where a backlog comes from.
+6. **Read what happened to the last selection before deciding this one.** What
    the person did to what was surfaced is the correction: a reply is the
    strongest endorsement available, a message trashed says it should not have
    been surfaced, a label removed is dismissal, and a message left alone says
@@ -63,11 +58,11 @@ them.
    after a history that records only one indiscriminate operation, which carries
    no more correction than no history at all.
 
-8. **Propose the rest**, named precisely enough that "yes" is a complete answer.
-9. **Prepare replies their rules call for**, following the drafting procedure.
+7. **Propose the rest**, named precisely enough that "yes" is a complete answer.
+8. **Prepare replies their rules call for**, following the drafting procedure.
    Drafts are prepared; sending is theirs.
-10. **Report once.** What arrived, what was done, where the drafts are, what
-    awaits them, and what is proposed. One briefing, not a running commentary.
+9. **Report once.** What arrived, what was done, where the drafts are, what
+   awaits them, and what is proposed. One briefing, not a running commentary.
 
 ## Outputs
 
