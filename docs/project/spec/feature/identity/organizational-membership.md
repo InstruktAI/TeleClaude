@@ -30,7 +30,9 @@ person holding a company's administrative role, whose membership covers every
 project that company owns without a per-project entry naming each one. Which
 projects a company owns is read from each project's own declaration of its
 owner; this contract never infers ownership from a project's location or from
-anyone's assignment to it.
+anyone's assignment to it. Coverage reaches exactly the projects declaring that
+company as owner, so a project owned by a person and a project owned by no one
+are alike uncovered — a company role reaches neither.
 
 Resolution reports facts. Nothing here grants or denies permission to a consumer
 operation: a consumer that turns these facts into permission — documentation
@@ -98,8 +100,9 @@ And the projects that company owns are not among them
 Given a person who belongs to a company holding that company's administrative role
 And the person carries no project assignment naming any of that company's projects
 When an agent resolves that person's organizational membership
-Then every project that company owns is reported as covered by that membership
-And no other company's projects are reported as covered
+Then every project declaring that company as its owner is reported as covered by that membership
+And a project declaring a different owner is not reported as covered
+And a project declaring no owner is not reported as covered
 And their explicit project assignments remain empty
 ```
 
