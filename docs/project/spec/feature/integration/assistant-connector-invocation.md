@@ -17,10 +17,10 @@ person's behalf. Every such invocation is bound to one mail account that person
 has declared, is directed at that person's own connector state, and carries the
 settings prohibition the personal-assistant conduct policy declares.
 
-That prohibition is applied to what an invocation is determined to reach, so a
-generic pass-through request is judged by the endpoint it reaches rather than by
-its command name, and an invocation whose reach cannot be determined is refused
-rather than attempted. The platform's connector vocabulary is translated into a
+That prohibition is held by the connector's own controls: the invocation is
+constructed so the connector permits only named operations and so its
+authorization excludes the settings scopes. An operation outside the permitted
+set does not run, whether or not the platform has seen it before. The platform's connector vocabulary is translated into a
 particular tool here and nowhere above.
 
 How strong the resulting gate is depends on the connector. Where the connector's
@@ -103,23 +103,13 @@ Then it is refused before the connector runs
 And the account's settings are unchanged
 ```
 
-#### UC-ACI-8: Undeterminable reach is refused rather than attempted
+#### UC-ACI-8: An operation outside the permitted set does not run
 
 ```gherkin
-Given a connector invocation on a person's behalf
-When its reach with respect to changing settings cannot be determined
-Then it is refused before the connector runs
-And the refusal states that the invocation's reach could not be determined
-```
-
-#### UC-ACI-9: A second person's connector state stops the boundary
-
-```gherkin
-Given a connector whose stored secrets are not confined to one person
-And a second person on this machine has connector state
-When any invocation is made on any person's behalf
-Then it is refused before the connector runs
-And the refusal states that a second person's connector state is present without confinement
+Given a connector invocation naming an operation the connector has not been permitted for this run
+When the invocation is made
+Then that operation does not execute
+And this holds for an operation never seen before as well as one recognised as prohibited
 ```
 
 ## Known caveats
@@ -135,8 +125,9 @@ And the refusal states that a second person's connector state is present without
   shared across the machine regardless of where its state is directed, which
   presents as isolation while providing none. This contract states direction and
   makes no confinement claim; confinement belongs to whoever owns the per-person
-  secret store. UC-ACI-9 is what keeps the gap from being reachable: the boundary
-  stops before a second person's connector state exists rather than after.
+  secret store. What keeps one person's invocation away from another's credential
+  is the account binding: stored secrets are keyed by address, and an invocation
+  may name only an address the acting person declared.
 
 ## See Also
 
