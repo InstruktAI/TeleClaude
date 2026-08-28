@@ -100,8 +100,6 @@ And the session ends itself rather than waiting to be ended
 And anything the person needs to see was delivered as a message rather than as a result a caller collects
 ```
 
-#### UC-PWD8
-
 ## See Also
 
 - ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the conduct gates this dispatch surface enforces, including why location is the gate and why a validated person argument would be a different guarantee.
