@@ -134,22 +134,15 @@ contain.
   This boundary directs the first and makes no claim about the second, so
   directing state is never presented as isolation between people.
 
-### Sending is unavailable, and why no gate can yet permit it
+### Sending is unavailable
 
 Every invocation is constructed with the connector's send-blocking lever
 engaged, and nothing an invocation carries lifts it. Where a connector offers no
 such lever, no send-capable invocation is constructed for it at all.
 
-Permitting a send safely requires knowing that a person's instruction can exist
-in this run, and the platform publishes no fact establishing that. Presence is
-recorded nowhere. Scheduled provenance identifies only some of the runs no person
-began. The session-producer record does not separate the remainder: every
-non-scheduled creation carries one generic producer value whether a person or an
-agent made it. A gate branching on any of these would be inferring the fact
-rather than reading it.
-
-The conduct policy expects an assistant to carry out a send the person asked for.
-That capability is not delivered here.
+The boundary does not distinguish invocations by who began the run or by whether
+anyone is present to it. No value an invocation carries, and no property of the
+session it runs in, makes sending available.
 
 ## Primary flows
 
@@ -198,10 +191,8 @@ governs only authorizations made after it is in force.
   restriction lever, the prohibitions rest on determining reach from the
   invocation, and an unrecognized endpoint alias or encoding is read as reaching
   nothing prohibited.
-- **An assistant cannot carry out a send the person asked for.** The conduct
-  policy expects that capability; permitting it needs a published fact
-  identifying a run in which an instruction can exist, and none is published. The
-  person sends what the assistant drafted.
+- **An assistant cannot carry out a send the person asked for.** The person sends
+  what the assistant drafted.
 - **Directed state reads as isolation.** Every invocation going to its own
   person's location looks like separation between people and is not: the
   connector can still resolve an account from a store shared across the machine.

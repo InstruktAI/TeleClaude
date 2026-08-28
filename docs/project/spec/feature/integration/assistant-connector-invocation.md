@@ -36,9 +36,8 @@ configuration that owns person data. This contract owns neither; it owns what
 happens at the boundary where an external connector is actually reached.
 
 The two prohibitions do not reach equal strength. Settings are refused outright.
-Sending is unavailable on every invocation. It is withheld because no published
-fact identifies a run in which a person's instruction can exist, not because the
-conduct policy forbids an instructed send; that capability is undelivered.
+Sending is unavailable on every invocation, and no property of the session an
+invocation runs in makes it available.
 
 **Business value:** a connector that isolates nothing will, on a missed
 configuration, act as the wrong identity and leave one person's credentials

@@ -89,9 +89,8 @@ applied, so the commands are unreachable before they are attempted.
 
 Sending is held the same way rather than by the tool's own disposition: the tool
 can send, and the launch boundary is what withholds it, constructing an
-invocation with sending unavailable. It is withheld on every run, because no
-published fact identifies a run in which a person's instruction can exist. What
-an assistant writes stays a draft and the person sends it.
+invocation with sending unavailable, on every run. What an assistant writes stays
+a draft and the person sends it.
 <!-- /planned-change:personal-mail-tool-launcher -->
 
 An agent that receives a refusal reports it; it does not look for another route.
