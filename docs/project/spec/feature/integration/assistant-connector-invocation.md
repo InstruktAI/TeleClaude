@@ -177,4 +177,4 @@ Then that secret does not appear in the invocation's arguments, nor in anything 
 
 - ~/.teleclaude/docs/personal/policy/assistant-conduct.md — the two prohibitions this contract applies, and the mandate rule that decides when a permitted write runs.
 - docs/project/spec/feature/config/person-mail-accounts.md — the declaration this contract binds an invocation to.
-- docs/project/spec/feature/agent_runtime/assistant-connector-access.md — why an agent session cannot reach a connector except through this boundary.
+- docs/project/spec/feature/agent_runtime/assistant-connector-access.md — why every route the platform provides for reaching a connector leads to this boundary.

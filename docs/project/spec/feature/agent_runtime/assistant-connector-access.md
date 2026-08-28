@@ -1,5 +1,5 @@
 ---
-description: 'An agent session cannot reach a mail or calendar connector except through the mediated boundary that binds and gates the invocation.'
+description: 'Every route the platform provides for reaching a mail or calendar connector leads to the mediated boundary that binds and gates the invocation, and none leads to the raw tool.'
 delivered_by:
   - personal-mail-tool-launcher
 ---
