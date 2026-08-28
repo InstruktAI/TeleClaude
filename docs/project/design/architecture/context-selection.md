@@ -158,18 +158,13 @@ theirs alongside their own. An unqualified identity would make that state
 ambiguous, so the qualification is what keeps two tiers from naming the same
 thing.
 
-This deliberately diverges from how a foreign project's identity is formed,
-where the tier marker is exchanged for the project's slug at load time. That
-form works there because exactly one project tier is ever the caller's own and
-project slugs are registered in a single manifest. Neither holds for companies:
-there is no own company, and a bare slug segment would put company identities
-into the same namespace as project identities, where a company and a project
-sharing a name would collide. Keeping the tier marker in front and adding the
-identity behind it avoids inventing that collision.
-
-The company tier's current identity form is unqualified. Changing it is free
-today because no company snippet exists anywhere on disk, and the cost of
-changing it rises with the first one authored.
+A foreign project's identity is formed differently: its tier marker is exchanged
+for the project's slug. That form depends on exactly one project tier being the
+caller's own and on project slugs being registered in a single manifest. Neither
+holds for the company tier — no company is the caller's own, and a bare slug
+segment would place company identities in the same namespace as project
+identities, where a company and a project sharing a name collide. Keeping the
+tier marker in front and the identity behind it is what avoids that collision.
 
 ### 7. Tier Catalog Construction
 
@@ -179,10 +174,9 @@ non-project tier carries documentation is read from that tier's own capability
 declaration, never inferred from its location on disk — inferring it from
 location is the meaning-from-location model the tier design exists to remove.
 
-A tier whose catalog is never built is indistinguishable from a tier with no
-content, which is the failure the company tier has been in since it landed: its
-builder exists, nothing calls it, and no company catalog has ever been written.
-Wiring construction is therefore part of introducing a tier, not a later step.
+A tier whose catalog is never built is indistinguishable from a tier holding no
+content, and a builder that nothing calls produces exactly that. Construction is
+therefore part of what makes a tier a tier, not a step taken after it exists.
 <!-- /planned:docs-tier-layering -->
 
 ## Failure modes
