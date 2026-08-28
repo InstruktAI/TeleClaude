@@ -207,8 +207,8 @@ The company config file (`~/.teleclaude/companies/<slug>/teleclaude.yml`, model
 each entry names a registered person, the company role they hold, and the
 projects of this company they are assigned to. It replaces the former `owner`
 key, whose relationship the administrative role now carries; `owner` and the
-former per-person `companies` list are rejected at the load boundary rather than
-retained as permissive extras. It is folder-discovered (the `COMPANIES_ROOT`
+former per-person `companies` list are migrated away before domain consumption
+rather than retained as permissive extras. It is folder-discovered (the `COMPANIES_ROOT`
 tree) and composed into the effective config alongside `project`. A
 company-level `.env` in the same folder holds service credentials, read through
 the `load_company_credentials(slug)` seam.

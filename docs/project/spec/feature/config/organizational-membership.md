@@ -113,7 +113,8 @@ Examples:
 - Two inert organizational declarations sit in the configuration schema: a
   per-person company-membership list and a per-company owner reference. Neither
   has a resolver and neither is populated. This contract is the single home for
-  the owner relationship; the owner reference is not a second one.
+  the owner relationship; the owner reference is not a second one, and both
+  legacy declarations are migrated away rather than left loadable.
 - The company-role vocabulary is closed, and its exact values are an open
   product decision. Scenarios here name the administrative role by its function
   rather than by a literal value until that decision lands.
