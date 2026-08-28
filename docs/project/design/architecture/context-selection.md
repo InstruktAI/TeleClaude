@@ -155,13 +155,27 @@ relationships from configuration, and returns the tiers in reach paired with the
 depth each is read at. Nothing downstream re-derives reach: assembly loads the
 tiers the stage named, and the include predicate applies the depth it assigned.
 
-The stage is the only place the two inputs meet, The relationship facts stay
+The stage is the only place the two inputs meet. The relationship facts stay
 owned by their declaring contexts; the reach rule stays here.
 
-**Layer placement.** The command surface translates a call into a resolved
-caller and passes it inward; it decides no reach. The resolution stage decides.
-Catalog loading executes what it decided. A surface that inspects a relationship
-to choose what to load has taken a decision that is not its own.
+Reach and depth are separate answers and are never traded for one another. Reach
+decides which tiers are assembled; depth decides how much of an assembled tier is
+read. A caller with no declared relationship to a tier may still meet that tier
+because the invocation offers it — the project being worked in, and the company
+that project declares as its owner — and meets it at public-only depth. A caller
+with no resolvable identity gains no tier from a relationship it does not have.
+
+**Layer placement.** The caller arrives already resolved. Identity resolution
+belongs to the boundary that owns injection, and the resolved caller reaches the
+command surface as a typed parameter alongside the arguments a caller supplied.
+The command surface translates those arguments into a request; it resolves
+nothing and decides no reach. The resolution stage decides. Catalog loading
+executes what it decided.
+
+A surface that reaches outward to fill its own inputs — reading a login file, an
+environment, or an identity service to discover who is calling — has taken both
+a decision and an ownership that are not its own. A surface that inspects a
+relationship to choose what to load has taken the reach decision.
 
 **Selector authorization.** One rule covers every selector that names a tier —
 a person, a company, or a project: naming a tier explicitly is reserved to
@@ -229,8 +243,10 @@ after it exists.
 
 <!-- planned:docs-tier-layering -->
 - **Unresolvable Caller**: The call carries no identity that resolves to a
-  person. The caller holds no relationship to any tier and reads only what
-  snippets declare public. Absent identity never widens a read.
+  person. No relationship-derived source enters scope at all — no person tier, no
+  company, no assigned project — and what remains is what the invocation already
+  offers, read at public-only depth. Absent identity never widens a read, and
+  public-only is a depth rather than authority to assemble every tier at it.
 - **Declared-but-absent tier**: A relationship names a person or company with no
   configuration present. The misconfiguration is surfaced rather than silently
   producing an empty tier, which is indistinguishable from a correctly empty one.

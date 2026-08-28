@@ -74,8 +74,8 @@ Then the caller is treated as non-admin and only public snippets are returned
 ```
 Given an agent session whose identity cannot be resolved
 When the Selection policy resolves the read
-Then the session holds no relationship to any tier
-And only snippets declaring themselves public are returned
+Then no relationship-derived tier enters scope
+And what the invocation itself offers is read at public-only depth
 And the absent identity never widens the read
 ```
 <!-- /planned-change:docs-tier-layering -->
