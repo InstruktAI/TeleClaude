@@ -13,32 +13,41 @@ delivered_by:
 ## What it is
 
 What an agent session may execute when it reaches for a mail or calendar
-connector. It reaches the mediated boundary and nothing else: not by naming the
-tool, and not by any other route the session has. What that boundary then does —
-binding the invocation to a declared account, directing the person's state,
-applying the personal-assistant prohibitions — is the invocation contract's, not
-this one's.
+connector. Every route the platform provides leads to the mediated boundary and
+to nothing else: naming the tool reaches it, and the session's own tooling
+offers no alternative. What that boundary then does — binding the invocation to
+a declared account, directing the person's state, applying the personal-assistant
+prohibitions — is the invocation contract's, not this one's.
 
-Precedence on the tool path is not exclusivity. A wrapper that merely wins name
-resolution leaves the tool reachable beside it, and a gate that can be stepped
-around by naming a path is not a gate.
+This is what the platform provides, not what a process can physically do. A
+session carries the person's own operating-system authority, and a process with
+that authority can execute a connector binary directly whatever the platform
+publishes. Making that impossible requires the session to hold less authority
+than the person, which is process isolation the platform does not impose.
 
 **Business value:** every guarantee the invocation boundary makes is worth
-exactly as much as the session's inability to go around it. This is the contract
-that makes the others load-bearing.
+exactly as much as the routes that lead to it. Publishing no alternative is what
+makes reaching around it a deliberate act rather than an ordinary one.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-ACA-6: No route from an agent session reaches a connector outside the boundary
+#### UC-ACA-6: Every route the platform provides leads to the boundary
 
 ```gherkin
 Given an agent session
-When the session attempts to reach a mail or calendar connector by any route available to it
-Then the invocation reaches the connector only through the mediated boundary
+When the session reaches for a mail or calendar connector through any route the platform provides it
+Then the invocation reaches the connector through the mediated boundary
 And the gates that boundary enforces apply to it
 ```
+
+## Known caveats
+
+- A session holding the person's own operating-system authority can execute a
+  connector binary outside every route named here. That is not closed by
+  publishing fewer routes; it is closed by the session holding less authority
+  than the person, which is process isolation this contract does not assume.
 
 ## See Also
 
