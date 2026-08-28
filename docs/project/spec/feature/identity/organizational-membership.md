@@ -97,7 +97,13 @@ And the person carries no project assignment naming any of that company's projec
 When an agent resolves that person's organizational membership
 Then every project that company owns is reported as covered by that membership
 And no other company's projects are reported as covered
+And their explicit project assignments remain empty
 ```
+
+Coverage and explicit assignment are separately reported facts. Resolution never
+folds a role-derived coverage answer into the assignments a person was
+explicitly given, so a consumer may read explicit assignments alone and receive
+nothing derived from any company role.
 
 #### UC-ORGID-4: An undeclared person holds no company relationship
 
