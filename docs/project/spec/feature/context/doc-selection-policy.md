@@ -252,10 +252,11 @@ And the project's declaration of its owner still brings that company's tier into
 #### UC-DSP12: Assignment opens a project; company membership alone does not
 
 ```
-Given an agent session running under the identity of a person holding a declared relationship to a company that owns several projects
-And that person is assigned to one of those projects
+Given an agent session running under the identity of a person whose relationship to a company covers none of that company's projects
+And that company owns several projects
+And that person holds a declared relationship to one of them
 When the Selection policy resolves the caller's project set
-Then the assigned project enters that set and is read in full
+Then that project enters the set and is read in full
 And the company's other projects do not enter it
 ```
 
