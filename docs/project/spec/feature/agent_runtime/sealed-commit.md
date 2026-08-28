@@ -45,7 +45,7 @@ A context root's **own material** is what lies under it minus what belongs to an
 
 The two halves answer different failures and neither substitutes for the other. Containment under the acting root separates sessions working under *different* context roots of one repository, so a path outside the acting root is absent from the scope whatever the transcript claims. Subtraction of foreign-owned roots excludes what sits *inside* the acting root, which containment alone cannot reach.
 
-The retained set is the fourth term and is not this contract's to decide: the repository's owner publishes which of its paths are retained, and a path outside that answer is ineligible here however it is reached. Where a repository publishes no such answer, the term admits everything and the first three terms carry the bound alone.
+The retained set is the fourth term and is not this contract's to decide: the repository's owner publishes which of its paths are retained, and a path outside that answer is ineligible here however it is reached.
 
 Containment bounds every path that reaches inspection, staging, or commit — not only the computed scope. A path named through an explicit declaration or subset channel is subject to the same bound: naming a path does not admit material outside the acting context root's own material, and such a path is refused rather than carried.
 
