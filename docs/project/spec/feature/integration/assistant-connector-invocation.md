@@ -23,10 +23,9 @@ authorization excludes the settings scopes. An operation outside the permitted
 set does not run, whether or not the platform has seen it before. The platform's connector vocabulary is translated into a
 particular tool here and nowhere above.
 
-A connector is invoked only where it offers the controls this prohibition rests
-on: an authorization grant that excludes the settings scopes and a permitted set
-of operations the invocation is constructed with. A connector offering neither is
-invoked on the terms its own doctrine sets.
+A connector is invoked only where the settings prohibition can be held for it. A
+connector for which it cannot stays outside this surface until its own product
+decision and contract establish a compliant boundary.
 
 The prohibitions belong to the conduct policy and the account declaration to the
 configuration that owns person data. This contract owns neither; it owns what
