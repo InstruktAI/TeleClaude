@@ -1,66 +1,47 @@
 ---
-description: A person declares which companies they belong to, the role held in each, and which projects they are assigned to; belonging to a company confers no project, and an agent resolves both facts from configuration alone.
+description: How a person's company membership, company role, and project assignment are declared in the company's own configuration, validated against registered referents, and maintained through the ordinary operator surface.
 delivered_by:
   - company-member-roster
 ---
 
-# Organizational Membership — Spec
+# Organizational Membership Declaration — Spec
 
 ## What it is
 
-Organizational membership is a person's declared relationship to the businesses
-and projects of the platform. Two facts are declared for each person:
+Organizational membership is declared configuration: which companies a person
+belongs to, the role held in each, and which projects that person is assigned
+to. This spec owns the declaration itself — where it is stated, what makes it
+valid, and the operator surface that writes it.
 
-- **Company membership** — which companies this person belongs to, and the role
-  held in each business.
-- **Project assignment** — which projects this person is assigned to work in.
+It does not own what those facts mean or what resolving them reports. That is
+`project/spec/feature/identity/organizational-membership`, which reads the
+declarations this contract persists and reinterprets nothing. The crossing runs
+one way: this contract publishes validated declarations, and the identity
+contract resolves them.
 
-Belonging to a company confers no project assignment. The single exception is a
-person holding a company's administrative role, whose membership covers every
-project that company owns without a per-project entry naming each one.
+The declarations are carried by the company's own configuration tier, alongside
+the business they describe.
 
-These are declared facts and the answers resolution reports about them. Nothing
-here grants or denies permission to a consumer operation: a consumer that turns
-these facts into permission owns that decision itself. Refusing an invalid
-declaration at write time is this contract's own validation, not such a
-decision.
-
-Organizational membership is independent of the platform role. The platform role
-governs authority over TeleClaude itself and decides who may maintain a
-membership declaration; it states nothing about any business. The company role
-states one person's relationship to one business; it confers no platform
-authority. Neither follows from the other.
-
-The company role is an identity fact about a business relationship. It is not a
-visibility tier: nothing here grades what a member may read by the role they
-hold.
-
-A person with no declaration holds no company relationship and no project
-assignment. Absence resolves to nothing, never to a default company.
-
-This spec owns the declaration, its validation, its maintenance surface, and the
-resolution that answers both questions. What any consumer then does with the
-answers — documentation visibility, command authorization, provisioning onto a
-business system — is owned by that consumer.
+A declaration is refused rather than stored when it names a company or project
+that is not registered. Refusing an invalid declaration at write time is this
+contract's own validation; it is not a decision about what any consumer may do
+with a valid one.
 
 ## Canonical fields
 
 ### Ubiquitous language
 
-**Company membership**
-: A person's declared belonging to one registered company, carrying the role that person holds in that business.
+**Membership declaration**
+: A stated belonging of one person to one registered company, carrying the role held in that business.
 
-**Company role**
-: The role a person holds inside one business, drawn from the platform's declared company-role vocabulary. Independent of the platform role, and never a visibility tier.
+**Assignment declaration**
+: A stated assignment of one person to one registered project.
 
-**Project assignment**
-: A person's declared assignment to work in one registered project. Never inferred from company membership.
+**Registered referent**
+: A company or project that exists in the platform's own registries. Every declaration names one; a declaration naming anything else is invalid.
 
-**Company administrative role**
-: The company role whose holder's membership covers every project that company owns, with no per-project entry. The sole place a company role affects what resolution reports.
-
-**Undeclared person**
-: A person carrying no company membership and no project assignment. Resolves to no company relationship and an empty assignment set.
+**Maintenance surface**
+: The ordinary administrator-facing configuration surface through which declarations are written and withdrawn, so no declaration requires editing a file by hand.
 
 ### Use cases
 
@@ -68,10 +49,10 @@ business system — is owned by that consumer.
 
 ```gherkin
 Given a registered company and a person who holds no membership in it
-And a human administrator operating the organizational-membership configuration surface
+And a human administrator operating the maintenance surface
 When the administrator declares that the person belongs to that company holding a stated company role
 Then the declaration is accepted and persisted
-And resolving that person reports the company among their memberships with the stated role
+And the stored declaration names that person, that company, and the stated role
 And no file was edited by hand to achieve it
 ```
 
@@ -79,11 +60,11 @@ And no file was edited by hand to achieve it
 
 ```gherkin
 Given a person who belongs to a registered company
-And a human administrator operating the organizational-membership configuration surface
+And a human administrator operating the maintenance surface
 When the administrator withdraws that membership
 Then the declaration is removed
-And resolving that person no longer reports that company among their memberships
-And the person's remaining memberships are unchanged
+And no stored declaration remains binding that person to that company
+And the person's remaining membership declarations are unchanged
 ```
 
 #### UC-CFG-MEMBER-3: An administrator declares a person's project assignments
@@ -91,60 +72,17 @@ And the person's remaining memberships are unchanged
 ```gherkin
 Given a person who belongs to a company
 And a registered project that company owns, to which the person is not assigned
-And a human administrator operating the organizational-membership configuration surface
+And a human administrator operating the maintenance surface
 When the administrator assigns the person to that project
-Then the assignment is accepted and persisted
-And resolving that person reports the project among their assignments
+Then the assignment declaration is accepted and persisted
 And the administrator can later withdraw that assignment through the same surface
-```
-
-#### UC-CFG-MEMBER-4: An agent resolves both facts from configuration alone
-
-```gherkin
-Given a person who belongs to at least one company and is assigned to at least one project
-When an agent session asks the platform for that person's organizational membership
-Then it receives the companies that person belongs to and the role held in each
-And it receives the projects that person is assigned to
-And it obtains both without consulting a human and without reading any business system
-```
-
-#### UC-CFG-MEMBER-5: Company membership alone yields no project
-
-```gherkin
-Given a person who belongs to a company that owns at least one project
-And the person holds a company role that is not the administrative one
-And the person carries no project assignment
-When an agent resolves that person's organizational membership
-Then the company appears among their memberships
-And their project assignments are empty
-And the projects that company owns are not among them
-```
-
-#### UC-CFG-MEMBER-6: A company's administrative role covers that company's projects without per-project entries
-
-```gherkin
-Given a person who belongs to a company holding that company's administrative role
-And the person carries no project assignment naming any of that company's projects
-When an agent resolves that person's organizational membership
-Then every project that company owns is reported as covered by that membership
-And no other company's projects are reported as covered
-```
-
-#### UC-CFG-MEMBER-7: An undeclared person holds no company relationship
-
-```gherkin
-Given a person registered on the platform who carries no membership and no assignment declaration
-When an agent resolves that person's organizational membership
-Then their company memberships are empty
-And their project assignments are empty
-And no company is supplied as a default
 ```
 
 #### UC-CFG-MEMBER-8: A declaration naming an unregistered company or project is refused
 
 ```gherkin
 Scenario Outline: An unregistered referent is refused at write time
-Given a human administrator operating the organizational-membership configuration surface
+Given a human administrator operating the maintenance surface
 When the administrator declares a membership or assignment naming a <referent> that is not registered
 Then the declaration is refused at the point it is written
 And the refusal names the <referent> that could not be resolved
@@ -156,35 +94,23 @@ Examples:
   | project  |
 ```
 
-#### UC-CFG-MEMBER-9: The platform role is unchanged by organizational membership
-
-```gherkin
-Given a person carrying a platform role
-When an administrator declares, changes, or withdraws that person's company membership or project assignment
-Then the person's platform role is unchanged
-And every decision that reads the platform role behaves exactly as before
-And holding any platform role confers no company membership and no project assignment
-```
-
 ## Known caveats
 
+- Use-case identifiers 4 through 7 and 9 were assigned in an earlier revision of
+  this contract and moved to
+  `project/spec/feature/identity/organizational-membership` before either
+  contract was delivered, because they state resolution meaning rather than
+  declaration. They are not reused here.
+- Two organizational declarations already exist in the configuration schema and
+  are inert: a per-person company-membership list, and a per-company owner
+  reference. Neither has a resolver and neither is populated. The owner
+  reference states the same relationship a membership declaration carrying the
+  administrative role states, so it is subsumed by this contract rather than
+  kept as a second home for that fact.
 - The company-role vocabulary is a closed set whose values are the business
-  owner's to ratify. Until that ratification lands, scenarios here name the
-  administrative role by its function rather than by a literal value.
-- UC-CFG-MEMBER-6 is the only place a company role affects what resolution
-  reports. Any further derivation from company role is a change to this
-  contract, not an implementation detail.
-- Which configuration file is authoritative for these declarations is an open
-  product decision at the time of authoring. The contract above holds either
-  way: it states the facts and the answers, and names no file.
-- Whether an assignment may name a project of a company the person does not
-  belong to is an open product decision. This contract states only the ruled
-  direction — belonging confers no project — and UC-CFG-MEMBER-3 deliberately
-  exercises an assignment inside a company the person already belongs to, the
-  case both candidate models permit. Neither this contract nor that scenario
-  decides the reverse relation.
+  owner's to ratify.
 
 ## See Also
 
-- docs/project/spec/feature/config/person-identity-schema.md — the person declaration this one sits beside; it owns identity and the platform role.
+- docs/project/spec/feature/identity/organizational-membership.md — what these declarations mean and what resolving them reports.
 - ~/.teleclaude/docs/general/design/configuration-tiers.md — the tier model these declarations live in, and the two failure modes this contract exists to prevent.
