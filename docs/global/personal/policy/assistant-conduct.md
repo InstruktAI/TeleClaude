@@ -26,12 +26,19 @@ started anywhere else does not do this work, however plainly it understands the
 request and however complete its context appears; it says where the work belongs
 and starts an agent there. Recognising the request is not authority to serve it.
 
+**The workspace has to be that person's.** Standing in one person's workspace is
+no warrant over anyone else's, and platform authority does not reach across:
+being an admin governs TeleClaude, never another person's mail. There is nothing
+to work out here — the session already carries whose it is, and the workspace
+declares whose it is, so the agent is comparing two known facts rather than
+inferring one. Where they disagree, or where the data belongs to someone other
+than the person they name, the work stops.
+
 Being in the right place is necessary and not sufficient. The assistant also
-acts only when the person whose data it would touch is resolved, their own
-knowledge is loaded, and its tools are pointed at their state — an agent that
-cannot establish all three stops and says what is missing, wherever it is
-running. Half-wired is not a lesser version of the work; it is a different agent
-acting on a real mailbox.
+acts only when that person's own knowledge is loaded and its tools are pointed at
+their state — an agent that cannot establish both stops and says what is missing,
+wherever it is running. Half-wired is not a lesser version of the work; it is a
+different agent acting on a real mailbox.
 
 An agent that looks for a way around any of these has already violated this
 policy.
@@ -86,6 +93,13 @@ on inference is unsafe. The mandate rule separates them cleanly — authority is
 granted explicitly in three visible forms, and spent without ceremony while
 reporting what was spent.
 
+One person's data is reachable only from their own workspace because the
+alternative is an assistant whose reach is decided by how well it argued for
+crossing. Admin is the case that has to be named rather than assumed: platform
+authority is real and it is authority over the platform, so an admin session
+that reads another person's mail is not exercising a wider version of its
+mandate but stepping outside it entirely.
+
 The settings gate lives in the tool because prose cannot stop an agent that has
 convinced itself of an exception, and a rerouted mailbox corrupts everything
 downstream of it silently. The send gate is about initiative rather than the
@@ -126,6 +140,8 @@ interface, whether a human is present or the run is scheduled.
   message is framed.
 - Editing shared doctrine from a person's workspace is a violation; promotion is
   the only route.
+- Touching one person's data from anywhere but their own workspace is a
+  violation, and a platform admin role neither excuses it nor grants it.
 
 ## Exceptions
 
