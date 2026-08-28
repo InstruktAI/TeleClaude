@@ -32,9 +32,17 @@ This design covers the dispatch journey. Storage internals for the listener regi
 
 **Outputs:**
 
+<!-- planned-change:personal-assistant-launch -->
 - New Worker session record in the database, with `initiator_session_id` set.
 - Persistent listener row registered for the (Initiator → Worker) pair (`one_shot=false`).
 - Stop notification injected into the Initiator's tmux when the Worker's turn ends — subject to the suppression rule in `session-subscriptions`.
+<!-- change:personal-assistant-launch -->
+- New Worker session record in the database. A dispatch made by an initiator
+  records that initiator; a launch that pins no parent records none.
+- Persistent listener row registered for the (Initiator → Worker) pair
+  (`one_shot=false`), for a dispatch that has an initiator to notify.
+- Stop notification injected into the Initiator's tmux when the Worker's turn ends — subject to the suppression rule in `session-subscriptions`. A session with no initiator produces none.
+<!-- /planned-change:personal-assistant-launch -->
 
 ## Invariants
 
@@ -48,9 +56,12 @@ This design covers the dispatch journey. Storage internals for the listener regi
   `start` refuse a path resolving inside one.
 - **No caller identity, no launch.** A caller resolving to no person is refused,
   never defaulted.
-- **The launched session is detached.** No initiator is pinned to it and no
-  listener is registered for it, so it has no governor and ends itself. The
-  caller's identity resolves the person and does not become a parent link.
+- **The launch pins no parent.** No initiator is recorded for the session it
+  starts, so nothing holds authority over its ending and it ends itself. The
+  caller's identity resolves the person; it does not become a parent link.
+  Parentage is distinct from the listener suppression that `detach` expresses
+  elsewhere in this design: suppression decides who is notified, parentage
+  decides who may end the session, and neither implies the other.
 - **The brief is carried as a request made in the moment.** What `run-pa` starts
   serves that request. Work a schedule already declares is not reachable this way.
 - **Derivation and refusal sit at different layers.** The person is resolved where
@@ -61,9 +72,21 @@ This design covers the dispatch journey. Storage internals for the listener regi
   caller identity is consulted to apply it.
 - **The destination checked is the composed one.** A project path and any
   subdirectory beneath it resolve to a single destination before the check.
-- **Permission to land in a person workspace is constructed, never requested.** It
-  exists only on the internal command the daemon builds for `run-pa`. No request
-  model carries it.
+- **A person workspace is reachable only from a derived destination.** Every
+  producer that creates a session in a person workspace resolves that destination
+  from an identity the platform already holds — the person behind an inbound
+  conversation, or the person behind the authenticated caller. A destination that
+  arrived as a caller-supplied argument never reaches one. The distinction is
+  carried on the internal command the daemon builds and on no request model, so
+  no caller can present a destination as derived.
+- **Schedule-owned work has one producer.** Work that recurs is declared as a job
+  in configuration and produced only through the scheduled-launch path, which
+  derives its own routing from that declaration and runs under a job runner's
+  role. A brief names no job and the launch carries no command, so no brief
+  reaches that path.
+- **Containment is answered by the configuration owner.** Whether a destination
+  lies inside any person workspace is a published configuration query. Dispatch
+  consumes that query and never walks the person-directory layout itself.
 - **Person-workspace location and person resolution are consumed, not restated.**
   Which paths are person workspaces is answered by the configuration owner; which
   person a caller is resolves through the identity contract. Dispatch owns only
@@ -138,7 +161,7 @@ sequenceDiagram
 
 <!-- planned:personal-assistant-launch -->
 
-### 4a. Personal-assistant launch
+### 4a. A derived destination reaches a person workspace
 
 ```mermaid
 sequenceDiagram
@@ -149,7 +172,7 @@ sequenceDiagram
     participant Create as Session creation
     participant PA as Assistant tmux
 
-    Caller->>API: run-pa { brief }<br/>authenticated caller only
+    Caller->>API: run-pa { brief }<br/>authenticated caller only<br/>(inbound adapters derive the same way<br/>from the person behind a conversation)
     API->>Identity: resolve person for this caller
     alt no person resolves
         Identity-->>API: none
@@ -158,14 +181,14 @@ sequenceDiagram
         Identity-->>API: person
         API->>Config: workspace for this person
         Config-->>API: destination
-        API->>Create: command carrying destination,<br/>person-workspace permission,<br/>and no parent
-        Create->>Create: destination is a person workspace,<br/>permission present → allowed
+        API->>Create: command carrying a derived destination<br/>and no parent
+        Create->>Create: destination is a person workspace,<br/>and it was derived → allowed
         Create->>PA: spawn with the brief
         Create-->>API: session id
     end
 ```
 
-### 4b. A general verb aimed at a person workspace
+### 4b. A supplied destination does not
 
 ```mermaid
 sequenceDiagram
@@ -177,8 +200,8 @@ sequenceDiagram
 
     Caller->>Run: run { path, subfolder }
     Caller->>Start: start { path }
-    Run->>Create: command (no person-workspace permission)
-    Start->>Create: command (no person-workspace permission)
+    Run->>Create: command carrying a supplied destination
+    Start->>Create: command carrying a supplied destination
     Create->>Config: is the composed destination inside a person workspace?
     Config-->>Create: yes
     Create-->>Caller: refused — reach it with the personal-assistant launch
@@ -221,9 +244,15 @@ sequenceDiagram
   only forgoes the dispatch-time subscription. A launch that reuses detachment
   alone produces an assistant with a parent that never listens, which is neither
   the governed shape nor the parentless one.
-- **Carrying the person-workspace permission on a request model.** Once the
-  permission is something a caller can send, the derived launch has been reduced
-  to a convention and the absence of a person parameter no longer bounds anything.
+- **Marking the derived destination on a request model.** Once the distinction is
+  something a caller can send, the derived launch is reduced to a convention and
+  the absence of a person parameter bounds nothing.
+- **Closing the inbound doors along with the caller-supplied ones.** The general
+  verbs are not the only producers that reach a person workspace: the Telegram
+  private-chat handlers and the Discord direct-message handlers each create a
+  session there from the person behind the conversation. A refusal that reads only
+  the destination, without asking how the destination was arrived at, removes
+  those surfaces while closing the two it was aimed at.
 <!-- /planned:personal-assistant-launch -->
 
 - **Worker session crashes before any turn completes.** No `agent_stop` ever fires for it; the listener row remains until caller cleanup or explicit unsubscribe. Diagnose via `telec sessions tail <worker_id>` and lifecycle status in the sessions table.
