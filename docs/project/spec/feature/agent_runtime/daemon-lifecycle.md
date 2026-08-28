@@ -267,6 +267,18 @@ And the non-checkout directory carries an empty todo list
 And no todo store is resolved, opened, or created for the non-checkout directory
 ```
 
+<!-- planned:config-kind-declaration -->
+#### UC-DL3: Startup work added to a stage neither extends nor reorders the boot prefix
+
+```
+Given a startup stage carries work contributed by another bounded context
+When startup runs
+Then the documented stage order is unchanged
+And the contributed work completes inside its own stage rather than deferring a later one
+And startup elapsed time stays below the slow-startup threshold for an installation of ordinary size
+```
+<!-- /planned:config-kind-declaration -->
+
 ### Cross-context references
 
 - **identity**: tokens are revalidated lazily at request time; lifecycle does not pre-validate. The startup-time token cache is empty — population happens on first auth check after the request surface is up.
