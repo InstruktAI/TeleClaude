@@ -9,6 +9,7 @@ delivered_by:
 ## Required reads
 
 - @docs/project/spec/domain/identity.md
+- @docs/project/spec/feature/config/organizational-membership.md
 
 ## What it is
 
