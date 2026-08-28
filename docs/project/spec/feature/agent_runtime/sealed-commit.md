@@ -20,7 +20,7 @@ The seal is scoped to telec-registered projects that subscribe `code` or `docs` 
 
 <!-- change:tier-aware-commit-authority -->
 
-The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `project/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Where invocation resolves to no context root — a plain git repo carrying no declaration, or a declaration that establishes no invocation context — the wrapper enforces nothing and execs the real git binary unmodified, the same transparent passthrough it applies outside tmux.
+The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `project/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through, because such an invocation has no material it may carry and raw git is not its way around that.
 
 <!-- /planned-change:tier-aware-commit-authority -->
 
@@ -42,6 +42,8 @@ A path is touched by being **read** as well as by being written. So the intersec
 The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
 A context root's **own material** is what lies under it minus what lies under any nested root that establishes a context of its own. The two halves answer different failures and neither substitutes for the other. Containment under the acting root is what separates sessions working under *different* context roots of one repository: another person's context, the global context's own material, and company material all sit outside the acting root, so a path there is absent from the scope whatever the transcript claims. Subtraction of nested roots is what excludes a *foreign root inside* the acting one — a person-owned project keeping its own repository, say — which containment alone cannot reach, because such a root sits within the very subtree the first half admits.
+
+Containment bounds every path that reaches inspection, staging, or commit — not only the computed scope. A path named through an explicit declaration or subset channel is subject to the same bound: naming a path does not admit material outside the acting context root's own material, and such a path is refused rather than carried.
 
 Within a single context root, and outside any nested root, the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
 
@@ -714,6 +716,26 @@ And the commit is produced
 Given an agent session whose invocation context root is itself the root of the repository containing it
 When the agent inspects its changes and commits through the sealed surface
 Then the reported paths and the commit's contents are what they were before the context root became a separate coordinate
+```
+
+#### UC-NCR-10 — A declared path outside the acting context's own material is refused
+
+```
+Given an agent working in an invocation context root
+And a dirty path that lies outside that context root's own material
+When the agent names that path through any explicit declaration or subset channel
+Then the command refuses, naming the path
+And no commit or staged change carries it
+```
+
+#### UC-NCR-11 — A location with no context root inside a sealed repository cannot reach raw git
+
+```
+Given a repository whose own root is a declared invocation context
+And a location beneath it at which invocation resolves to no context root
+When an agent working there invokes raw `git commit` or `git add`
+Then the wrapper refuses rather than passing through to the real git binary
+And the repository's history is not mutated by that invocation
 ```
 
 <!-- /planned:tier-aware-commit-authority -->
