@@ -12,14 +12,6 @@ worktree can produce no runtime evidence: live proof of a delivered behavior
 begins only after merge, on the runtime that carries the change. The map is how
 a delivery makes that later proof possible without waiting for it.
 
-Deferred proof is therefore the map's whole subject. A use case whose proof
-completes at the moment of the change — output a build-time exercise inspects
-directly, rather than a record arriving later on a running system — is outside
-it and carries no entry; what verifies it is whatever the project's verification
-contract prescribes for that surface. Demanding an entry there asks for a
-`within` with no interval to bound and a `correlate` with no pair to tie, and
-the result is an entry that cannot fire.
-
 Three facts about a use case are distinct and never conflated:
 
 1. **Instrumentation exists** — the code contains the observation records the
