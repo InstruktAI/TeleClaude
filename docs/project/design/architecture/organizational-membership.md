@@ -58,8 +58,11 @@ name a project any other company owns, and a project's owner can change after th
 assignment is written. That rule needs a check, and the check has to run at more
 than one moment.
 
-**Assignment-to-project is dynamic referential integrity.** Every assignment
-names a project whose owning company must be the company whose roster carries it.
+**Assignment-to-project is dynamic referential integrity, if the rule holds.**
+Whether an assignment may name a project of a company the person does not belong
+to is an open product decision, so this invariant is conditional on it. Under the
+recommended reading, every assignment names a project whose owning company must
+be the company whose roster carries it.
 That relation is read through the project owner's published contract, never
 inferred from location or from the roster itself, and it is verified at two
 boundaries: when an assignment is written, and when a roster is loaded for
