@@ -103,9 +103,8 @@ Design snippets should include Mermaid diagrams where visual representation aids
   Path-derived identity carries the tier and the person: `person/{person}/{taxonomy}/{rest}`.
 - `~/.teleclaude/companies/{company}/docs/{taxonomy}/` — a company's documentation.
   Path-derived identity carries the tier and the company: `company/{company}/{taxonomy}/{rest}`.
-  Both tiers name whose material they are because several tiers of one kind can be
-  assembled into a single index at once, where a bare tier marker would be ambiguous
-  between them.
+  Several tiers of one kind can be assembled into a single index at once, so both
+  tiers name whose material they are.
 <!-- /planned:docs-tier-layering -->
 - `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
 - `docs/project/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `software-development/principle/documentation-first-development`). Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.

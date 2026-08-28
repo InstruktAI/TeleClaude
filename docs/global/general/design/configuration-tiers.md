@@ -44,11 +44,19 @@ implies, and the portion of those sources the caller may see.
 - **Platform role and company role are independent axes.** The platform role
   governs authority over TeleClaude itself; a company role states one person's
   relationship to one business. Neither follows from the other.
+<!-- planned-change:docs-tier-layering -->
 - **Today, authorization to read is one gate.** A caller resolves to a person
   and their platform role. An admin sees every snippet; everyone else sees only
   snippets declaring themselves public. There is no membership or ownership
   dimension in the read path — `PersonConfig.companies` is modelled and
   validated but has no consumer and no values on disk.
+<!-- change:docs-tier-layering -->
+- **Authorization to read is answered per tier.** A caller resolves to a person,
+  their platform role, and their declared relationships. A tier the caller holds
+  a relationship to is read in full; a tier they hold none to is read at whatever
+  its snippets declare about themselves; a platform admin reads every tier in
+  full.
+<!-- /planned-change:docs-tier-layering -->
 <!-- planned-change:config-kind-declaration -->
 - **Today, invocation resolution is anchored on git.** Resolving the root for an
   invocation walks upward for a `.git` directory and only then requires
@@ -99,11 +107,20 @@ company directories from their designated locations, and load the registered
 project roots from the manifest. That set is the whole configuration surface;
 there is no fifth place to look.
 
+<!-- planned-change:docs-tier-layering -->
 **Reading documentation.** Sources are aggregated into an index and the caller
 sees the portion their clearance permits. Global and project documentation load
 for the invocation's project. A project's owning company contributes that
 company's documentation, drawn from the project's own declaration of which
 company owns it — the declaration doing exactly its job.
+<!-- change:docs-tier-layering -->
+**Reading documentation.** Sources are aggregated into an index and the caller
+sees the portion their relationships permit. Global documentation loads for
+every caller. A project's owning company brings that company's documentation
+into scope, drawn from the project's own declaration of which company owns it —
+the declaration doing exactly its job — and the caller's own relationship to that
+company decides how deeply it is read.
+<!-- /planned-change:docs-tier-layering -->
 
 <!-- planned:docs-tier-layering -->
 **Deriving scope from the caller.** A caller's own person tier, their assigned

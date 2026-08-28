@@ -24,9 +24,8 @@ Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
 each Source's path, renders portable paths, and writes one `index.yaml` per
 catalog: the project, the global baseline, third-party, and one for every person
 and company tier whose declaration says its material participates in
-documentation. A tier that participates and has no catalog is indistinguishable
-from a tier holding nothing, so construction covers every participating tier
-rather than a fixed list.
+documentation. Construction covers every participating tier rather than a fixed
+list.
 <!-- /planned-change:docs-tier-layering -->
 
 

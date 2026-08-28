@@ -15,7 +15,11 @@ visibility: 'public'
 - Build snippet metadata from docs and global docs.
 - Return a filtered index (frontmatter only) when no IDs are provided.
 - Accept selected snippet IDs from the caller and resolve requires dependencies.
+<!-- planned-change:docs-tier-layering -->
 - Order by scope priority (global -> domain -> project).
+<!-- change:docs-tier-layering -->
+- Order by scope priority across the four tiers.
+<!-- /planned-change:docs-tier-layering -->
 - Persist selected IDs per session to avoid repeated context churn.
 
 ```mermaid
@@ -48,13 +52,21 @@ flowchart TB
 
 - **Phase 1**: Index listing (ID, description, type, scope) - frontmatter only
 - **Phase 2**: Full snippet content with resolved requires dependencies
+<!-- planned-change:docs-tier-layering -->
 - Ordered by scope priority: global → domain → project
+<!-- change:docs-tier-layering -->
+- Ordered by scope priority across the four tiers
+<!-- /planned-change:docs-tier-layering -->
 
 ## Invariants
 
 - **Two-Phase Protocol**: Always phase 1 (index) first, then phase 2 (content).
 - **Requires Expansion**: All transitive dependencies included automatically; caller never manually resolves requires.
+<!-- planned-change:docs-tier-layering -->
 - **Scope Ordering**: Global snippets before domain before project; stable deterministic order.
+<!-- change:docs-tier-layering -->
+- **Scope Ordering**: one deterministic order across the four tiers, given by the scope priority table.
+<!-- /planned-change:docs-tier-layering -->
 - **Duplicate Prevention**: Each snippet ID appears exactly once in output even if required multiple times.
 
 ## Primary flows
@@ -141,9 +153,8 @@ relationships from configuration, and returns the tiers in reach paired with the
 depth each is read at. Nothing downstream re-derives reach: assembly loads the
 tiers the stage named, and the include predicate applies the depth it assigned.
 
-The stage is the only place the two inputs meet, which is what keeps the
-relationship facts owned by their declaring contexts while the reach rule stays
-here.
+The stage is the only place the two inputs meet, The relationship facts stay
+owned by their declaring contexts; the reach rule stays here.
 
 **Layer placement.** The command surface translates a call into a resolved
 caller and passes it inward; it decides no reach. The resolution stage decides.
@@ -153,51 +164,56 @@ to choose what to load has taken a decision that is not its own.
 **Selector authorization.** One rule covers every selector that names a tier —
 a person, a company, or a project: naming a tier explicitly is reserved to
 platform administrators. A caller who is not one reads their derived scope,
-narrowed by the filters that name no tier. Reaching a named tier by its
-snippet's identity rather than by a selector is the same act and meets the same
-rule; otherwise the identity form becomes a way around the selector.
+narrowed by the filters that name no tier.
+
+Retrieving a snippet by an identity already present in the caller's assembled
+catalogs is not naming a tier: it is the second phase of the discovery the caller
+was already permitted, and it stays open to everyone. Using an identity to pull
+in a tier the caller's derived scope does not contain is the reach the rule
+governs, and it meets the rule.
+
+Authorization precedes lookup. A caller who may not name a tier is refused
+without the request being resolved, so refusal never reports whether the named
+tier exists. Only for a caller who may name tiers does an unknown name return
+nothing.
 
 The refusal is a refusal rather than a silent narrowing — a caller who may not
 name a tier is told so instead of receiving a smaller answer that looks like the
 tier is empty. Naming a tier that does not exist returns nothing, which is not a
 refusal and discloses nothing about a tier's existence.
 
-This gate lives here rather than with command clearance: clearance authorizes a
-verb, and this authorizes what one argument to that verb may reach.
+This gate lives here rather than with command clearance. Clearance authorizes a
+verb; this authorizes what one argument to that verb may reach.
 
 ### 6. Tier-Qualified Identity
 
 A snippet's identity carries its tier as the first segment. For the person and
 company tiers the identity also carries which person or which company it belongs
-to, because more than one tier of the same kind can be present in one assembled
+to. More than one tier of the same kind can be present in one assembled
 index at the same time — a caller belonging to several companies always
 assembles several, and an administrator naming another person's tier assembles
-theirs alongside their own. An unqualified identity would make that state
-ambiguous, so the qualification is what keeps two tiers from naming the same
-thing.
+theirs alongside their own. The qualification is what keeps two such tiers from naming the same thing.
 
 A foreign project's identity is formed differently: its tier marker is exchanged
 for the project's slug. That form depends on exactly one project tier being the
 caller's own and on project slugs being registered in a single manifest. Neither
-holds for the company tier — no company is the caller's own, and a bare slug
-segment would place company identities in the same namespace as project
-identities, where a company and a project sharing a name collide. Keeping the
-tier marker in front and the identity behind it is what avoids that collision.
+holds for the company tier: no company is the caller's own, and a bare slug
+segment places company identities in the same namespace as project identities,
+where a company and a project sharing a name collide. The tier marker stays in
+front and the identity behind it.
 
 ### 7. Tier Catalog Construction
 
 Every tier whose material participates in the documentation surface has its
 catalog built by the same publication pass that builds the project and global
 catalogs. Whether a non-project tier participates is read from that tier's own
-declaration, never inferred from its location on disk — inferring it from
-location is the meaning-from-location model the tier design exists to remove.
-Participation is answered per tier by the tier-permissions contract, on an axis
+declaration, never inferred from its location on disk. Participation is answered per tier by the tier-permissions contract, on an axis
 independent of whether the tier is an invocation context or carries project
 subscriptions.
 
 A tier whose catalog is never built is indistinguishable from a tier holding no
-content, and a builder that nothing calls produces exactly that. Construction is
-therefore part of what makes a tier a tier, not a step taken after it exists.
+content. Construction is part of what makes a tier a tier, not a step taken
+after it exists.
 <!-- /planned:docs-tier-layering -->
 
 ## Failure modes

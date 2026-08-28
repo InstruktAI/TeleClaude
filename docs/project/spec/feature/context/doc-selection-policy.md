@@ -113,12 +113,38 @@ Then only snippets whose delivered_by includes <slug> are returned
 And third-party snippets are silenced
 ```
 
+<!-- planned:docs-tier-layering -->
+#### UC-DSP19: Retrieving a discovered identity stays open to its discoverer
+
+```
+Given an agent session running under the identity of a person who is not a platform administrator
+And discovery has returned an identity from a tier that session is permitted to read
+When the session retrieves that identity
+Then the snippet content is returned
+And no tier authorization is required
+```
+<!-- /planned:docs-tier-layering -->
+
+<!-- planned-change:docs-tier-layering -->
 ```
 Given a snippet ID whose prefix matches a known project slug in the cross-project catalog
 When the caller references that ID without --projects
 Then the cross-project Source is loaded
 And visibility gating still applies
 ```
+<!-- change:docs-tier-layering -->
+#### UC-DSP18: Reaching a tier by snippet identity meets the selector rule
+
+```
+Given a snippet ID whose prefix matches a known project slug in the cross-project catalog
+And that Source is not already in the caller's assembled catalogs
+And the caller is authorized to name a tier explicitly
+When the caller references that ID without a selector
+Then the cross-project Source is loaded
+And visibility gating still applies
+And an unauthorized caller is refused
+```
+<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP1: Scope filter keeps only global snippets
 
@@ -222,7 +248,7 @@ Given an agent session running under the identity of a person holding a declared
 And that person is assigned to one of those projects
 When the Selection policy resolves the caller's project set
 Then the assigned project enters that set and is read in full
-And the company's other projects do not enter it, because belonging to the company brings no project into reach
+And the company's other projects do not enter it
 ```
 
 #### UC-DSP13: A platform administrator reaches any named tier
@@ -240,9 +266,9 @@ Then that named tier is returned in full
 Given an agent session running under the identity of a person who is not a platform administrator
 And the session names a person, a company, or a project tier explicitly
 When the Selection policy resolves the request
-Then the selector is refused
+Then the selector is refused before the named tier is looked up
 And the refusal does not fall back to a narrower read of that tier
-And naming a tier by a snippet identity rather than by a selector is refused the same way
+And the refusal is identical whether or not the named tier exists
 ```
 
 #### UC-DSP14: Membership in several companies stays unambiguous
