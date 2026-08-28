@@ -72,12 +72,19 @@ surveyed rather than invented.
   produces here.
 
 **Adopt, do not build.** The connector's own confined store plus a per-person
-secret reaches the approved outcome for the connector in scope, and per-person
-confinement additionally removes the rotation race by construction, since no two
-people share a store to race over. A broker is the stronger isolation and is
+secret reaches the approved outcome for the connector in scope. Per-person
+confinement removes the rotation race _between people_, since no two people
+share a store to race over; it does nothing for two concurrent invocations on
+behalf of the same person, which still share that person's store and can still
+rotate a refresh credential under each other. No coordination for that case is
+specified here — same-person concurrency is outside the approved scope, which
+leaves it as the connector's native behavior — so it stands as an accepted
+unresolved risk rather than a solved one. A broker is the stronger isolation,
+supplies the single-flight coordination that would close it, and is
 infrastructure this horizon excludes; it becomes the escalation path if a
-connector without a confined store is fronted, or if credentials must be reached
-from more than one machine. The tool's short-lived-token entry is what makes that
+connector without a confined store is fronted, if credentials must be reached
+from more than one machine, or if same-person concurrency stops being
+acceptable. The tool's short-lived-token entry is what makes that
 escalation cheap later, and is not used now.
 
 ## Inputs/Outputs
@@ -225,6 +232,9 @@ excluded from version control.
   isolation and none of it, and nothing fails to reveal it. The boundary refuses
   an account it cannot confirm is confined, so the appearance never arises
   silently.
+- **Two concurrent invocations for one person can rotate a credential under each
+  other.** Confinement separates people, not a person's own parallel work. The
+  connector's native behavior governs it, and nothing here serializes refreshes.
 - **A declared account that was never authorized** fails at the connector rather
   than at the boundary. The boundary binds an invocation to a declaration; it does
   not verify the declaration was ever consented to.
