@@ -6,7 +6,7 @@ description: 'The TeleClaude home is one local-only version-controlled history w
   in breach of the rule surfaces rather than being silently dropped, and roots owned
   by someone else stay foreign.'
 delivered_by:
-- person-home-repository
+  - person-home-repository
 ---
 
 # Home Repository — Spec
@@ -46,8 +46,9 @@ found in history in breach of the rule is therefore surfaced rather than
 quietly dropped from future retention.
 
 A root inside the home that belongs to another owner — another repository, or a
-project a person owns — is foreign to the home's history. The home neither
-retains it nor carries it in a commit taken from an enclosing context.
+project a person owns — is foreign to the home's history and is not part of its
+retained set. What a commit boundary does with that answer belongs to the commit
+surface that asks it, not to the home's own membership rule.
 
 ## Canonical fields
 
@@ -104,8 +105,8 @@ And it is not treated as resolved by excluding the material from future retentio
 ```
 Given a root inside the home that belongs to another owner
 When the home's retained set is evaluated
-Then that root's contents are not retained by the home
-And a commit taken from a context enclosing that root does not carry them
+Then that root's contents are not part of the home's retained set
+And asking whether a path under that root belongs to the home returns that it does not
 ```
 
 ## Known caveats
@@ -114,6 +115,10 @@ And a commit taken from a context enclosing that root does not carry them
   replication, migration, or any recovery claim requires a design that settles
   encryption, exclusion of secrets, multi-device conflict, and who owns
   restoration.
+- The retained set is a statement about paths, not about the bytes of any
+  version. A retained path whose content later carries a credential reaches the
+  record unexamined; automated per-version secret detection is deliberately not
+  part of this contract.
 
 ## See Also
 
