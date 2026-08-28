@@ -1,8 +1,11 @@
 ---
-visibility: 'public'
-description: 'A person context is accepted as belonging to a registered person only when that binding is independently validated; an unknown, mismatched, or ambiguous claim fails closed and confers neither person-scoped visibility nor person-scoped write authority.'
+visibility: public
+description: A person context is accepted as belonging to a registered person only
+  when that binding is independently validated; an unknown, mismatched, or ambiguous
+  claim fails closed and confers neither person-scoped visibility nor person-scoped
+  write authority.
 delivered_by:
-  - person-tier-homes
+- person-home-repository
 ---
 
 # Person Context Binding — Spec

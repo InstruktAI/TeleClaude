@@ -1,8 +1,11 @@
 ---
-visibility: 'public'
-description: 'Permission is answered per declared tier along three independent axes — whether the tier establishes an invocation context, whether its material participates in a surface, and whether it carries optional project subscriptions — so no tier inherits another tier default and no answer on one axis grants anything on another.'
+visibility: public
+description: Permission is answered per declared tier along three independent axes
+  — whether the tier establishes an invocation context, whether its material participates
+  in a surface, and whether it carries optional project subscriptions — so no tier
+  inherits another tier default and no answer on one axis grants anything on another.
 delivered_by:
-  - person-tier-homes
+- person-home-repository
 ---
 
 # Tier Permissions — Spec

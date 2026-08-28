@@ -1,8 +1,12 @@
 ---
-visibility: 'public'
-description: 'The TeleClaude home is one local-only version-controlled history whose retained set fails closed: only durable, home-owned, safe, restorable material enters it, activation over an already-populated home is idempotent, material already retained in breach of the rule surfaces rather than being silently dropped, and roots owned by someone else stay foreign.'
+visibility: public
+description: 'The TeleClaude home is one local-only version-controlled history whose
+  retained set fails closed: only durable, home-owned, safe, restorable material enters
+  it, activation over an already-populated home is idempotent, material already retained
+  in breach of the rule surfaces rather than being silently dropped, and roots owned
+  by someone else stay foreign.'
 delivered_by:
-  - person-tier-homes
+- person-home-repository
 ---
 
 # Home Repository — Spec

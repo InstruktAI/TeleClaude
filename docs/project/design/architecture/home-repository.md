@@ -1,8 +1,12 @@
 ---
-visibility: 'internal'
-description: 'One local-only repository at the TeleClaude home holding several ownership roots, where what reaches history is decided by explicit admission plus a per-version safety decision, isolation is containment over a preserved context-root and ownership-root coordinate, non-project commits compose their own gates, and a person-owned project keeps its own repository outside the home.'
+visibility: internal
+description: One local-only repository at the TeleClaude home holding several ownership
+  roots, where what reaches history is decided by explicit admission plus a per-version
+  safety decision, isolation is containment over a preserved context-root and ownership-root
+  coordinate, non-project commits compose their own gates, and a person-owned project
+  keeps its own repository outside the home.
 delivered_by:
-  - person-tier-homes
+- person-home-repository
 ---
 
 # Home Repository — Design
