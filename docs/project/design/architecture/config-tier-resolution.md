@@ -170,11 +170,22 @@ its schema association, or both — and each is an independent idempotent repair
 so a file carrying a valid declaration and no association gains the association
 alone and a file carrying both is untouched.
 
-Advancement is recorded per root, in config-owned durable state in the home,
-keyed by the root and by the identity of the advancement itself so a later
-advancement neither collides with this one nor inherits its records. There is no
-record spanning roots, and therefore no state that claims anything about a root
-it has not seen.
+Advancement runs against an epoch, held in config-owned durable state in the
+home and keyed by the identity of the advancement itself, so a later advancement
+neither collides with this one nor inherits its state. An epoch is opened once
+per installation, and opening it captures the eligible set from the registries
+as they stand at that moment: the home's own configuration, every person and
+company folder at its designated location, and every entry in the project
+manifest — including entries whose directory is unavailable, which are carried
+as pending rather than omitted. Completion is recorded per root, so no record
+claims anything about a root it has not seen.
+
+Eligibility is decided by that captured set and never by first encounter. A root
+in the set is advanced when it is reached, whenever that is. A root outside it —
+one registered after the epoch opened, moved, cloned onto another machine, or
+living on an installation whose epoch found nothing to do — is strict from the
+start: an undeclared file there fails rather than being repaired. Deleting a
+declaration and moving the repository therefore restores nothing anywhere.
 
 Advancement obtains an absent tier by asking the tier registries the model
 already defines — the designated locations for the home's own configuration,
@@ -182,25 +193,25 @@ person, and company files, and the project manifest for project roots. A path
 the registries do not name is not advanced, so it reaches loading undeclared and
 fails there.
 
-Whether a root has already been advanced is settled from its record before any
-repair is attempted. A root holding a record is strict: a file there missing or
-misdeclaring its tier fails, and no declaration is restored, whatever else the
-file does or does not carry. A root holding no record is advanced, and its
-record is written with it. Strictness therefore arrives per root, the moment
-that root is advanced, and editing a file cannot return it to the unadvanced
-state — the record is not in the file.
+Whether a root may still be advanced is settled from the epoch before any
+repair is attempted: a root outside the eligible set, or one already recorded
+complete, is strict, and a file there missing or misdeclaring its tier fails
+whatever else it does or does not carry. Strictness therefore arrives for a root
+the moment its advancement completes, and for every other root immediately.
+Editing a file cannot return its root to the eligible state, because neither the
+epoch nor its completion records live in the file.
 
 The schema association carries no evidential weight. It serves the editor, it is
 repaired independently at any point, and its absence never makes an advanced
 root eligible for advancement again.
 
-A best-effort sweep advances every root the registries reach, at the
-boundaries where a full pass is already natural: daemon start, reconciliation,
-and project registration. The sweep is an optimization over the per-root
-guarantee, never a precondition of it. A registered root that is temporarily
-unavailable is absent from the manifest the sweep loads, so no record is written
-for it and nothing is claimed about it: when it returns, it is advanced before
-its first load. Nothing about one root's advancement affects another's.
+A best-effort sweep advances the eligible roots it can reach, at the boundaries
+where a full pass is already natural: daemon start, reconciliation, and project
+registration. The sweep is an optimization over the per-root guarantee, never a
+precondition of it. A root that is unavailable when the sweep runs stays pending
+in the epoch and is advanced when it returns; the sweep records completion only
+for roots it actually reached. Nothing about one root's advancement affects
+another's.
 
 A file advancement cannot write fails that file's load, naming the file and the
 declaration it needs. The failure is scoped to that file; every other root
@@ -223,14 +234,15 @@ model-inconsistent value fails rather than being replaced.
 ## Failure modes
 
 - **A same-named configuration file carries no declaration.** Loading fails
-  naming the file and the missing declaration, wherever the file sits. Two files
-  reach this by construction: one at a root the tier registries do not name, and
-  one at a root already recorded as advanced. The remedy for both is to declare
-  the file.
-- **A root's advancement record is lost.** That root is advanced again, which is
-  the same outcome as a root first seen on a new machine. The record is an
-  advancement fact about one root, not an authority other roots or other
-  machines depend on.
+  naming the file and the missing declaration, wherever the file sits. Three
+  files reach this by construction: one at a root the tier registries do not
+  name, one at a root outside the epoch's eligible set, and one at a root
+  already recorded complete. The remedy for all three is to declare the file.
+- **The epoch's state is lost.** An absent epoch is indistinguishable from an
+  installation that has never opened one, so advancement opens an epoch over the
+  registries as they then stand. The config context's durable state is therefore
+  part of an installation's integrity; no repository movement reaches this, only
+  loss of that state.
 - **Advancement cannot write a file the registries name.** That file's load
   fails, naming it and the declaration it needs, rather than substituting a
   value that leaves the stored file undeclared. Other roots are unaffected.

@@ -71,11 +71,14 @@ tier.
   file: either is supplied or repaired without regard to the other. Only the
   declaration is load-bearing, and a file never references a schema that is not
   in place.
-- Advancement is recorded per root. A root recorded as advanced is strict: a
-  file there missing or misdeclaring its tier fails, that failure is settled
-  before any repair is attempted, and no declaration is restored. The schema
-  reference carries no evidential weight and its absence never makes an advanced
-  root eligible for advancement again.
+- Advancement runs against an epoch opened once per installation, whose
+  eligible set is captured from the registries when it opens and includes
+  manifest entries that are unavailable at that moment. Only a root in that set
+  is ever advanced, and completion is recorded per root. Every other root is
+  strict, as is a root already recorded complete: a file there missing or
+  misdeclaring its tier fails, that failure is settled before any repair is
+  attempted, and no declaration is restored. The schema reference carries no
+  evidential weight and its absence never makes a root eligible again.
 
 ### Use cases
 
@@ -129,11 +132,10 @@ Then resolution fails with a clear error naming the project root
 
 ```
 Given a same-named configuration file authored before tier declarations existed
-And its root carries no advancement record
-And the tier registries name its location
+And its root is in the advancement epoch's eligible set and not yet complete
 When that file is loaded
 Then it is advanced to carry its correct tier declaration before the load reads it
-And its root is recorded as advanced
+And its root is recorded complete
 And loading it again leaves the file unchanged
 ```
 
@@ -194,10 +196,10 @@ And the file is never loaded as any tier
 #### UC-CFG-WSD12: An unavailable registered root is advanced when it returns
 
 ```
-Given a registered project root that is unavailable while other roots are advanced
+Given a registered project root that is unavailable when the advancement epoch opens
 When that root becomes available and its configuration file is loaded
-Then that file is advanced before the load reads it
-And no record written while it was unavailable claims it was advanced
+Then the root was carried in the eligible set as pending rather than omitted
+And that file is advanced before the load reads it
 And an unwritable file at one root leaves every other root resolving
 ```
 
@@ -214,7 +216,7 @@ And the schema reference is written by a later advance once the schema is in pla
 #### UC-CFG-WSD14: A declaration removed after advancement is not restored
 
 ```
-Given a root recorded as advanced
+Given a root recorded complete
 And its configuration file's tier declaration has been removed
 And the tier registries name that root
 When that file is loaded
@@ -227,12 +229,32 @@ And the file is never loaded as any tier
 #### UC-CFG-WSD15: Removing the schema reference too does not reopen advancement
 
 ```
-Given a root recorded as advanced
+Given a root recorded complete
 And its configuration file carries neither a tier declaration nor a schema reference
 When that file is loaded
 Then loading fails with an error naming the file and the missing declaration
 And no tier declaration is restored
-And editing the file does not return its root to the unadvanced state
+And editing the file does not return its root to the eligible state
+```
+
+#### UC-CFG-WSD16: A root outside the eligible set is strict from the start
+
+```
+Given a project root registered after the advancement epoch opened
+And its configuration file carries no tier declaration
+When that file is loaded
+Then loading fails with an error naming the file and the missing declaration
+And no tier declaration is supplied from the root's location
+```
+
+#### UC-CFG-WSD17: Moving a repository does not reopen advancement
+
+```
+Given a configuration file whose tier declaration has been removed
+And its repository is cloned to a machine where its root is not in an eligible set
+When that file is loaded
+Then loading fails with an error naming the file and the missing declaration
+And no tier declaration is restored on that machine
 ```
 
 ### Cross-context references
