@@ -1,5 +1,5 @@
 ---
-description: The distinction that decides what a person's mail is worth — whether a message is the record of something or a notification about a record held elsewhere — and how to read a person's own handling of it.
+description: The distinction that decides what a person's mail is worth — whether a message is the record of something or a notification about a record held elsewhere — and the handling that follows from it.
 ---
 
 # Notification and Record — Concept
@@ -39,20 +39,37 @@ worth removing, and worth ending at the source rather than removing forever.
 wrong about a human correspondent is asymmetric and, once a message is gone,
 unrecoverable. Value is inferred for machines and asked about for people.
 
-### Reading a person's own handling
+### What follows for handling
 
-A person's history teaches these classes, but it has to be read as human
-behaviour rather than as intent. Where most of a sender's mail has been disposed
-of and a few messages remain, the survivors are far more likely to be
-inattention than deliberate exceptions. A rule invented to explain the leftovers
-is a rule fitted to noise.
+Volume is reduced at its source before it is managed. A notification stream that
+recurs is ended by unsubscribing or by silencing it at the service; sweeping the
+same sender forever is work that never finishes, and the person pays it every
+time. This is the only move here with lasting effect.
 
-Absence teaches nothing. Deleted mail leaves no trace, so what a person discards
-is unlearnable in principle rather than merely missing — and where a person does
-not prune at all, there is no corpus of discards to learn from however long they
-have used the account. What their mail does record is value: who they answer,
-how quickly, whom they have never once answered, and which senders have ever
-caused them to act.
+Notifications are disposed of as they are recognised, not filed. Filing a thing
+that carries no information spends a gesture to buy a shorter list, and a list is
+not what anyone searches.
+
+Records are kept and made findable. Findable means retrievable by search, not
+sorted into a hierarchy — a person looking for last year's invoice searches for
+it, and the folder it was in never helped.
+
+One state carries one meaning. Where a person's unread flag means both "not yet
+seen" and "not worth seeing", it tells them nothing at the moment they most need
+it to. Reserving it for a single meaning is what makes it worth looking at.
+
+### A caution about learning from history
+
+Where most of a sender's mail has been disposed of and a few messages remain,
+the survivors are far more likely to be inattention than deliberate exceptions;
+a rule invented to explain the leftovers is a rule fitted to noise. Absence
+teaches nothing at all — deleted mail leaves no trace, so what a person discards
+is unlearnable in principle rather than merely missing.
+
+What a person's mail does record is value: who they answer, how quickly, whom
+they have never once answered, and which senders have ever caused them to act.
+That evidence refines the classes above for one person. It does not establish
+them, and a habit is not promoted to a practice by being observed.
 
 ## Why
 
@@ -62,12 +79,10 @@ record-or-notification question generalizes, because it asks about the mail's
 relationship to the truth rather than about its contents — and it is answerable
 for a sender never seen before.
 
-It also explains what a person is doing when they leave hundreds of messages
-unread and prune almost nothing. They are not neglecting a filing system; they
-have correctly observed that most of their mail is notification, that
-notifications need no filing, and that anything genuinely needed can be found by
-searching. An assistant that treats that as disorder to be corrected has
-misread a working strategy.
+It also puts the effort where it lasts. Most of what arrives is notification,
+so most handling effort is spent on mail that never needed handling. Reducing
+that at the source is the only intervention that compounds; every other move
+manages a volume that returns tomorrow.
 
 The asymmetry between machine and human authorship is the safety rail that makes
 the rest of it safe to automate. Every other distinction here can be wrong in
