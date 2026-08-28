@@ -15,16 +15,14 @@ a person invokes `telec sessions run-pa "<brief>"` — a sibling of `run` and
 the brief.
 
 The call carries a brief and nothing else. The person, the workspace, and the
-computer are derived from the authenticated caller. The surface exposes no
-parameter naming a person in any form, and that absence is the guarantee: a
-target a caller can supply is a target a caller can be talked into supplying by
-content it was asked to read. A platform admin gets their own assistant, because
-there is no wider form of the call to elevate into, and a caller that resolves to
-no person is refused rather than defaulted.
+computer are derived from the authenticated caller, and the surface exposes no
+parameter naming a person in any form. A platform admin's invocation takes the
+same single form and reaches that admin's own workspace. A caller that resolves
+to no person is refused rather than defaulted.
 
-The door is only a door while the wall stands. The general session verbs — which
-each carry a target path — refuse a destination resolving inside a person
-workspace, so the derived launch is the only route rather than the polite one.
+The general session verbs, which each carry a target path, refuse a destination
+resolving inside a person workspace. That refusal holds whether or not the
+destination belongs to the caller's own person.
 
 ## Canonical fields
 
