@@ -1,5 +1,5 @@
 ---
-description: 'How an agent session reaches an external mail or calendar connector: the person binding it inherits rather than resolves, the layer each responsibility sits in, how an instructed send is distinguished from initiative, and how credentials are confined and moved.'
+description: 'How an agent session reaches an external mail or calendar connector: the person binding it inherits rather than resolves, the layer each responsibility sits in, how an instructed send is distinguished from initiative, and where connector state is directed for each person.'
 delivered_by:
   - personal-mail-tool-launcher
 ---
@@ -17,7 +17,7 @@ delivered_by:
 An assistant reaches a person's mail and calendar through external command-line
 connectors. Those connectors carry the operations the personal-assistant conduct
 policy prohibits and do not hold the prohibitions themselves. This design places
-the prohibitions, the account binding, and credential confinement at the one
+the prohibitions, the account binding, and per-person state direction at the one
 boundary where a connector is reached, and states which context and which layer
 owns each part.
 
@@ -78,7 +78,7 @@ accounts; the account this invocation names; the person's state location and
 store secret; and an explicit declaration when a send was instructed.
 
 **Out:** a constructed invocation of the real connector executed against that
-person's confined state, or a refusal naming which condition failed — not in a
+person's own state, or a refusal naming which condition failed — not in a
 person's workspace, no named account, a reached prohibition, an uninstructed
 send, or reach that could not be determined.
 
@@ -124,8 +124,9 @@ contain.
   declaration. The declaration is the acting agent's own statement, recorded with
   the invocation; it is never derived from attendance, role, or lineage.
 - Nothing above this boundary names a vendor tool.
-- A connector's state location and its secret store are separate concerns, and
-  directing the first without confining the second yields no isolation at all.
+- A connector's state location and its secret store are separate concerns.
+  This boundary directs the first and makes no claim about the second, so
+  directing state is never presented as isolation between people.
 
 ### The send gate, in two regimes
 
@@ -171,7 +172,7 @@ flowchart TD
     E -- a send --> F{instructed-send declaration present?}
     F -- no --> R4[refuse: no instruction declared]
     F -- yes --> G
-    E -- nothing prohibited --> G[execute against the person's confined state]
+    E -- nothing prohibited --> G[execute against the person's own state]
 ```
 
 ### Confinement is not delivered here
@@ -208,14 +209,14 @@ governs only authorizations made after it is in force.
 - **A false instructed-send declaration sends mail.** The declaration is
   detection, not prevention. What it buys is attribution: the send is recorded
   against the session that declared it.
-- **Partial confinement is the dangerous state.** A person given a confined store
-  whose earlier credential still sits in the shared one has the appearance of
-  isolation and none of it, and nothing fails to reveal it. The boundary refuses
-  an account it cannot confirm is confined, so the appearance never arises
-  silently.
+- **Directed state reads as isolation.** Every invocation going to its own
+  person's location looks like separation between people and is not: the
+  connector can still resolve an account from a store shared across the machine.
+  Nothing fails to reveal that, which is why this design states direction and
+  makes no isolation claim rather than leaving a reader to infer one.
 - **Two concurrent invocations for one person can rotate a credential under each
-  other.** Confinement separates people, not a person's own parallel work. The
-  connector's native behavior governs it, and nothing here serializes refreshes.
+  other.** The connector's native behavior governs it, and nothing here
+  serializes refreshes.
 - **A declared account that was never authorized** fails at the connector rather
   than at the boundary. The boundary binds an invocation to a declaration; it does
   not verify the declaration was ever consented to.

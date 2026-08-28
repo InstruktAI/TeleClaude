@@ -86,7 +86,7 @@ And the person remains resolvable as a person
 Given a connector invocation for a resolved person
 When it reads or writes credential or connection state
 Then the state location and connection it is directed at are that person's own
-And no state is left in a shared or default location
+And it is never directed at a default location instead
 ```
 
 #### UC-ACI-5: An invocation is never directed at another person's stored state
