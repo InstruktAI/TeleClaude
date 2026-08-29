@@ -153,7 +153,30 @@ Its post-completion bookkeeping matches the normal build path: the build worker
 stamps `telec todo stamp [slug] --build-complete`, then the orchestrator re-enters
 `telec todo work [slug]`.
 
-### 8. Kickback to prepare (human-gated)
+### 8. A stamp the worker owed and did not make
+
+The engine reads durable state, never artifacts. A verdict written into
+`review-findings` is the reviewer's report; `build_review.verdict` in state is the
+record the machine acts on. The same holds for a finished build: the work is not
+complete to the state machine until `build_complete` is stamped, whatever the
+commits show.
+
+So a worker that finishes its work, writes its artifact, and idles without
+stamping leaves the lifecycle stalled on an action nobody is going to take. The
+orchestrator does not wait for it. Where the work is done, the orchestrator
+stamps it and proceeds — this authority is the orchestrator's own, not the
+worker's alone.
+
+The condition is the whole of it: the orchestrator stamps because it has
+established the work is finished, never because waiting has become tedious. An
+approved review carrying zero unresolved findings, or a build whose findings are
+all fixed and whose checks have passed, is established. A review whose findings
+the orchestrator has not read is not, and no amount of elapsed time makes it so.
+
+Read the state before using this. A verdict already stamped needs nothing, and
+re-stamping over a worker that was mid-write is how two records disagree.
+
+### 9. Kickback to prepare (human-gated)
 
 A build can stall on a plan defect that no fix resolves — the implementation plan
 cannot be executed as written and needs re-derivation, not a fix round. The builder
