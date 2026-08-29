@@ -162,10 +162,10 @@ complete to the state machine until `build_complete` is stamped, whatever the
 commits show.
 
 So a worker that finishes its work, writes its artifact, and idles without
-stamping leaves the lifecycle stalled on an action nobody is going to take. The
-orchestrator does not wait for it. Where the work is done, the orchestrator
-stamps it and proceeds — this authority is the orchestrator's own, not the
-worker's alone.
+stamping leaves the lifecycle stalled until someone records what the artifact
+already says. The orchestrator does not wait for the worker to return and do it.
+Where the work is done, the orchestrator stamps it and proceeds — this authority
+is the orchestrator's own, not the worker's alone.
 
 The condition is the whole of it: the orchestrator stamps because it has
 established the work is finished, never because waiting has become tedious. An
