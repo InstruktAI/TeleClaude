@@ -25,16 +25,16 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 import teleclaude.config as _tc_config_module
+from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
 from teleclaude.config.invitations import load_invitations, save_invitations
 from teleclaude.config.loader import (
-    _atomic_yaml_write,
     find_person_config_path,
     load_global_config,
     load_person_config,
 )
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
-from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry
+from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.paths import GLOBAL_CONFIG_PATH, INVITATIONS_PATH, PROJECT_ENV_PATH, TELECLAUDE_HOME, ConfigFileName
 
 logger = get_logger(__name__)
@@ -306,7 +306,7 @@ def add_person(entry: PersonEntry) -> None:
     config.people.append(entry)
     save_global_config(config)
 
-    person_config = PersonConfig()
+    person_config = PersonConfig(kind=ConfigKind.PERSON)
     save_person_config(entry.slug, person_config)
     logger.info("Added person '%s' (slug '%s') with role '%s'", entry.name, entry.slug, entry.role)
 
@@ -679,7 +679,7 @@ def discover_config_areas() -> list[ConfigArea]:
     try:
         config = get_global_config()
     except (ValueError, ValidationError):
-        config = GlobalConfig()
+        config = GlobalConfig(kind=ConfigKind.GLOBAL)
 
     # Adapter areas from CredsConfig fields
     for adapter_name in _get_adapter_names():

@@ -49,7 +49,7 @@ from teleclaude.core.integration.step_functions import (
     _tls,
 )
 from teleclaude.core.operation_progress import emit_operation_progress
-from teleclaude.project_root import resolve_project_root
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)

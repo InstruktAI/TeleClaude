@@ -50,8 +50,8 @@ from teleclaude.core.next_machine.review_evidence import (
     PREPARE_REVIEW_PHASES,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.project_root import resolve_project_root
 from teleclaude.types.todos import BreakdownState, FinalizeModel
 
 if TYPE_CHECKING:

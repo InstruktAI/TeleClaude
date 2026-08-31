@@ -10,13 +10,14 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.config.context_root import resolve_context_root
 from teleclaude.mcp.registry import TELECLAUDE_MCP_CONFIG_FILE, RegistryError, load_effective_registry
 from teleclaude.mcp.timeouts import (
     MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS,
     MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS,
 )
 from teleclaude.paths import REPO_ROOT
-from teleclaude.project_root import resolve_invocation_project_root
+from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = ["_handle_mcp"]
 
@@ -88,7 +89,8 @@ def _handle_list(args: list[str]) -> None:
         _fail_usage("mcp list")
     invocation_project: str | None = None
     try:
-        invocation_project = resolve_invocation_project_root().name
+        context = resolve_context_root(resolve_invocation_cwd())
+        invocation_project = context.path.name if context is not None else None
         registry = load_effective_registry(REPO_ROOT)
     except (FileNotFoundError, RegistryError) as exc:
         logger.info(

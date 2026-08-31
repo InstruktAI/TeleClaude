@@ -1,9 +1,7 @@
 """Configuration file loading and validation."""
 
-import fcntl
 import os
 import stat
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +11,13 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 from ruamel.yaml import YAML
 
+from teleclaude.config.advancement import advance_config
+from teleclaude.config.context_root import resolve_context_root
+from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.schema import (
     AppConfig,
     CompanyConfig,
+    ConfigKind,
     GlobalConfig,
     OutputVisibilitySettings,
     PersonConfig,
@@ -50,7 +52,7 @@ def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
                     _warn_unknown_keys(item, f"{path}.{field_name}[{idx}]", config_path)
 
 
-def load_config[T: BaseModel](path: Path, model_class: type[T]) -> T:
+def load_config[T: BaseModel](path: Path, model_class: type[T], kind: ConfigKind, root: Path) -> T:
     """Load YAML config from ``path`` and validate it with ``model_class``.
 
     Args:
@@ -61,7 +63,7 @@ def load_config[T: BaseModel](path: Path, model_class: type[T]) -> T:
         The validated configuration model.
     """
     if not path.exists():
-        return model_class()
+        return model_class.model_validate({"kind": kind})
 
     try:
         with open(path, encoding="utf-8") as f:
@@ -70,74 +72,35 @@ def load_config[T: BaseModel](path: Path, model_class: type[T]) -> T:
         logger.error("Failed to read config file %s: %s", path, e)
         raise ValueError(f"Failed to read config file {path}: {e}") from e
 
+    if not raw:
+        return model_class.model_validate({"kind": kind})
+
+    advance_config(path, kind, root)
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.error("Failed to read config file %s: %s", path, e)
+        raise ValueError(f"Failed to read config file {path}: {e}") from e
+
     expanded = expand_env_vars(raw)
-    model = model_class.model_validate(expanded)
+    try:
+        model = model_class.model_validate(expanded)
+    except Exception as exc:
+        raise ValueError(f"Failed to validate config file {path}: {exc}") from exc
     _warn_unknown_keys(model, "root", path)
     return model
 
 
 def load_project_config(path: Path) -> ProjectConfig:
     """Load project-level configuration."""
-    return load_config(path, ProjectConfig)
+    return load_config(path, ProjectConfig, ConfigKind.PROJECT, path.parent)
 
 
 def save_project_config(path: Path, config: ProjectConfig) -> None:
     """Save project config to disk using atomic write (temp + rename)."""
     data = config.model_dump(mode="json", exclude_defaults=True)
-    tmp_path = path.with_suffix(".tmp")
-    try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, path)
-    except Exception:
-        if tmp_path.exists():
-            tmp_path.unlink()
-        raise
-
-
-def _represent_enum(representer: Any, data: Enum) -> Any:
-    """Serialize any Enum (incl. StrEnum) as its underlying value for YAML."""
-    return representer.represent_data(data.value)
-
-
-def _atomic_yaml_write(path: Path, data: dict[str, Any]) -> None:  # guard: loose-dict - YAML serialization boundary
-    """Atomic YAML write using tmp file + os.replace.
-
-    Preserves existing formatting when possible by using ruamel.yaml
-    round-trip mode. Falls back to fresh write if file doesn't exist.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_suffix(".lock")
-    tmp_path = path.with_suffix(".tmp")
-
-    yaml_rt = YAML()
-    yaml_rt.preserve_quotes = True
-    yaml_rt.default_flow_style = False
-    yaml_rt.representer.add_multi_representer(Enum, _represent_enum)
-
-    with open(lock_path, "w", encoding="utf-8") as lock_file:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        except OSError:
-            pass
-
-        try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                yaml_rt.dump(data, f)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_path, path)
-        except Exception:
-            if tmp_path.exists():
-                tmp_path.unlink()
-            raise
-        finally:
-            try:
-                lock_path.unlink()
-            except OSError:
-                pass
+    write_declared_config(path, ConfigKind.PROJECT, data, schema_root=path.parent)
 
 
 def _model_to_dict(model: BaseModel) -> dict[str, Any]:  # guard: loose-dict - Pydantic model_dump output
@@ -173,7 +136,7 @@ def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
             existing = yaml_rt.load(f) or {}
     overlay = _model_to_dict(config)
     merged = _deep_merge(existing, overlay)
-    _atomic_yaml_write(target, merged)
+    write_declared_config(target, ConfigKind.GLOBAL, merged, schema_root=target.parent)
     logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(existing))
 
 
@@ -183,7 +146,7 @@ def save_person_config(slug: str, config: PersonConfig) -> None:
     person_dir.mkdir(parents=True, exist_ok=True)
     target = person_dir / ConfigFileName.OVERLAY
     data = _model_to_dict(config)
-    _atomic_yaml_write(target, data)
+    write_declared_config(target, ConfigKind.PERSON, data, schema_root=person_dir.parent.parent)
     logger.info("Saved person config for %s to %s", slug, target)
 
 
@@ -191,17 +154,17 @@ def load_global_config(path: Path | None = None) -> GlobalConfig:
     """Load global-level configuration."""
     if path is None:
         path = GLOBAL_CONFIG_PATH
-    return load_config(path, GlobalConfig)
+    return load_config(path, GlobalConfig, ConfigKind.GLOBAL, path.parent)
 
 
 def load_person_config(path: Path) -> PersonConfig:
     """Load per-person configuration."""
-    return load_config(path, PersonConfig)
+    return load_config(path, PersonConfig, ConfigKind.PERSON, path.parent)
 
 
 def load_company_config(path: Path) -> CompanyConfig:
     """Load company-tier configuration."""
-    return load_config(path, CompanyConfig)
+    return load_config(path, CompanyConfig, ConfigKind.COMPANY, path.parent)
 
 
 def _company_dir(slug: str, companies_root: Path | None) -> Path:
@@ -222,7 +185,12 @@ def save_company_config(slug: str, config: CompanyConfig, companies_root: Path |
     """Atomic write of the company config keyed by slug. Creates the folder if needed."""
     company_dir = _company_dir(slug, companies_root)
     company_dir.mkdir(parents=True, exist_ok=True)
-    _atomic_yaml_write(company_dir / ConfigFileName.OVERLAY, _model_to_dict(config))
+    write_declared_config(
+        company_dir / ConfigFileName.OVERLAY,
+        ConfigKind.COMPANY,
+        _model_to_dict(config),
+        schema_root=company_dir.parent.parent,
+    )
     logger.info("Saved company config for %s", slug)
 
 
@@ -379,11 +347,6 @@ def resolve_person_output_visibility_settings(
     return person_config.settings.output_visibility
 
 
-def _is_person_workspace(workspace: Path) -> bool:
-    """Check if workspace is a person directory under <base>/.teleclaude/people/."""
-    return workspace.parent.name == "people" and workspace.parent.parent.name == ".teleclaude"
-
-
 def load_app_config(workspace: Path) -> AppConfig:
     """Load composed app config for the given workspace.
 
@@ -395,13 +358,12 @@ def load_app_config(workspace: Path) -> AppConfig:
     project_config: ProjectConfig | None = None
     company_config: CompanyConfig | None = None
 
-    if _is_person_workspace(workspace):
-        teleclaude_yml = workspace / ConfigFileName.OVERLAY
-        if teleclaude_yml.exists():
+    context = resolve_context_root(workspace)
+    if context is not None:
+        teleclaude_yml = context.path / ConfigFileName.OVERLAY
+        if context.kind is ConfigKind.PERSON:
             person_config = load_person_config(teleclaude_yml)
-    else:
-        teleclaude_yml = workspace / ConfigFileName.OVERLAY
-        if teleclaude_yml.exists():
+        elif context.kind is ConfigKind.PROJECT:
             project_config = load_project_config(teleclaude_yml)
 
     # The company composes alongside the project — resolved from the project's

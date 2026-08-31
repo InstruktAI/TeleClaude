@@ -7,8 +7,9 @@ from collections.abc import Iterable
 from fnmatch import fnmatch
 from pathlib import Path
 
+from teleclaude.config.context_root import resolve_context_root
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.paths import ConfigFileName
+from teleclaude.core.project_state import resolve_project_state_root
 
 DOC_LAYER_PATTERN = "docs/**"
 
@@ -75,16 +76,10 @@ def resolve_workspace_root(start: str | Path) -> Path:
     locating ``teleclaude.yml``. In todo worktrees this returns the worktree
     root, not the main checkout.
     """
-    current = Path(start).expanduser().resolve()
-    if current.is_file():
-        current = current.parent
-    while True:
-        if not current.name.startswith(".") and (current / ConfigFileName.OVERLAY).exists():
-            return current
-        parent = current.parent
-        if parent == current:
-            raise FileNotFoundError("No teleclaude.yml found in directory hierarchy")
-        current = parent
+    context = resolve_context_root(Path(start))
+    if context is None:
+        raise FileNotFoundError("No anchoring configuration declaration found in directory hierarchy")
+    return context.path
 
 
 def resolve_git_root(start: str | Path) -> Path:
@@ -108,12 +103,6 @@ def resolve_git_root(start: str | Path) -> Path:
     return original
 
 
-def _require_teleclaude_yml(root: Path, original: Path) -> Path:
-    if not (root / ConfigFileName.OVERLAY).exists():
-        raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")
-    return root
-
-
 def resolve_project_root(start: str | Path) -> Path:
     """Return the canonical main project root where shared state lives, or raise.
 
@@ -127,31 +116,7 @@ def resolve_project_root(start: str | Path) -> Path:
     through this function so a mis-resolved cwd fails loud instead of
     silently materializing or reading a stray state store.
     """
-    current = Path(start).expanduser().resolve()
-    if current.is_file():
-        current = current.parent
-    original = current
-
-    while current != current.parent:
-        git_path = current / ".git"
-        if git_path.is_dir():
-            return _require_teleclaude_yml(current, original)
-        if git_path.is_file():
-            try:
-                content = git_path.read_text().strip()
-            except OSError as exc:
-                raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}") from exc
-            if content.startswith("gitdir:"):
-                gitdir = Path(content.split(":", 1)[1].strip())
-                if not gitdir.is_absolute():
-                    gitdir = (current / gitdir).resolve()
-                for parent in gitdir.parents:
-                    if parent.name == ".git":
-                        return _require_teleclaude_yml(parent.parent, original)
-            raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")
-        current = current.parent
-
-    raise FileNotFoundError(f"cwd does not resolve to a project checkout: {original}")
+    return resolve_project_state_root(start)
 
 
 def is_integration_worktree(root: Path) -> bool:

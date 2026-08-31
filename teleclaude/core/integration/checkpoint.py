@@ -15,7 +15,7 @@ from typing import Any, TypedDict
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.project_root import resolve_project_root
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 
 logger = get_logger(__name__)
 

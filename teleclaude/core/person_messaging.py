@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.config.loader import load_global_config, load_person_config_for_entry
-from teleclaude.config.schema import MessagingChannel, PersonConfig
+from teleclaude.config.schema import ConfigKind, MessagingChannel, PersonConfig
 from teleclaude.core.db import db
 from teleclaude.core.models import DiscordAdapterMetadata
 from teleclaude.paths import PEOPLE_DIR
@@ -90,7 +90,7 @@ def resolve_person_channel(slug: str, *, channel: MessagingChannel | None = None
     if person is None:
         raise PersonNotFoundError(f"No person found for slug '{slug}'")
 
-    person_config = load_person_config_for_entry(person, PEOPLE_DIR) or PersonConfig()
+    person_config = load_person_config_for_entry(person, PEOPLE_DIR) or PersonConfig(kind=ConfigKind.PERSON)
     resolved_channel = channel or person_config.preferred_channel or MessagingChannel.EMAIL
 
     if resolved_channel is MessagingChannel.TELEGRAM:

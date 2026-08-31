@@ -47,10 +47,10 @@ from teleclaude.core.next_machine.slug_resolution import (
     effective_prepared_slugs_for_dependencies,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._rows import TodoRow
-from teleclaude.project_root import resolve_project_root
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import HoldAuditState

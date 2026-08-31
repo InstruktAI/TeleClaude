@@ -9,9 +9,9 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.paths import GLOBAL_SKILLS_DIR, SKILL_STORE_DIR
 from teleclaude.project_manifest import load_roots
-from teleclaude.project_root import resolve_project_root
 
 _AGENTS_DIRNAME = "agents"
 _SKILLS_DIRNAME = "skills"
@@ -78,7 +78,7 @@ def _owning_checkout(root: Path) -> Path:
     unchanged, preserving the registry tolerance the caller already relies on.
     """
     try:
-        return resolve_project_root(root)
+        return resolve_project_state_root(root)
     except FileNotFoundError:
         return root
 

@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.discord.message_ops import reconcile_pending_discord_send_intents
 from teleclaude.api_server import APIServer
 from teleclaude.config import config
+from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.config.migrations import migrate_person_slugs_if_needed
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import reconcile_outstanding_conversation_deliveries
@@ -92,6 +93,7 @@ class DaemonLifecycle:
         startup_started_at = time.perf_counter()
         migrate_outbox_on_startup(str(MAIN_DB_PATH), str(get_outbox_db_path(TELECLAUDE_HOME)))
         migrate_person_slugs_if_needed()
+        advance_reachable_roots()
         logger.info("[STARTUP] Initializing database (usually <1s)")
         await db.initialize()
         logger.info("Database initialized in %.3fs", time.perf_counter() - startup_started_at)

@@ -22,8 +22,8 @@ from teleclaude.core.next_machine.marker_reconciliation import (
     restore_lifecycle_markers,
 )
 from teleclaude.core.operation_caller_identity import get_caller_session_id
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.project_root import resolve_project_root
 from teleclaude.slug import validate_slug
 
 logger = get_logger(__name__)

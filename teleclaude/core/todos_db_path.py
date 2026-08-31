@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.project_root import resolve_project_root
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 
 
 def todos_db_path(project_root_or_cwd: str | Path) -> Path:

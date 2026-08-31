@@ -11,13 +11,15 @@ Provides:
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.config_handlers import get_person_config, save_person_config
-from teleclaude.config.schema import DiscordCreds
+from teleclaude.config.declaration import write_declared_config
+from teleclaude.config.schema import ConfigKind, DiscordCreds
 from teleclaude.core.identity import (
     DiscordAvatarBindingOutcome,
     DiscordAvatarBindingReason,
@@ -32,6 +34,7 @@ _TELECLAUDE_DIR = TELECLAUDE_HOME
 _PEOPLE_DIR = PEOPLE_DIR
 _PROJECT_ROOT = Path(__file__).parent.parent  # teleclaude package parent
 _TEMPLATES_DIR = _PROJECT_ROOT / "templates" / "emails"
+_EMPTY_CONFIG_DOCUMENT: Mapping[str, object] = {}
 
 
 # --- Bot Resolution ---
@@ -138,7 +141,12 @@ def scaffold_personal_workspace(person_slug: str, display_name: str | None = Non
     # Create minimal teleclaude.yml if not present
     workspace_config = person_path / ConfigFileName.OVERLAY
     if not workspace_config.exists():
-        workspace_config.write_text("# Personal workspace config\n", encoding="utf-8")
+        write_declared_config(
+            workspace_config,
+            ConfigKind.PERSON,
+            _EMPTY_CONFIG_DOCUMENT,
+            schema_root=_TELECLAUDE_DIR,
+        )
         logger.info("Created teleclaude.yml for %s workspace", person_slug)
 
     return person_path

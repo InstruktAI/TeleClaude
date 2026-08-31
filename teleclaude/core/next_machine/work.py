@@ -69,7 +69,7 @@ from teleclaude.core.next_machine.state_io import ensure_quality_checklist
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work_steps import _list_child_session_ids, _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
-from teleclaude.project_root import resolve_project_root
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.session_identity import get_session_id
 from teleclaude.snippet_validation import snippet_body_digest
 

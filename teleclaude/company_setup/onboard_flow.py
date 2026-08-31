@@ -16,7 +16,8 @@ from typing import Any
 
 import yaml
 
-from teleclaude.config.schema import CompanyConfig
+from teleclaude.config.declaration import write_declared_config
+from teleclaude.config.schema import CompanyConfig, ConfigKind
 from teleclaude.git import Repo
 from teleclaude.paths import COMPANIES_ROOT, ConfigFileName
 from teleclaude.project_setup.onboard_flow import _dispatch_session
@@ -77,10 +78,12 @@ def scaffold_company(name: str, slug: str | None = None, *, companies_root: Path
 
     config_path = company_dir / ConfigFileName.OVERLAY
     if not config_path.exists():
-        config = CompanyConfig(name=name, slug=resolved_slug)
-        config_path.write_text(
-            yaml.safe_dump(config.model_dump(mode="json", exclude_defaults=True), sort_keys=False),
-            encoding="utf-8",
+        config = CompanyConfig(kind=ConfigKind.COMPANY, name=name, slug=resolved_slug)
+        write_declared_config(
+            config_path,
+            ConfigKind.COMPANY,
+            config.model_dump(mode="json", exclude_defaults=True),
+            schema_root=companies_root.parent,
         )
 
     if not _meta_path(company_dir).exists():

@@ -1,0 +1,87 @@
+{
+  "additionalProperties": true,
+  "description": "Company-tier configuration: per-company ``teleclaude.yml`` overlay.\n\nFolder-discovered under ``~/.teleclaude/companies/<slug>/`` (the\n``COMPANIES_ROOT`` tree) \u2014 the company-scoped twin of the per-person tier.\nComposed into the effective config alongside ``project`` (not workspace-type\nkeyed): resolved from the active project's ``company`` membership. ERP is the\nsystem of record; every real company detail resolves through ``erp_id`` and is\nnever duplicated here \u2014 the profile is thin context-scaffolding. ``extra=allow``\nfor additive growth.",
+  "properties": {
+    "kind": {
+      "const": "company",
+      "tier": "internal",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Name"
+    },
+    "slug": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Slug"
+    },
+    "git": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Git"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "erp_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Erp Id"
+    },
+    "owner": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owner"
+    }
+  },
+  "required": ["kind"],
+  "title": "CompanyConfig",
+  "type": "object"
+}

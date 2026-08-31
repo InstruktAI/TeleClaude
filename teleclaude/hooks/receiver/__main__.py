@@ -15,8 +15,8 @@ _PACKAGE_PARENT = Path(__file__).resolve().parents[3]
 if str(_PACKAGE_PARENT) not in sys.path:
     sys.path.append(str(_PACKAGE_PARENT))
 
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.hooks.receiver_args import build_receiver_arg_parser
-from teleclaude.project_root import resolve_project_root
 
 # Resolve the main repo root (worktree-safe), then re-exec under the project venv when
 # needed. PATH may resolve python3 to system Python, which lacks the project deps.
