@@ -40,7 +40,7 @@ from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_
 from teleclaude.core.next_machine.provenance import refresh_referenced_paths, sync_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.project_root import resolve_project_root
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.state_value import StateValue
 

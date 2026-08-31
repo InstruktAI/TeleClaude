@@ -10,13 +10,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import NotRequired, TypedDict
+from typing import Final, NotRequired, TypedDict
 
 import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.loader import load_project_config
+from teleclaude.config.schema import ConfigKind
 from teleclaude.constants import (
     SNIPPET_VISIBILITY_INTERNAL,
     SNIPPET_VISIBILITY_VALUES,
@@ -37,6 +39,8 @@ from teleclaude.snippet_validation import (
 __all__ = ["load_domains"]
 
 logger = get_logger(__name__)
+
+_EMPTY_PROJECT_CONFIG_DOCUMENT: Final[Mapping[str, object]] = {"business": {}}
 
 
 def _teleclaude_root() -> str:
@@ -242,10 +246,7 @@ def ensure_project_config(project_root: Path) -> None:
     config_path = project_root / ConfigFileName.OVERLAY
     if config_path.exists():
         return
-    config_path.write_text(
-        "business: {}\n",
-        encoding="utf-8",
-    )
+    write_declared_config(config_path, ConfigKind.PROJECT, _EMPTY_PROJECT_CONFIG_DOCUMENT, schema_root=project_root)
 
 
 def get_project_slug(project_root: Path) -> str:

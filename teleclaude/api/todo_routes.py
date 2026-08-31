@@ -70,12 +70,12 @@ from teleclaude.core.next_machine.state_io import initial_todo_state_for_kind
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import HolderTransitionRefused, get_todos_db
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
-from teleclaude.project_root import resolve_project_root
 from teleclaude.snippet_validation import snippet_body_digest
 from teleclaude.types.creation_record import EntryPoint
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES

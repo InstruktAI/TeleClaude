@@ -10,13 +10,26 @@ import json
 
 from pydantic import BaseModel
 
-from teleclaude.config.schema import GlobalConfig, PersonConfig, ProjectConfig
+from teleclaude.config.schema import CompanyConfig, ConfigKind, GlobalConfig, PersonConfig, ProjectConfig
+from teleclaude.core.models import JsonDict
 
 _MODELS: list[tuple[str, type[BaseModel]]] = [
     ("Global Config", GlobalConfig),
     ("Project Config", ProjectConfig),
     ("Person Config", PersonConfig),
 ]
+
+_TIER_MODELS: dict[ConfigKind, type[BaseModel]] = {
+    ConfigKind.GLOBAL: GlobalConfig,
+    ConfigKind.PROJECT: ProjectConfig,
+    ConfigKind.PERSON: PersonConfig,
+    ConfigKind.COMPANY: CompanyConfig,
+}
+
+
+def export_tier_schemas() -> dict[ConfigKind, JsonDict]:
+    """Return one JSON Schema document for each declared configuration tier."""
+    return {kind: model.model_json_schema() for kind, model in _TIER_MODELS.items()}
 
 
 def export_config_markdown() -> str:

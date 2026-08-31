@@ -58,10 +58,10 @@ from teleclaude.core.next_machine.slug_resolution import (
     effective_delivered_slugs_for_dependencies,
     effective_prepared_slugs_for_dependencies,
 )
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
-from teleclaude.project_root import resolve_project_root
 from teleclaude.types.lifecycle import LifecyclePhase
 
 logger = get_logger(__name__)

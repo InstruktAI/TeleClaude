@@ -112,6 +112,8 @@ print_header() {
 ensure_teleclaude_yaml() {
     if [ ! -f "$INSTALL_DIR/teleclaude.yml" ]; then
         cat > "$INSTALL_DIR/teleclaude.yml" <<'EOF'
+# yaml-language-server: $schema=schemas/teleclaude-global.schema.json
+kind: global
 business:
   domains:
     software-development: docs

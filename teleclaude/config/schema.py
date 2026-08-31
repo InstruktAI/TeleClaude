@@ -15,6 +15,15 @@ from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.slug import validate_slug
 
 
+class ConfigKind(StrEnum):
+    """Identity declared by each same-named configuration file."""
+
+    GLOBAL = "global"
+    PROJECT = "project"
+    PERSON = "person"
+    COMPANY = "company"
+
+
 def normalize_env_allow_list(value: list[str]) -> list[str]:
     """Validate and de-duplicate agent-session environment variable names."""
     valid_name = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -495,6 +504,7 @@ class ProjectConfig(BaseModel):
     """
 
     model_config = ConfigDict(extra="allow")
+    kind: Literal[ConfigKind.PROJECT] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     project_slug: str | None = None
     project_name: str | None = None
     description: str | None = None
@@ -573,6 +583,7 @@ class GlobalConfig(BaseModel):
     """
 
     model_config = ConfigDict(extra="allow")
+    kind: Literal[ConfigKind.GLOBAL] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     env_allow_list: list[str] = []
     people: list[PersonEntry] = []
     subscriptions: list[SubscriptionEntry] = []
@@ -623,6 +634,7 @@ class PersonConfig(BaseModel):
     """Per-person configuration."""
 
     model_config = ConfigDict(extra="allow")
+    kind: Literal[ConfigKind.PERSON] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     creds: CredsConfig = CredsConfig()
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []
@@ -684,6 +696,7 @@ class CompanyConfig(BaseModel):
     """
 
     model_config = ConfigDict(extra="allow")
+    kind: Literal[ConfigKind.COMPANY] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     name: str | None = None
     slug: str | None = None
     git: str | None = None

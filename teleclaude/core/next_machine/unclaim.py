@@ -7,8 +7,8 @@ from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classif
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.session_hold import _emit_todo_updated
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.project_root import resolve_project_root
 
 
 def _refusal(message: str) -> str:

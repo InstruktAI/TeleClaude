@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.project_root import resolve_project_root
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 
 _STATE_DIRNAME = ".teleclaude"
 _BLUEPRINT_DIRNAME = "blueprint"

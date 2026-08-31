@@ -1,0 +1,699 @@
+{
+  "$defs": {
+    "BusinessConfig": {
+      "additionalProperties": true,
+      "description": "Business domain configuration.",
+      "properties": {
+        "publishes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PublishesEntry"
+          },
+          "title": "Publishes",
+          "type": "array"
+        }
+      },
+      "title": "BusinessConfig",
+      "type": "object"
+    },
+    "CapabilityConfig": {
+      "additionalProperties": true,
+      "description": "Subscription state for one project capability.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "CapabilityConfig",
+      "type": "object"
+    },
+    "ChannelSubscription": {
+      "additionalProperties": true,
+      "description": "A subscription that routes messages from a Redis Stream channel to a target.",
+      "properties": {
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filter"
+        },
+        "target": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Target",
+          "type": "object"
+        }
+      },
+      "required": ["channel"],
+      "title": "ChannelSubscription",
+      "type": "object"
+    },
+    "CheckpointActionConfig": {
+      "additionalProperties": true,
+      "description": "A project-declared checkpoint action (verb) overlaid on the base registry.",
+      "properties": {
+        "run": {
+          "minLength": 1,
+          "title": "Run",
+          "type": "string"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "main_only": {
+          "default": false,
+          "title": "Main Only",
+          "type": "boolean"
+        },
+        "precedence": {
+          "default": 0,
+          "title": "Precedence",
+          "type": "integer"
+        },
+        "evidence_must_follow_last_mutation": {
+          "default": false,
+          "title": "Evidence Must Follow Last Mutation",
+          "type": "boolean"
+        }
+      },
+      "required": ["run"],
+      "title": "CheckpointActionConfig",
+      "type": "object"
+    },
+    "CheckpointBindingConfig": {
+      "additionalProperties": true,
+      "description": "Maps a scope to the action ids a matching changed file owes.",
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/CheckpointScopeConfig",
+          "default": {
+            "include": [],
+            "exclude": [],
+            "override": []
+          }
+        },
+        "actions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Actions",
+          "type": "array"
+        }
+      },
+      "title": "CheckpointBindingConfig",
+      "type": "object"
+    },
+    "CheckpointCodeConfig": {
+      "additionalProperties": true,
+      "description": "The conventional ``code`` kind: a scope onto which base ``test`` / ``log-check`` attach.",
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/CheckpointScopeConfig",
+          "default": {
+            "include": [],
+            "exclude": [],
+            "override": []
+          }
+        }
+      },
+      "title": "CheckpointCodeConfig",
+      "type": "object"
+    },
+    "CheckpointConfig": {
+      "additionalProperties": true,
+      "description": "Project checkpoint maintenance overlay merged atop the platform-universal base.\n\nAuthored at analyze-time by intelligence (``telec projects analyze``) per\n``project/procedure/checkpoint-overlay-projection``; consumed structurally by\nthe checkpoint engine. An unreadable overlay degrades to base-only (fail-open).",
+      "properties": {
+        "actions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CheckpointActionConfig"
+          },
+          "default": {},
+          "title": "Actions",
+          "type": "object"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointCodeConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "bindings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CheckpointBindingConfig"
+          },
+          "title": "Bindings",
+          "type": "array"
+        },
+        "docs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointExtraActionsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "agents": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointExtraActionsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "CheckpointConfig",
+      "type": "object"
+    },
+    "CheckpointExtraActionsConfig": {
+      "additionalProperties": true,
+      "description": "Optional extra actions appended atop a conventional base binding (``docs`` / ``agents``).",
+      "properties": {
+        "actions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Actions",
+          "type": "array"
+        }
+      },
+      "title": "CheckpointExtraActionsConfig",
+      "type": "object"
+    },
+    "CheckpointScopeConfig": {
+      "additionalProperties": true,
+      "description": "A glob scope: ``include`` minus ``exclude``, re-added by ``override``.",
+      "properties": {
+        "include": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Include",
+          "type": "array"
+        },
+        "exclude": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude",
+          "type": "array"
+        },
+        "override": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Override",
+          "type": "array"
+        }
+      },
+      "title": "CheckpointScopeConfig",
+      "type": "object"
+    },
+    "HooksConfig": {
+      "additionalProperties": true,
+      "description": "Hooks and subscriptions configuration.",
+      "properties": {
+        "inbound": {
+          "additionalProperties": {
+            "$ref": "#/$defs/InboundSourceConfig"
+          },
+          "default": {},
+          "title": "Inbound",
+          "type": "object"
+        },
+        "subscriptions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SubscriptionConfig"
+          },
+          "title": "Subscriptions",
+          "type": "array"
+        }
+      },
+      "title": "HooksConfig",
+      "type": "object"
+    },
+    "InboundSourceConfig": {
+      "additionalProperties": true,
+      "description": "Inbound webhook source configuration.",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "verify_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verify Token"
+        },
+        "secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Secret"
+        },
+        "normalizer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalizer"
+        }
+      },
+      "title": "InboundSourceConfig",
+      "type": "object"
+    },
+    "JobScheduleConfig": {
+      "additionalProperties": true,
+      "description": "Job scheduling and execution configuration.",
+      "properties": {
+        "category": {
+          "default": "subscription",
+          "enum": ["subscription", "system"],
+          "title": "Category",
+          "type": "string"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobWhenConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "enum": ["hourly", "daily", "weekly", "monthly"],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule"
+        },
+        "preferred_hour": {
+          "default": 6,
+          "maximum": 23,
+          "minimum": 0,
+          "title": "Preferred Hour",
+          "type": "integer"
+        },
+        "preferred_weekday": {
+          "default": 0,
+          "maximum": 6,
+          "minimum": 0,
+          "title": "Preferred Weekday",
+          "type": "integer"
+        },
+        "preferred_day": {
+          "default": 1,
+          "maximum": 31,
+          "minimum": 1,
+          "title": "Preferred Day",
+          "type": "integer"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        },
+        "script": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Script"
+        },
+        "job": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job"
+        },
+        "agent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent"
+        },
+        "thinking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "fast",
+          "title": "Thinking Mode"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout"
+        }
+      },
+      "title": "JobScheduleConfig",
+      "type": "object"
+    },
+    "JobWhenConfig": {
+      "additionalProperties": true,
+      "description": "Job scheduling time configuration.",
+      "properties": {
+        "every": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Every"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "weekdays": {
+          "default": [],
+          "items": {
+            "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            "type": "string"
+          },
+          "title": "Weekdays",
+          "type": "array"
+        }
+      },
+      "title": "JobWhenConfig",
+      "type": "object"
+    },
+    "PublishesEntry": {
+      "additionalProperties": true,
+      "description": "A published domain and its required always-on activation trigger.\n\nWith domain-resident triggered procedures scoped out of the always-on\nglobal catalog, this trigger is a published domain's only always-on\ntripwire, so both fields are required \u2014 a domain must never be\ndeliverable undiscoverable.",
+      "properties": {
+        "slug": {
+          "minLength": 1,
+          "title": "Slug",
+          "type": "string"
+        },
+        "trigger": {
+          "title": "Trigger",
+          "type": "string"
+        }
+      },
+      "required": ["slug", "trigger"],
+      "title": "PublishesEntry",
+      "type": "object"
+    },
+    "SubscriptionConfig": {
+      "additionalProperties": true,
+      "description": "Hook subscription configuration.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "contract": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Contract",
+          "type": "object"
+        },
+        "target": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Target",
+          "type": "object"
+        }
+      },
+      "required": ["id"],
+      "title": "SubscriptionConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "Project-level configuration: per-project ``teleclaude.yml`` overlay.\n\nThis is the project-scoped overlay, not the machine runtime config \u2014 the\npublic/editable machine surface is declared by the per-field ``tier`` markers\non ``TeleclaudeConfig`` (``project/policy/config-public-surface``). Keys that\nbelong machine-wide (the release channel, the workflow control plane) live on\nthe machine config, not here.",
+  "properties": {
+    "kind": {
+      "const": "project",
+      "tier": "internal",
+      "title": "Kind",
+      "type": "string"
+    },
+    "project_slug": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Project Slug"
+    },
+    "project_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Project Name"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "company": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Company"
+    },
+    "env_allow_list": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Env Allow List",
+      "type": "array"
+    },
+    "frontend_root": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Frontend Root"
+    },
+    "business": {
+      "$ref": "#/$defs/BusinessConfig",
+      "default": {
+        "publishes": []
+      }
+    },
+    "hooks": {
+      "$ref": "#/$defs/HooksConfig",
+      "default": {
+        "inbound": {},
+        "subscriptions": []
+      }
+    },
+    "jobs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JobScheduleConfig"
+      },
+      "default": {},
+      "title": "Jobs",
+      "type": "object"
+    },
+    "channel_subscriptions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ChannelSubscription"
+      },
+      "title": "Channel Subscriptions",
+      "type": "array"
+    },
+    "checkpoint": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CheckpointConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "code": {
+      "$ref": "#/$defs/CapabilityConfig",
+      "default": {
+        "enabled": true
+      }
+    },
+    "docs": {
+      "$ref": "#/$defs/CapabilityConfig",
+      "default": {
+        "enabled": true
+      }
+    },
+    "agents": {
+      "$ref": "#/$defs/CapabilityConfig",
+      "default": {
+        "enabled": true
+      }
+    }
+  },
+  "required": ["kind"],
+  "title": "ProjectConfig",
+  "type": "object"
+}

@@ -13,7 +13,10 @@ from ruamel.yaml import YAML
 
 from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
 from teleclaude.config import config, config_path
-from teleclaude.config.loader import _atomic_yaml_write
+from teleclaude.config.advancement import advance_reachable_roots
+from teleclaude.config.declaration import write_declared_config
+from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
+from teleclaude.config.schema import ConfigKind
 from teleclaude.docs_index import ensure_project_config
 from teleclaude.git import Repo
 from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
@@ -95,7 +98,7 @@ def _declare_inferred_capabilities(project_root: Path) -> Capabilities:
         raw[capability.value] = {_ENABLED_KEY: enabled}
         changed = True
     if changed:
-        _atomic_yaml_write(manifest_path, raw)
+        write_declared_config(manifest_path, ConfigKind.PROJECT, raw, schema_root=project_root)
     return resolve_capabilities(project_root)
 
 
@@ -151,7 +154,8 @@ def migrate_legacy_deployment_channel(source_path: Path, machine_config_path: Pa
         _write_deployment_block(machine_config_path, channel, pinned_minor)
 
     del source_doc["deployment"]
-    _atomic_yaml_write(source_path, source_doc)
+    source_kind = ConfigKind.GLOBAL if source_path == GLOBAL_CONFIG_PATH else ConfigKind.PROJECT
+    write_declared_config(source_path, source_kind, source_doc, schema_root=source_path.parent)
     logger.info("Migrated legacy deployment block from %s to %s", source_path, machine_config_path)
     return True
 
@@ -314,6 +318,7 @@ def init_project(project_root: Path) -> None:
         install_code_hooks(project_root)
     _ensure_project_slug(project_root)
     register_root(project_root=project_root)
+    advance_reachable_roots()
     seed_event_domains(project_root)
 
     # Bootstrap help desk workspace if running from the TeleClaude project

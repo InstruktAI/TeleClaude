@@ -41,11 +41,11 @@ from teleclaude.core.next_machine.slug_resolution import resolve_holder_children
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
 from teleclaude.events.envelope import EventVisibility
-from teleclaude.project_root import resolve_project_root
 
 logger = get_logger(__name__)
 

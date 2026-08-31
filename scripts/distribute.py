@@ -44,10 +44,19 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from teleclaude.capabilities import resolve_capabilities
+from teleclaude.config.declaration import schema_filename
+from teleclaude.config.schema import ConfigKind
+from teleclaude.config.schema_export import export_tier_schemas
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.domains import publishes_for_root, triggers_for_root
 from teleclaude.global_skills import compose_global_skill_catalog, global_skill_source_root
-from teleclaude.paths import COMMANDS_DIR, DEPLOYED_COMMANDS_MANIFEST_PATH, GLOBAL_DOCS_DIR, ConfigFileName
+from teleclaude.paths import (
+    COMMANDS_DIR,
+    DEPLOYED_COMMANDS_MANIFEST_PATH,
+    GLOBAL_DOCS_DIR,
+    TELECLAUDE_HOME,
+    ConfigFileName,
+)
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
@@ -84,6 +93,7 @@ _MALFORMED_COMMANDS_MANIFEST_MESSAGE = (
 _COMMANDS_MANIFEST_EXPECTED_OBJECT_DETAIL = "expected an object"
 _COMMANDS_MANIFEST_EXPECTED_SCOPE_ENTRIES_DETAIL = "expected scope-to-list entries"
 _COMMANDS_MANIFEST_BASENAME_DETAIL = "command names must be basenames"
+_CONFIG_SCHEMA_DIRECTORY = "schemas"
 
 logger = get_logger(__name__)
 
@@ -1491,6 +1501,22 @@ def _write_project_agents(
     claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
 
 
+def _write_config_schemas(schema_dir: Path) -> None:
+    """Write the generated JSON Schema documents into one schema directory."""
+    schema_dir.mkdir(parents=True, exist_ok=True)
+    for kind, schema in export_tier_schemas().items():
+        output_path = schema_dir / schema_filename(kind)
+        output_path.write_text(json.dumps(schema, indent=2) + _NEWLINE, encoding=_UTF8)
+
+
+def _deploy_project_config_schema(project_root: Path, source_schema_dir: Path) -> None:
+    """Copy the project schema beside the project's configuration file."""
+    target_schema_dir = project_root / _CONFIG_SCHEMA_DIRECTORY
+    target_schema_dir.mkdir(parents=True, exist_ok=True)
+    project_schema = schema_filename(ConfigKind.PROJECT)
+    shutil.copy2(source_schema_dir / project_schema, target_schema_dir / project_schema)
+
+
 def _render_global_skill_catalog(
     catalog_master: Path,
     *,
@@ -1817,6 +1843,12 @@ def main() -> None:  # noqa: C901
             raise SystemExit(1)
     if validate_only:
         return
+
+    source_schema_dir = Path(teleclaude_root) / _CONFIG_SCHEMA_DIRECTORY
+    _write_config_schemas(source_schema_dir)
+    if args.deploy:
+        _write_config_schemas(TELECLAUDE_HOME / _CONFIG_SCHEMA_DIRECTORY)
+        _deploy_project_config_schema(project_root_path, source_schema_dir)
 
     dist_dir = "dist"
     if agents_enabled:

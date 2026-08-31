@@ -16,6 +16,7 @@ from pathlib import Path
 
 from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.config._blueprint import generate_sample_file
+from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
 from teleclaude.domains import publishes_for_root
@@ -87,6 +88,7 @@ def sync(
     # project manifest. Domain publication is config-declared; global skill
     # publication is folder-declared. Neither needs a separate init step.
     _register_publisher_root(project_root)
+    advance_reachable_roots()
 
     # Phase 2: Record provenance
     if capabilities.docs:

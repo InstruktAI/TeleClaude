@@ -58,7 +58,7 @@ from teleclaude.config import (
 )
 from teleclaude.config._summarizer import parse_summarizer_config
 from teleclaude.config.loader import list_company_configs
-from teleclaude.config.schema import CompanyConfig, PersonEntry
+from teleclaude.config.schema import CompanyConfig, ConfigKind, PersonEntry
 from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 
@@ -420,7 +420,7 @@ class ConfigContent(
             # renders the schema fields so the tab is never blank.
             if not self._companies_data:
                 return reflect_schema(
-                    CompanyConfig(),
+                    CompanyConfig(kind=ConfigKind.COMPANY),
                     prefix="company",
                     section="Company",
                     owning_source="per-company",

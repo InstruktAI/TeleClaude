@@ -12,14 +12,15 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _usage
+from teleclaude.config.context_root import resolve_context_root
 from teleclaude.config.loader import load_app_config
+from teleclaude.config.schema import ConfigKind
 from teleclaude.context_selector import build_context_output
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.domains import valid_domains
 from teleclaude.project_root import (
     resolve_invocation_cwd,
-    resolve_invocation_project_root,
-    resolve_workspace_root,
 )
 from teleclaude.snippet_validation import SnippetScope
 
@@ -98,11 +99,12 @@ def _emit_retrieval_accepted(
 
 def _resolve_docs_context() -> DocsContext:
     invocation_cwd = resolve_invocation_cwd()
-    try:
-        resolve_workspace_root(invocation_cwd)
-    except FileNotFoundError:
+    context = resolve_context_root(invocation_cwd)
+    if context is None:
         return DocsContext(project_root=invocation_cwd, include_registered_projects=True)
-    return DocsContext(project_root=resolve_invocation_project_root(), include_registered_projects=False)
+    if context.kind is ConfigKind.PROJECT:
+        return DocsContext(project_root=resolve_project_state_root(context.path), include_registered_projects=False)
+    return DocsContext(project_root=context.path, include_registered_projects=False)
 
 
 def _current_terminal_role() -> str | None:

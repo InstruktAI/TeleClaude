@@ -1,0 +1,477 @@
+{
+  "$defs": {
+    "CredsConfig": {
+      "additionalProperties": true,
+      "description": "Multi-platform credential container.",
+      "properties": {
+        "telegram": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TelegramCreds"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "discord": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiscordCreds"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "whatsapp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WhatsAppCreds"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "CredsConfig",
+      "type": "object"
+    },
+    "DiscordCreds": {
+      "additionalProperties": true,
+      "description": "Discord platform credentials.",
+      "properties": {
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        },
+        "nick": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nick"
+        },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        }
+      },
+      "required": ["user_id"],
+      "title": "DiscordCreds",
+      "type": "object"
+    },
+    "JobSubscription": {
+      "additionalProperties": true,
+      "description": "Job-triggered subscription.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "notification": {
+          "$ref": "#/$defs/SubscriptionNotification",
+          "default": {
+            "preferred_channel": "telegram",
+            "email": null
+          }
+        },
+        "type": {
+          "const": "job",
+          "default": "job",
+          "title": "Type",
+          "type": "string"
+        },
+        "job": {
+          "title": "Job",
+          "type": "string"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobWhenConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": ["job"],
+      "title": "JobSubscription",
+      "type": "object"
+    },
+    "JobWhenConfig": {
+      "additionalProperties": true,
+      "description": "Job scheduling time configuration.",
+      "properties": {
+        "every": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Every"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "weekdays": {
+          "default": [],
+          "items": {
+            "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            "type": "string"
+          },
+          "title": "Weekdays",
+          "type": "array"
+        }
+      },
+      "title": "JobWhenConfig",
+      "type": "object"
+    },
+    "MessagingChannel": {
+      "description": "Named delivery channel vocabulary for person-addressed messaging routing.",
+      "enum": ["telegram", "discord", "whatsapp", "email"],
+      "title": "MessagingChannel",
+      "type": "string"
+    },
+    "OutputVisibilitySettings": {
+      "additionalProperties": true,
+      "description": "Per-person visibility preferences for projected output categories.",
+      "properties": {
+        "system_messages": {
+          "anyOf": [
+            {
+              "enum": ["mobile", "web", "both", "off"],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Messages"
+        },
+        "tool_calls": {
+          "anyOf": [
+            {
+              "enum": ["mobile", "web", "both", "off"],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Calls"
+        }
+      },
+      "title": "OutputVisibilitySettings",
+      "type": "object"
+    },
+    "PersonChipColor": {
+      "additionalProperties": true,
+      "description": "Per-person chip color: a background and a text color, each theme-split.\n\nEvery leaf is independently optional and defaults to ``None``. ``None`` is\nthe renderer-default signal, not a stored color \u2014 the chip renderer fills it\nfrom the theme for the active mode. The nested pairs default to empty\ninstances so the whole block can be instantiated as an empty tree and a\nsingle leaf can be set without pre-populating its siblings.",
+      "properties": {
+        "background": {
+          "$ref": "#/$defs/PersonChipColorPair",
+          "default": {
+            "light": null,
+            "dark": null
+          }
+        },
+        "text": {
+          "$ref": "#/$defs/PersonChipColorPair",
+          "default": {
+            "light": null,
+            "dark": null
+          }
+        }
+      },
+      "title": "PersonChipColor",
+      "type": "object"
+    },
+    "PersonChipColorPair": {
+      "additionalProperties": true,
+      "description": "A theme-split color pair: one value for light mode, one for dark.",
+      "properties": {
+        "light": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Light"
+        },
+        "dark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dark"
+        }
+      },
+      "title": "PersonChipColorPair",
+      "type": "object"
+    },
+    "PersonSettings": {
+      "additionalProperties": true,
+      "description": "Per-person settings container.",
+      "properties": {
+        "output_visibility": {
+          "$ref": "#/$defs/OutputVisibilitySettings",
+          "default": {
+            "system_messages": null,
+            "tool_calls": null
+          }
+        }
+      },
+      "title": "PersonSettings",
+      "type": "object"
+    },
+    "SubscriptionNotification": {
+      "additionalProperties": true,
+      "description": "Notification channel preference for a subscription.",
+      "properties": {
+        "preferred_channel": {
+          "default": "telegram",
+          "enum": ["telegram", "discord", "whatsapp", "email"],
+          "title": "Preferred Channel",
+          "type": "string"
+        },
+        "email": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Email"
+        }
+      },
+      "title": "SubscriptionNotification",
+      "type": "object"
+    },
+    "TelegramCreds": {
+      "additionalProperties": true,
+      "description": "Telegram platform credentials.",
+      "properties": {
+        "user_name": {
+          "title": "User Name",
+          "type": "string"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "integer"
+        },
+        "chat_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chat Id"
+        }
+      },
+      "required": ["user_name", "user_id"],
+      "title": "TelegramCreds",
+      "type": "object"
+    },
+    "WhatsAppCreds": {
+      "additionalProperties": true,
+      "description": "WhatsApp platform credentials.",
+      "properties": {
+        "phone_number": {
+          "title": "Phone Number",
+          "type": "string"
+        }
+      },
+      "required": ["phone_number"],
+      "title": "WhatsAppCreds",
+      "type": "object"
+    },
+    "YoutubeSubscription": {
+      "additionalProperties": true,
+      "description": "YouTube channel subscription.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "notification": {
+          "$ref": "#/$defs/SubscriptionNotification",
+          "default": {
+            "preferred_channel": "telegram",
+            "email": null
+          }
+        },
+        "type": {
+          "const": "youtube",
+          "default": "youtube",
+          "title": "Type",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "tags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": ["source"],
+      "title": "YoutubeSubscription",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "Per-person configuration.",
+  "properties": {
+    "kind": {
+      "const": "person",
+      "tier": "internal",
+      "title": "Kind",
+      "type": "string"
+    },
+    "creds": {
+      "$ref": "#/$defs/CredsConfig",
+      "default": {
+        "telegram": null,
+        "discord": null,
+        "whatsapp": null
+      }
+    },
+    "subscriptions": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "job": "#/$defs/JobSubscription",
+            "youtube": "#/$defs/YoutubeSubscription"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/JobSubscription"
+          },
+          {
+            "$ref": "#/$defs/YoutubeSubscription"
+          }
+        ]
+      },
+      "tier": "internal",
+      "title": "Subscriptions",
+      "type": "array"
+    },
+    "interests": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Interests",
+      "type": "array"
+    },
+    "companies": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Companies",
+      "type": "array"
+    },
+    "settings": {
+      "$ref": "#/$defs/PersonSettings",
+      "default": {
+        "output_visibility": {
+          "system_messages": null,
+          "tool_calls": null
+        }
+      }
+    },
+    "color": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PersonChipColor"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "preferred_channel": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MessagingChannel"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": ["kind"],
+  "title": "PersonConfig",
+  "type": "object"
+}

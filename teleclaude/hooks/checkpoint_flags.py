@@ -12,8 +12,8 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.paths import TMP_SESSIONS_DIR
-from teleclaude.project_root import resolve_project_root
 
 logger = get_logger("teleclaude.hooks.checkpoint_flags")
 
