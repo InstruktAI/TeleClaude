@@ -267,7 +267,6 @@ And the non-checkout directory carries an empty todo list
 And no todo store is resolved, opened, or created for the non-checkout directory
 ```
 
-<!-- planned:config-kind-declaration -->
 #### UC-DL3: Startup work added to a stage neither extends nor reorders the boot prefix
 
 ```
@@ -276,7 +275,6 @@ When startup runs
 Then the documented stage order is unchanged
 And the contributed work completes inside its own stage rather than deferring a later one
 ```
-<!-- /planned:config-kind-declaration -->
 
 ### Cross-context references
 

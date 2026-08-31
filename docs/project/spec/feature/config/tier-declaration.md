@@ -1,7 +1,9 @@
 ---
-description: "Every same-named configuration file (global, project, person, company) declares its own tier, and resolution reads that declaration — the nearest anchoring tier declaration establishes the context root, a company declaration terminates context resolution with no context root, and git topology answers only where a project's shared state lives."
-delivered_by:
-  - config-kind-declaration
+description: Every same-named configuration file (global, project, person, company)
+  declares its own tier, and resolution reads that declaration — the nearest anchoring
+  tier declaration establishes the context root, a company declaration terminates
+  context resolution with no context root, and git topology answers only where a project's
+  shared state lives.
 ---
 
 # Tier Declaration — Spec

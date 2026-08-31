@@ -14,16 +14,6 @@ The Teleclaude Config surface defines how TeleClaude configuration is initialize
 
 These surfaces are related but not interchangeable. The config wizard, `_ADAPTER_ENV_VARS`, and `GuidanceRegistry` cover the user-facing `teleclaude.yml` / environment-variable surface. Daemon-only `config.yml` keys are documented here for runtime correctness, but they do not automatically imply new wizard steps or env-var registry entries.
 
-<!-- planned-change:config-kind-declaration -->
-### One filename, four tiers
-
-Configuration lives in one filename at four tiers. `GlobalConfig`,
-`ProjectConfig`, `PersonConfig`, and `CompanyConfig` are separate Pydantic
-models: global config owns the machine-wide keys, while the project config owns
-repository-local metadata and explicitly rejects global-only keys (`people`,
-`ops`, `creds`, `notifications`, `timezone`). See
-`teleclaude/config/schema.py` for the authoritative model definitions.
-<!-- change:config-kind-declaration -->
 ### One filename, four tiers
 
 Configuration lives in one filename at four tiers, and each file declares
@@ -33,7 +23,6 @@ machine-wide keys, while the project config owns repository-local metadata and
 explicitly rejects global-only keys (`people`, `ops`, `creds`,
 `notifications`, `timezone`). See `teleclaude/config/schema.py` for the
 authoritative model definitions.
-<!-- /planned-change:config-kind-declaration -->
 
 | File              | Location                       | Model          | Owns                                                                       |
 | ----------------- | ------------------------------ | -------------- | -------------------------------------------------------------------------- |
@@ -49,7 +38,6 @@ authoritative model definitions.
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `members` (folder-discovered; composed alongside `project`) |
 <!-- /planned-change:company-member-roster -->
 
-<!-- planned:config-kind-declaration -->
 #### Tier declaration and editor schemas
 
 Every one of the four files carries a `kind` key naming its own tier —
@@ -81,7 +69,6 @@ identically.
 `kind` names a file's tier. It is unrelated to the machine-config field
 exposure levels described below, which govern which `config.yml` fields reach
 the generated sample and the operator surface.
-<!-- /planned:config-kind-declaration -->
 
 Release-channel settings (`deployment.channel`, `deployment.pinned_minor`) are not
 project-level keys. They govern TeleClaude's own self-update — a machine-wide

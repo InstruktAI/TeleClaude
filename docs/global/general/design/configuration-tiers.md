@@ -65,16 +65,7 @@ implies, and the portion of those sources the caller may see.
   business and which of its projects each person is assigned to, and no read
   path consults it.
 <!-- /planned-change:company-member-roster -->
-<!-- planned-change:config-kind-declaration -->
-- **Today, invocation resolution is anchored on git.** Resolving the root for an
-  invocation walks upward for a `.git` directory and only then requires
-  `teleclaude.yml` beside it, so a folder holding a valid configuration with no
-  repository above it fails. This is a defect of the current implementation, not
-  a property of the model.
-<!-- change:config-kind-declaration -->
-<!-- /planned-change:config-kind-declaration -->
 
-<!-- planned:config-kind-declaration -->
 - **Meaning comes from the file, never from where it sits.** Each configuration
   file declares its own kind, and resolution reads that declaration. Location is
   how conventional tiers are found; it is never what makes them mean something.
@@ -86,7 +77,6 @@ implies, and the portion of those sources the caller may see.
   against.** Standing inside one confers nothing: a company declaration
   terminates context resolution with no context root, and an invocation from
   within one behaves as an invocation with no context root.
-<!-- /planned:config-kind-declaration -->
 
 <!-- planned:docs-tier-layering -->
 - **Belonging is binary for reading a company.** A company role carries business
