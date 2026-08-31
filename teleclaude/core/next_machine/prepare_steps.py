@@ -462,8 +462,6 @@ async def _prepare_dispatch(
         drift_anomaly_blockers = _drift_anomaly_blockers(state, drift_result)
         if drift_anomaly_blockers:
             return _drift_anomaly_halt_instruction(slug, drift_anomaly_blockers, drift)
-        if _has_status(drift, DRIFT_SUBSTANTIVE):
-            return _drift_reprepare_instruction(slug, drift)
         if _has_status(drift, DRIFT_PENDING):
             return await _dispatch_worker(
                 db=db,
