@@ -23,7 +23,7 @@ visibility: 'public'
 <!-- planned-change:project-local-agent-artifacts -->
 - Global artifact sources live under `agents/`; project-local artifacts live under `.agents/`.
 <!-- change:project-local-agent-artifacts -->
-- Global artifact sources live under `agents/`; project-local artifacts live under `.teleclaude/`, whose `agents/`, `commands/`, and `skills/` siblings mirror the global layout.
+- Global artifact sources live under `agents/`; project-local artifacts live under `.teleclaude/`, whose `agents/`, `commands/`, and `skills/` siblings mirror the global layout. The superseded `.agents/` root is still served while it is deprecated, under the transition the global policy states.
 <!-- /planned-change:project-local-agent-artifacts -->
 - The global master file is `agents/AGENTS.global.md` and is only used for global artifacts.
 

@@ -396,6 +396,30 @@ Scenario: UC-ARD20 A project carrying no artifact sources is unaffected
   And the project is not required to carry an artifact-source directory
 ```
 
+#### UC-ARD21: The superseded source root keeps working while it is deprecated
+
+```
+Scenario: UC-ARD21 The superseded source root keeps working while it is deprecated
+  Given a project carries agent artifacts under the superseded project-local source root
+  And sync is invoked in deploy mode from that project
+  When the local phase deploys
+  Then those artifacts are delivered exactly as they were before the canonical root existed
+  And the author is told that the root is deprecated and where its contents now belong
+  And no source file is moved on the author's behalf
+```
+
+#### UC-ARD22: The canonical source root wins when both roots carry the same artifact
+
+```
+Scenario: UC-ARD22 The canonical source root wins when both roots carry the same artifact
+  Given a project carries an artifact of the same kind and name under both the canonical and the superseded source root
+  And sync is invoked in deploy mode from that project
+  When the local phase deploys
+  Then the artifact from the canonical root is the one delivered
+  And the shadowed artifact is named to the author so the migration can be completed
+  And the deploy is not refused
+```
+
 <!-- /planned:project-local-agent-artifacts -->
 
 ### Cross-context references

@@ -11,6 +11,7 @@ visibility: 'public'
 - Project-local agent artifacts live under `.agents/`. Artifact types are treated equally: `agents/`, `commands/`, and `skills/` are all published and distributed.
 <!-- change:project-local-agent-artifacts -->
 - Project-local agent artifacts live under `.teleclaude/`, with `agents/`, `commands/`, and `skills/` as siblings directly beneath it — the root itself plays the role the mother repository's top-level artifact directory plays globally. Artifact types are treated equally: all three are published and distributed. A project's artifact sources are delivered only to that project's own agent runtime locations; they never reach a user-home or machine-global location.
+- `.agents/` is the superseded project-local source root. It is still read, and a project carrying sources there is delivered exactly as before, so no project repository is broken by the move. Sources there are reported as deprecated with the location they belong in; where both roots carry the same artifact the canonical root wins and the shadowed one is named. Retiring `.agents/` is a separate decision, taken when no project carries sources under it.
 <!-- /planned-change:project-local-agent-artifacts -->
 
 
