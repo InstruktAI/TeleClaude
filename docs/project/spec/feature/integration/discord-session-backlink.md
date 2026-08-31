@@ -17,12 +17,10 @@ context — its forum thread, team channel, or DM channel — without searching.
 This capability is the single construction point for Discord session
 backlinks.
 
-<!-- planned:session-jump-links -->
 
 Session enumeration carries a listed session's own address, so an agent holds
 that address at the moment it has identified the session it cares about.
 
-<!-- /planned:session-jump-links -->
 
 Person-addressed delivery (`telec message`) renders it when the
 request carries an originating session; any surface that later renders a
