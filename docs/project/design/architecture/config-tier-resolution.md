@@ -1,7 +1,7 @@
 ---
-description: How an invocation resolves the configuration tier that governs it and where a project's shared state lives — two questions, two published config-context resolvers, one reading the file's own declaration and one reading git topology.
-delivered_by:
-  - config-kind-declaration
+description: How an invocation resolves the configuration tier that governs it and
+  where a project's shared state lives — two questions, two published config-context
+  resolvers, one reading the file's own declaration and one reading git topology.
 visibility: internal
 ---
 

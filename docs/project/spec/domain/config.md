@@ -52,7 +52,6 @@ TeleClaudeNext.
   declaration is not owning what the facts mean; resolution belongs to
   `project/spec/domain/identity`.
 <!-- /planned:company-member-roster -->
-<!-- planned:config-kind-declaration -->
 - **Also published:** the context-root resolver — which tier governs an
   invocation, read from the nearest ancestor configuration file's own
   declaration. Consumers call it and never walk the ancestor chain or read a
@@ -62,7 +61,6 @@ TeleClaudeNext.
   to the context that creates linked worktrees and defines what they share.
   Carrying a configuration file is not an ownership basis. The decomposition is
   `project/design/architecture/config-tier-resolution`.
-<!-- /planned:config-kind-declaration -->
 
 ## See Also
 
