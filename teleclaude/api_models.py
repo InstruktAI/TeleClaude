@@ -207,6 +207,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
     agent_status: AgentStatusValue | None = None
     next_reminder_slug: str | None = None
     next_reminder_at: str | None = None
+    conversation_url: str | None = None
 
     @classmethod
     def from_core(cls, session: "SessionSnapshot", computer: str | None = None) -> "SessionDTO":
