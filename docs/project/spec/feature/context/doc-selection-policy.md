@@ -362,13 +362,13 @@ And snippets of every other tier are excluded
   `project_slug` that determines which IDs are "own" vs. "cross-project".
 
 <!-- planned:docs-tier-layering -->
-- **identity** — the resolved caller: their person identity, not only their
-  platform role, together with the company relationships and project assignments
-  that resolution reports. Read scope is derived from those resolved facts, and
-  this policy owns neither the resolution nor the declarations beneath it.
-- **config** — supplies each project's own declaration of its owning company,
-  and the catalog metadata this policy already consumes. It is read for
-  declarations, never for a caller's resolved relationships.
+- **identity** — the resolved caller: their person identity, their platform
+  role, and the company relationships and project assignments that resolution
+  reports. Read scope is derived from these resolved facts; this policy owns
+  neither the resolution nor the declarations beneath it.
+- **config** — supplies each project's own declaration of its owning company and
+  the catalog metadata this policy consumes. Declarations only; a caller's
+  resolved relationships come from identity.
 <!-- /planned:docs-tier-layering -->
 
 ## Known caveats

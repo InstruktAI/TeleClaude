@@ -18,13 +18,11 @@ Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path
 <!-- planned-change:docs-tier-layering -->
 - `domain` — knowledge domain (`general`, `<domain>` such as `software-development`, or `project`). **Derived** as the first path segment of the id.
 <!-- change:docs-tier-layering -->
-- `domain` — **Derived** as the first path segment of the id, so it holds either
-  a published knowledge domain (`software-development` and its peers) or a
-  structural marker. The structural markers are `general`, `project`, `person`,
-  and `company`; the last two are the tier markers person and company identities
-  begin with. A structural marker is not a published domain, so a listing
-  narrowed to requested domains excludes every snippet carrying one — person and
-  company material exactly as `general` and `project` material already are.
+- `domain` — **Derived** as the first path segment of the id. It holds either a
+  published knowledge domain (`software-development` and its peers) or a
+  structural marker: `general`, `project`, `person`, or `company`. The last two
+  are the tier markers that person and company identities begin with; a
+  structural marker is never a published domain.
 <!-- /planned-change:docs-tier-layering -->
 <!-- planned-change:docs-tier-layering -->
 - `scope` — `global` or `project`. **Derived** from the path (`docs/global/**` → `global`, `docs/project/**` → `project`).

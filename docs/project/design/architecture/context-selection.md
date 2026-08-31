@@ -120,9 +120,9 @@ authoring/editing baseline content.
 ### 3. Required Reads
 
 The required reads a returned body references are collected and reported as IDs
-alongside the content. Already-returned IDs are omitted, so the report names only
-what the caller does not yet hold. Nothing is fetched on the caller's behalf: the
-report is a pointer, and following it is another content request.
+alongside the content. IDs returned in the same response are omitted from that
+report. Nothing is fetched on the caller's behalf: the report is a pointer, and
+following it is another content request.
 
 ### 4. Scope Priority Ordering
 
