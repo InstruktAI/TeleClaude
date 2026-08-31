@@ -15,7 +15,11 @@ visibility: public
 
 Agent restart is the verb that swaps the agent CLI process inside an already-bound TeleClaude session without disturbing the session ledger row, the hosting pane that runs it, or the native transcript chain. A caller asks the agent_runtime service to restart the agent for a given session; the service validates that the session is restart-eligible, accepts the request, and performs the swap asynchronously. The handler terminates the agent process directly so a mid-tool-execution agent still exits, waits for the host shell to become quiescent, and relaunches the agent CLI with resume-from-transcript semantics — the agent reads its own transcript on startup and continues from where it left off.
 
+<!-- planned-change:restart-continuation-via-control-delivery -->
 A special `self` form is dispatched by orchestrators that want to restart themselves. The CLI verb `telec sessions restart self` resolves the caller's own session identity from the local identity record and asks the agent_runtime service to restart that session. The handler subscribes to a session-ready signal before issuing the relaunch (the agent's session start event can race the relaunch and emit readiness before any post-hoc subscriber attaches), waits for readiness, and injects a continuation stimulus message so the resumed agent has a fresh user turn to act on. Non-self restarts skip the stimulus — the existing transcript is allowed to dictate behavior.
+<!-- change:restart-continuation-via-control-delivery -->
+A special `self` form is dispatched by orchestrators that want to restart themselves. The CLI verb `telec sessions restart self` resolves the caller's own session identity from the local identity record and asks the agent_runtime service to restart that session. The handler subscribes to a session-ready signal before issuing the relaunch (the agent's session start event can race the relaunch and emit readiness before any post-hoc subscriber attaches), waits for readiness, and hands the continuation stimulus to control delivery. The resumed prompt receives only the standard wake marker; submitting that marker delivers the continuation as platform control context for the fresh turn. Non-self restarts skip the stimulus — the existing transcript is allowed to dictate behavior.
+<!-- /planned-change:restart-continuation-via-control-delivery -->
 
 ## Canonical fields
 
@@ -63,6 +67,7 @@ And the agent CLI replays its own transcript on startup so the resumed agent obs
 And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
 ```
 
+<!-- planned-change:restart-continuation-via-control-delivery -->
 #### UC-AR1: Self-restart submits the continuation stimulus through prompt-state delivery
 
 ```gherkin
@@ -80,7 +85,21 @@ And when a post-Enter observation shows the live prompt input is no longer effec
 And if `user_prompt_submit` arrives while prompt-state delivery is still observing or retrying, it also stops delivery as success but is not required for success
 And on readiness timeout, the handler emits a readiness-timeout event and posts a message to the user but does NOT submit the continuation envelope
 ```
+<!-- change:restart-continuation-via-control-delivery -->
+#### UC-AR1: Self-restart wakes the resumed agent without foregrounding the continuation
 
+```gherkin
+Given an agent restarts itself and its resumed prompt becomes ready
+When the platform supplies the fixed continuation stimulus for the fresh turn
+Then the continuation is accepted durably as platform control content
+And the only platform text entered into the foreground composer is `[TeleClaude Wake]`
+And submitting that wake delivers the continuation to the agent as control context
+And no paired restart-continuation block appears in the foreground composer
+And a readiness timeout leaves the session alive and reports that the continuation was not submitted
+```
+<!-- /planned-change:restart-continuation-via-control-delivery -->
+
+<!-- planned-change:restart-continuation-via-control-delivery -->
 #### UC-AR2: Self-restart retries submit only while the stimulus remains live
 
 ```gherkin
@@ -93,7 +112,21 @@ And while effective user input remains present in the live prompt input, it send
 And if the live prompt input becomes empty, generated-only, or replaced by a submitted/agent-active pane boundary, it stops sending Enter and reports success
 And the accepted occurrence is pasted exactly once with no duplicate acceptance or stimulus
 ```
+<!-- change:restart-continuation-via-control-delivery -->
+#### UC-AR2: Self-restart retries only the wake submission
 
+```gherkin
+Given one restart continuation is pending and its wake marker has entered the resumed prompt
+And the wake has not yet started a turn
+When prompt delivery retries submission
+Then it does not accept or paste another continuation payload
+And it does not paste another wake marker
+And it retries submission only while the existing wake remains live in the prompt
+And it stops once the wake has started a turn or no longer occupies the prompt
+```
+<!-- /planned-change:restart-continuation-via-control-delivery -->
+
+<!-- planned-change:restart-continuation-via-control-delivery -->
 #### UC-AR3: Self-restart fails loud on retry exhaustion
 
 ```
@@ -102,6 +135,18 @@ Or effective user input remains in the live prompt input after every bounded sub
 When the relevant retry budget is exhausted
 Then the handler reports failure and keeps the session alive, never silently dropping the stimulus
 ```
+<!-- change:restart-continuation-via-control-delivery -->
+#### UC-AR3: Self-restart fails loud when the wake cannot start a turn
+
+```gherkin
+Given a self-restart has durably accepted its continuation
+And the standard wake marker cannot start a turn within the bounded retry budget
+When wake delivery is exhausted
+Then the platform reports the delivery failure
+And the session remains alive
+And the continuation remains available for a later valid delivery boundary rather than being duplicated or silently dropped
+```
+<!-- /planned-change:restart-continuation-via-control-delivery -->
 
 #### UC-AR4: Non-self restart skips the continuation stimulus
 

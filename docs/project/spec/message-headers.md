@@ -87,7 +87,11 @@ for machine text.
 | ------------------------------------------------------ | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
 | `[TeleClaude Notification]`                            | legacy notification entries   | control  | paired      | no               | no                         |
 | `[TeleClaude Wake]`                                    | control-delivery idle wake    | control  | auto-closed | no               | no                         |
+<!-- planned-change:restart-continuation-via-control-delivery -->
 | `[TeleClaude Restart Continuation]`                    | agent restart                 | control  | paired      | no               | no                         |
+<!-- change:restart-continuation-via-control-delivery -->
+| `[TeleClaude Restart Continuation]`                    | historical restart entries    | control  | paired      | no               | no                         |
+<!-- /planned-change:restart-continuation-via-control-delivery -->
 | `[TeleClaude Checkpoint]`                              | checkpoint surface            | control  | paired      | no               | no                         |
 | `[Peer (session · author-token · utc-minute)]`         | peer segment header           | identity | paired      | yes              | yes                        |
 | `[Orchestrator (session) on computer · utc-minute]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
@@ -97,6 +101,14 @@ for machine text.
 | `[Tasker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Job Runner (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Agent - <agent> (session) on computer · utc-minute]` | caller-origin identity header | identity | paired      | yes              | yes                        |
+
+<!-- planned:restart-continuation-via-control-delivery -->
+Restart continuation remains a semantic control envelope at the runtime hook
+boundary. Its paired bracket form is recognized for historical transcript
+entries only. A resumed session receives `[TeleClaude Wake]` as the sole
+foreground marker, and the prompt-submission boundary carries the continuation
+body to the agent through the runtime's context-injection codec.
+<!-- /planned:restart-continuation-via-control-delivery -->
 
 A caller-origin identity header may carry an optional category segment, rendered
 as `[<role> - <category> (session) on computer · utc-minute]`; the agent form uses
