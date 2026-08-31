@@ -324,29 +324,76 @@ Scenario: UC-ARD14 Antigravity is served at its documented layout only
 
 <!-- planned:project-local-agent-artifacts -->
 
-#### UC-ARD15: Local-phase delivery is contained to the project that owns the source
+#### UC-ARD15: A project's own artifact sources are delivered to that project's runtimes
 
 ```
-Scenario: UC-ARD15 Local-phase delivery is contained to the project that owns the source
-  Given a project carries agent artifacts in its own project-local source root
+Scenario: UC-ARD15 A project's own artifact sources are delivered to that project's runtimes
+  Given a project carries agent definitions, commands, and skills as siblings under its .teleclaude/ artifact-source root
   And sync is invoked in deploy mode from that project
   When the local phase deploys
-  Then every transpiled artifact is written under that project's own runtime directories
-  And no artifact from that source root is written into a user-home runtime directory
+  Then each artifact is offered to an agent session started in that project
+  And every agent CLI that project is configured to use is served
+  And all three artifact kinds are served
+```
+
+#### UC-ARD16: Local-phase delivery is contained to the project that owns the source
+
+```
+Scenario: UC-ARD16 Local-phase delivery is contained to the project that owns the source
+  Given a project carries agent artifacts under its own artifact-source root
+  And sync is invoked in deploy mode from that project
+  When the local phase deploys
+  Then no artifact from that source root is written into a user-home runtime directory
   And no artifact from that source root is written into a machine-global shared directory
+  And a Codex command from that source root is delivered to the project's own Codex runtime directory rather than the machine-global commands directory
   And an agent session started in a different project is not offered those artifacts
 ```
 
-#### UC-ARD16: A project-local artifact never displaces a global artifact of the same name
+#### UC-ARD17: Artifacts a project previously published globally are retracted
 
 ```
-Scenario: UC-ARD16 A project-local artifact never displaces a global artifact of the same name
+Scenario: UC-ARD17 Artifacts a project previously published globally are retracted
+  Given an earlier sync published a project's own artifacts into machine-global runtime locations
+  And sync is invoked in deploy mode from that project
+  When the local phase deploys
+  Then the copies attributable to that project's source scope are removed from those machine-global locations
+  And artifacts owned by other source scopes remain
+  And a file with no ownership record is preserved
+```
+
+#### UC-ARD18: A project-local artifact never displaces a global artifact of the same name
+
+```
+Scenario: UC-ARD18 A project-local artifact never displaces a global artifact of the same name
   Given a global artifact and a project-local artifact carry the same name
   And sync is invoked in deploy mode from the project carrying the local one
   When the local phase deploys
   Then the global artifact remains unchanged in the location the global phase wrote it
   And the project-local artifact is the one offered to sessions in that project
   And neither delivery overwrites the other
+```
+
+#### UC-ARD19: A project's artifact sources are committable to its repository
+
+```
+Scenario: UC-ARD19 A project's artifact sources are committable to its repository
+  Given a project has been initialized for TeleClaude
+  And an author creates an artifact under the project's artifact-source root
+  When the author commits their work
+  Then the artifact is tracked by the project's version control
+  And the author did not have to discover or amend an exclusion rule to make it so
+  And the project's runtime state under the same root remains untracked
+```
+
+#### UC-ARD20: A project carrying no artifact sources is unaffected
+
+```
+Scenario: UC-ARD20 A project carrying no artifact sources is unaffected
+  Given a project carries no agent-artifact sources of its own
+  And sync is invoked in deploy mode from that project
+  When the local phase runs
+  Then sessions started in that project are offered exactly what they were offered before
+  And the project is not required to carry an artifact-source directory
 ```
 
 <!-- /planned:project-local-agent-artifacts -->

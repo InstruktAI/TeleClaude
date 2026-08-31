@@ -7,7 +7,11 @@ visibility: 'public'
 
 ## Rules
 
+<!-- planned-change:project-local-agent-artifacts -->
 - Project-local agent artifacts live under `.agents/`. Artifact types are treated equally: `agents/`, `commands/`, and `skills/` are all published and distributed.
+<!-- change:project-local-agent-artifacts -->
+- Project-local agent artifacts live under `.teleclaude/`, with `agents/`, `commands/`, and `skills/` as siblings directly beneath it — the root itself plays the role the mother repository's top-level artifact directory plays globally. Artifact types are treated equally: all three are published and distributed. A project's artifact sources are delivered only to that project's own agent runtime locations; they never reach a user-home or machine-global location.
+<!-- /planned-change:project-local-agent-artifacts -->
 
 
 - **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts (commands, skills, agents) are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision was made — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. The gate is the human's presence in the session, which the agent detects; it is neither a separate approval step nor a requirement that the human edit or commit the file. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; the agent commits the complete artifact and `telec sync` deploys it.
