@@ -103,12 +103,22 @@ And no content body is returned for that ID
 
 #### UC-3PR4: Unknown --project slug returns empty, not an error
 
+<!-- planned-change:docs-tier-layering -->
 ```
 Given a --project <slug> matching no project in the cross-project catalog
 When the caller runs telec docs index --project <slug> (or telec docs get with the same flag)
 Then no snippets match and the listing (or fetch) returns empty
 And the command does not hard-fail — an unknown slug yields an empty result, not an error
 ```
+<!-- change:docs-tier-layering -->
+```
+Given a --project <slug> matching no project in the cross-project catalog
+And the caller is authorized to name a tier explicitly
+When the caller runs telec docs index --project <slug> (or telec docs get with the same flag)
+Then no snippets match and the listing (or fetch) returns empty
+And the command does not hard-fail — an unknown slug yields an empty result, not an error
+```
+<!-- /planned-change:docs-tier-layering -->
 
 ```
 Given a snippet whose visibility excludes the caller's role

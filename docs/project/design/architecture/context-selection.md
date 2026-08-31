@@ -10,11 +10,13 @@ visibility: 'public'
 - Select relevant documentation docs for a given request.
 
 - Selected IDs must exist in the snippet index.
-- Requires dependencies are always expanded before output.
+- Required reads are named in the response, never pulled into it; loading one is
+  the caller's own explicit act.
 
 - Build snippet metadata from docs and global docs.
 - Return a filtered index (frontmatter only) when no IDs are provided.
-- Accept selected snippet IDs from the caller and resolve requires dependencies.
+- Accept selected snippet IDs from the caller and report the required reads their
+  bodies reference.
 <!-- planned-change:docs-tier-layering -->
 - Order by scope priority (global -> domain -> project).
 <!-- change:docs-tier-layering -->
@@ -35,7 +37,7 @@ flowchart TB
     Phase1 -->|return| ContextClient
     ContextClient -->|selected IDs| Phase2
     Phase2 -->|read| Files
-    Phase2 -->|resolve requires| Files
+    Phase2 -->|name required reads| ContextClient
     Phase2 -->|return| ContextClient
 ```
 
@@ -51,7 +53,8 @@ flowchart TB
 **Outputs:**
 
 - **Phase 1**: Index listing (ID, description, type, scope) - frontmatter only
-- **Phase 2**: Full snippet content with resolved requires dependencies
+- **Phase 2**: Full snippet content, plus the IDs of the required reads its bodies
+  reference and did not load
 <!-- planned-change:docs-tier-layering -->
 - Ordered by scope priority: global → domain → project
 <!-- change:docs-tier-layering -->
@@ -60,8 +63,11 @@ flowchart TB
 
 ## Invariants
 
-- **Two-Phase Protocol**: Always phase 1 (index) first, then phase 2 (content).
-- **Requires Expansion**: All transitive dependencies included automatically; caller never manually resolves requires.
+- **Discovery precedes content**: the index listing is queried first, then content
+  is fetched for the IDs chosen from it.
+- **Required reads are named, not loaded**: a response lists the dependency IDs its
+  bodies reference and never fetches them on the caller's behalf. What reaches the
+  caller's context is the caller's decision.
 <!-- planned-change:docs-tier-layering -->
 - **Scope Ordering**: Global snippets before domain before project; stable deterministic order.
 <!-- change:docs-tier-layering -->
@@ -86,7 +92,7 @@ sequenceDiagram
     Selector->>AI: Return [{id, description, type, scope}, ...]
 ```
 
-### 2. Phase 2: Content Retrieval with Requires Resolution
+### 2. Phase 2: Content Retrieval
 
 ```mermaid
 sequenceDiagram
@@ -95,13 +101,13 @@ sequenceDiagram
     participant FS
 
     AI->>Selector: telec docs get arch/system policy/version-control
-    Selector->>Selector: Expand requires transitively
     Selector->>Selector: Deduplicate and order
-    loop For each snippet
+    loop For each requested snippet
         Selector->>FS: Read markdown file
         FS->>Selector: Return content
     end
-    Selector->>AI: Return full snippet texts
+    Selector->>Selector: Collect the required reads the bodies reference
+    Selector->>AI: Return full snippet texts and the unloaded required-read IDs
 ```
 
 #### Baseline Filtering (Optional)
@@ -111,20 +117,12 @@ By default, all snippets including baseline are shown in the phase-1 index.
 (those referenced in `baseline.md` manifests). This focused view is useful for
 authoring/editing baseline content.
 
-### 3. Requires Expansion Algorithm
+### 3. Required Reads
 
-```python
-def expand_requires(snippet_id, visited=set()):
-    if snippet_id in visited:
-        return  # Prevent cycles
-    visited.add(snippet_id)
-
-    snippet = load_snippet(snippet_id)
-    for required_id in snippet.requires:
-        expand_requires(required_id, visited)
-
-    yield snippet
-```
+The required reads a returned body references are collected and reported as IDs
+alongside the content. Already-returned IDs are omitted, so the report names only
+what the caller does not yet hold. Nothing is fetched on the caller's behalf: the
+report is a pointer, and following it is another content request.
 
 ### 4. Scope Priority Ordering
 

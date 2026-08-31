@@ -215,6 +215,7 @@ Then no snippets are returned
 
 #### UC-DSP5: Domains filter keeps only snippets in the requested published domains
 
+<!-- planned-change:docs-tier-layering -->
 ```
 Given --domains <domain> passed by the caller
 When the Selection policy applies the domains filter
@@ -222,6 +223,15 @@ Then only snippets whose domain is in the requested set are returned
 And snippets in other domains, including structural scopes general and project, are excluded
 And third-party entries are silenced
 ```
+<!-- change:docs-tier-layering -->
+```
+Given --domains <domain> passed by the caller
+When the Selection policy applies the domains filter
+Then only snippets whose domain is in the requested set are returned
+And snippets carrying a structural marker — general, project, person, or company — are excluded
+And third-party entries are silenced
+```
+<!-- /planned-change:docs-tier-layering -->
 
 <!-- planned:docs-tier-layering -->
 #### UC-DSP8: Read scope follows the caller, not the working directory
@@ -295,11 +305,22 @@ Then that named tier is returned in full
 
 ```
 Given an agent session running under the identity of a person who is not a platform administrator
-And the session reaches for a tier outside its derived scope, by selector or by an identity its assembled catalogs do not contain
+And the session names a person, a company, or a project tier explicitly by selector
 When the Selection policy resolves the request
 Then the reach is refused before the named tier is looked up
+And the refusal stands whether or not that identity holds a declared relationship to the named tier
 And the refusal does not fall back to a narrower read of that tier
 And the refusal is identical whether or not the named tier exists
+```
+
+#### UC-DSP27: A non-administrator is refused an identity outside its assembled catalogs
+
+```
+Given an agent session running under the identity of a person who is not a platform administrator
+And the session references a snippet identity that its assembled catalogs do not contain
+When the Selection policy resolves the request
+Then the reach is refused before that identity is looked up
+And the refusal is identical whether or not the identity exists
 ```
 
 #### UC-DSP14: Membership in several companies stays unambiguous
@@ -341,11 +362,13 @@ And snippets of every other tier are excluded
   `project_slug` that determines which IDs are "own" vs. "cross-project".
 
 <!-- planned:docs-tier-layering -->
-- **identity** — the resolved caller's person identity, not only their platform
-  role, is the input from which read scope is derived.
-- **config** — supplies the caller's declared company relationships and project
-  assignments, and each project's declaration of its owning company. This policy
-  reads those declarations and owns none of them.
+- **identity** — the resolved caller: their person identity, not only their
+  platform role, together with the company relationships and project assignments
+  that resolution reports. Read scope is derived from those resolved facts, and
+  this policy owns neither the resolution nor the declarations beneath it.
+- **config** — supplies each project's own declaration of its owning company,
+  and the catalog metadata this policy already consumes. It is read for
+  declarations, never for a caller's resolved relationships.
 <!-- /planned:docs-tier-layering -->
 
 ## Known caveats
