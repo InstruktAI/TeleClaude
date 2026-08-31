@@ -1506,6 +1506,12 @@ def _write_config_schemas(schema_dir: Path) -> None:
     schema_dir.mkdir(parents=True, exist_ok=True)
     for kind, schema in export_tier_schemas().items():
         output_path = schema_dir / schema_filename(kind)
+        if output_path.exists():
+            try:
+                if json.loads(output_path.read_text(encoding=_UTF8)) == schema:
+                    continue
+            except json.JSONDecodeError:
+                pass
         output_path.write_text(json.dumps(schema, indent=2) + _NEWLINE, encoding=_UTF8)
 
 
@@ -1514,7 +1520,11 @@ def _deploy_project_config_schema(project_root: Path, source_schema_dir: Path) -
     target_schema_dir = project_root / _CONFIG_SCHEMA_DIRECTORY
     target_schema_dir.mkdir(parents=True, exist_ok=True)
     project_schema = schema_filename(ConfigKind.PROJECT)
-    shutil.copy2(source_schema_dir / project_schema, target_schema_dir / project_schema)
+    source_schema = source_schema_dir / project_schema
+    target_schema = target_schema_dir / project_schema
+    if source_schema.resolve() == target_schema.resolve():
+        return
+    shutil.copy2(source_schema, target_schema)
 
 
 def _render_global_skill_catalog(
