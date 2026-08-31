@@ -103,7 +103,7 @@ for machine text.
 | `[Agent - <agent> (session) on computer · utc-minute]` | caller-origin identity header | identity | paired      | yes              | yes                        |
 
 <!-- planned:restart-continuation-via-control-delivery -->
-Restart continuation remains a semantic control envelope at the runtime hook
+Restart continuation is a semantic control envelope at the runtime hook
 boundary. Its paired bracket form is recognized for historical transcript
 entries only. A resumed session receives `[TeleClaude Wake]` as the sole
 foreground marker, and the prompt-submission boundary carries the continuation
