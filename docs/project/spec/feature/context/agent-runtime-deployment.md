@@ -403,7 +403,9 @@ Scenario: UC-ARD21 The superseded source root keeps working while it is deprecat
   Given a project carries agent artifacts under the superseded project-local source root
   And sync is invoked in deploy mode from that project
   When the local phase deploys
-  Then those artifacts are delivered exactly as they were before the canonical root existed
+  Then those artifacts are accepted, validated and transpiled on the same terms as the canonical root
+  And they are offered to agent sessions started in that project
+  And the containment and retraction rules bind them exactly as they bind the canonical root
   And the author is told that the root is deprecated and where its contents now belong
   And no source file is moved on the author's behalf
 ```

@@ -11,7 +11,7 @@ visibility: 'public'
 - Project-local agent artifacts live under `.agents/`. Artifact types are treated equally: `agents/`, `commands/`, and `skills/` are all published and distributed.
 <!-- change:project-local-agent-artifacts -->
 - Project-local agent artifacts live under `.teleclaude/`, with `agents/`, `commands/`, and `skills/` as siblings directly beneath it — the root itself plays the role the mother repository's top-level artifact directory plays globally. Artifact types are treated equally: all three are published and distributed. A project's artifact sources are delivered only to that project's own agent runtime locations; they never reach a user-home or machine-global location.
-- `.agents/` is the superseded project-local source root. It is still read, and a project carrying sources there is delivered exactly as before, so no project repository is broken by the move. Sources there are reported as deprecated with the location they belong in; where both roots carry the same artifact the canonical root wins and the shadowed one is named. Retiring `.agents/` is a separate decision, taken when no project carries sources under it.
+- `.agents/` is the superseded project-local source root. Sources there remain accepted, validated and transpiled on the same terms as the canonical root, and are offered to sessions in their owning project. Containment and retraction apply identically to both roots. Sources under the superseded root are reported as deprecated with the location they belong in; where both roots carry the same artifact of the same kind and name the canonical root wins and the shadowed one is named. Retiring `.agents/` is a separate decision, taken when no project carries sources under it.
 <!-- /planned-change:project-local-agent-artifacts -->
 
 
@@ -57,6 +57,12 @@ visibility: 'public'
 - Thin, locked wrappers keep knowledge in its rightful home (snippets) and the master file from accreting a parallel, drifting manual.
 - Limiting `hooks` to Claude matches current agent capabilities and avoids invalid configs.
 - Quality configuration is the wall agent work is measured against; under goal pressure, any checker its own subject can edit gets edited toward green, one defensible commit message at a time. Governing the wall's definition places it outside the constrained author's unilateral reach.
+
+<!-- planned:project-local-agent-artifacts -->
+
+- A project-local source root sits in a repository the platform does not control, so it cannot be moved off atomically and is retired only through a window in which both roots serve. That window preserves the outcome a project depends on — its artifacts are accepted and reach its own sessions — and never a defect that happened to accompany it, which is why containment binds the superseded root as tightly as the canonical one.
+
+<!-- /planned:project-local-agent-artifacts -->
 
 ## Scope
 
