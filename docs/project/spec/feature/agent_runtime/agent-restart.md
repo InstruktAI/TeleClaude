@@ -257,6 +257,19 @@ And it does not relaunch the agent nor inject the continuation stimulus while th
 And once the terminated process is confirmed exited it relaunches and proceeds to continuation-stimulus delivery
 ```
 
+<!-- planned:restart-continuation-via-control-delivery -->
+#### UC-AR12: Maintenance restoration wakes the resumed agent without foregrounding the continuation
+
+```gherkin
+Given maintenance restores a missing host pane and its resumed agent reaches a ready prompt
+When the platform supplies the fixed continuation stimulus for the restored session
+Then the continuation is accepted durably as platform control content
+And the only platform text entered into the foreground composer is `[TeleClaude Wake]`
+And submitting that wake delivers the continuation to the agent as control context
+And no paired restart-continuation block appears in the foreground composer
+```
+<!-- /planned:restart-continuation-via-control-delivery -->
+
 ### Cross-context references
 
 - **identity** — clearance for agent restart is enforced at the boundary; the handler does not re-validate identity mid-flight. The `self` form resolves the caller's own session via the local identity record, which is the same source consulted for clearance.
