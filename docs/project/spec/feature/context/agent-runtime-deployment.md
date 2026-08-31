@@ -322,6 +322,35 @@ Scenario: UC-ARD14 Antigravity is served at its documented layout only
 
 <!-- /planned:command-migration-to-singular-telec-skill -->
 
+<!-- planned:project-local-agent-artifacts -->
+
+#### UC-ARD15: Local-phase delivery is contained to the project that owns the source
+
+```
+Scenario: UC-ARD15 Local-phase delivery is contained to the project that owns the source
+  Given a project carries agent artifacts in its own project-local source root
+  And sync is invoked in deploy mode from that project
+  When the local phase deploys
+  Then every transpiled artifact is written under that project's own runtime directories
+  And no artifact from that source root is written into a user-home runtime directory
+  And no artifact from that source root is written into a machine-global shared directory
+  And an agent session started in a different project is not offered those artifacts
+```
+
+#### UC-ARD16: A project-local artifact never displaces a global artifact of the same name
+
+```
+Scenario: UC-ARD16 A project-local artifact never displaces a global artifact of the same name
+  Given a global artifact and a project-local artifact carry the same name
+  And sync is invoked in deploy mode from the project carrying the local one
+  When the local phase deploys
+  Then the global artifact remains unchanged in the location the global phase wrote it
+  And the project-local artifact is the one offered to sessions in that project
+  And neither delivery overwrites the other
+```
+
+<!-- /planned:project-local-agent-artifacts -->
+
 ### Cross-context references
 
 - **agent_runtime** — each agent CLI reads its `~/.<agent>/` tree at
