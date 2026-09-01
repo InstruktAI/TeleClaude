@@ -24,9 +24,20 @@ path runs two phases:
    The publishing gate ensures the global agent-artifact source list is
    only populated on the Mother project. Global documentation, in contrast,
    is contributed by every project for the domains it publishes (see below).
+<!-- planned-change:project-local-agent-artifacts -->
+
 2. **Local phase** — sources from `.agents/` (any project) are built
    under a transient distribution directory and then deployed to the
    project root.
+
+<!-- change:project-local-agent-artifacts -->
+
+2. **Local phase** — sources from `.teleclaude/` (any project) are built
+   under a transient distribution directory and then deployed to that
+   project's own runtime locations. `.agents/` is one of those delivery
+   locations, never an input.
+
+<!-- /planned-change:project-local-agent-artifacts -->
 
 Global skill publication is a separate composed surface. Every registered
 project contributes each direct `agents/skills/<name>/` folder; no configuration
