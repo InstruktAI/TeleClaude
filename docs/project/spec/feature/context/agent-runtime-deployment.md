@@ -396,30 +396,28 @@ Scenario: UC-ARD20 A project carrying no artifact sources is unaffected
   And the project is not required to carry an artifact-source directory
 ```
 
-#### UC-ARD21: The superseded source root keeps working while it is deprecated
+#### UC-ARD21: Authored sources and generated output never share a location
 
 ```
-Scenario: UC-ARD21 The superseded source root keeps working while it is deprecated
-  Given a project carries agent artifacts under the superseded project-local source root
+Scenario: UC-ARD21 Authored sources and generated output never share a location
+  Given a project carries agent artifacts under its artifact-source root
   And sync is invoked in deploy mode from that project
   When the local phase deploys
-  Then those artifacts are accepted, validated and transpiled on the same terms as the canonical root
-  And they are offered to agent sessions started in that project
-  And the containment and retraction rules bind them exactly as they bind the canonical root
-  And the author is told that the root is deprecated and where its contents now belong
-  And no source file is moved on the author's behalf
+  Then no directory serves as both the authored source root and a delivery location
+  And an author can tell from a file's location alone whether they wrote it or the platform generated it
 ```
 
-#### UC-ARD22: The canonical source root wins when both roots carry the same artifact
+#### UC-ARD22: A runtime reading the open convention is served at that location
 
 ```
-Scenario: UC-ARD22 The canonical source root wins when both roots carry the same artifact
-  Given a project carries an artifact of the same kind and name under both the canonical and the superseded source root
+Scenario: UC-ARD22 A runtime reading the open convention is served at that location
+  Given a project is configured to use an agent runtime that reads the open project-local convention
+  And that project carries agent artifacts under its artifact-source root
   And sync is invoked in deploy mode from that project
   When the local phase deploys
-  Then the artifact from the canonical root is the one delivered
-  And the shadowed artifact is named to the author so the migration can be completed
-  And the deploy is not refused
+  Then that runtime's artifacts are delivered to the open-convention location in the project
+  And a runtime that reads its own project-local location is served there instead
+  And neither location is read back as an authored source
 ```
 
 <!-- /planned:project-local-agent-artifacts -->
