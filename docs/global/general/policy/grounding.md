@@ -15,8 +15,9 @@ it to one of three things:
 
 - **Inspected evidence** — source read, command run, artifact opened, output
   observed. Named specifically enough that another party can re-inspect it.
-- **A human decision** — identified as such, and evidenced by the records that
-  already carry it, never by asserted prose.
+- **A human decision** — the human's own direction to this session, or a
+  `HUMAN-DECISION:` relay of it, taken as given (see below). Not re-verified, and
+  not asserted as plain prose that carries no marker.
 - **An inference or assumption** — labelled, with the premise it rests on
   visible.
 
