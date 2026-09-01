@@ -108,40 +108,29 @@ commit it — it escalates the proposal per the escalation shape below and goes
 idle on that thread. It never self-approves and never re-derives approval from
 plausibility.
 
-### Evidence is the existing record, never asserted prose
+### A human decision is declared, never investigated
 
-Whether a human decided the change is evidenced by human communication in the
-session transcript where the intent was authored. For a message, the
-authenticated sender identifies that evidence surface. For a durable artifact
-version written by an agent session, the consumer resolves the version's
-`updated_by` value as a registered session id and inspects that transcript. A
-direct human-principal write is the human decision surface itself. A system
-label, human-principal label on an agent-authored claim, unregistered value, or
-missing authoring session carries no relayed authorization. No prose
-declaration exists or is required.
+A human decides a process change in live conversation with an agent. That agent
+carries the decision onward under the `HUMAN-DECISION:` marker, in the human's
+own terms, and every receiver acts on it as given. No consumer inspects a
+transcript, resolves an authoring session, or investigates the relay in any
+way: whether an agent claimed a decision the human never made is the human's
+own audit, performed by sweeping the marker, and is out of agent scope. A false
+or stretched marker is a serious violation, answered by the durable record of
+the session that wrote it.
 
 Lineage, `entry_point`, `human_involved`, the human account on a commit, artifact
-position, emphasis, and repetition are not evidence of what the human decided.
-They may identify authority, provenance, presence, or the transcript to inspect;
-none substitutes for the communication in that transcript. Every commit carries
+position, emphasis, and repetition are not declarations of what the human
+decided. They identify authority, provenance, or presence. Every commit carries
 the human account because that is the account the work runs under — lineage,
 never authorship (`general/concept/lineage-vs-authorship`) — and involvement is
-orthogonal to authorization (`general/policy/human-involvement-recording`). For
-doc-only work no involvement record exists at all: that policy holds the gap
-open deliberately and covers the work by independent review of its content and
-by lint.
-
-This gate binds the acting agent and every downstream consumer asked to rely on
-an agent-authored authorization claim. The declaring session owns the claim's
-truth and scope; the consumer owns grounding it in that session before acting.
-A false declaration stands against the transcript and is answered by the
-durable record.
+orthogonal to authorization (`general/policy/human-involvement-recording`).
 
 **An agent never writes a human's name as an approval or attestation in any
 durable record** — not in a commit message, not in an artifact, not in a doc.
-A human decision is evidenced by the records above, never claimed by
-agent-authored text. Writing such a claim is itself a serious violation
-traceable to the writing agent's session.
+The marker relays a decision; it does not sign for the human. Writing an
+approval in the human's name is itself a serious violation traceable to the
+writing agent's session.
 
 ### Bug plans never contain process changes
 
@@ -178,11 +167,12 @@ this policy adds no mid-work stop trigger.
   change into that intent unratified, the gates faithfully validate a smuggled
   premise. The only reliable moment to check authority is before the intent
   gains it.
-- Asserted approval prose is worse than no record: it dresses an agent's claim
-  in the human's name, and a reader cannot distinguish it from the real thing
-  without the transcript — which is the actual evidence anyway. The existing
-  records (creation record, lineage, transcripts) are falsifiable and
-  mechanically stamped; prose is neither.
+- A marked relay is a declaration, not a proof, and that is deliberate. Making
+  it verifiable would mean an agent reading the human's conversations to check
+  another agent — the trust violation this policy exists to forbid. The marker
+  instead makes every relayed decision enumerable, so the human audits their own
+  authority by sweeping for it; a false relay stands against the declaring
+  session's own record.
 
 ## Scope
 
@@ -196,7 +186,7 @@ this policy adds no mid-work stop trigger.
   human decision and escalates
   (`software-development/procedure/lifecycle/prepare/overview`).
 - Plan review: a plan whose tasks alter the process layer without a human
-  decision evidenced on one of the intent artifact surfaces accepted by
+  decision relayed under the `HUMAN-DECISION:` marker per
   `general/policy/grounding` is a **Requirement-Violation** (blocking).
 - Scope lane at build/commit review: a process-layer behavioral delta the
   approved intent does not call for is **Critical** (existing rule; this policy

@@ -39,8 +39,8 @@ and an objective of alleviation never reliably reaches cause.
 
 - `kind == bug`, and the todo is at the `DIAGNOSE` lifecycle phase.
 - `telec todo artifacts read {slug} input` exists with the reported symptom and discovery
-  context. When the creating-session fidelity gate applies, the driving session has
-  reconciled that complaint against the creating transcript before dispatch.
+  context, taken as given; a `HUMAN-DECISION:` marker in it relays the human's
+  own framing of the complaint.
 - A `diagnosis` carrying no current settled stamp means the phase is mid-exchange, not
   complete.
 

@@ -45,10 +45,9 @@ not review architecture, implementation mechanism, or concrete proof.
    - How is the world observably different when the outcome is achieved?
 3. Review the PRD as a product contract:
    - Its authorized horizon is explicit and consistent with the source intent.
-   - For a creating-session-audited filing, every consequential product or
-     business detail is a direct human statement, faithful restatement,
-     logically necessary implication, or existing authoritative product
-     constraint. If another reasonable realization could satisfy everything the
+   - Every consequential product or business detail stays within the input's
+     intent and its `HUMAN-DECISION:` markers; a detail beyond them is scope the
+     PRD added on its own authority, not the human's. If another reasonable realization could satisfy everything the
      human said while omitting or varying it, the detail is unspecified and
      cannot enter the PRD as decided scope.
    - Each consequential inclusion and exclusion explains why it belongs here,
@@ -97,9 +96,8 @@ reviewer's own recommendations into authority over product intent.
 
 - If source intent is insufficient to determine the authorized horizon, record
   the unresolved human-owned decision and return `needs_work`; do not invent it.
-- If the creating-session fidelity gate applies but the session or supporting
-  transcript cannot be resolved, return `needs_work`; do not accept the input's
-  agent-authored approval claim as a substitute.
+- The reviewer never inspects the creating session to test the input; a
+  `HUMAN-DECISION:` marker is taken as given, and its truth is the human's audit.
 - If a desirable omission belongs to a different bounded context or requires a
   boundary redraw, record that ownership fact without making it a requirement
   of the PRD under review.

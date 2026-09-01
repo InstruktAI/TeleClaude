@@ -229,9 +229,9 @@ product outcome beyond the authorized horizon returns to the feature intent
 path. For a bug, betterment may make the root-cause removal coherent and
 durable; it does not add adjacent hardening or capability.
 
-For a creating-session-audited filing, the plan may be technically richer than
-the verified filing basis where safe, correct implementation requires it. It
-may not turn that technical governance into a new product or business limit. If
+The plan may be technically richer than the input where safe, correct
+implementation requires it. It may not turn that technical governance into a
+new product or business limit the input does not carry. If
 another reasonable implementation could satisfy everything the human said
 while omitting or varying a proposed business detail, the detail remains
 unspecified and outside _Intent & scope_.
@@ -549,12 +549,11 @@ implementation-plan to resolve each finding, then advance again.
 ## Recovery
 
 1. If the PRD is ambiguous, note the ambiguity in the plan and derive the most
-   likely interpretation only when the creating-session fidelity gate does not
-   apply and the inference stays within existing authority. Mark it `[inferred]`
-   in the plan. For an audited agent-authored filing, an ambiguous product or
-   business choice is returned as a human-owned decision instead of inferred.
-   For a `bug`, ambiguity resolves through the `diagnosis` or escalates to the
-   human, never by inference (step 3c).
+   likely interpretation where it stays within existing authority, marking it
+   `[inferred]`. An ambiguous product or business choice the input does not
+   settle is returned as a human-owned decision instead of inferred. For a
+   `bug`, ambiguity resolves through the `diagnosis` or escalates to the human,
+   never by inference (step 3c).
 2. If planning reveals the parent is not atomic, group or split it into children rather than stretching one
    builder plan past the session-size limit.
 3. If a file referenced in an upstream artifact does not exist, verify whether it should be

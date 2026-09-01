@@ -53,8 +53,9 @@ executes the work itself and never mutates the `input`.
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. This is the
    frozen filing text — possibly a raw human dump, an agent-authored capture, or
    a transcript of a conversation. Read it as a premise to interpret, not as a
-   spec to obey literally. When the creating-session audit applies, unsupported
-   agent additions remain hypotheses or open questions rather than human intent.
+   spec to obey literally. Classify from the intent the input carries and any
+   `HUMAN-DECISION:` marker in it; do not treat a detail the input lacks as
+   settled merely to select a lane.
 
 2. **Classify.** Decide which kind the dump is, by what the work actually is:
    - any change to the codebase that is not a new capability or a defect → `change`;
@@ -119,9 +120,8 @@ The session is the hands; the task-plan is the memory.
 
 - If the `input` is empty or unreadable, do not guess a kind — report the blocker
   and leave the todo kind-less for the human.
-- If the creating-session audit applies but the session cannot be resolved or no
-  defensible human premise can be recovered, leave the todo kind-less and surface
-  the mismatch; do not classify the agent's additions as a substitute premise.
+- If no defensible premise can be recovered from the input, leave the todo
+  kind-less and surface the gap; never inspect the creating session to resolve it.
 - If classification is genuinely undecidable between an operation and code work,
   decide on the `software-development/spec/todo-kind-task` discriminator rather
   than defaulting to `task`.

@@ -17,10 +17,10 @@ Your focus is to turn source intent into a reviewable product target whose
 authority is explicit. Determine the authorized horizon, use
 situation-specific domain intelligence within that horizon, choose the smallest
 coherent present outcome, and write the choosing reasoning into the PRD's
-natural sections. When the prepare overview's creating-session fidelity gate
-applies, the verified filing basis bounds product and business intent: intake
-may clarify and situate it, but unsupported agent-authored requirements are not
-enrichment.
+natural sections. The `input` is the authorized basis and a `HUMAN-DECISION:`
+marker in it relays the human's own word; intake may clarify and situate that
+basis, but does not inflate a derived requirement into product intent the input
+does not carry.
 
 Intake situates the premise against observable current product behavior, the
 credible intended state, and the existing todo landscape. It uses internal
@@ -138,9 +138,9 @@ on re-orienting, not only the two cases below.
 Two cases determine who plays the PO role:
 
 - **`input` artifact exists.** Read it in full before doing anything else. It
-  may be a human dump or an agent-authored handoff. When the prepare overview's
-  creating-session fidelity gate applies, use its verified filing basis rather
-  than treating the whole input as the human's words. Assess whether that basis
+  may be a human dump or an agent-authored handoff; either is the authorized
+  basis, with any `HUMAN-DECISION:` marker taken as the human's own word. Assess
+  whether that basis
   is rich enough to write the PRD directly without elicitation — if the intent,
   scope, and success criteria are already clear, skip to step 5. If it is sparse
   or ambiguous, dispatch the PO emulator via `telec sessions run --command
@@ -300,15 +300,14 @@ and phase, credible intended state, and applicable domain knowledge. Domain
 knowledge supplies shapes the human should not have to enumerate. It does not
 acquire intent authority merely because a pattern is common.
 
-For a creating-session-audited filing, a consequential product or business
-detail enters the PRD only as a direct human statement, a faithful restatement,
-a logically necessary implication, or an existing authoritative product
-constraint. Ask whether another reasonable realization could satisfy everything
-the human said while omitting or varying the detail; if so, it is unspecified.
-Record it as an open human-owned decision or exclude it from contract scope.
-Technical choices required for safe and correct delivery remain the concern of
-plan, build, and their reviews; they do not become PRD requirements merely
-because intake can foresee them.
+A consequential product or business detail the input does not carry — under a
+`HUMAN-DECISION:` marker or in the plain intent it relays — is not promoted to a
+PRD requirement on intake's own authority. Ask whether another reasonable
+realization could satisfy the stated intent while omitting or varying the
+detail; if so, record it as an open human-owned decision or exclude it from
+contract scope. Technical choices required for safe and correct delivery remain
+the concern of plan, build, and their reviews; they do not become PRD
+requirements merely because intake can foresee them.
 
 Route attention through the few perspectives the situation earns. A
 perspective is a focused question—security, operations, usability, migration,
@@ -319,9 +318,9 @@ framework only after the situation reveals a question that framework handles;
 never run a default framework sequence.
 
 Every consequential recommendation answers “why here?” Its reason resolves to
-an inspectable premise or is labelled as an assumption. For a
-creating-session-audited filing, an assumption may orient investigation or name
-an open decision; it cannot supply missing product or business authority.
+an inspectable premise or is labelled as an assumption. An assumption may orient
+investigation or name an open decision; it cannot supply product or business
+intent the input does not carry.
 Consider both failure pressure and opportunity: what becomes costly or unsafe
 at the stated scale, and what the existing situation makes unusually valuable
 or cheap. Generic “enterprise-grade” or “best practice” language is not a
@@ -393,10 +392,10 @@ correction satisfying
 After writing the PRD, call `telec todo prepare {slug}`. The state machine
 routes to a dispatched `/next-review-prd` worker before human approval.
 
-The reviewer reads the input and PRD and, when the creating-session fidelity
-gate applies, independently reads the creation record and creating transcript.
-It checks every retained choice against its actual authority and re-runs the
-shaping questions to probe for supported omissions. It writes
+The reviewer reads the input and PRD. It checks that the PRD's product and
+business scope stays within the input's intent and its `HUMAN-DECISION:`
+markers rather than inflating beyond them, and re-runs the shaping questions to
+probe for omissions. It does not inspect the creating session. It writes
 `prd-review-findings` only when findings exist and stamps the digest-bound
 `prd_review` verdict.
 
