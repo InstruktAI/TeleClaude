@@ -9,10 +9,10 @@ from dataclasses import dataclass
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import db as core_db
-from teleclaude.core.models import DiscordAdapterMetadata, HumanActionIntent
+from teleclaude.core.models import HumanActionIntent
+from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
-from teleclaude.services.discord import DISCORD_BACKLINK_NO_GUILD, build_discord_jump_url
 
 logger = get_logger(__name__)
 _MISSING_GROUP_VALUE_LOG = "notification occurrence rejected: missing group value"
@@ -193,14 +193,7 @@ async def _resolve_discord_backlink(origin_session_id: str | None) -> tuple[str 
     if origin_session_id is None:
         return None, None
     session = await core_db.get_session(origin_session_id)
-    if session is None:
-        return None, "unknown_session"
-    origin = session.get_origin_section("discord")
-    metadata = DiscordAdapterMetadata.from_dict(origin)
-    destination = metadata.thread_id or metadata.channel_id
-    if destination is None:
-        return None, "no_destination" if origin else "no_discord_origin"
-    jump_url = build_discord_jump_url(metadata.guild_id, destination, is_thread=metadata.thread_id is not None)
-    if jump_url is None:
-        return None, DISCORD_BACKLINK_NO_GUILD
-    return jump_url, None
+    address = resolve_session_conversation_url(session)
+    if isinstance(address, SessionAddressResolved):
+        return address.url, None
+    return None, address.reason.value
