@@ -18,11 +18,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import DriverLaunchClass, SlashCommand
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
-from teleclaude.core.next_machine.dispatch_claims import (
-    acquire_dispatch_claim,
-    bind_dispatch_claim_session,
-    release_dispatch_claim,
-)
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
     SessionRunner,
@@ -139,32 +134,12 @@ async def adopt_headless_session(
 ) -> bool:
     """Adopt a running headless session as a todo's manually-started driver.
 
-    A headless session carries no claim while it runs — the runner never
-    auto-claims a session it did not spawn. Adoption is the explicit manual act
-    that links it: it acquires the same `(slug, lane)` dispatch claim the spawn
-    primitive uses, then writes `active_runner` paired with
-    ``manually_started=True`` so the driver is tracked and excluded from the cap.
-
-    Returns ``True`` on success, ``False`` when the claim is already held, its
-    exact owner is lost before the session bind, or no state exists for the
-    slug.
+    A headless session carries no lifecycle ownership while it runs. Adoption
+    links it by writing `active_runner` paired with ``manually_started=True`` so
+    the driver is tracked and excluded from the cap.
     """
-    owner = f"headless-adoption:{slug}"
-    acquired = await acquire_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
-    if not acquired:
-        return False
-    bound = await bind_dispatch_claim_session(
-        todos_db,
-        slug=slug,
-        lane=lane.value,
-        owner=owner,
-        session_id=session_id,
-    )
-    if not bound:
-        return False
     state = await todos_db.read_state(slug)
     if state is None:
-        await release_dispatch_claim(todos_db, slug=slug, lane=lane.value, owner=owner)
         return False
     await set_active_runner(todos_db, slug, session_id, lane=lane, manually_started=True, release_hold=True)
     session = await runtime_db.get_session(session_id)
@@ -176,7 +151,6 @@ async def adopt_headless_session(
         logger.info(
             "terminal adopted lifecycle driver reconciled",
             session_id=session_id,
-            released_claims=reconciliation.released_claims,
             cleared_slugs=",".join(reconciliation.cleared_slugs),
         )
     return True
@@ -386,13 +360,6 @@ async def manual_start_lifecycle_session(
     finally:
         await client.close()
 
-    if session_id is None:
-        return ManualLifecycleSessionResult(
-            slug=slug,
-            lane=lane,
-            status=ManualLifecycleStatus.SKIPPED,
-            reason=RunnerSkipReason.CLAIMED,
-        )
     return ManualLifecycleSessionResult(
         slug=slug,
         lane=lane,
@@ -516,7 +483,7 @@ async def adopt_manual_lifecycle_session(
             slug=slug,
             lane=lane,
             status=ManualLifecycleStatus.SKIPPED,
-            reason=RunnerSkipReason.CLAIMED,
+            reason=RunnerSkipReason.MISSING_STATE,
         )
     await _reflect_claim_on_caller_session(runtime_db, session, slug, lane)
     return ManualLifecycleSessionResult(

@@ -29,7 +29,6 @@ class RunnerSkipReason(StrEnum):
     ALREADY_DRIVEN = "already-driven"
     APPROVAL_PENDING = "approval-pending"
     AT_CAPACITY = "at-capacity"
-    CLAIMED = "claim-conflict"
     DELIVERED = "delivered"
     DEPENDENCY_BLOCKED = "dependency-blocked"
     FINALIZE_READY = "finalize-ready"

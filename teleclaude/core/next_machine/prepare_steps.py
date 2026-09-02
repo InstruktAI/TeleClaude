@@ -13,11 +13,6 @@ from teleclaude.constants import (
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
-from teleclaude.core.next_machine.dispatch_claims import (
-    DIAGNOSIS_DISPATCH_LANE,
-    DIAGNOSIS_LEASE_SECONDS,
-    acquire_dispatch_claim,
-)
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
@@ -387,16 +382,6 @@ async def _prepare_dispatch(
         diagnosis = StateWriter(state).state.artifacts.diagnosis
         peer_session_id = await find_live_prepare_worker_for_slug(db, slug, SlashCommand.NEXT_PREPARE_DIAGNOSE.value)
         if not (diagnosis.digest or diagnosis.produced_at) or peer_session_id is None:
-            # An unsettled diagnosis cannot advance without an independent
-            # author. Open the write lease before dispatching when no active
-            # diagnosis peer owns it.
-            await acquire_dispatch_claim(
-                todos_db,
-                slug=slug,
-                lane=DIAGNOSIS_DISPATCH_LANE,
-                owner=f"diagnose-handoff:{slug}",
-                lease_seconds=DIAGNOSIS_LEASE_SECONDS,
-            )
             return await _dispatch_worker(
                 db=db,
                 slug=slug,
