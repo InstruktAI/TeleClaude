@@ -356,6 +356,38 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
 
 <!-- /planned-change:tier-aware-commit-authority -->
 
+<!-- planned:tier-aware-commit-authority -->
+
+10. **Two roots resolve as a pair, once, at the entry points.** Every
+    `telec code` verb resolves the invocation context root (the nearest
+    declaration above the invocation directory) and the repository root (the
+    nearest git checkout above it) as distinct coordinates and threads both to
+    everything downstream. The repository root anchors git operations and the
+    paths git reports; the invocation context root anchors permission (its
+    declared tier's answers, read from the config context's tier-permission
+    contract), the eligible set's containment bound, and the coordinates in
+    which answers are expressed. Where the two coincide — every project
+    checkout — the pair degenerates to the single root and nothing observable
+    changes.
+
+11. **Own material and the retained set bound eligibility on every route.**
+    Own material — what lies under the acting context root minus what belongs
+    to another owner: a different declared tier, a context of its own, or a
+    repository of its own — bounds the computed scope and every explicitly
+    declared path (`--include`, `--only`, `telec code add`) alike; a declared
+    path outside it is refused, never carried. The retained-set term consumes
+    the reconciliation context's published membership answer; this surface
+    asks, and neither decides membership nor substitutes an answer.
+
+12. **The wrapper learns the repository root's tier from projected state,
+    never by parsing.** The seal decision at a non-project repository root
+    rides the same projection mechanism as project capabilities: the resolver
+    projects the repository root's declared tier into the git metadata the
+    wrapper already reads, so the shell side never parses a declaration and
+    cannot disagree with the resolver.
+
+<!-- /planned:tier-aware-commit-authority -->
+
 ## Primary flows
 
 <!-- planned:tier-aware-commit-authority -->

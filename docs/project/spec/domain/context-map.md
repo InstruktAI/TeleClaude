@@ -61,6 +61,20 @@ contracts and never creates shared ownership.
   set of relationships permits a caller to read, and never infers a relationship
   the resolved facts do not state.
 <!-- /planned:docs-tier-layering -->
+
+<!-- planned:tier-aware-commit-authority -->
+- The sealed commit surface (`agent_runtime`) reads the acting root's tier
+  answers from `config` — whether a root establishes an invocation context, and
+  which project subscriptions its tier carries — and derives seal coverage,
+  commit availability, and gate selection from them. `config` owns the answers
+  and their axes; `agent_runtime` owns what the commit surface does with them,
+  and never derives a permission the axes do not publish.
+- The commit boundary (`agent_runtime`) consumes `reconciliation`'s published
+  retained-set answer as a term of commit eligibility. `reconciliation` owns
+  membership — which of the repository's paths are retained; `agent_runtime`
+  asks, and neither decides membership nor substitutes an answer where none is
+  published.
+<!-- /planned:tier-aware-commit-authority -->
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web
 frontend are `presentation`'s hosting surfaces. Existing placement outside
