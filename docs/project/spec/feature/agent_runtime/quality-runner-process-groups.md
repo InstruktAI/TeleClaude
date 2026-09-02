@@ -44,6 +44,16 @@ Then the step's subprocess runs under the bundled TeleClaude checkout's venv int
 And the step does not fail with ModuleNotFoundError for a TeleClaude runtime dependency
 ```
 
+<!-- planned:fix-check-cli-help-sh-exits-0-when-its-cli-s -->
+#### UC-CQD3: repository-wide lint fails when a guardrail cannot enumerate the command surface
+
+```gherkin
+Given an agent invokes repository-wide lint
+When the command-surface guardrail cannot enumerate the commands it must inspect
+Then repository-wide lint exits non-zero
+And it does not report the guardrails lane as successful
+```
+<!-- /planned:fix-check-cli-help-sh-exits-0-when-its-cli-s -->
 
 ## See also
 
