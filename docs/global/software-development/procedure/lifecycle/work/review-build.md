@@ -83,10 +83,12 @@ them unless the review scope explicitly includes planning or state edits.
 
 ### 2. Check build completeness
 
-- Every implementation-plan task is checked.
+- Every implementation-plan task is delivered by a commit or explicitly
+  deferred under the plan.
 - Every deferral is justified.
 
-An unchecked task or unjustified deferral yields `REQUEST CHANGES`.
+An undelivered task without a deferral, or an unjustified deferral, yields
+`REQUEST CHANGES`.
 
 ### 3. Execute the shared review contract
 

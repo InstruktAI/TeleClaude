@@ -69,9 +69,11 @@ procedure is ever dispatched.
    timestamp (for artifact fixes). Persist via
    `telec todo artifacts write {slug} {findings_artifact_name} "<content>"`.
 
-4. **Update the verdict by arithmetic.** If any Requirement-Violation, Critical,
-   or Important findings remain unresolved, keep the current non-`APPROVE` verdict.
-   If every finding is resolved, change the verdict to `APPROVE`.
+4. **Leave the verdict to the reviewer.** Do not change the verdict in the
+   findings artifact. Your "Fixes Applied" section is remediation evidence; the
+   continuing reviewer re-evaluates the target against it, updates the report,
+   and stamps the arithmetic verdict. A fixer-written `APPROVE` bypasses
+   reviewer authority and the bounded convergence contract.
 
 5. **Commit worktree state.** Everything in the worktree belongs to the task —
    commit all files in the worktree.
