@@ -421,7 +421,6 @@ And the candidate is not parked automatically on the strength of the ambiguous s
 <!-- /planned:integrator-candidate-and-gate-parking -->
 
 
-<!-- planned:telec-code-dirty-path-owners -->
 #### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
 
 ```gherkin
@@ -457,7 +456,6 @@ And the integrator then remains the single non-mutating blocker beacon without r
 And the reminder is cancelled at that escalation
 And apart from the bounded protection-condition stall, only a path whose intent cannot be determined safely is escalated to the human
 ```
-<!-- /planned:telec-code-dirty-path-owners -->
 
 #### UC-WISM29: A drained singleton parks on its queue watcher
 
