@@ -1,5 +1,5 @@
 ---
-description: Before new construction, name the existing module whose contract covers the work; the defect is the undeclared parallel, built in ignorance of what exists.
+description: Before new construction, identify the existing module whose contract covers the work or record grounded absence; the defect is the undeclared parallel, built in ignorance of what exists.
 ---
 
 # Substrate Anchoring — Policy
