@@ -66,6 +66,13 @@ whether a test is admitted is a separate, evidence-gated decision.
   container, no service locator, no internal patch seam. Controlled clocks,
   temporary or in-memory stores, and independently conformant adapters are
   legitimate collaborators; interaction-recording mocks are not.
+- **Three more words, one meaning each.** A _seam_ is the place a module's
+  interface lives — where behavior can be altered without editing in that place;
+  where the seam goes is its own design decision, distinct from what sits behind
+  it. _Leverage_ is what callers get from depth: more capability per unit of
+  interface learned. _Locality_ is what maintainers get: change, bugs, knowledge,
+  and verification concentrate in one place. "Boundary" is reserved for bounded
+  contexts and is never used for a seam.
 - **Public surface is the contract; everything else is private.** Nothing
   becomes public for a test's convenience. One word, one meaning: a term already
   bound in the state model is never reused for a second concept. A name claims
