@@ -127,6 +127,17 @@ And the header names whether the mirror or the on-disk transcript answered
 And the rendered body is the semantic conversation — tool calls and tool output are not present in it
 ```
 
+<!-- planned:reviewer-transcript-mirror-stale -->
+#### UC-MDR-5: Retrieval states the conversation coverage it can establish
+
+```gherkin
+Given an agent retrieves a registered session whose durable conversation lags the available live conversation
+When the agent uses the retrieved conversation to ground a review
+Then the response states the latest conversation coverage it can establish
+And content beyond that coverage is not represented as absent from the session
+```
+<!-- /planned:reviewer-transcript-mirror-stale -->
+
 ## Known caveats
 
 - The detail capability does not apply role filtering. Callers that need
