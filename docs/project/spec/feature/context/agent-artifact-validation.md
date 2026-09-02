@@ -23,9 +23,22 @@ contract. Every `SKILL.md` must declare `name` and `description`, with `name`
 equal to its folder. Skill bodies are never graded against TeleClaude's taxonomy.
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 
+<!-- planned-change:agent-artifact-source-layout -->
+
 Validated commands and agents share a common shell — frontmatter, H1 title,
 optional Required reads, section order, and a role activation line. Third-party
 skill bodies and supporting package Markdown retain their human-authored structure.
+
+<!-- change:agent-artifact-source-layout -->
+
+Validated commands share a common shell — frontmatter, H1 title, optional
+Required reads, section order, and a role activation line. Subagent definitions
+are not an artifact kind: none is validated, and a file under an agents/ kind
+directory other than commands/ or skills/ is refused as outside the artifact
+model. Third-party skill bodies and supporting package Markdown retain their
+human-authored structure.
+
+<!-- /planned-change:agent-artifact-source-layout -->
 
 ## Canonical fields
 
