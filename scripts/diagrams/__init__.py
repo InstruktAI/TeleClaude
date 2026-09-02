@@ -1,1 +1,0 @@
-"""Diagram extraction scripts package."""

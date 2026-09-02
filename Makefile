@@ -1,4 +1,4 @@
-.PHONY: help install launchers link format lint test diagrams clean dev start stop restart kill status cron-smoke generate-types
+.PHONY: help install launchers link format lint test clean dev start stop restart kill status cron-smoke generate-types
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -23,9 +23,6 @@ lint:
 
 test:
 	@echo "No tests in this repository — see docs/project/policy/test-moratorium.md"
-
-diagrams:
-	@tools/make/diagrams.sh
 
 clean:
 	@tools/make/clean.sh

@@ -1,5 +1,5 @@
 {
-  "include": ["teleclaude", "scripts/diagrams", "tests"],
+  "include": ["teleclaude", "tests"],
   "exclude": [".venv", "venv", "**/__pycache__", ".mypy_cache", ".pytest_cache", "frontend"],
   "ignore": [
     "teleclaude/core/db",

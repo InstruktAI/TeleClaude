@@ -92,8 +92,6 @@ target/
 *.rs.bk
 **/*.rs.bk
 
-# Generated diagrams (regenerated via `make diagrams`)
-docs/diagrams/
 # Local AI config artifacts
 .antigravitycli/
 .claude/
