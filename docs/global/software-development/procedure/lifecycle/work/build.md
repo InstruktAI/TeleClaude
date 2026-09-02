@@ -89,9 +89,10 @@ artifact relevant to executing this plan.
    structural rubrics. The defining test: would this code be unnecessary
    if the agent's briefing said the right thing?
 
-8. **Own the how inside frozen intent.** The plan's tasks and the observation
-   map are the frozen obligation inventory
-   (`software-development/spec/obligation-inventory`); the implementation
+8. **Own the how inside frozen intent.** The frozen obligation inventory is the
+   complete union of carriers `software-development/spec/obligation-inventory`
+   defines — plan tasks, the quality checklist's builder gates and user-facing
+   verification lines, and the observation map's entries; the implementation
    choices inside them are yours. Kick back to prepare when code reality
    invalidates the contract, a reviewed decision, or an inventory entry — not
    whenever implementation differs from prose. Never revise the plan or the map
