@@ -29,7 +29,7 @@ from .derivation import (
     render_title,
     strip_injected_blocks,
 )
-from .store import JsonValue, MirrorRecord, delete_mirror, get_mirror, upsert_mirror
+from .store import JsonValue, MirrorRecord, delete_mirror, get_mirror, record_mirror_shrink_refusal, upsert_mirror
 
 _MIRROR_VISIBILITY_POLICY = VisibilityPolicy(
     include_tools=False,
@@ -170,6 +170,11 @@ def generate_mirror_sync(
                 stored_derivation_version=existing.derivation_version,
                 current_derivation_version=DERIVATION_VERSION,
                 outcome=MirrorGenerationOutcome.SHRINK_REFUSED,
+            )
+            record_mirror_shrink_refusal(
+                source_identity,
+                shrink_refused_at=datetime.now(UTC).isoformat(),
+                db=db,
             )
             return MirrorGenerationOutcome.SHRINK_REFUSED
     else:

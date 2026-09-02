@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -20,7 +20,7 @@ from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db._sync import get_session_field_sync, get_session_ids_by_native_sync
 from teleclaude.history.remote_detail import get_remote_detail, resolve_remote_detail_base
 from teleclaude.history.service import HistorySearchPayload, HistorySearchRow
-from teleclaude.mirrors.store import MirrorRecord, get_mirror
+from teleclaude.mirrors.store import MirrorCoverageState, MirrorRecord, get_mirror
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.utils.transcript import parse_session_transcript
 from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id
@@ -33,6 +33,14 @@ _UNKNOWN_VALUE = "unknown"
 _YES_VALUE = "yes"
 _NO_VALUE = "no"
 _TRANSCRIPT_ID_READ_FAILED_EVENT = "history.transcript_id_read_failed"
+_COVERAGE_STATE_FIELD = "coverage_state"
+_SHRINK_REFUSED_AT_FIELD = "shrink_refused_at"
+_COVERAGE_LINE_TEMPLATE = "Coverage: through {timestamp_end}; state: {coverage_state}"
+_RETAINED_COVERAGE_LINE_TEMPLATE = (
+    "Coverage: through {timestamp_end}; state: {coverage_state}; shrink refusal observed: {shrink_refused_at}"
+)
+_MALFORMED_COVERAGE_STATE_MESSAGE = "Invalid mirror coverage state"
+_MALFORMED_SHRINK_REFUSED_AT_MESSAGE = "Invalid mirror shrink-refusal timestamp"
 
 logger = get_logger(__name__)
 
@@ -82,6 +90,8 @@ class HistoryDetailPayload(TypedDict):
     timestamp_start: str | None
     timestamp_end: str | None
     message_count: int | None
+    coverage_state: str
+    shrink_refused_at: str | None
     running: str
     raw: bool
     conversation_text: str
@@ -155,6 +165,19 @@ def _running_state(tc_id: str | None) -> str:
     return _YES_VALUE if lifecycle_status in _RUNNING_SESSION_STATES else _NO_VALUE
 
 
+def _coverage_header_line(mirror: MirrorRecord) -> str:
+    """Render the retained conversation boundary and its source-coverage state."""
+    timestamp_end = _format_display_timestamp(mirror.timestamp_end) if mirror.timestamp_end else _UNKNOWN_VALUE
+    values = {
+        "timestamp_end": timestamp_end,
+        "coverage_state": mirror.coverage_state.value,
+        "shrink_refused_at": mirror.shrink_refused_at or _UNKNOWN_VALUE,
+    }
+    if mirror.coverage_state is MirrorCoverageState.RETAINED_AFTER_SHRINK:
+        return _RETAINED_COVERAGE_LINE_TEMPLATE.format(**values)
+    return _COVERAGE_LINE_TEMPLATE.format(**values)
+
+
 def _detail_header_lines(resolution: MirrorResolution) -> list[str]:
     mirror = resolution.mirror
     header_lines = [mirror.title] if mirror is not None and mirror.title else []
@@ -168,6 +191,7 @@ def _detail_header_lines(resolution: MirrorResolution) -> list[str]:
         header_lines.append(f"Ended: {_format_display_timestamp(mirror.timestamp_end)}")
     if mirror is not None:
         header_lines.append(f"Messages: {mirror.message_count}")
+        header_lines.append(_coverage_header_line(mirror))
     header_lines.extend(
         [
             f"Running: {_running_state(resolution.tc_id)}",
@@ -208,10 +232,32 @@ def _detail_json_payload(
         "timestamp_start": mirror.timestamp_start if mirror is not None else None,
         "timestamp_end": mirror.timestamp_end if mirror is not None else None,
         "message_count": mirror.message_count if mirror is not None else None,
+        "coverage_state": mirror.coverage_state.value if mirror is not None else MirrorCoverageState.UNKNOWN.value,
+        "shrink_refused_at": mirror.shrink_refused_at if mirror is not None else None,
         "running": _running_state(resolution.tc_id),
         "raw": raw,
         "conversation_text": body,
     }
+
+
+def _remote_coverage_state(payload: Mapping[str, object]) -> MirrorCoverageState:
+    """Decode an additive remote coverage field, preserving older-peer unknowns."""
+    value = payload.get(_COVERAGE_STATE_FIELD)
+    if value is None:
+        return MirrorCoverageState.UNKNOWN
+    if not isinstance(value, str):
+        raise ValueError(_MALFORMED_COVERAGE_STATE_MESSAGE)
+    return MirrorCoverageState(value)
+
+
+def _remote_shrink_refused_at(payload: Mapping[str, object]) -> str | None:
+    """Decode the optional remote shrink-refusal observation timestamp."""
+    value = payload.get(_SHRINK_REFUSED_AT_FIELD)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(_MALFORMED_SHRINK_REFUSED_AT_MESSAGE)
+    return value
 
 
 def _resolve_local_mirror(
@@ -384,20 +430,26 @@ def show_transcript(
         if not isinstance(payload, dict):
             print(f"Invalid mirror response for session '{session_id}'")
             sys.exit(1)
-        mirror = MirrorRecord(
-            session_id=str(payload.get("session_id", session_id)),
-            computer=str(payload.get("computer", computer)),
-            agent=str(payload.get("agent", "")),
-            project=str(payload.get("project", "")),
-            title=str(payload.get("title", "")),
-            timestamp_start=payload.get("timestamp_start"),
-            timestamp_end=payload.get("timestamp_end"),
-            conversation_text=str(payload.get("conversation_text", "")),
-            message_count=int(payload.get("message_count", 0) or 0),
-            metadata={},
-            created_at="",
-            updated_at="",
-        )
+        try:
+            mirror = MirrorRecord(
+                session_id=str(payload.get("session_id", session_id)),
+                computer=str(payload.get("computer", computer)),
+                agent=str(payload.get("agent", "")),
+                project=str(payload.get("project", "")),
+                title=str(payload.get("title", "")),
+                timestamp_start=payload.get("timestamp_start"),
+                timestamp_end=payload.get("timestamp_end"),
+                conversation_text=str(payload.get("conversation_text", "")),
+                message_count=int(payload.get("message_count", 0) or 0),
+                metadata={},
+                created_at="",
+                updated_at="",
+                coverage_state=_remote_coverage_state(payload),
+                shrink_refused_at=_remote_shrink_refused_at(payload),
+            )
+        except ValueError as exc:
+            print(f"Invalid mirror response for session '{session_id}': {exc}")
+            sys.exit(1)
         resolution = MirrorResolution(
             mirror=mirror,
             requested_id=session_id,
