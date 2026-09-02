@@ -395,7 +395,6 @@ And each block carries the authorship of its own part rather than of the entry
 And a part whose kind is not projected to humans is omitted without removing the surrounding parts
 ```
 
-<!-- planned:codex-internal-context-bundled-as-human -->
 #### UC-OPD16: Codex goal context stays outside the peer conversation
 
 ```gherkin
@@ -404,7 +403,6 @@ When Codex supplies internal goal-continuation context before the session produc
 Then the peer conversation contains the authored output without showing the internal context as the operator's message
 And repeated goal continuations do not add copies of the internal context to the conversation
 ```
-<!-- /planned:codex-internal-context-bundled-as-human -->
 
 ### Cross-context references
 
