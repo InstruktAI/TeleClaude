@@ -29,6 +29,37 @@ read.
 **Output — the tier set for an invocation**, the documentation sources it
 implies, and the portion of those sources the caller may see.
 
+<!-- planned:agent-artifact-source-layout -->
+
+**Input — agent artifacts carry the same shape at every tier.** Each tier root
+carries `agents/` beside `docs/`. In a repository, scope is in the path, exactly
+as it is for documentation: `agents/{global,project}/{agents,commands,skills}`.
+In a company or person home the home is the scope, so `agents/{agents,commands,skills}`
+sits flat beside the flat `docs/`. Global commands are partitioned by the
+domains the repository publishes — `agents/global/commands/<domain>/` — under
+the same one-owner declaration that governs documentation domains; general
+commands, global skills, and global subagents are the mother's alone. A
+repository that carries global artifacts outside its declared reach fails
+validation loudly. The open `.agents/` convention is never read as input.
+
+<!-- /planned:agent-artifact-source-layout -->
+
+<!-- planned:tier-command-corpus -->
+
+**Output — artifacts are organized per consumer, not per tier.** Every consumer
+finds artifacts where it natively looks, relative to the root a session runs
+in: each native CLI's own directory (`.claude/`, `.codex/`, and the rest) at
+every session-hosting root, the open `.agents/` convention for skills, and one
+TeleClaude command corpus per tier at `<root>/.teleclaude/commands/`, of which
+the global corpus `~/.teleclaude/commands/<domain>/` is the instance at the
+home root. A command exists exactly once per tier and is reached through the
+loader by its explicit domain-namespaced name for global commands and its bare
+name, resolved through the session's context, for tier-local ones; it is never
+expanded into a per-CLI directory. Skills are native and therefore duplicate
+into each CLI's directory — duplication follows nativeness.
+
+<!-- /planned:tier-command-corpus -->
+
 ## Invariants
 
 - **Nothing scans for configuration.** Tiers are either registered or
@@ -78,6 +109,36 @@ implies, and the portion of those sources the caller may see.
   terminates context resolution with no context root, and an invocation from
   within one behaves as an invocation with no context root.
 
+<!-- planned:cross-tier-native-emission -->
+
+- **Artifact reach follows ownership; documentation reach follows membership.**
+  A caller sees the documentation of every company they belong to, from
+  anywhere, because knowledge is inert. An artifact executes, so it reaches
+  only the contexts that belong to its tier: global to every session, a
+  company's to the projects declaring that company, a person's to that
+  person's own workspace, a project's to itself. Membership never carries a
+  skill into an unrelated context.
+- **A generated artifact is capped at the tier that produced it.** Machine-
+  authored artifacts have passed no human authoring or adoption gate; they
+  reach no further than their producing tier, and promotion upward is a human
+  act.
+
+<!-- /planned:cross-tier-native-emission -->
+
+<!-- planned:fleet-artifact-sync -->
+
+- **Build outputs serve runtime readers; validation reads only sources.**
+  References are written in deployed vocabulary so any agent anywhere knows
+  where to read. Whether a referenced target exists is answered against its
+  source of truth — the owner's tree, found through the publisher registry —
+  never by dereferencing the deployed tree. Nothing the build writes is ever an
+  input to the build.
+- **Reconciliation is location-independent.** Sync processes every registered
+  root into its outputs in one run, from wherever it was invoked; where the
+  invoking session stands is not an input.
+
+<!-- /planned:fleet-artifact-sync -->
+
 <!-- planned:docs-tier-layering -->
 - **Belonging is binary for reading a company.** A company role carries business
   authority; it does not grade documentation access. Anyone with a declared
@@ -117,6 +178,18 @@ implies, and the portion of those sources the caller may see.
 company directories from their designated locations, and load the registered
 project roots from the manifest. That set is the whole configuration surface;
 there is no fifth place to look.
+
+<!-- planned:fleet-artifact-sync -->
+
+**Reconciling artifacts.** Take the same tier set — registered project roots
+plus the company and person homes at their designated locations — and build
+each root's authored `agents/` into every consumer's location for that root,
+composing a project's native directories from its own artifacts and its owning
+company's. Validation runs against sources first; the deployed documentation
+tree is then swapped into place atomically so no reader observes it partially
+rebuilt.
+
+<!-- /planned:fleet-artifact-sync -->
 
 <!-- planned-change:docs-tier-layering -->
 **Reading documentation.** Sources are aggregated into an index and the caller
@@ -169,3 +242,22 @@ whatever relationship the caller holds to the tier they name.
 - **A tier that is modelled but unread.** A declared relationship with no
   consumer looks like a working feature and is not. Presence in the schema is
   not presence in behaviour.
+
+<!-- planned:agent-artifact-source-layout -->
+
+- **Reading authored input from a location the platform writes.** Treating the
+  open `.agents/` directory, or any delivery location, as a source root makes a
+  file's provenance unreadable from its path and lets a regenerating deploy
+  overwrite authored work. Sources and outputs never share a location.
+
+<!-- /planned:agent-artifact-source-layout -->
+
+<!-- planned:fleet-artifact-sync -->
+
+- **Validating against a build output.** Checking a reference by
+  dereferencing the deployed tree couples validation to the previous deploy: a
+  new domain, a first deploy on a fresh machine, or a generated bundle cannot
+  validate before the deploy that would create its mapping, and a concurrent
+  rebuild makes valid references fail. Validation reads sources.
+
+<!-- /planned:fleet-artifact-sync -->

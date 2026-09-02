@@ -24,20 +24,20 @@ path runs two phases:
    The publishing gate ensures the global agent-artifact source list is
    only populated on the Mother project. Global documentation, in contrast,
    is contributed by every project for the domains it publishes (see below).
-<!-- planned-change:project-local-agent-artifacts -->
+<!-- planned-change:agent-artifact-source-layout -->
 
 2. **Local phase** — sources from `.agents/` (any project) are built
    under a transient distribution directory and then deployed to the
    project root.
 
-<!-- change:project-local-agent-artifacts -->
+<!-- change:agent-artifact-source-layout -->
 
-2. **Local phase** — sources from `.teleclaude/` (any project) are built
-   under a transient distribution directory and then deployed to that
+2. **Local phase** — sources from `agents/project/` (any repository) are
+   built under a transient distribution directory and then deployed to that
    project's own runtime locations. `.agents/` is one of those delivery
    locations, never an input.
 
-<!-- /planned-change:project-local-agent-artifacts -->
+<!-- /planned-change:agent-artifact-source-layout -->
 
 Global skill publication is a separate composed surface. Every registered
 project contributes each direct `agents/skills/<name>/` folder; no configuration
@@ -333,30 +333,104 @@ Scenario: UC-ARD14 Antigravity is served at its documented layout only
 
 <!-- /planned:command-migration-to-singular-telec-skill -->
 
-<!-- planned:project-local-agent-artifacts -->
+<!-- planned:agent-artifact-source-layout -->
 
-#### UC-ARD15: A project's own artifact sources are delivered to that project's runtimes
+#### UC-ARD15: A repository's project-scoped artifact sources are delivered to that project's runtimes
 
 ```
-Scenario: UC-ARD15 A project's own artifact sources are delivered to that project's runtimes
-  Given a project carries agent definitions, commands, and skills as siblings under its .teleclaude/ artifact-source root
-  And sync is invoked in deploy mode from that project
+Scenario: UC-ARD15 A repository's project-scoped artifact sources are delivered to that project's runtimes
+  Given a repository carries agent definitions, commands, and skills under agents/project/
+  And sync is invoked in deploy mode
   When the local phase deploys
   Then each artifact is offered to an agent session started in that project
   And every agent CLI that project is configured to use is served
   And all three artifact kinds are served
 ```
 
+#### UC-ARD20: A project carrying no artifact sources is unaffected
+
+```
+Scenario: UC-ARD20 A project carrying no artifact sources is unaffected
+  Given a repository carries no agents/ sources of its own
+  And sync is invoked in deploy mode
+  When the local phase runs
+  Then sessions started in that project are offered exactly what they were offered before
+  And the repository is not required to carry an artifact-source directory
+```
+
+#### UC-ARD21: Authored sources and generated output never share a location
+
+```
+Scenario: UC-ARD21 Authored sources and generated output never share a location
+  Given a repository carries agent artifacts under agents/
+  And sync is invoked in deploy mode
+  When the local phase deploys
+  Then no directory serves as both an authored source root and a delivery location
+  And a file placed under .agents/ is never read as an authored source
+  And an author can tell from a file's location alone whether they wrote it or the platform generated it
+```
+
+#### UC-ARD23: Global commands are partitioned by published domain and gated by ownership
+
+```
+Scenario: UC-ARD23 Global commands are partitioned by published domain and gated by ownership
+  Given a repository declares the domains it publishes
+  And it carries commands under agents/global/commands/<domain>/ for one of those domains
+  When sync runs in deploy mode
+  Then those commands deploy to the global corpus under that domain
+  And a command under a domain the repository does not publish is refused with a message naming the file and the domain
+  And general commands, global skills, and global subagents from a repository that is not the mother are refused the same way
+```
+
+#### UC-ARD24: A global command is invoked by its explicit domain-namespaced name
+
+```
+Scenario: UC-ARD24 A global command is invoked by its explicit domain-namespaced name
+  Given a command deployed to the global corpus under a domain
+  When a session or the lifecycle machinery names that command
+  Then the name carries the domain as its first segment
+  And two domains may each carry a command of the same bare name without collision
+```
+
+<!-- /planned:agent-artifact-source-layout -->
+
+<!-- planned:tier-command-corpus -->
+
+#### UC-ARD25: Every tier root carries its own expanded command corpus
+
+```
+Scenario: UC-ARD25 Every tier root carries its own expanded command corpus
+  Given a project, a company home, or a person home carries commands under its agents/ input
+  When sync runs in deploy mode
+  Then each command's expanded document exists exactly once, under that root's .teleclaude/commands/
+  And no per-CLI directory at that root receives a copy of it
+  And a document reference to that path resolves for an agent reading it in a session rooted there
+```
+
+#### UC-ARD26: A bare command name resolves through the session's context
+
+```
+Scenario: UC-ARD26 A bare command name resolves through the session's context
+  Given a session rooted in a project that declares an owning company
+  When it is dispatched a command by bare name
+  Then the loader resolves it from the project's corpus, then the owning company's, then the invoking person's workspace corpus, then the global corpus
+  And the nearest scope that carries the name wins
+  And a tier-local command named after a published domain is refused at sync as a collision
+```
+
+<!-- /planned:tier-command-corpus -->
+
+<!-- planned:cross-tier-native-emission -->
+
 #### UC-ARD16: Local-phase delivery is contained to the project that owns the source
 
 ```
 Scenario: UC-ARD16 Local-phase delivery is contained to the project that owns the source
-  Given a project carries agent artifacts under its own artifact-source root
-  And sync is invoked in deploy mode from that project
+  Given a repository carries agent artifacts under agents/project/
+  And sync is invoked in deploy mode
   When the local phase deploys
-  Then no artifact from that source root is written into a user-home runtime directory
-  And no artifact from that source root is written into a machine-global shared directory
-  And a Codex command from that source root is delivered to the project's own Codex runtime directory rather than the machine-global commands directory
+  Then no artifact from that source is written into a user-home runtime directory
+  And no artifact from that source is written into a machine-global shared directory
   And an agent session started in a different project is not offered those artifacts
 ```
 
@@ -365,57 +439,23 @@ Scenario: UC-ARD16 Local-phase delivery is contained to the project that owns th
 ```
 Scenario: UC-ARD17 Artifacts a project previously published globally are retracted
   Given an earlier sync published a project's own artifacts into machine-global runtime locations
-  And sync is invoked in deploy mode from that project
+  And sync is invoked in deploy mode
   When the local phase deploys
   Then the copies attributable to that project's source scope are removed from those machine-global locations
   And artifacts owned by other source scopes remain
   And a file with no ownership record is preserved
 ```
 
-#### UC-ARD18: A project-local artifact never displaces a global artifact of the same name
+#### UC-ARD18: A nearer-scope artifact never displaces a wider-scope artifact of the same name
 
 ```
-Scenario: UC-ARD18 A project-local artifact never displaces a global artifact of the same name
+Scenario: UC-ARD18 A nearer-scope artifact never displaces a wider-scope artifact of the same name
   Given a global artifact and a project-local artifact carry the same name
   And sync is invoked in deploy mode from the project carrying the local one
   When the local phase deploys
   Then the global artifact remains unchanged in the location the global phase wrote it
   And the project-local artifact is the one offered to sessions in that project
-  And neither delivery overwrites the other
-```
-
-#### UC-ARD19: A project's artifact sources are committable to its repository
-
-```
-Scenario: UC-ARD19 A project's artifact sources are committable to its repository
-  Given a project has been initialized for TeleClaude
-  And an author creates an artifact under the project's artifact-source root
-  When the author commits their work
-  Then the artifact is tracked by the project's version control
-  And the author did not have to discover or amend an exclusion rule to make it so
-  And the project's runtime state under the same root remains untracked
-```
-
-#### UC-ARD20: A project carrying no artifact sources is unaffected
-
-```
-Scenario: UC-ARD20 A project carrying no artifact sources is unaffected
-  Given a project carries no agent-artifact sources of its own
-  And sync is invoked in deploy mode from that project
-  When the local phase runs
-  Then sessions started in that project are offered exactly what they were offered before
-  And the project is not required to carry an artifact-source directory
-```
-
-#### UC-ARD21: Authored sources and generated output never share a location
-
-```
-Scenario: UC-ARD21 Authored sources and generated output never share a location
-  Given a project carries agent artifacts under its artifact-source root
-  And sync is invoked in deploy mode from that project
-  When the local phase deploys
-  Then no directory serves as both the authored source root and a delivery location
-  And an author can tell from a file's location alone whether they wrote it or the platform generated it
+  And the shadowing is reported to the author
 ```
 
 #### UC-ARD22: A runtime reading the open convention is served at that location
@@ -423,15 +463,62 @@ Scenario: UC-ARD21 Authored sources and generated output never share a location
 ```
 Scenario: UC-ARD22 A runtime reading the open convention is served at that location
   Given a project is configured to use an agent runtime that reads the open project-local convention
-  And that project carries agent artifacts under its artifact-source root
-  And sync is invoked in deploy mode from that project
+  And that project carries skills under its agents/ input
   When the local phase deploys
-  Then that runtime's artifacts are delivered to the open-convention location in the project
+  Then that runtime's skills are delivered to .agents/skills/ in the project
   And a runtime that reads its own project-local location is served there instead
   And neither location is read back as an authored source
 ```
 
-<!-- /planned:project-local-agent-artifacts -->
+#### UC-ARD27: Company-tier skills reach sessions in the company's projects
+
+```
+Scenario: UC-ARD27 Company-tier skills reach sessions in the company's projects
+  Given a company home carries a skill under its agents/ input
+  And a registered project declares that company as its owner
+  When sync runs in deploy mode
+  Then the skill is materialized into that project's native CLI directories
+  And a session in a project owned by a different company is not offered it
+  And removing the skill from the company home retracts it from every owned project on the next sync
+```
+
+#### UC-ARD28: Person-tier artifacts reach only that person's workspace
+
+```
+Scenario: UC-ARD28 Person-tier artifacts reach only that person's workspace
+  Given a person home carries a skill under its agents/ input
+  When sync runs in deploy mode
+  Then the skill is offered to sessions rooted in that person's workspace
+  And a session that person runs in a project is not offered it
+```
+
+<!-- /planned:cross-tier-native-emission -->
+
+<!-- planned:fleet-artifact-sync -->
+
+#### UC-ARD29: Sync reconciles every registered root regardless of where it runs
+
+```
+Scenario: UC-ARD29 Sync reconciles every registered root regardless of where it runs
+  Given registered projects and company and person homes carry authored docs/ and agents/
+  When sync is invoked in deploy mode from any directory
+  Then every registered root is built into its outputs in that one run
+  And the result is identical whichever directory the invocation started in
+  And no directory outside the registered set is searched
+```
+
+#### UC-ARD30: A reference validates against its source, never against the deployed tree
+
+```
+Scenario: UC-ARD30 A reference validates against its source, never against the deployed tree
+  Given an artifact references a document by its deployed path
+  And the referenced document exists in its owner's source tree
+  When validation runs
+  Then the reference is accepted whether or not the deployed tree currently carries it
+  And a reference whose target exists in no owner's source tree is refused with a message naming the file and the reference
+```
+
+<!-- /planned:fleet-artifact-sync -->
 
 ### Cross-context references
 

@@ -20,11 +20,11 @@ visibility: 'public'
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 - The Mother project alone owns `agents/skills/AGENTS.master.md`. A side project's `agents/skills/AGENTS.master.md` or generated `AGENTS.md` is never parsed or published; only its named skill folders contribute.
 - The Mother-owned skill catalog master is a thin orientation wrapper for the catalog directory. It carries no index and no executable directives; the catalog listing is rendered on demand by `general/procedure/skill-use`.
-<!-- planned-change:project-local-agent-artifacts -->
+<!-- planned-change:agent-artifact-source-layout -->
 - Global artifact sources live under `agents/`; project-local artifacts live under `.agents/`.
-<!-- change:project-local-agent-artifacts -->
-- Global artifact sources live under `agents/`; project-local artifacts live under `.teleclaude/`, whose `agents/`, `commands/`, and `skills/` siblings mirror the global layout. `.agents/` is a delivery location, never a source, under the separation the global policy states.
-<!-- /planned-change:project-local-agent-artifacts -->
+<!-- change:agent-artifact-source-layout -->
+- Every repository carries `agents/{global,project}/{agents,commands,skills}`. This repository, as the mother, fills `agents/global/` in full; a side project fills `agents/project/` freely and `agents/global/commands/<domain>/` only for domains it publishes. `.agents/` is a delivery location, never a source, under the separation the global policy states.
+<!-- /planned-change:agent-artifact-source-layout -->
 - The global master file is `agents/AGENTS.global.md` and is only used for global artifacts.
 
 ### Agent addendum authoring
