@@ -11,20 +11,12 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:reviewer-transcript-mirror-stale -->
-The session_mirrors service owns its own store with three logical
-objects: the mirrors record table, the tombstones table for
-empty-transcript memory, and a full-text index over the mirrors'
-conversation text. Sync triggers keep the full-text index aligned with
-the row table on insert, delete, and update.
-<!-- change:reviewer-transcript-mirror-stale -->
 The session_mirrors service owns its own store with four logical
 objects: the mirrors record table, the tombstones table for
 empty-transcript memory, retained-after-shrink observations keyed by
 source identity, and a full-text index over the mirrors' conversation
 text. Sync triggers keep the full-text index aligned with the row table
 on insert, delete, and update.
-<!-- /planned-change:reviewer-transcript-mirror-stale -->
 
 Schema bootstrap is lazy on first use and guarded so a given store path
 runs through the create-if-missing flow only once per process. Older
@@ -74,11 +66,7 @@ When any store function is invoked
 Then the store path is resolved (home-expanded) and the parent directory is created if missing
 And the writable engine is constructed
 And on the first connection, the schema bootstrap runs
-<!-- planned-change:reviewer-transcript-mirror-stale -->
-And the full schema (mirrors, indexes, tombstones, full-text index, three triggers) is created
-<!-- change:reviewer-transcript-mirror-stale -->
 And the full schema (mirrors, indexes, tombstones, retained-after-shrink observations, full-text index, three triggers) is created
-<!-- /planned-change:reviewer-transcript-mirror-stale -->
 And the per-process compatibility migration runs (idempotent field-adds)
 And the path is recorded so subsequent calls skip bootstrap
 ```
