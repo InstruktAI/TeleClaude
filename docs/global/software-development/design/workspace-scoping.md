@@ -97,7 +97,6 @@ guardrails lane).
 
 <!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
-<!-- planned:telec-code-dirty-path-owners -->
 ### Batch dirty-path ownership
 
 The read-only `telec code owners <path>...` query resolves custodianship for a
@@ -147,7 +146,6 @@ snapshot. Destructive null-custody authority returns only when that fresh result
 reports zero undetermined sessions and no live claimant for the path. Snapshot
 acquisition, dirty-set resolution, and path validation remain structural query
 boundaries and fail the batch when they cannot complete.
-<!-- /planned:telec-code-dirty-path-owners -->
 
 ## Invariants
 
@@ -224,7 +222,6 @@ changed` and `telec code lint` the checkpoint guidance is the whole
 
 <!-- /planned:distinguish-undetermined-scope-from-empty-scope -->
 
-<!-- planned:telec-code-dirty-path-owners -->
 13. **Null means no usable live claimant, not proof of abandonment.** A captured
     session with resolved-empty or `UNDETERMINED` batch attribution contributes
     no claim. `UNDETERMINED` is reported through the batch-level count and
@@ -235,7 +232,6 @@ changed` and `telec code lint` the checkpoint guidance is the whole
 14. **A commit clears earlier claims.** Touch evidence at or before a path's
     last committed boundary is ineligible even when its session remains open.
     A later uncommitted touch creates a new claim from that later timestamp.
-<!-- /planned:telec-code-dirty-path-owners -->
 
 ## Primary flows
 
@@ -294,7 +290,6 @@ telec code lint <files...>
   → make lint FILES_FROM=<nul tempfile of provided files>  +  guardrails lane <files>
 ```
 
-<!-- planned:telec-code-dirty-path-owners -->
 ### Batch ownership flow
 
 ```
@@ -308,7 +303,6 @@ telec code owners <path>...
   → group surviving candidates by path and select (touch_at, session_uuid) minimum
   → emit one complete JSON object in caller path order, including null owners
 ```
-<!-- /planned:telec-code-dirty-path-owners -->
 
 ### Thin hook flow
 
@@ -374,7 +368,6 @@ No `teleclaude_identity.json` present. This is a human or CI context.
 
 **Response:** Both legs run the full suite. Expected behavior for manual runs.
 
-<!-- planned:telec-code-dirty-path-owners -->
 ### Batch ownership cannot be completed
 
 An input path is outside the project or not dirty in the captured porcelain
@@ -384,7 +377,6 @@ resolved.
 **Response:** Exit non-zero with a path- or snapshot-specific diagnostic and no
 ownership JSON. An unavailable per-session transcript is not this failure: that
 session contributes no claimant evidence under the governed scope contract.
-<!-- /planned:telec-code-dirty-path-owners -->
 
 ### No recognised language artifacts / missing make target
 

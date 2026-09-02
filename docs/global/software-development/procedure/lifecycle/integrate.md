@@ -166,17 +166,11 @@ to own; the state machine never performs it. Divergence has two instruction shap
   2. When it fires, re-check repo-root cleanliness (`git -C <root> status --short`).
      Still dirty → leave the recurring reminder live and wait again. Clean →
      cancel it, resume `telec todo integrate`, and continue the drain.
-<!-- planned-change:telec-code-dirty-path-owners -->
-  3. Escalate to the human only after the block persists ~15–20 min (≈5 beats) of
-     continuous dirtiness — past that window it is no longer transient WIP but a
-     stuck or abandoned change that needs a human.
-<!-- change:telec-code-dirty-path-owners -->
   3. After the block persists ~15–20 min (≈5 beats) with the same complete path
      set, continue into **After the dirty-main quiet window** below. Human
      escalation is reserved for intent that remains genuinely ambiguous after
      ownership resolution and integrator inspection, or for a protection
      condition that survives the bound below.
-<!-- /planned-change:telec-code-dirty-path-owners -->
 
   **Trivial repo-hygiene files are a sanctioned exception to the wait.** When the
   only dirty paths are repo-hygiene or config files — `.gitignore`, `.gitattributes`,
@@ -201,7 +195,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
   steps within its governance, and re-enters `telec todo integrate`; the failure never
   parks the integrator merely because the failed operation was implied by its task.
 
-<!-- planned:telec-code-dirty-path-owners -->
 #### After the dirty-main quiet window
 
 When the same complete blocking path set remains dirty for the full quiet window, run
@@ -254,7 +247,6 @@ intent that remains genuinely ambiguous after a result has established that cust
 positive count that persists through the shared three-beat bound follows the one
 protection-condition escalation above; that escalation reports the unresolved safety
 brake and makes no claim about path intent.
-<!-- /planned:telec-code-dirty-path-owners -->
 
 #### Reminder: integrator-main-clearance
 
@@ -265,29 +257,17 @@ brake and makes no claim about path intent.
 - **Duration:** the existing ~2–3 minute interval owned by this procedure.
 - **Recurrence:** recurring while repo-root main remains blocked.
 - **Arm condition:** set on first dirty-main block before yielding.
-<!-- planned-change:telec-code-dirty-path-owners -->
-- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. While waiting, keep this reminder; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
-<!-- change:telec-code-dirty-path-owners -->
 - **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. While waiting, keep this reminder and follow the post-window ownership discipline; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
-<!-- /planned-change:telec-code-dirty-path-owners -->
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
-<!-- planned-change:telec-code-dirty-path-owners -->
-  dirty paths.
-<!-- change:telec-code-dirty-path-owners -->
   dirty paths. After the quiet window, re-run the read-only ownership query for
   an unchanged dirty set, but never re-contact an owner already coordinated for
   that set.
-<!-- /planned-change:telec-code-dirty-path-owners -->
 - **Cancellation:** cancel when main clears, the integration session reaches a
-<!-- planned-change:telec-code-dirty-path-owners -->
-  terminal outcome, or the human explicitly supersedes the wait.
-<!-- change:telec-code-dirty-path-owners -->
   terminal outcome, or the human explicitly supersedes the wait. A coordinated
   live owner or positive undetermined count keeps the reminder live for fresh
   read-only re-resolution only until the single bounded escalation transfers
   the next move to the human; cancel it at that transition.
-<!-- /planned-change:telec-code-dirty-path-owners -->
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-queue-watch
