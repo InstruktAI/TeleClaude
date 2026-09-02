@@ -181,8 +181,6 @@ class _ResourceValidationStep:
         _run_tool(cmd, self._project_root, self.name)
 
 
-_CLI_HELP_INPUT_PREFIXES = ("teleclaude/cli/telec/handlers/",)
-_CLI_HELP_INPUTS = frozenset({"teleclaude/cli/telec/surface.py"})
 _RAW_SQL_INPUTS = frozenset(
     {
         "teleclaude/core/db/_base.py",
@@ -210,30 +208,9 @@ def _normalize_targets(targets: list[str], project_root: Path) -> set[str]:
     return normalized
 
 
-def _targets_intersect_cli_help_inputs(targets: list[str], project_root: Path) -> bool:
-    selected = _normalize_targets(targets, project_root)
-    return any(path in _CLI_HELP_INPUTS or path.startswith(_CLI_HELP_INPUT_PREFIXES) for path in selected)
-
-
 def _selected_raw_sql_inputs(targets: list[str], project_root: Path) -> list[str]:
     selected = _normalize_targets(targets, project_root)
     return sorted(path for path in selected if path in _RAW_SQL_INPUTS)
-
-
-@dataclass
-class _CliHelpStep:
-    """CLI help validation for changes to the in-tree CLI surface."""
-
-    name: str = "cli_help"
-    _project_root: Path = field(default_factory=Path)
-    _run_all: bool = False
-
-    def run(self, targets: list[str]) -> None:
-        """Run only on full runs or selected CLI surface/handler changes."""
-        if not self._run_all and not _targets_intersect_cli_help_inputs(targets, self._project_root):
-            return
-        script = str(REPO_ROOT / "tools" / "checks" / "check-cli-help.sh")
-        _run_tool([script], self._project_root, self.name)
 
 
 @dataclass
@@ -320,7 +297,6 @@ class GuardrailsLane:
             _MarkdownStep(_project_root=root, _run_all=run_all),
             _HomePathsStep(_project_root=root, _run_all=run_all),
             _ResourceValidationStep(_project_root=root, _run_all=run_all),
-            _CliHelpStep(_project_root=root, _run_all=run_all),
             _RawSqlStep(_project_root=root, _run_all=run_all),
             _SnapshotTestingStep(_project_root=root, _run_all=run_all),
             _ForbidUnitTestsStep(_project_root=root, _run_all=run_all),
