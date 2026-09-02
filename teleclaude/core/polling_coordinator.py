@@ -511,7 +511,7 @@ async def _project_user_reflection(
         observe(UserReflectionProjectionOutcome.SUPPRESSED, UserReflectionProjectionReason.DAEMON_CONTROL)
     else:
         result = SKIPPED_TURN_REFLECTION
-        if InputOrigin.DISCORD.value in adapter_client.adapters and source.lower() != InputOrigin.DISCORD.value:
+        if InputOrigin.DISCORD.value in adapter_client.adapters:
             result = await reflect_user_turn_segments(
                 session,
                 adapter_client,
