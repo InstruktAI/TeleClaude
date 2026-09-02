@@ -1,5 +1,5 @@
 ---
-description: "Global agent artifacts publish only within a repository's declared reach: general commands, global skills, and global subagents are the mother's alone, domain commands belong to the domain's one publisher, and a source outside that reach is refused at sync."
+description: "Global agent artifacts publish only within a repository's declared reach: general commands and global skills are the mother's alone, domain commands belong to the domain's one publisher, and a source outside that reach is refused at sync."
 visibility: 'public'
 ---
 
@@ -12,12 +12,12 @@ visibility: 'public'
 ## What it is
 
 A reach gate on global agent-artifact publishing. Every repository carries the
-same authored layout, `agents/{global,project}/{agents,commands,skills}`, and
+same authored layout, `agents/{global,project}/{commands,skills}`, and
 the gate decides which of a repository's `agents/global/` sources it may
 publish:
 
-- General commands, global skills, and global subagents publish from the
-  mother repository alone.
+- General commands and global skills publish from the mother repository
+  alone.
 - Domain-partitioned commands (`agents/global/commands/<domain>/`) publish from
   the single repository that declares that domain in `business.publishes` —
   the same one-owner-per-domain rule that governs documentation domains.
@@ -45,9 +45,9 @@ spec references those scenarios rather than restating them.
 #### UC-MPG1: The mother publishes every global artifact class
 
 ```gherkin
-Scenario: The mother publishes general commands, global skills, and global subagents
+Scenario: The mother publishes general commands and global skills
   Given the project root equals the canonical TeleClaude repository root
-  And it carries general commands, global skills, global subagents, and domain commands for domains it publishes under agents/global/
+  And it carries general commands, global skills, and domain commands for domains it publishes under agents/global/
   When sync runs in deploy mode
   Then every one of those sources is validated and published to its global consumer
 ```
@@ -57,7 +57,7 @@ Scenario: The mother publishes general commands, global skills, and global subag
 ```gherkin
 Scenario: Mother project with empty global artifact directories
   Given the project root equals the canonical TeleClaude repository root
-  And the global agents, commands, and skills source directories are missing or empty
+  And the global commands and skills source directories are missing or empty
   When the distribution pipeline collects global sources
   Then no global artifact items are discovered from those directories
   And the pipeline proceeds without error

@@ -147,7 +147,7 @@ Scenario: An agent validates a repository whose sources exceed its declared reac
   When the agent runs artifact validation
   Then every agents/project/ source is validated as authored input
   And a global command under a domain the repository publishes is validated as authored input
-  And a general command, a global skill, a global subagent, or a command under a domain the repository does not publish is refused with a finding naming the file and the reach it exceeds
+  And a general command, a global skill, or a command under a domain the repository does not publish is refused with a finding naming the file and the reach it exceeds
   And nothing under .agents/ is read as an authored source
 ```
 <!-- /planned-change:agent-artifact-source-layout -->
