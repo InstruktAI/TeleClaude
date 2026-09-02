@@ -198,7 +198,7 @@ this policy adds no mid-work stop trigger.
   under the `HUMAN-DECISION:` marker is the relaying session's violation, not
   the plan's authority.
 - Scope lane at build/commit review: a process-layer behavioral delta the
-  approved intent does not call for is **Critical** (existing rule; this policy
+  authorized intent does not call for is **Critical** (existing rule; this policy
   names the process layer as its sharpest case).
 - An agent-authored approval claim in a human's name is escalated to the human
   when discovered; the session record answers.
