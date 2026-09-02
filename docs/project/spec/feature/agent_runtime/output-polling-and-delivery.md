@@ -395,6 +395,17 @@ And each block carries the authorship of its own part rather than of the entry
 And a part whose kind is not projected to humans is omitted without removing the surrounding parts
 ```
 
+<!-- planned:codex-internal-context-bundled-as-human -->
+#### UC-OPD16: Codex goal context stays outside the peer conversation
+
+```gherkin
+Given an operator observes a direct conversation between a Codex session with an active goal and a peer
+When Codex supplies internal goal-continuation context before the session produces authored output
+Then the peer conversation contains the authored output without showing the internal context as the operator's message
+And repeated goal continuations do not add copies of the internal context to the conversation
+```
+<!-- /planned:codex-internal-context-bundled-as-human -->
+
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
