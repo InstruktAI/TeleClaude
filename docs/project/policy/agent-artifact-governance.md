@@ -31,7 +31,7 @@ visibility: 'public'
 <!-- planned-change:agent-artifact-source-layout -->
 - Global artifact sources live under `agents/`; project-local artifacts live under `.agents/`.
 <!-- change:agent-artifact-source-layout -->
-- Every repository carries `agents/{global,project}/{commands,skills}`. This repository, as the mother, fills `agents/global/` in full; a side project fills `agents/project/` freely and `agents/global/commands/<domain>/` only for domains it publishes. `.agents/` is a delivery location, never a source, under the separation the global policy states.
+- Every repository carries `agents/{global,project}/{commands,skills}`. This repository, as the mother, fills `agents/global/` in full; a side project fills `agents/project/` freely and `agents/global/commands/<domain>/` only for domains it publishes. `.agents/` is a delivery location, never a source, under the separation the global policy states. The global master and the addenda are not artifact kinds and are not tiered: they stay at the artifact root as `agents/AGENTS.global.md` and `agents/<AGENT>.addendum.md`.
 <!-- /planned-change:agent-artifact-source-layout -->
 - The global master file is `agents/AGENTS.global.md` and is only used for global artifacts.
 
