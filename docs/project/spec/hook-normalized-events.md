@@ -41,6 +41,10 @@ Current raw-to-normalized lifecycle mapping:
 | Claude      | `PreToolUse`                                                                   | `pre_tool_use`       | forwarded  |
 | Claude      | `PostToolUse`                                                                  | `post_tool_use`      | forwarded  |
 | Claude      | `Stop`                                                                         | `agent_stop`         | forwarded  |
+<!-- planned:status-stalled-after-compact-slash-command -->
+| Claude      | `PostCompact` where `trigger == manual`                                        | `agent_idle`          | forwarded  |
+| Claude      | `PostCompact` where `trigger == auto`                                          | (none)                | dropped    |
+<!-- /planned:status-stalled-after-compact-slash-command -->
 | Antigravity | `PreInvocation` where `invocationNum == 0`                                     | `session_start`      | forwarded  |
 | Antigravity | `PreInvocation` where `invocationNum > 0` and latest transcript role is `user` | `user_prompt_submit` | forwarded  |
 | Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present    | (none)               | dropped    |

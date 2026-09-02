@@ -206,6 +206,7 @@ And normal live-session listing returns the session without requiring `include_i
 And headless or closed lifecycle rows are not reactivated by any activity hook
 ```
 
+<!-- planned-change:status-stalled-after-compact-slash-command -->
 #### UC-SL29: A silent in-turn session derives stalled
 
 ```
@@ -217,6 +218,19 @@ And any subsequent observed activity makes the same derivation report `active` a
 And a session within the stall threshold continues to report `active`
 And the stop-event and terminal-lifecycle rules for `idle` and the no-activity rule for `unknown` are unchanged
 ```
+<!-- change:status-stalled-after-compact-slash-command -->
+#### UC-SL29: A silent in-turn session derives stalled
+
+```
+Given a non-terminal session whose latest input arrived after its latest authoritative idle boundary
+And the session's observed activity has not advanced for longer than the platform's stall threshold
+When a projection derives the session's `agent_status`
+Then it reports `stalled` instead of `active`
+And any subsequent observed activity makes the same derivation report `active` again
+And a session within the stall threshold continues to report `active`
+And the authoritative-idle, terminal-lifecycle, and no-activity rules remain unchanged
+```
+<!-- /planned-change:status-stalled-after-compact-slash-command -->
 
 <!-- planned:session-bootstrap-strands-initializing -->
 
