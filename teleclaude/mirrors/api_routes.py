@@ -41,6 +41,8 @@ class MirrorDetailResponse(TypedDict):
     message_count: int
     timestamp_start: str | None
     timestamp_end: str | None
+    coverage_state: str
+    shrink_refused_at: str | None
 
 
 def _parse_agent_filter(agent: str) -> list[AgentName]:
@@ -104,6 +106,8 @@ async def get_mirror_route(session_id: str) -> MirrorDetailResponse:
         "message_count": mirror.message_count,
         "timestamp_start": mirror.timestamp_start,
         "timestamp_end": mirror.timestamp_end,
+        "coverage_state": mirror.coverage_state.value,
+        "shrink_refused_at": mirror.shrink_refused_at,
     }
 
 

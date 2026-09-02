@@ -7,6 +7,7 @@ import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import cast
 from urllib.parse import quote
@@ -46,6 +47,8 @@ _UNREPROJECTABLE_SOURCE_CLAUSE = (
     "EXISTS (SELECT 1 FROM mirror_unreprojectable_sources "
     "WHERE mirror_unreprojectable_sources.source_identity = mirrors.source_identity)"
 )
+_MIRROR_SHRINK_REFUSALS_TABLE = "mirror_shrink_refusals"
+_SHRINK_REFUSED_AT_FIELD = "shrink_refused_at"
 _IDENTITY_PARAM = "identity"
 _PROJECT_PARAM = "project"
 _SQL_AND_SEPARATOR = " AND "
@@ -87,6 +90,25 @@ _CANONICAL_COUNT_SQL_TEMPLATE = """
         GROUP BY mirrors.agent, CASE WHEN mirrors.session_id IS NULL THEN mirrors.id ELSE mirrors.session_id END
     )
 """
+_GET_MIRROR_SQL_TEMPLATE = f"""
+    SELECT mirrors.session_id, mirrors.source_identity, mirrors.computer, mirrors.agent, mirrors.project,
+        mirrors.title, mirrors.timestamp_start, mirrors.timestamp_end, mirrors.conversation_text,
+        mirrors.message_count, mirrors.metadata, mirrors.created_at, mirrors.updated_at, mirrors.summary,
+        mirrors.human_email, mirrors.visibility, mirrors.command, mirrors.slug, mirrors.is_worker,
+        mirrors.derivation_version,
+        mirror_shrink_refusals.{_SHRINK_REFUSED_AT_FIELD}
+    FROM mirrors LEFT JOIN {_MIRROR_SHRINK_REFUSALS_TABLE} AS mirror_shrink_refusals
+        ON mirror_shrink_refusals.source_identity = mirrors.source_identity
+    WHERE {{where_clause}} ORDER BY mirrors.updated_at DESC LIMIT 1
+"""
+_RECORD_MIRROR_SHRINK_REFUSAL_SQL = f"""
+    INSERT INTO {_MIRROR_SHRINK_REFUSALS_TABLE} (source_identity, {_SHRINK_REFUSED_AT_FIELD})
+    VALUES (:source_identity, :{_SHRINK_REFUSED_AT_FIELD})
+    ON CONFLICT(source_identity) DO UPDATE SET {_SHRINK_REFUSED_AT_FIELD} = excluded.{_SHRINK_REFUSED_AT_FIELD}
+"""
+_CLEAR_MIRROR_SHRINK_REFUSAL_SQL = (
+    f"DELETE FROM {_MIRROR_SHRINK_REFUSALS_TABLE} WHERE source_identity = :source_identity"
+)
 
 _schema_initialized: set[str] = set()
 _rw_engines: dict[str, Engine] = {}
@@ -125,6 +147,14 @@ class MirrorSearchPage:
     unreprojectable_excluded_count: int
 
 
+class MirrorCoverageState(StrEnum):
+    """Reader-visible state of a retained mirror's current-source coverage."""
+
+    RETAINED_AFTER_SHRINK = "retained_after_shrink"
+    NO_RECORDED_SHRINK = "no_recorded_shrink"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class MirrorRecord:
     """Full mirror row for a session transcript."""
@@ -149,6 +179,8 @@ class MirrorRecord:
     slug: str | None = None
     is_worker: bool = False
     derivation_version: int = 0
+    coverage_state: MirrorCoverageState = MirrorCoverageState.UNKNOWN
+    shrink_refused_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -190,62 +222,32 @@ def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
 _MIRRORS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS mirrors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT,
-    source_identity TEXT UNIQUE,
-    computer TEXT NOT NULL,
-    agent TEXT NOT NULL,
-    project TEXT NOT NULL DEFAULT '',
-    title TEXT NOT NULL DEFAULT '',
-    timestamp_start TEXT,
-    timestamp_end TEXT,
-    conversation_text TEXT NOT NULL DEFAULT '',
-    message_count INTEGER NOT NULL DEFAULT 0,
-    metadata TEXT DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    summary TEXT,
-    human_email TEXT,
-    visibility TEXT DEFAULT 'private',
-    command TEXT,
-    slug TEXT,
-    is_worker INTEGER NOT NULL DEFAULT 0,
+    session_id TEXT, source_identity TEXT UNIQUE, computer TEXT NOT NULL, agent TEXT NOT NULL,
+    project TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', timestamp_start TEXT, timestamp_end TEXT,
+    conversation_text TEXT NOT NULL DEFAULT '', message_count INTEGER NOT NULL DEFAULT 0, metadata TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, summary TEXT, human_email TEXT,
+    visibility TEXT DEFAULT 'private', command TEXT, slug TEXT, is_worker INTEGER NOT NULL DEFAULT 0,
     derivation_version INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_mirrors_agent ON mirrors(agent);
 CREATE INDEX IF NOT EXISTS idx_mirrors_project ON mirrors(project);
 CREATE INDEX IF NOT EXISTS idx_mirrors_timestamp ON mirrors(timestamp_start DESC);
 CREATE INDEX IF NOT EXISTS idx_mirrors_source_identity ON mirrors(source_identity);
-CREATE TABLE IF NOT EXISTS mirror_tombstones (
-    source_identity TEXT PRIMARY KEY,
-    agent TEXT NOT NULL DEFAULT '',
-    transcript_path TEXT NOT NULL DEFAULT '',
-    file_size INTEGER NOT NULL DEFAULT 0,
-    file_mtime TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT ''
-);
-CREATE TABLE IF NOT EXISTS mirror_unreprojectable_sources (
-    source_identity TEXT PRIMARY KEY,
-    marked_at TEXT NOT NULL
-);
-CREATE VIRTUAL TABLE IF NOT EXISTS mirrors_fts USING fts5(
-    title,
-    conversation_text,
-    content='mirrors',
-    content_rowid='id'
-);
+CREATE TABLE IF NOT EXISTS mirror_tombstones (source_identity TEXT PRIMARY KEY, agent TEXT NOT NULL DEFAULT '',
+    transcript_path TEXT NOT NULL DEFAULT '', file_size INTEGER NOT NULL DEFAULT 0, file_mtime TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS mirror_unreprojectable_sources (source_identity TEXT PRIMARY KEY, marked_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS mirror_shrink_refusals (source_identity TEXT PRIMARY KEY, shrink_refused_at TEXT NOT NULL);
+CREATE VIRTUAL TABLE IF NOT EXISTS mirrors_fts USING fts5(title, conversation_text, content='mirrors', content_rowid='id');
 CREATE TRIGGER IF NOT EXISTS mirrors_ai AFTER INSERT ON mirrors BEGIN
-    INSERT INTO mirrors_fts(rowid, title, conversation_text)
-    VALUES (new.id, new.title, new.conversation_text);
+    INSERT INTO mirrors_fts(rowid, title, conversation_text) VALUES (new.id, new.title, new.conversation_text);
 END;
 CREATE TRIGGER IF NOT EXISTS mirrors_ad AFTER DELETE ON mirrors BEGIN
-    INSERT INTO mirrors_fts(mirrors_fts, rowid, title, conversation_text)
-    VALUES ('delete', old.id, old.title, old.conversation_text);
+    INSERT INTO mirrors_fts(mirrors_fts, rowid, title, conversation_text) VALUES ('delete', old.id, old.title, old.conversation_text);
 END;
 CREATE TRIGGER IF NOT EXISTS mirrors_au AFTER UPDATE ON mirrors BEGIN
-    INSERT INTO mirrors_fts(mirrors_fts, rowid, title, conversation_text)
-    VALUES ('delete', old.id, old.title, old.conversation_text);
-    INSERT INTO mirrors_fts(rowid, title, conversation_text)
-    VALUES (new.id, new.title, new.conversation_text);
+    INSERT INTO mirrors_fts(mirrors_fts, rowid, title, conversation_text) VALUES ('delete', old.id, old.title, old.conversation_text);
+    INSERT INTO mirrors_fts(rowid, title, conversation_text) VALUES (new.id, new.title, new.conversation_text);
 END;
 """
 
@@ -413,6 +415,12 @@ def _mirror_record_from_row(row: RowMapping) -> MirrorRecord:
         slug=_optional_str(row.get("slug")),
         is_worker=bool(_int_value(row.get("is_worker"))),
         derivation_version=_int_value(row.get("derivation_version")),
+        coverage_state=(
+            MirrorCoverageState.RETAINED_AFTER_SHRINK
+            if row.get(_SHRINK_REFUSED_AT_FIELD) is not None
+            else MirrorCoverageState.NO_RECORDED_SHRINK
+        ),
+        shrink_refused_at=_optional_str(row.get(_SHRINK_REFUSED_AT_FIELD)),
     )
 
 
@@ -569,46 +577,20 @@ def get_mirror(
     clauses: list[str]
     params: dict[str, object]  # guard: loose-dict - SQL bind params vary by lookup path.
     if source_identity:
-        clauses = ["source_identity = :source_identity"]
+        clauses = ["mirrors.source_identity = :source_identity"]
         params = {"source_identity": source_identity}
     elif session_id:
-        clauses = ["session_id = :session_id"]
+        clauses = ["mirrors.session_id = :session_id"]
         params = {"session_id": session_id}
         if computer:
-            clauses.append("computer = :computer")
+            clauses.append("mirrors.computer = :computer")
             params["computer"] = computer
     else:
         return None
 
     _apply_role_filter(clauses, params, caller_email, caller_role)
 
-    sql = f"""
-        SELECT
-            session_id,
-            source_identity,
-            computer,
-            agent,
-            project,
-            title,
-            timestamp_start,
-            timestamp_end,
-            conversation_text,
-            message_count,
-            metadata,
-            created_at,
-            updated_at,
-            summary,
-            human_email,
-            visibility,
-            command,
-            slug,
-            is_worker,
-            derivation_version
-        FROM mirrors
-        WHERE {" AND ".join(clauses)}
-        ORDER BY updated_at DESC
-        LIMIT 1
-    """
+    sql = _GET_MIRROR_SQL_TEMPLATE.format(where_clause=_SQL_AND_SEPARATOR.join(clauses))
 
     try:
         with _get_ro_engine(db).connect() as conn:
@@ -728,6 +710,21 @@ def upsert_mirror(record: MirrorRecord, *, db: str | Path | None = None) -> None
             text("DELETE FROM mirror_unreprojectable_sources WHERE source_identity = :source_identity"),
             {"source_identity": record.source_identity},
         )
+        conn.execute(text(_CLEAR_MIRROR_SHRINK_REFUSAL_SQL), {"source_identity": record.source_identity})
+
+
+def record_mirror_shrink_refusal(
+    source_identity: str,
+    *,
+    shrink_refused_at: str,
+    db: str | Path | None = None,
+) -> None:
+    """Record the latest preserved-mirror observation after a smaller projection."""
+    with _get_rw_engine(db).begin() as conn:
+        conn.execute(
+            text(_RECORD_MIRROR_SHRINK_REFUSAL_SQL),
+            {"source_identity": source_identity, _SHRINK_REFUSED_AT_FIELD: shrink_refused_at},
+        )
 
 
 def delete_mirror(
@@ -759,10 +756,10 @@ def _apply_role_filter(
     if caller_role is None or caller_role == HUMAN_ROLE_ADMIN:
         return
     if caller_role == HUMAN_ROLE_MEMBER:
-        clauses.append("(human_email = :caller_email OR visibility = 'shared')")
+        clauses.append("(mirrors.human_email = :caller_email OR mirrors.visibility = 'shared')")
         params["caller_email"] = caller_email
     else:
-        clauses.append("human_email = :caller_email")
+        clauses.append("mirrors.human_email = :caller_email")
         params["caller_email"] = caller_email
 
 
