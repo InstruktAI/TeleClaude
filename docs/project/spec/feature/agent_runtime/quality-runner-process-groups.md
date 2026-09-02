@@ -45,13 +45,12 @@ And the step does not fail with ModuleNotFoundError for a TeleClaude runtime dep
 ```
 
 <!-- planned:fix-check-cli-help-sh-exits-0-when-its-cli-s -->
-#### UC-CQD3: repository-wide lint fails when a guardrail cannot enumerate the command surface
+#### UC-CQD3: routine lint does not execute CLI help paths
 
 ```gherkin
-Given an agent invokes repository-wide lint
-When the command-surface guardrail cannot enumerate the commands it must inspect
-Then repository-wide lint exits non-zero
-And it does not report the guardrails lane as successful
+Given an agent invokes routine or repository-wide lint
+When the guardrails lane runs
+Then it does not start CLI commands solely to validate their help behavior
 ```
 <!-- /planned:fix-check-cli-help-sh-exits-0-when-its-cli-s -->
 
