@@ -1,5 +1,5 @@
 ---
-description: Surface deepening opportunities in a codebase, present them for the human to choose one, then converge on that module's interface — with the human's attention as the budget and ownership settled before depth.
+description: Surface and rank deepening opportunities, select one through agent judgment and independent peer falsification, then converge on that module's interface within settled ownership and scope.
 activation_trigger: Use when asked to find refactoring or deepening opportunities in a codebase, to run an architecture improvement sweep, or to design or redesign one module's interface.
 ---
 
