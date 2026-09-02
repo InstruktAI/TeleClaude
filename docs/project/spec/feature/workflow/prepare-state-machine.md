@@ -305,7 +305,13 @@ wires the existing phase-transition seam (the same seam that currently emits
 finalize-ready only) to publish or bridge the target `workflow.todo.phase_advanced`
 wake-up for PREPARED and other eligibility-changing prepare/work transitions.
 The runner then evaluates the full eligible project set and dispatches children
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 only after acquiring `(project, child_slug, prepare)` claims.
+<!-- change:remove-diagnosis-dispatch-leases -->
+through the ordinary lifecycle-session start path, which records the spawned
+driver as the child's `active_runner`; no reservation, expiry, or other
+pre-ownership state participates.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 This supersedes parent-worker reuse for child prepare. A prepare session must
 not send a new `/next-prepare` instruction to itself, must not rebind a parent
