@@ -217,6 +217,18 @@ And no session — including the receiving session itself — is recorded as tha
 And every downstream consumer treats the turn as owner-authored: it is never classified, reflected, or suppressed as an author from another session
 ```
 
+<!-- planned:fix-tmux-exit-leads-to-compaction -->
+#### UC-SID11: A non-composer interactive screen cannot receive platform input
+
+```gherkin
+Given the owning human is viewing a running agent session that shows an interactive screen other than its editable composer
+And that screen includes a marker also used by the agent's composer
+When asynchronous platform-authored text is ready for delivery
+Then the interactive screen remains unchanged and unsubmitted
+And delivery waits until the agent-specific complete composer can be identified
+```
+<!-- /planned:fix-tmux-exit-leads-to-compaction -->
+
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.
