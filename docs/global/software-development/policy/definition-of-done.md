@@ -29,6 +29,14 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] No code duplication
 - [ ] No unjustified fallback paths (each fallback has a code comment explaining why UX requires it)
 - [ ] Contract violations fail fast
+- [ ] Structural ratchet honored (below)
+
+**Structural ratchet.** Every todo assesses structural debt in the modules and
+seams its change path directly exercises. It performs a preparatory deepening
+by default when the improvement is behavior-preserving, owner-local,
+contract-preserving, coherent as one reviewable commit, and fits the todo's
+cost cap. Otherwise it records a deepening candidate with the reason for
+deferral. No delivery may introduce or worsen a principle violation.
 
 ### 3. Testing
 

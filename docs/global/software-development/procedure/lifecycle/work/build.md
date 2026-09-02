@@ -105,6 +105,15 @@ artifact relevant to executing this plan.
    goes to the reviewer through evidence or to prepare through kickback; a
    question to the human about anything outside their lane
    (`general/policy/human-contract`) is itself a defect.
+9. **Honor the structural ratchet on the change path.** Execute a planned
+   preparatory deepening as its own commit before the behavioral change it
+   prepares; never fold it into a behavioral commit. Structural debt the plan
+   did not assess is handled the same way at build time
+   (`definition-of-done` §2): when the deepening is behavior-preserving,
+   owner-local, contract-preserving, one coherent commit, and within the cost
+   cap, do it as its own commit and record it in the build report; otherwise
+   record the candidate and the reason for deferral in `deferrals.md`. The
+   change path is never left worse than it was found.
 
 ### Test-quality self-review
 

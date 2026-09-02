@@ -356,6 +356,16 @@ helper/wiring assertions as substitutes for behavior.
   the builder, but they are not a drift contract unless they appear in this
   block.
 
+Apply the structural ratchet (`definition-of-done` §2) to the change path
+derived in step 2c. Where a preparatory deepening meets its five conditions —
+behavior-preserving, owner-local, contract-preserving, one coherent reviewable
+commit, within the todo's cost cap — add it as its own task before the
+behavioral task it prepares, anchored to the module it deepens per
+`substrate-anchoring`. Where it does not, record the deepening candidate and
+the reason for deferral in the plan, so the deferrals step files it rather than
+losing it. A plan with neither on a change path that carries structural debt
+is incomplete.
+
 Verify plan tasks against the domain specs loaded in step 1. Plans that reference
 non-existent APIs, wrong schema fields, or incorrect directory structures are
 defective — the builder will discover the error at build time, wasting a session.

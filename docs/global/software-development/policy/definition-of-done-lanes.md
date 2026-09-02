@@ -209,7 +209,17 @@ Check whether the implementation follows existing codebase paradigms:
 3. **Pattern consistency**: Does it follow patterns established by adjacent code?
 4. **Schema evolution**: For data the project owns (persisted state, config, artifacts), does it migrate the stored shape forward, or carry a backward-compatibility branch for an old shape? The contract for owned data is forward-migration (`backward-compatibility-hygiene`, Owned internal data); a version-tolerance branch in domain code is the violation, not the workaround. Any change to the field set of an owned persisted or serialized model — adding a field, renaming a field, removing a field, or tightening one to required — is itself a schema change: the diff must include the forward-migration step that rewrites existing records to the new shape **and** a golden-fixture test that loads an old-shape record through the new model. A field-set change with no migration is a defect that surfaces only when a pre-change record is read back, never in the change's own tests. The trap is a rename that does not bump the schema version: affected records are already stamped at the latest version, so a version-gated `vN → vN+1` hop never runs on them — the migration must normalize them unconditionally.
 
-Paradigm violations are **Important** at minimum. Copy-paste of a parameterizable component is Important. Bypassing the data layer is Critical. A backward-compatibility branch on owned data — version tolerance smeared through domain logic where a forward migration is the contract — is Critical. A field-set change to an owned persisted or serialized model that ships with no forward-migration, or with no old-shape golden-fixture test, is **Critical** — it delivers a record the current model can no longer read.
+5. **Structural ratchet**: Does the delivery leave the modules and seams on its
+   change path no worse, and carry its ratchet disposition — a preparatory
+   deepening commit, or a recorded deepening candidate with the reason for
+   deferral (`definition-of-done` §2)? The reviewer blocks an introduced or
+   worsened violation. It may challenge a deferral only by disproving its
+   stated reason, never by substituting the reviewer's preferred refactor.
+   Untouched debt outside the change path is never a finding.
+
+Paradigm violations are **Important** at minimum. An introduced or worsened
+violation on the change path, or a delivery with no ratchet disposition at all,
+is Important. Copy-paste of a parameterizable component is Important. Bypassing the data layer is Critical. A backward-compatibility branch on owned data — version tolerance smeared through domain logic where a forward migration is the contract — is Critical. A field-set change to an owned persisted or serialized model that ships with no forward-migration, or with no old-shape golden-fixture test, is **Critical** — it delivers a record the current model can no longer read.
 
 #### Principle violation hunt
 

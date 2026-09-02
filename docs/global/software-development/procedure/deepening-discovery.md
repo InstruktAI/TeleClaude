@@ -119,10 +119,11 @@ not consulted.
 ### 6. Design it twice
 
 Frame the problem space — constraints, dependency category, a rough
-illustrative sketch — then dispatch three or more sub-agents in parallel, each
-with a different design constraint: minimize the interface; maximize
-flexibility; make the most common caller trivial; design around ports and
-adapters where a cross-seam dependency exists. Each returns the interface with
+illustrative sketch — then dispatch two sub-agents in parallel with different
+design constraints, drawn from: minimize the interface; maximize flexibility;
+make the most common caller trivial; design around ports and adapters where a
+cross-seam dependency exists. Add a third only when a material fork remains
+unresolved between the two and the cost ceiling permits it. Each returns the interface with
 its invariants, ordering, and error modes; a usage example; what the
 implementation hides; the dependency strategy; and where leverage is high or
 thin. Compare on depth, locality, and seam placement, choose one or a hybrid,

@@ -57,6 +57,7 @@ Merge candidates to canonical main:
 - **Deterministic handoffs**: every step ends cleanly before the next begins
 - **No micromanagement**: orchestrator dispatches and monitors; workers implement autonomously
 - **Quality gates**: pre-commit hooks enforce standards; review validates completeness
+- **Tandem for decisions, single for execution**: material discovery and design decisions receive independent peer falsification; once a decision is settled, one agent owns execution, with no peer ceremony added to fleshed-out mechanical work
 
 ## Preconditions
 

@@ -98,8 +98,11 @@ whether a test is admitted is a separate, evidence-gated decision.
   the fundamentals already reject. Inverting none makes the module untestable
   without patching. The cut is the effect boundary.
 - **Progressive deepening vs. rewrites.** No rewrite is mandated. Depth applies
-  to new work and to deliberate deepening, module by module, through the normal
-  lifecycle.
+  to new work, to the structural ratchet every delivery carries on its own
+  change path (`software-development/policy/definition-of-done` §2), and to
+  deliberate deepening chosen through
+  `software-development/procedure/deepening-discovery` — module by module,
+  through the normal lifecycle.
 
 ## See Also
 
