@@ -70,16 +70,6 @@ to its current work and whether later input it actually received has superseded
 it; it never inspects the sender's transcript. A sender that carries a process
 change under the marker is the one in violation, found by the human's sweep.
 
-Evidence-driven fine-tuning of process artifacts is not the human's. When a
-change to a brief, procedure, or policy is derived from observed evidence across
-comparable work — a recurring finding class, a recurring kickback reason, a
-halt classification, a measured cost — the intelligence that derives it makes
-the change without the human present. Independent peer review of the evidence,
-the causal claim, and the change stands in for presence, and later runs judge
-whether the change helped. The closed list is untouched: a change that alters
-what a human experiences, who holds authority, their values, a safety gate, or
-the boundary of what was asked is theirs, whatever evidence prompted it.
-
 ### Decision class decides authority; artifact class decides only execution
 
 This policy answers whose decision a change is. Artifact class — doc-only versus
@@ -122,14 +112,7 @@ functional, snippet versus code — decides only where the work executes, per
 
 ## Exceptions
 
-- Evidence-driven fine-tuning of process artifacts (briefs, procedures,
-  policies) derived from observed evidence across comparable work is made by
-  intelligence without the human present, gated by independent peer review of
-  the evidence, the causal claim, and the change, and recorded with its
-  evidence for later measurement and rollback. The carve-out never reaches the
-  closed list: a change to what a human experiences, who holds authority,
-  their values, a safety gate, or the boundary of what was asked stays the
-  human's.
+- None.
 
 ## See Also
 

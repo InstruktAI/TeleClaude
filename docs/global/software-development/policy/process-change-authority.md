@@ -112,13 +112,6 @@ commit it — it escalates the proposal per the escalation shape below and goes
 idle on that thread. It never self-approves and never re-derives approval from
 plausibility.
 
-Evidence-driven fine-tuning is the exception, and it is defined in
-`general/policy/human-contract`: a process-layer change derived from observed
-evidence across comparable work is made by intelligence without the human
-present, gated by independent peer review of the evidence, the causal claim,
-and the change. It never alters the human's closed lane, and it is recorded
-with its evidence so a later run can measure it and roll it back.
-
 ### A human decision is declared, never investigated
 
 An agent relays a human's decision inside already-authorized work under the
@@ -225,8 +218,4 @@ this policy adds no mid-work stop trigger.
 
 ## Exceptions
 
-- Evidence-driven fine-tuning, as defined in `general/policy/human-contract`:
-  a process-layer change derived from observed evidence across comparable work
-  is made without a live human decision, gated by independent peer review of
-  the evidence, the causal claim, and the change, recorded with its evidence,
-  and never altering the human's closed lane.
+- None.
