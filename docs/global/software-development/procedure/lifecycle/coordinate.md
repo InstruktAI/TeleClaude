@@ -73,15 +73,7 @@ state first, or private conversation becomes policy.
 **No lifecycle execution.** It never drives a slug's state machine, never
 dispatches work, and never mutates todo state or artifacts. Making work move is
 the runner's and the owners' business; this role restores the awareness that
-lets them move it. NC-37 in `software-development/concept/coordination-cases` is the
-one case where the role acts on a session's continued existence, and it acts by
-pointer: an idle, parentless Prepare orchestrator whose todo is `PREPARED`,
-which owns no live child, and for which no live governor is already responsible
-for cleanup, is holding at most a signal, not doing work; the coordinator tails
-it, preserves and logs any material signal, and sends it one address-only
-pointer to its own departure contract (`general/principle/session-lifecycle`,
-`session-departure`). The session arms its departure and ends itself; the
-coordinator never ends it.
+lets them move it.
 
 **Address, not content — into a governed session.** A pointer sent into another
 role's session carries where to look and which obligation it bears on: the

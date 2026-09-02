@@ -153,25 +153,18 @@ denominator every finding is judged against. Remediation closes valid findings
 within that scope; a valid omission finding may add material, but scope growth
 is semantic and line count proves nothing either way.
 
-A round completes when the single reviewer issues one verdict bound to one
-frozen target digest; incomplete attempts and messages do not count, and
-remediation starts only after that verdict. Rounds are counted by reviewed
-revisions. The first round is one complete discovery pass over the frozen
-target. A remediation round closes existing findings and inspects the
-remediation delta. A new finding on a remediation round is admissible only when
-it is remediation-induced, or newly observable because the target changed. A
-finding that was observable in the discovery pass and is raised later is the
+The first review of a target is one complete discovery pass over the frozen
+digest. A remediation review closes existing findings and inspects the
+remediation delta. A new finding on a remediation review is admissible only
+when it is remediation-induced, or newly observable because the target changed.
+A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
-When the cap is reached, the loop halts and its cause is classified — ambiguous
-contract, failed remediation, unstable target, or incomplete or noisy review.
-If the unapproved target is already present on an authoritative shared surface,
-only its reviewed paths are restored to the last approved target digest, and a
-newly introduced target is withdrawn from that surface. An isolated or
-versioned target is frozen unchanged. The target history, findings, and
-classification remain evidence. Any later attempt begins from the approved
-baseline as fresh bounded work.
+When a loop reaches its applicable documented cap without closure, no further
+review starts: the loop halts, the cause is classified — ambiguous contract,
+failed remediation, unstable target, or incomplete or noisy review — and the
+classification is escalated with the halt.
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a
