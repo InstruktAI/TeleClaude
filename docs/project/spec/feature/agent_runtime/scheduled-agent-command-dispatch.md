@@ -8,7 +8,7 @@ delivered_by:
 
 ## What it is
 
-A scheduled agent job starts through the same command-session dispatch contract as every other dispatched command. The scheduler supplies the configured job identity and authoritative job-spec identity under its system authority; the shared dispatch boundary derives the job session, prepares the runtime-specific command input, and creates the session with the job-runner role. Session bootstrap then issues the job session's system-principal credential through the standard identity lifecycle.
+A scheduled agent job starts through the same command-session dispatch contract as every other dispatched command. The scheduler supplies the configured job identity and authoritative job-spec identity to the daemon-owned run boundary; that boundary validates the job declaration, derives the job session, prepares the runtime-specific command input, and creates the session with the job-runner role. Session bootstrap then issues the job session's system-principal credential through the standard identity lifecycle.
 
 Job configuration remains owned by the configuration context. A scheduler cannot redefine the configured agent, thinking mode, job specification, or role through an alternate creation contract.
 
@@ -20,7 +20,6 @@ Job configuration remains owned by the configuration context. A scheduler cannot
 
 ```gherkin
 Given a configured agent job is due
-And the scheduler is authorized as a system principal
 When the scheduler dispatches the job
 Then the job starts through the canonical command-session dispatch contract
 And the created session carries the configured job identity and job-runner role
