@@ -44,7 +44,6 @@ Then the step's subprocess runs under the bundled TeleClaude checkout's venv int
 And the step does not fail with ModuleNotFoundError for a TeleClaude runtime dependency
 ```
 
-<!-- planned:fix-check-cli-help-sh-exits-0-when-its-cli-s -->
 #### UC-CQD3: routine lint does not execute CLI help paths
 
 ```gherkin
@@ -52,7 +51,6 @@ Given an agent invokes routine or repository-wide lint
 When the guardrails lane runs
 Then it does not start CLI commands solely to validate their help behavior
 ```
-<!-- /planned:fix-check-cli-help-sh-exits-0-when-its-cli-s -->
 
 ## See also
 
