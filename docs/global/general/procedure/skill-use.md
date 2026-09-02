@@ -1,5 +1,5 @@
 ---
-description: Use the global skills index curated by TeleClaude. This catalog allows agents to discover and use skills without up front awareness. It is a curated list of third-party skills that have been validated and tested and are ready to use. Use when human has requested skill use, or their language implies a need for one, or your current job is in need of a skill.
+description: Use the global skills index curated by TeleClaude. This catalog allows agents to discover and use skills without up front awareness. It is a curated list of skills that have been validated and tested and are ready to use. Use when human has requested skill use, or their language implies a need for one, or your current job is in need of a skill.
 ---
 
 # Skill Use — Procedure

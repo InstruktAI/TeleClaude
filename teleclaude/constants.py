@@ -760,7 +760,7 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             "fast": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5[1m]' --effort low"}],
             "med": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5[1m]' --effort high"}],
             "slow": [
-                {"model": "fable", "flags": "--model 'claude-fable-5[1m]' --effort high"},
+                {"model": "fable", "flags": "--model 'claude-fable-5-1[1m]' --effort high"},
                 {"model": "opus", "flags": "--model 'claude-opus-5[1m]' --effort high"},
             ],
             "default": [],

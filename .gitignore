@@ -15,9 +15,6 @@ tmp/
 uv.*
 !uv.lock
 .venv
-.venv/
-venv/
-env/
 
 # Vendored chiptune corpus (HVSC) — fetched on demand, never tracked
 assets/audio/C64Music/
@@ -31,7 +28,6 @@ assets/audio/C64Music/
 
 # Environment & Config
 .env
-/config.yml
 !tests/integration/.env
 !tests/integration/config.yml
 
@@ -78,7 +74,6 @@ CLAUDE.md
 # TeleClaude worktree infrastructure state (changes with every prep cycle)
 .teleclaude/*
 !.teleclaude/
-!.teleclaude/snapshot-testing-exemptions.txt
 
 # Generated build artifacts (never tracked)
 **/index.yaml

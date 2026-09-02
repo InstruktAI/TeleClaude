@@ -1,12 +1,67 @@
 # OS / editor cruft
-.DS_Store
+
+.DS*Store
 Thumbs.db
 *.swp
-*~
+\_~
 .idea/
+.history/
+
+# Backupp stuff
+
+*.bak*
+
 # Environment / secrets — never commit real values
+
 .env
 .env.local
+
 # Logs
-*.log
+
+\*.log
 logs/
+
+# Virtual Environment
+
+uv.\*
+!uv.lock
+.venv
+
+# Runtime
+
+_.pid
+_.db
+\*.db-journal
+
+# AI agents
+
+.antigravitycli/
+.claude/
+.codex/
+.gemini/
+
+# tooling used by AI
+
+.playwright-mcp/
+graphify-out/
+
+# TeleClaude stuff
+
+scratchpad/
+workspace/
+trees/
+
+teleclaude-mcp.local.jsonc
+
+todos.db
+todos.db-wal
+todos.db-shm
+
+AGENTS.md
+CLAUDE.md
+
+\*_/index.yaml
+docs/global/_/domain-baseline-bundle.md
+
+publications/inbox/\*
+!publications/inbox/.gitkeep
