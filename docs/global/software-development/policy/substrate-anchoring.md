@@ -23,9 +23,10 @@ description: Before new construction, identify the existing module whose contrac
   without knowing how it fits, and the preparing agent grounds the work in what
   exists. Review verifies the anchor against the codebase, not against the
   author's claim.
-- **Anchoring is verified, not asserted.** The anchor names a module the agent
-  has read, with its actual contract; a module named from memory or from a
-  plausible file name is not an anchor.
+- **Anchoring is verified, not asserted.** An anchor either names a module the
+  agent has read with its actual contract, or records the discovery performed
+  and why no existing contract covers the work. Memory, plausible filenames, or
+  an unsupported "none found" are not anchors.
 
 ## Rationale
 
