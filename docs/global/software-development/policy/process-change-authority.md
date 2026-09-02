@@ -102,7 +102,11 @@ Two exemption claims are explicitly void:
 ### The human decides; the agent escalates
 
 A process change is executed only when the human decided it in a live
-conversation. An agent that senses a process-layer delta in its work and holds
+conversation, and its doc contract is authored in that same session, with the
+human present. It is never relayed to another session and never delegated
+through a todo (`general/policy/human-contract`). Code that follows from a
+changed process contract is ordinary functionality work, delivered against the
+contract the human's session already authored. An agent that senses a process-layer delta in its work and holds
 no such decision does not file a todo for it, does not prepare it, and does not
 commit it — it escalates the proposal per the escalation shape below and goes
 idle on that thread. It never self-approves and never re-derives approval from
@@ -110,14 +114,17 @@ plausibility.
 
 ### A human decision is declared, never investigated
 
-A human decides a process change in live conversation with an agent. That agent
-carries the decision onward under the `HUMAN-DECISION:` marker, in the human's
-own terms, and every receiver acts on it as given. No consumer inspects a
-transcript, resolves an authoring session, or investigates the relay in any
-way: whether an agent claimed a decision the human never made is the human's
-own audit, performed by sweeping the marker, and is out of agent scope. A false
-or stretched marker is a serious violation, answered by the durable record of
-the session that wrote it.
+An agent relays a human's decision inside already-authorized work under the
+`HUMAN-DECISION:` marker, in the human's own terms, and every receiver acts on
+it as given. A process change never travels under the marker: it is authored
+where the human is present, and a sender that relays one is the one in
+violation. No consumer inspects a transcript, resolves an authoring session, or
+investigates a relay in any way; a receiver checks only whether the directive
+applies to its current work and whether later input it actually received has
+superseded it. Whether an agent claimed a decision the human never made is the
+human's own audit, performed by sweeping the marker, and is out of agent scope.
+A false or stretched marker is a serious violation, answered by the durable
+record of the session that wrote it.
 
 Lineage, `entry_point`, `human_involved`, the human account on a commit, artifact
 position, emphasis, and repetition are not declarations of what the human
@@ -185,9 +192,11 @@ this policy adds no mid-work stop trigger.
 - The prepare orchestrator refuses a process-change intent it cannot trace to a
   human decision and escalates
   (`software-development/procedure/lifecycle/prepare/overview`).
-- Plan review: a plan whose tasks alter the process layer without a human
-  decision relayed under the `HUMAN-DECISION:` marker per
-  `general/policy/grounding` is a **Requirement-Violation** (blocking).
+- Plan review: a plan whose tasks alter the process layer beyond what its doc
+  contract — authored with the human present — already binds is a
+  **Requirement-Violation** (blocking). A process change carried into a plan
+  under the `HUMAN-DECISION:` marker is the relaying session's violation, not
+  the plan's authority.
 - Scope lane at build/commit review: a process-layer behavioral delta the
   approved intent does not call for is **Critical** (existing rule; this policy
   names the process layer as its sharpest case).

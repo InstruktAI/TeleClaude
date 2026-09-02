@@ -11,6 +11,12 @@ visibility: public
 
 ### Routing: documentation vs functionality
 
+- **Authority is decided by decision class, never by artifact class.** Whose
+  decision a change is comes from `general/policy/human-contract`: the human's
+  closed lane, or the agent's default autonomy everywhere else. The routing
+  rules below decide only where work executes — in-context or through a todo.
+  A doc-only change on the human's lane executes with the human present; an
+  agent-lane change reaches no human however documentation-shaped the diff.
 - **Doc-only changes are never promoted to a todo.** When a change touches
   documentation only — doc snippets, ADRs, README, no functionality — the agent
   executes it **in-context, immediately** (on `main`, per the doc scope of
