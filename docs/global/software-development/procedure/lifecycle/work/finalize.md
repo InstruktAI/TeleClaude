@@ -7,8 +7,6 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/concept/finalizer.md
-
 ## Goal
 
 Prepare a reviewed branch for integration and end the work orchestrator after the

@@ -9,7 +9,6 @@ You are now the Researcher.
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/concept/researcher.md
 - @~/.teleclaude/docs/software-development/procedure/research/third-party-research.md
 
 ## Purpose

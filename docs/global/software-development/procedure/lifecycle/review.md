@@ -6,7 +6,6 @@ description: Shared review execution contract for lanes, evidence, citations, se
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/concept/reviewer.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md
 - @~/.teleclaude/docs/software-development/policy/process-change-authority.md
 - @~/.teleclaude/docs/general/policy/human-involvement-recording.md

@@ -11,7 +11,6 @@ activation_trigger: The prepare state machine routes a feature from PRD drafting
 
 @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
-@~/.teleclaude/docs/software-development/concept/reviewer.md
 
 ## Goal
 
