@@ -46,10 +46,11 @@ whether a test is admitted is a separate, evidence-gated decision.
 
 ## Implications
 
-- **One-sentence contract.** A module states its capability in one sentence
-  without "and". A sentence that needs "and" is a split candidate; a paragraph
-  is a god module. The sentence names supported operations, invariants, and
-  failure semantics; the decomposition behind it is private.
+- **One-sentence contract.** A module should state its cohesive capability in
+  one sentence. Needing "and" is a split signal, not a verdict; ownership,
+  invariants, and reason to change decide. A paragraph is a god-module signal,
+  not proof. The sentence names supported operations, invariants, and failure
+  semantics; the decomposition behind it is private.
 - **Depth arbitrates the fundamentals.** SRP counts reasons to change, not
   functions; splitting one cohesive mechanism across five files multiplies
   interfaces and callers now know five names. KISS is measured at the call site,
@@ -83,8 +84,9 @@ whether a test is admitted is a separate, evidence-gated decision.
   reasons to change, depth about what callers know. When they disagree, depth
   decides, because the caller pays for the split and the author does not.
 - **Deep module vs. god module.** Depth invites accretion. The one-sentence
-  contract is the guard: the moment the sentence grows an "and", the module has
-  two contracts wearing one interface.
+  contract is the early warning: a sentence growing an "and" asks whether two
+  contracts now wear one interface, and ownership, invariants, and reason to
+  change answer.
 - **Inversion vs. ceremony.** Inverting every seam is the astronaut architecture
   the fundamentals already reject. Inverting none makes the module untestable
   without patching. The cut is the effect boundary.
