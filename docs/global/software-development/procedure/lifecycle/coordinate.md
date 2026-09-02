@@ -73,14 +73,15 @@ state first, or private conversation becomes policy.
 **No lifecycle execution.** It never drives a slug's state machine, never
 dispatches work, and never mutates todo state or artifacts. Making work move is
 the runner's and the owners' business; this role restores the awareness that
-lets them move it. The single exception is NC-37 in
-`software-development/concept/coordination-cases`: an idle Prepare orchestrator
-whose todo is `PREPARED`, which owns no live child, and for which no live
-governor is already responsible for cleanup, is holding at most a signal, not
-doing work. The coordinator tails it, preserves and logs any material signal it
-carries, and ends that session with `telec sessions end <id>`. This is the only
-session other than itself the role ever ends, and only after tailing it and
-preserving whatever was material.
+lets them move it. NC-37 in `software-development/concept/coordination-cases` is the
+one case where the role acts on a session's continued existence, and it acts by
+pointer: an idle, parentless Prepare orchestrator whose todo is `PREPARED`,
+which owns no live child, and for which no live governor is already responsible
+for cleanup, is holding at most a signal, not doing work; the coordinator tails
+it, preserves and logs any material signal, and sends it one address-only
+pointer to its own departure contract (`general/principle/session-lifecycle`,
+`session-departure`). The session arms its departure and ends itself; the
+coordinator never ends it.
 
 **Address, not content — into a governed session.** A pointer sent into another
 role's session carries where to look and which obligation it bears on: the
@@ -263,7 +264,6 @@ alternatives for anything they cover:
 - `telec sessions tail <id>` — a session's record; read before judging it.
 - `telec sessions send <id> <pointer>` — the intervention surface.
 - `telec sessions end self` — the step-0 yield only; never used at sweep end.
-- `telec sessions end <id>` — NC-37 only: an idle Prepare orchestrator on a `PREPARED` todo with no live child and no responsible governor, after its record is tailed and any material signal preserved.
 - `telec todo list` / `telec todo show <slug>` — queue state and todo records.
 - `telec docs index` / `telec docs get <id>` — contracts, re-read before ruling.
 - `telec projects list` — the project name for the step-6 log path.
