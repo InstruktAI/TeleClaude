@@ -159,10 +159,10 @@ A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
-The state machine enforces the round cap for every loop. When the cap is
-reached without closure, no further review starts: the loop halts, the cause is
-classified — ambiguous contract, failed remediation, unstable target, or
-incomplete or noisy review — and the classification is escalated with the halt.
+When a loop reaches its applicable documented cap without closure, no further
+review starts: the loop halts, the cause is classified — ambiguous contract,
+failed remediation, unstable target, or incomplete or noisy review — and the
+classification is escalated with the halt.
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

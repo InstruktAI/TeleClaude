@@ -96,4 +96,4 @@ procedure is ever dispatched.
 
 - If a fix is blocked, document the blocker in the findings artifact and request guidance.
 - If a fix causes regressions, document in the findings artifact and continue with the next issue.
-- If a finding is ambiguous, apply the minimum interpretation — do not invent scope.
+- If a finding or closure condition is ambiguous, do not interpret or remediate it; return it to review for clarification or reclassification. A lead remains outside remediation.

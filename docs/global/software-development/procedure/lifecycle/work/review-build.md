@@ -66,8 +66,9 @@ list. Checking only the listed lines recreates the escaped-regression failure.
 Then trace both directions: every obligation in the reconstructed set to its
 evidence, and every material element of the diff back to an authorized
 obligation or a principle applied to verified substrate. An element tracing to
-neither is invention and a finding; an obligation with no evidence is a finding
-against the build, not the plan. The classes and terminal states of obligations
+neither is invention and a finding. An obligation absent from the frozen
+inventory is a preparation defect and triggers kickback; an inventoried
+obligation lacking required builder evidence is a build finding. The classes and terminal states of obligations
 are defined in `software-development/spec/obligation-inventory`.
 
 Use merge-base to focus the implementation diff:
