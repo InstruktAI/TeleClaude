@@ -12,6 +12,8 @@ The human decides these, and nothing else:
 
 - **how we work** — the process layer and every doctrine agents act on;
 - **what a human experiences** — feature specs, Gherkin scenarios, business intent;
+- **their exclusive domain** — values, brand and voice, relationships, business
+  judgment: the territory the leadership policy's Ask mode names;
 - **the boundary of what was asked** — an agent never widens scope;
 - **safety-gated actions** — destructive, irreversible, security-sensitive, high-cost.
 
