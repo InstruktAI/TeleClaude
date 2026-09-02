@@ -26,6 +26,9 @@ assets/audio/C64Music/
 *~
 .DS_Store
 
+# Local Obsidian vault state
+docs/.obsidian/
+
 # Environment & Config
 .env
 !tests/integration/.env
