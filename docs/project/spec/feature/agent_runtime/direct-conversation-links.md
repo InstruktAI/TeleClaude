@@ -371,15 +371,16 @@ And the sending session's direction continues to deliver its later turns
 ```
 
 <!-- planned:peer-bundle-transitive-redelivery -->
-#### UC-DCL15: A forwarded segment never returns over its ingress link
+#### UC-DCL15: A session already in direct conversation rejects a third peer
 
 ```gherkin
-Given agent session C receives an A-origin peer segment over its direct link with agent session B
-And C has other eligible content for B
-When C's completed turn is delivered to B over that same direct link
-Then the received A-origin segment is excluded from the delivery
-And the other eligible content reaches B
-And later delivery windows do not contain a copy produced by that return
+Given agent session A is in an active direct conversation with agent session B
+And agent session C is not part of that conversation
+When a direct-link request pairs C with A, whether A is the caller or target
+Then the request is rejected
+And the response identifies B as A's active conversation peer
+And the A-to-B conversation remains active
+And no direct link between A and C is created
 ```
 <!-- /planned:peer-bundle-transitive-redelivery -->
 
