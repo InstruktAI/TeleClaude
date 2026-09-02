@@ -251,6 +251,19 @@ And host-pane output alone never raises that projection to `active`
 
 <!-- /planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
 
+<!-- planned:status-stalled-after-compact-slash-command -->
+#### UC-SL33: A completed native command leaves the agent idle
+
+```gherkin
+Given a non-terminal agent session accepts a human operator command through its native CLI
+And the native CLI completes the command without starting an agent turn
+When an orchestrating agent reads the session's agent status
+Then the session reports idle
+And the accepted input remains visible in the session record
+And a silent agent turn still reports stalled after the platform's stall threshold
+```
+<!-- /planned:status-stalled-after-compact-slash-command -->
+
 #### Ending a session — happy path
 
 ```
