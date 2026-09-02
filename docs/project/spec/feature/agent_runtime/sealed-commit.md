@@ -39,7 +39,7 @@ A path is touched by being **read** as well as by being written. So the intersec
 
 <!-- change:tier-aware-commit-authority -->
 
-The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
+The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
 A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
 
@@ -207,7 +207,7 @@ And the mandated TeleClaude trailer is appended to the message if absent (idempo
 Given an agent session whose transcript has touched paths {P1, P2, ..., Pn}
 And another agent session is concurrently live on the same shared checkout
 When the agent invokes `telec code commit --approved "<message>"`
-Then the resolved scope = (touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set)
+Then the resolved scope = (touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)
 And new untracked paths in scope are dropped from the pathspec
 And the final commit runs with pathspec = (scope minus untracked-not-staged)
 And anything else in the index (foreign-staged, crash residue) is left untouched
@@ -740,9 +740,9 @@ Then the nested root's changes are not carried by the commit
 
 ```
 Given an agent session whose context root sits below the root of the repository that contains it
-When the agent asks what a commit would carry
-Then it is shown exactly the eligible changes for its own context
-And material owned by another context, a foreign nested root, or excluded from the repository's retained set is absent from that set
+When the agent asks what a commit would carry, naming any explicit path declarations it intends to make
+Then it is shown exactly the eligible payload the so-declared commit would carry, in its own coordinates
+And material owned by another context, a foreign nested root, or excluded from a retained set the repository's owner publishes is absent from that set
 ```
 
 #### UC-NCR-6 — Containment outranks the session's own path set

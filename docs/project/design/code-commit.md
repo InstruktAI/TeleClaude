@@ -383,27 +383,33 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
     and this surface neither decides membership nor substitutes an answer in
     either case.
 
-12. **Two config-owned coordinates answer two different questions.** Seal
-    coverage — whether raw git is intercepted anywhere in a checkout — is
-    decided by the **repository root's** declared tier, because the seal is a
-    property of the repository and must hold at locations that resolve to no
-    context root. Commit availability and gate selection are decided by the
-    **acting invocation context root's** declared tier, because they are
-    properties of who is acting. The wrapper learns the repository root's tier
-    from projected state, never by parsing: the resolver projects it into the
-    git metadata the wrapper already reads through the same mechanism as
-    project capabilities, so the shell side cannot disagree with the resolver.
+12. **Config publishes facts at two coordinates; this contract owns both
+    decisions.** The tier answers config publishes grant no operation. Seal
+    coverage — whether raw git is intercepted anywhere in a checkout — is this
+    contract's rule, decided from the **repository root's** declared tier,
+    because the seal is a property of the repository and must hold at
+    locations resolving to no context root. Commit availability and gate
+    selection are likewise this contract's rules, decided from the **acting
+    invocation context root's** invocation-context and project-subscription
+    answers; the authority for a non-project context committing at all is the
+    approved product contract, never a permission read off an axis. The
+    wrapper learns the repository root's tier from projected state, never by
+    parsing: the resolver projects it into the git metadata the wrapper
+    already reads through the same mechanism as project capabilities, so the
+    shell side cannot disagree with the resolver.
 
-13. **Inspection and commit consume one payload resolution.** The eligible
-    payload — computed scope bounded per invariant 11, minus what the commit
-    itself would drop, plus declared paths — is resolved by one function that
-    both `telec code changed` and `telec code commit` consume. Inspection
-    reports that payload as currently declared, deletions included, in the
-    acting context root's coordinates; a commit-time declaration extends the
-    same function by exactly the declared paths and nothing else. The two
-    surfaces are forbidden to project differently — the pre-commit answer
-    equals the final commit pathspec path for path, because it is the same
-    computation, not a reconciled pair.
+13. **Inspection and commit consume one payload resolution, with the same
+    inputs.** The eligible payload — computed scope bounded per invariant 11,
+    minus what the commit itself would drop, plus declared paths — is resolved
+    by one function that both `telec code changed` and `telec code commit`
+    consume. The observation surface accepts every payload-shaping declaration
+    the commit accepts — the explicit include and subset channels among them —
+    so an agent previews the payload of exactly the commit it is about to
+    make, deletions included, in the acting context root's coordinates. The
+    two surfaces are forbidden to project differently: given the same
+    declarations, the pre-commit answer equals the final commit pathspec path
+    for path, because it is the same computation with the same inputs, not a
+    reconciled pair.
 
 <!-- /planned:tier-aware-commit-authority -->
 

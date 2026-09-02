@@ -64,11 +64,12 @@ contracts and never creates shared ownership.
 
 <!-- planned:tier-aware-commit-authority -->
 - The sealed commit surface (`agent_runtime`) reads tier answers from `config`
-  at two coordinates: the **repository root's** declared tier decides seal
-  coverage, and the **acting invocation context root's** declared tier decides
-  commit availability and gate selection. `config` owns the answers and their
-  axes; `agent_runtime` owns what the commit surface does with them, and never
-  derives a permission the axes do not publish.
+  at two coordinates — the repository root's declared tier, and the acting
+  invocation context root's invocation-context and project-subscription
+  answers. `config` owns those facts and their axes, which grant no operation;
+  `agent_runtime` owns the decisions taken from them — seal coverage, commit
+  availability, and gate selection — under its own approved product contract,
+  and never derives a permission the axes do not publish.
 - The commit boundary (`agent_runtime`) consumes `reconciliation`'s published
   retained-set answer as a term of commit eligibility. `reconciliation` owns
   membership — which of the repository's paths are retained; `agent_runtime`
