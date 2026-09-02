@@ -128,3 +128,7 @@ Default to immutable data. Mutable state is a liability — every mutation is a 
 - **YAGNI vs. Extensibility:** Building only for today can make tomorrow's changes harder. The resolution: write simple code that is _easy to extend_ without _already being extended_.
 - **Fail Fast vs. Resilience:** Services need uptime. The resolution: fail fast at the operation level, recover at the service level. A single request fails loudly; the daemon stays up.
 - **Encapsulation vs. Transparency:** Hiding internals can make debugging harder. The resolution: hide _state_, expose _diagnostics_ (logging, status methods, health checks).
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/principle/module-depth.md — the arbiter when these fundamentals pull against each other.
