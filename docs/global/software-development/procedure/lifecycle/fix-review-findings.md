@@ -46,11 +46,18 @@ procedure is ever dispatched.
 1. **Read the findings.** Load the findings artifact referenced in your dispatch
    message: `telec todo artifacts read {slug} {findings_artifact_name}`. Extract
    Requirement-Violation, Critical, and Important issues. Every finding is
-   actionable — there is no "Suggestion" tier to skip.
+   actionable — there is no "Suggestion" tier to skip. An investigation lead is
+   not a finding: it never enters remediation, requires no response from you,
+   and cannot enlarge the current work. Address findings; leave leads where the
+   reviewer put them.
 
 2. **Address every finding.** For each:
    - Understand the issue and its referenced location.
-   - Apply the minimal fix to the target artifact.
+   - Apply the minimal fix that satisfies the finding's closure condition. The
+     closure condition is the contract; the reviewer's wording is not a design.
+     You may not fold reviewer conjecture, or your own, into the artifact:
+     every mechanism you add is defensible from authorized intent or from a
+     principle applied to verified substrate, or it is invention.
    - Verify after each fix: lint runs at the commit gate; run scenario-bound functional tests separately via `telec code test`.
    - Commit one fix per issue when the target is code. For artifact targets
      (`architecture`, `implementation-plan`, or legacy `requirements`),

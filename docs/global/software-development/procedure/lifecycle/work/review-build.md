@@ -59,6 +59,17 @@ scope authority.
 State what every required outcome promises before running a lane. Reading only
 the diff is insufficient.
 
+Reconstruct the obligation denominator independently — from the intent, the
+contract delta, the applicable governing principles, and the verified blast
+radius — before comparing it with what the plan and the builder's evidence
+list. Checking only the listed lines recreates the escaped-regression failure.
+Then trace both directions: every obligation in the reconstructed set to its
+evidence, and every material element of the diff back to an authorized
+obligation or a principle applied to verified substrate. An element tracing to
+neither is invention and a finding; an obligation with no evidence is a finding
+against the build, not the plan. The classes and terminal states of obligations
+are defined in `software-development/spec/obligation-inventory`.
+
 Use merge-base to focus the implementation diff:
 
 ```bash

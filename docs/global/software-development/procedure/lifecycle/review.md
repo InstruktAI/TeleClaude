@@ -81,9 +81,28 @@ procedure's correction path; the reviewer never edits the prepared artifact.
 
 ### 4. Cite and classify every finding
 
-Every finding cites the specific policy, Definition of Done line, principle, or
-spec it violates. An observation without a discoverable citation is not a
-finding.
+Review attempts to falsify the target's claims against its governing contract.
+It does not brainstorm risks, maximize findings, improve the design, or
+prescribe speculative defenses.
+
+A finding is valid only when all four hold:
+
+1. it cites the specific policy, Definition of Done line, principle, or spec it
+   violates — a principle is a citeable clause;
+2. it establishes, from current authoritative sources and the reviewed
+   artifact, that the cited clause applies here;
+3. it explains the contradiction causally — what the target does and why that
+   conflicts with the clause;
+4. it states the closure condition within the frozen scope, without
+   prescribing implementation.
+
+An observation missing any one of these is an **investigation lead**, not a
+finding: it cannot block, never enters remediation, requires no producer
+response, and cannot enlarge current work. Report it under its own heading or
+route it separately; a lead that silently becomes remediation is the failure
+this contract exists to prevent. Absence of a specific prohibition is never a
+finding's basis when a principle covers the case; "the design feels wrong" is
+not a finding under any citation.
 
 Use this format:
 
@@ -91,7 +110,7 @@ Use this format:
 Severity — Policy: <citation>
 Location: <file:line>
 Violation: <one sentence stating what the target does that the cited rule forbids>
-Fix: <one sentence stating the concrete change that brings it into compliance>
+Closure: <the condition that resolves it, within the frozen scope, stated without prescribing implementation>
 ```
 
 Use exactly three severity tiers:
@@ -123,6 +142,33 @@ executed lane, the arithmetic verdict, and the `Why No Issues` evidence when
 required. The verdict stamp binds the current review target digest and the
 current report digest; neither the transcript nor an earlier report substitutes
 for that artifact.
+
+### 6. Bound the convergence
+
+Scope is frozen before review begins: the authorized intent, and the
+independently reviewed architecture or plan where one exists, form the fixed
+denominator every finding is judged against. Remediation closes valid findings
+within that scope; a valid omission finding may add material, but scope growth
+is semantic and line count proves nothing either way.
+
+The first review of a target is one complete discovery pass over the frozen
+digest. A remediation review closes existing findings and inspects the
+remediation delta. A new finding on a remediation review is admissible only
+when it is remediation-induced, or newly observable because the target changed.
+A finding that was observable in the discovery pass and is raised later is the
+reviewer's incompleteness: it halts the loop for reassessment instead of being
+appended to the producer's work.
+
+The state machine enforces the round cap for every loop. When the cap is
+reached without closure, no further review starts: the loop halts, the cause is
+classified — ambiguous contract, failed remediation, unstable target, or
+incomplete or noisy review — and the classification is escalated with the halt.
+
+Findings and their dispositions persist with the reviewed work. A fresh reviewer
+derives independently before reading prior dispositions, then reconciles; a
+continuing reviewer works from its own ledger. A disposition reopens only on
+changed substrate or material new evidence; re-filing it otherwise is reviewer
+incompleteness.
 
 ## Outputs
 

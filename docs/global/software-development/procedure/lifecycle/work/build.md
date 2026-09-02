@@ -89,6 +89,22 @@ artifact relevant to executing this plan.
    structural rubrics. The defining test: would this code be unnecessary
    if the agent's briefing said the right thing?
 
+8. **Own the how inside frozen intent.** The plan's tasks and the observation
+   map are the frozen obligation inventory
+   (`software-development/spec/obligation-inventory`); the implementation
+   choices inside them are yours. Kick back to prepare when code reality
+   invalidates the contract, a reviewed decision, or an inventory entry — not
+   whenever implementation differs from prose. Never revise the plan or the map
+   to fit what you built. A material decision discovered during build — one
+   whose alternatives change scope, ownership, contract, or risk — is a kickback
+   trigger; `log` may record the evidence and reason for the kickback, never
+   authorize the decision. When your own earlier action created the problem, the
+   first remedy is to remove or undo that cause; no mechanism is added to
+   accommodate a state, premise, or branch you introduced. Technical uncertainty
+   goes to the reviewer through evidence or to prepare through kickback; a
+   question to the human about anything outside their lane
+   (`general/policy/human-contract`) is itself a defect.
+
 ### Test-quality self-review
 
 Before declaring the build complete, apply every `TQ-*` predicate in the
