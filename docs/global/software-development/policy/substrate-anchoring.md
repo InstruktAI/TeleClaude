@@ -6,11 +6,12 @@ description: Before new construction, name the existing module whose contract co
 
 ## Rules
 
-- **Before any new construction, name the existing module whose one-sentence
-  contract covers the work.** Extend it when the extension shares that module's
-  bounded-context owner, invariant, and reason to change. A new, replacement,
-  migration, or anti-corruption implementation is legitimate when those differ —
-  and it declares which existing module it stands beside, and why.
+- **Before new construction, identify the existing module whose actual contract
+  covers the work, or record that grounded discovery found none.** Extend an
+  existing module when owner, invariant, and reason to change align; otherwise
+  declare the justified divergence. A new, replacement, migration, or
+  anti-corruption implementation is legitimate when those differ — and it
+  declares which existing module it stands beside, and why.
 - **The defect is the undeclared parallel.** A second implementation of a
   capability that already exists, built without naming the first, is a defect
   even when its code is good. Declared divergence is design; undeclared
