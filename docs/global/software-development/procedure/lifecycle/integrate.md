@@ -228,10 +228,9 @@ the same blocking condition — an unchanged live owner-path group or a positive
 undetermined count — survives three consecutive later reminder beats after it is first
 observed, escalate once for the complete blocking set. Name every still-live owner group
 and its paths plus the undetermined count, never the identities behind that count. Do not
-message an owner a second time. The integrator then remains alive as the single
-human-blocker beacon without mutating the protected paths or emitting another escalation
-for that set, and the reminder continues fresh read-only observation so ordinary session
-completion can still resume the queue.
+message an owner a second time. At that escalation, cancel the reminder and keep the
+integrator alive as the single human-blocker beacon without mutating the protected paths
+or emitting another escalation for that set. The next move belongs to the human.
 
 Group owned paths by the reported TeleClaude session UUID. Send each live owner one
 coordination message naming its complete blocking-file group and asking it to commit or
@@ -286,8 +285,8 @@ brake and makes no claim about path intent.
 <!-- change:telec-code-dirty-path-owners -->
   terminal outcome, or the human explicitly supersedes the wait. A coordinated
   live owner or positive undetermined count keeps the reminder live for fresh
-  read-only re-resolution before and after the single bounded escalation,
-  without triggering repeat contact or escalation.
+  read-only re-resolution only until the single bounded escalation transfers
+  the next move to the human; cancel it at that transition.
 <!-- /planned-change:telec-code-dirty-path-owners -->
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 

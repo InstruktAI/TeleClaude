@@ -454,7 +454,7 @@ And revert authority returns only after a later result reports zero undetermined
 And an unsettled live-owned path or positive undetermined count initially keeps the integrator waiting without mutation or repeat contact
 And an unchanged live owner-path group or positive undetermined count that survives three consecutive later reminder beats after first observation causes one escalation carrying the complete current owner groups, paths, and privacy-safe count
 And the integrator then remains the single non-mutating blocker beacon without repeating the owner message or escalation for that blocking set
-And the reminder continues fresh read-only observation after escalation so the queue resumes when the blocking condition clears
+And the reminder is cancelled at that escalation because the next move belongs to the human
 And apart from the bounded protection-condition stall, only a path whose intent cannot be determined safely is escalated to the human
 ```
 <!-- /planned:telec-code-dirty-path-owners -->
