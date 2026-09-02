@@ -13,6 +13,9 @@ description: Shared review execution contract for lanes, evidence, citations, se
 - @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
+- @~/.teleclaude/docs/software-development/principle/module-depth.md
+- @~/.teleclaude/docs/software-development/policy/substrate-anchoring.md
+- @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 
 ## Goal
 

@@ -10,6 +10,8 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/domain-baseline-bundle.md
 - @~/.teleclaude/docs/software-development/concept/builder.md
 - @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
+- @~/.teleclaude/docs/software-development/principle/module-depth.md
+- @~/.teleclaude/docs/software-development/policy/substrate-anchoring.md
 
 ## Goal
 

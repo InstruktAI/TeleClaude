@@ -13,6 +13,7 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 - @~/.teleclaude/docs/software-development/policy/substrate-anchoring.md
+- @~/.teleclaude/docs/software-development/principle/module-depth.md
 
 ## Goal
 
