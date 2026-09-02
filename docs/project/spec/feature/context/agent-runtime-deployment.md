@@ -18,12 +18,28 @@ in deploy mode (there is no no-deploy mode through the CLI). The deploy
 path runs two phases:
 
 
+<!-- planned-change:agent-artifact-source-layout -->
+
 1. **Global phase** — sources from `agents/` (Mother project only) are
    built under a transient distribution directory and then deployed
    to per-agent user-home roots: `~/.claude/`, `~/.gemini/`, `~/.codex/`.
    The publishing gate ensures the global agent-artifact source list is
    only populated on the Mother project. Global documentation, in contrast,
    is contributed by every project for the domains it publishes (see below).
+
+<!-- change:agent-artifact-source-layout -->
+
+1. **Global phase** — sources from `agents/global/` (general commands,
+   skills, and subagents from the mother alone; domain-partitioned commands
+   from every repository for the domains it publishes) are built under a
+   transient distribution directory and deployed to the global consumers:
+   the per-agent user-home roots, the global command corpus
+   `~/.teleclaude/commands/<domain>/`, and the global skill catalog. A
+   repository carrying global artifacts outside its declared reach fails
+   validation rather than being silently skipped.
+
+<!-- /planned-change:agent-artifact-source-layout -->
+
 <!-- planned-change:agent-artifact-source-layout -->
 
 2. **Local phase** — sources from `.agents/` (any project) are built
@@ -39,6 +55,8 @@ path runs two phases:
 
 <!-- /planned-change:agent-artifact-source-layout -->
 
+<!-- planned-change:agent-artifact-source-layout -->
+
 Global skill publication is a separate composed surface. Every registered
 project contributes each direct `agents/skills/<name>/` folder; no configuration
 capability is required because folder existence is the declaration. Sync
@@ -50,6 +68,20 @@ written into the deployed catalog as an orientation note carrying no index. The
 listing is rendered on demand by `general/procedure/skill-use`, which
 `AGENTS.global.md` carries as a curated index entry and never as an `@` ref, so
 the skill catalog stays lazy rather than being preloaded.
+<!-- change:agent-artifact-source-layout -->
+
+Global skill publication is the mother's alone: `agents/global/skills/<name>/`
+folders in the mother repository materialize under `~/.teleclaude/skills/`, and
+the mother supplies the catalog `AGENTS.master.md`. A side project's global
+skills are refused at validation; a project that authors a portable skill
+contributes it to the mother, which is the curation step. The catalog master
+runs through the normal renderer after the skill links exist, its generated
+`AGENTS.md` orients readers to the directory without indexing it, and the
+listing is rendered on demand by `general/procedure/skill-use` — reached from
+`AGENTS.global.md` as a curated index entry, never an `@` ref — so the global
+catalog stays lazy. Tier-local skills are the ones that reach native CLI
+directories, eager-indexed in their context's generated entrypoint.
+<!-- /planned-change:agent-artifact-source-layout -->
 
 <!-- planned-change:command-migration-to-singular-telec-skill -->
 
@@ -64,10 +96,11 @@ documents deploy to `~/.teleclaude/commands/` from the global phase alone,
 and no per-agent runtime receives any command artifact — native or
 otherwise. Commands are reached exclusively through the loader message
 TeleClaude composes at dispatch (and for machine-emitted procedure loads),
-which instructs the session to read the corpus document directly. The local
-phase contributes no command documents — a project cannot author commands of
-its own, and the attempt is refused. The shared command corpus is reusable
-across projects.
+which instructs the session to read the corpus document directly. The global
+corpus is partitioned by domain (`~/.teleclaude/commands/<domain>/`), and every
+tier root carries its own corpus at `<root>/.teleclaude/commands/`; a command
+exists once per tier and is reached only through the loader. The shared global
+corpus is reusable across projects.
 
 No other artifact class reaches a runtime home. Skills compose to
 `~/.teleclaude/skills/` and are discovered through the catalog the master
@@ -95,6 +128,8 @@ union of every registered project's `business.publishes`; TeleClaude holds no
 central allow-list of valid domains, and adding a domain needs only a project
 that declares and serves it.
 
+<!-- planned-change:agent-artifact-source-layout -->
+
 The registered-publisher set is maintained automatically: a deploy-mode
 `telec sync` from a project declaring `business.publishes` or containing a
 direct `agents/skills/<name>/` folder registers that project's durable root.
@@ -103,6 +138,16 @@ capability or registration step exists. Split detection (below) evaluates every
 registered domain publisher, so a self-registered publisher participates in the
 one-owner-per-domain hard block like any other.
 
+<!-- change:agent-artifact-source-layout -->
+
+The registered-publisher set is maintained automatically: a deploy-mode
+`telec sync` from a project declaring `business.publishes` registers that
+project's durable root. Split detection (below) evaluates every registered
+domain publisher, so a self-registered publisher participates in the
+one-owner-per-domain hard block like any other, for documentation and for
+domain-partitioned global commands alike.
+
+<!-- /planned-change:agent-artifact-source-layout -->
 Sync-time split detection runs before composition: if more than one registered
 project declares the same domain in `business.publishes`, the deploy
 HARD-BLOCKS (exits non-zero, composes nothing) with `split domain ownership:
@@ -183,8 +228,8 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
 <!-- change:command-migration-to-singular-telec-skill -->
   Then the global phase produces no agent-home artifact writes
   And the local phase deploys non-command .agents/ runtime artifacts to the project root
-  And a local command artifact is refused with a message naming the offending file
-  And no local TeleClaude command artifact reaches ~/.teleclaude/commands/ or any project-root agent runtime directory
+  And a local command artifact deploys once to that root's .teleclaude/commands/
+  And no per-CLI directory at that root receives a copy of it
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
   And each domain the project owns in business.publishes is a single symlink ~/.teleclaude/docs/<domain> to the project's docs/global/<domain>
 ```
@@ -265,6 +310,8 @@ Scenario: UC-ARD8 Split domain ownership blocks the deploy
   And nothing is composed and no merged index is written
 ```
 
+<!-- planned-change:agent-artifact-source-layout -->
+
 #### UC-ARD11: Registered projects compose one lazy global skill catalog
 
 ```
@@ -280,6 +327,24 @@ Scenario: Skill folders publish globally by existence
   And the global agent baseline carries a curated index entry for general/procedure/skill-use
 ```
 
+<!-- change:agent-artifact-source-layout -->
+
+#### UC-ARD11: The mother composes one lazy global skill catalog
+
+```
+Scenario: The mother's skill folders publish globally by existence
+  Given the mother repository contains agents/global/skills/<name>/ folders
+  And a registered side project contains agents/global/skills/<name>/ folders
+  When sync runs in deploy mode
+  Then each mother skill folder is materialized in ~/.teleclaude/skills/<name>/
+  And the side project's global skill folders are refused with a message naming the files
+  And package Markdown is not validated against TeleClaude's authored-artifact taxonomy
+  And the Mother-owned catalog master is rendered after the deployed skill links exist
+  And ~/.teleclaude/skills/AGENTS.md orients readers to the directory without indexing it
+  And the global agent baseline carries a curated index entry for general/procedure/skill-use
+```
+
+<!-- /planned-change:agent-artifact-source-layout -->
 #### UC-ARD9: Published-domain activatable procedures are scoped to global agent output
 
 ```
@@ -552,11 +617,20 @@ Scenario: UC-ARD30 A reference validates against its source, never against the d
   symlink resolves onto its owning publisher's live source directory, so a stray
   edit through it mutates source; agents treat deployed docs as read-only.
 
+<!-- planned-change:agent-artifact-source-layout -->
+
 - Global skill publication is declared structurally, not through a capability
   toggle. The registered project set is the discovery boundary; within each root,
   direct `agents/skills/<name>/` folders are contributions and catalog-level files
   are Mother-owned control-plane content.
 
+<!-- change:agent-artifact-source-layout -->
+
+- Global skill publication is mother-curated. A project wanting a skill
+  machine-wide contributes it to the mother repository; the catalog is a
+  curation surface, not a merge of every registered root.
+
+<!-- /planned-change:agent-artifact-source-layout -->
 - Documentation is authored only on `main`. A deploy-mode sync is refused from a
   slug worktree, so a worktree branch's docs are never deployed; the deploy
   sources the Mother's canonical checkout. The main checkout and the integration

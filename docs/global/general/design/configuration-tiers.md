@@ -49,14 +49,18 @@ validation loudly. The open `.agents/` convention is never read as input.
 **Output — artifacts are organized per consumer, not per tier.** Every consumer
 finds artifacts where it natively looks, relative to the root a session runs
 in: each native CLI's own directory (`.claude/`, `.codex/`, and the rest) at
-every session-hosting root, the open `.agents/` convention for skills, and one
+every session-hosting root below the global one, the open `.agents/` convention
+for skills, and one
 TeleClaude command corpus per tier at `<root>/.teleclaude/commands/`, of which
 the global corpus `~/.teleclaude/commands/<domain>/` is the instance at the
 home root. A command exists exactly once per tier and is reached through the
 loader by its explicit domain-namespaced name for global commands and its bare
 name, resolved through the session's context, for tier-local ones; it is never
-expanded into a per-CLI directory. Skills are native and therefore duplicate
-into each CLI's directory — duplication follows nativeness.
+expanded into a per-CLI directory. Tier-local skills are native and eager:
+a project's, company's, or person's skills duplicate into each CLI's directory
+at the roots they reach. Global skills are catalog-only: they materialize under
+`~/.teleclaude/skills/` and nowhere else, so the large general set stays lazy —
+one index entry, listed on demand — rather than autoloaded into every session.
 
 <!-- /planned:tier-command-corpus -->
 
