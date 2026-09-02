@@ -11,6 +11,9 @@ activation_trigger: Use when asked to find refactoring or deepening opportunitie
 @~/.teleclaude/docs/software-development/policy/substrate-anchoring.md
 @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 @~/.teleclaude/docs/general/procedure/visualizing-for-humans.md
+@~/.teleclaude/docs/general/policy/human-contract.md
+@~/.teleclaude/docs/software-development/procedure/lifecycle/review.md
+@~/.teleclaude/docs/general/policy/adr-discipline.md
 
 ## Goal
 
