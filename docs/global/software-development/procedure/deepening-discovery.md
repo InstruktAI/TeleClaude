@@ -14,11 +14,11 @@ activation_trigger: Use when asked to find refactoring or deepening opportunitie
 
 ## Goal
 
-Find where a codebase's structure causes friction, present the candidates for
-deepening as a visual report, let the human pick one, and converge on that
-module's interface through grilling and parallel design. The unit of progress
-is one deepened module, never a campaign; the budget is the human's attention,
-spent only on the candidate they chose.
+Find where a codebase's structure causes friction, rank the candidates for
+deepening from evidence, select one, and converge on that module's interface
+through peer stress-testing and parallel design. The unit of progress is one
+deepened module, never a campaign; the budget is bounded by scope and by cost
+caps, and the human is involved only where their lane is crossed.
 
 ## Preconditions
 
@@ -77,41 +77,53 @@ how the deepened module is tested across its seam:
 A seam is introduced only when at least two adapters are justified, typically
 production and test; a single-adapter seam is indirection.
 
-### 4. Present candidates; propose no interfaces yet
+### 4. Rank and select from evidence
 
-Render the candidates as one report for the human, per
-`general/procedure/visualizing-for-humans`. Each candidate carries: the files
-involved; the problem in one sentence; the solution in one sentence; the wins
-in terms of leverage, locality, and how tests improve; a before-and-after
-diagram of the shallowness and the deepening; the dependency category; the
-owning context and the anchor module; and a recommendation strength of
-`Strong`, `Worth exploring`, or `Speculative`. End with one top recommendation.
-Flag a conflict with an existing ADR only when the friction is real enough to
-reopen the decision.
+Rank the candidates on the evidence gathered: the deletion test's result, the
+dependency category, blast radius from blueprint facts with their confidence
+limits, churn and co-change, and how many callers currently orchestrate the
+module's steps. Select one candidate — the agent's decision, recorded with its
+reason. Selection crosses the human's lane only when the candidate changes
+what a human experiences, widens the scope the human asked for, or touches a
+safety-gated action; then it is surfaced under `general/policy/human-contract`
+before anything proceeds.
 
+Render the ranked candidates as one report for the human to see, per
+`general/procedure/visualizing-for-humans`: per candidate the files involved,
+the problem and the solution in one sentence each, the wins in terms of
+leverage, locality, and how tests improve, a before-and-after diagram, the
+dependency category, the owning context and anchor module, and the selection
+with its reason. Flag a conflict with an existing ADR only when the friction
+is real enough to reopen the decision. The report orients; it is not a menu.
 Use the vocabulary of `module-depth` exactly — module, interface,
 implementation, depth, seam, adapter, leverage, locality — and the domain
-language of the domain specs for the domain. Do not propose interfaces at this
-step. Ask the human which candidate to explore, and stop.
+language of the domain specs for the domain.
 
-### 5. Grill the chosen candidate
+### 5. Stress-test the selection with an independent peer
 
-Walk the decision tree with the human through the `grill-me` skill:
-constraints, dependencies and their categories, the shape of the deepened
-module, what sits behind the seam, which tests survive. Facts are the agent's
-to find; decisions are the human's. Do not act until the frontier is empty.
+Dispatch an independent peer to falsify the selection and its constraints:
+the owning context, the anchor, the dependency category, what sits behind the
+seam, which tests survive, and whether a cheaper candidate was passed over. A
+valid finding follows the finding contract of
+`software-development/procedure/lifecycle/review`; a peer objection is a
+claim, not an order. Facts are found by agents, never asked of the human. When
+the human has explicitly invoked a collaborative exploration, the `grill-me`
+skill walks the same decision tree with them instead; otherwise the human is
+not consulted.
 
 ### 6. Design it twice
 
-Frame the problem space for the human — constraints, dependency categories, a
-rough illustrative sketch — then dispatch three or more sub-agents in parallel,
-each with a different design constraint: minimize the interface; maximize
+Frame the problem space — constraints, dependency category, a rough
+illustrative sketch — then dispatch three or more sub-agents in parallel, each
+with a different design constraint: minimize the interface; maximize
 flexibility; make the most common caller trivial; design around ports and
 adapters where a cross-seam dependency exists. Each returns the interface with
 its invariants, ordering, and error modes; a usage example; what the
 implementation hides; the dependency strategy; and where leverage is high or
-thin. Present them one at a time, compare on depth, locality, and seam
-placement, then recommend one or a hybrid. Be opinionated; a menu is a failure.
+thin. Compare on depth, locality, and seam placement, choose one or a hybrid,
+and record the choice with its reason; the independent peer checks the choice
+against the constraints. The human sees the chosen design in the report; they
+decide only where their lane is crossed.
 
 ### 7. Record side effects where they belong
 
@@ -126,17 +138,22 @@ placement, then recommend one or a hybrid. Be opinionated; a menu is a failure.
 
 ## Discipline
 
-The failure this procedure guards against is the agent converging alone: proposing
-interfaces before the human has chosen a candidate, merging across a context
-boundary because depth looked better there, or inventing a parallel to an
-existing module because it was not looked for. Ownership and anchoring are
-settled before any depth judgment, the human chooses the candidate, and the
-procedure ends at a design handed to the lifecycle, never at code.
+The failures this procedure guards against are two. Converging unchecked:
+selecting a candidate or an interface without evidence and without a peer's
+falsification, merging across a context boundary because depth looked better
+there, or inventing a parallel to an existing module because it was not looked
+for. And handing the human a technical menu: candidate selection, seam
+placement, and interface design are the agent's decisions under the human
+contract, recorded with their reasons and stress-tested by a peer; the human
+is surfaced only where their closed lane is crossed. Ownership and anchoring
+are settled before any depth judgment, and the procedure ends at a design
+handed to the lifecycle, never at code.
 
 ## Outputs
 
-- One candidate report, presented to the human.
-- For the chosen candidate: a grilled decision tree and a recommended
+- One ranked candidate report, with the selection and its reason, visible to
+  the human.
+- For the selected candidate: a peer-tested set of constraints and a chosen
   interface design, with its dependency strategy.
 - A bounded todo carrying that design, or a recorded rejection.
 
@@ -154,3 +171,5 @@ procedure ends at a design handed to the lifecycle, never at code.
 - ~/.teleclaude/docs/software-development/principle/module-depth.md — the vocabulary and the arbiter this procedure applies.
 - ~/.teleclaude/docs/software-development/policy/substrate-anchoring.md — why every candidate names the module it deepens.
 - ~/.teleclaude/docs/general/procedure/visualizing-for-humans.md — how the candidate report is rendered.
+- ~/.teleclaude/docs/general/policy/human-contract.md — why selection and design are the agent's decisions.
+- https://github.com/mattpocock/skills (MIT) — prior art: the hot-spot scoping, deletion test, dependency categories, and design-it-twice pattern this procedure re-expresses under TeleClaude doctrine.
