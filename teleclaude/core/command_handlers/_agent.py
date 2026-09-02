@@ -22,7 +22,7 @@ from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import AgentName, _get_agent_config, assert_agent_enabled, get_agent_command
-from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -32,21 +32,18 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
 )
 from teleclaude.core.injected_text import (
+    EnvelopeName,
     InjectedTextSourceFeature,
-    PlatformTextLabel,
-    TranscriptEntryKind,
-    platform_control_text,
+    semantic_envelope,
     visible_input_update,
 )
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, HumanActionIntent, Session, ThinkingMode
-from teleclaude.core.origins import InputOrigin
 from teleclaude.core.tmux_bridge._session import safe_session_tmp_component
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.paths import TMP_SESSIONS_DIR
 from teleclaude.types.commands import (
-    ProcessMessageCommand,
     RestartAgentCommand,
     ResumeAgentCommand,
     RunAgentCommand,
@@ -712,25 +709,22 @@ async def agent_restart(
                 )
                 return
 
-            # The agent has full context via --resume; queue its platform-authored
-            # stimulus so the normal acceptance, receipt, and projection pipeline
-            # owns the eventual pane delivery.
+            # The shared control-delivery handoff persists the semantic payload and
+            # queues only the content-free wake; the adapter drains the payload at
+            # its declared hook boundary.
             logger.info(
                 "agent_restart: queueing continuation stimulus session=%s gate=%s",
                 session.session_id,
                 gate_winner.value,
             )
             occurrence_key = f"restart-continuation:{session.session_id}:{cmd.request_id or time.time_ns()}"
-            await get_command_service().process_message(
-                ProcessMessageCommand(
-                    session_id=session.session_id,
-                    text=platform_control_text(PlatformTextLabel.RESTART_CONTINUATION, RESTART_CONTINUATION_STIMULUS),
-                    origin=InputOrigin.TERMINAL.value,
-                    text_kind=TranscriptEntryKind.PLATFORM_CONTROL,
-                    source_feature=InjectedTextSourceFeature.AGENT_RESTART,
-                    occurrence_key=occurrence_key,
-                    source_message_id=occurrence_key,
-                )
+            await handoff_control_payload(
+                session_id=session.session_id,
+                body=RESTART_CONTINUATION_STIMULUS,
+                source_key=occurrence_key,
+                envelope=semantic_envelope(EnvelopeName.RESTART_CONTINUATION),
+                wake_decision=ControlDeliveryWakeDecision.OBSERVED_IDLE,
+                wake_source_feature=InjectedTextSourceFeature.AGENT_RESTART,
             )
             logger.info("agent_restart: continuation stimulus accepted session=%s", session.session_id)
 
