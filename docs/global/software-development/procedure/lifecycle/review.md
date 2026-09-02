@@ -137,9 +137,11 @@ Overall quality, prior patterns, merge state, review-round count, or the absence
 of a fix loop never overrides this arithmetic. A count decreases only when
 evidence establishes that the finding is invalid or resolved.
 
-Write the complete structured report, on every pass including a clean pass, to
-the result surface the invoking procedure names for this reviewer — one surface
-per designated reviewer, never shared — before stamping the verdict. The report is the durable audit record for that pass: it includes every
+The designated reviewer writes the complete structured report — the round's
+ledger, carrying every reviewer's attributed findings — on every pass including
+a clean pass, to the result surface the invoking procedure names, before
+stamping the verdict. A contributing peer's result reaches that surface only
+through the designated reviewer. The report is the durable audit record for that pass: it includes every
 executed lane, the arithmetic verdict, and the `Why No Issues` evidence when
 required. The verdict stamp binds the current review target digest and the
 current report digest; neither the transcript nor an earlier report substitutes
@@ -158,16 +160,21 @@ remediation:
 
 1. One revision of the target is frozen as the round's target. Nothing is
    remediated against any other revision.
-2. Every designated reviewer completes its pass against that revision, running
-   every lane that applies. Each reviewer writes its own independently
-   identifiable result, bound to the frozen target's digest, on the result
-   surface the invoking procedure names for it; reviewers never overwrite one
-   another. A verdict from one reviewer does not start remediation while
-   another is still reading.
-3. A named reconciler that produced none of the target and none of the reviews
-   merges the results into one ledger for the round — duplicates merged,
-   contradictions resolved, leads separated from findings. The ledger is not
-   complete until every designated reviewer's result is represented in it.
+2. One reviewer is the round's designated reviewer, named by the invoking
+   procedure; it produced none of the target. Every other reviewer in the round
+   is a contributing peer. Each completes its pass against the frozen revision,
+   running every lane that applies. A contributing peer delivers its complete
+   result to the designated reviewer, attributed, before the designated
+   reviewer's pass closes; it writes to no shared surface. A verdict from any
+   reviewer does not start remediation while another is still reading.
+3. The designated reviewer is the round's reconciler. It merges every result —
+   its own and each contributing peer's — into one ledger for the round on the
+   result surface the invoking procedure names (the phase's findings artifact
+   for a lifecycle review; the report to the caller for a commit review),
+   duplicates merged, contradictions resolved, leads separated from findings,
+   each finding attributed to its reviewer. The ledger is not complete until
+   every designated reviewer's and contributing peer's result is represented in
+   it. The producer of the target never reconciles.
 4. Only then is one remediation authored, as one change, against that ledger.
 5. The next round reviews that remediation solely against the ledger and the
    remediation delta.
@@ -204,8 +211,10 @@ incompleteness.
 
 ## Outputs
 
-- A complete, current review artifact covering every applicable lane, even when
-  the pass is clean.
+- One round ledger per round on the surface the invoking procedure names — a
+  complete, current review artifact for a lifecycle review, the report to the
+  caller for a commit review — covering every applicable lane and every
+  reviewer's attributed findings, even when the pass is clean.
 - An arithmetic `APPROVE` or `REQUEST CHANGES` verdict bound to that artifact
   and the reviewed target.
 

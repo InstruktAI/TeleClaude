@@ -69,8 +69,12 @@ and record evidence or a reasoned `N/A`.
 
 ### 4. Return the commit-review result
 
-Print the complete structured findings and verdict to the caller. Do not select
-a todo, write a todo artifact, or stamp lifecycle state.
+Print the complete structured findings and verdict to the caller. That report
+is this reviewer's named result surface for a commit review, and this reviewer
+is the round's designated reviewer and reconciler: a contributing peer's
+findings on the same commits are merged into it, attributed, before it is
+printed. Do not select a todo, write a todo artifact, or stamp lifecycle
+state.
 
 Use comma-separated commit notation in the target line, never range notation:
 
@@ -88,7 +92,8 @@ the caller never infers one.
 
 ## Outputs
 
-- Review findings printed to the caller.
+- The round ledger — every reviewer's attributed findings — printed to the
+  caller as this reviewer's named result surface.
 - Verdict printed to the caller.
 - No todo artifact or lifecycle stamp.
 
