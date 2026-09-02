@@ -59,8 +59,7 @@ class TurnReflectionResult:
     failed: bool
 
 
-# Disposition default when the Discord reflection lane is not engaged at all
-# (origin already visible there, or the adapter is absent).
+# Disposition default when the Discord reflection lane is unavailable.
 SKIPPED_TURN_REFLECTION = TurnReflectionResult((), True, False)
 
 
