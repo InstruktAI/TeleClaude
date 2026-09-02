@@ -136,11 +136,18 @@ description: Decide whether a todo should exist, audit that decision at preparat
   conversational settlement; flagger silence leaves nothing pending. For
   every state-changing exit, the flagger reads settlement from the todo
   record: the hold and its log entry, the amended `input`, or removal.
-- **Only deadlock reaches the human.** Deadlock exists only when the claimant
-  maintains its defense after the permitted follow-up and the flagger still
-  cannot reconcile the conflict. The flagger then presents one live question
-  to the human. A resolved defense, hold, stand-down, or retraction does not
-  become human clerking.
+- **Deadlock reaches the project coordinator, never the human.** Deadlock
+  exists only when the claimant maintains its defense after the permitted
+  follow-up and the flagger still cannot reconcile the conflict. The flagger
+  then routes the conflict, with both sides' grounding, by address to the live
+  project coordinator, which owns its disposition under
+  `software-development/procedure/lifecycle/coordinate` with its one standing
+  peer falsifying; a flagger that is the coordinator disposes of it directly.
+  With no coordinator live, the flagger preserves the conflict unresolved and
+  never manufactures human ownership for it. Only a surviving decision that
+  `general/policy/human-contract` independently assigns to the human travels
+  to him, as one live question. A resolved defense, hold, stand-down, or
+  retraction does not become human clerking.
 
 ### Read authorship from the creation record
 
@@ -162,8 +169,9 @@ trigger. A live-claimant flag closes that gap at the moment cost is being
 incurred: preparation pauses, while the claimant retains judgment over whether
 to defend, hold, stand down, or retract. Restricting the flagger to addresses
 and one follow-up prevents a challenge from becoming a parallel
-orchestration. Restricting human escalation to an unresolved defense keeps
-ordinary correction out of the human's attention.
+orchestration. Routing an unresolved defense to the coordinator, and to the
+human only what the human contract assigns there, keeps every technical
+disagreement out of the human's attention.
 
 The message-based flag is deliberately not durable todo state. It protects
 actively prepared work, where a claimant exists and effort is being spent.
@@ -184,8 +192,8 @@ and every observer that flags a live claimant under this policy.
   continues preparation after receiving a flag and before reconciliation,
   violates this policy.
 - A flagger that supplies remediation content, chooses the claimant's exit,
-  continues beyond one grounded follow-up, or escalates a resolved case to the
-  human violates this policy.
+  continues beyond one grounded follow-up, or carries a resolved case or an
+  unresolved technical deadlock to the human violates this policy.
 - `telec todo update --hold` does not accept a reason and records the generic
   manual-hold reason `todo update`; a flag-related hold without the associated
   todo-log explanation is incomplete reconciliation.
