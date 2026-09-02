@@ -225,4 +225,8 @@ this policy adds no mid-work stop trigger.
 
 ## Exceptions
 
-- None.
+- Evidence-driven fine-tuning, as defined in `general/policy/human-contract`:
+  a process-layer change derived from observed evidence across comparable work
+  is made without a live human decision, gated by independent peer review of
+  the evidence, the causal claim, and the change, recorded with its evidence,
+  and never altering the human's closed lane.

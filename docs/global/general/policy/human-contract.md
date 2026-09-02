@@ -122,7 +122,14 @@ functional, snippet versus code — decides only where the work executes, per
 
 ## Exceptions
 
-- None.
+- Evidence-driven fine-tuning of process artifacts (briefs, procedures,
+  policies) derived from observed evidence across comparable work is made by
+  intelligence without the human present, gated by independent peer review of
+  the evidence, the causal claim, and the change, and recorded with its
+  evidence for later measurement and rollback. The carve-out never reaches the
+  closed list: a change to what a human experiences, who holds authority,
+  their values, a safety gate, or the boundary of what was asked stays the
+  human's.
 
 ## See Also
 
