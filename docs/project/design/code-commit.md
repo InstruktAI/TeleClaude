@@ -120,9 +120,11 @@ a checkout carrying `teleclaude.yml` whose manifest subscribes at least one of
 `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — is
 one; the commit-interception rows follow that `code ∨ docs` condition, while the
 worktree and branch-discipline rows additionally require `code`. A repository
-whose own root is a declared invocation context is also one, and there the seal
-covers the whole repository: an invocation beneath it resolving to no context root
-is refused rather than passed through. When the project subscribes neither, or the
+whose own root is a declared non-project invocation context is also one, and
+there the seal covers the whole repository: an invocation beneath it resolving to
+no context root is refused rather than passed through. A project root's seal
+follows its subscriptions alone — a project subscribing neither capability keeps
+ordinary git exactly as stated below, whatever else its tier answers. When the project subscribes neither, or the
 repository's own root carries no declaration at all, the wrapper decides nothing
 from this matrix: it execs the real git binary unmodified, the same transparent
 passthrough it applies outside tmux.
