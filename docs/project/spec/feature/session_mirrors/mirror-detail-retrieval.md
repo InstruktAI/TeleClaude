@@ -71,9 +71,16 @@ And the body is right-stripped before printing
 ```
 Given a caller invokes the detail capability for a session_id
 When a mirror matches the lookup
+<!-- planned-change:reviewer-transcript-mirror-stale -->
 Then the response carries
   session_id, computer, agent, project, title, conversation_text,
   message_count, timestamp_start, timestamp_end
+<!-- change:reviewer-transcript-mirror-stale -->
+Then the response carries
+  session_id, computer, agent, project, title, conversation_text,
+  message_count, timestamp_start, timestamp_end, coverage_state,
+  shrink_refused_at
+<!-- /planned-change:reviewer-transcript-mirror-stale -->
 And no role-based access filtering is applied at this capability
 
 Given no mirror matches the lookup
