@@ -38,6 +38,35 @@ contracts and never creates shared ownership.
   validates, defaults, or recovers a publishing context's rules. Its observable
   behavior is bound by the feature specs its clients realize.
 
+### Package ownership
+
+Every source package has exactly one owning context, declared here, or is a
+shared layer that owns no domain rule. Ownership follows the contexts' own
+declarations above and in their domain specs; where a package's contents
+contradict a declaration, the contents decide and the row says so. A row marked
+`provisional` rests on the package's contents alone; a row marked `unassigned`
+names a package no context has claimed, and its owner is a pending ownership
+decision, never inferred from placement. Paths are relative to `teleclaude/`
+unless stated; `frontend/` and repository-root directories are listed by name.
+
+| Package | Owner | Basis | Status |
+| --- | --- | --- | --- |
+| `core/agent_coordinator`, `core/command_handlers`, `core/reminders`, `core/tmux_bridge`, `daemon_session.py`, `cli/tool_commands/sessions` | agent_runtime | agent_runtime spec; live sessions, session-input execution, runtime lifecycle | declared |
+| `session_scoping/_attribution` | agent_runtime | boundary contract above: the live-session attribution query | declared |
+| `adapters/**`, `core/inbound`, `core/delivery`, `events/delivery`, `core/adapter_client`, `transport/**` | integration | integration spec; provider and process-boundary transport, normalization, translation | declared |
+| `hooks/**` | integration | feature spec `integration/agent-cli-hook-reception`; overrides the agent_runtime spec's path mention | declared, conflict resolved by contents |
+| `session_identity.py`, `commit_identity.py`, `api/auth.py`, `cli/telec/handlers/auth_cmds.py`, `invite.py` | identity | identity spec; caller resolution and authorization identity | declared |
+| `core/next_machine`, `core/todos_db`, `core/integration`, `core/operations`, `services/work`, `todo_artifacts.py`, `todo_scaffold.py`, `git.py`, `git_lock.py`, `quality/` | workflow | workflow spec; todos, artifacts, lifecycle decisions, code-integration workflow and its quality gates | declared; `core/integration` conflict with the integration spec resolved by contents (state machine, lease, delivery fold) |
+| `session_scoping/_git`, `session_scoping/_workspace`, `session_scoping/_api` | workflow | boundary contract above: coordination and custodianship over dirty paths | provisional |
+| `config/`, `runtime/config.py` | config | config spec | declared |
+| `context_selector.py`, `docs_index.py`, `docs_reconcile.py`, `doc_body.py`, `required_reads.py`, `snippet_roots.py`, `snippet_validation.py`, `sync.py`, `third_party_index.py`, `global_skills.py`, `resource_validation/`, `project_setup/`, `core/blueprint`, `codegen/`, `company_setup/`, repository `docs/`, `agents/`, `templates/`, `manifests/` | context | context spec; documentation, agent assets, deployment of context, context selection; the blueprint is knowledge about the code | declared; `core/blueprint`, `codegen`, `company_setup` provisional |
+| `memory/**` | memory | memory spec | declared |
+| `mirrors/`, `utils/transcript`, `history/` | session_mirrors | session_mirrors spec; transcript-derived history | declared; `history/` provisional |
+| `core/reconciliation`, `deployment/`, `install/**`, `runtime/binaries.py`, `runtime/environment.py`, `entrypoints/macos_setup.py` | reconciliation | context map: installation and fleet convergence; overrides the context spec's `install/` mention | declared, conflict resolved by the map's definition |
+| `cli/tui/**`, `cli/telec/**` (except auth handlers), `cli/*.py`, `frontend/`, `api/**` (except auth), `api_models.py`, `api_server.py`, `output_projection/`, `chiptunes/`, `tts/**`, `stt/**` | presentation | context map: TUI, CLI, and web frontend hosting surfaces; local projections and rendering policy | declared; `chiptunes`, `tts`, `stt` provisional as output and input modalities of the clients |
+| `core/db`, `core/models`, `core/migrations`, `events/catalog.py`, `events/db.py`, `events/domain_*`, `events/cartridges`, `events/schemas`, `events/signal`, `services/protocols`, `services/schemas`, `types/`, `utils/` (except `transcript`), `logging_config.py`, `paths.py`, `constants.py`, `daemon.py`, `daemon_event_platform.py`, `daemon_hook_outbox.py`, `observability/`, `helpers/`, `mlx_utils.py` | shared layer, no owner | storage, bus, transport, host, and utility layers; each carries no domain rule of its own, and every rule found inside one is misplaced | declared as layer |
+| `channels/`, `cron/`, `services/process_janitor`, `services/project_catalog`, `services/project_jobs`, `services/maintenance_service.py`, `services/monitoring_service.py`, `services/log_bug_hunter_*`, `services/discord.py`, `services/email.py`, `tagging/`, `mcp/`, `events/domains/**`, `entrypoints/send_telegram.py`, `entrypoints/youtube_sync_subscriptions.py`, `content_scaffold.py`, `capabilities.py`, `checkpoint_model.py`, `domains.py`, `project_manifest.py`, `project_root.py`, `shell_path_parser.py`, `slug.py`, `session_fields.py` | unassigned | no context in this map claims them; jobs, channels, MCP, and business-domain pipelines await an ownership decision | unassigned |
+
 ### Boundary contracts
 
 - `integration` hands normalized session input to `agent_runtime` through the
