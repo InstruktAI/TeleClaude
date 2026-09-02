@@ -10,8 +10,10 @@ description: Before new construction, name the existing module whose contract co
   covers the work, or record that grounded discovery found none.** Extend an
   existing module when owner, invariant, and reason to change align; otherwise
   declare the justified divergence. A new, replacement, migration, or
-  anti-corruption implementation is legitimate when those differ — and it
-  declares which existing module it stands beside, and why.
+  anti-corruption implementation is legitimate when those differ; where an
+  existing module was found, it declares which one it stands beside and why,
+  and where none was found, the recorded discovery result and its rationale are
+  the declaration.
 - **The defect is the undeclared parallel.** A second implementation of a
   capability that already exists, built without naming the first, is a defect
   even when its code is good. Declared divergence is design; undeclared
