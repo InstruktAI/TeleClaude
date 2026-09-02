@@ -629,16 +629,17 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   happened; human-owned residue joins the next batch. If it carries nothing
   material, invent neither a signal nor a log line. Then send the session one
   address-only pointer to its own departure contract —
-  `general/principle/session-lifecycle`, `session-departure` — and monitor the
-  authoritative session record until it shows the session closed. The session
-  arms its departure; the reminder performs the end. No resend and
-  no force-close: a session that does not depart becomes a separate ownership or
-  delivery signal. Where the todo is not `PREPARED`, or a child is live, this is
+  `general/principle/session-lifecycle`, `session-departure`. The session arms
+  its departure; the reminder performs the end. The Coordinator sends nothing
+  further: no resend and no force-close. A session whose record still shows it
+  open at a later sweep is a separate ownership or delivery signal, read under
+  its own case. Where the todo is not `PREPARED`, or a child is live, this is
   not this case.
-- **Stop and settlement:** stop after the pointer. Cleanup is complete when the
-  session record shows the session closed; an absorbed signal settles only when
-  its proper owner visibly takes it, or the human batch delivers genuinely
-  human-owned residue.
+- **Stop and settlement:** the intervention stops after the one pointer;
+  observation continues in the sweep, which owns it. The case settles when the
+  authoritative session record shows the session closed; an absorbed signal
+  settles only when its proper owner visibly takes it, or the human batch
+  delivers genuinely human-owned residue.
 
 ## Why
 
