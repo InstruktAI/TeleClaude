@@ -45,12 +45,8 @@ procedure is ever dispatched.
 
 1. **Read the findings.** Load the findings artifact referenced in your dispatch
    message: `telec todo artifacts read {slug} {findings_artifact_name}`. Extract
-   Requirement-Violation, Critical, and Important issues. Remediate only from
-   a closed round's reconciled ledger: every designated reviewer has completed
-   its pass against the same frozen revision and their findings are merged
-   (`software-development/procedure/lifecycle/review`, step 6). A verdict from
-   one reviewer while another is still reading is not a ledger. Every finding
-   is actionable — there is no "Suggestion" tier to skip. An investigation lead is
+   Requirement-Violation, Critical, and Important issues. Every finding is
+   actionable — there is no "Suggestion" tier to skip. An investigation lead is
    not a finding: it never enters remediation, requires no response from you,
    and cannot enlarge the current work. Address findings; leave leads where the
    reviewer put them.

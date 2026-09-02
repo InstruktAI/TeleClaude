@@ -137,11 +137,9 @@ Overall quality, prior patterns, merge state, review-round count, or the absence
 of a fix loop never overrides this arithmetic. A count decreases only when
 evidence establishes that the finding is invalid or resolved.
 
-The designated reviewer writes the complete structured report — the round's
-ledger, carrying every reviewer's attributed findings — on every pass including
-a clean pass, to the result surface the invoking procedure names, before
-stamping the verdict. A contributing peer's result reaches that surface only
-through the designated reviewer. The report is the durable audit record for that pass: it includes every
+Write the complete structured report to the review artifact named by the
+invoking procedure on every pass, including a clean pass, before stamping the
+verdict. The report is the durable audit record for that pass: it includes every
 executed lane, the arithmetic verdict, and the `Why No Issues` evidence when
 required. The verdict stamp binds the current review target digest and the
 current report digest; neither the transcript nor an earlier report substitutes
@@ -155,53 +153,18 @@ denominator every finding is judged against. Remediation closes valid findings
 within that scope; a valid omission finding may add material, but scope growth
 is semantic and line count proves nothing either way.
 
-A review round has one frozen target and a barrier between review and
-remediation:
-
-1. One revision of the target is frozen as the round's target. Nothing is
-   remediated against any other revision.
-2. One reviewer is the round's designated reviewer, named by the invoking
-   procedure; it produced none of the target. Every other reviewer in the round
-   is a contributing peer. Each completes its pass against the frozen revision,
-   running every lane that applies. A contributing peer delivers its complete
-   result to the designated reviewer, attributed, before the designated
-   reviewer's pass closes; it writes to no shared surface. A verdict from any
-   reviewer does not start remediation while another is still reading.
-3. The designated reviewer is the round's reconciler. It merges every result —
-   its own and each contributing peer's — into one ledger for the round on the
-   result surface the invoking procedure names (the phase's findings artifact
-   for a lifecycle review; the report to the caller for a commit review),
-   duplicates merged, contradictions resolved, leads separated from findings,
-   each finding attributed to its reviewer. The ledger is not complete until
-   every designated reviewer's and contributing peer's result is represented in
-   it. The producer of the target never reconciles.
-4. Only then is one remediation authored, as one change, against that ledger.
-5. The next round reviews that remediation solely against the ledger and the
-   remediation delta.
-6. Rounds are counted by reviewed target revisions, never by reviewer messages
-   or by commits.
-
-The first round is one complete discovery pass over the frozen target. A
-remediation round closes ledger findings and inspects the remediation delta. A
-new finding on a remediation round is admissible only when it is
-remediation-induced, or newly observable because the target changed. A finding
-that was observable in the discovery pass and is raised later is the reviewer's
-incompleteness: it halts the loop for reassessment instead of being appended to
-the producer's work.
+The first review of a target is one complete discovery pass over the frozen
+digest. A remediation review closes existing findings and inspects the
+remediation delta. A new finding on a remediation review is admissible only
+when it is remediation-induced, or newly observable because the target changed.
+A finding that was observable in the discovery pass and is raised later is the
+reviewer's incompleteness: it halts the loop for reassessment instead of being
+appended to the producer's work.
 
 When a loop reaches its applicable documented cap without closure, no further
 review starts: the loop halts, the cause is classified — ambiguous contract,
 failed remediation, unstable target, or incomplete or noisy review — and the
-classification is escalated with the halt. Remediation that reached a shared
-branch without an APPROVE is restored as part of the halt: only the reviewed
-target's paths or artifact are restored, to their last independently approved
-revision, and a target with no approved predecessor is removed; unrelated branch
-state is untouched. The ledger and the classification are preserved as process
-evidence, and the work resumes later as fresh, bounded work. An agent may
-propose one exception to the restore — a confirmation pass instead — and the
-exception holds only with the explicit agreement of an independent,
-non-producing review authority; without that agreement the restore is
-automatic. The human is not asked.
+classification is escalated with the halt.
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a
@@ -211,10 +174,8 @@ incompleteness.
 
 ## Outputs
 
-- One round ledger per round on the surface the invoking procedure names — a
-  complete, current review artifact for a lifecycle review, the report to the
-  caller for a commit review — covering every applicable lane and every
-  reviewer's attributed findings, even when the pass is clean.
+- A complete, current review artifact covering every applicable lane, even when
+  the pass is clean.
 - An arithmetic `APPROVE` or `REQUEST CHANGES` verdict bound to that artifact
   and the reviewed target.
 
