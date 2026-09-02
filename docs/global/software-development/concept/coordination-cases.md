@@ -602,6 +602,32 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 ---
 
+##### NC-37 — Idle Prepare orchestrator with no live children on a PREPARED todo
+
+- **Evidence available:** session state `idle`, no live child session naming it as
+  parent, no live governor already responsible for its cleanup; the session's
+  `working_slug` and that todo's lifecycle record (`telec todo show`) at
+  `PREPARED`; the session's own record (`telec sessions tail`) showing whether it
+  was carrying anything. Platform status `stalled` is not this case: it means an
+  active turn stopped advancing and belongs to recovery.
+- **Ownership:** the prepare phase is settled and has no further owner in this
+  session. The Coordinator judges, under this case, whether the session carries a
+  material signal and where it routes; the Coordinator executes the close; the
+  session-lifecycle mechanism behind `telec sessions end` is the state authority.
+  Nothing about the session's silence is a question for the session.
+- **Coordinator:** establish every fact from the records, never by asking the
+  session. Tail it. If it carries a material signal — a blocker, a decision, a
+  kickback, unrouted findings — preserve it in working context, identify its
+  owner, route it by address or monitor it in the sweep, and log the absorption
+  as its own line, slug in `subject`, session id in `source`, kind as it
+  happened; human-owned residue joins the next batch. If it carries nothing
+  material, close without inventing a signal or a log line. Then end the session
+  with `telec sessions end <id>`. Where the todo is not `PREPARED`, or a child is
+  live, this is not this case.
+- **Stop and settlement:** stop after the close. Cleanup is complete at the
+  close; an absorbed signal settles only when its proper owner visibly takes it,
+  or the human batch delivers genuinely human-owned residue.
+
 ## Why
 
 The loaded lifecycle contracts describe how each role _executes_; they do not
