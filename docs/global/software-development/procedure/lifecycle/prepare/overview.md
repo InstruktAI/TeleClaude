@@ -287,6 +287,13 @@ the sole author of `--drift-reviewed`. Substantive verdicts trigger
 re-derivation of the affected phase; cosmetic verdicts allow the chain to
 continue.
 
+Doctrine drift is not machine-detected. On resuming a todo whose artifacts
+were reviewed before a change to applicable doctrine — a principle, policy, or
+procedure the artifact is judged against — re-read the artifact against the
+doctrine changed since its last review. Doctrine drift alone never invalidates
+an approval; only a material conflict between the artifact and current doctrine
+triggers kickback and re-review of the affected phase.
+
 ### 7. Handle refinement
 
 When the human refines (proposes changes to an artifact at any layer),
