@@ -97,10 +97,11 @@ and no per-agent runtime receives any command artifact — native or
 otherwise. Commands are reached exclusively through the loader message
 TeleClaude composes at dispatch (and for machine-emitted procedure loads),
 which instructs the session to read the corpus document directly. The global
-corpus is partitioned by domain (`~/.teleclaude/commands/<domain>/`) and is
-reusable across projects. Per-tier corpora and bare-name resolution across
-tiers are a later contract (`tier-command-corpus`) that this one does not
-foreclose.
+corpus is the existing `~/.teleclaude/commands/` directory and is reusable
+across projects. Domain partitioning of that directory, per-tier corpora, and
+bare-name resolution across tiers are later contracts
+(`agent-artifact-source-layout`, `tier-command-corpus`) that this one does
+not foreclose: the loader accepts an optional domain segment in a name.
 
 Global skills compose to `~/.teleclaude/skills/` and are discovered through the
 catalog the master points at; they reach no runtime home. Tier-local skills

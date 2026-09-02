@@ -40,7 +40,11 @@ Scenario: Command artifact missing H1
 
 ```
 Scenario: Every skill entrypoint has identity metadata
+<!-- planned-change:agent-artifact-source-layout -->
   Given SKILL.md exists below agents/skills/<name>/ or .agents/skills/<name>/
+<!-- change:agent-artifact-source-layout -->
+  Given SKILL.md exists in a skill source folder of any tier
+<!-- /planned-change:agent-artifact-source-layout -->
   And its name or description frontmatter is missing, empty, or its name differs from <name>
 <!-- planned-change:drop-skill-taxonomy-optin -->
   When artifact validation runs
@@ -122,6 +126,7 @@ Scenario: Required reads orders refs incorrectly
   Then the ordering error is reported (commands → agents → skills)
 ```
 
+<!-- planned-change:agent-artifact-source-layout -->
 ```
 Scenario: Non-mother project's local agents/ is not walked
   Given a project that is not the Mother project
@@ -132,7 +137,22 @@ Scenario: Non-mother project's local agents/ is not walked
   And named folders under agents/skills are reserved for the separate global skill publication path
   And only the project's .agents/ tree is processed
 ```
+<!-- change:agent-artifact-source-layout -->
+#### UC-AAV2: A repository's artifact sources are validated within its declared reach
 
+```gherkin
+Scenario: An agent validates a repository whose sources exceed its declared reach
+  Given a repository that is not the mother declares the domains it publishes
+  And it carries authored sources under agents/project/ and agents/global/
+  When the agent runs artifact validation
+  Then every agents/project/ source is validated as authored input
+  And a global command under a domain the repository publishes is validated as authored input
+  And a general command, a global skill, a global subagent, or a command under a domain the repository does not publish is refused with a finding naming the file and the reach it exceeds
+  And nothing under .agents/ is read as an authored source
+```
+<!-- /planned-change:agent-artifact-source-layout -->
+
+<!-- planned-change:agent-artifact-source-layout -->
 ```
 Scenario: Published or project-local supporting Markdown keeps its upstream structure
   Given a skill package exists at agents/skills/<name>/ or .agents/skills/<name>/
@@ -142,6 +162,17 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
   And SKILL.md receives identity validation plus taxonomy validation only when explicitly opted in
   And the package is rendered through the artifact output pipeline without rewriting its authored structure
 ```
+<!-- change:agent-artifact-source-layout -->
+```
+Scenario: Published or project-local supporting Markdown keeps its upstream structure
+  Given a skill package exists in a skill source folder of any tier
+  And the folder contains SKILL.md and optional supporting Markdown resources
+  When telec sync processes the skill
+  Then supporting Markdown is not checked for TeleClaude headings, section order, role lines, or taxonomy shape
+  And SKILL.md receives identity validation
+  And the package is rendered through the artifact output pipeline without rewriting its authored structure
+```
+<!-- /planned-change:agent-artifact-source-layout -->
 
 
 ### Cross-context references

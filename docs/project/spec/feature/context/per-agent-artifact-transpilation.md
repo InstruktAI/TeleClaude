@@ -155,6 +155,21 @@ Scenario: An agent synchronizes a skill package with upstream-authored structure
 ```
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 
+<!-- planned:command-migration-to-singular-telec-skill -->
+
+#### UC-PAT2: Only tier-local skill packages are emitted per target
+
+```gherkin
+Scenario: Per-target skill emission is limited to tier-local packages
+  Given a global skill package under agents/skills/<name>/ and a tier-local skill package under .agents/skills/<name>/
+  When sync renders skills for the enabled runtimes
+  Then the tier-local package is emitted under its folder name into each enabled runtime's native skill directory
+  And the global package is composed into the TeleClaude skills home only and is emitted into no runtime's skill directory
+  And every other skill-rendering rule applies identically to both packages
+```
+
+<!-- /planned:command-migration-to-singular-telec-skill -->
+
 ### Cross-context references
 
 <!-- planned-change:command-migration-to-singular-telec-skill -->
