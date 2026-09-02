@@ -255,24 +255,15 @@ Given a todo of kind bug whose input is present and whose diagnosis is absent
 When the prepare state machine is dispatched for that slug
 Then the derived phase is DIAGNOSE
 And the emitted script dispatches one cross-model diagnosis peer for the slug
-<!-- planned-change:remove-diagnosis-dispatch-leases -->
-And the slug's live claim still names the driving session
-And a dispatch lease scoped to the diagnosis artifact admits only that peer to write it
-And a diagnosis write by the driving session is refused while that lease is live
-And the lease lapsing restores the ordinary claim rule for that artifact
-<!-- change:remove-diagnosis-dispatch-leases -->
 And the driving session remains the todo's lifecycle claimant throughout the diagnosis phase
 And the dispatched peer writes and revises the diagnosis artifact without acquiring or receiving the todo claim
 And no artifact lease, expiry, or time-based authority participates in that write
-<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 When the peer writes the diagnosis artifact and the state machine is dispatched again
 Then the derived phase is still DIAGNOSE
 And the driving session challenges the written mechanism rather than advancing
 When the driving session stamps the diagnosis settled and the state machine is dispatched again
 Then the derived phase is PLAN_DRAFTING
-<!-- planned:remove-diagnosis-dispatch-leases -->
 And the driving session's lifecycle claim is unchanged
-<!-- /planned:remove-diagnosis-dispatch-leases -->
 And the diagnosis artifact carries the dispatched peer as the principal of its every version
 When the diagnosis is revised after that stamp
 Then the stamp is no longer current for the artifact's digest
@@ -305,13 +296,9 @@ wires the existing phase-transition seam (the same seam that currently emits
 finalize-ready only) to publish or bridge the target `workflow.todo.phase_advanced`
 wake-up for PREPARED and other eligibility-changing prepare/work transitions.
 The runner then evaluates the full eligible project set and dispatches children
-<!-- planned-change:remove-diagnosis-dispatch-leases -->
-only after acquiring `(project, child_slug, prepare)` claims.
-<!-- change:remove-diagnosis-dispatch-leases -->
 through the ordinary lifecycle-session start path, which records the spawned
 driver as the child's `active_runner`; no reservation, expiry, or other
 pre-ownership state participates.
-<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 This supersedes parent-worker reuse for child prepare. A prepare session must
 not send a new `/next-prepare` instruction to itself, must not rebind a parent

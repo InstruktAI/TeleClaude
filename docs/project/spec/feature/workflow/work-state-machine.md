@@ -116,23 +116,14 @@ And returns an instruction to wait for the builder to run "telec todo stamp my-f
 Given a Todo has kind="task", lifecycle_phase="prepared", a `task-plan`, and a task authorization stamp
 And the task has no schedule, or its schedule's current due instant is at or before the runner evaluation instant
 When the lifecycle runner evaluates eligible work for the project
-<!-- planned-change:remove-diagnosis-dispatch-leases -->
-Then it acquires a `(project, slug, task-run)` dispatch claim
-And starts `/next-run-task <slug>` without creating a worktree
-<!-- change:remove-diagnosis-dispatch-leases -->
 Then it starts `/next-run-task <slug>` without creating a worktree
 And records the spawned task session as the Todo's `active_runner`
 And no reservation, expiry, or other pre-ownership state participates
-<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 And records or preserves lifecycle_phase="task_running" while the task session is live
 ```
 
 ```gherkin
-<!-- planned-change:remove-diagnosis-dispatch-leases -->
-Given a task lacks authorization, lacks a `task-plan`, has a future schedule, is held, or already has a live task-run session/claim
-<!-- change:remove-diagnosis-dispatch-leases -->
 Given a task lacks authorization, lacks a `task-plan`, has a future schedule, is held, or already names a live task session as `active_runner`
-<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 When the lifecycle runner evaluates eligible work for the project
 Then it does not start `/next-run-task`
 And it leaves the SDLC work state machine untouched
@@ -244,19 +235,6 @@ Then the quality-checklist artifact exists with the standard checklist template 
 And a prepared Todo whose quality-checklist already has substantive content keeps it unchanged
 ```
 
-<!-- planned-change:remove-diagnosis-dispatch-leases -->
-#### UC-WSM7: Session-end cleanup releases the driver's retained boot-gap claim
-
-```gherkin
-Given a todo whose driver session was spawned through the claim-guarded dispatch primitive
-And the todo's `(slug, lane)` boot-gap dispatch claim is retained with lease time remaining
-When the driver session ends and session-end cleanup clears the todo's active_runner
-Then the todo's boot-gap dispatch claims are released together with the active_runner clear
-And the next runner pass may dispatch the slug's derived lane without waiting for claim expiry
-And a diagnosis artifact-authority lease on the same slug is not released
-```
-<!-- change:remove-diagnosis-dispatch-leases -->
-<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 #### UC-WSM8: Build review consumes only a current report and worktree binding
 
@@ -348,22 +326,12 @@ And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and p
   work orchestrator session. The Phase B orchestrator remains per-slug and
   terminal after finalize-ready cleanup.
 
-<!-- planned-change:remove-diagnosis-dispatch-leases -->
-- `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector
-  for ready work. It evaluates the project todo set, acquires a
-  `(canonical_project_root, slug, work)` dispatch claim, verifies no live
-  `/next-work` session already owns that project/slug/lane, and then starts
-  `/next-work --args <slug>`. The work state machine remains per-slug: a bare
-  `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG`
-  and never scans the roadmap opportunistically.
-<!-- change:remove-diagnosis-dispatch-leases -->
 - `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector
   for ready work. It evaluates the project todo set, starts `/next-work --args
   <slug>` for each selected item, and records the spawned session as that Todo's
   `active_runner`. The work state machine remains per-slug: a bare `telec todo
   work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and
   never scans the roadmap opportunistically.
-<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 ## Known caveats
 
