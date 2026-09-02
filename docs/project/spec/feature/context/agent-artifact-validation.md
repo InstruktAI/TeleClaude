@@ -204,8 +204,15 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
 - Skill discovery requires the `SKILL.md` filename specifically. Its identity
   metadata is always validated, while body taxonomy is opt-in. Supporting Markdown
   remains opaque package content in either skill scope.
+<!-- planned-change:agent-artifact-source-layout -->
 - The mother-project gate remains a silent skip for global commands, agents,
   addenda, and masters. Registered projects' `agents/skills/<name>/` folders are
   collected separately and do not make the rest of their `agents/` tree global.
+<!-- change:agent-artifact-source-layout -->
+- The reach gate refuses rather than skips: a global source outside a repository's
+  declared reach is a validation finding naming the file. Registered projects
+  publish no global skills; only the mother's `agents/global/skills/<name>/`
+  folders reach the catalog.
+<!-- /planned-change:agent-artifact-source-layout -->
 - `parameters` entries that are not dicts, or dicts missing the `name` string,
   are rejected before the duplicate-name check runs.

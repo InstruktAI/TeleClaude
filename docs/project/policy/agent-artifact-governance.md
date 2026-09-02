@@ -12,13 +12,21 @@ visibility: 'public'
 ## Rules
 
 - The universal artifact-governance rules in `general/policy/agent-artifact-governance` apply in full. This policy adds only the mother-project specifics below and the addendum-authoring contract.
+<!-- planned-change:agent-artifact-source-layout -->
 - The TeleClaude repo is the mother project for global artifact governance. Only this repo may publish the global master, commands, agents, addenda, and catalog instructions from `agents/`.
+<!-- change:agent-artifact-source-layout -->
+- The TeleClaude repo is the mother project for global artifact governance. Only this repo publishes the global master, general commands, global skills, addenda, and catalog instructions; a domain-partitioned global command publishes from the one repository that declares its domain.
+<!-- /planned-change:agent-artifact-source-layout -->
 <!-- planned-change:drop-skill-taxonomy-optin -->
 - Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Every entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure unless `SKILL.md` explicitly declares `teleclaude_taxonomy: true`.
 <!-- change:drop-skill-taxonomy-optin -->
 - Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Every entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure.
 <!-- /planned-change:drop-skill-taxonomy-optin -->
+<!-- planned-change:agent-artifact-source-layout -->
 - The Mother project alone owns `agents/skills/AGENTS.master.md`. A side project's `agents/skills/AGENTS.master.md` or generated `AGENTS.md` is never parsed or published; only its named skill folders contribute.
+<!-- change:agent-artifact-source-layout -->
+- The mother alone owns the skill catalog master at `agents/global/skills/AGENTS.master.md` and every global skill folder beside it. A side project's global skill folders and catalog master are refused at validation; a portable skill a side project authors is contributed to the mother, which is the curation step.
+<!-- /planned-change:agent-artifact-source-layout -->
 - The Mother-owned skill catalog master is a thin orientation wrapper for the catalog directory. It carries no index and no executable directives; the catalog listing is rendered on demand by `general/procedure/skill-use`.
 <!-- planned-change:agent-artifact-source-layout -->
 - Global artifact sources live under `agents/`; project-local artifacts live under `.agents/`.

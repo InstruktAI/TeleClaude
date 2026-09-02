@@ -8,8 +8,13 @@ visibility: 'public'
 ## Rules
 
 - Every authored artifact — doc snippet, skill, command, or agent — must have its scope determined before creation.
+<!-- planned-change:agent-artifact-source-layout -->
 - **Global** (`docs/global/`, `agents/`): the knowledge or tooling applies across all projects. Examples: general procedures, cross-project policies, shared CLI tooling.
 - **Project** (`docs/project/`, `.agents/`): the knowledge or tooling is specific to this repository. Examples: project architecture, repo-specific workflows, local commands.
+<!-- change:agent-artifact-source-layout -->
+- **Global** (`docs/global/`, `agents/global/`): the knowledge or tooling applies across all projects. Examples: general procedures, cross-project policies, shared CLI tooling.
+- **Project** (`docs/project/`, `agents/project/`): the knowledge or tooling is specific to this repository. Examples: project architecture, repo-specific workflows, local commands.
+<!-- /planned-change:agent-artifact-source-layout -->
 - Scope must not be inferred or assumed. Apply these criteria:
   1. Does this artifact reference project-specific code, architecture, or configuration? → Project.
   2. Would this artifact be useful in a different repository with no changes? → Global.

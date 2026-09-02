@@ -234,9 +234,16 @@ should not be included in those artifacts.
   opaque to taxonomy validation. Every package uses the same rendering and
   target-transformation pipeline.
 <!-- /planned-change:drop-skill-taxonomy-optin -->
+<!-- planned-change:agent-artifact-source-layout -->
 - Scope is conveyed by location:
   - **Global scope**: `TeleClaude/agents/commands/*.md`, `TeleClaude/agents/skills/*/SKILL.md`
   - **Project scope**: `<project>/.agents/commands/*.md`, `<project>/.agents/skills/*/SKILL.md`
+<!-- change:agent-artifact-source-layout -->
+- Scope is conveyed by location, mirroring `docs/{global,project}`:
+  - **Global scope**: `<repository>/agents/global/commands/<domain>/*.md` for a domain the repository publishes; `TeleClaude/agents/global/commands/general/*.md` and `TeleClaude/agents/global/skills/*/SKILL.md` from the mother alone
+  - **Project scope**: `<project>/agents/project/commands/*.md`, `<project>/agents/project/skills/*/SKILL.md`
+  - `.agents/` is a delivery location and is never read as a source
+<!-- /planned-change:agent-artifact-source-layout -->
 - Keep prompts concise to avoid bloated agent context.
 - Required reads in source docs are **inlined** in generated outputs; `@` references
   are transformed into inline content and do not appear in emitted files. A
