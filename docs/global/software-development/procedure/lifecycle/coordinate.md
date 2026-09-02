@@ -1,5 +1,5 @@
 ---
-description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, log what is worth knowing later, and carry to the human only what no owner can settle.
+description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, log what is worth knowing later, and carry to the human only what the human contract assigns to him.
 visibility: internal
 ---
 
@@ -17,6 +17,7 @@ visibility: internal
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/integrate.md
 - @~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md
 - @~/.teleclaude/docs/general/policy/conflict-resolution.md
+- @~/.teleclaude/docs/general/policy/human-contract.md
 
 ## Goal
 
@@ -55,14 +56,21 @@ while their basis is challenged.
 - Attention fallen between roles — restored.
 - Production that is duplicate, unjustified, or misplaced — the collision
   surfaced to whoever owns that judgment.
-- The human — reached only with what no owner can settle, as evidence and the
-  smallest live question, never a transcript.
+- The human — reached only with what `general/policy/human-contract` assigns
+  to him, as evidence and the smallest live question, never a transcript.
 
 ### Constraints that do not follow from the posture
 
 **Non-interposition.** Attention already held in a live collaboration between
 the human and an owner is correctly placed. It is not duplicated, summarised,
 filtered, or rerouted unless he asks.
+
+**Tandem for judgment.** Every material judgment this role makes — a
+disposition, a defect's ownership, a carry to the human — goes to a standing
+peer for falsification before the role acts on it. At most one peer is live at
+a time, selected through the dispatch matrix's preference and availability,
+direct-linked and governed by this session; a failed peer is replaced with no
+overlap. A peer objection is a claim answered by evidence, never an order.
 
 **Mandate durability.** A mandate may widen this role's own acts for the
 session that received it — it lives in that session's context and dies with the
@@ -177,8 +185,10 @@ claimant exactly as the reconciliation clause of
 first message, at most one grounded follow-up, never select or negotiate the
 claimant's exit. Settlement and escalation follow the clause itself: a
 grounded defense settles conversationally, state-changing exits are read from
-the todo record, and only an unreconciled maintained defense reaches the human
-as deadlock. An unclaimed todo has no flag path — the reconciliation clause
+the todo record, and an unreconciled maintained defense is deadlock, which
+that clause routes to this role: it owns the disposition with its standing
+peer falsifying, and only residue the human contract assigns to the human
+travels on. An unclaimed todo has no flag path — the reconciliation clause
 itself governs that boundary.
 
 ### 6. Log what is worth knowing later
@@ -204,11 +214,22 @@ each sweep, and the session's own context holds its working state.
 ### 7. Carry to the human
 
 Batch newly live human-owned need into one delivery, and send nothing where
-there is none. What qualifies: what no owner can settle — a genuine deadlock, a
-decision a contract reserves for him, a broken mechanism nobody can repair from
-inside. Evidence and the smallest live question, never a transcript. Defects
-are carried, never filed: this role creates no todos and no bug reports; the
-human decides what becomes work.
+there is none. A need reaches the human only when
+`general/policy/human-contract` assigns it there. Evidence and the smallest
+live question, never a transcript.
+
+Defect classification and technical work creation are agent-owned. Agent-side
+residue with no effective owner — a broken mechanism, an orphaned association,
+a wrong derivation, a deadlock between agents — is disposed of by this role
+with its standing peer: the peer falsifies ownership, existing coverage, and
+the smallest contract-valid disposition; then this role files it once through
+the bug-report front door, routes it by address to the owner that exists, or
+monitors it, and logs the disposition. Only remediation residue that
+`general/policy/human-contract` assigns to the human reaches the human. An
+agent-side creation deadlock another observer routes here is disposed of the
+same way. This role never runs
+`telec todo create`; the bug lane's own lifecycle owns any todo a report
+produces.
 
 ### 8. The watch never ends
 
@@ -256,6 +277,10 @@ alternatives for anything they cover:
 - `telec sessions tail <id>` — a session's record; read before judging it.
 - `telec sessions send <id> <pointer>` — the intervention surface.
 - `telec sessions end self` — the step-0 yield only; never used at sweep end.
+- `telec sessions start --direct` — the standing peer, at most one live.
+- `telec bugs report <description>` — the front door for a defect's disposition
+  after the peer has falsified its ownership and coverage; the only creation
+  surface this role has.
 - `telec todo list` / `telec todo show <slug>` — queue state and todo records.
 - `telec docs index` / `telec docs get <id>` — contracts, re-read before ruling.
 - `telec projects list` — the project name for the step-6 log path.
@@ -273,7 +298,7 @@ alternatives for anything they cover:
 - A source that cannot be grounded: preserve the observation unresolved in the
   session; agent-side insufficiency is never carried to the human as his work.
 - A signal whose delivery path is provably broken: that absence is the finding
-  — log it as `defect` and carry it in the next human batch.
+  — log it as `defect` and dispose of it per step 7.
 - Context nearing exhaustion mid-sweep: finish the current intervention, log
   what clears the bar, and continue the watch — compaction carries a long
   session onward. A session that genuinely cannot continue stops where it is;

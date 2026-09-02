@@ -69,8 +69,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
-  defense reaches the human as deadlock.
+  `input`, or removal — never a bare unclaim), and an unreconciled maintained
+  defense is deadlock, which that clause routes to this role: it owns the
+  disposition with its standing peer falsifying, and only residue the human
+  contract assigns to the human travels on.
 
 ##### NC-02-b — Documentation-only work routed through the lifecycle
 
@@ -89,8 +91,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
-  defense reaches the human as deadlock.
+  `input`, or removal — never a bare unclaim), and an unreconciled maintained
+  defense is deadlock, which that clause routes to this role: it owns the
+  disposition with its standing peer falsifying, and only residue the human
+  contract assigns to the human travels on.
 
 ##### NC-02-c — Process change without a recorded human decision
 
@@ -111,8 +115,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   outside the flag path; otherwise the flag exchange follows the reconciliation clause — at most one
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
-  defense reaches the human as deadlock.
+  `input`, or removal — never a bare unclaim), and an unreconciled maintained
+  defense is deadlock, which that clause routes to this role: it owns the
+  disposition with its standing peer falsifying, and only residue the human
+  contract assigns to the human travels on.
 
 ##### NC-02-d — A role claims authority reserved elsewhere
 
@@ -140,13 +146,16 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   clause of `software-development/policy/todo-creation-discipline` defines; never
   perform the audit, decide validity, or select the claimant's exit.
   If no live claimant or recovery path exists, ground the broken mechanism, log it as
-  `defect`, and carry it — an unclaimed todo has no flag path.
+  `defect`, and dispose of it per the coordinate procedure's step 7 — an unclaimed
+  todo has no flag path.
 - **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
-  defense reaches the human as deadlock.
-  A logged-and-carried defect settles separately.
+  `input`, or removal — never a bare unclaim), and an unreconciled maintained
+  defense is deadlock, which that clause routes to this role: it owns the
+  disposition with its standing peer falsifying, and only residue the human
+  contract assigns to the human travels on.
+  A logged-and-disposed defect settles separately.
 
 ##### NC-04 — Prepare's ordered process-authority beacon
 
@@ -172,9 +181,11 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   and runner name none, judgment and execution remain unresolved; the corresponding
   state machine remains the only state authority.
 - **Coordinator:** route to a grounded recovery owner. If none or the path is broken,
-  check existing defect coverage and, when uncovered, log one grounded `defect` and carry it; never
-  invent an owner or adopt the slug by invoking its state machine.
-- **Stop and settlement:** the intervention stops after routing, or after the defect is logged and carried. The
+  check existing defect coverage and, when uncovered, log one grounded `defect` and
+  dispose of it per the coordinate procedure's step 7; never invent an owner or adopt
+  the slug by invoking its state machine.
+- **Stop and settlement:** the intervention stops after routing, or after the defect is
+  logged and disposed of. The
   slug observation settles only when a valid owner takes it or governed state becomes
   terminal; a logged defect alone does not settle the slug.
 
@@ -183,13 +194,15 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Evidence available:** session `working_slug`, project identity, project todo
   registry, and session association record (`software-development/procedure/lifecycle/coordinate`, Frame).
 - **Ownership:** project resolution is a factual lookup. Cross-project work belongs to
-  that project's coordinator; an orphan has no judgment/execution owner until the
-  human decides whether it becomes work. Only the session/todo registry mechanism may
-  mutate the association.
+  that project's coordinator; an orphan has no execution owner, so its disposition is
+  the Coordinator's, with its standing peer. Only the session/todo registry mechanism
+  may mutate the association.
 - **Coordinator:** establish cross-project versus orphan. Leave cross-project work out
-  of management scope; log an orphan association as `defect` and carry it in the next
-  human batch — this role files nothing.
-- **Stop and settlement:** stop after classification, the log entry, and the carry.
+  of management scope; log an orphan association as `defect` and dispose of it per the
+  coordinate procedure's step 7, from evidence, existing coverage, and the creation
+  discipline. The human batch never carries it.
+- **Stop and settlement:** stop after classification, the log entry, and the
+  disposition.
   Settle when the association resolves to its project, is repaired, or disappears
   with a valid terminal session.
 
@@ -329,7 +342,8 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   observability failure under `NC-24`, and never infer expiry from age or validity
   from the note. This case produces no separate per-hold report or log line.
 - **Stop and settlement:** stop after leaving the hold unchanged and, if needed,
-  logging and carrying the uncovered defect. Reassess only when a grounded owner or gate appears or
+  logging and disposing of the uncovered defect under `NC-24`. Reassess only when a
+  grounded owner or gate appears or
   the hold changes through its authorised path.
 
 ##### NC-16 — Ready work without movement
@@ -341,9 +355,11 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Coordinator:** leave work alone when a standing gate or current owner explains the
   wait. When an existing owner owes an act, point that owner to the relevant
   addresses. When configured automation should have acted but no owner or governing
-  explanation exists, ground the broken mechanism, log it as `defect`, and carry it. Never recreate
-  eligibility from prose, drive the lifecycle, or dispatch work.
-- **Stop and settlement:** stop after leaving, one pointer, or the logged-and-carried defect. Continue
+  explanation exists, ground the broken mechanism, log it as `defect`, and dispose of it
+  per the coordinate procedure's step 7. Never recreate eligibility from prose, drive
+  the lifecycle, or dispatch work.
+- **Stop and settlement:** stop after leaving, one pointer, or the logged-and-disposed
+  defect. Continue
   watching only an in-session handoff until work-produced evidence shows uptake or a
   grounded contract state explains the wait.
 
@@ -371,8 +387,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Coordinator:** no intervention while an unmet dependency or standing gate explains
   waiting. If dependencies are satisfied and a contract-named owner has missed a due
   act, point that owner to the addresses; if the mechanism itself is demonstrably
-  broken, log the `defect` and carry it. Never force movement or recreate eligibility from prose.
-- **Stop and settlement:** stop after leaving, one pointer, or the logged-and-carried defect. Reassess
+  broken, log the `defect` and dispose of it per the coordinate procedure's step 7.
+  Never force movement or recreate eligibility from prose.
+- **Stop and settlement:** stop after leaving, one pointer, or the logged-and-disposed
+  defect. Reassess
   only on material dependency, gate, ownership, or work-produced change.
 
 #### Responsibility 3 — Collision, duplication, and misplaced production
@@ -417,8 +435,10 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 - **Stop and settlement:** the flag exchange follows the reconciliation clause — at most one
   grounded follow-up; a grounded defense settles conversationally, state-changing
   exits are read from the todo record (the hold with its log entry, the amended
-  `input`, or removal — never a bare unclaim), and only an unreconciled maintained
-  defense reaches the human as deadlock.
+  `input`, or removal — never a bare unclaim), and an unreconciled maintained
+  defense is deadlock, which that clause routes to this role: it owns the
+  disposition with its standing peer falsifying, and only residue the human
+  contract assigns to the human travels on.
 
 ##### NC-21 — Materially unjustified production or noise
 
@@ -446,28 +466,28 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   occurred, event/notification records showing absence or demotion, and bounded source
   inspection where needed (`project/design/architecture/notification-delivery`).
 - **Ownership:** Coordinator judges only whether the path is demonstrably broken.
-  It files nothing — this role creates no todos and no bug reports; the human
-  decides what becomes work. Event and notification mechanisms are state authority.
+  Repair ownership is established with the standing peer and the defect is filed
+  once or routed to existing coverage, per the coordinate procedure's step 7. Event
+  and notification mechanisms are state authority.
 - **Coordinator:** preserve the affected signal, log the broken path as `defect`,
-  carry it in the next human batch, and independently route any still-live human
-  need through the solved human-delivery surface. Do not audit all schemas every
-  sweep.
-- **Stop and settlement:** the log entry and the human carry end the defect
+  dispose of it agent-side, and independently route any still-live human need
+  through the solved human-delivery surface. Do not audit all schemas every sweep.
+- **Stop and settlement:** the log entry and the disposition end the defect
   intervention; the affected signal settles separately when its rightful recipient
-  receives or owns it. Whether repair becomes work is the human's decision.
+  receives or owns it.
 
 ##### NC-24 — Hold-state observability defect
 
 - **Evidence available:** free-text hold storage, inability to distinguish completed
   human-gated preparation from abandonment, affected todos, and existing defect
   coverage.
-- **Ownership:** Coordinator judges the observability gap; whether repair becomes
-  work is the human's decision. The todo mechanism remains the only authority over
+- **Ownership:** Coordinator judges the observability gap and, with its standing
+  peer, its disposition. The todo mechanism remains the only authority over
   individual holds.
 - **Coordinator:** check existing defect coverage and, when uncovered, log one
-  grounded `defect` and carry it in the next human batch. Do not call the schema
-  corrupt, mutate holds, or turn every hold into a separate defect.
-- **Stop and settlement:** the log entry and the carry settle the mechanism
+  grounded `defect` and dispose of it agent-side. Do not call the schema corrupt,
+  mutate holds, or turn every hold into a separate defect.
+- **Stop and settlement:** the log entry and the disposition settle the mechanism
   observation for this pass. Each affected hold remains governed by `NC-15-b` until
   its owner becomes knowable.
 
