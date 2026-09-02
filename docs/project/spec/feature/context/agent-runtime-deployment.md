@@ -97,16 +97,17 @@ and no per-agent runtime receives any command artifact — native or
 otherwise. Commands are reached exclusively through the loader message
 TeleClaude composes at dispatch (and for machine-emitted procedure loads),
 which instructs the session to read the corpus document directly. The global
-corpus is partitioned by domain (`~/.teleclaude/commands/<domain>/`), and every
-tier root carries its own corpus at `<root>/.teleclaude/commands/`; a command
-exists once per tier and is reached only through the loader. The shared global
-corpus is reusable across projects.
+corpus is partitioned by domain (`~/.teleclaude/commands/<domain>/`) and is
+reusable across projects. Per-tier corpora and bare-name resolution across
+tiers are a later contract (`tier-command-corpus`) that this one does not
+foreclose.
 
-No other artifact class reaches a runtime home. Skills compose to
-`~/.teleclaude/skills/` and are discovered through the catalog the master
-points at; subagent definitions are not an artifact class. The entrypoint
-master is the only per-agent output, written where each CLI reads it
-unprompted — for the Antigravity CLI (`agy`) that is the configured
+Global skills compose to `~/.teleclaude/skills/` and are discovered through the
+catalog the master points at; they reach no runtime home. Tier-local skills
+(`.agents/skills/**`) materialize into the native CLI skill directories at
+their root, because being preloaded is their purpose. Subagent definitions are
+not an artifact class. Beyond tier-local skills, the entrypoint master is the
+only per-agent output, written where each CLI reads it unprompted — for the Antigravity CLI (`agy`) that is the configured
 `context.fileName` (`AGENTS.md`) under `~/.gemini/antigravity-cli/`. The
 legacy Node Gemini CLI layout — `~/.gemini/commands/`, `~/.gemini/skills/`,
 `~/.gemini/agents/`, and `~/.gemini/GEMINI.md` — is obsolete and is no longer
@@ -210,7 +211,7 @@ Scenario: UC-ARD1 Mother project full sync with deploy
   Then the entrypoint master from agents/ deploys to each enabled runtime's home
   And TeleClaude command artifacts from agents/ deploy to ~/.teleclaude/commands/
   And skill packages compose to ~/.teleclaude/skills/
-  And no command, skill, or subagent artifact is written into any runtime home
+  And no command, global skill, or subagent artifact is written into any runtime home
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
   And AGENTS.override.md is written to the project root for Codex override detection
   And docs/global/ is composed per domain into the ~/.teleclaude/docs/ root
@@ -227,9 +228,9 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   And Codex commands still route to ~/.teleclaude/commands/
 <!-- change:command-migration-to-singular-telec-skill -->
   Then the global phase produces no agent-home artifact writes
-  And the local phase deploys non-command .agents/ runtime artifacts to the project root
-  And a local command artifact deploys once to that root's .teleclaude/commands/
-  And no per-CLI directory at that root receives a copy of it
+  And the local phase materializes tier-local skills from .agents/skills/ into the project-root CLI skill directories
+  And the local phase writes no command artifact and no subagent definition anywhere
+  And how a project-local command source is handled is owned by the later tier corpus contract, not by this phase
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
   And each domain the project owns in business.publishes is a single symlink ~/.teleclaude/docs/<domain> to the project's docs/global/<domain>
 ```

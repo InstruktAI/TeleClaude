@@ -28,12 +28,14 @@ escape to work around an upstream parser bug.
 <!-- change:command-migration-to-singular-telec-skill -->
 
 Per-agent artifact transpilation is the Sync step that renders validated
-Sources into their deployed form. Only one output is still per-agent: the
+Sources into their deployed form. Two outputs remain per-agent: the
 entrypoint master each CLI reads unprompted, emitted per target in that
-target's expected shape. Command artifacts normalize into the shared corpus
-under `~/.teleclaude/commands/` and skill packages compose into
-`~/.teleclaude/skills/`; neither produces per-agent runtime output of any
-kind, and subagent definitions are not an artifact class at all. Sessions
+target's expected shape, and tier-local skill packages from `.agents/skills/`,
+rendered per target into the native skill directories because preloading is
+their purpose. Command artifacts normalize into the shared corpus under
+`~/.teleclaude/commands/` and global skill packages compose into
+`~/.teleclaude/skills/`; neither produces per-agent runtime output, and
+subagent definitions are not an artifact class at all. Sessions
 reach a corpus document through the loader message TeleClaude composes at
 dispatch, not through a runtime artifact. The transpiler rewrites command
 parameter metadata from frontmatter into an HTML-comment preamble in the
@@ -110,13 +112,12 @@ Scenario: Gemini command/agent is transpiled to TOML
   And the TOML output is written under Gemini's per-agent output directory
   And skills continue to use the Markdown/YAML path on the same sync invocation
 <!-- change:command-migration-to-singular-telec-skill -->
-Scenario: Gemini agent is transpiled to TOML while command artifacts stay in the shared corpus
-  Given a source agent artifact targeting Gemini
-  When the transpiler processes the artifact for the Gemini target
-  Then the Gemini agent transform converts the frontmatter and body into a TOML representation
-  And the TOML output is written under Gemini's per-agent output directory
-  And source command artifacts are written to the shared TeleClaude command corpus, not the Gemini command output directory
-  And skills continue to use the Markdown/YAML path on the same sync invocation
+Scenario: No target receives a subagent definition; the Gemini target keeps its master and skills only
+  Given the source tree carries no subagent definitions, because they are not an artifact class
+  When the transpiler processes artifacts for the Gemini target
+  Then no agent definition is transpiled to TOML or written under any Gemini output directory
+  And source command artifacts are written to the shared TeleClaude command corpus, not a Gemini command output directory
+  And tier-local skills continue to use the Markdown/YAML path on the same sync invocation
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 ```
 
@@ -166,12 +167,13 @@ Scenario: An agent synchronizes a skill package with upstream-authored structure
 
 <!-- change:command-migration-to-singular-telec-skill -->
 
-- **agent_runtime** — Each downstream agent CLI consumes exactly one
-  TeleClaude output: its entrypoint master, in that CLI's expected shape.
-  Commands and skills are not consumed as runtime artifacts by any CLI —
+- **agent_runtime** — Each downstream agent CLI consumes two TeleClaude
+  outputs: its entrypoint master, in that CLI's expected shape, and any
+  tier-local skills materialized into its native skill directory. Commands
+  and global skills are not consumed as runtime artifacts by any CLI —
   sessions read command documents from the shared corpus when the composed
-  loader names one, and skills are discovered through the TeleClaude skills
-  home the master points at.
+  loader names one, and global skills are discovered through the TeleClaude
+  skills home the master points at.
 
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
 

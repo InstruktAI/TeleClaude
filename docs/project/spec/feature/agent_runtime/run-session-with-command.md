@@ -259,6 +259,25 @@ And the public full-command (used for the human-visible initial-input echo) carr
 And structured lifecycle metadata such as role, job, and `working_slug` is resolved from the normalized command and args before or alongside loader assembly, never from the loader message
 ```
 
+#### UC-CLR4: A canonical command name is a bare token or exactly one domain segment plus a token
+
+```
+Given a run-session request whose command is "next-build" or "software-development/next-build"
+When loader composition validates the name before any corpus read
+Then both forms are accepted as canonical names
+And the loader is composed for the corpus document that name resolves to
+```
+
+#### UC-CLR5: Unsafe names compose no loader and read no file
+
+```
+Given a run-session request whose command contains traversal ("../x"), an absolute path ("/etc/x"), or more than one segment ("a/b/c")
+When loader composition validates the name before any corpus read
+Then no loader is composed and no file is read
+And the request is rejected naming the offending token
+And a safe name that resolves to no corpus document still launches with the input passed through verbatim, unchanged from today
+```
+
 #### UC-CLR1: Slug-bound worker command with empty args is rejected
 
 ```
