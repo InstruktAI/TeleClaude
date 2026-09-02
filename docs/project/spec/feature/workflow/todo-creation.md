@@ -413,6 +413,20 @@ Then the router finds "child"'s prepare gate satisfied
 And the router dispatches /next-prepare for "child" as usual
 ```
 
+<!-- planned:hold-audit-reason-records-command-not-reason -->
+#### UC-WTC29: A held create carries the reason it is parked
+
+```gherkin
+Given a live-human prepare orchestrator needs to own a new todo before the runner can claim it
+When they run `telec todo create held-change "<content>" --kind change --hold --reason '<why this waits, or the gate or owner it waits on>'`
+Then the persisted state has hold=True and hold_audit.source="creation" with the stated reason, the time, and the caller session id
+And `telec todo show held-change` exposes that source and reason together
+And a `--hold` create whose reason is missing or blank is refused before any roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
+And a `--reason` supplied without `--hold` is refused before any write rather than ignored
+And the reason input is hidden from the structured flag surfaces exactly as `--hold` is
+```
+<!-- /planned:hold-audit-reason-records-command-not-reason -->
+
 ### Cross-context references
 
 - `operations` — async, receipt-backed long-running operations (e.g., `telec todo remove`) are surfaced through the operations subsystem; create itself is synchronous.

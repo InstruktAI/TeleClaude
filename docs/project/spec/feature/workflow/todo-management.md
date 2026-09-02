@@ -306,6 +306,30 @@ And it does not report "feature-x" as absent from the todo list
 And it does not create or read a stray todos.db under the unresolved working directory
 ```
 
+<!-- planned:hold-audit-reason-records-command-not-reason -->
+#### UC-WM28: A manual hold through update carries the reason it exists
+
+```gherkin
+Given an active todo "feature-x" exists in its project
+When the operator runs "telec todo update feature-x --hold --reason '<why this waits, or the gate or owner it waits on>'"
+Then the workflow service records hold=true and hold_audit with source manual, the stated reason, the time, and the caller session id
+And `telec todo show feature-x` exposes that source and reason together
+And a `--hold` request whose reason is missing or blank is refused before any write, naming the reason as required
+And a `--reason` supplied without `--hold` is refused before any write rather than ignored
+```
+
+#### UC-WM29: Every hold has truthful provenance and a meaningful reason
+
+```gherkin
+Given a hold set through any path — a manual writer (`telec todo update --hold`, `telec todo create --hold`) or an automatic writer (a task-error stamp, a diagnosis-unresolved stamp, a session-close hold, or another grounded mechanism)
+When an observer reads the hold through `telec todo show`
+Then hold_audit.reason says why the hold exists or names the gate or owner it waits on
+And a manual writer received that reason from its caller, and an automatic writer produced its own causal reason
+And the command that set the hold is never presented as its reason
+And a hold recorded before this contract, whose stored reason is the command that set it, is projected as reason-unknown and is never interpreted as a gate, an owner, or a reason
+```
+<!-- /planned:hold-audit-reason-records-command-not-reason -->
+
 ### Cross-context references
 
 - `integration` — delivered-slug cleanup retires the delivered slug's worktree/branch/workspace after delivery bookkeeping.
