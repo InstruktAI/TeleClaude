@@ -8,8 +8,9 @@ from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import extract_effective_tool_calls
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 from teleclaude.utils.transcript._tool_calls import _find_turn_start_idx
+from teleclaude.utils.transcript._utils import _parse_timestamp
 
-from .._types import ScopeMode
+from .._types import ScopeMode, TouchEvidence
 from ._common import (
     _normalize_workspace_path,
     extract_shell_paths_from_timeline,
@@ -92,3 +93,23 @@ def collect_claude_paths(
     if scope_mode == "turn_delta":
         return (current_snapshot_paths - previous_snapshot_paths) | fallback_paths, "claude_file_history"
     return current_snapshot_paths | fallback_paths, "claude_file_history"
+
+
+def collect_claude_touch_evidence(
+    *,
+    transcript_path: str,
+    workspace_root: str | None,
+) -> tuple[TouchEvidence, ...]:
+    """Return timestamped Claude snapshot appearances for strict attribution."""
+    entries = _get_entries_for_agent(transcript_path, AgentName.CLAUDE)
+    if entries is None:
+        raise ValueError("Claude transcript entries are unavailable")
+    touches: set[TouchEvidence] = set()
+    for entry in entries:
+        raw_timestamp = entry.get("timestamp")
+        timestamp = _parse_timestamp(raw_timestamp) if isinstance(raw_timestamp, str) else None
+        if timestamp is None or timestamp.tzinfo is None:
+            continue
+        for path in _snapshot_paths_from_entry(entry, workspace_root):
+            touches.add(TouchEvidence(path=path, touched_at=timestamp))
+    return tuple(sorted(touches, key=lambda touch: (touch.touched_at, touch.path)))

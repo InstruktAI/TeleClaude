@@ -1379,7 +1379,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "code": CommandDef(
         desc="Code quality and commit tools",
         notes=[
-            "lint, test, format, install, and blueprint require the code capability.",
+            "lint, test, format, install, blueprint, and owners require the code capability.",
             "changed, add, and commit remain available when either code or docs is subscribed.",
         ],
         subcommands={
@@ -1437,6 +1437,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Run native make install",
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
+            "owners": CommandDef(
+                desc="Resolve live-session ownership for supplied dirty paths",
+                args="<path> [<path> ...]",
+                flags=[_H],
+                notes=[
+                    "Accepts the complete already-aged dirty blocking set; the command performs no age logic.",
+                    "Prints one path-keyed JSON object with each owner or null and emits an identity-free warning when attribution is undetermined.",
+                ],
+                auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
             ),
             "changed": CommandDef(
                 desc="List workspace-scoped changed files",

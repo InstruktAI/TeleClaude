@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import sys
@@ -28,6 +29,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
 from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
 from teleclaude.core.db import get_db
+from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
@@ -58,6 +60,10 @@ _NON_CODE_DOCUMENTATION_PATTERNS = (DOC_LAYER_PATTERN, *_STANDALONE_PROSE_PATTER
 _CODE_NAMESPACE = "code"
 _CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capability"
 _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
+_OWNERS_USAGE = "Usage: telec code owners <path> [<path> ...]"
+_OWNERS_UNKNOWN_FLAG = "ERROR: unknown flag: {flag}"
+_OWNERS_ERROR = "ERROR: {error}"
+_OWNERS_UNDETERMINED_WARNING = "WARNING: {count} captured session(s) had undetermined attribution; do not revert null-owned paths from this result."
 
 
 class CodeSubcommand(StrEnum):
@@ -71,6 +77,7 @@ class CodeSubcommand(StrEnum):
     CHANGED = "changed"
     ADD = "add"
     BLUEPRINT = "blueprint"
+    OWNERS = "owners"
 
 
 _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
@@ -80,6 +87,7 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.FORMAT,
         CodeSubcommand.INSTALL,
         CodeSubcommand.BLUEPRINT,
+        CodeSubcommand.OWNERS,
     }
 )
 _COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.CHANGED, CodeSubcommand.ADD})
@@ -115,6 +123,8 @@ def handle_code(args: list[str]) -> None:
         from teleclaude.cli.telec.handlers.blueprint import handle_code_blueprint  # noqa: PLC0415
 
         handle_code_blueprint(rest)
+    elif sub is CodeSubcommand.OWNERS:
+        handle_code_owners(rest)
 
 
 def _require_code_capability(command: CodeSubcommand) -> None:
@@ -127,6 +137,30 @@ def _require_code_capability(command: CodeSubcommand) -> None:
     if command in _COMMIT_SUBCOMMANDS and not capabilities.commit_enabled:
         print(_COMMIT_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
+
+
+def handle_code_owners(args: list[str]) -> None:
+    """Print the strict live-session ownership view for supplied dirty paths."""
+    if not args:
+        print(_OWNERS_USAGE, file=sys.stderr)
+        raise SystemExit(2)
+    for argument in args:
+        if argument.startswith("-"):
+            print(_OWNERS_UNKNOWN_FLAG.format(flag=argument), file=sys.stderr)
+            print(_OWNERS_USAGE, file=sys.stderr)
+            raise SystemExit(2)
+    project_root = resolve_git_root(resolve_invocation_cwd())
+    try:
+        result = asyncio.run(resolve_dirty_path_owners(project_root, args))
+    except Exception as exc:
+        print(_OWNERS_ERROR.format(error=exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(json.dumps(result.as_json()))
+    if result.undetermined_session_count:
+        print(
+            _OWNERS_UNDETERMINED_WARNING.format(count=result.undetermined_session_count),
+            file=sys.stderr,
+        )
 
 
 def handle_code_add(args: list[str]) -> None:

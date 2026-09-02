@@ -6,7 +6,9 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from .._types import ScopeMode
+from teleclaude.utils.transcript._utils import _parse_timestamp
+
+from .._types import ScopeMode, TouchEvidence
 from ._common import _normalize_workspace_path
 
 __all__ = ["collect_gemini_paths"]
@@ -65,37 +67,7 @@ def collect_gemini_paths(
     if not transcript_path:
         return set(), "gemini_structured"
 
-    # Gemini CLI switched session files from single-doc JSON to JSONL around May 2026
-    # and bumped the extension from `.json` to `.jsonl`. Branch on extension so both
-    # formats parse — legacy `.json` keeps its envelope, current `.jsonl` reads per line.
-    path_obj = Path(transcript_path)
-    messages: list[Mapping[str, object]] = []
-    if path_obj.suffix == ".jsonl":
-        try:
-            with open(path_obj, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if isinstance(record, dict):
-                        messages.append(record)
-        except OSError:
-            return set(), "gemini_structured"
-    else:
-        try:
-            raw_document = json.loads(path_obj.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return set(), "gemini_structured"
-        if not isinstance(raw_document, dict):
-            return set(), "gemini_structured"
-        raw_messages = raw_document.get("messages")
-        if not isinstance(raw_messages, list):
-            return set(), "gemini_structured"
-        messages = [message for message in raw_messages if isinstance(message, dict)]
+    messages = _load_gemini_messages(Path(transcript_path), strict=False)
 
     start_index = 0
     if scope_mode == "turn_delta":
@@ -109,3 +81,57 @@ def collect_gemini_paths(
         scoped_paths.update(_extract_gemini_tool_paths(message, workspace_root))
 
     return scoped_paths, "gemini_structured"
+
+
+def collect_gemini_touch_evidence(
+    *,
+    transcript_path: str,
+    workspace_root: str | None,
+) -> tuple[TouchEvidence, ...]:
+    """Read raw Gemini mutation records without changing the legacy path walk."""
+    messages = _load_gemini_messages(Path(transcript_path), strict=True)
+    touches: set[TouchEvidence] = set()
+    for message in messages:
+        raw_timestamp = message.get("timestamp")
+        timestamp = _parse_timestamp(raw_timestamp) if isinstance(raw_timestamp, str) else None
+        if timestamp is None or timestamp.tzinfo is None:
+            continue
+        for path in _extract_gemini_tool_paths(message, workspace_root):
+            touches.add(TouchEvidence(path=path, touched_at=timestamp))
+    return tuple(sorted(touches, key=lambda touch: (touch.touched_at, touch.path)))
+
+
+def _load_gemini_messages(path_obj: Path, *, strict: bool) -> list[Mapping[str, object]]:
+    """Load either Gemini transcript shape, raising only for strict attribution."""
+    messages: list[Mapping[str, object]] = []
+    try:
+        if path_obj.suffix == ".jsonl":
+            with open(path_obj, encoding="utf-8") as file_handle:
+                for line in file_handle:
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        record = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        if strict:
+                            raise
+                        continue
+                    if isinstance(record, dict):
+                        messages.append(record)
+            return messages
+        raw_document = json.loads(path_obj.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        if strict:
+            raise
+        return []
+    if not isinstance(raw_document, dict):
+        if strict:
+            raise ValueError("Gemini transcript document is not an object")
+        return []
+    raw_messages = raw_document.get("messages")
+    if not isinstance(raw_messages, list):
+        if strict:
+            raise ValueError("Gemini transcript messages are unavailable")
+        return []
+    return [message for message in raw_messages if isinstance(message, dict)]

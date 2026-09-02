@@ -177,6 +177,11 @@ def resolve_workspace_scope_resolution(project_root: Path) -> WorkspaceScopeReso
     )
 
 
+def resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
+    """Return the current porcelain dirty set for an explicit caller."""
+    return _resolve_dirty_paths(project_root)
+
+
 def _resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
     repo = Repo(str(project_root))
     try:
