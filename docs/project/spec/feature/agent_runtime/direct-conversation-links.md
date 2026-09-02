@@ -370,6 +370,19 @@ And the turn is delivered to the counterpart with its text unaltered
 And the sending session's direction continues to deliver its later turns
 ```
 
+<!-- planned:peer-bundle-transitive-redelivery -->
+#### UC-DCL15: A forwarded segment never returns over its ingress link
+
+```gherkin
+Given agent session C receives an A-origin peer segment over its direct link with agent session B
+And C has other eligible content for B
+When C's completed turn is delivered to B over that same direct link
+Then the received A-origin segment is excluded from the delivery
+And the other eligible content reaches B
+And later delivery windows do not contain a copy produced by that return
+```
+<!-- /planned:peer-bundle-transitive-redelivery -->
+
 ### Cross-context references
 
 - **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a non-web caller session id (web origins are rejected for `--direct`). The link aggregate stores session ids only; the principal binding is owned upstream by identity.
