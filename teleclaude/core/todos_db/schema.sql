@@ -60,13 +60,3 @@ CREATE TABLE IF NOT EXISTS todo_deps (
     depends_on      TEXT NOT NULL,
     PRIMARY KEY (slug, depends_on)
 );
-
-CREATE TABLE IF NOT EXISTS todo_dispatch_claims (
-    slug            TEXT NOT NULL,
-    lane            TEXT NOT NULL,
-    owner           TEXT NOT NULL,
-    session_id      TEXT,
-    claimed_at      TEXT NOT NULL,
-    expires_at      TEXT NOT NULL,
-    PRIMARY KEY (slug, lane)
-);

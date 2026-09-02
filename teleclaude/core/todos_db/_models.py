@@ -131,20 +131,6 @@ class TodoDep(SQLModel, table=True):
     depends_on: str = Field(primary_key=True)
 
 
-class TodoDispatchClaim(SQLModel, table=True):
-    """Short-lived lifecycle runner dispatch claim."""
-
-    __tablename__ = "todo_dispatch_claims"  # pyright: ignore[reportAssignmentType]
-    __table_args__ = {"extend_existing": True}
-
-    slug: str = Field(primary_key=True)
-    lane: str = Field(primary_key=True)
-    owner: str
-    claimed_at: str
-    expires_at: str
-    session_id: str | None = None
-
-
 Index(
     "idx_todo_slug_active",
     Todo.slug,
@@ -158,7 +144,6 @@ TODO_STATE_TABLE = SQLModel.metadata.tables["todo_state"]
 TODO_ARTIFACT_TABLE = SQLModel.metadata.tables["todo_artifacts"]
 TODO_ARTIFACT_VERSION_TABLE = SQLModel.metadata.tables["todo_artifact_versions"]
 TODO_DEPS_TABLE = SQLModel.metadata.tables["todo_deps"]
-TODO_DISPATCH_CLAIMS_TABLE = SQLModel.metadata.tables["todo_dispatch_claims"]
 
 TODOS_DB_TABLES = [
     TODO_TABLE,
@@ -166,7 +151,6 @@ TODOS_DB_TABLES = [
     TODO_ARTIFACT_TABLE,
     TODO_ARTIFACT_VERSION_TABLE,
     TODO_DEPS_TABLE,
-    TODO_DISPATCH_CLAIMS_TABLE,
 ]
 
 
@@ -175,13 +159,11 @@ __all__ = [
     "TODO_ARTIFACT_TABLE",
     "TODO_ARTIFACT_VERSION_TABLE",
     "TODO_DEPS_TABLE",
-    "TODO_DISPATCH_CLAIMS_TABLE",
     "TODO_STATE_TABLE",
     "TODO_TABLE",
     "Todo",
     "TodoArtifact",
     "TodoArtifactVersion",
     "TodoDep",
-    "TodoDispatchClaim",
     "TodoStateModel",
 ]

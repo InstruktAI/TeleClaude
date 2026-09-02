@@ -22,11 +22,9 @@ from teleclaude.core.todos_db._errors import HolderWriteRefused
 from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
-    TODO_DISPATCH_CLAIMS_TABLE,
     TODO_TABLE,
     Todo,
     TodoDep,
-    TodoDispatchClaim,
     TodoStateModel,
 )
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
@@ -288,7 +286,6 @@ class TodosDbTodoSoftDeleteMixin:
 
                 await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.slug == slug))
                 await db_session.exec(delete(TodoDep).where(TODO_DEPS_TABLE.c.depends_on == slug))
-                await db_session.exec(delete(TodoDispatchClaim).where(TODO_DISPATCH_CLAIMS_TABLE.c.slug == slug))
 
                 if owns_session:
                     await db_session.commit()

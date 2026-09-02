@@ -15,12 +15,6 @@ from teleclaude.config import WorkflowRunnerMode, config
 from teleclaude.constants import COMMAND_ROLE_MAP, JobRole, SlashCommand, TodoStatus
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
-from teleclaude.core.next_machine.dispatch_claims import (
-    acquire_dispatch_claim,
-    bind_dispatch_claim_session,
-    list_dispatch_claims,
-    release_dispatch_claim,
-)
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle import (
     coerce_lifecycle_phase,
@@ -84,7 +78,6 @@ class SessionRunner(Protocol):
     async def connect(self) -> None: ...
     async def close(self) -> None: ...
     async def run_session(self, **kwargs: Unpack[RunSessionArgs]) -> CreateSessionResponseDTO: ...
-    async def end_session(self, session_id: str, computer: str) -> bool: ...
 
 
 def default_session_runner() -> SessionRunner:
@@ -208,7 +201,6 @@ def decide_dispatches(
     autostart: Mapping[str, bool],
     live_session_ids: set[str],
     orchestrator_owned_slugs: set[str] | None = None,
-    claimed: set[tuple[str, str]] | None = None,
     max_dispatch: int = 5,
     live_driver_count: int = 0,
     runner_mode: WorkflowRunnerMode = WorkflowRunnerMode.AUTOSTART,
@@ -220,7 +212,6 @@ def decide_dispatches(
     # (resolve_manual_dispatch_intent) never reaches here, so it stays ungated.
     if runner_mode is WorkflowRunnerMode.MANUAL:
         return decision
-    active_claims = claimed or set()
     owned_slugs = orchestrator_owned_slugs or set()
     # Concurrency budget: how many more drivers may go live this pass. Each
     # dispatched intent consumes one slot on top of the already-live drivers.
@@ -263,9 +254,6 @@ def decide_dispatches(
             # never gated by autostart, so kindless todos get classified and
             # prepared regardless of the work-lane autostart policy.
             lane = RunnerLane.ANALYZE
-            if (slug, lane) in active_claims:
-                decision.skip(RunnerSkipReason.CLAIMED, slug)
-                continue
             if _at_capacity():
                 decision.skip(RunnerSkipReason.AT_CAPACITY, slug)
                 continue
@@ -286,9 +274,6 @@ def decide_dispatches(
         )
         if lane is None:
             decision.skip(skip_reason or RunnerSkipReason.INVALID_KIND, slug)
-            continue
-        if (slug, lane) in active_claims:
-            decision.skip(RunnerSkipReason.CLAIMED, slug)
             continue
         if _at_capacity():
             decision.skip(RunnerSkipReason.AT_CAPACITY, slug)
@@ -443,15 +428,12 @@ async def _set_active_runner(
     await writer.commit(todos_db, slug)
 
 
-async def _load_todos(
-    todos_db: TodosDb, db: Db, *, claimed_slugs: set[str] | None = None
-) -> tuple[dict[str, RunnerTodo], list[str]]:
+async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo], list[str]]:
     rows = sorted(
         await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True),
         key=lambda row: {"removed": 0, "delivered": 1, "icebox": 2, "active": 3}.get(row["status"], -1),
     )
     deps = await todos_db.load_deps()
-    outstanding = claimed_slugs or set()
     loaded: dict[str, RunnerTodo] = {}
     reconciled: list[str] = []
     for row in rows:
@@ -499,11 +481,7 @@ async def _load_todos(
             task_approved_digest=todo.task_approved_digest,
             plan_review_cleared=todo.plan_review_cleared,
         )
-        # Do not reconcile-clear a slug whose dispatch claim is still outstanding:
-        # the spawn->live boot window is bridged by the claim lease, and the
-        # session row may not yet read as live. Clearing here would race the next
-        # pass into a duplicate dispatch (the storm this guard prevents).
-        if todo.active_runner and todo.slug not in outstanding and not await _is_live_runner(db, todo.active_runner):
+        if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
             await _clear_active_runner(todos_db, row)
             reconciled.append(todo.slug)
             todo = RunnerTodo(
@@ -551,70 +529,17 @@ async def dispatch_lifecycle_session(
     project_path: str,
     intent: DispatchIntent,
     origin: DispatchOrigin,
-) -> str | None:
-    """The single claim-guarded spawn primitive — the sole `active_runner` writer.
-
-    The runner loop, an operator START, and headless adoption all flow through
-    here so there is exactly one critical section and one writer of the driver
-    link. The sequence is: acquire the `(slug, lane)` dispatch claim that bridges
-    the boot gap, spawn the lifecycle session, bind the claim to that session,
-    then write `active_runner` paired with `manually_started` (derived from
-    ``origin``) as one mutation.
-
-    Returns the spawned session id, or ``None`` when the claim is already held by
-    a concurrent pass (the caller treats this as a benign skip). On spawn failure
-    the claim is released so a later pass can retry. On success it remains for
-    the boot gap only: it is bound at handoff and reconciled when its driver
-    ends. A spawned session that has lost its exact claim never becomes driver.
-    """
-    owner = f"lifecycle-runner:{intent.command}:{intent.slug}"
-    acquired = await acquire_dispatch_claim(todos_db, slug=intent.slug, lane=intent.lane.value, owner=owner)
-    if not acquired:
-        return None
-    try:
-        kwargs: RunSessionArgs = {
-            "command": intent.command,
-            "project_path": project_path,
-            "args": intent.slug,
-            "detach": True,
-        }
-        if intent.additional_context:
-            kwargs["additional_context"] = intent.additional_context
-        response = await client.run_session(**kwargs)
-        bound = await bind_dispatch_claim_session(
-            todos_db,
-            slug=intent.slug,
-            lane=intent.lane.value,
-            owner=owner,
-            session_id=response.session_id,
-        )
-    except BaseException:
-        # Spawn or bind failed: drop the exact claim so a later pass can retry.
-        # A successful bind retains the claim only through the boot gap; session
-        # end reconciles it, while a lost bind ends the stale spawn below.
-        await release_dispatch_claim(todos_db, slug=intent.slug, lane=intent.lane.value, owner=owner)
-        raise
-    if not bound:
-        ended = await client.end_session(response.session_id, "local")
-        if not ended:
-            logger.error(
-                "lifecycle spawn lost claim ownership and could not be ended",
-                slug=intent.slug,
-                lane=intent.lane.value,
-                owner=owner,
-                session_id=response.session_id,
-                disposition="stale_spawn_end_failed",
-            )
-            return None
-        logger.warning(
-            "lifecycle spawn lost claim ownership",
-            slug=intent.slug,
-            lane=intent.lane.value,
-            owner=owner,
-            session_id=response.session_id,
-            disposition="ended_stale_spawn",
-        )
-        return None
+) -> str:
+    """Start a lifecycle driver and record its ownership directly."""
+    kwargs: RunSessionArgs = {
+        "command": intent.command,
+        "project_path": project_path,
+        "args": intent.slug,
+        "detach": True,
+    }
+    if intent.additional_context:
+        kwargs["additional_context"] = intent.additional_context
+    response = await client.run_session(**kwargs)
     await _set_active_runner(
         todos_db,
         intent.slug,
@@ -632,7 +557,6 @@ async def dispatch_lifecycle_session(
         logger.info(
             "terminal lifecycle spawn reconciled",
             session_id=response.session_id,
-            released_claims=reconciliation.released_claims,
             cleared_slugs=",".join(reconciliation.cleared_slugs),
         )
     return response.session_id
@@ -648,15 +572,7 @@ async def run_lifecycle_runner(
     project_root = resolve_project_root(project_path)
     runtime_db = db or await get_db()
     todos_db = await get_todos_db(project_root)
-    claims = await list_dispatch_claims(todos_db)
-    # Claim identity stays as stored. The claims table is shared with consumers
-    # that own lanes the runner never dispatches — todo_artifact_authority's
-    # diagnosis lease is one — and only runner-owned lanes participate in the
-    # membership tests below. RunnerLane is a StrEnum, so those tests match a
-    # stored lane string without conversion.
-    claimed_pairs = {(claim.slug, claim.lane) for claim in claims}
-    claimed_slugs = {claim.slug for claim in claims}
-    todos, reconciled = await _load_todos(todos_db, runtime_db, claimed_slugs=claimed_slugs)
+    todos, reconciled = await _load_todos(todos_db, runtime_db)
     prepared_slugs = await effective_prepared_slugs_for_dependencies(todos_db)
     delivered_slugs = await effective_delivered_slugs_for_dependencies(todos_db)
     workflow = config.workflow
@@ -683,7 +599,6 @@ async def run_lifecycle_runner(
         autostart=autostart,
         live_session_ids=live_session_ids,
         orchestrator_owned_slugs=orchestrator_owned_slugs,
-        claimed=claimed_pairs,
         max_dispatch=workflow.max_todo_dispatch,
         live_driver_count=auto_driver_count,
         runner_mode=workflow.runner,
@@ -694,7 +609,7 @@ async def run_lifecycle_runner(
     await client.connect()
     try:
         for intent in decision.intents:
-            session_id = await dispatch_lifecycle_session(
+            await dispatch_lifecycle_session(
                 client=client,
                 runtime_db=runtime_db,
                 todos_db=todos_db,
@@ -702,9 +617,6 @@ async def run_lifecycle_runner(
                 intent=intent,
                 origin=DispatchOrigin.RUNNER,
             )
-            if session_id is None:
-                decision.skip(RunnerSkipReason.CLAIMED, intent.slug)
-                continue
             dispatched.append(intent)
     finally:
         await client.close()

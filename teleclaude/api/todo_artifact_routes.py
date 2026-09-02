@@ -22,7 +22,6 @@ from teleclaude.api.auth import (
     clearance_todos_artifacts_write,
 )
 from teleclaude.api.todo_artifact_authority import (
-    refuse_foreign_claim_holder,
     refuse_non_prepare_writer,
     resolved_write_principal,
 )
@@ -39,7 +38,6 @@ from teleclaude.constants import (
     ARTIFACT_NAMES_WRITABLE,
     PREPARE_ARTIFACT_NAMES,
 )
-from teleclaude.core.next_machine.prepare_step_support import derive_project_root
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -176,9 +174,6 @@ async def write_artifact(
     await _refuse_holder_mutation(todos_db, slug)
     if name in PREPARE_ARTIFACT_NAMES:
         await refuse_non_prepare_writer(identity, slug, name)
-        await refuse_foreign_claim_holder(
-            todos_db, identity, slug, name, project_root=derive_project_root(effective_cwd, slug)
-        )
     effective_updated_by = resolved_write_principal(identity)
     try:
         await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)

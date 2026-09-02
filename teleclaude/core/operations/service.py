@@ -877,8 +877,6 @@ class OperationsService:
             )
         finally:
             await client.close()
-        if session_id is None:
-            return f"{RUNNER_NOT_DISPATCHED}: {slug} claim-conflict"
         return f"RUNNER_DISPATCHED: {slug} {intent.lane.value} {session_id}"
 
     @staticmethod
