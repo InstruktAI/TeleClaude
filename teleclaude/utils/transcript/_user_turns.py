@@ -22,7 +22,7 @@ _CLAUDE_TEXT_ARTIFACT_RE = re.compile(
     re.DOTALL,
 )
 _CODEX_TEXT_ARTIFACT_RE = re.compile(
-    r"^(?:# AGENTS\.md instructions(?: for .*)?[ \t]*(?:\r?\n|$)|\s*<(?:environment_context|hook_prompt)\b[^>]*>.*</(?:environment_context|hook_prompt)\s*>\s*$)",
+    r"^(?:# AGENTS\.md instructions(?: for .*)?[ \t]*(?:\r?\n|$)|\s*<(?:environment_context|hook_prompt)\b[^>]*>.*</(?:environment_context|hook_prompt)\s*>\s*$|\s*<codex_internal_context\b(?=[^>]*\ssource\s*=\s*[\"']goal[\"'])[^>]*>.*</codex_internal_context\s*>\s*$)",
     re.DOTALL,
 )
 _DEEPSEEK_TEXT_ARTIFACT_RE = re.compile(r"^\s*<system-reminder\b[^>]*>.*</system-reminder\s*>\s*$", re.DOTALL)
@@ -32,6 +32,10 @@ _MIRROR_RUNTIME_SPANS = (
     re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL),
     re.compile(r"<environment_context>.*?</environment_context>", re.DOTALL),
     re.compile(r"<hook_context>.*?</hook_context>", re.DOTALL),
+    re.compile(
+        r"<codex_internal_context\b(?=[^>]*\ssource\s*=\s*[\"']goal[\"'])[^>]*>.*?</codex_internal_context\s*>",
+        re.DOTALL,
+    ),
     re.compile(r"<command-message>.*?</command-message>", re.DOTALL),
     re.compile(r"<command-name>.*?</command-name>", re.DOTALL),
     re.compile(r"<command-args>.*?</command-args>", re.DOTALL),
