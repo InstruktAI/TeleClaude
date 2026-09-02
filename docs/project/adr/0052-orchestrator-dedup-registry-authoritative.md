@@ -82,3 +82,8 @@ orchestrator adopting or continuing its own slug is not self-blocked.
 - **Revive the title/worktree scan for prepare orchestrators.** Rejected for the
   exact reasons ADR-0035 retired it: launch-time titles and derived attributes are
   fragile. `working_slug` is the structured replacement that did not exist then.
+
+## Status
+
+Superseded in part by ADR-0078: time-bound dispatch claims are removed; the
+registry-authoritative live-orchestrator decision remains accepted.

@@ -89,3 +89,8 @@ steady-state ownership and is not the ownership signal itself.
   Rejected: a single missed close event would leave a stale link that permanently
   suppresses dispatch for that todo, with no path to recovery short of manual
   intervention.
+
+## Status
+
+Superseded in part by ADR-0078: time-bound dispatch claims are removed; the
+active-runner ownership decision remains accepted.

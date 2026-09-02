@@ -18,7 +18,11 @@ visibility: 'public'
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
 
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded, and slug-keyed dispatch leases are deleted with the removal so a lapsed lease cannot refuse work on a successor Todo that reuses the slug. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
+<!-- change:remove-diagnosis-dispatch-leases -->
+Before the mutation the removal also guards live work. A removal is refused — before any todo-list, state, dependency, or filesystem mutation — while the slug's claim names a live session other than the caller, an open session other than the caller is bound to the slug, or a non-terminal operation is bound to it. The structured refusal names each holding session and operation so the operator is routed to the holders instead of a wall. A deliberate override flag removes anyway; the override is recorded as such on the durable removed entry. On every removal the claim value present at removal is recorded on the removed entry rather than silently discarded. While the removed entry is retained, artifact writes addressed to the slug are refused with an error that names the removed state, the retention window, and the sanctioned recovery route — distinguishable from a slug that never existed.
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 
 A retained removed entry can be reactivated by durable identity before purge, unless an active or icebox entry already owns the same slug. Reactivation restores the exact captured documentation material as pending before the Todo returns to its pre-removal status; an unsafe restoration faults without reporting success. After the retention window elapses, routine maintenance verifies that abandonment is complete, clears the retained restoration material, and hard-purges the removed entry by durable identity. Retained state and artifact history cascade to deletion only after that sequence succeeds.
@@ -189,6 +193,7 @@ Then the removal proceeds without requiring the override flag
 And the durable removed entry records the claim value that was released
 ```
 
+<!-- planned-change:remove-diagnosis-dispatch-leases -->
 #### UC-TR-LEASE-CLEARED: Slug-keyed dispatch leases do not survive removal
 
 ```
@@ -197,6 +202,8 @@ When that Todo is removed
 Then the lease is deleted together with the removal
 And a successor Todo created under the same slug is not refused work by the predecessor's lease
 ```
+<!-- change:remove-diagnosis-dispatch-leases -->
+<!-- /planned-change:remove-diagnosis-dispatch-leases -->
 
 #### UC-TR-REMOVED-SLUG-WRITE-REFUSED: An artifact write to a removed slug names the recoverable state
 
