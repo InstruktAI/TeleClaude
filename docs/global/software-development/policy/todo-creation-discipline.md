@@ -7,6 +7,7 @@ description: Decide whether a todo should exist, audit that decision at preparat
 ## Required reads
 
 @~/.teleclaude/docs/general/policy/documentation-discipline.md
+@~/.teleclaude/docs/general/policy/human-contract.md
 
 ## Rules
 

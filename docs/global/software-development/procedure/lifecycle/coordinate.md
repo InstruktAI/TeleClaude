@@ -17,6 +17,7 @@ visibility: internal
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/integrate.md
 - @~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md
 - @~/.teleclaude/docs/general/policy/conflict-resolution.md
+- @~/.teleclaude/docs/general/policy/human-contract.md
 
 ## Goal
 
