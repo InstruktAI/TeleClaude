@@ -153,18 +153,39 @@ denominator every finding is judged against. Remediation closes valid findings
 within that scope; a valid omission finding may add material, but scope growth
 is semantic and line count proves nothing either way.
 
-The first review of a target is one complete discovery pass over the frozen
-digest. A remediation review closes existing findings and inspects the
-remediation delta. A new finding on a remediation review is admissible only
-when it is remediation-induced, or newly observable because the target changed.
-A finding that was observable in the discovery pass and is raised later is the
-reviewer's incompleteness: it halts the loop for reassessment instead of being
-appended to the producer's work.
+A review round has one frozen target and a barrier between review and
+remediation:
+
+1. One revision of the target is frozen as the round's target. Nothing is
+   remediated against any other revision.
+2. Every designated reviewer or review lane completes its pass against that
+   revision. A verdict from one reviewer does not start remediation while
+   another is still reading.
+3. Their findings are collected and reconciled into one ledger for the round —
+   duplicates merged, contradictions resolved, leads separated from findings.
+4. Only then is one remediation authored, as one change, against that ledger.
+5. The next round reviews that remediation solely against the ledger and the
+   remediation delta.
+6. Rounds are counted by reviewed target revisions, never by reviewer messages
+   or by commits.
+
+The first round is one complete discovery pass over the frozen target. A
+remediation round closes ledger findings and inspects the remediation delta. A
+new finding on a remediation round is admissible only when it is
+remediation-induced, or newly observable because the target changed. A finding
+that was observable in the discovery pass and is raised later is the reviewer's
+incompleteness: it halts the loop for reassessment instead of being appended to
+the producer's work.
 
 When a loop reaches its applicable documented cap without closure, no further
 review starts: the loop halts, the cause is classified — ambiguous contract,
 failed remediation, unstable target, or incomplete or noisy review — and the
-classification is escalated with the halt.
+classification is escalated with the halt. Remediation that reached a shared
+branch without an APPROVE is restored to the last independently approved
+revision as part of the halt; the ledger and the classification are preserved
+as process evidence, and the work resumes later as fresh, bounded work. An agent
+may propose an exception to the restore; it never hands the human that choice to
+clean up its own failed convergence.
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a
