@@ -29,8 +29,8 @@ path runs two phases:
 
 <!-- change:agent-artifact-source-layout -->
 
-1. **Global phase** — sources from `agents/global/` (general commands,
-   skills, and subagents from the mother alone; domain-partitioned commands
+1. **Global phase** — sources from `agents/global/` (general commands and
+   skills from the mother alone; domain-partitioned commands
    from every repository for the domains it publishes) are built under a
    transient distribution directory and deployed to the global consumers:
    the per-agent user-home roots, the global command corpus
@@ -405,12 +405,12 @@ Scenario: UC-ARD14 Antigravity is served at its documented layout only
 
 ```
 Scenario: UC-ARD15 A repository's project-scoped artifact sources are delivered to that project's runtimes
-  Given a repository carries agent definitions, commands, and skills under agents/project/
+  Given a repository carries commands and skills under agents/project/
   And sync is invoked in deploy mode
   When the local phase deploys
   Then each artifact is offered to an agent session started in that project
   And every agent CLI that project is configured to use is served
-  And all three artifact kinds are served
+  And both artifact kinds are served
 ```
 
 #### UC-ARD20: A project carrying no artifact sources is unaffected
@@ -445,7 +445,7 @@ Scenario: UC-ARD23 Global commands are partitioned by published domain and gated
   When sync runs in deploy mode
   Then those commands deploy to the global corpus under that domain
   And a command under a domain the repository does not publish is refused with a message naming the file and the domain
-  And general commands, global skills, and global subagents from a repository that is not the mother are refused the same way
+  And general commands and global skills from a repository that is not the mother are refused the same way
 ```
 
 #### UC-ARD24: A global command is invoked by its explicit domain-namespaced name

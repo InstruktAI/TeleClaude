@@ -33,12 +33,14 @@ implies, and the portion of those sources the caller may see.
 
 **Input — agent artifacts carry the same shape at every tier.** Each tier root
 carries `agents/` beside `docs/`. In a repository, scope is in the path, exactly
-as it is for documentation: `agents/{global,project}/{agents,commands,skills}`.
-In a company or person home the home is the scope, so `agents/{agents,commands,skills}`
-sits flat beside the flat `docs/`. Global commands are partitioned by the
+as it is for documentation: `agents/{global,project}/{commands,skills}`.
+In a company or person home the home is the scope, so `agents/{commands,skills}`
+sits flat beside the flat `docs/`. Commands and skills are the two artifact
+kinds; subagent definitions are not one — this platform's agents are general and
+take their role from the command document they load. Global commands are partitioned by the
 domains the repository publishes — `agents/global/commands/<domain>/` — under
 the same one-owner declaration that governs documentation domains; general
-commands, global skills, and global subagents are the mother's alone. A
+commands and global skills are the mother's alone. A
 repository that carries global artifacts outside its declared reach fails
 validation loudly. The open `.agents/` convention is never read as input.
 
