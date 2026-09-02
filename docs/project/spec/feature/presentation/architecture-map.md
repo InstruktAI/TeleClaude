@@ -69,8 +69,8 @@ Then the human sees the same graph, detail view, and provenance as the file:// p
 
 ```gherkin
 Given a generation whose rendered page would exceed the Artifact size limit
-When an operator or the regeneration automation runs the generator
-Then the operator observes the generation fail, with the overrun reported as the failure
+When the generator runs
+Then an agent inspecting the generation's recorded outcome finds it failed, with the overrun reported as the failure
 And an agent inspecting the generation location finds no page that silently omits content to fit
 ```
 
@@ -163,8 +163,8 @@ And all four describe one snapshot taken together
 
 ```gherkin
 Given the doc index or the Blueprint changes while a generation is reading its sources
-When an operator or the regeneration automation runs the generator and it detects that the sources it read do not describe one snapshot
-Then the operator observes the generation fail, with the inconsistency reported as the failure
+When the generator detects that the sources it read do not describe one snapshot
+Then an agent inspecting the generation's recorded outcome finds it failed, with the inconsistency reported as the failure
 And an agent inspecting the generation location finds the previously current generation still current
 ```
 
@@ -194,7 +194,7 @@ And the current view is not altered by them
 Given a project that has enabled the architecture map
 When the project's doc index is rebuilt
 Then an agent inspecting the generation location finds a new generation produced without any agent asking for it
-And a human opening that generation reads provenance naming the rebuilt index
+And an agent reading that generation's provenance finds it names the rebuilt index
 ```
 
 #### UC-AMAP-17: The page regenerates when the Blueprint regenerates, and never fails the Blueprint
