@@ -11,6 +11,8 @@ visibility: 'public'
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/blast-radius-discovery.md
 - @~/.teleclaude/docs/software-development/policy/quality-predicate-registry.md
+- @~/.teleclaude/docs/software-development/policy/definition-of-done.md
+- @~/.teleclaude/docs/software-development/policy/substrate-anchoring.md
 
 ## Goal
 
