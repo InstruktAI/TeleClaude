@@ -10,7 +10,8 @@ description: The closed list of what the human decides, the agent's default auto
 
 The human decides these, and nothing else:
 
-- **how we work** — the process layer and every doctrine agents act on;
+- **how work is validated and delivered** — the process layer defined by
+  `software-development/policy/process-change-authority`;
 - **what a human experiences** — feature specs, Gherkin scenarios, business intent;
 - **their exclusive domain** — values, brand and voice, relationships, business
   judgment: the territory the leadership policy's Ask mode names;
