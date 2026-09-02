@@ -178,7 +178,7 @@ op wins.
 
 <!-- change:tier-aware-commit-authority -->
 
-| `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ⚠️ `telec code commit` (full commit, no pathspec — single-owner trees only) | Sealed commit contract; no env-var bypass. Mid-merge, git refuses any pathspec-scoped commit (`fatal: cannot do a partial commit during a merge`) regardless of pathspec completeness, so in a single-owner tree `telec code commit` degrades to a full-index commit, which carries only that one owner's resolved state. In a repository whose own root is a declared invocation context the tree has more than one owner, and there the commit preserves the eligible set or is refused; it never degrades to the whole index. |
+| `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ⚠️ `telec code commit` (full commit, no pathspec — single-owner trees only) | Sealed commit contract; no env-var bypass. Mid-merge, git refuses any pathspec-scoped commit (`fatal: cannot do a partial commit during a merge`) regardless of pathspec completeness, so in a single-owner tree `telec code commit` degrades to a full-index commit, which carries only that one owner's resolved state. In a repository whose own root is a declared non-project invocation context the tree has more than one owner, and there the commit preserves the eligible set or is refused; it never degrades to the whole index. An ordinary project checkout is a single-owner tree and keeps this row's existing behavior unchanged. |
 
 <!-- /planned-change:tier-aware-commit-authority -->
 
@@ -348,8 +348,8 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
    full merge diff (not the caller's pathspec) and commits with no pathspec at
    all: `git commit -F <msg> --no-verify` with no trailing `-- <pathspec>`.
 
-   In a repository whose own root is a declared invocation
-   context the tree has more than one owner: such a tree is multi-context and concurrently dirty by design, so the
+   In a repository whose own root is a declared non-project
+   invocation context the tree has more than one owner: such a tree is multi-context and concurrently dirty by design, so the
    resolved index can hold another context's material. There a commit taken mid-
    merge preserves the eligible set or is refused; it never degrades to recording
    the whole index.
@@ -376,15 +376,32 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
     repository of its own — bounds the computed scope and every explicitly
     declared path (`--include`, `--only`, `telec code add`) alike; a declared
     path outside it is refused, never carried. The retained-set term consumes
-    the reconciliation context's published membership answer; this surface
-    asks, and neither decides membership nor substitutes an answer.
+    the reconciliation context's published membership answer where one is
+    published; a repository whose owner publishes none carries no such term,
+    and this surface neither decides membership nor substitutes an answer in
+    either case.
 
-12. **The wrapper learns the repository root's tier from projected state,
-    never by parsing.** The seal decision at a non-project repository root
-    rides the same projection mechanism as project capabilities: the resolver
-    projects the repository root's declared tier into the git metadata the
-    wrapper already reads, so the shell side never parses a declaration and
-    cannot disagree with the resolver.
+12. **Two config-owned coordinates answer two different questions.** Seal
+    coverage — whether raw git is intercepted anywhere in a checkout — is
+    decided by the **repository root's** declared tier, because the seal is a
+    property of the repository and must hold at locations that resolve to no
+    context root. Commit availability and gate selection are decided by the
+    **acting invocation context root's** declared tier, because they are
+    properties of who is acting. The wrapper learns the repository root's tier
+    from projected state, never by parsing: the resolver projects it into the
+    git metadata the wrapper already reads through the same mechanism as
+    project capabilities, so the shell side cannot disagree with the resolver.
+
+13. **Inspection and commit consume one payload resolution.** The eligible
+    payload — computed scope bounded per invariant 11, minus what the commit
+    itself would drop, plus declared paths — is resolved by one function that
+    both `telec code changed` and `telec code commit` consume. Inspection
+    reports that payload as currently declared, deletions included, in the
+    acting context root's coordinates; a commit-time declaration extends the
+    same function by exactly the declared paths and nothing else. The two
+    surfaces are forbidden to project differently — the pre-commit answer
+    equals the final commit pathspec path for path, because it is the same
+    computation, not a reconciled pair.
 
 <!-- /planned:tier-aware-commit-authority -->
 
@@ -482,7 +499,7 @@ telec code commit --approved "chore(<slug>): reconcile with origin/main"
 <!-- change:tier-aware-commit-authority -->
 
   → MERGE_HEAD detected (repo.git_dir)
-  → repository root is not a declared invocation context (single-owner tree)
+  → repository root is not a declared non-project invocation context (single-owner tree)
      — otherwise the eligible set is preserved, or the commit is refused
   → assert no remaining unmerged paths (all conflicts telec code add-ed)
      — error, no commit, if any remain

@@ -20,7 +20,7 @@ The seal is scoped to telec-registered projects that subscribe `code` or `docs` 
 
 <!-- change:tier-aware-commit-authority -->
 
-The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `project/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through.
+The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `project/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared non-project invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through. A project repository is unchanged: its seal follows its subscriptions exactly as above, and every location beneath it resolves to the project's own context root.
 
 <!-- /planned-change:tier-aware-commit-authority -->
 
@@ -45,7 +45,7 @@ A context root's **own material** is what lies under it minus what belongs to an
 
 The two halves answer different failures and neither substitutes for the other. Containment under the acting root separates sessions working under *different* context roots of one repository, so a path outside the acting root is absent from the scope whatever the transcript claims. Subtraction of foreign-owned roots excludes what sits *inside* the acting root, which containment alone cannot reach.
 
-The retained set is the fourth term and is not this contract's to decide: the repository's owner publishes which of its paths are retained, and a path outside that answer is ineligible here however it is reached.
+The retained set is the fourth term and is not this contract's to decide: where the repository's owner publishes which of its paths are retained, a path outside that answer is ineligible here however it is reached. A repository whose owner publishes no retained set carries no such term: there is no answer to consume, this surface neither invents nor substitutes one, and the first three terms carry the bound alone. Publication and its absence are both the owner's facts, read from the owner's contract.
 
 Containment bounds every path that reaches inspection, staging, or commit — not only the computed scope. A path named through an explicit declaration or subset channel is subject to the same bound: naming a path does not admit material outside the acting context root's own material, and such a path is refused rather than carried.
 
@@ -528,7 +528,7 @@ And the resulting commit records origin/main as a merge parent
 
 ```
 Given MERGE_HEAD is present (an active merge, resolved via repo.git_dir so it holds inside worktrees)
-And the repository's own root is not a declared invocation context
+And the repository's own root is not a declared non-project invocation context
 And every conflicted path has been resolved and staged (no remaining unmerged-index entries)
 When agent invokes telec code commit --approved "<msg>"
 Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
@@ -796,7 +796,7 @@ And no commit or staged change carries it
 #### UC-NCR-12 — A commit taken mid-merge does not escape the bound
 
 ```
-Given a repository whose own root is a declared invocation context
+Given a repository whose own root is a declared non-project invocation context
 And a merge is in progress in that repository
 When an agent commits through the sealed surface
 Then the commit carries no material outside the acting context's eligible set, or the commit is refused
@@ -806,7 +806,7 @@ And no commit state falls back to recording the whole index
 #### UC-NCR-11 — A location with no context root inside a sealed repository cannot reach raw git
 
 ```
-Given a repository whose own root is a declared invocation context
+Given a repository whose own root is a declared non-project invocation context
 And a location beneath it at which invocation resolves to no context root
 When an agent working there invokes raw `git commit` or `git add`
 Then the wrapper refuses rather than passing through to the real git binary
