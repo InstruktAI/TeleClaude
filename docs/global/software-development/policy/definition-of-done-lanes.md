@@ -219,8 +219,11 @@ Check whether the implementation follows existing codebase paradigms:
    Untouched debt outside the change path is never a finding.
 
 Paradigm violations are **Important** at minimum. An introduced or worsened
-violation on the change path, or a delivery with no ratchet disposition at all,
-is Important. Copy-paste of a parameterizable component is Important. Bypassing the data layer is Critical. A backward-compatibility branch on owned data — version tolerance smeared through domain logic where a forward migration is the contract — is Critical. A field-set change to an owned persisted or serialized model that ships with no forward-migration, or with no old-shape golden-fixture test, is **Critical** — it delivers a record the current model can no longer read.
+violation on the change path is Important. Where the reviewer establishes
+structural debt on the change path, absence of a preparatory deepening or a
+reasoned deferral is Important; a delivery whose change path carries no
+structural debt owes no disposition. Copy-paste of a parameterizable component
+is Important. Bypassing the data layer is Critical. A backward-compatibility branch on owned data — version tolerance smeared through domain logic where a forward migration is the contract — is Critical. A field-set change to an owned persisted or serialized model that ships with no forward-migration, or with no old-shape golden-fixture test, is **Critical** — it delivers a record the current model can no longer read.
 
 #### Principle violation hunt
 

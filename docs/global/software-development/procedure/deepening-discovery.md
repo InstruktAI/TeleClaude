@@ -93,8 +93,10 @@ what a human experiences, widens the scope the human asked for, or touches a
 safety-gated action; then it is surfaced under `general/policy/human-contract`
 before anything proceeds.
 
-Render the ranked candidates as one report for the human to see, per
-`general/procedure/visualizing-for-humans`: per candidate the files involved,
+Produce the durable candidate report for agent and peer use, rendered per
+`general/procedure/visualizing-for-humans` when it is surfaced. Surface it to
+the human only when they explicitly requested the report or the selected
+candidate crosses their closed lane. Per candidate it carries the files involved,
 the problem and the solution in one sentence each, the wins in terms of
 leverage, locality, and how tests improve, a before-and-after diagram, the
 dependency category, the owning context and anchor module, and the selection
@@ -128,8 +130,8 @@ its invariants, ordering, and error modes; a usage example; what the
 implementation hides; the dependency strategy; and where leverage is high or
 thin. Compare on depth, locality, and seam placement, choose one or a hybrid,
 and record the choice with its reason; the independent peer checks the choice
-against the constraints. The human sees the chosen design in the report; they
-decide only where their lane is crossed.
+against the constraints. The chosen design enters the report; the human decides
+only where their lane is crossed.
 
 ### 7. Record side effects where they belong
 
@@ -157,8 +159,9 @@ handed to the lifecycle, never at code.
 
 ## Outputs
 
-- One ranked candidate report, with the selection and its reason, visible to
-  the human.
+- One ranked candidate report, with the selection and its reason, durable for
+  agent and peer use and surfaced to the human only on request or across their
+  lane.
 - For the selected candidate: a peer-tested set of constraints and a chosen
   interface design, with its dependency strategy.
 - A bounded todo carrying that design, or a recorded rejection.

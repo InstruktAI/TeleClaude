@@ -410,9 +410,10 @@ snippet this same prepare pass authored does not create scope; the `diagnosis`
 and the `input` symptom are the only scope authorities for a bug
 (`software-development/procedure/debugging`, step 5).
 
-Structural work the investigation surfaced but the fix does not require is
-routed out: record it as a deferral or file a new todo for the human's call — it
-never rides the fix.
+A structural-ratchet deepening on the bug's direct change path is authorized
+HOW when all five ratchet conditions hold (`definition-of-done` §2). Other
+structural work the investigation surfaced remains out of scope: record it as a
+deferral with its reason; it never rides the fix.
 
 **Regression scenario — the only scenario authoring a bug plan owns.** When the
 reproduction test has no bindable scenario in the owning feature spec, author
