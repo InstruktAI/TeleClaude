@@ -15,11 +15,9 @@ implementation remain the current appliance contract.
 ## Canonical fields
 
 - **Current behavior:** `docs/project/spec/feature/integration/`.
-- **Implementation roots:** `teleclaude/adapters/`, `teleclaude/core/inbound/`,
-  `teleclaude/core/delivery/`, `teleclaude/transport/`, and
-  `teleclaude/events/delivery/`. `teleclaude/core/integration/` is workflow's
-  code-integration machinery; the package-ownership table in the context map
-  is the authority for every root.
+- **Implementation roots:** `teleclaude/adapters/`,
+  `teleclaude/core/integration/`, `teleclaude/core/inbound/`, and
+  `teleclaude/events/delivery/`.
 - **Maintenance stance:** see `project/spec/domain/glossary`. No replacement transport design is
   authored here.
 
