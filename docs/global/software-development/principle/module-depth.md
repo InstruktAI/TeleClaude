@@ -6,8 +6,9 @@ description: Deep modules behind thin interfaces, settled inside correct boundar
 
 ## Principle
 
-A module is deep or it is gone. Deep means a small, stable interface hiding real
-logic: callers know one cohesive capability and none of the steps behind it. A
+A module earns its boundary by hiding meaningful complexity. A shallow or
+pass-through module is a signal for judgment, never an automatic deletion. Deep
+means a small, stable interface hiding real logic: callers know one cohesive capability and none of the steps behind it. A
 module whose interface is as large as its implementation is a pass-through — a
 seam that absorbs no complexity — and seams are where systems fail.
 
