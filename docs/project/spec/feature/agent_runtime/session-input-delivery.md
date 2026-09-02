@@ -229,6 +229,19 @@ And delivery waits until the agent-specific complete composer can be identified
 ```
 <!-- /planned:fix-tmux-exit-leads-to-compaction -->
 
+<!-- planned:input-not-consumed-after-daemon-restart -->
+#### UC-SID12: An exhausted session-originated send reports failure to its caller
+
+```gherkin
+Given an agent session sends a message to another active session
+And the message is accepted but cannot reach the target agent within the delivery retry budget
+When delivery is exhausted
+Then the caller session receives a durable notification naming the target and the delivery failure
+And the target session remains available for inspection or recovery
+And the message is not represented as delivered
+```
+<!-- /planned:input-not-consumed-after-daemon-restart -->
+
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.
