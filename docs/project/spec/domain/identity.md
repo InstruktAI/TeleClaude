@@ -45,6 +45,16 @@ TeleClaudeNext.
   resolving them reports. The declarations themselves are config's; identity
   reads them and reinterprets nothing.
 <!-- /planned:company-member-roster -->
+<!-- planned:person-tier-declarations -->
+- **Also owns:** person-context binding resolution — whether a person
+  workspace's declared identity claim is accepted as binding that context to
+  exactly one registered person, validated against the person registry, with
+  unknown, ambiguous, and disagreeing claims failing closed. The declaration
+  itself is config's; identity reads it and reinterprets nothing, and an
+  accepted binding is an identity fact that grants no authority of its own.
+  The behavioral contract is
+  `project/spec/feature/identity/person-context-binding`.
+<!-- /planned:person-tier-declarations -->
 - **Does not own:** provider payload parsing, message delivery, session action,
   or workflow transitions merely because they carry a principal.
 - **Published contracts:** resolved-principal and authentication-evidence types

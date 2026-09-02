@@ -56,6 +56,26 @@ TeleClaudeNext.
   invocation, read from the nearest ancestor configuration file's own
   declaration. Consumers call it and never walk the ancestor chain or read a
   tier declaration themselves.
+<!-- planned:person-tier-declarations -->
+- **Also published:** the tier-permission answer — for a root's declared tier,
+  whether it establishes an invocation context, whether its material
+  participates in a named surface from the closed surface set, and whether it
+  carries the optional project subscriptions. Only the project tier's
+  subscription answer reads that overlay's capability declaration; no overlay
+  is parsed as another tier's shape to answer any of the three. Consumers ask
+  this contract and never derive a permission from a path, a repository, or a
+  foreign tier's default. The behavioral contract is
+  `project/spec/feature/config/tier-permissions`.
+- **Also owns:** two further declarations and their validation: the person
+  overlay's identity claim naming the registered person its workspace belongs
+  to, and the project overlay's declared owner — a company or a person, at
+  most one, with no owner a valid state. Owning the declarations is not owning
+  what they mean: what an accepted person binding confers belongs to
+  `project/spec/domain/identity`, and no permission follows from ownership.
+  The behavioral contracts are
+  `project/spec/feature/identity/person-context-binding` and
+  `project/spec/feature/config/project-ownership`.
+<!-- /planned:person-tier-declarations -->
 - **Also does not own:** where a project's shared state lives. That rule reads
   the checkout-and-worktree relation rather than any configuration, and belongs
   to the context that creates linked worktrees and defines what they share.
