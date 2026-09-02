@@ -143,28 +143,6 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
   And the package is rendered through the artifact output pipeline without rewriting its authored structure
 ```
 
-<!-- planned:command-migration-to-singular-telec-skill -->
-
-```
-Scenario: Project-local command artifacts are rejected with migration guidance
-  Given a project-local command artifact exists at .agents/commands/<name>.md
-  When telec sync validates that project's agent artifacts
-  Then validation fails and the sync exits non-zero
-  And the failure names each offending file path
-  And the failure states that commands are TeleClaude-global and are not authorable from a project
-  And the check is structural on artifact kind and location, grading no file content
-```
-
-```
-Scenario: The global command corpus is unaffected by the project-local prohibition
-  Given TeleClaude command artifacts exist under agents/commands/ in the Mother project
-  And no project-local command artifacts exist under .agents/commands/
-  When telec sync validates agent artifacts
-  Then the global command artifacts validate and compile to the shared command corpus
-  And no prohibition error is reported
-```
-
-<!-- /planned:command-migration-to-singular-telec-skill -->
 
 ### Cross-context references
 
