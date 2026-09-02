@@ -69,9 +69,9 @@ Then the human sees the same graph, detail view, and provenance as the file:// p
 
 ```gherkin
 Given a generation whose rendered page would exceed the Artifact size limit
-When the generator runs
-Then the generation fails and reports the overrun as a failure
-And no page is written that silently omits content to fit
+When an operator or the regeneration automation runs the generator
+Then the operator observes the generation fail, with the overrun reported as the failure
+And an agent inspecting the generation location finds no page that silently omits content to fit
 ```
 
 #### UC-AMAP-4: The graph nests contexts, feature specs, use cases, packages, and modules
@@ -163,9 +163,9 @@ And all four describe one snapshot taken together
 
 ```gherkin
 Given the doc index or the Blueprint changes while a generation is reading its sources
-When the generator detects that the sources it read do not describe one snapshot
-Then the generation fails and reports the inconsistency
-And the previously current generation remains current
+When an operator or the regeneration automation runs the generator and it detects that the sources it read do not describe one snapshot
+Then the operator observes the generation fail, with the inconsistency reported as the failure
+And an agent inspecting the generation location finds the previously current generation still current
 ```
 
 #### UC-AMAP-14: Recent generations remain openable from file://
@@ -193,8 +193,8 @@ And the current view is not altered by them
 ```gherkin
 Given a project that has enabled the architecture map
 When the project's doc index is rebuilt
-Then a new generation of the page is produced without an agent asking
-And its provenance names the rebuilt index
+Then an agent inspecting the generation location finds a new generation produced without any agent asking for it
+And a human opening that generation reads provenance naming the rebuilt index
 ```
 
 #### UC-AMAP-17: The page regenerates when the Blueprint regenerates, and never fails the Blueprint
@@ -202,8 +202,8 @@ And its provenance names the rebuilt index
 ```gherkin
 Given a project that has enabled the architecture map
 When the project's Blueprint is regenerated
-Then a new generation of the page is produced without an agent asking
-And a failure in producing the page leaves the Blueprint refresh successful
+Then an agent inspecting the generation location finds a new generation produced without any agent asking for it
+And an agent reading the Blueprint's freshness manifest after a failed page generation finds the Blueprint refresh recorded as successful
 ```
 
 #### UC-AMAP-18: Generation is project-scoped and off by default
@@ -211,7 +211,7 @@ And a failure in producing the page leaves the Blueprint refresh successful
 ```gherkin
 Given a project that has not enabled the architecture map
 When that project's doc index or Blueprint regenerates
-Then no architecture map is generated for that project
+Then an agent inspecting that project finds no architecture map generated for it
 ```
 
 #### UC-AMAP-19: The page renders in both color themes on both hosts
