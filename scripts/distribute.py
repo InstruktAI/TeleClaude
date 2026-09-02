@@ -502,7 +502,6 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     filtered = cast(ArtifactFrontmatter, dict(metadata))
     if agent_name != "claude":
         filtered.pop("hooks", None)
-    filtered.pop("parameters", None)
     filtered.pop("teleclaude_taxonomy", None)
     return filtered
 
