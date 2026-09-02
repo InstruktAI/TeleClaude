@@ -20,9 +20,10 @@ visibility: public
 - **Doc-only changes are never promoted to a todo.** When a change touches
   documentation only — doc snippets, ADRs, README, no functionality — the agent
   executes it **in-context, immediately** (on `main`, per the doc scope of
-  `telec code commit`). The gate is the human's presence in the session, which
-  the agent detects; it is neither a separate approval step nor a requirement
-  that the human edit or commit anything. The todo/lifecycle path exists **only** for work
+  `telec code commit`). Human presence is required only for human-lane doc work.
+  Agent-lane doc work executes autonomously in the session that owns the
+  decision. Neither path creates a separate approval step or requires the human
+  to edit or commit. The todo/lifecycle path exists **only** for work
   that delivers functionality. Promoting doc-only work to a todo discards the live
   design context that makes it correct and re-derives it cold; that is a violation.
 - **Cross-project doc work preserves the authoring session.** When the session
