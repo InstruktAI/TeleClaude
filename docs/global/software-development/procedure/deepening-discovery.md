@@ -5,6 +5,13 @@ activation_trigger: Use when asked to find refactoring or deepening opportunitie
 
 # Deepening Discovery — Procedure
 
+## Required reads
+
+@~/.teleclaude/docs/software-development/principle/module-depth.md
+@~/.teleclaude/docs/software-development/policy/substrate-anchoring.md
+@~/.teleclaude/docs/software-development/principle/architectural-defaults.md
+@~/.teleclaude/docs/general/procedure/visualizing-for-humans.md
+
 ## Goal
 
 Find where a codebase's structure causes friction, present the candidates for
@@ -15,9 +22,7 @@ spent only on the candidate they chose.
 
 ## Preconditions
 
-- `software-development/principle/module-depth`,
-  `software-development/policy/substrate-anchoring`, and
-  `software-development/principle/architectural-defaults` are loaded.
+- The required reads above are loaded; the `grill-me` skill is available.
 - The bounded contexts of the codebase are known from its domain specs
   (`docs/project/spec/domain/*`), or their absence is recorded.
 - Blueprint facts (`telec code blueprint affected`, co-change history) are
