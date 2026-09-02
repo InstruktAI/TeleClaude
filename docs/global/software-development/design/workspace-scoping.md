@@ -116,9 +116,8 @@ otherwise resolves `native_session_id` through
 `CODEX_THREAD_ID` or `discover_current_codex_transcript_path()`. Missing,
 unreadable, malformed, unsupported, or otherwise unresolvable foreign-session
 evidence is `UNDETERMINED`; a successfully parsed transcript with no qualifying
-touch is `RESOLVED` empty. This batch signal is defined here independently of
-the quality scope's current-session command model and does not depend on, or
-claim semantic identity with, another todo's planned invariant.
+touch is `RESOLVED` empty. This batch signal is defined independently of the
+quality scope's current-session command model.
 
 The query resolves each requested path's last committed boundary once from
 repository history, without inspecting commit authorship, and discards touch
@@ -137,8 +136,7 @@ claim state is introduced.
 
 A live session whose governed transcript attribution resolves empty contributes
 no claimant evidence. A session whose attribution signal is `UNDETERMINED` also
-contributes no invented claim, preserving the PRD-approved null-owner result,
-but the query carries a privacy-safe batch-level
+contributes no invented claim, but the query carries a privacy-safe batch-level
 `undetermined_session_count` diagnostic. The CLI emits that count on stderr and
 the structured completion record while leaving the stdout ownership JSON
 unchanged. When the count is positive, null transfers inspection custodianship

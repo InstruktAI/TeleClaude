@@ -273,14 +273,22 @@ brake and makes no claim about path intent.
 <!-- /planned-change:telec-code-dirty-path-owners -->
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
+<!-- planned-change:telec-code-dirty-path-owners -->
+  dirty paths.
+<!-- change:telec-code-dirty-path-owners -->
   dirty paths. After the quiet window, re-run the read-only ownership query for
   an unchanged dirty set, but never re-contact an owner already coordinated for
   that set.
+<!-- /planned-change:telec-code-dirty-path-owners -->
 - **Cancellation:** cancel when main clears, the integration session reaches a
+<!-- planned-change:telec-code-dirty-path-owners -->
+  terminal outcome, or the human explicitly supersedes the wait.
+<!-- change:telec-code-dirty-path-owners -->
   terminal outcome, or the human explicitly supersedes the wait. A coordinated
   live owner or positive undetermined count keeps the reminder live for fresh
   read-only re-resolution before and after the single bounded escalation,
   without triggering repeat contact or escalation.
+<!-- /planned-change:telec-code-dirty-path-owners -->
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-queue-watch
