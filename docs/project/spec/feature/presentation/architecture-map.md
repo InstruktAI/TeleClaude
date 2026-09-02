@@ -1,5 +1,5 @@
 ---
-description: A generated, always-current explorer over the doc corpus and the code Blueprint — contexts, feature specs, use cases, doctrine, packages and modules as one navigable graph with containment, a detail view, provenance, and a switchable pending overlay — openable from file:// and as a published Artifact.
+description: A generated, always-current explorer over the doc corpus and the code Blueprint — contexts, feature specs, use cases, doctrine, packages and modules as one navigable graph with containment, a detail view, provenance, and a switchable pending overlay — always openable from file:// and identical in any supported in-tool view.
 delivered_by:
   - architecture-map-explorer
 ---
@@ -12,8 +12,8 @@ delivered_by:
 
 ## What it is
 
-The architecture map is a single self-contained page a human opens to explore
-the architecture as it currently is. It is derived — never drawn — from facts
+The architecture map is one generated view a human opens to explore the
+architecture as it currently is. It is derived — never drawn — from facts
 that already exist: the doc index and snippet corpus, and the code Blueprint
 with its freshness manifest. The page renders the bounded contexts, the feature
 specs and their use cases inside each context, the global and project doctrine
@@ -39,8 +39,9 @@ regenerates the Blueprint. Generation is project-scoped and off by default
 elsewhere; in a project that enables it, the page regenerates without an agent
 asking whenever that project's doc index or Blueprint regenerates. The current
 generation and a bounded set of recent generations live at a stable, documented
-location outside the doc corpus, so the page is openable from file:// and can be
-published as a Claude Code Artifact from any agent session.
+location outside the doc corpus, so the map is always openable from file:// and
+can be published from any agent session into whatever in-tool viewing surface
+that session's host offers, showing the same generation there.
 
 ## Canonical fields
 
@@ -56,19 +57,20 @@ Then the graph renders with its contexts, doctrine, and code structure navigable
 And every embedded diagram in a selected snippet renders inside the detail view
 ```
 
-#### UC-AMAP-2: The published Artifact shows the same graph as file://
+#### UC-AMAP-2: The in-tool view shows the same graph as file://
 
 ```gherkin
 Given a current generation of the architecture map
-When an agent session publishes that page as a Claude Code Artifact
-And a human opens the Artifact
+And the agent session's host offers an in-tool viewing surface
+When an agent session publishes that generation into the in-tool view
+And a human opens it there
 Then the human sees the same graph, detail view, and provenance as the file:// page of the same generation
 ```
 
 #### UC-AMAP-3: An over-budget generation fails loudly
 
 ```gherkin
-Given a generation whose rendered page would exceed the Artifact size limit
+Given a generation whose rendered page would exceed what a supported host can display
 When the generator runs
 Then an agent inspecting the generation's recorded outcome finds it failed, with the overrun reported as the failure
 And an agent inspecting the generation location finds no page that silently omits content to fit
@@ -217,7 +219,7 @@ Then an agent inspecting that project finds no architecture map generated for it
 #### UC-AMAP-19: The page renders in both color themes on both hosts
 
 ```gherkin
-Given the page is open from file:// or as an Artifact
+Given the page is open from file:// or in the in-tool view
 When the viewer's color theme is light
 Then the graph, detail view, and provenance are legible in light colors
 When the viewer's color theme is dark
