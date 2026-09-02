@@ -27,7 +27,6 @@ DISCORD_JUMP_URL_BASE = "https://discord.com/channels"
 DISCORD_DIRECT_MESSAGE_GUILD_SEGMENT = "@me"
 DISCORD_URL_SEGMENT_SEPARATOR = "/"
 DISCORD_BACKLINK_LINE_SEPARATOR = "\n"
-DISCORD_BACKLINK_NO_GUILD = "no_guild"
 
 
 def _resolve_jump_url_guild_segment(guild_id: int | None, *, is_thread: bool) -> str | None:

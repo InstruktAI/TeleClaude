@@ -43,7 +43,7 @@ from teleclaude.core.session_title import initial_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.events.delivery.session_address import resolve_session_conversation_url
+from teleclaude.events.delivery.session_address import SessionAddressResolved, resolve_session_conversation_url
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.project_root import is_project_checkout
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
@@ -520,7 +520,8 @@ async def list_sessions(*, include_closed: bool = False) -> list[SessionSnapshot
     local_name = config.computer.name
     snapshots = [SessionSnapshot.from_db_session(session, computer=local_name) for session in sessions]
     for session, snapshot in zip(sessions, snapshots, strict=True):
-        snapshot.conversation_url = resolve_session_conversation_url(session)
+        address = resolve_session_conversation_url(session)
+        snapshot.conversation_url = address.url if isinstance(address, SessionAddressResolved) else None
         if not snapshot.thinking_mode:
             snapshot.thinking_mode = "slow"
         if not snapshot.status:

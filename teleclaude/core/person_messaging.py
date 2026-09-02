@@ -16,12 +16,13 @@ from teleclaude.config import config
 from teleclaude.config.loader import load_global_config, load_person_config_for_entry
 from teleclaude.config.schema import ConfigKind, MessagingChannel, PersonConfig
 from teleclaude.core.db import db
-from teleclaude.core.models import DiscordAdapterMetadata
+from teleclaude.events.delivery.session_address import (
+    SessionAddressMissed,
+    resolve_session_conversation_url,
+)
 from teleclaude.paths import PEOPLE_DIR
 from teleclaude.services.discord import (
-    DISCORD_BACKLINK_NO_GUILD,
     DISCORD_MAX_MESSAGE_LENGTH,
-    build_discord_jump_url,
     render_discord_backlink,
     send_discord_dm,
 )
@@ -32,12 +33,8 @@ from teleclaude.services.whatsapp import send_whatsapp_message
 logger = get_logger(__name__)
 
 DEFAULT_EMAIL_SUBJECT = "TeleClaude message"
-DISCORD_ORIGIN_KEY = "discord"
 DISCORD_BACKLINK_MISS_LOG = "discord session backlink unavailable"
 DISCORD_BACKLINK_BUILT_LOG = "discord session backlink built"
-DISCORD_BACKLINK_UNKNOWN_SESSION = "unknown_session"
-DISCORD_BACKLINK_NO_ORIGIN = "no_discord_origin"
-DISCORD_BACKLINK_NO_DESTINATION = "no_destination"
 DISCORD_MESSAGE_TRUNCATED_LOG = "discord message truncated"
 
 
@@ -145,47 +142,24 @@ async def send_person_message(
         backlink_url: str | None = None
         if origin_session_id:
             origin_session = await db.get_session(origin_session_id)
-            if origin_session is None:
+            address = resolve_session_conversation_url(origin_session)
+            if isinstance(address, SessionAddressMissed):
                 logger.info(
                     DISCORD_BACKLINK_MISS_LOG,
                     origin_session_id=origin_session_id,
                     recipient_slug=slug,
-                    reason=DISCORD_BACKLINK_UNKNOWN_SESSION,
+                    reason=address.reason.value,
                 )
             else:
-                metadata = DiscordAdapterMetadata.from_dict(origin_session.get_origin_section(DISCORD_ORIGIN_KEY))
-                channel_or_thread_id = metadata.thread_id or metadata.channel_id
-                if channel_or_thread_id is None:
-                    logger.info(
-                        DISCORD_BACKLINK_MISS_LOG,
-                        origin_session_id=origin_session_id,
-                        recipient_slug=slug,
-                        reason=DISCORD_BACKLINK_NO_DESTINATION
-                        if origin_session.get_origin_section(DISCORD_ORIGIN_KEY)
-                        else DISCORD_BACKLINK_NO_ORIGIN,
+                backlink_url = address.url
+                original_body_length = len(text)
+                text, body_was_truncated = render_discord_backlink(text, backlink_url)
+                if body_was_truncated:
+                    logger.warning(
+                        DISCORD_MESSAGE_TRUNCATED_LOG,
+                        original_len=original_body_length + len(backlink_url) + 1,
+                        max_len=DISCORD_MAX_MESSAGE_LENGTH,
                     )
-                else:
-                    backlink_url = build_discord_jump_url(
-                        metadata.guild_id,
-                        channel_or_thread_id,
-                        is_thread=metadata.thread_id is not None,
-                    )
-                    if backlink_url is None:
-                        logger.info(
-                            DISCORD_BACKLINK_MISS_LOG,
-                            origin_session_id=origin_session_id,
-                            recipient_slug=slug,
-                            reason=DISCORD_BACKLINK_NO_GUILD,
-                        )
-                    else:
-                        original_body_length = len(text)
-                        text, body_was_truncated = render_discord_backlink(text, backlink_url)
-                        if body_was_truncated:
-                            logger.warning(
-                                DISCORD_MESSAGE_TRUNCATED_LOG,
-                                original_len=original_body_length + len(backlink_url) + 1,
-                                max_len=DISCORD_MAX_MESSAGE_LENGTH,
-                            )
         message_id = await send_discord_dm(resolved.target, text, file)
         if backlink_url is not None:
             logger.info(
