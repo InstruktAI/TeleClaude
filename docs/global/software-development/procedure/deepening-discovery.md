@@ -67,18 +67,20 @@ notes where it experiences friction rather than applying a rubric:
 
 Apply the deletion test to anything suspected shallow: would deleting it
 concentrate complexity into one place, or merely move it? Concentration is the
-signal. Classify each candidate's dependencies, because the category decides
-how the deepened module is tested across its seam:
+signal. Classify each candidate's dependencies, because the category informs
+the constraints a deepened module must satisfy across its seam:
 
-| Category            | Meaning                                                              | Deepening consequence                                                                                |
-| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| in-process          | pure computation, in-memory state, no I/O                            | always deepenable; merge and test through the new interface                                          |
-| local-substitutable | a real local stand-in exists (temporary store, in-memory filesystem) | deepenable; the seam stays internal and the stand-in runs in the test                                |
-| remote but owned    | your own service across a network boundary                           | a port at the seam; the deep module owns the logic, transport is an injected adapter                 |
-| true external       | a third-party service you do not control                             | an injected port with an independently conformant fake adapter — never an interaction-recording mock |
+| Category            | Meaning                                                              | Constraint it informs                                                                  |
+| ------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| in-process          | pure computation, in-memory state, no I/O                            | no effect boundary; test through the interface directly                                |
+| local-substitutable | a real local stand-in exists (temporary store, in-memory filesystem) | the stand-in exercises the existing effect seam; the seam stays internal               |
+| remote but owned    | your own service across a network boundary                           | the effect boundary is the seam; transport is an injected adapter                      |
+| true external       | a third-party service you do not control                             | an injected adapter at the effect boundary, independently conformant, never a recorder |
 
-A seam is introduced only when at least two adapters are justified, typically
-production and test; a single-adapter seam is indirection.
+Dependency category informs constraints; it never decides whether to deepen.
+Ownership, invariants, reason to change, and expected leverage decide. Effect
+boundaries justify inversion; a test double never independently justifies a
+seam. Controlled collaborators exercise an existing effect seam.
 
 ### 4. Rank and select from evidence
 
