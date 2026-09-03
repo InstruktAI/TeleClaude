@@ -194,6 +194,7 @@ And the rest of that entry is unchanged
 ```
 
 
+<!-- planned-change:session-liveness-has-no-single-authority -->
 #### UC-SL23: An activity hook activates an initializing session
 
 ```
@@ -205,6 +206,20 @@ And `native_session_id` and `native_log_file` are stored when the session_start 
 And normal live-session listing returns the session without requiring `include_initializing`
 And headless or closed lifecycle rows are not reactivated by any activity hook
 ```
+<!-- change:session-liveness-has-no-single-authority -->
+#### UC-SL23: Only the declared runtime-start boundary establishes liveness
+
+```gherkin
+Given an orchestrating agent has started a non-headless child session
+And the child runtime has not announced its declared start boundary
+When the orchestrating agent reads the child session
+Then the child is reported as initializing with unknown agent activity
+And session creation, launch delivery, host-pane readiness, host-pane changes, generic timestamps, and other runtime activity do not report it live
+When the child runtime announces its declared start boundary
+Then the child is reported live and remains supervised
+And headless or terminal sessions are not reactivated
+```
+<!-- /planned-change:session-liveness-has-no-single-authority -->
 
 #### UC-SL29: A silent in-turn session derives stalled
 
@@ -338,21 +353,6 @@ And the link is materialized via the standard ignition path
 And the launch intent's message is wrapped with the direct-conversation protocol header and rules block
 And the conversation link operates orthogonally to stop-listener subscriptions
 ```
-
-<!-- planned:session-liveness-has-no-single-authority -->
-#### UC-SL35: Only genuine agent-runtime evidence establishes liveness
-
-```gherkin
-Given an orchestrating agent has started a child session
-And no genuine activity from the child agent runtime has been observed
-When the orchestrating agent reads the child session
-Then the child is reported as initializing with unknown agent activity
-And session creation, launch delivery, host-pane readiness, host-pane changes, and generic timestamps do not report it live
-When genuine child-agent runtime activity is observed
-Then the child is reported live and remains supervised
-And if the runtime's declared start boundary did not precede that activity, the ordering breach is recorded and surfaced to the runtime owner without hiding the live child
-```
-<!-- /planned:session-liveness-has-no-single-authority -->
 
 ### Cross-context references
 
