@@ -117,13 +117,19 @@ Given a subscribed agent session is in a live conversation with the target it su
 When that target finishes a turn
 Then the subscribing session is not sent a separate turn-end notification for it
 And its subscription survives, so it is notified again once the conversation ends
-
-Given a subscribed agent session that holds no live conversation with its target
-When that target finishes a turn
-Then the subscribing session is notified
-And a subscription that was registered for a single reply is spent by that notification, whether or not it arrived
 <!-- /planned-change:session-distress-ingestion -->
 ```
+
+<!-- planned:session-distress-ingestion -->
+#### UC-SS13: A subscribed agent session with no live conversation is told its target finished
+
+```gherkin
+Given a subscribed agent session holds no live conversation with the target it subscribed to
+When that target finishes a turn
+Then the subscribing session is notified that the turn finished
+And a subscription registered for a single reply is spent by that notification, whether or not it arrived
+```
+<!-- /planned:session-distress-ingestion -->
 
 <!-- planned:session-distress-ingestion -->
 #### UC-SS12: Distress reaches the agent sessions persistently watching a target, and only counts one that receives it
