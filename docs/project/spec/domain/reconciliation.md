@@ -38,8 +38,10 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   boundary does with a membership answer it is given.
 - **Published contracts:** reconciliation observations, plans, and outcomes
   consumed by sanctioned installation and service-control surfaces; and a
-  membership predicate answering, for any absolute path, whether it belongs to
-  the home's retained set.
+  membership predicate returning, for any path, exactly one of `retained`,
+  `not-retained`, or `outside` — the last where the path resolves beyond the home
+  root. The predicate reports membership only; the consumer's response to a
+  result is that consumer's own contract.
 <!-- /planned-change:person-home-repository -->
 
 ## See Also

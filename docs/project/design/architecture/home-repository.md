@@ -2,7 +2,7 @@
 visibility: internal
 delivered_by:
   - person-home-repository
-description: How the TeleClaude home's local-only history is realized — a declared retained set evaluated by an authoritative membership predicate isolated from ambient ignore sources and index state, a fail-closed validation standing between that predicate and the irreversible record, and a canonical path identity for the consumers that ask.
+description: How the TeleClaude home's local-only history is realized — a declared retained set evaluated by an authoritative membership predicate isolated from ambient ignore sources and index state, a fail-closed validation guarding the write activation itself performs, and a canonical three-result membership contract for the consumers that ask.
 ---
 
 # Home Repository — Design
@@ -22,9 +22,8 @@ membership is published for the commit boundary that asks it.
 Its scope is the home's own history and membership. What a commit boundary does
 with a membership answer belongs to the surface that asks.
 
-Ownership is reconciliation's, per `software-development/policy/domain-ownership`:
-the retained-set rule's reason to change is a change in the home's observed
-material, which is the declared-versus-observed comparison that context owns.
+The retained-set rule and the membership predicate are owned by the
+reconciliation context, per `software-development/policy/domain-ownership`.
 Consumers invoke the published predicate; none restates it.
 
 ## Inputs/Outputs
@@ -41,16 +40,22 @@ Consumers invoke the published predicate; none restates it.
 **Outputs**
 
 - An activated local-only history at the home root, with no remote.
-- A **membership predicate**: given any path, whether it belongs to the home's
-  retained set. It answers for an arbitrary path at any time, not only for the
-  tree being converged, and it answers for a path that does not yet exist.
+- A **membership predicate**: given any path, one of exactly three results —
+  `retained` (the declaration admits it), `not-retained` (it lies within the home
+  and the declaration does not admit it, which includes every path beneath a
+  foreign root), or `outside` (it resolves beyond the home root, which is not
+  this repository's question). It answers for an arbitrary path at any time, not
+  only for the tree being converged, and for a path that does not yet exist.
 - A **breach report** naming material present in the record that the retained
   set excludes.
-- A **refusal** when a record-creating operation would carry a non-member.
+- A **refusal** when the activation this context performs would itself record a
+  path the predicate does not return `retained` for.
 
 The predicate is the published contract. `project/spec/feature/agent_runtime/sealed-commit`
 consumes it as the retained set a repository's owner publishes; a repository that
-publishes none is valid there, so the predicate is asked, never assumed.
+publishes none is valid there, so the predicate is asked, never assumed. The
+predicate reports membership and nothing more: what a consumer does with a
+result — filter, refuse, or report — is that consumer's decision.
 
 ## Invariants
 
@@ -69,23 +74,25 @@ path's tracked status confers no membership. A path already recorded is a member
 only if the declaration admits it; membership and trackedness are independent
 answers, and where they disagree the record is in breach.
 
-### The record is written only through a fail-closed validation
+### Activation writes only through a fail-closed validation
 
-No record-creating operation proceeds on the strength of the declaration alone.
-The exact set of paths the operation would carry is enumerated and compared
-against the predicate's answer for each. Any path the predicate does not admit
-refuses the whole operation and writes nothing. This gate stands on every path
-into the record, including the first.
+The activation this context performs does not record on the strength of the
+declaration alone. The exact set of paths it would record is enumerated and
+compared against the predicate's result for each; any path not returning
+`retained` refuses that activation and writes nothing. The gate binds the write
+this context owns. Every later path into the record belongs to the commit
+boundary that performs it, which consults the predicate under its own contract.
 
 ### Path identity is canonical before any answer is given
 
 The predicate resolves a path to one canonical identity before deciding:
 symbolic links are resolved, relative and traversing segments are eliminated,
-and equivalent spellings reach the same answer. A path that resolves outside the
-home is not the home's to answer for and is reported as such rather than as a
-non-member. A path that does not exist is answered from its canonical form, so a
-prospective write can be tested before it happens. An identity that cannot be
-resolved fails closed, per `software-development/policy/security-awareness`.
+and equivalent spellings reach the same answer. A path that resolves beyond the home
+root returns `outside` rather than `not-retained`, because the home has no
+standing to answer for it. A path that does not exist is answered from its
+canonical form, so a prospective write can be tested before it happens. An
+identity that cannot be resolved returns `not-retained`, per
+`software-development/policy/security-awareness`.
 
 ### No remote is configured, and none is implied
 
@@ -94,8 +101,8 @@ The history is rollback, never resilience. No surface presents it otherwise.
 ### A foreign nested root is outside the retained set
 
 A root inside the home belonging to another owner is not part of the home's
-retained set, and the predicate answers that paths beneath it do not belong to
-the home. No record-creating operation carries such a root.
+retained set: the predicate returns `not-retained` for every path beneath it, and
+activation records no such root.
 
 ### Membership answers paths, never bytes
 
@@ -137,20 +144,21 @@ flowchart TD
 ```
 
 Two orderings are contractual: the declaration precedes enumeration, and the
-validation gate `G` precedes every write.
+validation gate `G` precedes the write this flow performs.
 
 **Membership query**
 
-A consumer supplies a path. The predicate canonicalizes it, answers
-outside-the-home where it resolves beyond the root, answers non-member where it
-resolves beneath a foreign root, and otherwise answers from the retained-set
-declaration alone. The answer never depends on a convergence run, on tracked
-status, or on content.
+A consumer supplies a path. The predicate canonicalizes it, returns `outside`
+where it resolves beyond the home root, `not-retained` where it resolves beneath
+a foreign root, and otherwise the result the retained-set declaration alone
+gives. The answer never depends on a convergence run, on tracked status, or on
+content, and it carries no instruction: the consumer decides what its own
+contract does with the result.
 
 **Placement**
 
-The declaration, the predicate, and the validation gate are core decisions
-inside the reconciliation context. Git mechanics execute through the sanctioned
+The declaration, the predicate, and activation's validation gate are core
+decisions inside the reconciliation context. Git mechanics execute through the sanctioned
 seam in `teleclaude.git`, which resolves the real binary rather than the agent
 wrapper. Enumeration and membership use git plumbing, whose documented contract
 is to read exclusion patterns only from what it is given, rather than porcelain,
@@ -185,6 +193,9 @@ layer direction in `software-development/principle/architectural-defaults`.
 - **Treating a breach as a declaration defect.** Excluding the offending path
   makes the working tree look correct while the record still holds the material,
   and removes the only signal that it does.
+- **Deciding the consumer's action.** Publishing membership and also dictating
+  whether a later commit filters or refuses places one rule in two contexts; the
+  commit boundary owns what it does with the answer.
 - **Presenting local history as backup.** The home has no remote by decision.
 
 ## See Also
