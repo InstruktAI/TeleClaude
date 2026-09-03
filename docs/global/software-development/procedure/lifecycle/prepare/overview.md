@@ -186,15 +186,15 @@ or workflow specs, the review-lane catalog, or gate composition)?
 
 - **No process change implied** (including descriptive doc edits and restoring
   code to the current contract) → proceed to Step 2.
-- **Process change implied and the input carries the human's decision under a
-  `HUMAN-DECISION:` marker** → taken as given per
-  `general/policy/grounding`; proceed to Step 2.
-- **Process change implied and no human decision behind it** → **refuse to
-  prepare.** Do not advance the state machine. Escalate per the policy's
-  escalation shape — the implied snippet delta, why the work demands it, the
-  blast radius — and go idle as a beacon. Never self-approve, never re-derive
-  approval from plausibility, never prepare "just the non-process part" of an
-  intent whose core is the process change.
+- **The current process-layer doc contract already binds every implied
+  behavior** → proceed to Step 2. The input may point to that contract as
+  implementation scope; a `HUMAN-DECISION:` marker is neither required nor
+  process authority.
+- **Delivering the input requires process behavior beyond the current doc
+  contract** → **refuse to prepare.** Do not advance the state machine or carry
+  the change through the todo under a marker. Surface the exact missing snippet
+  delta under the policy's escalation shape so it can be decided and authored
+  in a human-present session; resume only after that contract is live.
 
 ### 1b. Route by todo kind
 

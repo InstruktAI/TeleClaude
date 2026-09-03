@@ -394,12 +394,14 @@ produces it; the key ones to pre-satisfy:
   `software-development/policy/process-change-authority`, when any plan task
   implies a behavioral delta to a process-layer contract (lifecycle state
   machines, gate composition, review lanes, lifecycle procedures, todo/state
-  semantics), the intent must carry a human decision under a `HUMAN-DECISION:`
-  marker, taken as given per `general/policy/grounding` and never verified by
-  inspecting a session. A process-layer delta with no such marked decision is a
-  Requirement-Violation (blocking) — the reviewer does not approve regardless
-  of the change's size or its apparent alignment with process intent; that
-  judgment is the human's.
+  semantics), verify that the current process-layer doc contract already binds
+  every behavior the task implements. A task that exceeds that contract is a
+  Requirement-Violation (blocking): remove it from the todo and surface the
+  exact missing snippet delta for decision and authoring in a human-present
+  session. A `HUMAN-DECISION:` marker in the input or plan is not process
+  authority and does not close the finding; process changes never travel under
+  the marker or through a todo. Code implementing the current contract is
+  ordinary functionality work and requires no marker.
   Descriptive doc edits and restoring code to the current contract do not
   trigger this gate.
 - **Config surface**: name the config key, the wizard entry, the sample line,
