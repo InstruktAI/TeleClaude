@@ -379,6 +379,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             client=self.client,
             output_poller=self.output_poller,
             poller_watch_interval_s=5.0,
+            task_registry=self.task_registry,
         )
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration

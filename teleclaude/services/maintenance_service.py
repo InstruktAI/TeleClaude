@@ -7,6 +7,7 @@ import os
 import tempfile
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -36,7 +37,10 @@ from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.core.tmux_io import TMUX_SESSION_NAME_UNBOUND
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
@@ -71,6 +75,37 @@ PURGE_REASON_GIT_ADD_FAILURE = "git_add_failure"
 PURGE_REASON_GIT_COMMAND_FAILURE = "git_command_failure"
 PURGE_REASON_LAYER_2_STAGED_SET_MISMATCH = "layer_2_staged_set_mismatch"
 PURGE_REASON_LAYER_3_POST_COMMIT_VERIFICATION_FAILURE = "layer_3_post_commit_verification_failure"
+_RESTORE_TMUX_FAILURE_LOG = "Automatic tmux restoration reached terminal outcome"
+
+
+class _RestoreTmuxFailureReason(StrEnum):
+    """Closed reasons for an unsuccessful automatic tmux restoration."""
+
+    TMUX_CREATION_FAILED = "tmux_creation_failed"
+    MISSING_AGENT_IDENTITY = "missing_agent_identity"
+    RESTORE_COMMAND_REJECTED = "restore_command_rejected"
+    READY_TIMEOUT = "ready_timeout"
+    CONTINUATION_REJECTED = "continuation_rejected"
+    UNEXPECTED_EXCEPTION = "unexpected_exception"
+
+
+class _RestoreTmuxFailureEvent(StrEnum):
+    """Stable event token for automatic tmux restoration failures."""
+
+    TERMINAL = "agent_runtime.restore_tmux.failed"
+
+
+class _RestoreTmuxFailureOutcome(StrEnum):
+    """Closed outcomes for automatic tmux restoration failures."""
+
+    FAILED = "failed"
+
+
+class _RestoreTmuxRetryDisposition(StrEnum):
+    """Closed automatic-retry dispositions after a restoration failure."""
+
+    STOPPED_HEADLESS = "stopped_headless"
+    PANE_SURVIVES = "pane_survives"
 
 
 def _repo_relative_path(project_root: Path, path: Path | str) -> str:
@@ -396,10 +431,12 @@ class MaintenanceService:
         client: AdapterClient,
         output_poller: OutputPoller,
         poller_watch_interval_s: float,
+        task_registry: TaskRegistry,
     ) -> None:
         self._client = client
         self._output_poller = output_poller
         self._poller_watch_interval_s = poller_watch_interval_s
+        self._task_registry = task_registry
         self._restoring_sessions: set[str] = set()
 
     async def periodic_cleanup(self) -> None:
@@ -483,7 +520,10 @@ class MaintenanceService:
             if session.tmux_session_name not in active_tmux_sessions:
                 if session.session_id not in self._restoring_sessions:
                     self._restoring_sessions.add(session.session_id)
-                    asyncio.create_task(self._restore_tmux_session(session), name=f"restore-tmux-{session.session_id}")
+                    self._task_registry.spawn(
+                        self._restore_tmux_session(session),
+                        name=f"restore-tmux-{session.session_id}",
+                    )
                 continue
 
             if await tmux_bridge.is_pane_dead(session.tmux_session_name):
@@ -676,89 +716,151 @@ class MaintenanceService:
         when ``tmux list-sessions`` is briefly slow, so an early-exit guard here is
         load-bearing — without it, the launcher command shows up as a user prompt.
         """
+        release_guard = True
+        resolving_failure = False
+
+        async def _finish_failed_restore(
+            reason: _RestoreTmuxFailureReason,
+            *,
+            error: Exception | None = None,
+        ) -> None:
+            nonlocal release_guard, resolving_failure
+            release_guard = False
+            resolving_failure = True
+            await self._resolve_restore_tmux_failure(session, reason, error=error)
+            resolving_failure = False
+            release_guard = True
+
         try:
-            if await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False):
-                return
-
-            working_dir = resolve_working_dir(session.project_path, session.subdir)
-            env_vars = await self._build_tmux_env_vars(session)
-            if not await ensure_tmux_with_identity(session, session.tmux_session_name, working_dir, env_vars):
-                return
-
-            if not (session.active_agent and session.native_session_id):
-                return
-
-            launch = (
-                await resolve_launch_model(session.active_agent, session.thinking_mode, session_id=session.session_id)
-                if session.thinking_mode
-                else None
-            )
-            cmd = get_agent_command(
-                agent=session.active_agent,
-                thinking_mode=session.thinking_mode,
-                exec=False,
-                native_session_id=session.native_session_id,
-                resolved_flags=launch.flags if launch else None,
-            )
-
-            # Subscribe BEFORE the restore paste — the agent's SessionStart
-            # hook can race the paste pipeline and emit AGENT_READY before
-            # this coroutine subscribes. event_bus has no replay.
-            loop = asyncio.get_running_loop()
-            ready_future: asyncio.Future[None] = loop.create_future()
-
-            async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
-                if ctx.session_id == session.session_id and not ready_future.done():
-                    ready_future.set_result(None)
-
-            ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
             try:
-                if not await tmux_bridge.send_keys_existing_tmux(
-                    session_name=session.tmux_session_name,
-                    text=cmd,
-                    active_agent=session.active_agent,
-                ):
-                    logger.warning(
-                        "Failed to restore agent %s for session %s",
+                if await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False):
+                    return
+
+                working_dir = resolve_working_dir(session.project_path, session.subdir)
+                env_vars = await self._build_tmux_env_vars(session)
+                if not await ensure_tmux_with_identity(session, session.tmux_session_name, working_dir, env_vars):
+                    await _finish_failed_restore(_RestoreTmuxFailureReason.TMUX_CREATION_FAILED)
+                    return
+
+                if not (session.active_agent and session.native_session_id):
+                    await _finish_failed_restore(_RestoreTmuxFailureReason.MISSING_AGENT_IDENTITY)
+                    return
+
+                launch = (
+                    await resolve_launch_model(
+                        session.active_agent, session.thinking_mode, session_id=session.session_id
+                    )
+                    if session.thinking_mode
+                    else None
+                )
+                cmd = get_agent_command(
+                    agent=session.active_agent,
+                    thinking_mode=session.thinking_mode,
+                    exec=False,
+                    native_session_id=session.native_session_id,
+                    resolved_flags=launch.flags if launch else None,
+                )
+
+                # Subscribe BEFORE the restore paste — the agent's SessionStart
+                # hook can race the paste pipeline and emit AGENT_READY before
+                # this coroutine subscribes. event_bus has no replay.
+                loop = asyncio.get_running_loop()
+                ready_future: asyncio.Future[None] = loop.create_future()
+
+                async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
+                    if ctx.session_id == session.session_id and not ready_future.done():
+                        ready_future.set_result(None)
+
+                ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+                try:
+                    if not await tmux_bridge.send_keys_existing_tmux(
+                        session_name=session.tmux_session_name,
+                        text=cmd,
+                        active_agent=session.active_agent,
+                    ):
+                        await _finish_failed_restore(_RestoreTmuxFailureReason.RESTORE_COMMAND_REJECTED)
+                        return
+
+                    logger.info(
+                        "Restored agent %s for session %s (native=%s)",
                         session.active_agent,
                         session.session_id,
+                        session.native_session_id,
                     )
-                    return
 
-                logger.info(
-                    "Restored agent %s for session %s (native=%s)",
-                    session.active_agent,
-                    session.session_id,
-                    session.native_session_id,
-                )
+                    try:
+                        await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+                    except TimeoutError:
+                        await _finish_failed_restore(_RestoreTmuxFailureReason.READY_TIMEOUT)
+                        return
+                finally:
+                    event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
                 try:
-                    await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
-                except TimeoutError:
-                    logger.warning(
-                        "Restored tmux for session %s but agent did not reach ready prompt; stimulus not sent.",
-                        session.session_id,
+                    occurrence_key = f"restore-continuation:{session.session_id}:{uuid4().hex}"
+                    await handoff_control_payload(
+                        session_id=session.session_id,
+                        body=RESTART_CONTINUATION_STIMULUS,
+                        source_key=occurrence_key,
+                        envelope=semantic_envelope(EnvelopeName.RESTART_CONTINUATION),
+                        wake_decision=ControlDeliveryWakeDecision.OBSERVED_IDLE,
+                        wake_source_feature=InjectedTextSourceFeature.AGENT_RESTART,
                     )
+                except SessionMessageRejectedError:
+                    await _finish_failed_restore(_RestoreTmuxFailureReason.CONTINUATION_REJECTED)
                     return
-            finally:
-                event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
-
-            try:
-                occurrence_key = f"restore-continuation:{session.session_id}:{uuid4().hex}"
-                await handoff_control_payload(
-                    session_id=session.session_id,
-                    body=RESTART_CONTINUATION_STIMULUS,
-                    source_key=occurrence_key,
-                    envelope=semantic_envelope(EnvelopeName.RESTART_CONTINUATION),
-                    wake_decision=ControlDeliveryWakeDecision.OBSERVED_IDLE,
-                    wake_source_feature=InjectedTextSourceFeature.AGENT_RESTART,
-                )
-            except SessionMessageRejectedError as exc:
-                logger.warning("Restore continuation rejected for session %s: %s", session.session_id, exc.reason)
-                return
-            logger.info("Queued restore continuation stimulus for session %s", session.session_id)
+                logger.info("Queued restore continuation stimulus for session %s", session.session_id)
+            except Exception as exc:
+                # This autonomous task owns all ordinary restoration failures.
+                if resolving_failure:
+                    raise
+                await _finish_failed_restore(_RestoreTmuxFailureReason.UNEXPECTED_EXCEPTION, error=exc)
+        except asyncio.CancelledError:
+            release_guard = True
+            raise
         finally:
-            self._restoring_sessions.discard(session.session_id)
+            if release_guard:
+                self._restoring_sessions.discard(session.session_id)
+
+    async def _resolve_restore_tmux_failure(
+        self,
+        session: Session,
+        reason: _RestoreTmuxFailureReason,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        """Record a restoration failure after resolving whether its host pane survived."""
+        pane_exists = await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
+        if pane_exists:
+            retry_disposition = _RestoreTmuxRetryDisposition.PANE_SURVIVES
+        else:
+            await db.update_session(
+                session.session_id,
+                lifecycle_status=SessionLifecycleStatus.HEADLESS,
+                tmux_session_name=TMUX_SESSION_NAME_UNBOUND,
+            )
+            retry_disposition = _RestoreTmuxRetryDisposition.STOPPED_HEADLESS
+
+        if error is None:
+            logger.info(
+                _RESTORE_TMUX_FAILURE_LOG,
+                event=_RestoreTmuxFailureEvent.TERMINAL,
+                outcome=_RestoreTmuxFailureOutcome.FAILED,
+                reason=reason,
+                retry_disposition=retry_disposition,
+                session_id=session.session_id,
+            )
+            return
+
+        logger.info(
+            _RESTORE_TMUX_FAILURE_LOG,
+            event=_RestoreTmuxFailureEvent.TERMINAL,
+            outcome=_RestoreTmuxFailureOutcome.FAILED,
+            reason=reason,
+            retry_disposition=retry_disposition,
+            session_id=session.session_id,
+            exc_info=(type(error), error, error.__traceback__),
+        )
 
     async def _build_tmux_env_vars(self, session: Session) -> dict[str, str]:
         voice = await db.get_voice(session.session_id)
