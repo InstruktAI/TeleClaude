@@ -631,7 +631,7 @@ And the message has a Session: <session id> trailer appended after the branding 
 ```
 
 <!-- planned:external-session-identity -->
-#### UC-CGIP-19 — An externally hosted session commits as its agent, not as the ambient human
+#### UC-CGIP-30 — An externally hosted session commits as its agent, not as the ambient human
 
 ```gherkin
 Given a telec code commit invocation from a process inside an agent session the daemon did not launch
@@ -643,7 +643,7 @@ And the message carries a Session: trailer naming the derived session
 And the honest-degrade path to the ambient human identity is not taken
 ```
 
-#### UC-CGIP-20 — An unresolvable external session degrades, and never borrows another session
+#### UC-CGIP-31 — An unresolvable external session degrades, and never borrows another session
 
 ```gherkin
 Given a telec code commit invocation whose attested ancestry matches no open session's root, or matches more than one

@@ -24,8 +24,9 @@ process instance as a session's root, and a caller belongs to that session when
 the root occurs in the caller's verified ancestry. The caller names nothing.
 
 Kernel peer credentials alone do not discover a session. They identify a
-process. The binding that gives a process instance a session meaning is minted
-by the daemon at session start, from a connection the daemon itself attested.
+process. The binding that gives a process instance a session meaning is derived
+by the daemon from connections it attested itself — never from a single fact
+about a single process, and never from anything a caller wrote.
 
 ## Inputs/Outputs
 
@@ -36,8 +37,8 @@ by the daemon at session start, from a connection the daemon itself attested.
 - The ancestry of that peer process, read through the platform process
   interface as ordered process instances.
 - The session root bindings the daemon holds for open sessions.
-- The platform's configured agent binary registry, used at session start to
-  admit a root candidate by executable identity.
+- The ancestry snapshots the daemon has taken on earlier attested connections
+  belonging to the same session, held until that session's root is determined.
 
 **Outputs**
 
@@ -60,18 +61,26 @@ by the daemon at session start, from a connection the daemon itself attested.
   request body.
 - **The session is derived, never claimed.** A caller-supplied session reference
   establishes no binding on this path.
-- **A session's root binding is minted by the daemon from a connection it
-  attested**, at session start, and is immutable for the life of the session. No
+- **A session's root binding is derived by the daemon from connections it
+  attested**, and is immutable for the life of the session once determined. No
   process reports its own root, and no durable record written outside an
-  attested connection can establish one.
+  attested connection contributes evidence toward one.
 - **Membership is exact and unique.** A caller resolves to a session when that
   session's root process instance occurs in the caller's verified ancestry, and
   exactly one open session matches. Zero matches refuse as unproved. More than
   one refuses as ambiguous. Nearest, oldest, newest, and most-plausible are not
   tie-breakers; there is no tie-break.
-- **A root candidate is admitted by executable identity**, compared against the
-  configured agent binary registry — never by argument vector, process title,
-  working directory, environment, command text, or a fixed ancestor depth.
+- **A session's root is derived structurally, never classified.** It is the
+  deepest process instance common to every ancestry snapshot the daemon has
+  taken for that session. What a process is — its executable, argument vector,
+  process title, working directory, environment, or command text — takes no part
+  in the derivation. Two invocations from one session share the process that
+  hosts them and not the transient processes that carry each invocation, so the
+  intersection names the host without anyone having to recognise it.
+- **A root is determined once and frozen.** It is established when at least two
+  snapshots exist and their intersection has a unique deepest member, and it
+  never moves afterwards. A later snapshot may confirm a root; it never replaces
+  one.
 - **The harness's own session identifier is provider metadata.** It may
   corroborate a derived agent; it never selects a session, authorizes a
   rebinding, or recovers a dead root.
@@ -92,19 +101,36 @@ by the daemon at session start, from a connection the daemon itself attested.
 
 ### Admission invariant
 
-Each supported harness exposes exactly one long-lived process instance per
-top-level session whose executable identity is in the configured agent binary
-registry. A harness whose identifiable process exits before its first hook is
-unattestable and is refused rather than matched by a weaker signal.
+Each supported harness hosts a top-level session from one process instance that
+outlives the individual invocations it makes, and reaches the daemon over an
+attested connection at least twice while that process is alive. A harness that
+emits a single attested invocation per session never determines a root; its
+session stays observable and unbound, and session-scoped calls from it are
+refused.
+
+Structural derivation is deliberately indifferent to what the hosting process
+is, which is what carries it across a launcher binary, a vendor binary invoked
+directly, and an interpreted entry point alike — cases whose kernel-visible
+executable identity ranges from a dedicated launcher to an interpreter shared
+with every unrelated process on the host. No registry of executables is
+consulted, so no harness is covered or excluded by being named in one.
 
 A single process instance hosting two independent top-level sessions has no
 sound association under this design: both sessions present identical ancestry
-evidence, and no server-side refinement separates them. Such a harness is
-refused.
+evidence, and no server-side refinement separates them. The second session's
+derivation lands on a root already registered to the first, which is
+indistinguishable from a descendant, so it mints nothing. Such a harness is
+unsupported.
+
+A persistent helper interposed between the hosting process and every invocation
+is itself common to every snapshot and deeper than the host, so derivation lands
+on the helper. The resulting root is narrower than the session: descendants
+outside the helper's tree are refused. This is a coverage cost, never an
+over-grant.
 
 ## Primary flows
 
-### 1. Minting the root binding at session start
+### 1. Determining the root binding
 
 ```mermaid
 sequenceDiagram
@@ -113,23 +139,24 @@ sequenceDiagram
     participant D as Daemon
     participant S as Session store
 
-    A->>R: agent session start hook
+    A->>R: hook
     R->>D: connect over the Unix socket and deliver the hook
     D->>D: attest the receiver's process instance
-    D->>D: walk ancestry; match already-registered roots first
-    D->>D: no registered root — admit the single ancestor whose executable identity is in the registry
-    D->>S: mint the session and persist its root binding
-    D->>D: enqueue the hook event under that session
+    D->>D: match already-registered roots first
+    D->>D: no registered root — snapshot this ancestry for the session
+    D->>S: first snapshot: mint the session, unbound
+    D->>S: later snapshot: intersect; on a unique deepest member, freeze it as the root
 ```
 
 An ancestry that already contains a registered root is a descendant invocation:
-it stays owned by that session and mints nothing. An ancestry with no registry
-match, or with more than one candidate and no registered ancestor, is refused as
-unattestable.
+it stays owned by that session and mints nothing, and its snapshot is not
+retained.
 
-The daemon enqueues the event after minting, so the durable hook record is
-written under a session whose root the daemon attested rather than under an
-identifier supplied to it.
+A session exists from its first hook and is observable immediately. It carries no
+root until derivation succeeds, and every session-scoped call before that is
+refused. The daemon enqueues each event after this evaluation, so a durable hook
+record is written under a session whose evidence the daemon attested rather than
+under an identifier supplied to it.
 
 ### 2. Deriving the session on an authenticated call
 
@@ -151,8 +178,9 @@ sequenceDiagram
 ```
 
 A top-level agent process and a subagent several levels down follow this same
-path. Only a session-start hook may mint a binding; an ordinary request that
-matches no root is refused rather than bootstrapped.
+path. Only an attested hook connection contributes a snapshot; an ordinary
+request never establishes or refines a binding, and one that matches no root is
+refused rather than bootstrapped.
 
 ### 3. Self-identification
 
@@ -162,22 +190,22 @@ derived, and that answer never carries a session identity.
 
 ## Failure modes
 
-| Condition                                                                 | Outcome                                                        |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| No registered root in the caller's ancestry                               | Refuse. No terminal or machine-global identity substitutes.    |
-| More than one registered root in the ancestry                             | Refuse as ambiguous.                                           |
-| Ordinary request carrying no binding                                      | Refuse. Only a session-start hook mints one.                   |
-| Session-start ancestry with no registry match                             | Refuse as unattestable.                                        |
-| Session-start ancestry with several candidates and no registered ancestor | Refuse as ambiguous.                                           |
-| A durable hook record is the only evidence                                | Refuse to mint. Its writer was never attested.                 |
-| The harness identifier names a session whose root differs                 | Refuse. The identifier never rebinds.                          |
-| The bound root has exited                                                 | Refuse, including when its process id is live again.           |
-| A start time cannot be read, or changes during resolution                 | Refuse.                                                        |
-| A parent edge changes during the ancestry walk                            | Refuse; a new request may retry.                               |
-| Peer credentials unavailable on the platform or transport                 | Refuse.                                                        |
-| A descendant is re-parented before it is first observed                   | Refuse; ancestry no longer proves lineage.                     |
-| Daemon restart                                                            | Restore only the bindings whose root instance still validates. |
-| A caller presents a session id                                            | Unchanged for pane-attached callers; establishes nothing here. |
+| Condition                                                 | Outcome                                                           |
+| --------------------------------------------------------- | ----------------------------------------------------------------- |
+| No registered root in the caller's ancestry               | Refuse. No terminal or machine-global identity substitutes.       |
+| More than one registered root in the ancestry             | Refuse as ambiguous.                                              |
+| Ordinary request carrying no binding                      | Refuse. Only attested hook connections contribute snapshots.      |
+| A session whose root is not yet determined                | Refuse every session-scoped call. The session remains observable. |
+| Snapshots whose intersection has no unique deepest member | Refuse; leave the session unbound.                                |
+| A durable hook record is the only evidence                | Refuse to mint. Its writer was never attested.                    |
+| The harness identifier names a session whose root differs | Refuse. The identifier never rebinds.                             |
+| The bound root has exited                                 | Refuse, including when its process id is live again.              |
+| A start time cannot be read, or changes during resolution | Refuse.                                                           |
+| A parent edge changes during the ancestry walk            | Refuse; a new request may retry.                                  |
+| Peer credentials unavailable on the platform or transport | Refuse.                                                           |
+| A descendant is re-parented before it is first observed   | Refuse; ancestry no longer proves lineage.                        |
+| Daemon restart                                            | Restore only the bindings whose root instance still validates.    |
+| A caller presents a session id                            | Unchanged for pane-attached callers; establishes nothing here.    |
 
 Process-group membership, POSIX session id, controlling terminal, tmux
 membership, working directory, environment, command text, the harness's session

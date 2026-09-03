@@ -6,14 +6,20 @@ visibility: 'public'
 # Agent CLI Hook Reception — Spec
 
 <!-- planned:external-session-identity -->
-For an agent-session-start hook the receiver first attempts a live delivery over
-the daemon's local socket, so the daemon can attest the receiver's process
-instance while it is still a descendant of the agent. Attestation is only
-possible on that live connection: a durable record written outside it carries no
-evidence about the process that wrote it. When the live attempt does not reach
-the daemon, the receiver falls back to the durable outbox write unchanged, and
-the resulting session carries no root binding. Every other hook event uses the
-durable outbox path as before.
+On the headless route the receiver first attempts a live delivery over the
+daemon's local socket, so the daemon can attest the receiver's process instance
+while it is still a descendant of the process hosting the session. Attestation is
+only possible on that live connection: a durable record written outside it
+carries no evidence about the process that wrote it. Deriving a session's root
+needs more than one such connection, so the attempt is made for every headless
+hook rather than for session start alone.
+
+On the attested path the daemon owns what the receiver owns elsewhere: the daemon
+resolves or mints the TeleClaude session id and enqueues the event itself. When
+the live attempt does not reach the daemon, the receiver falls back to the
+durable outbox write unchanged and resolves the id as it does today, and the
+resulting session carries no root binding. Managed and managed-descendant routes
+are unaffected.
 <!-- /planned:external-session-identity -->
 
 ## What it is
@@ -73,7 +79,11 @@ And the project has memory snippets and a configured human-in-the-loop person
 When Claude starts a new session and invokes the receiver for SessionStart
 Then the Claude adapter parses the hook payload
 And the receiver maps the event to the canonical agent-session-start hook event
+<!-- planned-change:external-session-identity -->
 And the receiver resolves the TeleClaude session id, minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
+<!-- change:external-session-identity -->
+And the TeleClaude session id is resolved by the daemon when the delivery is attested, and by the receiver on the durable fallback — minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
+<!-- /planned-change:external-session-identity -->
 And the receiver fetches memory context and the person header for the project
 And emits adapter-formatted additional context (plain text for Claude)
 And persists the native session id and native log file as a native-metadata-update outbox entry

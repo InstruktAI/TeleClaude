@@ -49,21 +49,25 @@ And the dispatcher continues normal dispatch for the now-existing session
 ```
 
 <!-- planned:external-session-identity -->
-#### UC-HB6: An attested session-start mints the session and its root binding
+#### UC-HB9: An attested session-start mints the session, unbound until its root is derived
 
 ```gherkin
 Given an agent CLI the daemon did not launch emits an agent-session-start hook
 And the receiver reaches the daemon over the local socket while still a descendant of the agent process
 And the daemon attests the receiver's process instance and finds no already-registered root in its ancestry
-And exactly one ancestor's executable identity is in the configured agent binary registry
 When the bootstrap runs
 Then the daemon mints the TeleClaude session id
-And it persists that ancestor as the session's immutable root process binding
+And it retains the attested ancestry as this session's first snapshot
+And the session carries no root binding yet, so session-scoped calls from it are refused
 And it enqueues the hook event under the session it just minted
 And the native session id is recorded as provider metadata that selects nothing
+When a later attested hook connection for the same session is evaluated
+And the intersection of the retained snapshots has a unique deepest process instance
+Then that instance is frozen as the session's immutable root binding
+And session-scoped calls from that process tree resolve from then on
 ```
 
-#### UC-HB7: A descendant session-start stays owned by the registered session
+#### UC-HB10: A descendant session-start stays owned by the registered session
 
 ```gherkin
 Given an agent-session-start hook whose attested ancestry already contains a registered root
@@ -72,7 +76,7 @@ Then no session is minted
 And the event is enqueued under the session that root already owns
 ```
 
-#### UC-HB8: An unattestable session-start still becomes observable, without a binding
+#### UC-HB11: An unattestable session-start still becomes observable, without a binding
 
 ```gherkin
 Given an agent-session-start hook whose live attested delivery does not reach the daemon
