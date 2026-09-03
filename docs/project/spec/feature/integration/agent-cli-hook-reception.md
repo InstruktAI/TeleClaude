@@ -1,8 +1,6 @@
 ---
 description: 'Subprocess receiver invoked by agent CLIs that parses a hook payload, resolves a TeleClaude session, and enqueues the event for integration-side processing.'
 visibility: 'public'
-delivered_by:
-  - external-session-identity
 ---
 
 # Agent CLI Hook Reception — Spec

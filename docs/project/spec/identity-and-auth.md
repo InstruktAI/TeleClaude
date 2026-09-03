@@ -1,8 +1,6 @@
 ---
 description: 'Authoritative surface for system-wide identity, authentication, and person management.'
 visibility: 'public'
-delivered_by:
-  - external-session-identity
 ---
 
 # Identity and Auth — Spec

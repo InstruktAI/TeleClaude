@@ -1,8 +1,6 @@
 ---
 description: 'When an agent_session_start hook arrives for a session the integration service has never seen, the dispatcher creates a headless session record inline from the hook payload before continuing normal event dispatch.'
 visibility: 'public'
-delivered_by:
-  - external-session-identity
 ---
 
 # Headless Session Bootstrap from Hook — Spec

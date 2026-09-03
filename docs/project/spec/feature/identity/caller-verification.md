@@ -1,8 +1,6 @@
 ---
 description: "Resolve every authenticated inbound call into a `CallerIdentity` via the identity context's single caller-verification capability."
 visibility: 'public'
-delivered_by:
-  - external-session-identity
 ---
 
 # Caller Verification — Spec

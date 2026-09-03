@@ -6,6 +6,10 @@ delivered_by:
 
 # Local Caller Attestation — Design
 
+## Required reads
+
+- @docs/project/design/architecture/api-server.md
+
 ## Purpose
 
 Authenticate a caller that has no pane on TeleClaude's own tmux server, and

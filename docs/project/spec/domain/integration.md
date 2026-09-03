@@ -1,8 +1,6 @@
 ---
 visibility: internal
 description: Frozen v1 ownership anchor for external-provider and process-boundary integration behavior.
-delivered_by:
-  - external-session-identity
 ---
 
 # Integration Domain Spec — Spec

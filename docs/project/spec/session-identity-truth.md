@@ -1,8 +1,6 @@
 ---
 description: 'Practical identity rules for assigning hooks to the correct TeleClaude session.'
 visibility: 'public'
-delivered_by:
-  - external-session-identity
 ---
 
 # Session Identity Truth — Spec

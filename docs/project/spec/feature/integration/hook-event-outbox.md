@@ -1,8 +1,6 @@
 ---
 description: 'Per-session outbox between the receiver subprocess and the integration service, providing durable, coalesced, retry-safe transport for agent CLI hook events.'
 visibility: 'public'
-delivered_by:
-  - external-session-identity
 ---
 
 # Hook Event Outbox — Spec
