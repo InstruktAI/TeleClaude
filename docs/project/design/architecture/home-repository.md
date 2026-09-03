@@ -40,12 +40,15 @@ Consumers invoke the published predicate; none restates it.
 **Outputs**
 
 - An activated local-only history at the home root, with no remote.
-- A **membership predicate**: given any path, one of exactly three results —
-  `retained` (the declaration admits it), `not-retained` (it lies within the home
-  and the declaration does not admit it, which includes every path beneath a
-  foreign root), or `outside` (it resolves beyond the home root, which is not
-  this repository's question). It answers for an arbitrary path at any time, not
-  only for the tree being converged, and for a path that does not yet exist.
+- A **membership predicate**: given any path, one of exactly three results.
+  `retained` requires both that the declaration admits the path and that, where
+  the path exists, its kind is one the home retains — declaration admission is
+  necessary, never sufficient. `not-retained` covers a path within the home that
+  the declaration excludes, every path beneath a foreign root, and any existing
+  path whose kind the home does not retain even where the declaration admits it.
+  `outside` covers a path resolving beyond the home root, which is not this
+  repository's question. It answers for an arbitrary path at any time, not only
+  for the tree being converged, and for a path that does not yet exist.
 - A **breach report** naming material present in the record that the retained
   set excludes.
 - A **refusal** when the activation this context performs would itself record a
@@ -68,11 +71,11 @@ patterns supplied on a command line.
 
 ### Membership evaluation is isolated from ambient sources and from index state
 
-The predicate evaluates a path against the retained-set declaration alone. Two
-isolations hold: the ambient ignore sources above contribute nothing, and a
+The predicate evaluates a path against the retained-set declaration and, where
+the path exists, its kind — and against nothing else. Two isolations hold: the ambient ignore sources above contribute nothing, and a
 path's tracked status confers no membership. A path already recorded is a member
-only if the declaration admits it; membership and trackedness are independent
-answers, and where they disagree the record is in breach.
+only if the predicate returns `retained` for it; membership and trackedness are
+independent answers, and where they disagree the record is in breach.
 
 The declaration decides by path, and a path is not the only thing the record
 holds. Where the path exists, its **kind** is read as a second, equally isolated
@@ -170,9 +173,12 @@ validation gate `G` precedes the write this flow performs.
 **Membership query**
 
 A consumer supplies a path. The predicate canonicalizes it, returns `outside`
-where it resolves beyond the home root, `not-retained` where it resolves beneath
-a foreign root, and otherwise the result the retained-set declaration alone
-gives. The answer never depends on a convergence run, on tracked status, or on
+where it resolves beyond the home root, and `not-retained` where it resolves
+beneath a foreign root. Otherwise it composes the two inputs: the declaration
+must admit the path, and where the path exists its kind must be one the home
+retains — a disallowed kind returns `not-retained` over an admitting
+declaration. A path that does not exist is answered on the declaration alone,
+under the regular-file-or-directory condition stated above. The answer never depends on a convergence run, on tracked status, or on
 content, and it carries no instruction: the consumer decides what its own
 contract does with the result.
 
