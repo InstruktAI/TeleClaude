@@ -384,6 +384,22 @@ And no direct link between A and C is created
 ```
 <!-- /planned:peer-bundle-transitive-redelivery -->
 
+<!-- planned:peer-output-lacks-mid-turn-attention -->
+#### UC-DCL16: A working peer yields for newly pending peer input
+
+```gherkin
+Given agent sessions A and B are in an active direct conversation
+And B is still working inside its current turn
+When A completes a turn and its peer output becomes pending for B
+Then B receives a content-free notice during its current turn that peer input is pending
+And the notice directs B to preserve continuation intent only when B judges that unfinished work still needs to resume, then yield voluntarily
+And the platform neither ends B's turn nor decides whether B's prior work continues
+When B yields in response to the notice
+Then the pending peer output becomes B's next conversational input
+And the peer output retains its peer authorship and human-facing presentation
+```
+<!-- /planned:peer-output-lacks-mid-turn-attention -->
+
 ### Cross-context references
 
 - **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a non-web caller session id (web origins are rejected for `--direct`). The link aggregate stores session ids only; the principal binding is owned upstream by identity.
