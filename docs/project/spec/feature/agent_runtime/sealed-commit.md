@@ -570,30 +570,43 @@ Then the doc refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
 
-<!-- planned:command-loader-and-title-cutover -->
+<!-- planned:freeze-agent-artifacts-in-slug-worktrees -->
 
 #### UC-CGIP-12a — Slug worktree refuses agent-artifact paths
 
 ```
 Given a slug worktree at trees/<slug> (a worktree that is not trees/_integration)
-And the resolved commit pathspec contains one or more paths under agents/** or .agents/**
+And the resolved commit pathspec contains one or more paths in the governed agent-artifact set (agents/**, .agents/**, or an AGENTS.master.md at any depth including the repository root)
 When agent invokes telec code commit --approved "<msg>"
 Then SystemExit(1) naming each offending agent-artifact path
 And no commit occurs
 And neither handle_format nor handle_lint is invoked
-And the refusal states that agent artifacts are authored on main and directs the agent at the kickback route telec todo stamp <slug> --kickback --reason "<why>"
+And the refusal reports the paths as agent artifacts rather than as doc-layer paths
+And the refusal states that agent artifacts are authored on main in the session where their intent was decided, and directs the agent at the kickback route telec todo stamp <slug> --kickback --reason "<why>"
 ```
 
 #### UC-CGIP-13a — Main branch and integration worktree are unaffected by the agent-artifact refusal
 
 ```
-Given the commit pathspec contains a path under agents/** or .agents/**
+Given the commit pathspec contains a path in the governed agent-artifact set
 When the invocation is on the repo-root main branch, or in the integration worktree at trees/_integration
 Then the agent-artifact refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
 
-<!-- /planned:command-loader-and-title-cutover -->
+#### UC-CGIP-29 — The pre-merge worktree sync refuses agent-artifact paths
+
+```
+Given a slug worktree at trees/<slug> whose working tree carries uncommitted changes
+And one or more of those dirty paths is in the governed agent-artifact set
+When the work state machine syncs that worktree against origin/main before merging
+Then no path is staged and no pre-merge sync commit is created
+And the sync returns an error naming each offending agent-artifact path
+And the error reports the paths as agent artifacts rather than as doc-layer paths
+And the error states that agent artifacts are authored on main in the session where their intent was decided, and directs the agent at the kickback route telec todo stamp <slug> --kickback --reason "<why>"
+```
+
+<!-- /planned:freeze-agent-artifacts-in-slug-worktrees -->
 
 #### UC-CGIP-14 — A session with no resolvable transcript scopes to empty, not to an error
 

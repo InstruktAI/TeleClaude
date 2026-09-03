@@ -108,12 +108,29 @@ guard that performs only a partial-staging check as a backstop for raw
 `git commit` invocations.
 
 <!-- /planned-change:tier-aware-commit-authority -->
+<!-- planned-change:freeze-agent-artifacts-in-slug-worktrees -->
+
 In a slug worktree (`trees/<slug>`), `telec code commit` refuses any staged or
 pathspec-resolved path under `docs/**`: the doc layer is authored at prepare on
 `main` and folded at integration, and the work phase executes a frozen
 contract. The refusal names the offending paths and points at the kickback
 path for a doc need discovered mid-build. Main-branch and integration-worktree
 invocations are unaffected.
+
+<!-- change:freeze-agent-artifacts-in-slug-worktrees -->
+
+In a slug worktree (`trees/<slug>`), two path classes carry a frozen contract
+the work phase may not author, and both the sealed commit surface and the
+pre-merge worktree sync refuse them before any staging, formatting, linting, or
+committing runs. The doc layer (`docs/**`) is authored at prepare on `main` and
+folded at integration. Governed agent artifacts (`agents/**`, `.agents/**`, and
+an `AGENTS.master.md` at any depth) are authored on `main` in the session where
+their intent was decided. Each refusal names the offending paths, reports them
+under the class they actually violate, and points at the authoring route that
+class belongs to, with the kickback path for a need discovered mid-build.
+Main-branch and integration-worktree invocations are unaffected.
+
+<!-- /planned-change:freeze-agent-artifacts-in-slug-worktrees -->
 
 <!-- planned:distributed-todo-postgres -->
 
