@@ -51,9 +51,10 @@ array aligned positionally with that content array:
 
 `ContentItemKind` is a transparent string wrapper, not a closed enum. Upstream preserves
 unrecognized values on round-trip. Deserialization defaults a malformed
-`content_item_kinds` value to absent. Current upstream converts missing positions to the
-literal `unknown` while retaining the content; it does not make an unclassified position
-human-authored.
+`content_item_kinds` value to absent. Current upstream then zips content with the supplied
+kinds, fills missing positions with the literal `unknown`, and silently discards excess
+kinds when the content array ends. Upstream performs no explicit length-mismatch
+rejection.
 
 The metadata is per content position, not per message. A consumer that concatenates the
 content array before reading the aligned classifications destroys the provenance needed
@@ -237,8 +238,12 @@ claims that the installed binary already emits every value.
 - Treat known contextual, operational, instruction, generated, and extension annotations
   according to their producer and role, never as human merely because the Responses role
   is `user`.
-- Treat `unknown`, absent metadata, malformed metadata, and length mismatch as
-  unclassified. They fail closed as proof of human authorship.
+- Upstream behavior for positional mismatch is permissive: missing kinds become
+  `unknown`, while excess kinds are discarded by the positional zip.
+- Consumer-level defensive handling, not upstream behavior: detect a content/kind length
+  mismatch before zipping, treat that metadata as unusable and its positions as
+  unclassified, and apply the bounded legacy fallback. The mismatch fails closed as proof
+  of human authorship.
 - For unclassified legacy user-role text, use only upstream-grounded whole-fragment
   recognition. Plain residue outside a recognized runtime fragment remains candidate
   human input.
