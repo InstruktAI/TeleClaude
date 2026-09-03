@@ -29,9 +29,7 @@ agent_hook_events:
   - pre_tool_use
   - post_tool_use
   - agent_stop
-<!-- planned:status-stalled-after-compact-slash-command -->
   - agent_idle
-<!-- /planned:status-stalled-after-compact-slash-command -->
   - error
 
 canonical_outbound_activity_events:
