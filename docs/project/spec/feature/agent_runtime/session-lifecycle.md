@@ -262,7 +262,6 @@ And the accepted input remains visible in the session record
 And a silent agent turn still reports stalled after the platform's stall threshold
 ```
 
-<!-- planned:restore-tmux-retries-unretrieved-exception-without-backoff -->
 #### UC-SL34: Failed automatic restoration reaches an owned terminal outcome
 
 ```gherkin
@@ -273,7 +272,6 @@ Then the failure is reported once as an owned restoration outcome rather than an
 And a session that still has no host pane is reported as headless
 And later maintenance cycles do not repeat the same failed restoration while that headless state remains
 ```
-<!-- /planned:restore-tmux-retries-unretrieved-exception-without-backoff -->
 
 #### Ending a session — happy path
 
