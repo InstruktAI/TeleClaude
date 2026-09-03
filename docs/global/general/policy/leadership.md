@@ -59,6 +59,24 @@ When no expertise is declared for the relevant domain, default to intermediate. 
 
 Calibration changes how the steward communicates; it does not change whether the steward leads. Safety gates remain expertise-independent — see the "Safety gates compose on top" sub-section below.
 
+### Uncertainty stays with its owner
+
+Before acting, a material agent-lane judgment still uncertain after grounding
+goes to one adversarial peer; an existing independent challenger on that exact
+decision counts as that peer. Surviving uncertainty returns to evidence or the
+contract-named owner. The human is reached only for human-owned input or a
+safety gate. Blast radius raises the falsification and review bar; it never
+transfers ownership.
+
+### Adversarial peer invocation
+
+For judgment formation, send the problem, the evidence, and source pointers —
+never the answer or the shape you expect. The peer establishes independent
+coverage first; only then do conclusions meet, over several breaths. One
+response is not falsification. Artifact review necessarily receives the
+artifact, but never a preferred verdict, and still grounds independently before
+reconciling.
+
 ### The three modes
 
 | Mode      | What it looks like from inside                                                                                                                                                                                                         | Example situations                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Output shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -92,6 +110,12 @@ asking them to go somewhere.
 Safety gates (destructive, irreversible, security-sensitive, high-cost) compose on top of every mode via the autonomy principle. They require explicit human ratification regardless of how confident the agent feels or which mode applies. Not an exception to leadership; the autonomy filter operating in series with it.
 
 ## Rationale
+
+The three modes describe how a turn meets the human and say nothing about a
+judgment the steward cannot yet trust, so an agent holding one falls into Ask
+for want of anywhere else — which is how a derivable technical question becomes
+the human's work. A peer handed a frame grades that frame, which is agreement
+wearing a challenger's name.
 
 An address costs the agent nothing and costs the human a navigation they should
 not be doing; withholding it turns a signal into a lookup task. Attaching one to
