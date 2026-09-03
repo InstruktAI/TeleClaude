@@ -155,6 +155,8 @@ Then it is rejected with "command must start with '/'"
 
 <!-- change:command-loader-and-title-cutover -->
 
+#### UC-CLR7: Normalization accepts a bare or slash-prefixed command token
+
 ```
 Given a request with command "next-build" and args "my-slug"
 When the run-session preparation normalizes the inputs
@@ -248,7 +250,7 @@ Then the startup message is returned unchanged
 
 <!-- change:command-loader-and-title-cutover -->
 
-#### Command loader-message assembly
+#### UC-CLR6: Startup-message assembly composes the runtime-identical loader
 
 ```
 Given a run-session request whose normalized command token resolves to a TeleClaude command document
