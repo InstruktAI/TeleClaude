@@ -74,6 +74,12 @@ path's tracked status confers no membership. A path already recorded is a member
 only if the declaration admits it; membership and trackedness are independent
 answers, and where they disagree the record is in breach.
 
+The declaration decides by path, and a path is not the only thing the record
+holds. Where the path exists, its **kind** is read as a second, equally isolated
+input: a symbolic link is never `retained`, whatever the declaration says about
+the path it occupies. Kind is a property of the path itself rather than an
+ignore source, so consulting it preserves both isolations.
+
 ### Activation writes only through a fail-closed validation
 
 The activation this context performs does not record on the strength of the
@@ -97,10 +103,16 @@ record holds: a link enters history as its target path, never as the target's
 content. A link inside the home is therefore governed by the home even when it
 points beyond it.
 
+Reading the final component's kind is not dereferencing it: the link's target is
+never opened, resolved, or consulted, and the answer never depends on what lies
+at the far end.
+
 `outside` is returned when the resolved ancestor chain leaves the home root, and
-only then. A path that does not exist is answered from its canonical form, so a
-prospective write can be tested before it happens. An identity that cannot be
-reduced returns `not-retained`, per
+only then. A path that does not exist is answered from the declaration alone, and
+that answer is the one for a regular file or directory created there; the same
+path later created as a symbolic link is `not-retained`. So a prospective write
+can be tested before it happens, and the test states the condition it assumes. An
+identity that cannot be reduced returns `not-retained`, per
 `software-development/policy/security-awareness`.
 
 ### No remote is configured, and none is implied
@@ -202,6 +214,12 @@ layer direction in `software-development/principle/architectural-defaults`.
   beyond it then reports as `outside`, and the home appears to have no standing
   over a path it both governs and records. Credential material reached through a
   link is the case that makes this concrete.
+- **Deciding membership from the path string alone.** A declaration matches
+  paths, and no pattern can say "unless this one is a link", so a link sitting at
+  an admitted path is admitted — and a link into external material enters the
+  record as a machine-local target string that restores nothing. The kind of an
+  existing path is the missing input, and it is available without following the
+  link.
 - **Reusing project provisioning.** Project setup unions patterns into an
   existing exclusion file and defaults to tracking. That default is correct for
   a project and inverted for the home.
