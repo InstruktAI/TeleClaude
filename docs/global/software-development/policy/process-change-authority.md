@@ -29,6 +29,12 @@ than code, so the second discriminator carries most of it: editing a runtime
 decision block or a dispatched worker's brief is a process change precisely
 where no test can bind it.
 
+Consumer identity is not a discriminator. Platform behavior does not become
+process layer because a lifecycle role observes it; only changing what that
+role is instructed to decide or do is a process change. A change whose
+implication touches an orchestration instruction carves out that sentence and
+escalates it alone; the owning context's own work continues.
+
 Restoring code to match the current process-layer contract is a bug fix, not a
 process change: the docs are the process, and code drifting from them is a
 defect.
