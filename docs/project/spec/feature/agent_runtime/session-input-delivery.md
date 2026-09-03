@@ -229,7 +229,6 @@ And delivery waits until the agent-specific complete composer can be identified
 ```
 <!-- /planned:fix-tmux-exit-leads-to-compaction -->
 
-<!-- planned:input-not-consumed-after-daemon-restart -->
 #### UC-SID12: An exhausted session-originated send reports failure to its caller
 
 ```gherkin
@@ -240,7 +239,6 @@ Then the caller session receives a durable notification naming the target and th
 And the target session remains available for inspection or recovery
 And the message is not represented as delivered
 ```
-<!-- /planned:input-not-consumed-after-daemon-restart -->
 
 ### Cross-context references
 
