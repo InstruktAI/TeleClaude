@@ -413,7 +413,6 @@ Then the router finds "child"'s prepare gate satisfied
 And the router dispatches /next-prepare for "child" as usual
 ```
 
-<!-- planned:hold-audit-reason-records-command-not-reason -->
 #### UC-WTC29: A held create carries the reason it is parked
 
 ```gherkin
@@ -425,7 +424,6 @@ And a `--hold` create whose reason is missing or blank is refused before any roa
 And a `--reason` supplied without `--hold` is refused before any write rather than ignored
 And the reason input is hidden from the structured flag surfaces exactly as `--hold` is
 ```
-<!-- /planned:hold-audit-reason-records-command-not-reason -->
 
 ### Cross-context references
 
