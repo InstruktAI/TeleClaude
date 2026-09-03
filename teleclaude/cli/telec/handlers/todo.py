@@ -53,6 +53,7 @@ class _TodoUpdateBody(TypedDict):
     kind: NotRequired[str]
     force: NotRequired[bool]
     hold: NotRequired[bool]
+    reason: NotRequired[str]
     release: NotRequired[bool]
     unclaim: NotRequired[bool]
 
@@ -66,34 +67,11 @@ class _TodoStampBody(TypedDict):
 
 
 _CREATION_ACK_FLAG = "--approved"
+_REASON_REQUIRED_WITH_HOLD = "Error: --reason is required with --hold"
+_REASON_REQUIRES_HOLD = "Error: --reason is valid only with --hold"
+_REASON_REQUIRES_VALUE = "Error: --reason requires a value"
 
-_TODO_CREATION_GATE = (
-    "Nothing was created. Face these before this work enters the lifecycle\n"
-    "(software-development/policy/todo-creation-discipline governs every one):\n"
-    "\n"
-    "1. Five-minute rule - approach known, edit bounded, needing neither a\n"
-    "   plan, a builder, nor a handoff? Make the change on main in this\n"
-    "   human-present session and route the commit through review\n"
-    "   (/next-review-commits); create no todo. Importance does not decide\n"
-    "   this boundary; remaining judgment does.\n"
-    "\n"
-    "2. Doc-only - documentation, ADRs, README, agent artifacts? Execute it\n"
-    "   in-context per general/policy/documentation-discipline; create no\n"
-    "   todo, whatever its size.\n"
-    "\n"
-    "3. Existing home - already covered, or a small addition to a todo that\n"
-    "   has not started build? Amend it instead of creating a sibling:\n"
-    "     telec todo list\n"
-    "     telec todo artifacts read <slug> input\n"
-    "\n"
-    "4. Ownership & authority - owning project of the changed files correct\n"
-    "   (--project-root)? A process-layer change carries a live human\n"
-    "   decision per software-development/policy/process-change-authority?\n"
-    "   A human who shaped this filing declared (--human-involved)?\n"
-    "\n"
-    "Only once these are faced, create with:\n"
-    f"  telec todo create {_CREATION_ACK_FLAG} <slug> <content> --kind <feature|change|bug|task>\n"
-)
+_TODO_CREATION_GATE = f"Nothing was created. Face these before this work enters the lifecycle\n(software-development/policy/todo-creation-discipline governs every one):\n\n1. Five-minute rule - approach known, edit bounded, needing neither a\n   plan, a builder, nor a handoff? Make the change on main in this\n   human-present session and route the commit through review\n   (/next-review-commits); create no todo. Importance does not decide\n   this boundary; remaining judgment does.\n\n2. Doc-only - documentation, ADRs, README, agent artifacts? Execute it\n   in-context per general/policy/documentation-discipline; create no\n   todo, whatever its size.\n\n3. Existing home - already covered, or a small addition to a todo that\n   has not started build? Amend it instead of creating a sibling:\n     telec todo list\n     telec todo artifacts read <slug> input\n\n4. Ownership & authority - owning project of the changed files correct\n   (--project-root)? A process-layer change carries a live human\n   decision per software-development/policy/process-change-authority?\n   A human who shaped this filing declared (--human-involved)?\n\nOnly once these are faced, create with:\n  telec todo create {_CREATION_ACK_FLAG} <slug> <content> --kind <feature|change|bug|task>\n"
 
 
 @dataclass(frozen=True)
@@ -107,6 +85,7 @@ class _ParsedTodoCreate:
     project_root: str | None
     plan: bool
     hold: bool
+    reason: str | None
     human_involved: bool
     kind_value: str | None
     approved: bool
@@ -309,7 +288,7 @@ def _handle_todo_deliver(args: list[str]) -> None:
     print(f"Delivered {slug} (cleanup complete)")
 
 
-def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
+def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:  # noqa: C901 - preserves the established CLI parser contract
     slug: str | None = None
     content: str | None = None
     after: list[str] | None = None
@@ -318,6 +297,7 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
     project_root: str | None = None
     plan = False
     hold = False
+    reason: str | None = None
     human_involved = False
     approved = False
     schedule: str | None = None
@@ -361,6 +341,13 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
         elif arg == "--hold":
             hold = True
             i += 1
+        elif arg == "--reason" and i + 1 < len(args):
+            reason = args[i + 1]
+            i += 2
+        elif arg == "--reason":
+            print(_REASON_REQUIRES_VALUE)
+            print(_usage("todo", "create"))
+            raise SystemExit(1)
         elif arg == "--human-involved":
             human_involved = True
             i += 1
@@ -399,6 +386,7 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
         project_root=project_root,
         plan=plan,
         hold=hold,
+        reason=reason,
         human_involved=human_involved,
         kind_value=kind_value,
         approved=approved,
@@ -418,6 +406,9 @@ def _handle_todo_create(args: list[str]) -> None:
     if not content or not content.strip():
         print("Error: <content> is required and must not be empty")
         print(_usage("todo", "create"))
+        raise SystemExit(1)
+    if parsed.hold != (parsed.reason is not None) or (parsed.reason is not None and not parsed.reason.strip()):
+        print(_REASON_REQUIRED_WITH_HOLD if parsed.hold else _REASON_REQUIRES_HOLD)
         raise SystemExit(1)
 
     # The interrogation gate: a complete creation request without the
@@ -446,6 +437,7 @@ def _handle_todo_create(args: list[str]) -> None:
         group=parsed.group,
         plan=parsed.plan,
         hold=parsed.hold,
+        reason=parsed.reason.strip() if parsed.reason is not None else None,
         human_involved=parsed.human_involved,
     )
     result = tool_api_request(
@@ -576,6 +568,7 @@ def _handle_todo_update(args: list[str]) -> None:
     schedule = parsed["schedule"]
     force = parsed["force"]
     hold = parsed["hold"]
+    reason = parsed["reason"]
     release = parsed["release"]
     unclaim = parsed["unclaim"]
     after = _normalize_after_values(parsed["raw_after"]) if after_present else []
@@ -587,6 +580,9 @@ def _handle_todo_update(args: list[str]) -> None:
         raise SystemExit(1)
     if hold and release:
         print("--hold and --release are mutually exclusive")
+        raise SystemExit(1)
+    if hold != (reason is not None) or (reason is not None and not reason.strip()):
+        print(_REASON_REQUIRED_WITH_HOLD if hold else _REASON_REQUIRES_HOLD)
         raise SystemExit(1)
 
     body: _TodoUpdateBody = {
@@ -606,6 +602,7 @@ def _handle_todo_update(args: list[str]) -> None:
         body["force"] = True
     if hold:
         body["hold"] = True
+        body["reason"] = reason.strip()
     if release:
         body["release"] = True
     if unclaim:

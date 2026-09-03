@@ -6,6 +6,8 @@ from typing import TypedDict
 
 from teleclaude.cli.telec.help import _usage
 
+_REASON_REQUIRES_VALUE = "Error: --reason requires a value"
+
 
 class ParsedTodoUpdate(TypedDict):
     slug: str
@@ -16,6 +18,7 @@ class ParsedTodoUpdate(TypedDict):
     kind: str | None
     force: bool
     hold: bool
+    reason: str | None
     release: bool
     unclaim: bool
 
@@ -29,6 +32,7 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
     kind: str | None = None
     force = False
     hold = False
+    reason: str | None = None
     release = False
     unclaim = False
 
@@ -54,6 +58,13 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
         elif arg == "--hold":
             hold = True
             i += 1
+        elif arg == "--reason" and i + 1 < len(args):
+            reason = args[i + 1]
+            i += 2
+        elif arg == "--reason":
+            print(_REASON_REQUIRES_VALUE)
+            print(_usage("todo", "update"))
+            raise SystemExit(1)
         elif arg == "--release":
             release = True
             i += 1
@@ -84,6 +95,7 @@ def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
         "kind": kind,
         "force": force,
         "hold": hold,
+        "reason": reason,
         "release": release,
         "unclaim": unclaim,
     }

@@ -511,6 +511,7 @@ class TodoDumpRequest(BaseModel):
     group: str | None = None
     plan: bool = False
     hold: bool = False
+    reason: str | None = None
     human_involved: bool = False
 
 

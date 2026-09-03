@@ -36,6 +36,7 @@ from teleclaude.api.todo_update_support import TASK_ERROR_RELEASE_REFUSAL as TAS
 from teleclaude.api.todo_update_support import (
     apply_hold_update,
     apply_unclaim_update,
+    normalize_hold_reason,
     normalize_schedule_request,
     require_slug_found,
     require_slug_in_todo,
@@ -91,7 +92,6 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
-_CREATE_HOLD_REASON = "todo create --hold"
 _DRIFT_TRACKED_ARTIFACT_NAMES = {
     ARTIFACT_INPUT,
     ARTIFACT_PRD,
@@ -238,6 +238,7 @@ async def todo_update(  # pyright: ignore
     schedule: Annotated[str | None, Body()] = None,
     kind: Annotated[str | None, Body()] = None,
     hold: Annotated[bool, Body()] = False,
+    reason: Annotated[str | None, Body()] = None,
     release: Annotated[bool, Body()] = False,
     unclaim: Annotated[bool, Body()] = False,
     force: Annotated[bool, Body()] = False,
@@ -248,12 +249,13 @@ async def todo_update(  # pyright: ignore
     """Update a todo slug, dependencies, or kind through one mutation facade."""
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-    validate_update_request(
+    normalized_hold_reason = validate_update_request(
         new_slug=new_slug,
         after=after,
         kind=kind,
         schedule=schedule,
         hold=hold,
+        reason=reason,
         release=release,
         unclaim=unclaim,
     )
@@ -325,6 +327,7 @@ async def todo_update(  # pyright: ignore
         todos_db,
         slug,
         hold=hold,
+        reason=normalized_hold_reason,
         release=release,
         caller_session_id=identity.session_id,
     )
@@ -518,6 +521,7 @@ async def todo_content_create(
                 status_code=400,
                 detail="hold and icebox are mutually exclusive",
             )
+        normalized_hold_reason = normalize_hold_reason(hold=request.hold, reason=request.reason)
         try:
             lineage = resolve_creation_lineage(identity)
         except HTTPException:
@@ -540,12 +544,13 @@ async def todo_content_create(
 
         state = initial_todo_state_for_kind(request.kind)
         if request.hold:
+            assert normalized_hold_reason is not None
             state["hold"] = True
             state["hold_audit"] = {
                 "source": HoldAuditSource.CREATION.value,
                 "set_at": datetime.now(UTC).isoformat(),
                 "set_by_session_id": lineage.encode(),
-                "reason": _CREATE_HOLD_REASON,
+                "reason": normalized_hold_reason,
             }
         pickup_requested = not request.icebox and not request.hold
 

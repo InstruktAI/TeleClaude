@@ -149,6 +149,14 @@ class HoldAuditSource(StrEnum):
     DIAGNOSIS_UNRESOLVED = "diagnosis_unresolved"
 
 
+class HoldAuditReason(StrEnum):
+    """Closed compatibility tokens used by the hold-audit projection."""
+
+    LEGACY_UPDATE_COMMAND = "todo update"
+    LEGACY_CREATE_COMMAND = "todo create --hold"
+    UNKNOWN = "reason-unknown"
+
+
 class HoldAuditState(BaseModel):
     """Diagnostic metadata for the current hold brake."""
 

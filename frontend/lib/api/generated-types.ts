@@ -146,6 +146,7 @@ export interface TodoDumpRequest {
   group?: string | null;
   plan?: boolean;
   hold?: boolean;
+  reason?: string | null;
   human_involved?: boolean;
 }
 
@@ -242,6 +243,7 @@ export interface CreateSessionResponse {
   agent?: 'claude' | 'gemini' | 'codex' | 'deepseek' | null;
   error?: string | null;
   routing_explanation?: string | null;
+  routing_reason?: string | null;
 }
 
 export interface ErrorEvent {
@@ -291,13 +293,13 @@ export interface ModelAvailabilityDelta {
 
 export interface OperationCompletedEvent {
   event:
-  | 'operation.todo_work.completed'
-  | 'operation.task_run.completed'
-  | 'operation.todo_integrate.completed'
-  | 'operation.todo_create.completed'
-  | 'operation.todo_prepare.completed'
-  | 'operation.todo_remove.completed'
-  | 'operation.todo_rename.completed';
+    | 'operation.todo_work.completed'
+    | 'operation.task_run.completed'
+    | 'operation.todo_integrate.completed'
+    | 'operation.todo_create.completed'
+    | 'operation.todo_prepare.completed'
+    | 'operation.todo_remove.completed'
+    | 'operation.todo_rename.completed';
   operation_id: string;
   error?: string | null;
 }
@@ -442,6 +444,7 @@ export interface SessionInfo {
   last_input?: string | null;
   last_input_at?: string | null;
   last_agent_stop_at?: string | null;
+  last_agent_idle_at?: string | null;
   last_output_summary?: string | null;
   last_output_summary_at?: string | null;
   session_id: string;
@@ -459,6 +462,7 @@ export interface SessionInfo {
   agent_status?: 'active' | 'idle' | 'stalled' | 'unknown' | null;
   next_reminder_slug?: string | null;
   next_reminder_at?: string | null;
+  conversation_url?: string | null;
 }
 
 export interface SessionMessagesResponse {
@@ -467,6 +471,7 @@ export interface SessionMessagesResponse {
   last_activity?: string | null;
   last_input_at?: string | null;
   last_agent_stop_at?: string | null;
+  last_agent_idle_at?: string | null;
   agent_status?: 'active' | 'idle' | 'stalled' | 'unknown' | null;
   messages: MessageInfo[];
 }
