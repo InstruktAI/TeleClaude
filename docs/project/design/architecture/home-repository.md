@@ -169,9 +169,11 @@ contract does with the result.
 The declaration, the predicate, and activation's validation gate are core
 decisions inside the reconciliation context. Git mechanics execute through the sanctioned
 seam in `teleclaude.git`, which resolves the real binary rather than the agent
-wrapper. Enumeration and membership use git plumbing, whose documented contract
-is to read exclusion patterns only from what it is given, rather than porcelain,
-which composes the ambient sources. The installation-convergence entrypoint
+wrapper. Isolation is obtained structurally, never by trusting a command to
+consult only what it is handed: membership is decided where no ignore source but
+the declaration can exist. Enumerating what is present in the home and deciding
+whether a given path belongs are separate operations, and only the second answers
+for a path that does not yet exist. The installation-convergence entrypoint
 translates a run into a call on that core and decides nothing itself, per the
 layer direction in `software-development/principle/architectural-defaults`.
 
@@ -183,10 +185,16 @@ layer direction in `software-development/principle/architectural-defaults`.
   reach a path that is already tracked. Without the validation gate, the
   candidate set can differ from the retained set at the one moment that cannot
   be undone.
-- **Evaluating membership through porcelain.** Porcelain composes the ambient
-  ignore sources, so its answer moves with per-directory files, the repository
-  exclude file, and the user-global excludes file. Membership evaluated that way
-  is a different question from the one the declaration asks.
+- **Deciding membership in the home tree itself.** Any evaluation performed
+  where the home's own directories are visible reads whatever ignore files sit
+  along the path, so its answer moves with a per-directory file, the repository
+  exclude file, or the user-global excludes file. A command flag that neutralises
+  one such source does not neutralise the others, and a nested file placed later
+  reopens the hole.
+- **Answering membership by enumerating what exists.** Enumeration reports the
+  tree's present contents, so it returns nothing for a path that does not yet
+  exist and cannot answer a prospective write — the case a commit boundary asks
+  about most.
 - **Answering on a caller's spelling.** Two spellings of one path, or an alias
   through a symbolic link, otherwise receive different ownership answers, which
   makes a boundary decision depend on how it was asked.
