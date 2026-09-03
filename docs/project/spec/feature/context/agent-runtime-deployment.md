@@ -446,6 +446,29 @@ Scenario: UC-ARD23 Global commands are partitioned by published domain and gated
   And general commands and global skills from a repository that is not the mother are refused the same way
 ```
 
+#### UC-ARD31: Two in-reach domains publishing the same bare command name are refused
+
+```
+Scenario: UC-ARD31 Two in-reach domains publishing the same bare command name are refused
+  Given two repositories each declare a domain they publish
+  And each carries a command of the same bare name under its own domain
+  When sync runs in deploy mode
+  Then the deploy is refused with a message naming both source files and the colliding name
+  And neither command is deployed in preference to the other
+  And nothing is composed for that run
+```
+
+#### UC-ARD32: The mother's artifact sources are read at both roots until relocation completes
+
+```
+Scenario: UC-ARD32 The mother's artifact sources are read at both roots until relocation completes
+  Given the mother carries artifact sources at the flat artifact root, the tiered root, or both
+  When sync runs in deploy mode
+  Then every artifact found at either root is composed into the global corpus
+  And no previously deployed artifact is retracted because it moved between the two roots
+  And the flat root ceases to be a source only once it carries no artifacts
+```
+
 <!-- /planned:agent-artifact-source-layout -->
 
 <!-- planned:tier-command-corpus -->
