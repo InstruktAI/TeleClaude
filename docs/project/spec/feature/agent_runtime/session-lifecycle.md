@@ -287,7 +287,6 @@ And a later input remains a distinct new turn
 ```
 <!-- /planned:stop-hook-timeout-strands-completed-turn -->
 
-<!-- planned:headless-terminalized-worker-strands-initializing -->
 #### UC-SL36: Failed headless adoption preserves an adoptable session
 
 ```gherkin
@@ -298,7 +297,6 @@ Then the session remains headless with no pane binding
 And the failed attempt does not report the session as initializing
 And a later interaction may attempt the same sanctioned headless adoption path
 ```
-<!-- /planned:headless-terminalized-worker-strands-initializing -->
 
 
 #### Ending a session — happy path
