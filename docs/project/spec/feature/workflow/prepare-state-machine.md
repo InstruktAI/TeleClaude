@@ -308,6 +308,19 @@ And a title whose command token matches but whose slug differs is not matched
 
 <!-- /planned:command-loader-and-title-cutover -->
 
+#### UC-WPS24: Closing a lifecycle driver releases its claim without changing work state
+
+```gherkin
+Given a Todo whose active_runner names session S
+And the Todo has a recorded lifecycle phase, hold state, stamps, and artifacts
+When S reaches the closed lifecycle state
+Then the Todo no longer names S as its active runner
+And its manually-started marker is cleared
+And its lifecycle phase, hold state, stamps, artifacts, and dependencies are unchanged
+And the lifecycle runner may reassess the Todo from that recorded state
+And no claim held by a different live session is changed
+```
+
 ### Auto-continue
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.

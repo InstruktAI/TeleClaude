@@ -139,6 +139,16 @@ never a completion. The orchestrator keeps the phase pending and distinguishes a
 model-specific startup failure from a provider-wide failure. Silence establishes
 neither cause.
 
+A failed or exhausted attempt to deliver input establishes only that the input
+did not reach the agent. It does not establish that the agent process is dead,
+that the session cannot continue, or that its lifecycle claim may be released.
+Treat the delivery result as the trigger for the same inspect-classify-adapt
+discipline below: inspect the session and its native evidence, identify the
+actual obstruction, change approach where the evidence warrants it, and retry
+only through the sanctioned recovery path. File a platform gap only when that
+path itself fails; never replace the investigation with automatic end and
+redispatch of a session that may encounter the same condition again.
+
 For a startup failure that produced no native transcript:
 
 1. Preserve the `session_id`, `tmux_session_name`, and literal original
