@@ -777,13 +777,16 @@ async def poll_and_send_output(
                         exc_info=True,
                     )
 
-                await db.update_last_activity(event.session_id)
+                prior_digest = session.last_output_digest
                 await project_session_from_transcript(
                     session,
                     adapter_client,
                     started_at=event.started_at,
                     last_changed_at=event.last_changed_at,
                 )
+                refreshed = await db.get_session(event.session_id)
+                if refreshed and refreshed.last_output_digest != prior_digest and refreshed.runtime_start_observed:
+                    await db.update_session(event.session_id, runtime_activity_at=datetime.now(UTC))
 
             elif isinstance(event, ProcessExited):
                 # Fetch session once for all operations
@@ -796,7 +799,6 @@ async def poll_and_send_output(
                     return
 
                 if event.exit_code is not None:
-                    await db.update_last_activity(event.session_id)
                     tmux_alive = True
                     if session.tmux_session_name:
                         tmux_alive = await tmux_bridge.session_exists(

@@ -24,6 +24,8 @@ from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.relay_context import compile_relay_context
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
@@ -178,13 +180,17 @@ class AdminReflectionMixin:
             envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=context_block),
         )
 
-        # Clear relay state and restore active lifecycle
+        # Clear relay state and restore the previously live lifecycle through its owner.
         await db.update_session(
             session.session_id,
             relay_status=None,
             relay_channel_id=None,
             relay_started_at=None,
-            lifecycle_status="active",
+        )
+        await transition_session(
+            db,
+            session.session_id,
+            LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.HANDBACK),
         )
 
         event_bus.emit(

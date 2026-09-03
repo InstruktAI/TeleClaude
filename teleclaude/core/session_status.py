@@ -73,7 +73,7 @@ def compute_agent_status(
     *,
     lifecycle_status: str | None,
     closed_at: datetime | None,
-    last_activity: datetime | None,
+    runtime_activity_at: datetime | None,
     last_input_at: datetime | None,
     last_agent_stop_at: datetime | None,
     last_agent_idle_at: datetime | None,
@@ -88,7 +88,9 @@ def compute_agent_status(
     """
     if is_session_terminal(lifecycle_status=lifecycle_status, closed_at=closed_at):
         return AgentStatusValue.IDLE
-    if not isinstance(last_activity, datetime):
+    if lifecycle_status == SessionLifecycleStatus.INITIALIZING:
+        return AgentStatusValue.UNKNOWN
+    if not isinstance(runtime_activity_at, datetime):
         return AgentStatusValue.UNKNOWN
     has_idle_boundary = isinstance(last_agent_stop_at, datetime) or isinstance(last_agent_idle_at, datetime)
     if not is_agent_turn_running(
@@ -99,6 +101,6 @@ def compute_agent_status(
         if has_idle_boundary:
             return AgentStatusValue.IDLE
         return AgentStatusValue.ACTIVE
-    if has_idle_boundary and (now - last_activity).total_seconds() > STALL_THRESHOLD_SECONDS:
+    if (now - runtime_activity_at).total_seconds() > STALL_THRESHOLD_SECONDS:
         return AgentStatusValue.STALLED
     return AgentStatusValue.ACTIVE

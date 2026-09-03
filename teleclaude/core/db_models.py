@@ -50,7 +50,11 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     thinking_mode: str | None = None
     tui_log_file: str | None = None
     tui_capture_started: int | None = 0
-    lifecycle_status: str | None = "active"
+    lifecycle_status: str | None = "initializing"
+    runtime_start_observed: bool | None = False
+    runtime_activity_at: datetime | None = None
+    lifecycle_transitioned_at: datetime | None = None
+    lifecycle_transition_reason: str | None = None
     human_email: str | None = None
     human_role: str | None = None
     principal: str | None = None

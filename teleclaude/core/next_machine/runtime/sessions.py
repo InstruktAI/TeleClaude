@@ -85,7 +85,7 @@ async def find_live_session_with_status_for_slug(
             compute_agent_status(
                 lifecycle_status=session.lifecycle_status,
                 closed_at=session.closed_at,
-                last_activity=session.last_activity,
+                runtime_activity_at=session.runtime_activity_at,
                 last_input_at=session.last_message_sent_at,
                 last_agent_stop_at=session.last_agent_stop_at,
                 last_agent_idle_at=session.last_agent_idle_at,

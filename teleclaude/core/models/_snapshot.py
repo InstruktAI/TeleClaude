@@ -6,6 +6,7 @@ from typing import cast
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.feedback import get_last_output_summary
+from teleclaude.core.session_lifecycle import readiness_projection
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.helpers.agent_types import ThinkingMode
@@ -95,6 +96,13 @@ class SessionSnapshot(
     next_reminder_slug: str | None = None
     next_reminder_at: str | None = None
     conversation_url: str | None = None
+    runtime_start_observed: bool = False
+    runtime_activity_at: str | None = None
+    lifecycle_transitioned_at: str | None = None
+    lifecycle_transition_reason: str | None = None
+    initializing_for_seconds: int | None = None
+    attention: str | None = None
+    procedure: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert snapshot to a JSON-compatible dictionary."""
@@ -133,19 +141,33 @@ class SessionSnapshot(
             "next_reminder_slug": self.next_reminder_slug,
             "next_reminder_at": self.next_reminder_at,
             "conversation_url": self.conversation_url,
+            "runtime_start_observed": self.runtime_start_observed,
+            "runtime_activity_at": self.runtime_activity_at,
+            "lifecycle_transitioned_at": self.lifecycle_transitioned_at,
+            "lifecycle_transition_reason": self.lifecycle_transition_reason,
+            "initializing_for_seconds": self.initializing_for_seconds,
+            "attention": self.attention,
+            "procedure": self.procedure,
         }
 
     @classmethod
     def from_db_session(cls, session: "Session", computer: str | None = None) -> "SessionSnapshot":
         """Create from database Session object."""
+        now = datetime.now(UTC)
+        initializing_for_seconds, attention, procedure = readiness_projection(
+            lifecycle_status=session.lifecycle_status,
+            created_at=session.created_at,
+            active_agent=session.active_agent,
+            now=now,
+        )
         agent_status = compute_agent_status(
             lifecycle_status=session.lifecycle_status,
             closed_at=session.closed_at,
-            last_activity=session.last_activity,
+            runtime_activity_at=session.runtime_activity_at,
             last_input_at=session.last_message_sent_at,
             last_agent_stop_at=session.last_agent_stop_at,
             last_agent_idle_at=session.last_agent_idle_at,
-            now=datetime.now(UTC),
+            now=now,
         )
         return cls(
             session_id=session.session_id,
@@ -186,6 +208,15 @@ class SessionSnapshot(
             next_reminder_slug=None,
             next_reminder_at=None,
             conversation_url=None,
+            runtime_start_observed=session.runtime_start_observed,
+            runtime_activity_at=session.runtime_activity_at.isoformat() if session.runtime_activity_at else None,
+            lifecycle_transitioned_at=(
+                session.lifecycle_transitioned_at.isoformat() if session.lifecycle_transitioned_at else None
+            ),
+            lifecycle_transition_reason=session.lifecycle_transition_reason,
+            initializing_for_seconds=initializing_for_seconds,
+            attention=attention,
+            procedure=procedure,
         )
 
     @classmethod
@@ -235,6 +266,19 @@ class SessionSnapshot(
             next_reminder_slug=(str(data.get("next_reminder_slug")) if data.get("next_reminder_slug") else None),
             next_reminder_at=str(data.get("next_reminder_at")) if data.get("next_reminder_at") else None,
             conversation_url=str(data.get("conversation_url")) if data.get("conversation_url") else None,
+            runtime_start_observed=bool(data.get("runtime_start_observed", False)),
+            runtime_activity_at=str(data.get("runtime_activity_at")) if data.get("runtime_activity_at") else None,
+            lifecycle_transitioned_at=(
+                str(data.get("lifecycle_transitioned_at")) if data.get("lifecycle_transitioned_at") else None
+            ),
+            lifecycle_transition_reason=(
+                str(data.get("lifecycle_transition_reason")) if data.get("lifecycle_transition_reason") else None
+            ),
+            initializing_for_seconds=(
+                int(data["initializing_for_seconds"]) if data.get("initializing_for_seconds") is not None else None
+            ),
+            attention=str(data.get("attention")) if data.get("attention") else None,
+            procedure=str(data.get("procedure")) if data.get("procedure") else None,
         )
 
 

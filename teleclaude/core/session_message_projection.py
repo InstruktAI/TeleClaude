@@ -19,6 +19,7 @@ from teleclaude.core.models import Session
 from teleclaude.core.reminders.models import ReminderEntry, ReminderEntryReadItem, ReminderTransition
 from teleclaude.core.reminders.ordering import ProjectionOrderKey, ProjectionSourceKind, projection_order_key
 from teleclaude.core.reminders.presentation import format_agent_reminder
+from teleclaude.core.session_lifecycle import readiness_projection
 from teleclaude.core.session_output import assistant_output_parts_are_bare_noop, is_bare_noop_output
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
@@ -289,14 +290,21 @@ async def build_session_messages_dto(
     last_input_at = session.last_message_sent_at.isoformat() if session.last_message_sent_at else None
     last_agent_stop_at = session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None
     last_agent_idle_at = session.last_agent_idle_at.isoformat() if session.last_agent_idle_at else None
+    now = datetime.now(UTC)
+    initializing_for_seconds, attention, procedure = readiness_projection(
+        lifecycle_status=session.lifecycle_status,
+        created_at=session.created_at,
+        active_agent=session.active_agent,
+        now=now,
+    )
     agent_status = compute_agent_status(
         lifecycle_status=session.lifecycle_status,
         closed_at=session.closed_at,
-        last_activity=session.last_activity,
+        runtime_activity_at=session.runtime_activity_at,
         last_input_at=session.last_message_sent_at,
         last_agent_stop_at=session.last_agent_stop_at,
         last_agent_idle_at=session.last_agent_idle_at,
-        now=datetime.now(UTC),
+        now=now,
     )
 
     return SessionMessagesDTO(
@@ -307,5 +315,14 @@ async def build_session_messages_dto(
         last_agent_stop_at=last_agent_stop_at,
         last_agent_idle_at=last_agent_idle_at,
         agent_status=agent_status,
+        runtime_start_observed=session.runtime_start_observed,
+        runtime_activity_at=session.runtime_activity_at.isoformat() if session.runtime_activity_at else None,
+        lifecycle_transitioned_at=(
+            session.lifecycle_transitioned_at.isoformat() if session.lifecycle_transitioned_at else None
+        ),
+        lifecycle_transition_reason=session.lifecycle_transition_reason,
+        initializing_for_seconds=initializing_for_seconds,
+        attention=attention,
+        procedure=procedure,
         messages=messages,
     )

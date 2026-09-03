@@ -27,7 +27,9 @@ from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload, SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_listeners import cleanup_caller_listeners, cleanup_session_links, pop_listeners
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 from teleclaude.events.envelope import EventVisibility
 
@@ -315,7 +317,11 @@ async def _terminate_session_inner(
         logger.error("Failed to revoke tokens for session %s: %s", session_id, exc)
 
     if not already_closed:
-        await db.update_session(session_id, lifecycle_status="closing")
+        await transition_session(
+            db,
+            session_id,
+            LifecycleTransition(SessionLifecycleStatus.CLOSING, LifecycleTransitionReason.CLOSE_STARTED),
+        )
 
     # Drop any cached pre-close session record AFTER the DB write so the next auth
     # cache miss reads the fresh closing/closed lifecycle state. Without this the

@@ -13,6 +13,8 @@ from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.core.session_environment import build_agent_session_environment
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import ensure_tmux_with_identity
@@ -61,10 +63,11 @@ async def _ensure_tmux_for_headless(
     tmux_name = session.tmux_session_name
     if not tmux_name:
         tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id}"
-        await db.update_session(
+        await db.update_session(session.session_id, tmux_session_name=tmux_name)
+        await transition_session(
+            db,
             session.session_id,
-            tmux_session_name=tmux_name,
-            lifecycle_status="initializing",
+            LifecycleTransition(SessionLifecycleStatus.INITIALIZING, LifecycleTransitionReason.ADOPTION_INITIALIZED),
         )
         refreshed = await db.get_session(session.session_id)
         if refreshed:
@@ -138,7 +141,6 @@ async def _ensure_tmux_for_headless(
     if start_polling:
         await start_polling(session.session_id, tmux_name)
 
-    await db.update_session(session.session_id, lifecycle_status="active")
     refreshed = await db.get_session(session.session_id)
     return refreshed or session
 

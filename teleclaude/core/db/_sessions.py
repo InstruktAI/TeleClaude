@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import func, or_, text, update
@@ -18,11 +18,24 @@ from teleclaude.slug import replace_slug_token
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from ..models import OriginRevivalContext, Session, SessionField
+from ..session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from ..session_status import SessionLifecycleStatus
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+
+class _LifecycleTransitionFields(TypedDict):
+    """Stored fields written together by the lifecycle persistence seam."""
+
+    lifecycle_status: str
+    lifecycle_transition_reason: str
+    lifecycle_transitioned_at: datetime
+    runtime_start_observed: NotRequired[bool]
+    runtime_activity_at: NotRequired[datetime]
+    closed_at: NotRequired[datetime]
 
 
 class DbSessionsMixin:
@@ -47,7 +60,7 @@ class DbSessionsMixin:
         human_email: str | None = None,
         human_role: str | None = None,
         principal: str | None = None,
-        lifecycle_status: str = "active",
+        lifecycle_status: str = "initializing",
         active_agent: str | None = None,
         thinking_mode: str | None = None,
         native_session_id: str | None = None,
@@ -140,6 +153,10 @@ class DbSessionsMixin:
             human_role=session.human_role,
             principal=session.principal,
             lifecycle_status=session.lifecycle_status,
+            runtime_start_observed=session.runtime_start_observed,
+            runtime_activity_at=session.runtime_activity_at,
+            lifecycle_transitioned_at=session.created_at,
+            lifecycle_transition_reason="created",
             active_agent=session.active_agent,
             thinking_mode=session.thinking_mode,
             native_session_id=session.native_session_id,
@@ -439,6 +456,8 @@ class DbSessionsMixin:
             session_id: Session ID
             **fields: Fields to update (title, status, tmux_size, etc.)
         """
+        if "lifecycle_status" in fields:
+            raise ValueError("lifecycle_status is owned by the lifecycle transition seam")
         updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
 
         if fields:
@@ -465,6 +484,8 @@ class DbSessionsMixin:
                     if attr_name in {
                         "created_at",
                         "last_activity",
+                        "runtime_activity_at",
+                        "lifecycle_transitioned_at",
                         "closed_at",
                         "last_message_sent_at",
                         "last_input_written_at",
@@ -531,6 +552,49 @@ class DbSessionsMixin:
             visibility=EventVisibility.CLUSTER,
         )
 
+    async def persist_lifecycle_transition(
+        self,
+        session_id: str,
+        *,
+        target: str,
+        reason: str,
+        transitioned_at: datetime,
+        runtime_start_observed: bool | None = None,
+        runtime_activity_at: datetime | None = None,
+        closed_at: datetime | None = None,
+    ) -> None:
+        """Persist the lifecycle owner's complete transition record atomically."""
+        updates: _LifecycleTransitionFields = {
+            "lifecycle_status": target,
+            "lifecycle_transition_reason": reason,
+            "lifecycle_transitioned_at": transitioned_at,
+        }
+        if runtime_start_observed is not None:
+            updates["runtime_start_observed"] = runtime_start_observed
+        if runtime_activity_at is not None:
+            updates["runtime_activity_at"] = runtime_activity_at
+        if closed_at is not None:
+            updates["closed_at"] = closed_at
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.Session, session_id)
+            if row is None:
+                raise ValueError(f"Cannot transition missing session {session_id}")
+            for key, value in updates.items():
+                setattr(row, key, value)
+            db_session.add(row)
+            await db_session.commit()
+        logger.info(
+            "session_lifecycle_transition_committed",
+            session_id=session_id,
+            lifecycle_status=target,
+            lifecycle_transition_reason=reason,
+        )
+        event_bus.emit(
+            TeleClaudeEvents.SESSION_UPDATED,
+            SessionUpdatedContext(session_id=session_id, updated_fields=updates),
+            visibility=EventVisibility.CLUSTER,
+        )
+
     async def close_session(self, session_id: str) -> None:
         """Mark a session as closed without deleting it."""
         session = await self.get_session(session_id)
@@ -539,10 +603,14 @@ class DbSessionsMixin:
             return
         if session.closed_at:
             return
-        await self.update_session(
+        await transition_session(
+            self,
             session_id,
-            closed_at=datetime.now(UTC),
-            lifecycle_status="closed",
+            LifecycleTransition(
+                SessionLifecycleStatus.CLOSED,
+                LifecycleTransitionReason.CLOSED,
+                closed_at=datetime.now(UTC),
+            ),
         )
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSED,

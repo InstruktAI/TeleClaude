@@ -43,6 +43,8 @@ from teleclaude.core.command_handlers import (
 )
 from teleclaude.core.models import SessionLaunchIntent, ThinkingMode
 from teleclaude.core.session_launcher import create_session
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
@@ -353,7 +355,11 @@ class CommandService:
             relay_status="active",
             relay_channel_id=str(thread_id),
             relay_started_at=datetime.now(UTC).isoformat(),
-            lifecycle_status="escalated",
+        )
+        await transition_session(
+            db,
+            session_id,
+            LifecycleTransition(SessionLifecycleStatus.ESCALATED, LifecycleTransitionReason.ESCALATED),
         )
         event_bus.emit(
             "session.escalation_started",  # type: ignore[arg-type]

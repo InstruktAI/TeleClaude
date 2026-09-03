@@ -37,7 +37,9 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.reminders.models import ReminderEvent, ReminderEventAnchor
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_output import is_bare_noop_output
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
@@ -326,7 +328,6 @@ class AgentCoordinator(
         if context.event_type == AgentHookEvents.AGENT_IDLE:
             await self.handle_agent_idle(context)
             return
-        await self._activate_initializing_session(context.session_id)
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.handle_session_start(context)
         elif context.event_type == AgentHookEvents.AGENT_STOP:
@@ -353,12 +354,6 @@ class AgentCoordinator(
             native_session_id=payload.session_id,
         )
 
-    async def _activate_initializing_session(self, session_id: str) -> None:
-        """Persist agent liveness proved by any handled activity hook."""
-        session = await db.get_session(session_id)
-        if session and session.lifecycle_status == "initializing":
-            await db.update_session(session_id, lifecycle_status="active")
-
     async def handle_session_start(self, context: AgentEventContext) -> None:
         """Handle session_start event - store native session details and update title if needed."""
         payload = cast(AgentSessionStartPayload, context.data)
@@ -380,6 +375,17 @@ class AgentCoordinator(
                 update_kwargs["subdir"] = None
         if update_kwargs:
             await db.update_session(context.session_id, **update_kwargs)
+
+        await transition_session(
+            db,
+            context.session_id,
+            LifecycleTransition(
+                SessionLifecycleStatus.ACTIVE,
+                LifecycleTransitionReason.RUNTIME_SESSION_START,
+                runtime_start_observed=True,
+                runtime_activity_at=datetime.now(UTC),
+            ),
+        )
 
         voice = await db.get_voice(context.session_id)
         if voice:
@@ -526,6 +532,9 @@ class AgentCoordinator(
 
         if update_kwargs:
             await db.update_session(session_id, **update_kwargs)
+        current = await db.get_session(session_id)
+        if current and current.runtime_start_observed:
+            await db.update_session(session_id, runtime_activity_at=datetime.now(UTC))
         await db.update_last_activity(session_id)
         if session.lifecycle_status == "headless":
             await polling_coordinator.schedule_session_projection(session_id, self.client, headless_only=True)
