@@ -85,13 +85,22 @@ boundary that performs it, which consults the predicate under its own contract.
 
 ### Path identity is canonical before any answer is given
 
-The predicate resolves a path to one canonical identity before deciding:
-symbolic links are resolved, relative and traversing segments are eliminated,
-and equivalent spellings reach the same answer. A path that resolves beyond the home
-root returns `outside` rather than `not-retained`, because the home has no
-standing to answer for it. A path that does not exist is answered from its
-canonical form, so a prospective write can be tested before it happens. An
-identity that cannot be resolved returns `not-retained`, per
+The predicate reduces a path to one canonical identity before deciding.
+Traversing and relative segments are eliminated, and symbolic links among a
+path's **ancestor directories** are resolved, so no alias presents a path as
+inside the home that is not — or as outside one that is. Equivalent spellings
+reach the same answer.
+
+The **final component is never dereferenced**. A symbolic link is a membership
+question about the link, not about what it points at, because that is what the
+record holds: a link enters history as its target path, never as the target's
+content. A link inside the home is therefore governed by the home even when it
+points beyond it.
+
+`outside` is returned when the resolved ancestor chain leaves the home root, and
+only then. A path that does not exist is answered from its canonical form, so a
+prospective write can be tested before it happens. An identity that cannot be
+reduced returns `not-retained`, per
 `software-development/policy/security-awareness`.
 
 ### No remote is configured, and none is implied
@@ -181,6 +190,10 @@ layer direction in `software-development/principle/architectural-defaults`.
 - **Answering on a caller's spelling.** Two spellings of one path, or an alias
   through a symbolic link, otherwise receive different ownership answers, which
   makes a boundary decision depend on how it was asked.
+- **Dereferencing the final component.** A link inside the home that points
+  beyond it then reports as `outside`, and the home appears to have no standing
+  over a path it both governs and records. Credential material reached through a
+  link is the case that makes this concrete.
 - **Reusing project provisioning.** Project setup unions patterns into an
   existing exclusion file and defaults to tracking. That default is correct for
   a project and inverted for the home.
