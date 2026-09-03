@@ -9,7 +9,11 @@ visibility: 'public'
 
 Deliver context-aware checkpoint messages to AI agents at natural work boundaries, prompting them to validate work and capture artifacts. The system uses a unified timer based on the most recent input event and keeps checkpoint messages invisible to session state.
 
+<!-- planned-change:checkpoint-bypasses-hook-xml-envelope -->
 All checkpoint payload variants use the canonical prefix `"[TeleClaude Checkpoint] - "` so runtime filtering can reliably distinguish system checkpoints from normal user prompts.
+<!-- change:checkpoint-bypasses-hook-xml-envelope -->
+Checkpoint hook output uses the semantic-envelope registry's XML renderer at the hook boundary. Bracket checkpoint recognition is retained only for historical transcript compatibility; it is not an output codec.
+<!-- /planned-change:checkpoint-bypasses-hook-xml-envelope -->
 
 Two signal axes feed a shared checkpoint builder (`checkpoint.py`):
 
