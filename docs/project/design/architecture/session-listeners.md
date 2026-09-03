@@ -107,10 +107,13 @@ audience is empty.
   output. It is not the notification projector's action gate, which addresses
   the admin audience, debounces on a trailing window, and fires on an incident
   fingerprint.
-- **Failure is authoritative for the turn it ends.** When a provider emits both
-  a turn-end and a turn-failure signal for one turn, the caller's account of
-  that turn names the failure; the turn-end signal does not also report that
-  turn as complete.
+- **A turn's account is decided at normalization, not at delivery.** Every
+  mapped runtime emits exactly one terminal signal per turn — a failed turn
+  produces the failure signal and no turn-end signal — so the signal that
+  reaches the fan-out already is that turn's account, and the caller never
+  receives a clean-completion notice for a turn that failed. The terminal slot
+  enforces nothing beyond one notification per turn; it does not rank the two
+  outcomes, because by the time either arrives the account is settled.
 - **The recipient decision is made where the listeners live.** For a target on
   another computer, the origin daemon resolves the audience and the fallback,
   then forwards an already-addressed distress notification and reads the
