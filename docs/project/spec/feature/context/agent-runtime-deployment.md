@@ -446,16 +446,6 @@ Scenario: UC-ARD23 Global commands are partitioned by published domain and gated
   And general commands and global skills from a repository that is not the mother are refused the same way
 ```
 
-#### UC-ARD24: A global command is invoked by its explicit domain-namespaced name
-
-```
-Scenario: UC-ARD24 A global command is invoked by its explicit domain-namespaced name
-  Given a command deployed to the global corpus under a domain
-  When a session or the lifecycle machinery names that command
-  Then the name carries the domain as its first segment
-  And two domains may each carry a command of the same bare name without collision
-```
-
 <!-- /planned:agent-artifact-source-layout -->
 
 <!-- planned:tier-command-corpus -->
