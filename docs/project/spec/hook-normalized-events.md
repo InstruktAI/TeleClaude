@@ -113,11 +113,13 @@ approval; TeleClaude installs no decision on it, so an observed occurrence is
 an approval the session cannot resolve itself.
 
 Antigravity carries both terminal outcomes on the already-installed `Stop`
-event rather than a dedicated one. `terminationReason` is the discriminator,
-taking `model_stop`, `max_steps_exceeded`, and `error` among its values; the
+event rather than a dedicated one. `terminationReason` is the discriminator; the
 sibling `error` member is an empty string on the normal path, so its presence
-does not distinguish a failure. The three `Stop` conditions above are mutually
-exclusive and exhaustive.
+does not distinguish a failure. Only the documented value `error` is matched as
+a failure, so any other or unrecognized reason takes the non-failure branches —
+the three `Stop` conditions above are mutually exclusive and exhaustive. The
+provider's full reason set is not established upstream; the Antigravity hook
+document records that gap.
 
 **One terminal outcome per turn.** Every provider emits at most one of
 turn-end and turn-failure for a given turn, so the two never both account for

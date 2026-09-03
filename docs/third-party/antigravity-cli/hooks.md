@@ -152,10 +152,8 @@ embeds executor symbols implying a wider set than the reference enumerates
 `max_invocations`, `max_token_budget_exceeded`, `no_tool_call`,
 `terminal_custom_hook`, `terminal_step_type`, `unspecified`, `user_canceled`,
 alongside `error`). These are internal symbol names; their spelling on the hook
-wire is not established by any authoritative source, and only the three
-documented values above should be relied on. Consumers that need to detect a
-failed termination match the documented `error` value and treat any unrecognized
-reason as a non-failure.
+wire is not established by any authoritative source; only the three documented
+values above are established.
 
 Its stdout object requires a `decision`. `continue` prevents stopping and re-enters the execution loop; any other value permits the stop. When the decision is `continue`, optional `reason` is injected as a system message.
 
