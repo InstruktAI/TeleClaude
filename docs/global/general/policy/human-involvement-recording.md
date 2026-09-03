@@ -1,5 +1,5 @@
 ---
-description: 'Which durable facts record whether a human was in the loop: the three tests a fact must pass, the declaration that carries it, and why the record fails toward audit.'
+description: 'Audit-only record of whether a human was in the loop: which durable facts carry it, how it is declared, and why it never supplies authorization.'
 visibility: 'public'
 ---
 
@@ -23,7 +23,6 @@ The tests are conjunctive by design. Each one alone admits a wide class of facts
 - Involvement is **derived mechanically only at a human door** — an entry point the platform itself stamps, where a human is the caller by construction.
 - Involvement is **never inferred from identity**. A principal without a system root means a human started the session, not that a human is present for this act. Lineage names delegated authority and never records involvement (`general/concept/lineage-vs-authorship`).
 - The flag is **orthogonal to authorization**. It records whether a human shaped the fact; it is never consulted to permit an operation. It widens no brief, suspends no ownership, and unfreezes no contract — authorization reads the acting agent and the object alone, and every caller is an agent (`general/principle/trust-and-guardrails`).
-
 
 ### The record fails toward audit
 

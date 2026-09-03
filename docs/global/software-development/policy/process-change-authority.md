@@ -114,7 +114,7 @@ commit it — it escalates the proposal per the escalation shape below and goes
 idle on that thread. It never self-approves and never re-derives approval from
 plausibility.
 
-### A human decision is declared, never investigated
+### A relayed human decision is declared, never investigated
 
 An agent relays a human's decision inside already-authorized work under the
 `HUMAN-DECISION:` marker, in the human's own terms, and every receiver acts on
