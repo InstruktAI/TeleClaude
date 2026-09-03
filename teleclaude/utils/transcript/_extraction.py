@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Iterable
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
@@ -19,6 +21,7 @@ from ._iterators import (
     _iter_codex_entries,
     _iter_deepseek_entries,
     _iter_gemini_entries,
+    _iter_jsonl_entries_tail,
     _start_index_after_timestamp_or_rotation,
 )
 from ._parsers import normalize_transcript_entry_message
@@ -30,7 +33,69 @@ from ._user_turns import (
     find_turn_start_idx,
     is_real_user_turn_entry,
 )
-from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _escape_triple_backticks, _parse_timestamp
+from ._utils import (
+    CHECKPOINT_JSONL_TAIL_ENTRIES,
+    _apply_tail_limit,
+    _apply_tail_limit_codex,
+    _escape_triple_backticks,
+    _parse_timestamp,
+)
+
+
+class CodexTaskLifecycleKind(StrEnum):
+    """Provider lifecycle records that can determine a Codex turn's state."""
+
+    STARTED = "started"
+    COMPLETED = "completed"
+    ABORTED = "aborted"
+
+
+@dataclass(frozen=True)
+class CodexTaskLifecycleObservation:
+    """One structurally valid provider-authored Codex lifecycle record."""
+
+    kind: CodexTaskLifecycleKind
+    turn_id: str
+    occurred_at: datetime
+
+
+_CODEX_TASK_LIFECYCLE_KINDS: dict[str, CodexTaskLifecycleKind] = {
+    "task_started": CodexTaskLifecycleKind.STARTED,
+    "task_complete": CodexTaskLifecycleKind.COMPLETED,
+    "turn_aborted": CodexTaskLifecycleKind.ABORTED,
+}
+
+
+def extract_latest_codex_task_lifecycle(transcript_path: str) -> CodexTaskLifecycleObservation | None:
+    """Return the latest structurally valid Codex task-lifecycle record from a bounded tail."""
+    path = Path(transcript_path).expanduser()
+    if not path.is_file():
+        return None
+
+    latest: CodexTaskLifecycleObservation | None = None
+    try:
+        for entry in _iter_jsonl_entries_tail(path, CHECKPOINT_JSONL_TAIL_ENTRIES):
+            if entry.get("type") != "event_msg":
+                continue
+            payload = entry.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            kind_raw = payload.get("type")
+            kind = _CODEX_TASK_LIFECYCLE_KINDS.get(kind_raw) if isinstance(kind_raw, str) else None
+            if kind is None:
+                continue
+            turn_id = payload.get("turn_id")
+            timestamp_raw = payload.get("started_at" if kind is CodexTaskLifecycleKind.STARTED else "completed_at")
+            if not isinstance(turn_id, str) or not turn_id or not isinstance(timestamp_raw, (int, float)):
+                continue
+            latest = CodexTaskLifecycleObservation(
+                kind=kind,
+                turn_id=turn_id,
+                occurred_at=datetime.fromtimestamp(timestamp_raw, tz=UTC),
+            )
+    except (OSError, OverflowError, ValueError):
+        return None
+    return latest
 
 
 def get_assistant_messages_since(

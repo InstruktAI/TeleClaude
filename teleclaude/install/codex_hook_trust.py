@@ -37,8 +37,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
+from teleclaude.constants import CODEX_HOOK_STOP_TIMEOUT_SEC
+
 CODEX_HOOK_DEFAULT_TIMEOUT_SEC: Final[int] = 600
-CODEX_HOOK_STOP_TIMEOUT_SEC: Final[int] = 30
 CODEX_SESSION_START_MATCHER: Final[str] = "startup|resume"
 CODEX_SESSION_START_STATUS_MESSAGE: Final[str] = "Loading session notes"
 CODEX_PRE_TOOL_USE_MATCHER: Final[str] = ".*"
