@@ -37,6 +37,7 @@ from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.task_registry import TaskRegistry
@@ -553,7 +554,11 @@ class MaintenanceService:
                 # Historical rows can have closed_at set but lifecycle_status still "active".
                 # Normalize once and skip repeated cleanup/deletion attempts.
                 if session.lifecycle_status != "closed":
-                    await db.update_session(session.session_id, lifecycle_status="closed")
+                    await transition_session(
+                        db,
+                        session.session_id,
+                        LifecycleTransition(SessionLifecycleStatus.CLOSED, LifecycleTransitionReason.CLOSED),
+                    )
                 # Purge closed sessions older than the 90-day cutoff.
                 if session.closed_at < cutoff_time:
                     logger.info(
@@ -834,10 +839,11 @@ class MaintenanceService:
         if pane_exists:
             retry_disposition = _RestoreTmuxRetryDisposition.PANE_SURVIVES
         else:
-            await db.update_session(
+            await db.update_session(session.session_id, tmux_session_name=TMUX_SESSION_NAME_UNBOUND)
+            await transition_session(
+                db,
                 session.session_id,
-                lifecycle_status=SessionLifecycleStatus.HEADLESS,
-                tmux_session_name=TMUX_SESSION_NAME_UNBOUND,
+                LifecycleTransition(SessionLifecycleStatus.HEADLESS, LifecycleTransitionReason.HEADLESS_RESTORED),
             )
             retry_disposition = _RestoreTmuxRetryDisposition.STOPPED_HEADLESS
 

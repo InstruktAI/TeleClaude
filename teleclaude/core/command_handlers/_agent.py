@@ -38,6 +38,8 @@ from teleclaude.core.injected_text import (
     visible_input_update,
 )
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, HumanActionIntent, Session, ThinkingMode
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.tmux_bridge._session import safe_session_tmp_component
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.events.envelope import EventLevel, EventVisibility
@@ -534,9 +536,10 @@ async def agent_restart(
         return False, error
 
     session_updates: dict[str, str | None] = {}
+    restart_to_headless = False
     if session.closed_at is not None:
         session_updates["closed_at"] = None
-        session_updates["lifecycle_status"] = "headless"
+        restart_to_headless = True
         logger.info("Reviving closed session before agent restart (session=%s)", session.session_id)
 
     tmux_exists = False
@@ -544,7 +547,7 @@ async def agent_restart(
         tmux_exists = await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
         if not tmux_exists:
             session_updates["tmux_session_name"] = None
-            session_updates["lifecycle_status"] = "headless"
+            restart_to_headless = True
             logger.info(
                 "Session tmux missing; forcing headless adoption before restart (session=%s tmux=%s)",
                 session.session_id,
@@ -553,6 +556,12 @@ async def agent_restart(
 
     if session_updates:
         await db.update_session(session.session_id, **session_updates)
+        if restart_to_headless:
+            await transition_session(
+                db,
+                session.session_id,
+                LifecycleTransition(SessionLifecycleStatus.HEADLESS, LifecycleTransitionReason.RESTART_INITIALIZED),
+            )
         refreshed = await db.get_session(session.session_id)
         if refreshed:
             session = refreshed

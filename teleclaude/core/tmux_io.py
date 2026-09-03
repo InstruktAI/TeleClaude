@@ -29,6 +29,8 @@ from teleclaude.core.models import Session
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.core.session_environment import build_agent_session_environment
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
@@ -50,17 +52,6 @@ ADOPTION_TEARDOWN_PANE_SURVIVED_EVENT = "adoption_teardown_pane_survived"
 
 # Sentinel for an unbound tmux pane, named so callers never inline the literal.
 TMUX_SESSION_NAME_UNBOUND = ""
-
-
-class _AdoptionLifecycleStatus(StrEnum):
-    """The Session.lifecycle_status values this module's headless-adoption gate
-    transitions through — not the full session lifecycle vocabulary, which has
-    additional values (e.g. "closing", "closed") this module never assigns.
-    """
-
-    HEADLESS = "headless"
-    INITIALIZING = "initializing"
-    ACTIVE = "active"
 
 
 class UserTurnDeliveryOutcome(StrEnum):
@@ -141,10 +132,11 @@ async def _revive_headless_and_send(
     # holds any other inbound message for this session until the resumed agent
     # is confirmed ready or the adoption is torn down below.
     session.tmux_session_name = tmux_name
-    await db.update_session(
+    await db.update_session(session.session_id, tmux_session_name=tmux_name)
+    await transition_session(
+        db,
         session.session_id,
-        lifecycle_status=_AdoptionLifecycleStatus.INITIALIZING,
-        tmux_session_name=tmux_name,
+        LifecycleTransition(SessionLifecycleStatus.INITIALIZING, LifecycleTransitionReason.ADOPTION_INITIALIZED),
     )
 
     if session.active_agent and session.native_session_id:
@@ -212,8 +204,6 @@ async def _revive_headless_and_send(
         finally:
             event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
-    await db.update_session(session.session_id, lifecycle_status=_AdoptionLifecycleStatus.ACTIVE)
-
     return await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_name,
         text=text,
@@ -248,10 +238,11 @@ async def _teardown_failed_adoption(
         return
 
     session.tmux_session_name = TMUX_SESSION_NAME_UNBOUND
-    await db.update_session(
+    await db.update_session(session.session_id, tmux_session_name=TMUX_SESSION_NAME_UNBOUND)
+    await transition_session(
+        db,
         session.session_id,
-        lifecycle_status=_AdoptionLifecycleStatus.HEADLESS,
-        tmux_session_name=TMUX_SESSION_NAME_UNBOUND,
+        LifecycleTransition(SessionLifecycleStatus.HEADLESS, LifecycleTransitionReason.HEADLESS_RESTORED),
     )
 
 

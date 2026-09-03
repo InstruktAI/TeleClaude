@@ -215,6 +215,9 @@ class SessionField(Enum):
     LAST_CHECKPOINT_AT = "last_checkpoint_at"
     LAST_AGENT_STOP_AT = "last_agent_stop_at"
     LAST_AGENT_IDLE_AT = "last_agent_idle_at"
+    LIFECYCLE_STATUS = "lifecycle_status"
+    RUNTIME_ACTIVITY_AT = "runtime_activity_at"
+    LIFECYCLE_TRANSITIONED_AT = "lifecycle_transitioned_at"
     TURN_ANCHOR_SHA = "turn_anchor_sha"
 
 
@@ -258,7 +261,11 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
     human_email: str | None = None
     human_role: str | None = None
     principal: str | None = None
-    lifecycle_status: str = "active"
+    lifecycle_status: str = "initializing"
+    runtime_start_observed: bool = False
+    runtime_activity_at: datetime | None = None
+    lifecycle_transitioned_at: datetime | None = None
+    lifecycle_transition_reason: str | None = None
     last_memory_extraction_at: datetime | None = None
     help_desk_processed_at: datetime | None = None
     relay_status: str | None = None
@@ -282,6 +289,10 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:
             data["last_activity"] = self.last_activity.isoformat()
+        if self.runtime_activity_at:
+            data["runtime_activity_at"] = self.runtime_activity_at.isoformat()
+        if self.lifecycle_transitioned_at:
+            data["lifecycle_transitioned_at"] = self.lifecycle_transitioned_at.isoformat()
         if self.last_message_sent_at:
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
         if self.last_input_written_at:
@@ -449,7 +460,17 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             working_slug=_get_optional_str("working_slug"),
             human_email=_get_optional_str("human_email"),
             human_role=_get_optional_str("human_role"),
-            lifecycle_status=str(data.get("lifecycle_status") or "active"),
+            lifecycle_status=str(data.get("lifecycle_status") or "initializing"),
+            runtime_start_observed=bool(data.get("runtime_start_observed", False)),
+            runtime_activity_at=parse_iso_datetime(data["runtime_activity_at"])
+            if isinstance(data.get("runtime_activity_at"), str)
+            else None,
+            lifecycle_transitioned_at=parse_iso_datetime(data["lifecycle_transitioned_at"])
+            if isinstance(data.get("lifecycle_transitioned_at"), str)
+            else None,
+            lifecycle_transition_reason=str(data.get("lifecycle_transition_reason"))
+            if data.get("lifecycle_transition_reason")
+            else None,
             last_memory_extraction_at=parse_iso_datetime(data.get("last_memory_extraction_at"))
             if isinstance(data.get("last_memory_extraction_at"), str)
             else None,

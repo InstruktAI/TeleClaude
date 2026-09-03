@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from teleclaude.api_session_readiness import SessionReadinessDTOFields
 from teleclaude.config.schema import MessagingChannel
 from teleclaude.core.session_status import AgentStatusValue
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
@@ -187,7 +188,7 @@ class FileUploadRequest(BaseModel):
     file_size: int = 0
 
 
-class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
+class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDTOIdentityFields):
     """DTO for session data in API responses."""
 
     model_config = ConfigDict(frozen=True)
@@ -865,7 +866,7 @@ class MessageDTO(BaseModel):
     file_index: int = 0
 
 
-class SessionMessagesDTO(BaseModel):
+class SessionMessagesDTO(SessionReadinessDTOFields):
     """Response for GET /sessions/{session_id}/messages."""
 
     model_config = ConfigDict(frozen=True)

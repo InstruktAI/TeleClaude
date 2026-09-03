@@ -32,6 +32,8 @@ from teleclaude.core.models import HumanActionIntent, MessageMetadata, Session, 
 from teleclaude.core.next_machine.session_hold import clear_active_runner_for_session_end
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
+from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -179,7 +181,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
             restored = await db.get_session(ctx.session_id)
             if restored and not restored.closed_at:
-                await db.update_session(ctx.session_id, lifecycle_status="active")
+                await transition_session(
+                    db,
+                    ctx.session_id,
+                    LifecycleTransition(SessionLifecycleStatus.ACTIVE, LifecycleTransitionReason.CLOSE_FAILED),
+                )
                 timestamp = datetime.now(UTC).isoformat()
                 canonical = serialize_status_event(
                     session_id=ctx.session_id,
@@ -337,11 +343,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     exc_info=True,
                 )
                 launch_result = {"status": "error"}
-        # Transition non-headless sessions to active so they appear in listings.
-        # Headless sessions stay "headless" until explicitly adopted by a UI adapter.
-        if session.lifecycle_status != "headless":
-            await db.update_session(session_id, lifecycle_status="active")
-
         logger.info(
             "Bootstrap complete for session %s: launch_intent=%s result=%s",
             session_id,
