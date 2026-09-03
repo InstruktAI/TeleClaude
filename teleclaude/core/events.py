@@ -38,6 +38,7 @@ class AgentHookEvents(StrEnum):
     """Internal hook event vocabulary shared after provider normalization."""
 
     AGENT_ERROR = "error"
+    AGENT_IDLE = "agent_idle"
     AGENT_SESSION_START = "session_start"
     AGENT_STOP = "agent_stop"
     CHECKPOINT_SEEN = "checkpoint_seen"
@@ -54,6 +55,7 @@ ALL_AGENT_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(AgentHookEvents
 RECEIVER_HANDLED_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_ERROR,
+        AgentHookEvents.AGENT_IDLE,
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.PRE_TOOL_USE,
@@ -116,11 +118,25 @@ class AgentStopPayload:
     source_computer: str | None = None
 
 
+@dataclass(frozen=True)
+class AgentIdlePayload:
+    """Internal payload for a provider-observed completed native command.
+
+    guard: loose-dict - Agent hook data varies by agent.
+    """
+
+    session_id: str | None = None
+    transcript_path: str | None = None
+    raw: Mapping[str, object] = field(default_factory=dict)
+    source_computer: str | None = None
+
+
 AgentEventPayload = Union[
     AgentSessionStartPayload,
     UserPromptSubmitPayload,
     AgentOutputPayload,
     AgentStopPayload,
+    AgentIdlePayload,
 ]
 
 
@@ -129,6 +145,7 @@ AgentEventPayload = Union[
 SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
     AgentHookEvents.AGENT_SESSION_START,
     AgentHookEvents.USER_PROMPT_SUBMIT,
+    AgentHookEvents.AGENT_IDLE,
     AgentHookEvents.AGENT_STOP,
     AgentHookEvents.PRE_TOOL_USE,
     AgentHookEvents.POST_TOOL_USE,
@@ -165,6 +182,14 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
             prompt=cast(str | None, data.get("prompt")),
+            source_computer=cast(str | None, data.get("source_computer")),
+            raw=frozen_raw,
+        )
+
+    if event_type == AgentHookEvents.AGENT_IDLE:
+        return AgentIdlePayload(
+            session_id=native_id,
+            transcript_path=cast(str | None, data.get("transcript_path")),
             source_computer=cast(str | None, data.get("source_computer")),
             raw=frozen_raw,
         )

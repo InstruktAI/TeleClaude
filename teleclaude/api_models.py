@@ -230,6 +230,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
                 "last_input": session.last_input,
                 "last_input_at": session.last_input_at,
                 "last_agent_stop_at": session.last_agent_stop_at,
+                "last_agent_idle_at": session.last_agent_idle_at,
                 "last_output_summary": session.last_output_summary,
                 "last_output_summary_at": session.last_output_summary_at,
                 "last_output_digest": session.last_output_digest,
@@ -873,6 +874,7 @@ class SessionMessagesDTO(BaseModel):
     last_activity: str | None = None
     last_input_at: str | None = None
     last_agent_stop_at: str | None = None
+    last_agent_idle_at: str | None = None
     agent_status: AgentStatusValue | None = None
     messages: list[MessageDTO] = Field(default_factory=list)
 

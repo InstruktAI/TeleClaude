@@ -122,6 +122,7 @@ class DbBase:
             last_tool_use_at=DbBase._coerce_datetime(row.last_tool_use_at),
             last_checkpoint_at=DbBase._coerce_datetime(row.last_checkpoint_at),
             last_agent_stop_at=DbBase._coerce_datetime(row.last_agent_stop_at),
+            last_agent_idle_at=DbBase._coerce_datetime(row.last_agent_idle_at),
             last_output_summary=row.last_output_summary,
             last_output_digest=row.last_output_digest,
             last_projected_output_digest=(

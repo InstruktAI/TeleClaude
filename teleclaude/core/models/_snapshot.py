@@ -115,6 +115,7 @@ class SessionSnapshot(
             "last_input": self.last_input,
             "last_input_at": self.last_input_at,
             "last_agent_stop_at": self.last_agent_stop_at,
+            "last_agent_idle_at": self.last_agent_idle_at,
             "last_output_summary": self.last_output_summary,
             "last_output_summary_at": self.last_output_summary_at,
             "last_output_digest": self.last_output_digest,
@@ -143,6 +144,7 @@ class SessionSnapshot(
             last_activity=session.last_activity,
             last_input_at=session.last_message_sent_at,
             last_agent_stop_at=session.last_agent_stop_at,
+            last_agent_idle_at=session.last_agent_idle_at,
             now=datetime.now(UTC),
         )
         return cls(
@@ -166,6 +168,7 @@ class SessionSnapshot(
                 else (session.last_message_sent_at.isoformat() if session.last_message_sent_at else None)
             ),
             last_agent_stop_at=session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None,
+            last_agent_idle_at=session.last_agent_idle_at.isoformat() if session.last_agent_idle_at else None,
             last_output_summary=get_last_output_summary(session),
             last_output_summary_at=(session.last_output_at.isoformat() if session.last_output_at else None),
             last_output_digest=session.last_output_digest,
@@ -204,6 +207,7 @@ class SessionSnapshot(
             last_input=str(data.get("last_input")) if data.get("last_input") else None,
             last_input_at=str(data.get("last_input_at")) if data.get("last_input_at") else None,
             last_agent_stop_at=str(data.get("last_agent_stop_at")) if data.get("last_agent_stop_at") else None,
+            last_agent_idle_at=str(data.get("last_agent_idle_at")) if data.get("last_agent_idle_at") else None,
             last_output_summary=(
                 str(data.get("last_output_summary") or data.get("last_output"))
                 if (data.get("last_output_summary") or data.get("last_output"))
