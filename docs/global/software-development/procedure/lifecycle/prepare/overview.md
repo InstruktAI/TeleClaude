@@ -92,11 +92,19 @@ is in — the slug's presence and the human's presence determine the posture:
 
 - **No slug + human present.** The conversation itself is the source for
   `@input`. Shape a concrete todo with the human, and once the intent is
+<!-- planned-change:hold-audit-reason-records-command-not-reason -->
   concrete create it held with the hidden specialist control
   `telec todo create <slug> <content> --kind <kind> --hold`. The `--hold`
   keeps the runner from claiming the new todo before you continue, so you keep
   ownership of prepare. Then continue as the owning prepare orchestrator from
   Step 1.
+<!-- change:hold-audit-reason-records-command-not-reason -->
+  concrete create it held with the hidden specialist control
+  `telec todo create <slug> <content> --kind <kind> --hold --reason "<why this waits, or the gate or owner it waits on>"`.
+  The `--hold` keeps the runner from claiming the new todo before you continue,
+  while the reason records why the brake exists. Then continue as the owning
+  prepare orchestrator from Step 1.
+<!-- /planned-change:hold-audit-reason-records-command-not-reason -->
 - **Slug + human present and no `human_in_loop: false`.** Treat this as the
   human reassessing or refining that todo, not autonomous continuation. Do not
   call `telec todo prepare {slug}` before assessing the conversation and the
