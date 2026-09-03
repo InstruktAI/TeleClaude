@@ -128,6 +128,7 @@ And the empty-reason variant is rejected before any write
 And the prepare chain advances past the architecture phase on next dispatch
 ```
 
+<!-- planned-change:prd-approval-never-wakes-idle-claimant -->
 #### UC-WSS10: Operator gate approval wakes the parked runner session
 
 ```gherkin
@@ -144,6 +145,26 @@ When the gate is stamped approved
 Then no notification is delivered into any session
 And an agent never messages itself about an approval it just recorded
 ```
+<!-- change:prd-approval-never-wakes-idle-claimant -->
+#### UC-WSS10: Human gate approval resumes preparation independently of entry surface
+
+```gherkin
+Given a Todo is parked at a human-approval gate
+When the authenticated human approves through conversation, a user-interface control, the command line, the web, or any other interaction surface
+Then workflow records the approval through the same domain command
+And preparation continues from the approved fact without another human action
+And the interaction surface cannot opt into, opt out of, or otherwise vary that outcome
+```
+
+#### UC-WSS22: An agent-authored approval does not notify its own session
+
+```gherkin
+Given an agent records an approval under its own authority
+When workflow accepts that approval
+Then no human-approval notification is delivered into the agent's session
+And the agent never messages itself about the approval it just recorded
+```
+<!-- /planned-change:prd-approval-never-wakes-idle-claimant -->
 
 #### UC-WSS9: Human task authorization stamps execution approval
 
