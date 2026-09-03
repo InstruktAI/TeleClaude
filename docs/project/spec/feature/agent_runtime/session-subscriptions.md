@@ -115,7 +115,8 @@ And on delivery failure, a warning is logged but no retry is attempted
 And if the listener is one-shot, the record is removed after the delivery attempt (success or failure)
 
 Given a distress notification for target T is about to be delivered
-Then the audience is T's persistent listeners only, and one-shot records are neither read, delivered to, nor removed
+Then the audience is T's persistent subscribers: its persistent listener records, plus its declared remote initiator when T names one
+And one-shot records are neither read, delivered to, nor removed
 And the active-link check does not skip delivery for any member of that audience
 And a member counts as reached only when delivery to it is accepted
 <!-- /planned-change:session-distress-ingestion -->

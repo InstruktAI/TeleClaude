@@ -139,7 +139,23 @@ for the default behavior.
 
 `Stop` fires when an execution loop terminates. Its event-specific input includes `executionNum`, `terminationReason`, `error`, and required `fullyIdle`. `fullyIdle` is true only after the agent and all background or asynchronous work are finished.
 
-`terminationReason` names why the loop ended. The installed binary's own hook contract gives `model_stop`, `max_steps_exceeded`, and `error` as values, and its executor enumerates `unspecified`, `early_continue`, `error`, `halted_step`, `injected_response`, `max_forced_invocations`, `max_invocations`, `max_token_budget_exceeded`, `no_tool_call`, `terminal_custom_hook`, `terminal_step_type`, and `user_canceled`. The sibling `error` member is documented as "present if stopped due to error" and is an empty string otherwise, so it is present on the normal path too; `terminationReason` is the discriminator, not the presence of `error`.
+`terminationReason` names why the loop ended. The upstream reference documents
+`model_stop`, `max_steps_exceeded`, and `error` as example values and does not
+enumerate the full set. The sibling `error` member is documented as "present if
+stopped due to error"; the documented sample payload carries it as an empty
+string on a `model_stop` stop, so its presence does not distinguish a failed
+termination and `terminationReason` is the discriminator.
+
+**Evidence gap — full termination-reason set.** The installed 1.1.25 executable
+embeds executor symbols implying a wider set than the reference enumerates
+(`early_continue`, `halted_step`, `injected_response`, `max_forced_invocations`,
+`max_invocations`, `max_token_budget_exceeded`, `no_tool_call`,
+`terminal_custom_hook`, `terminal_step_type`, `unspecified`, `user_canceled`,
+alongside `error`). These are internal symbol names; their spelling on the hook
+wire is not established by any authoritative source, and only the three
+documented values above should be relied on. Consumers that need to detect a
+failed termination match the documented `error` value and treat any unrecognized
+reason as a non-failure.
 
 Its stdout object requires a `decision`. `continue` prevents stopping and re-enters the execution loop; any other value permits the stop. When the decision is `continue`, optional `reason` is injected as a system message.
 
