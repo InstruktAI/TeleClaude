@@ -404,6 +404,19 @@ Then the peer conversation contains the authored output without showing the inte
 And repeated goal continuations do not add copies of the internal context to the conversation
 ```
 
+<!-- planned:codex-content-item-provenance -->
+#### UC-OPD17: Codex content provenance controls human projection
+
+```gherkin
+Given an operator observes a Codex session whose native user-role entry contains ordered human and runtime content
+When TeleClaude projects that entry into a conversation surface
+Then only content positively identified as human input is shown under the operator's authorship
+And annotated runtime content and unknown annotations are never shown as operator input
+And absent, malformed, or positionally incomplete annotations use bounded native-structure recognition without erasing ordinary operator text
+And peer and platform-authored segments retain their own authorship
+```
+<!-- /planned:codex-content-item-provenance -->
+
 ### Cross-context references
 
 - **integration** — the adapter client's send-output-update and broadcast-user-input paths deliver the projected messages to adapter-bound subscribers (Telegram, Discord, web, terminal). Adapter-side fanout, edit-vs-append semantics, and chunking are integration's concern. agent_runtime hands over a fully rendered (message, delivery timestamp, multi-message flag) triple and lets integration decide how it lands.
