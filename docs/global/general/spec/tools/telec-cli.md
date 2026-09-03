@@ -123,9 +123,8 @@ In a slug worktree (`trees/<slug>`), two path classes carry a frozen contract
 the work phase may not author, and both the sealed commit surface and the
 pre-merge worktree sync refuse them before any staging, formatting, linting, or
 committing runs. The doc layer (`docs/**`) is authored at prepare on `main` and
-folded at integration. Governed agent artifacts (`agents/**`, `.agents/**`, and
-an `AGENTS.master.md` at any depth) are authored on `main` in the session where
-their intent was decided. Each refusal names the offending paths, reports them
+folded at integration. Governed agent artifacts (`agents/**`, `.agents/**`) are
+authored on `main` in the session where their intent was decided. Each refusal names the offending paths, reports them
 under the class they actually violate, and points at the authoring route that
 class belongs to, with the kickback path for a need discovered mid-build.
 Main-branch and integration-worktree invocations are unaffected.
