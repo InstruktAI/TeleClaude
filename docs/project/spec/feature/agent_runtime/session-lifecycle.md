@@ -301,6 +301,20 @@ And a later input remains a distinct new turn
 ```
 <!-- /planned:stop-hook-timeout-strands-completed-turn -->
 
+<!-- planned:headless-terminalized-worker-strands-initializing -->
+#### UC-SL36: Failed headless adoption preserves an adoptable session
+
+```gherkin
+Given an agent controls a previously live session whose host pane is absent
+And automatic restoration has recorded the session as headless with no pane binding
+When a control action attempts headless adoption and host-pane creation fails
+Then the session remains headless with no pane binding
+And the failed attempt does not report the session as initializing
+And a later interaction may attempt the same sanctioned headless adoption path
+```
+<!-- /planned:headless-terminalized-worker-strands-initializing -->
+
+
 #### Ending a session — happy path
 
 ```
