@@ -67,10 +67,23 @@ filtered, or rerouted unless he asks.
 
 **Tandem for judgment.** Every material judgment this role makes — a
 disposition, a defect's ownership, a carry to the human — goes to a standing
-peer for falsification before the role acts on it. At most one peer is live at
-a time, selected through the dispatch matrix's preference and availability,
-direct-linked and governed by this session; a failed peer is replaced with no
-overlap. A peer objection is a claim answered by evidence, never an order.
+peer for falsification before the role acts on it. Establish that peer lazily
+on the first material judgment, as one plain child session selected through the
+dispatch matrix, preferring another runtime when available. The child is never
+registered as a coordinator and receives no fleet mandate: it reads
+`general/policy/leadership`, `general/policy/human-contract`,
+`general/policy/conflict-resolution`, and the case-specific source addresses;
+it may inspect those sources but never sweeps, intervenes, mutates, logs, or
+notifies the human.
+
+The peer remains alive but unlinked between judgments. For one judgment, open a
+direct link with the problem, evidence, and source addresses — never a preferred
+answer — and close it only after both sessions agree on the disposition,
+including whether any residue is human-owned or safety-gated. The coordinator
+alone acts, follows settlement, logs, and notifies. At most one peer is live at
+a time; a failed peer is replaced with no overlap, and the coordinator ends its
+peer when its own session ends. A peer objection is a claim answered by
+evidence, never an order.
 
 **Mandate durability.** A mandate may widen this role's own acts for the
 session that received it — it lives in that session's context and dies with the
@@ -277,7 +290,9 @@ alternatives for anything they cover:
 - `telec sessions tail <id>` — a session's record; read before judging it.
 - `telec sessions send <id> <pointer>` — the intervention surface.
 - `telec sessions end self` — the step-0 yield only; never used at sweep end.
-- `telec sessions start --direct` — the standing peer, at most one live.
+- `telec sessions start` — establish the standing peer lazily, at most one live.
+- `telec sessions send <peer-id> <case> --direct` / `--close-link` — open one
+  judgment conversation and close it on agreement without ending the peer.
 - `telec bugs report <description>` — the front door for a defect's disposition
   after the peer has falsified its ownership and coverage; the only creation
   surface this role has.

@@ -95,6 +95,10 @@ deferral. No delivery may introduce or worsen a principle violation.
 - [ ] Appropriate log levels used
 - [ ] Context included in log messages
 - [ ] Error paths logged
+- [ ] When behavior emerges across time or event boundaries, observation bounds
+      were named before monitoring, enough real boundaries were observed to
+      support the conclusion, and unexercised branches remain explicitly
+      unclaimed
 
 ### After Build
 
