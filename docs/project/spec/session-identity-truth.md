@@ -68,10 +68,12 @@ Current runtime rule:
 <!-- change:external-session-identity -->
 - Only an invocation with neither a session identity marker nor pane attachment
   enters the headless route. An agent CLI hosted by a foreign harness reaches
-  TeleClaude on this route. A session minted on this route carries a
-  daemon-minted root process binding, established from the attested connection
-  that delivered its session-start hook, and that binding is what later callers
-  are matched against.
+  TeleClaude on this route, and the route makes its session observable.
+- Observability and authentication are separate on this route. A session becomes
+  authenticable only by carrying a root process binding, which is established by
+  an enrollment in which the enrolling process is itself the connecting peer —
+  never by a hook. A headless session with no such binding stays fully
+  observable and refuses every session-scoped call.
 - The native session id is provider metadata on this route. It records which
   conversation a hook belongs to; it never selects a TeleClaude session for an
   authenticated caller, never rebinds a session to a different root, and never

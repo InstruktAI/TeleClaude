@@ -1,5 +1,5 @@
 ---
-description: Kernel-attested peer credentials on the daemon Unix socket, and the registered-root ancestry membership that derives which session a caller belongs to — the authentication path for agent sessions with no pane on TeleClaude's own tmux server.
+description: Kernel-attested peer credentials on the daemon Unix socket, and the enrolled-root ancestry membership that derives which session a caller belongs to — the authentication path for agent sessions with no pane on TeleClaude's own tmux server.
 delivered_by:
   - external-session-identity
 ---
@@ -9,6 +9,7 @@ delivered_by:
 ## Required reads
 
 - @docs/project/design/architecture/api-server.md
+- @docs/project/spec/agent-shell-path.md
 
 ## Purpose
 
@@ -19,14 +20,12 @@ Caller verification's dual-factor path pairs a client-supplied session id with a
 tmux session name read from TeleClaude's own server. A caller with no such pane
 supplies no second factor. This design supplies one from kernel-held facts: the
 identity of the process connected to the daemon's Unix socket, and that
-process's ancestry. Association is by membership: the daemon binds one immutable
-process instance as a session's root, and a caller belongs to that session when
-the root occurs in the caller's verified ancestry. The caller names nothing.
+process's ancestry.
 
-Kernel peer credentials alone do not discover a session. They identify a
-process. The binding that gives a process instance a session meaning is derived
-by the daemon from connections it attested itself — never from a single fact
-about a single process, and never from anything a caller wrote.
+Association is by membership in an enrolled tree. One process instance is bound
+to a session by an enrollment act in which that process is itself the connecting
+peer, and a caller belongs to the session when the bound instance occurs in the
+caller's verified ancestry.
 
 ## Inputs/Outputs
 
@@ -36,9 +35,7 @@ about a single process, and never from anything a caller wrote.
   carrying the peer process identity and peer user.
 - The ancestry of that peer process, read through the platform process
   interface as ordered process instances.
-- The session root bindings the daemon holds for open sessions.
-- The ancestry snapshots the daemon has taken on earlier attested connections
-  belonging to the same session, held until that session's root is determined.
+- The root bindings the daemon holds for open sessions.
 
 **Outputs**
 
@@ -59,104 +56,113 @@ about a single process, and never from anything a caller wrote.
   user come from the connected socket; ancestry comes from the platform process
   interface. Neither is read from a header, an environment variable, or a
   request body.
-- **The session is derived, never claimed.** A caller-supplied session reference
-  establishes no binding on this path.
-- **A session's root binding is derived by the daemon from connections it
-  attested**, and is immutable for the life of the session once determined. No
-  process reports its own root, and no durable record written outside an
-  attested connection contributes evidence toward one.
+- **A root is bound only to the enrolling peer itself.** The daemon binds the
+  process instance on the other end of the enrolling connection. It accepts no
+  nominated process id, no session identifier, and no lineage description; a
+  process can enroll itself and nothing else.
+- **A root is immutable once bound**, for the life of the session.
+- **Hooks authenticate; they never enroll.** A hook connection may resolve to a
+  root already in its ancestry. It never creates a root, selects among
+  candidates, widens one, or replaces one. Ordinary requests likewise.
 - **Membership is exact and unique.** A caller resolves to a session when that
   session's root process instance occurs in the caller's verified ancestry, and
-  exactly one open session matches. Zero matches refuse as unproved. More than
-  one refuses as ambiguous. Nearest, oldest, newest, and most-plausible are not
-  tie-breakers; there is no tie-break.
-- **A session's root is derived structurally, never classified.** It is the
-  deepest process instance common to every ancestry snapshot the daemon has
-  taken for that session. What a process is — its executable, argument vector,
-  process title, working directory, environment, or command text — takes no part
-  in the derivation. Two invocations from one session share the process that
-  hosts them and not the transient processes that carry each invocation, so the
-  intersection names the host without anyone having to recognise it.
-- **A root is determined once and frozen.** It is established when at least two
-  snapshots exist and their intersection has a unique deepest member, and it
-  never moves afterwards. A later snapshot may confirm a root; it never replaces
-  one.
-- **The harness's own session identifier is provider metadata.** It may
-  corroborate a derived agent; it never selects a session, authorizes a
-  rebinding, or recovers a dead root.
+  exactly one open session matches. Zero matches refuse as unproved. Where
+  nested enrolled roots occur, the nearest enrolled ancestor wins because it is
+  the narrowest authority; any other multiplicity refuses.
+- **What a process is takes no part in any decision.** Executable identity,
+  argument vector, process title, working directory, environment, and command
+  text are read for nothing. Ancestry proves containment; enrollment supplies
+  the boundary.
+- **The harness's own session identifier is provider metadata.** It records
+  which conversation a hook belongs to. It never selects a session, groups
+  evidence, authorizes a rebinding, or recovers a dead root.
 - **Attestation authenticates; it does not elevate.** The derived session
   carries the principal and role it already has. No role is granted, no
   clearance widened, no authority minted.
 - **No credential is issued and none is stored.** Each call re-derives the
   session from live kernel evidence: no token for these sessions, no identity
   file, no allocated directory, and so no credential at rest.
-- **Inheritance is structural.** A descendant of the root is inside the attested
+- **Inheritance is structural.** A descendant of the root is inside the enrolled
   tree, so child processes authenticate with no propagation step.
 - **Liveness is established before inspection and revalidated after it.** The
   daemon holds a liveness watch on the peer, then reads ancestry, then confirms
   the peer and the matched root are the same instances before authorizing.
+- **Root death ends the association.** Descendants that outlive the root, or are
+  re-parented, resolve to nothing. They never fall back to a shallower ancestor
+  or to peer-user identity.
 - **Failure is refusal.** Absent peer credentials, unreadable ancestry, no
-  matching root, multiple matching roots, a start-time mismatch, a peer-user
-  mismatch, a lost liveness watch, or a closed session each refuse.
+  enrolled root, a start-time mismatch, a peer-user mismatch, a lost liveness
+  watch, or a closed session each refuse.
 
-### Admission invariant
+### Why the boundary must be enrolled rather than derived
 
-Each supported harness hosts a top-level session from one process instance that
-outlives the individual invocations it makes, and reaches the daemon over an
-attested connection at least twice while that process is alive. A harness that
-emits a single attested invocation per session never determines a root; its
-session stays observable and unbound, and session-scoped calls from it are
-refused.
+A single attested connection cannot locate the session boundary in its own
+ancestry. For a receiver below processes `A` and `B`, the world where `A` is a
+per-invocation shell and `B` hosts the session, and the world where `A` hosts
+the session and `B` launched it, present identical process identity, executable,
+start time, and ancestry. Any deterministic choice is wrong in one of them.
 
-Structural derivation is deliberately indifferent to what the hosting process
-is, which is what carries it across a launcher binary, a vendor binary invoked
-directly, and an interpreted entry point alike — cases whose kernel-visible
-executable identity ranges from a dedicated launcher to an interpreter shared
-with every unrelated process on the host. No registry of executables is
-consulted, so no harness is covered or excluded by being named in one.
+Accumulating ancestries across several connections does not recover the
+boundary, because it presupposes one: deciding that two connections belong to
+the same session is the same question again. Two receivers under a shared
+ancestor are equally consistent with one session rooted at that ancestor and
+with two sessions launched beneath it. Merging over-grants to every descendant
+of the shared ancestor; separating fragments a session whose per-invocation
+processes differ. No hook count, depth rule, or timing window removes the
+ambiguity; each only adds an environmental assumption.
 
-A single process instance hosting two independent top-level sessions has no
-sound association under this design: both sessions present identical ancestry
-evidence, and no server-side refinement separates them. The second session's
-derivation lands on a root already registered to the first, which is
-indistinguishable from a descendant, so it mints nothing. Such a harness is
-unsupported.
+Liveness is negative evidence. It disqualifies a candidate that dies while its
+supposed session continues, and it prevents a reused process id from
+impersonating an earlier instance. It establishes nothing positively: a
+per-invocation shell may live arbitrarily long, and no finite wait proves a
+process is the durable host.
 
-A persistent helper interposed between the hosting process and every invocation
-is itself common to every snapshot and deeper than the host, so derivation lands
-on the helper. The resulting root is narrower than the session: descendants
-outside the helper's tree are refused. This is a coverage cost, never an
-over-grant.
+Grouping by the harness's conversation identifier makes the partition
+caller-selected. Under an intersecting rule a foreign claimant sharing only a
+login shell or multiplexer moves the boundary upward, widening authorization.
+First-claimant-wins permits squatting, accepting later claims permits
+poisoning, and rejecting conflicts permits targeted denial of service. An
+unguessable grouping key would be a credential.
+
+What remains is enrollment, and it is safe only in the form where the enrolling
+process is the connecting peer: a process may declare itself, and nothing else.
+
+### Coverage boundary
+
+Enrollment is harness-neutral: the entry point enrolls itself and then becomes
+whatever agent it was asked to run, so no agent CLI is named anywhere in the
+mechanism and none is covered or excluded by being named. It reaches every
+session started through a launch path the platform or its integrators control.
+
+An invocation that reaches an agent binary without passing such a path enrolls
+nothing. Its session remains observable through the existing hook route and
+carries no root, and every session-scoped call from it is refused. Extending
+coverage to that case means placing an entry point in the invoking environment,
+which is a decision about that environment rather than a property of this
+design.
 
 ## Primary flows
 
-### 1. Determining the root binding
+### 1. Enrolling the root
 
 ```mermaid
 sequenceDiagram
-    participant A as Externally started agent process
-    participant R as Hook receiver (its descendant)
+    participant W as Platform entry point
     participant D as Daemon
     participant S as Session store
+    participant A as Agent process (same instance)
 
-    A->>R: hook
-    R->>D: connect over the Unix socket and deliver the hook
-    D->>D: attest the receiver's process instance
-    D->>D: match already-registered roots first
-    D->>D: no registered root — snapshot this ancestry for the session
-    D->>S: first snapshot: mint the session, unbound
-    D->>S: later snapshot: intersect; on a unique deepest member, freeze it as the root
+    W->>D: enroll over the Unix socket
+    D->>D: attest the connecting peer instance
+    D->>S: mint the session; bind that instance as its root
+    D-->>W: session established
+    W->>A: replace this process image with the agent
 ```
 
-An ancestry that already contains a registered root is a descendant invocation:
-it stays owned by that session and mints nothing, and its snapshot is not
-retained.
-
-A session exists from its first hook and is observable immediately. It carries no
-root until derivation succeeds, and every session-scoped call before that is
-refused. The daemon enqueues each event after this evaluation, so a durable hook
-record is written under a session whose evidence the daemon attested rather than
-under an identifier supplied to it.
+The entry point enrolls itself and then becomes the agent: replacing a process
+image preserves its process id and start time, so the bound instance names the
+running agent process. No supervisor process is left behind, and the daemon
+still did not launch the agent.
 
 ### 2. Deriving the session on an authenticated call
 
@@ -172,53 +178,53 @@ sequenceDiagram
     D->>K: read peer credentials for this connection
     K-->>D: peer process instance, peer user
     D->>I: request + attested peer fact
-    I->>I: verify ancestry; collect open sessions whose root it contains
-    I->>I: exactly one — resolve its principal and role; otherwise refuse
+    I->>I: verify ancestry; find enrolled roots within it
+    I->>I: the nearest enrolled root resolves; none or an unresolvable set refuses
     I-->>C: response under that session, or refusal
 ```
 
-A top-level agent process and a subagent several levels down follow this same
-path. Only an attested hook connection contributes a snapshot; an ordinary
-request never establishes or refines a binding, and one that matches no root is
-refused rather than bootstrapped.
+A top-level agent process, a hook receiver, and a subagent several levels down
+follow this same path.
 
 ### 3. Self-identification
 
 Asking who the caller is answers from the session derived in flow 2. A caller
-with no attested session receives the terminal answer only when no session was
-derived, and that answer never carries a session identity.
+with no enrolled root receives the terminal answer, and that answer never
+carries a session identity.
 
 ## Failure modes
 
-| Condition                                                 | Outcome                                                           |
-| --------------------------------------------------------- | ----------------------------------------------------------------- |
-| No registered root in the caller's ancestry               | Refuse. No terminal or machine-global identity substitutes.       |
-| More than one registered root in the ancestry             | Refuse as ambiguous.                                              |
-| Ordinary request carrying no binding                      | Refuse. Only attested hook connections contribute snapshots.      |
-| A session whose root is not yet determined                | Refuse every session-scoped call. The session remains observable. |
-| Snapshots whose intersection has no unique deepest member | Refuse; leave the session unbound.                                |
-| A durable hook record is the only evidence                | Refuse to mint. Its writer was never attested.                    |
-| The harness identifier names a session whose root differs | Refuse. The identifier never rebinds.                             |
-| The bound root has exited                                 | Refuse, including when its process id is live again.              |
-| A start time cannot be read, or changes during resolution | Refuse.                                                           |
-| A parent edge changes during the ancestry walk            | Refuse; a new request may retry.                                  |
-| Peer credentials unavailable on the platform or transport | Refuse.                                                           |
-| A descendant is re-parented before it is first observed   | Refuse; ancestry no longer proves lineage.                        |
-| Daemon restart                                            | Restore only the bindings whose root instance still validates.    |
-| A caller presents a session id                            | Unchanged for pane-attached callers; establishes nothing here.    |
+| Condition                                                                  | Outcome                                                                |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| No enrolled root in the caller's ancestry                                  | Refuse. No terminal or machine-global identity substitutes.            |
+| Enrolled roots in the ancestry that do not resolve to a single nearest one | Refuse as ambiguous.                                                   |
+| An enrollment naming a process other than the connecting peer              | Refuse.                                                                |
+| A hook or request attempting to establish a root                           | Refuse the establishment; the call itself resolves only by membership. |
+| A durable record written outside an attested connection                    | Contributes no evidence toward a root.                                 |
+| The harness identifier names a session whose root differs                  | Refuse. The identifier never rebinds.                                  |
+| The bound root has exited                                                  | Refuse, including when its process id is live again.                   |
+| A start time cannot be read, or changes during resolution                  | Refuse.                                                                |
+| A parent edge changes during the ancestry walk                             | Refuse; a new request may retry.                                       |
+| Peer credentials unavailable on the platform or transport                  | Refuse.                                                                |
+| A descendant is re-parented away from its root                             | Refuse; ancestry no longer proves lineage.                             |
+| Daemon restart                                                             | Restore only the bindings whose root instance still validates.         |
+| A caller presents a session id                                             | Unchanged for pane-attached callers; establishes nothing here.         |
 
 Process-group membership, POSIX session id, controlling terminal, tmux
 membership, working directory, environment, command text, the harness's session
 identifier, and the machine-global login are not evidence on this path. Each is
 shared, mutable, caller-influenced, or several of those at once.
 
-A descendant of the root is inside the session by construction. Distinguishing
-code the session was meant to run from code it was induced to run is not a
-session-attribution question and is not answered here.
+A root enrolled too shallowly would authorize sibling branches, so an entry
+point enrolls per session and never a shared shell or multiplexer process.
+
+Every descendant of the root is inside the session by construction.
+Distinguishing code the session was meant to run from code it was induced to run
+is not a session-attribution question and is not answered here.
 
 ## See Also
 
 - docs/project/spec/feature/identity/headless-session-identity.md — the behavioral contract this design realizes.
 - docs/project/spec/feature/identity/caller-verification.md — the resolution precedence this path joins.
-- docs/project/spec/feature/integration/headless-session-bootstrap-from-hook.md — the bootstrap that mints the root binding.
+- docs/project/spec/feature/integration/headless-session-bootstrap-from-hook.md — the hook route that makes an unenrolled session observable.
 - docs/project/spec/session-identity-truth.md — the route classification that names these callers.

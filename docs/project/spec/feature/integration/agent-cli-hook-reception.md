@@ -6,20 +6,17 @@ visibility: 'public'
 # Agent CLI Hook Reception — Spec
 
 <!-- planned:external-session-identity -->
-On the headless route the receiver first attempts a live delivery over the
-daemon's local socket, so the daemon can attest the receiver's process instance
-while it is still a descendant of the process hosting the session. Attestation is
-only possible on that live connection: a durable record written outside it
-carries no evidence about the process that wrote it. Deriving a session's root
-needs more than one such connection, so the attempt is made for every headless
-hook rather than for session start alone.
+A hook never establishes a session's root process binding. On the headless route
+the receiver may reach the daemon over the local socket, and the daemon then
+attests the receiver's process instance and resolves the session by membership in
+an enrolled tree. That resolution authenticates the delivery; it creates,
+selects, widens and replaces nothing. A receiver whose ancestry contains no
+enrolled root is not refused as a hook — it falls through to the durable outbox
+write, and its session remains observable and unauthenticable.
 
-On the attested path the daemon owns what the receiver owns elsewhere: the daemon
-resolves or mints the TeleClaude session id and enqueues the event itself. When
-the live attempt does not reach the daemon, the receiver falls back to the
-durable outbox write unchanged and resolves the id as it does today, and the
-resulting session carries no root binding. Managed and managed-descendant routes
-are unaffected.
+Reception behavior is otherwise unchanged: the receiver resolves the TeleClaude
+session id as it does today on the fallback path, and managed and
+managed-descendant routes are unaffected.
 <!-- /planned:external-session-identity -->
 
 ## What it is
@@ -82,7 +79,7 @@ And the receiver maps the event to the canonical agent-session-start hook event
 <!-- planned-change:external-session-identity -->
 And the receiver resolves the TeleClaude session id, minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
 <!-- change:external-session-identity -->
-And the TeleClaude session id is resolved by the daemon when the delivery is attested, and by the receiver on the durable fallback — minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
+And the TeleClaude session id is resolved by the daemon when the delivery is attested to an enrolled root, and by the receiver otherwise — minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
 <!-- /planned-change:external-session-identity -->
 And the receiver fetches memory context and the person header for the project
 And emits adapter-formatted additional context (plain text for Claude)

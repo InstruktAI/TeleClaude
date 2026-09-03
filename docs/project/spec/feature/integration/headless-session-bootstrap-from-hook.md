@@ -49,42 +49,36 @@ And the dispatcher continues normal dispatch for the now-existing session
 ```
 
 <!-- planned:external-session-identity -->
-#### UC-HB9: An attested session-start mints the session, unbound until its root is derived
+#### UC-HB9: A hook from an enrolled tree is attributed by membership, not by claim
 
 ```gherkin
-Given an agent CLI the daemon did not launch emits an agent-session-start hook
-And the receiver reaches the daemon over the local socket while still a descendant of the agent process
-And the daemon attests the receiver's process instance and finds no already-registered root in its ancestry
-When the bootstrap runs
-Then the daemon mints the TeleClaude session id
-And it retains the attested ancestry as this session's first snapshot
-And the session carries no root binding yet, so session-scoped calls from it are refused
-And it enqueues the hook event under the session it just minted
-And the native session id is recorded as provider metadata that selects nothing
-When a later attested hook connection for the same session is evaluated
-And the intersection of the retained snapshots has a unique deepest process instance
-Then that instance is frozen as the session's immutable root binding
-And session-scoped calls from that process tree resolve from then on
+Given an agent CLI whose launch enrolled a root process instance for its session
+And a hook receiver running as a descendant of that root reaches the daemon over the local socket
+When the daemon attests the receiver and verifies its ancestry
+Then the hook is attributed to the session that root is bound to
+And the native session id in the payload selects nothing
+And the hook establishes, widens and replaces no root binding
 ```
 
-#### UC-HB10: A descendant session-start stays owned by the registered session
+#### UC-HB10: A hook from an unenrolled tree still makes the session observable
 
 ```gherkin
-Given an agent-session-start hook whose attested ancestry already contains a registered root
-When the bootstrap evaluates it
-Then no session is minted
-And the event is enqueued under the session that root already owns
-```
-
-#### UC-HB11: An unattestable session-start still becomes observable, without a binding
-
-```gherkin
-Given an agent-session-start hook whose live attested delivery does not reach the daemon
-When the receiver falls back to the durable outbox write and the dispatcher bootstraps from that entry
+Given an agent CLI invoked without passing any enrollment point
+When its agent-session-start hook is bootstrapped
 Then the session record is created exactly as it is today
 And it carries no root process binding
-And a later session-scoped call from that process tree is refused rather than resolved
+And it is fully observable through the existing hook route
+And every session-scoped call from that process tree is refused
 And no machine-global login identity is presented as that session's identity
+```
+
+#### UC-HB11: A hook never repairs a missing binding
+
+```gherkin
+Given a headless session that carries no root process binding
+When any number of further hooks arrive for that session over attested connections
+Then no root binding is established from them
+And the session stays observable and unauthenticable until an enrollment binds a root
 ```
 
 <!-- /planned:external-session-identity -->
