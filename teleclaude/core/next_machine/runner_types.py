@@ -58,6 +58,7 @@ class RunnerTodo:
     status: str
     kind: str | None
     lifecycle_phase: str | None
+    human_approval_pending: bool
     hold: bool
     active_runner: str | None
     manually_started: bool = False

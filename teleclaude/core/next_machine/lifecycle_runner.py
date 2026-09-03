@@ -47,7 +47,7 @@ from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import HoldAuditState
+from teleclaude.types.todos import HoldAuditState, TodoState
 
 logger = get_logger(__name__)
 
@@ -132,15 +132,7 @@ def _autostart_enabled(kind: str, autostart: Mapping[str, bool]) -> bool:
 
 
 def _pending_approval_gate_for_runner(todo: RunnerTodo) -> bool:
-    return (
-        pending_approval_gate(
-            {
-                "kind": todo.kind,
-                "lifecycle_phase": todo.lifecycle_phase,
-            }
-        )
-        is not None
-    )
+    return todo.human_approval_pending
 
 
 def _resolve_kinded_dispatch(
@@ -299,6 +291,7 @@ async def _read_runner_todo(todos_db: TodosDb, row: TodoRow) -> _RunnerTodoRead:
                 status=current_status,
                 kind=None,
                 lifecycle_phase=None,
+                human_approval_pending=False,
                 hold=False,
                 active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
                 manually_started=manually_started,
@@ -339,6 +332,7 @@ async def _read_runner_todo(todos_db: TodosDb, row: TodoRow) -> _RunnerTodoRead:
 
 
 def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue]) -> RunnerTodo:
+    model = TodoState.model_validate(state)
     kind = state.get("kind")
     phase = state.get("lifecycle_phase")
     active_runner = state.get("active_runner")
@@ -349,6 +343,7 @@ def _todo_from_state(row: TodoRow, status: str, state: Mapping[str, StateValue])
         status=status,
         kind=kind if isinstance(kind, str) else None,
         lifecycle_phase=phase if isinstance(phase, str) else None,
+        human_approval_pending=pending_approval_gate(model) is not None,
         hold=state.get("hold") is True,
         active_runner=active_runner if isinstance(active_runner, str) and active_runner else None,
         manually_started=state.get("manually_started") is True,
@@ -461,6 +456,7 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
                 status=read.current_status,
                 kind=None,
                 lifecycle_phase=None,
+                human_approval_pending=False,
                 hold=False,
                 active_runner=None,
                 schedule=row["schedule"],
@@ -471,6 +467,7 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
             status=todo.status,
             kind=todo.kind,
             lifecycle_phase=todo.lifecycle_phase,
+            human_approval_pending=todo.human_approval_pending,
             hold=todo.hold,
             active_runner=todo.active_runner,
             manually_started=todo.manually_started,
@@ -489,6 +486,7 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
                 status=todo.status,
                 kind=todo.kind,
                 lifecycle_phase=todo.lifecycle_phase,
+                human_approval_pending=todo.human_approval_pending,
                 hold=todo.hold,
                 active_runner=None,
                 manually_started=False,

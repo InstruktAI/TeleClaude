@@ -901,7 +901,6 @@ class PreparationViewActionsMixin:
                     "slug": slug,
                     "cwd": project_path,
                     "stamp_type": stamp_type,
-                    "notify_runner": True,
                 },
                 timeout=10.0,
             )

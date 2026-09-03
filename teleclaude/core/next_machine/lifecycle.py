@@ -83,6 +83,7 @@ __all__ = [
     "lifecycle_phase_index",
     "pending_approval_gate",
     "phase_is_complete",
+    "prd_approval_current",
     "prepare_blockers",
     "prepare_review_verdict_from_state",
     "require_lifecycle_phase",
@@ -252,7 +253,8 @@ def pending_approval_gate(todo_state: TodoState | Mapping[str, object]) -> Appro
         phase = coerce_lifecycle_phase(todo_state.get("lifecycle_phase"))
 
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
-        return ApprovalGate.PRD
+        if not isinstance(todo_state, TodoState) or not prd_approval_current(todo_state):
+            return ApprovalGate.PRD
 
     creative = _read_creative_state(todo_state)
     for section, gate, flag in _CREATIVE_APPROVAL_GATES:
@@ -435,6 +437,15 @@ def _approval_current(stamp: ApprovalStamp, current_digest: str, *, pending_subs
     if not stamp.approved_digest:
         return True
     return stamp.approved_digest == current_digest
+
+
+def prd_approval_current(model: TodoState) -> bool:
+    """Return whether the persisted PRD approval remains current for ``model``."""
+    return _approval_current(
+        model.approvals.prd_approved,
+        _artifact_digest(model, STATE_KEY_PRD),
+        pending_substantive_drift=_pending_substantive_prd_drift(model),
+    )
 
 
 def _review_current(review: ReviewVerdictState, current_target_digest: str, current_report_digest: str) -> bool:
@@ -688,11 +699,7 @@ def _feature_phase(
         model.prd_review, _artifact_digest(model, STATE_KEY_PRD), _current_report_digest("prd_review", report_digests)
     ):
         return LifecyclePhase.PRD_REVIEW
-    if not _approval_current(
-        model.approvals.prd_approved,
-        _artifact_digest(model, STATE_KEY_PRD),
-        pending_substantive_drift=_pending_substantive_prd_drift(model),
-    ):
+    if not prd_approval_current(model):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
 
     architecture_skipped = model.approvals.architecture_skipped is not None
@@ -831,11 +838,7 @@ def phase_is_complete(
             _current_report_digest("prd_review", report_digests),
         )
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
-        return _approval_current(
-            model.approvals.prd_approved,
-            _artifact_digest(model, STATE_KEY_PRD),
-            pending_substantive_drift=_pending_substantive_prd_drift(model),
-        )
+        return prd_approval_current(model)
     if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:
         return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
