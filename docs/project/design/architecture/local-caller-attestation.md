@@ -9,7 +9,6 @@ delivered_by:
 ## Required reads
 
 - @docs/project/design/architecture/api-server.md
-- @docs/project/spec/agent-shell-path.md
 
 ## Purpose
 
@@ -93,39 +92,6 @@ caller's verified ancestry.
 - **Failure is refusal.** Absent peer credentials, unreadable ancestry, no
   enrolled root, a start-time mismatch, a peer-user mismatch, a lost liveness
   watch, or a closed session each refuse.
-
-### Why the boundary must be enrolled rather than derived
-
-A single attested connection cannot locate the session boundary in its own
-ancestry. For a receiver below processes `A` and `B`, the world where `A` is a
-per-invocation shell and `B` hosts the session, and the world where `A` hosts
-the session and `B` launched it, present identical process identity, executable,
-start time, and ancestry. Any deterministic choice is wrong in one of them.
-
-Accumulating ancestries across several connections does not recover the
-boundary, because it presupposes one: deciding that two connections belong to
-the same session is the same question again. Two receivers under a shared
-ancestor are equally consistent with one session rooted at that ancestor and
-with two sessions launched beneath it. Merging over-grants to every descendant
-of the shared ancestor; separating fragments a session whose per-invocation
-processes differ. No hook count, depth rule, or timing window removes the
-ambiguity; each only adds an environmental assumption.
-
-Liveness is negative evidence. It disqualifies a candidate that dies while its
-supposed session continues, and it prevents a reused process id from
-impersonating an earlier instance. It establishes nothing positively: a
-per-invocation shell may live arbitrarily long, and no finite wait proves a
-process is the durable host.
-
-Grouping by the harness's conversation identifier makes the partition
-caller-selected. Under an intersecting rule a foreign claimant sharing only a
-login shell or multiplexer moves the boundary upward, widening authorization.
-First-claimant-wins permits squatting, accepting later claims permits
-poisoning, and rejecting conflicts permits targeted denial of service. An
-unguessable grouping key would be a credential.
-
-What remains is enrollment, and it is safe only in the form where the enrolling
-process is the connecting peer: a process may declare itself, and nothing else.
 
 ### Coverage boundary
 
@@ -215,8 +181,8 @@ membership, working directory, environment, command text, the harness's session
 identifier, and the machine-global login are not evidence on this path. Each is
 shared, mutable, caller-influenced, or several of those at once.
 
-A root enrolled too shallowly would authorize sibling branches, so an entry
-point enrolls per session and never a shared shell or multiplexer process.
+An entry point enrolls once per session, and never a shared shell or
+multiplexer process.
 
 Every descendant of the root is inside the session by construction.
 Distinguishing code the session was meant to run from code it was induced to run
@@ -224,6 +190,7 @@ is not a session-attribution question and is not answered here.
 
 ## See Also
 
+- docs/project/adr/0079-external-session-roots-are-enrolled-not-derived.md — why the anchor is enrolled rather than derived.
 - docs/project/spec/feature/identity/headless-session-identity.md — the behavioral contract this design realizes.
 - docs/project/spec/feature/identity/caller-verification.md — the resolution precedence this path joins.
 - docs/project/spec/feature/integration/headless-session-bootstrap-from-hook.md — the hook route that makes an unenrolled session observable.
