@@ -1,5 +1,6 @@
 ---
 description: 'How to create a new agent or script job: artifacts, placement, validation.'
+activation_trigger: Use when creating or changing a scheduled job — deciding script versus agent mode, placing its procedure and spec, or wiring it into the job configuration.
 visibility: 'public'
 ---
 

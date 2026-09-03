@@ -308,3 +308,7 @@ The loop terminates when the work state machine returns:
 ## Recovery
 
 - If the worker stalls or reports a recoverable process failure, its own procedure carries the recovery mechanics; do not compose guidance. Escalate when it cannot proceed from its own brief.
+
+## See Also
+
+- ~/.teleclaude/docs/general/policy/orchestrator-jurisdiction.md — the process-state boundary an orchestrator operates inside.

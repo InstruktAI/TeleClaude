@@ -1,5 +1,6 @@
 ---
 description: 'Procedure for adding new CLI commands to telec: REST model, surface registration, handler, API endpoint, tests.'
+activation_trigger: Use when adding or changing a telec CLI command — a new subcommand, a new resource, or a change to an existing command's surface.
 visibility: 'public'
 ---
 
@@ -29,9 +30,7 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 
 9. **Add to `Required tools`** in relevant lifecycle procedure docs if the command is procedure-scoped.
 
-
 10. **Deploy.** Run `telec sync` to rebuild indexes and deploy artifacts.
-
 
 11. **Verify.** `make restart && make status` for daemon-backed commands. Smoke test the full flow.
 
@@ -47,9 +46,7 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 - An API endpoint (if daemon-backed) in `teleclaude/api/`.
 - Functional tests bound to the command's feature-spec scenarios (when it exposes observable behavior; contract tooling is not tested).
 
-
 - Updated indexes via `telec sync`.
-
 
 ## Recovery
 

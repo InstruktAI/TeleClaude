@@ -24,3 +24,7 @@ Supervisory role. Dispatch workers, monitor progress, drive state machine execut
 ## Why
 
 Focuses on dispatch and monitoring. Implementation choices remain with builders; architectural decisions escalate to the Architect. Workers have full autonomy within their context.
+
+## See Also
+
+- ~/.teleclaude/docs/general/policy/orchestrator-jurisdiction.md — what this role may and may not write.

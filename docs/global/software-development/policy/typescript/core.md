@@ -79,3 +79,7 @@ Use strict typing to keep behavior explicit and refactors safe.
 ## Exceptions
 
 - None. If a deviation is required, document the rationale and get explicit approval.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/policy/typescript/logging.md — the structured-field and boundary-output rules for TypeScript production logging.
