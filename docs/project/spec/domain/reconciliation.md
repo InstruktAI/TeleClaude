@@ -22,12 +22,25 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 ### Ownership boundary
 
+<!-- planned-change:person-home-repository -->
 - **Owns:** comparison of declared installation capabilities with observed
   machine state and selection of sanctioned convergence actions.
 - **Does not own:** service lifecycle mechanics, configuration schema, or
   application behavior of the capabilities it reconciles.
 - **Published contracts:** reconciliation observations, plans, and outcomes
   consumed by sanctioned installation and service-control surfaces.
+<!-- change:person-home-repository -->
+- **Owns:** comparison of declared installation capabilities with observed
+  machine state and selection of sanctioned convergence actions, including the
+  rule deciding which material the home's history retains.
+- **Does not own:** service lifecycle mechanics, configuration schema, the
+  application behavior of the capabilities it reconciles, or what a commit
+  boundary does with a membership answer it is given.
+- **Published contracts:** reconciliation observations, plans, and outcomes
+  consumed by sanctioned installation and service-control surfaces; and a
+  membership predicate answering, for any absolute path, whether it belongs to
+  the home's retained set.
+<!-- /planned-change:person-home-repository -->
 
 ## See Also
 
