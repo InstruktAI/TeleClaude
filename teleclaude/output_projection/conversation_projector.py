@@ -13,8 +13,11 @@ Included parts (yielded as ProjectedBlock):
     - ``compaction`` markers (system role, always emitted)
 
 Input sanitization rules (applied to user text before emission):
-    - Agent-CLI runtime artifacts (hook feedback prefixes, ``<system-reminder>``
-      and ``<task-notification>`` wrappers, XML-style tag prefixes) are stripped.
+    - Codex user-role content uses its native positional provenance before text
+      flattening. Only explicit user modalities are candidate human input; runtime
+      positions are omitted.
+    - Legacy runtime spans are removed only for consumers that opt in to the
+      established mixed-text compatibility behavior.
       ``[TeleClaude …]`` and ``[Orchestrator …]`` bracket headers are NOT
       stripped — brackets are identity markers, receivers parse the role.
     - User messages emptied by sanitization are dropped from the public stream.
@@ -61,7 +64,13 @@ from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defin
     _is_compaction_entry,
     _is_user_tool_result_only_message,
 )
-from teleclaude.utils.transcript._user_turns import is_runtime_artifact_entry
+from teleclaude.utils.transcript._user_turns import (
+    UserContentBlockClassification,
+    UserContentOrigin,
+    classify_user_content_blocks,
+    is_runtime_artifact_entry,
+    normalize_runtime_user_text,
+)
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
 logger = get_logger(__name__)
@@ -164,14 +173,40 @@ def _project_user_text_block(
     block: Mapping[str, object],
     policy: VisibilityPolicy,
     *,
+    agent_name: AgentName,
+    native_classification: UserContentBlockClassification | None,
+    cleanup_runtime_user_spans: bool,
     entry_ts: str | None,
     entry_idx: int,
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
     text = str(block.get("text", ""))
-    classification, visible, author = _classify_user_text(text, policy)
+    if native_classification is not None:
+        if native_classification.origin is UserContentOrigin.RUNTIME:
+            logger.debug("Skipping runtime-owned Codex content block", entry_index=entry_idx)
+            return
+        yield from _project_user_text(
+            text,
+            policy,
+            entry_ts=entry_ts,
+            entry_idx=entry_idx,
+            file_index=file_index,
+        )
+        return
+    if cleanup_runtime_user_spans:
+        cleaned_text = normalize_runtime_user_text(agent_name, text)
+        if cleaned_text:
+            yield from _project_user_text(
+                cleaned_text,
+                policy,
+                entry_ts=entry_ts,
+                entry_idx=entry_idx,
+                file_index=file_index,
+            )
+        return
+    projected_classification, visible, author = _classify_user_text(text, policy)
     if not visible:
-        if classification.kind is not TranscriptEntryKind.ORDINARY:
+        if projected_classification.kind is not TranscriptEntryKind.ORDINARY:
             logger.debug("Sanitized side-channel user text block", entry_index=entry_idx)
         return
     yield ProjectedBlock(
@@ -190,6 +225,9 @@ def _project_content_block(
     *,
     role: str,
     policy: VisibilityPolicy,
+    agent_name: AgentName,
+    user_classification: UserContentBlockClassification | None,
+    cleanup_runtime_user_spans: bool,
     entry_ts: str | None,
     entry_idx: int,
     file_index: int,
@@ -203,6 +241,9 @@ def _project_content_block(
             yield from _project_user_text_block(
                 block,
                 policy,
+                agent_name=agent_name,
+                native_classification=user_classification,
+                cleanup_runtime_user_spans=cleanup_runtime_user_spans,
                 entry_ts=entry_ts,
                 entry_idx=entry_idx,
                 file_index=file_index,
@@ -256,6 +297,9 @@ def _project_content_block(
 def _project_message_blocks(
     message: JsonDict,
     policy: VisibilityPolicy,
+    agent_name: AgentName,
+    user_classifications: tuple[UserContentBlockClassification, ...],
+    cleanup_runtime_user_spans: bool,
     *,
     entry_ts: str | None,
     entry_idx: int,
@@ -277,8 +321,9 @@ def _project_message_blocks(
         )
         return
     if role == "user" and isinstance(content, str):
+        text = normalize_runtime_user_text(agent_name, content) if cleanup_runtime_user_spans else content
         yield from _project_user_text(
-            content,
+            text,
             policy,
             entry_ts=entry_ts,
             entry_idx=entry_idx,
@@ -291,12 +336,16 @@ def _project_message_blocks(
     if role not in ("user", "assistant"):
         logger.debug("Skipping non-user/non-assistant block-based entry", entry_index=entry_idx, role=role)
         return
-    for block in content:
+    classifications_by_index = {classification.index: classification for classification in user_classifications}
+    for block_index, block in enumerate(content):
         if isinstance(block, Mapping):
             yield from _project_content_block(
                 cast(Mapping[str, object], block),
                 role=role,
                 policy=policy,
+                agent_name=agent_name,
+                user_classification=classifications_by_index.get(block_index) if role == "user" else None,
+                cleanup_runtime_user_spans=cleanup_runtime_user_spans,
                 entry_ts=entry_ts,
                 entry_idx=entry_idx,
                 file_index=file_index,
@@ -309,6 +358,8 @@ def project_entries(
     agent_name: AgentName,
     since: str | None = None,
     file_index: int = 0,
+    *,
+    cleanup_runtime_user_spans: bool = False,
 ) -> Iterator[ProjectedBlock]:
     """Apply visibility policy to transcript entries, yielding visible projected blocks.
 
@@ -325,6 +376,8 @@ def project_entries(
         agent_name: Runtime owner used to classify native runtime artifacts.
         since: Optional ISO 8601 UTC timestamp; skip entries at or before this time.
         file_index: Position in the chain (passed through to ProjectedBlock).
+        cleanup_runtime_user_spans: Apply legacy mixed-text cleanup for a consumer
+            that already owned that behavior before canonical projection.
 
     Yields:
         ProjectedBlock for each visible block in the entries.
@@ -360,9 +413,15 @@ def project_entries(
         message = normalize_transcript_entry_message(entry_map)
         if not isinstance(message, dict):
             continue
+        user_classifications = (
+            classify_user_content_blocks(entry_map, agent_name) if agent_name is AgentName.CODEX else ()
+        )
         yield from _project_message_blocks(
             message,  # type: ignore[arg-type]
             policy,
+            agent_name=agent_name,
+            user_classifications=user_classifications,
+            cleanup_runtime_user_spans=cleanup_runtime_user_spans,
             entry_ts=entry_ts,
             entry_idx=entry_idx,
             file_index=file_index,
@@ -374,6 +433,8 @@ def project_conversation_chain(
     agent_name: AgentName,
     policy: VisibilityPolicy,
     since: str | None = None,
+    *,
+    cleanup_runtime_user_spans: bool = False,
 ) -> list[ProjectedBlock]:
     """Project all entries from a transcript chain through the canonical projection route.
 
@@ -386,6 +447,8 @@ def project_conversation_chain(
         agent_name: Agent name for iterator selection.
         policy: Visibility policy controlling which block types are emitted.
         since: Optional ISO 8601 UTC timestamp filter.
+        cleanup_runtime_user_spans: Apply legacy mixed-text cleanup for this
+            consumer's projected user blocks.
 
     Returns:
         List of ProjectedBlock objects in chronological order.
@@ -396,7 +459,16 @@ def project_conversation_chain(
         if entries is None:
             logger.debug("Skipping None entries for file", file_path=file_path, file_index=file_idx)
             continue
-        blocks = list(project_entries(entries, policy, agent_name, since=since, file_index=file_idx))
+        blocks = list(
+            project_entries(
+                entries,
+                policy,
+                agent_name,
+                since=since,
+                file_index=file_idx,
+                cleanup_runtime_user_spans=cleanup_runtime_user_spans,
+            )
+        )
         all_blocks.extend(blocks)
 
     return all_blocks
