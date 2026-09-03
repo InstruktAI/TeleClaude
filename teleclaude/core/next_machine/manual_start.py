@@ -19,6 +19,7 @@ from teleclaude.constants import DriverLaunchClass, SlashCommand
 from teleclaude.core.db import Db, get_db
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
+from teleclaude.core.next_machine.lifecycle import pending_approval_gate
 from teleclaude.core.next_machine.lifecycle_runner import (
     SessionRunner,
     approval_from_state,
@@ -58,6 +59,7 @@ from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
 from teleclaude.types.lifecycle import LifecyclePhase
+from teleclaude.types.todos import TodoState
 
 logger = get_logger(__name__)
 
@@ -527,6 +529,7 @@ async def resolve_manual_dispatch_intent(
         status="active",
         kind=kind,
         lifecycle_phase=lifecycle_phase,
+        human_approval_pending=pending_approval_gate(TodoState.model_validate(state)) is not None,
         hold=state.get("hold") is True,
         active_runner=None,
         after=tuple(deps.get(slug, [])),

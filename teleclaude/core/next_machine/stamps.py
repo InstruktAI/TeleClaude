@@ -17,6 +17,7 @@ import json
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -113,6 +114,26 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_TASK_PLAN: STATE_KEY_TASK_PLAN,
 }
 _KIND_ASSIGN_VALUE = "kind_assign"
+
+
+class HumanGateStamp(StrEnum):
+    """Stamp types whose accepted human authority continues workflow routing."""
+
+    PRD_APPROVED = "prd_approved"
+    TASK_APPROVED = "task_approved"
+    CREATIVE_DESIGN_SPEC_CONFIRMED = "creative_design_spec_confirmed"
+    CREATIVE_ART_APPROVED = "creative_art_approved"
+    CREATIVE_VISUALS_APPROVED = "creative_visuals_approved"
+
+
+def is_human_gate_stamp(stamp_type: str) -> bool:
+    """Return whether ``stamp_type`` records one of the workflow human gates."""
+    try:
+        HumanGateStamp(stamp_type)
+    except ValueError:
+        return False
+    return True
+
 
 _CREATIVE_GATE_STAMPS: dict[str, tuple[str, str]] = {
     "creative_design_spec_confirmed": ("design_spec", "confirmed"),
@@ -780,13 +801,7 @@ async def _validate_stamp_authority(
     active_runner: str | None,
 ) -> None:
     if caller_session_id and caller_session_id.startswith("human:"):
-        if stamp_type in {
-            "prd_approved",
-            "task_approved",
-            "creative_design_spec_confirmed",
-            "creative_art_approved",
-            "creative_visuals_approved",
-        }:
+        if is_human_gate_stamp(stamp_type):
             return
         raise PermissionError(f"{stamp_type} stamp for {slug} requires a TeleClaude session")
 

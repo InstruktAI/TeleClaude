@@ -14,7 +14,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from teleclaude.api.auth import CallerIdentity, clearance_todos_stamp
 from teleclaude.api.todo_routes import _SlugStatusResponse, _validate_slug_for_update
 from teleclaude.core.next_machine.session_hold import notify_runner_of_gate_approval
-from teleclaude.core.next_machine.stamps import apply_todo_stamp
+from teleclaude.core.next_machine.stamps import apply_todo_stamp, is_human_gate_stamp
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.git import GitCommandError
 
@@ -38,7 +38,6 @@ async def todo_stamp(
     cwd: Annotated[str | None, Body()] = None,
     value: Annotated[str, Body()] = "",
     phase: Annotated[str | None, Body()] = None,
-    notify_runner: Annotated[bool, Body()] = False,
     identity: CallerIdentity = Depends(clearance_todos_stamp),
 ) -> _SlugStatusResponse:
     """Apply one todo stamp daemon-side, against the initialized session DB.
@@ -52,10 +51,9 @@ async def todo_stamp(
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
     _validate_slug_for_update(slug, field_name="slug")
-    # ``prd_approved`` is a human-only gate (UC-WFL-22): the caller must resolve to a
-    # human principal, never an agent session. Every other stamp is a worker mutation
-    # stamped under the verified session id (falling back to a human principal for a
-    # human-driven terminal).
+    # ``prd_approved`` is the human-only approval stamp: it records the resolved
+    # human principal. Other gates retain their verified session caller for the
+    # claim-ownership validation that applies to their existing authority model.
     if stamp_type == "prd_approved":
         caller_id = _human_gate_caller_stamp_id(identity)
     else:
@@ -73,6 +71,6 @@ async def todo_stamp(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (StateMutationError, ValueError, GitCommandError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if notify_runner:
-        await notify_runner_of_gate_approval(cwd, slug)
+    if is_human_gate_stamp(stamp_type):
+        await notify_runner_of_gate_approval(cwd, slug, acting_session_id=identity.session_id)
     return _SlugStatusResponse(status="ok", slug=slug)

@@ -500,12 +500,11 @@ async def deliver_remote_stop_notification(
 
 
 async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
-    """Inject an operator gate-approval notification into a parked runner session.
+    """Inject a human-gate approval notification into a parked runner session.
 
-    Fires only from the operator approval control (the TUI ``A`` key), never from
-    an agent's own ``telec todo approve`` stamp — the parked agent must learn that
-    the human cleared its gate so it resumes where it parked, but an agent that
-    stamps its own approval already knows and must not message itself.
+    The workflow continuation boundary invokes this only for a claimant distinct
+    from the acting session, regardless of whether the authority arrived through
+    a direct human entry point or a trusted relay.
 
     Delivers into the target session itself (not its listeners). Returns ``True``
     when the message reached a live, open session; ``False`` when no such session

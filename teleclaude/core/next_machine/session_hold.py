@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 MANUAL_CLOSE_HELD_REASON = "held"
 ACTIVE_RUNNER_CLEARED_REASON = "cleared"
 _SESSION_NOT_PROJECT_CHECKOUT_REASON = "session-not-project-checkout"
+_GATE_APPROVAL_EVENT_SOURCE = "workflow.gate_approval"
 
 
 @dataclass(frozen=True)
@@ -209,19 +210,21 @@ async def clear_active_runner_for_session_end(db: Db, session_id: str) -> Active
     )
 
 
-async def notify_runner_of_gate_approval(cwd: str, slug: str) -> bool:
-    """Tell a parked runner session that the operator cleared its approval gate.
+async def notify_runner_of_gate_approval(cwd: str, slug: str, *, acting_session_id: str | None) -> bool:
+    """Continue workflow after an accepted human approval fact commits.
 
-    Reads ``active_runner`` for the just-approved slug and delivers the operator
-    notification into that session so it resumes. A no-op when no live runner is
-    linked (the agent already exited).
+    Emits the existing workflow update so the lifecycle router re-evaluates the
+    todo, then notifies a distinct parked claimant when one remains live. Missing,
+    closed, or concurrently disappearing claimants are best-effort outcomes.
     """
-    todos_db = await get_todos_db(resolve_project_root(cwd))
+    project_path = resolve_project_root(cwd)
+    todos_db = await get_todos_db(project_path)
+    await _emit_todo_updated(slug=slug, project_path=str(project_path), source=_GATE_APPROVAL_EVENT_SOURCE)
     state = await todos_db.read_state(slug)
     if state is None:
         return False
     active_runner = state.get("active_runner")
-    if not isinstance(active_runner, str) or not active_runner:
+    if not isinstance(active_runner, str) or not active_runner or active_runner == acting_session_id:
         return False
     return await notify_gate_approved(active_runner, slug=slug)
 
