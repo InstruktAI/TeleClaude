@@ -101,7 +101,7 @@ terminated by a runtime or provider failure. Coverage is whatever each provider
 natively exposes — a provider with no native signal for a kind produces no
 normalized event of that kind, and no substitute is inferred from adjacent
 events. Antigravity carries its failure state on the already-installed `Stop`
-event rather than a dedicated one, so its three `Stop` conditions above are
+event rather than a dedicated one; its three `Stop` conditions above are
 mutually exclusive and exhaustive.
 
 A provider that can emit both a turn-end and a turn-failure signal for one turn

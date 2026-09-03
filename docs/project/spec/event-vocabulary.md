@@ -69,10 +69,9 @@ canonical_outbound_activity_events:
 `agent_blocked` and `agent_turn_failed` are the distress kinds: a session
 waiting on an approval or input decision it cannot resolve itself, and a turn
 terminated by a runtime or provider failure. Which native provider event
-produces each is owned by `project/spec/hook-normalized-events`. They are
-lifecycle state, not activity cadence, so they add no canonical outbound
-activity type. `error` remains the platform's internal error channel and no
-longer carries any provider turn state.
+produces each is owned by `project/spec/hook-normalized-events`. They add no
+canonical outbound activity type. `error` remains the platform's internal error
+channel and no longer carries any provider turn state.
 <!-- /planned-change:session-distress-ingestion -->
 
 ### Canonical Outbound Activity Vocabulary

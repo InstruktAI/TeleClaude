@@ -98,13 +98,13 @@ This is the precise meaning of "suppression": the listener's interest is preserv
 | none     | none   | caller has no subscription to target                           | none                                                                                                          |
 | present  | none   | caller passively watches target                                | active — every notification kind delivers to caller's tmux                                                    |
 | none     | active | caller is in 2-way conversation with target                    | none (suppressed by absence of listener)                                                                      |
-| present  | active | caller dispatched the target AND opened a conversation with it | turn-end **suppressed** — listener row remains; distress still delivers, because the link carries no output for a stuck or dead target |
+| present  | active | caller dispatched the target AND opened a conversation with it | turn-end **suppressed** — listener row remains; distress still delivers |
 
 ### Suppression rule (canonical)
 
 While an active direct link exists for `(caller_session_id, target_session_id)`, turn-end notifications to that caller for events on that target are skipped. Turn-end notifications resume on the next event after the link is severed. The listener row is never mutated by link create / close.
 
-Suppression is scoped to the notification kinds the live channel already carries. A target that is blocked on an approval or whose turn died of a failure produces no output on the link either, so distress notifications are delivered to the caller regardless of link state.
+Suppression is scoped to the notification kinds the live channel already carries. Distress notifications are delivered to the caller regardless of link state.
 
 Other listeners for the same target — registered by other callers — are unaffected by any link state.
 
@@ -117,7 +117,7 @@ The two axes encode distinct intents toward the target:
 
 A caller holding both has elected both: they spawned the target and want to be notified when it stops, AND they have opened a direct conversation with it. While the conversation is active, the active-attention channel supersedes the passive-attention channel — turn output flows through the direct link (cross-delivery), and the listener's stop notification would duplicate that signal. Once the conversation is closed, passive interest resumes.
 
-This is the precise meaning of "suppression": the listener's interest is preserved, but its delivery of a signal the live channel already carries is silenced while a stronger channel is active toward the same target. A signal the live channel does not carry — distress — is not silenced, because there is nothing for it to duplicate.
+This is the precise meaning of "suppression": the listener's interest is preserved, but its delivery of a signal the live channel already carries is silenced while a stronger channel is active toward the same target.
 <!-- /planned-change:session-distress-ingestion -->
 
 ## Known caveats

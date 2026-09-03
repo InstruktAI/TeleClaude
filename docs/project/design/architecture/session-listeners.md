@@ -70,14 +70,13 @@ audience is empty.
 <!-- planned:session-distress-ingestion -->
 - **The per-turn notification gate is scoped by `(target, kind)`.** Each
   notification kind is emitted at most once per target turn and is cleared by
-  the same next-real-user-entry rule. A distress notification therefore never
-  consumes the turn-end notification's gate, and neither distress kind consumes
-  the other's — without this scoping a blocked notice would silently swallow
-  that turn's completion notice.
+  the same next-real-user-entry rule. A distress notification never consumes
+  the turn-end notification's gate, and neither distress kind consumes the
+  other's.
 - **The distress audience is persistent listeners only.** One-shot rows are
   outside it: a distress event neither delivers to a one-shot row nor removes
-  it, so the single reply that caller is waiting for still arrives on the
-  target's next turn end.
+  it. Those rows are still delivered to, and removed by, the next turn-end
+  notification.
 - **Every distress event has exactly one recipient class.** When at least one
   persistent listener is registered for the target, distress goes to those
   listeners and the target's human-facing channel receives nothing. When none
@@ -87,8 +86,7 @@ audience is empty.
   pipeline.** It is the surface that already carries this session's ordinary
   output. It is not the notification projector's action gate, which addresses
   the admin audience, debounces on a trailing window, and fires on an incident
-  fingerprint — a different audience and a different delivery contract than a
-  parentless session reporting its own state.
+  fingerprint.
 - **Failure is authoritative for the turn it ends.** When a provider emits both
   a turn-end and a turn-failure signal for one turn, the caller's account of
   that turn names the failure; the turn-end signal does not also report that
@@ -96,8 +94,8 @@ audience is empty.
 - **The recipient decision is made where the listeners live.** For a target on
   another computer, the origin daemon resolves the audience and the fallback,
   then forwards an already-addressed distress notification. The receiving
-  daemon holds no listener rows for a target it did not create and cannot
-  answer whether anyone is watching.
+  daemon holds no listener rows for a target it did not create and makes no
+  audience or fallback decision of its own.
 <!-- /planned:session-distress-ingestion -->
 
 ## Primary flows
@@ -238,8 +236,8 @@ sequenceDiagram
     end
 ```
 
-One-shot rows are absent from this diagram deliberately: the loop never reads
-them, so it never delivers to them and never removes them.
+The loop never reads one-shot rows; it neither delivers to them nor removes
+them.
 
 For a target whose initiator runs on another computer, the origin daemon runs
 this whole decision and then forwards the resulting notification, addressed to
