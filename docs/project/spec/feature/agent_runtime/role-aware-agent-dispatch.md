@@ -314,7 +314,6 @@ And normal automatic ordering selects the fallback
 And the caller receives the selected agent and typed fallback reason
 ```
 
-<!-- planned:dispatch-routing-reason-misclassified -->
 #### UC-RAAD-18: Reviewer independence reports a displaced automatic preference
 
 ```gherkin
@@ -326,7 +325,6 @@ Then it selects an independent eligible agent without changing command-row relat
 And the automated caller receives a typed reviewer-independence fallback reason
 And the dispatch decision reports that fallback is present
 ```
-<!-- /planned:dispatch-routing-reason-misclassified -->
 
 ## Known caveats
 
