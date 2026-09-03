@@ -99,7 +99,7 @@ And no duplicate stop notification is delivered for the same turn
 <!-- planned-change:session-distress-ingestion -->
 #### Notification delivery — direct-link suppression
 <!-- change:session-distress-ingestion -->
-#### UC-SS11: Direct-link suppression withholds a turn-end notification and preserves its record
+#### UC-SS11: A caller in a live conversation with its target is not also sent that target's turn-end notice
 <!-- /planned-change:session-distress-ingestion -->
 
 ```
@@ -113,22 +113,29 @@ And on successful host-pane delivery, the success counter is incremented and an 
 And on delivery failure, a warning is logged but no retry is attempted
 And if the listener is one-shot, the record is removed after the delivery attempt (success or failure)
 <!-- change:session-distress-ingestion -->
-Given a turn-end notification for target T is about to be delivered to listener L for caller C
-When the notification fan-out iterates and reaches L
-Then the active-link check for (C, T, mode="direct_link") runs
-And if an active direct link exists between C and T, delivery is SKIPPED for L (listener record preserved)
-And otherwise the listener-message delivery is invoked against C's host pane
-And on successful host-pane delivery, the success counter is incremented and an info log is emitted
-And on delivery failure, a warning is logged but no retry is attempted
-And if the listener is one-shot, the record is removed after the delivery attempt (success or failure)
+Given a subscribed agent session is in a live conversation with the target it subscribed to
+When that target finishes a turn
+Then the subscribing session is not sent a separate turn-end notification for it
+And its subscription survives, so it is notified again once the conversation ends
 
-Given a distress notification for target T is about to be delivered
-Then the audience is T's persistent subscribers: its persistent listener records, plus its declared remote initiator when T names one
-And one-shot records are neither read, delivered to, nor removed
-And the active-link check does not skip delivery for any member of that audience
-And a member counts as reached only when delivery to it is accepted
+Given a subscribed agent session that holds no live conversation with its target
+When that target finishes a turn
+Then the subscribing session is notified
+And a subscription that was registered for a single reply is spent by that notification, whether or not it arrived
 <!-- /planned-change:session-distress-ingestion -->
 ```
+
+<!-- planned:session-distress-ingestion -->
+#### UC-SS12: Distress reaches the agent sessions persistently watching a target, and only counts one that receives it
+
+```gherkin
+Given an agent session is persistently subscribed to a target session, or dispatched it from another computer
+When the target session enters a distress state
+Then that session is a member of the distress audience for the event
+And an agent session subscribed only for a single reply is not a member, and its subscription is left unspent
+And a member counts as having been reached only when the distress notification is accepted by it
+```
+<!-- /planned:session-distress-ingestion -->
 
 #### Per-pair serialization
 
