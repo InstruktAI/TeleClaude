@@ -24,6 +24,8 @@ TASK_ERROR_RELEASE_REFUSAL = (
     "Recover with `telec todo stamp --task-outcome success` (delivers) "
     "or kill the run and start it manually."
 )
+HOLD_REASON_REQUIRED_DETAIL = "reason is required with hold"
+HOLD_REASON_REQUIRES_HOLD_DETAIL = "reason is valid only with hold"
 
 
 def validate_update_request(
@@ -32,10 +34,11 @@ def validate_update_request(
     after: list[str] | None,
     kind: str | None,
     hold: bool,
+    reason: str | None,
     release: bool,
     unclaim: bool,
     schedule: str | None,
-) -> None:
+) -> str | None:
     if (
         new_slug is None
         and after is None
@@ -51,6 +54,20 @@ def validate_update_request(
         )
     if hold and release:
         raise HTTPException(status_code=400, detail="hold and release are mutually exclusive")
+    return normalize_hold_reason(hold=hold, reason=reason)
+
+
+def normalize_hold_reason(*, hold: bool, reason: str | None) -> str | None:
+    if reason is not None and not hold:
+        raise HTTPException(status_code=400, detail=HOLD_REASON_REQUIRES_HOLD_DETAIL)
+    if not hold:
+        return None
+    if reason is None:
+        raise HTTPException(status_code=400, detail=HOLD_REASON_REQUIRED_DETAIL)
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise HTTPException(status_code=400, detail=HOLD_REASON_REQUIRED_DETAIL)
+    return normalized_reason
 
 
 def normalize_schedule_request(schedule: str | None) -> str | None:
@@ -102,6 +119,7 @@ async def apply_hold_update(
     slug: str,
     *,
     hold: bool,
+    reason: str | None,
     release: bool,
     caller_session_id: str | None,
 ) -> bool | None:
@@ -115,10 +133,12 @@ async def apply_hold_update(
         raise HTTPException(status_code=409, detail=f"slug '{slug}' {TASK_ERROR_RELEASE_REFUSAL}")
     writer.state.hold = hold
     if hold:
+        normalized_reason = normalize_hold_reason(hold=hold, reason=reason)
+        assert normalized_reason is not None
         writer.state.hold_audit.source = HoldAuditSource.MANUAL
         writer.state.hold_audit.set_at = datetime.now(UTC).isoformat()
         writer.state.hold_audit.set_by_session_id = caller_session_id or ""
-        writer.state.hold_audit.reason = "todo update"
+        writer.state.hold_audit.reason = normalized_reason
     else:
         writer.state.hold_audit.source = HoldAuditSource.NONE
         writer.state.hold_audit.set_at = ""
@@ -169,6 +189,7 @@ def should_emit_route_update(
 __all__ = [
     "apply_hold_update",
     "apply_unclaim_update",
+    "normalize_hold_reason",
     "normalize_schedule_request",
     "require_slug_found",
     "require_slug_in_todo",

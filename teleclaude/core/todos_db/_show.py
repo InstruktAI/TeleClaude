@@ -16,7 +16,7 @@ from teleclaude.core.todos_db._models import Todo, TodoStateModel
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, TASK_LIFECYCLE_PHASE_ORDER
 from teleclaude.types.todo_kind import TODO_KIND_TASK
-from teleclaude.types.todos import TodoState
+from teleclaude.types.todos import HoldAuditReason, TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -235,6 +235,12 @@ def _derive_todo_block(row: Todo | None, deps: dict[str, list[str]], slug: str) 
 
 def _derive_state_block(state_model: TodoState) -> dict[str, StateValue]:
     """Project authoritative lifecycle state facts."""
+    hold_audit = state_model.hold_audit.model_dump()
+    if hold_audit["reason"] in {
+        HoldAuditReason.LEGACY_UPDATE_COMMAND,
+        HoldAuditReason.LEGACY_CREATE_COMMAND,
+    }:
+        hold_audit["reason"] = HoldAuditReason.UNKNOWN.value
     return {
         "schema_version": state_model.schema_version,
         "kind": state_model.kind,
@@ -242,7 +248,7 @@ def _derive_state_block(state_model: TodoState) -> dict[str, StateValue]:
         "lifecycle_phase": state_model.lifecycle_phase,
         "integration_phase": state_model.integration_phase,
         "hold": state_model.hold,
-        "hold_audit": state_model.hold_audit.model_dump(),
+        "hold_audit": hold_audit,
         "active_runner": state_model.active_runner,
         "deferrals_processed": state_model.deferrals_processed,
     }
