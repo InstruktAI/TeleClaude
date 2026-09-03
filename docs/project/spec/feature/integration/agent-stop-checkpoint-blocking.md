@@ -7,7 +7,6 @@ visibility: public
 
 # Agent Stop Checkpoint Blocking — Spec
 
-
 ## What it is
 
 A deterministic, zero-LLM heuristic engine invoked from the hook receiver
@@ -31,7 +30,6 @@ checkpoint evaluation that reaches address selection. The record carries the
 receiver ingress identifier, TeleClaude session identifier, selected native
 session identifier, selected transcript path, and `address_source` (`hook` or
 `session_row`).
-
 
 The engine is gated by flag markers, session-scoped unless stated otherwise:
 a turn-scoped **clear flag** skips checkpoints for the current turn and is
@@ -58,8 +56,6 @@ the canonical checkout rather than to a session, because the state it records
 not caught up — belongs to the checkout and outlives any one integrator.
 Each recorded action discharges when its evidence is observed in any
 checkpoint cycle, and the marker is removed once the last one discharges.
-
-
 
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and includes
@@ -189,13 +185,21 @@ And the authored-main-commit marker is consumed
 
 Given the current branch is main
 And the session-scoped authored-main-commit marker is present
+<!-- planned-change:command-loader-and-title-cutover -->
 And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run --command /next-review-commits ...` run, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
+<!-- change:command-loader-and-title-cutover -->
+And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run --command next-review-commits ...` run whose command value names that command with or without the tolerated leading slash, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
+<!-- /planned-change:command-loader-and-title-cutover -->
 When the heuristic engine evaluates the turn window
 Then the post-commit review-gate surfacing action is NOT emitted
 And the authored-main-commit marker is consumed
 And when no changed files, required actions, observations, or commit action remain, no checkpoint is produced rather than an empty "No code changes detected this turn." block
 So the main-commit force-fire does not re-surface the review gate on a commit whose review was already dispatched
+<!-- planned-change:command-loader-and-title-cutover -->
 And a command that merely mentions `/next-review-commits` without dispatching it (a different `--command`, or a question in a `telec sessions send` message) does not discharge the gate
+<!-- change:command-loader-and-title-cutover -->
+And a command that merely mentions the review command without dispatching it (a different `--command`, or a question in a `telec sessions send` message) does not discharge the gate
+<!-- /planned-change:command-loader-and-title-cutover -->
 ```
 
 #### UC-CP6: Per-adapter checkpoint response payloads
@@ -504,7 +508,6 @@ And the commit action is not required
 (A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
 ```
 
-
 #### UC-CP20: Post-merge maintenance persists per action until its evidence is observed
 
 ```gherkin
@@ -539,10 +542,6 @@ When the heuristic engine evaluates that session's turn window
 Then the outstanding make-restart action is surfaced to the successor
 (The obligation describes the checkout and the daemon deployed from it, so it is addressed by the checkout and reaches whichever integrator holds the lease.)
 ```
-
-
-
-
 
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
 
@@ -590,14 +589,12 @@ And the agent stop is not blocked by an all-clear message
 
 ## Known caveats
 
-
 - Session-scoped flag markers live in a per-session temporary directory;
   identifiers that contain unsafe characters are hashed to a digest
   component for the filesystem path. The integrator-maintenance marker is
   the one exception: it is addressed by the canonical checkout, so it lives
   under a checkout-derived component and is reachable by every session
   working from that checkout.
-
 
 - The clear flag is turn-scoped: it skips checkpoints for the current turn
   and is hard-cleared at the next non-system user-prompt-submit, alongside
@@ -620,14 +617,12 @@ And the agent stop is not blocked by an all-clear message
   movement do not re-arm it; doc-only commits do not arm it; raw
   `git commit` does not mark authorship.
 
-
 - The integrator's raw-git merge does not flow through `telec code commit`
   and so does not arm the authorship latch or the commit-obligation ledger;
   instead the integration state machine records the integrator-maintenance
   marker carrying the delivered merge range and the actions it owes, which
   the engine reads to force-fire post-merge maintenance for the integrator
   session holding the lease on that checkout.
-
 
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.

@@ -283,6 +283,31 @@ And a subsequent prepare dispatch for the slug does not spawn another diagnosis 
 And releasing the hold returns the slug to DIAGNOSE
 ```
 
+<!-- planned:command-loader-and-title-cutover -->
+
+#### UC-WPS24: A machine-emitted same-session procedure load carries the composed loader
+
+```gherkin
+Given the prepare machine derives a drafting phase whose script loads a procedure inline in the driving session
+When the machine composes that script
+Then the procedure load is the same composed loader a dispatched command session receives — the structural marker line naming the canonical command with its arguments, followed by the instruction to read that corpus document as the active instruction set and the arguments labelled as its provided inputs
+And the loader body is composed by the one composition the dispatch door uses, so the two forms cannot diverge
+And no earlier directive form of procedure loading survives anywhere the machine emits one
+```
+
+#### UC-WPS25: Live-session lookup finds composed titles and pre-cutover titles alike
+
+```gherkin
+Given a live session whose title was composed from structured dispatch fields as the canonical command name followed by its arguments, carrying no leading slash
+And another live session titled in the pre-cutover slash-prefixed form
+When the workflow resolves a live session for a slug and command, through either matcher family — the one that matches a command and slug together, and the one that matches a command prefix alone
+Then each session is found by the lookup that addresses it
+And neither family requires the retired leading slash to be present
+And a title whose command token matches but whose slug differs is still not matched
+```
+
+<!-- /planned:command-loader-and-title-cutover -->
+
 ### Auto-continue
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.
