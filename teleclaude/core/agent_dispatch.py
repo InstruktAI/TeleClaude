@@ -39,6 +39,7 @@ class AgentDispatchReason(StrEnum):
     MANUAL_PREFERENCE_DEGRADED = "manual_preference_degraded"
     MANUAL_PREFERENCE_UNAVAILABLE = "manual_preference_unavailable"
     DETERMINISTIC_INELIGIBILITY = "deterministic_ineligibility"
+    REVIEWER_INDEPENDENCE = "reviewer_independence"
     UNKNOWN_AGENT = "unknown_agent"
     DISABLED_AGENT = "disabled_agent"
     AVAILABILITY_READ_FAILED = "availability_read_failed"
@@ -463,7 +464,12 @@ async def resolve_agent_dispatch(
     if role == "reviewer" and producer_agent:
         independent = [agent for agent in eligible if agent != producer_agent]
         if independent:
-            return AgentDispatchDecision(agent=independent[0], reason=reason)
+            fallback = (
+                AgentDispatchReason.REVIEWER_INDEPENDENCE
+                if preferred_agent == eligible[0] and independent[0] != preferred_agent
+                else None
+            )
+            return AgentDispatchDecision(agent=independent[0], reason=reason, fallback_reason=fallback)
         return AgentDispatchDecision(agent=eligible[0], reason=AgentDispatchReason.NO_INDEPENDENT_CANDIDATE)
 
     fallback = AgentDispatchReason.DETERMINISTIC_INELIGIBILITY if eligible[0] != order[0] else None
