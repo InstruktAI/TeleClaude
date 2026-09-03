@@ -65,11 +65,10 @@ caller's verified ancestry.
   candidates, widens one, or replaces one. Ordinary requests likewise.
 - **Membership resolves to the narrowest enrolled authority.** A caller belongs
   to a session when that session's root process instance occurs in the caller's
-  verified ancestry. An ancestry is a chain, so the enrolled roots within one are
-  totally ordered by depth and the nearest is the narrowest authority containing
-  the caller; that one resolves. Zero refuses as unproved. Selecting among the
-  roots found is the identity context's decision alone — the runtime that holds
-  the bindings reports what it found and chooses nothing.
+  verified ancestry. The enrolled roots within one ancestry are totally ordered
+  by depth, and the nearest resolves. Zero refuses as unproved. Selecting among
+  the roots found is the identity context's decision alone; the runtime that
+  holds the bindings reports what it found and chooses nothing.
 - **What a process is takes no part in any decision.** Executable identity,
   argument vector, process title, working directory, environment, and command
   text are read for nothing. Ancestry proves containment; enrollment supplies
