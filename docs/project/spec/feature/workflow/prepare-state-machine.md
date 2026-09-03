@@ -283,31 +283,6 @@ And a subsequent prepare dispatch for the slug does not spawn another diagnosis 
 And releasing the hold returns the slug to DIAGNOSE
 ```
 
-<!-- planned:command-loader-and-title-cutover -->
-
-#### UC-WPS24: A machine-emitted same-session procedure load carries the composed loader
-
-```gherkin
-Given the prepare machine derives a drafting phase whose script loads a procedure inline in the driving session
-When the machine composes that script
-Then the procedure load is the same composed loader a dispatched command session receives — the structural marker line naming the canonical command with its arguments, followed by the instruction to read that corpus document as the active instruction set and the arguments labelled as its provided inputs
-And the loader body is composed by the one composition the dispatch door uses, so the two forms cannot diverge
-And every procedure load the machine emits carries that one form
-```
-
-#### UC-WPS25: Live-session lookup matches a stored title with or without a leading slash
-
-```gherkin
-Given a live session whose title is the canonical command name followed by its arguments, with no leading slash
-And another live session whose title carries a leading slash before the same command name
-When the workflow resolves a live session for a slug and command, through either matcher family — the one matching a command and slug together, and the one matching a command prefix alone
-Then each session is found by the lookup that addresses it
-And a leading slash in a stored title neither prevents a match nor is required for one
-And a title whose command token matches but whose slug differs is not matched
-```
-
-<!-- /planned:command-loader-and-title-cutover -->
-
 #### UC-WPS24: Closing a lifecycle driver releases its claim without changing work state
 
 ```gherkin

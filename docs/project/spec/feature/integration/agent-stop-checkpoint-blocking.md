@@ -185,21 +185,13 @@ And the authored-main-commit marker is consumed
 
 Given the current branch is main
 And the session-scoped authored-main-commit marker is present
-<!-- planned-change:command-loader-and-title-cutover -->
 And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run --command /next-review-commits ...` run, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
-<!-- change:command-loader-and-title-cutover -->
-And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run --command next-review-commits ...` run whose command value names that command with or without the tolerated leading slash, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
-<!-- /planned-change:command-loader-and-title-cutover -->
 When the heuristic engine evaluates the turn window
 Then the post-commit review-gate surfacing action is NOT emitted
 And the authored-main-commit marker is consumed
 And when no changed files, required actions, observations, or commit action remain, no checkpoint is produced rather than an empty "No code changes detected this turn." block
 So the main-commit force-fire does not re-surface the review gate on a commit whose review was already dispatched
-<!-- planned-change:command-loader-and-title-cutover -->
 And a command that merely mentions `/next-review-commits` without dispatching it (a different `--command`, or a question in a `telec sessions send` message) does not discharge the gate
-<!-- change:command-loader-and-title-cutover -->
-And a command that merely mentions the review command without dispatching it (a different `--command`, or a question in a `telec sessions send` message) does not discharge the gate
-<!-- /planned-change:command-loader-and-title-cutover -->
 ```
 
 #### UC-CP6: Per-adapter checkpoint response payloads
