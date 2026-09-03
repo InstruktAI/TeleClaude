@@ -96,7 +96,11 @@ And T's per-target notification dedup flag remains set
 And no duplicate stop notification is delivered for the same turn
 ```
 
+<!-- planned-change:session-distress-ingestion -->
 #### Notification delivery — direct-link suppression
+<!-- change:session-distress-ingestion -->
+#### UC-SS11: Direct-link suppression withholds a turn-end notification and preserves its record
+<!-- /planned-change:session-distress-ingestion -->
 
 ```
 <!-- planned-change:session-distress-ingestion -->
