@@ -96,6 +96,16 @@ dispatches work, and never mutates todo state or artifacts. Making work move is
 the runner's and the owners' business; this role restores the awareness that
 lets them move it.
 
+The sole session-lifecycle exception is a true orphan: a session whose recorded
+initiator is no longer live and whose work no other live session has assumed,
+which `general/principle/session-lifecycle` assigns to the fleet overseer. The
+coordinator may end it only after current records show no live child, no
+nonterminal work or claim requiring recovery, a durable outcome independently
+retrievable without the session, and every material signal preserved or routed.
+Its standing peer falsifies those facts but grants no authority. The coordinator
+logs the disposition, then ends the orphan; ambiguity retains the session and
+routes the unresolved recovery instead.
+
 **Address, not content — into a governed session.** A pointer sent into another
 role's session carries where to look and which obligation it bears on: the
 snippet id and section, the peer session, the todo, the artifact, the commit.
@@ -290,6 +300,8 @@ alternatives for anything they cover:
 - `telec sessions tail <id>` — a session's record; read before judging it.
 - `telec sessions send <id> <pointer>` — the intervention surface.
 - `telec sessions end self` — the step-0 yield only; never used at sweep end.
+- `telec sessions end <id>` — only the evidence-complete true-orphan exception
+  under No lifecycle execution.
 - `telec sessions start` — establish the standing peer lazily, at most one live.
 - `telec sessions send <peer-id> <case> --direct` / `--close-link` — open one
   judgment conversation and close it on agreement without ending the peer.
