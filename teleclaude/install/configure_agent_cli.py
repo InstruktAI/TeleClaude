@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from teleclaude.constants import MAIN_MODULE
+from teleclaude.constants import CODEX_HOOK_STOP_TIMEOUT_SEC, MAIN_MODULE
 from teleclaude.hooks.adapters import get_adapter
 from teleclaude.install.codex_hooks_install import (
     all_positions_per_label,
@@ -397,7 +397,9 @@ def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[
                 }
             ]
         elif event_name == "Stop":
-            blocks[event_name] = [{"hooks": [{"type": "command", "command": command, "timeout": 30}]}]
+            blocks[event_name] = [
+                {"hooks": [{"type": "command", "command": command, "timeout": CODEX_HOOK_STOP_TIMEOUT_SEC}]}
+            ]
         else:
             blocks[event_name] = [
                 {

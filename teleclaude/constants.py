@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum, StrEnum
-from typing import TypedDict
+from typing import Final, TypedDict
 
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
@@ -33,6 +33,7 @@ MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
 # Internal configuration (not user-configurable)
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks
 OUTPUT_CADENCE_S = 1.0
+CODEX_HOOK_STOP_TIMEOUT_SEC: Final[int] = 30
 VOICE_TRANSCRIPTION_TIMEOUT_S = 120.0
 # Conservative cross-adapter edit ceiling; longer voice results use overflow send delivery.
 VOICE_TRANSCRIPTION_NOTICE_EDIT_MAX_CHARS = 2000

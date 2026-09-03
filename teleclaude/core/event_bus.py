@@ -41,6 +41,7 @@ from teleclaude.core.events import (
     AgentRestartDispatchedPayload,
     AgentSessionStartPayload,
     AgentStopActivityEvent,
+    AgentStopCompletionSource,
     AgentStopPayload,
     ErrorEventContext,
     EventContext,
@@ -61,6 +62,7 @@ from teleclaude.core.events import (
     ToolUseActivityEvent,
     UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
+    build_codex_task_recovery_stop_payload,
 )
 from teleclaude.events.catalog import EventCatalog
 from teleclaude.events.domain_config import AutonomyLevel, AutonomyMatrix, DomainConfig
@@ -210,6 +212,8 @@ def _agent_event_payload(event_type: AgentHookEventType, payload: Mapping[str, J
             source_computer=_optional_str(payload.get("source_computer")),
         )
     if event_type == "agent_stop":
+        if _optional_str(payload.get("completion_source")) == AgentStopCompletionSource.CODEX_TASK_RECOVERY.value:
+            return build_codex_task_recovery_stop_payload(payload)
         return AgentStopPayload(
             session_id=_optional_str(payload.get("session_id")),
             transcript_path=_optional_str(payload.get("transcript_path")),

@@ -22,6 +22,8 @@ from teleclaude.utils.transcript._checkpoint_anchors import (
     is_checkpoint_anchor_entry,
 )
 from teleclaude.utils.transcript._extraction import (
+    CodexTaskLifecycleKind,
+    CodexTaskLifecycleObservation,
     _extract_last_message_by_role,
     _extract_text_from_content,
     _find_workdir_in_obj,
@@ -32,6 +34,7 @@ from teleclaude.utils.transcript._extraction import (
     extract_last_turn_boundary_timestamp,
     extract_last_user_message,
     extract_last_user_message_with_timestamp,
+    extract_latest_codex_task_lifecycle,
     extract_recent_transcript_turns,
     extract_workdir_from_transcript,
     get_assistant_messages_since,
@@ -124,6 +127,8 @@ __all__ = [
     "ClaudeTurnCommitmentOutcome",
     "ClaudeTurnCommitmentReason",
     "ClaudeTurnCommitmentResolver",
+    "CodexTaskLifecycleKind",
+    "CodexTaskLifecycleObservation",
     "RealUserTurn",
     "StructuredMessage",
     "ToolCallRecord",
@@ -178,6 +183,7 @@ __all__ = [
     "extract_last_turn_boundary_timestamp",
     "extract_last_user_message",
     "extract_last_user_message_with_timestamp",
+    "extract_latest_codex_task_lifecycle",
     "extract_messages_from_chain",
     "extract_real_user_text_from_entry",
     "extract_recent_transcript_turns",
