@@ -433,8 +433,13 @@ And PREPARED paths that resume an in-flight build emit no bulk child cleanup and
 
 - `integration` — when an Artifact's anchored evidence (origin/main HEAD, upstream-artifact digests, owned/upstream snippet digests) moves past the recorded anchor on any applicable class, the drift derivation flips that artifact's collapsed status to pending and the machine refuses to advance to `prepared`. See `@spec/feature/workflow/drift-detection` for the full class taxonomy and the evidence anchor semantics.
 
+<!-- planned-change:prd-approval-never-wakes-idle-claimant -->
 - `session_ledger` — the resolved session principal for each Stamp is recorded so the PRD-approval gate can refuse approvals authored by a non-human principal.
 - `identity` — the `--prd-approved` Stamp requires the caller's principal to resolve to a real human; orchestrator-emulated PO sessions cannot satisfy this gate.
+<!-- change:prd-approval-never-wakes-idle-claimant -->
+- `session_ledger` — the acting caller identity remains recorded for audit, while neither lineage nor involvement substitutes for a direct or relayed human decision.
+- `identity` — a direct human decision or a `HUMAN-DECISION:` relay satisfies the PRD-approval authority; every receiver accepts the relay without provenance investigation, while agent judgment alone does not satisfy the gate.
+<!-- /planned-change:prd-approval-never-wakes-idle-claimant -->
 - `knowledge` — drafting procedures and reviewer briefings pull doc snippets so the worker is grounded against the same canonical docs the architecture invariants reference.
 
 ## Known caveats
@@ -446,7 +451,11 @@ And PREPARED paths that resume an in-flight build emit no bulk child cleanup and
 - A plan re-entered after a `--kickback` stamp follows the same substantive-drift path: the stamp sets `plan_review.cleared_by_substantive_drift`, so the machine derives plan-drafting with dispatch reason `substantive-drift`. The derivation is unchanged from a drift-driven re-entry; only the trigger and the payload differ — the kickback is an authored work-orchestrator stamp rather than a derived drift verdict, and it carries its reason in a delimited block appended to `input`, which the planner reads as authoritative re-derivation context.
 
 - The PRD gate is the only mandatory human approval. Architecture and plan advance on the reviewer Worker's verdict; `--architecture-skipped` exists precisely so that not every Todo has to pay the architecture phase. There is no separate test-specs phase — Gherkin acceptance scenarios are authored into the feature spec snippet during intake.
+<!-- planned-change:prd-approval-never-wakes-idle-claimant -->
 - A PRD authored in standin / emulated-PO mode cannot be Stamped `prd_approved`. The gate requires a real-human principal regardless of how plausible the emulated approval looks.
+<!-- change:prd-approval-never-wakes-idle-claimant -->
+- A standin or emulated PO never invents PRD approval. Preparation advances only from the human's direct decision or a trusted `HUMAN-DECISION:` relay; every receiver accepts that relay as given, and agent judgment alone never satisfies the gate.
+<!-- /planned-change:prd-approval-never-wakes-idle-claimant -->
 - The drift check is a real gate, not advisory. Any Artifact whose per-class derivation collapses to pending or substantive blocks `prepared` until the affected Artifact has been Stamped `drift-reviewed` after analysis. Cosmetic stamps are scoped to the evidence anchor they were made at and expire lazily when new evidence arrives — see `@spec/feature/workflow/drift-detection`.
 - The prepare loop limit is a contradiction detector, not a workload knob. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - The machine does not auto-add the slug to the todo list when called on a holder; auto-add happens only after holder resolution confirms the slug is a leaf prepare target.
