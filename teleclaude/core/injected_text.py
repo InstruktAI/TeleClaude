@@ -184,6 +184,8 @@ _XML_ATTRIBUTE_TEMPLATE = ' {name}="{value}"'
 _XML_PAIRED_TEMPLATE = "<{tag}{attributes}>{body}</{tag}>"
 _XML_AUTO_CLOSED_TEMPLATE = "<{tag}{attributes} />"
 _XML_ATTRIBUTE_SEPARATOR = ""
+_XML_OPENING_TEMPLATE = "<{tag}>"
+_XML_CLOSING_TEMPLATE = "</{tag}>"
 
 ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
     {
@@ -655,13 +657,22 @@ def _separator_after_opening(text: str, opening_end: int) -> str | None:
 
 
 def checkpoint_text(body: str = _CHECKPOINT_BODY) -> str:
-    """Render the canonical paired checkpoint-control envelope."""
-    return platform_control_text(PlatformTextLabel.CHECKPOINT, body)
+    """Render the registry-owned XML checkpoint envelope at the hook boundary."""
+    return render_xml_envelope(_platform_semantic_envelope(PlatformTextLabel.CHECKPOINT, body))
 
 
 def is_checkpoint_text(text: str) -> bool:
-    """Return whether text begins with the closed checkpoint control opener."""
-    return classify_transcript_text(text).platform_label is PlatformTextLabel.CHECKPOINT
+    """Recognize current XML checkpoints and complete historical bracket envelopes."""
+    definition = ENVELOPE_REGISTRY[EnvelopeName.CHECKPOINT]
+    stripped = text.lstrip()
+    xml_opening = _XML_OPENING_TEMPLATE.format(tag=definition.xml_tag)
+    xml_closing = _XML_CLOSING_TEMPLATE.format(tag=definition.xml_tag)
+    if stripped.startswith(xml_opening) and xml_closing in stripped[len(xml_opening) :]:
+        return True
+    return any(
+        candidate.envelope_span[0] == len(text) - len(stripped) and candidate.opening == definition.bracket_opening
+        for candidate in scan_injected_envelopes(text)
+    )
 
 
 def _platform_control_label(text: str) -> PlatformTextLabel | None:
