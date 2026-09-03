@@ -306,7 +306,6 @@ And it does not report "feature-x" as absent from the todo list
 And it does not create or read a stray todos.db under the unresolved working directory
 ```
 
-<!-- planned:hold-audit-reason-records-command-not-reason -->
 #### UC-WM28: A manual hold through update carries the reason it exists
 
 ```gherkin
@@ -328,7 +327,6 @@ And a manual writer received that reason from its caller, and an automatic write
 And the command that set the hold is never presented as its reason
 And a hold recorded before this contract, whose stored reason is the command that set it, is projected as reason-unknown and is never interpreted as a gate, an owner, or a reason
 ```
-<!-- /planned:hold-audit-reason-records-command-not-reason -->
 
 ### Cross-context references
 

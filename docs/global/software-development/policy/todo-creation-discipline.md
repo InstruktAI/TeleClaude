@@ -109,18 +109,11 @@ description: Decide whether a todo should exist, audit that decision at preparat
     A defense is not a request for the flagger's permission: after sending the
     grounded basis, the claimant resumes preparation. A permitted follow-up
     reopens the pause once.
-<!-- planned-change:hold-audit-reason-records-command-not-reason -->
-  - **Hold.** Run `telec todo update <slug> --hold` to set the todo's automatic
-    dispatch brake, then write the flag's source address and the reason the
-    premise may become valid later to the todo's `log` artifact. The hold state
-    itself records only a manual hold; the log carries why this hold exists.
-<!-- change:hold-audit-reason-records-command-not-reason -->
   - **Hold.** Run `telec todo update <slug> --hold --reason "<why this waits, or the gate or owner it waits on>"`
     to set the todo's automatic dispatch brake, then write the flag's source
     address and the reason the premise may become valid later to the todo's
     `log` artifact. The hold audit carries why the current hold exists; the log
     retains the reconciliation breadcrumb.
-<!-- /planned-change:hold-audit-reason-records-command-not-reason -->
   - **Stand down.** End the claimant's preparation children. Before releasing
     the claim, make the todo tell the truth by either holding it with the log
     entry above or amending `input` to carry the reconciliation. Only then run
@@ -203,16 +196,10 @@ and every observer that flags a live claimant under this policy.
 - A flagger that supplies remediation content, chooses the claimant's exit,
   continues beyond one grounded follow-up, or carries a resolved case or an
   unresolved technical deadlock to the human violates this policy.
-<!-- planned-change:hold-audit-reason-records-command-not-reason -->
-- `telec todo update --hold` does not accept a reason and records the generic
-  manual-hold reason `todo update`; a flag-related hold without the associated
-  todo-log explanation is incomplete reconciliation.
-<!-- change:hold-audit-reason-records-command-not-reason -->
 - `telec todo update --hold` requires a non-empty `--reason` and refuses the
   request before any write when it is absent or blank; supplying `--reason`
   without `--hold` is likewise refused. A flag-related hold without the
   associated todo-log explanation is incomplete reconciliation.
-<!-- /planned-change:hold-audit-reason-records-command-not-reason -->
 
 ## Exceptions
 

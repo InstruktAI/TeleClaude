@@ -78,17 +78,6 @@ And the todo waits in the icebox until `telec todo unfreeze parked-idea` returns
 
 #### UC-WTC18: Held create writes active held state and exposes it through todo state views
 
-<!-- planned-change:hold-audit-reason-records-command-not-reason -->
-```
-Given a live-human prepare orchestrator needs to own a new todo before the runner can claim it
-When they run `telec todo create held-change "<content>" --kind change --hold`
-Then the request carries kind="change" and hold=True
-And the route writes the roadmap entry with status="active", the default state, and the `input` artifact
-And the persisted state has hold=True and hold_audit.source="creation"
-And `telec todo show held-change` exposes the held state and its hold_audit.source
-And `telec todo list` projects the same active row as held, reusing the existing hold projection that update-created holds use
-```
-<!-- change:hold-audit-reason-records-command-not-reason -->
 ```
 Given a live-human prepare orchestrator needs to own a new todo before the runner can claim it
 When they run `telec todo create held-change "<content>" --kind change --hold --reason "live-human prepare owns this todo"`
@@ -98,20 +87,9 @@ And the persisted state has hold=True and hold_audit.source="creation" with the 
 And `telec todo show held-change` exposes the held state, its hold_audit.source, and the stated reason
 And `telec todo list` projects the same active row as held, reusing the existing hold projection that update-created holds use
 ```
-<!-- /planned-change:hold-audit-reason-records-command-not-reason -->
 
 #### UC-WTC19: Held create suppresses auto dispatch until release
 
-<!-- planned-change:hold-audit-reason-records-command-not-reason -->
-```
-Given a todo is created with `telec todo create held-change "<content>" --kind change --hold`
-When the route emits workflow.todo.created
-Then the payload carries pickup_requested=false
-And the lifecycle router consumes the event without dispatching a session
-And the lifecycle runner skips the active held todo as HELD
-And after `telec todo update held-change --release` the active todo becomes eligible for its normal lane once other gates are satisfied
-```
-<!-- change:hold-audit-reason-records-command-not-reason -->
 ```
 Given a todo is created with `telec todo create held-change "<content>" --kind change --hold --reason "live-human prepare owns this todo"`
 When the route emits workflow.todo.created
@@ -120,7 +98,6 @@ And the lifecycle router consumes the event without dispatching a session
 And the lifecycle runner skips the active held todo as HELD
 And after `telec todo update held-change --release` the active todo becomes eligible for its normal lane once other gates are satisfied
 ```
-<!-- /planned-change:hold-audit-reason-records-command-not-reason -->
 
 #### UC-WTC20: Hold and icebox are mutually exclusive at create time
 
@@ -436,7 +413,6 @@ Then the router finds "child"'s prepare gate satisfied
 And the router dispatches /next-prepare for "child" as usual
 ```
 
-<!-- planned:hold-audit-reason-records-command-not-reason -->
 #### UC-WTC29: A held create carries the reason it is parked
 
 ```gherkin
@@ -448,7 +424,6 @@ And a `--hold` create whose reason is missing or blank is refused before any roa
 And a `--reason` supplied without `--hold` is refused before any write rather than ignored
 And the reason input is hidden from the structured flag surfaces exactly as `--hold` is
 ```
-<!-- /planned:hold-audit-reason-records-command-not-reason -->
 
 ### Cross-context references
 
