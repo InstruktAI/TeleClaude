@@ -63,17 +63,6 @@ async def _ensure_tmux_for_headless(
     tmux_name = session.tmux_session_name
     if not tmux_name:
         tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id}"
-        await db.update_session(session.session_id, tmux_session_name=tmux_name)
-        await transition_session(
-            db,
-            session.session_id,
-            LifecycleTransition(SessionLifecycleStatus.INITIALIZING, LifecycleTransitionReason.ADOPTION_INITIALIZED),
-        )
-        refreshed = await db.get_session(session.session_id)
-        if refreshed:
-            session = refreshed
-        else:
-            session.tmux_session_name = tmux_name
 
     project_path = session.project_path
     subdir = session.subdir
@@ -117,6 +106,19 @@ async def _ensure_tmux_for_headless(
             metadata=MessageMetadata(),
         )
         return None
+
+    if not session.tmux_session_name:
+        await db.update_session(session.session_id, tmux_session_name=tmux_name)
+        await transition_session(
+            db,
+            session.session_id,
+            LifecycleTransition(SessionLifecycleStatus.INITIALIZING, LifecycleTransitionReason.ADOPTION_INITIALIZED),
+        )
+        refreshed = await db.get_session(session.session_id)
+        if refreshed:
+            session = refreshed
+        else:
+            session.tmux_session_name = tmux_name
 
     if resume_native and session.active_agent and session.native_session_id:
         launch = (
