@@ -64,6 +64,7 @@ SubscriptionState = {
 
 ## Allowed values
 
+<!-- planned-change:session-distress-ingestion -->
 ### State matrix
 
 | listener | link   | meaning                                                        | notification delivery                                                                           |
@@ -89,11 +90,44 @@ The two axes encode distinct intents toward the target:
 A caller holding both has elected both: they spawned the target and want to be notified when it stops, AND they have opened a direct conversation with it. While the conversation is active, the active-attention channel supersedes the passive-attention channel — turn output flows through the direct link (cross-delivery), and the listener's stop notification would duplicate that signal. Once the conversation is closed, passive interest resumes.
 
 This is the precise meaning of "suppression": the listener's interest is preserved, but its delivery is silenced while a stronger channel is active toward the same target.
+<!-- change:session-distress-ingestion -->
+### State matrix
+
+| listener | link   | meaning                                                        | notification delivery                                                                                         |
+| -------- | ------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| none     | none   | caller has no subscription to target                           | none                                                                                                          |
+| present  | none   | caller passively watches target                                | active — every notification kind delivers to caller's tmux                                                    |
+| none     | active | caller is in 2-way conversation with target                    | none (suppressed by absence of listener)                                                                      |
+| present  | active | caller dispatched the target AND opened a conversation with it | turn-end **suppressed** — listener row remains; distress still delivers, because the link carries no output for a stuck or dead target |
+
+### Suppression rule (canonical)
+
+While an active direct link exists for `(caller_session_id, target_session_id)`, turn-end notifications to that caller for events on that target are skipped. Turn-end notifications resume on the next event after the link is severed. The listener row is never mutated by link create / close.
+
+Suppression is scoped to the notification kinds the live channel already carries. A target that is blocked on an approval or whose turn died of a failure produces no output on the link either, so distress notifications are delivered to the caller regardless of link state.
+
+Other listeners for the same target — registered by other callers — are unaffected by any link state.
+
+### Interest semantics
+
+The two axes encode distinct intents toward the target:
+
+- A **listener** says "tell me when their state changes" — passive attention, expected while the caller is doing other work.
+- A **direct link** says "I am the one talking to them now" — active attention, dominates while it is held.
+
+A caller holding both has elected both: they spawned the target and want to be notified when it stops, AND they have opened a direct conversation with it. While the conversation is active, the active-attention channel supersedes the passive-attention channel — turn output flows through the direct link (cross-delivery), and the listener's stop notification would duplicate that signal. Once the conversation is closed, passive interest resumes.
+
+This is the precise meaning of "suppression": the listener's interest is preserved, but its delivery of a signal the live channel already carries is silenced while a stronger channel is active toward the same target. A signal the live channel does not carry — distress — is not silenced, because there is nothing for it to duplicate.
+<!-- /planned-change:session-distress-ingestion -->
 
 ## Known caveats
 
 - **Listeners are persistent (DB-backed), not in-memory.** They survive daemon restart. The `session-listeners` design referred to in-memory storage in earlier revisions; the implementation has used SQLite for some time.
+<!-- planned-change:session-distress-ingestion -->
 - **One-shot vs persistent listeners are distinct rows.** Both share the suppression rule. Both are removed by `unsubscribe`. One-shot listeners additionally self-remove on first notify.
+<!-- change:session-distress-ingestion -->
+- **One-shot vs persistent listeners are distinct rows.** Both are removed by `unsubscribe`. One-shot listeners additionally self-remove on first notify — on a turn-end notification, the only kind they receive. Distress notifications address persistent listeners only: a one-shot row is neither delivered to nor consumed by a distress event, so the single reply its caller is waiting for survives.
+<!-- /planned-change:session-distress-ingestion -->
 - **`--close-link` and `unsubscribe` overlap on the link axis.** `--close-link` is convenient mid-conversation; `unsubscribe` is the umbrella verb that also clears the listener axis. Both severance paths leave the listener row intact except when `unsubscribe` is the verb used.
 - **Idempotence of `unsubscribe`.** Empty state returns success. The response payload reports which (listener / link) was actually removed:
   ```

@@ -34,6 +34,7 @@ This spec must always document:
 
 Current raw-to-normalized lifecycle mapping:
 
+<!-- planned-change:session-distress-ingestion -->
 | Agent       | Raw event and condition                                                        | Normalized event     | Forwarding |
 | ----------- | ------------------------------------------------------------------------------ | -------------------- | ---------- |
 | Claude      | `SessionStart`                                                                 | `session_start`      | forwarded  |
@@ -61,6 +62,56 @@ Current raw-to-normalized lifecycle mapping:
 | DeepSeek    | `PostToolUse`                                                                  | `post_tool_use`      | forwarded  |
 | DeepSeek    | `Stop`                                                                         | `agent_stop`         | forwarded  |
 | DeepSeek    | `StopFailure`                                                                  | `error`              | forwarded  |
+<!-- change:session-distress-ingestion -->
+| Agent | Raw event and condition | Normalized event | Forwarding |
+| ----- | ----------------------- | ---------------- | ---------- |
+| Claude | `SessionStart` | `session_start` | forwarded |
+| Claude | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
+| Claude | `PreToolUse` | `pre_tool_use` | forwarded |
+| Claude | `PermissionRequest` | `agent_blocked` | forwarded |
+| Claude | `PostToolUse` | `post_tool_use` | forwarded |
+| Claude | `Stop` | `agent_stop` | forwarded |
+| Claude | `StopFailure` | `agent_turn_failed` | forwarded |
+| Claude | `PostCompact` where `trigger == manual` | `agent_idle` | forwarded |
+| Claude | `PostCompact` where `trigger == auto` | (none) | dropped |
+| Antigravity | `PreInvocation` where `invocationNum == 0` | `session_start` | forwarded |
+| Antigravity | `PreInvocation` where `invocationNum > 0` and latest transcript role is `user` | `user_prompt_submit` | forwarded |
+| Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present | (none) | dropped |
+| Antigravity | `PreToolUse` | `pre_tool_use` | forwarded |
+| Antigravity | `PostInvocation` | `post_tool_use` | forwarded |
+| Antigravity | `Stop` where `error` is present | `agent_turn_failed` | forwarded |
+| Antigravity | `Stop` where `error` is absent and `fullyIdle == true` | `agent_stop` | forwarded |
+| Antigravity | `Stop` where `error` is absent and `fullyIdle == false` | (none) | dropped |
+| Codex | `SessionStart` | `session_start` | forwarded |
+| Codex | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
+| Codex | `PreToolUse` | `pre_tool_use` | forwarded |
+| Codex | `PermissionRequest` | `agent_blocked` | forwarded |
+| Codex | `PostToolUse` | `post_tool_use` | forwarded |
+| Codex | `Stop` | `agent_stop` | forwarded |
+| DeepSeek | `SessionStart` | `session_start` | forwarded |
+| DeepSeek | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
+| DeepSeek | `PreToolUse` | `pre_tool_use` | forwarded |
+| DeepSeek | `PostToolUse` | `post_tool_use` | forwarded |
+| DeepSeek | `Stop` | `agent_stop` | forwarded |
+| DeepSeek | `StopFailure` | `agent_turn_failed` | forwarded |
+
+`agent_blocked` and `agent_turn_failed` are the distress vocabulary: a session
+waiting on an approval or input decision it cannot resolve itself, and a turn
+terminated by a runtime or provider failure. Coverage is whatever each provider
+natively exposes — a provider with no native signal for a kind produces no
+normalized event of that kind, and no substitute is inferred from adjacent
+events. Antigravity carries its failure state on the already-installed `Stop`
+event rather than a dedicated one, so its three `Stop` conditions above are
+mutually exclusive and exhaustive.
+
+A provider that can emit both a turn-end and a turn-failure signal for one turn
+normalizes both; which of the two accounts for that turn to a subscribed caller
+is decided by the notification fan-out, not by normalization.
+
+No provider normalizes to `error`. That event is the platform's internal error
+channel — receiver faults and agent-restart faults — and carries no provider
+turn state.
+<!-- /planned-change:session-distress-ingestion -->
 
 Conditional mappings are evaluated against the provider payload before session
 resolution or any receiver side effect. A condition that does not match produces
