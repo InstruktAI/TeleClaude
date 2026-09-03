@@ -63,11 +63,13 @@ caller's verified ancestry.
 - **Hooks authenticate; they never enroll.** A hook connection may resolve to a
   root already in its ancestry. It never creates a root, selects among
   candidates, widens one, or replaces one. Ordinary requests likewise.
-- **Membership is exact and unique.** A caller resolves to a session when that
-  session's root process instance occurs in the caller's verified ancestry, and
-  exactly one open session matches. Zero matches refuse as unproved. Where
-  nested enrolled roots occur, the nearest enrolled ancestor wins because it is
-  the narrowest authority; any other multiplicity refuses.
+- **Membership resolves to the narrowest enrolled authority.** A caller belongs
+  to a session when that session's root process instance occurs in the caller's
+  verified ancestry. An ancestry is a chain, so the enrolled roots within one are
+  totally ordered by depth and the nearest is the narrowest authority containing
+  the caller; that one resolves. Zero refuses as unproved. Selecting among the
+  roots found is the identity context's decision alone — the runtime that holds
+  the bindings reports what it found and chooses nothing.
 - **What a process is takes no part in any decision.** Executable identity,
   argument vector, process title, working directory, environment, and command
   text are read for nothing. Ancestry proves containment; enrollment supplies
@@ -145,7 +147,7 @@ sequenceDiagram
     K-->>D: peer process instance, peer user
     D->>I: request + attested peer fact
     I->>I: verify ancestry; find enrolled roots within it
-    I->>I: the nearest enrolled root resolves; none or an unresolvable set refuses
+    I->>I: the nearest enrolled root resolves; none refuses
     I-->>C: response under that session, or refusal
 ```
 

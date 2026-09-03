@@ -103,7 +103,13 @@ boundary.
 **`telec auth whoami` inside an agent session:**
 When `TELEC_SESSION_TOKEN` is present, `whoami` resolves the principal via the daemon's
 `GET /auth/whoami` endpoint and prints `Principal: <principal>` and `Role: <role>`.
+<!-- planned-change:external-session-identity -->
 Falls back to terminal email display when no token is present (human sessions).
+<!-- change:external-session-identity -->
+Without a token the call still reaches that endpoint, where the attested branch
+may resolve a session from the caller's process ancestry; terminal email display
+is the answer only when no session resolves, and it never names a session.
+<!-- /planned-change:external-session-identity -->
 
 **Principal types:**
 

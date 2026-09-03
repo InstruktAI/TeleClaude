@@ -49,11 +49,11 @@ TeleClaudeNext repository.
 <!-- change:external-session-identity -->
 - **Published contracts:** session commands, queries, and lifecycle signals
   exposed to integration, workflow, identity, and session mirrors. Two serve
-  caller attestation: a command minting a session's root process binding from
-  evidence the daemon attested, and a query returning the open sessions whose
-  root occurs in a supplied verified ancestry. The query returns the matching
-  set, never a chosen winner; selecting among several is not a runtime
-  decision, and identity refuses rather than picking. The identity context
+  caller attestation: a command binding a session's root to the process instance
+  the daemon attested as the enrolling peer, and a query returning the open
+  sessions whose root occurs in a supplied verified ancestry, each with the depth
+  at which it was found. The query reports what it found and chooses nothing;
+  which of them authorizes the caller is the identity context's rule. The identity context
   reaches both only through these contracts, never by reading hook internals,
   the native-session map, or session storage directly.
 <!-- /planned-change:external-session-identity -->

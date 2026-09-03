@@ -105,13 +105,14 @@ Then the call is rejected as unauthenticated
 And no machine-global last-login identity is returned in place of a session identity
 ```
 
-#### UC-CV-ATTESTED-AMBIGUOUS: Several owning roots refuse rather than pick one
+#### UC-CV-ATTESTED-NESTED: A caller inside nested enrolled sessions resolves to the narrowest one
 
 ```gherkin
-Given a call over the local socket whose peer ancestry contains the root process instances of more than one open session
+Given a call over the local socket whose peer ancestry contains the enrolled roots of two open sessions
+And one of those roots is a descendant of the other
 When caller verification runs
-Then the call is rejected as ambiguous
-And no session is selected by proximity, age, or any other tie-break
+Then the attested branch resolves the session whose root is nearest the caller
+And the enclosing session's identity is not returned for that caller
 ```
 
 <!-- /planned:external-session-identity -->
