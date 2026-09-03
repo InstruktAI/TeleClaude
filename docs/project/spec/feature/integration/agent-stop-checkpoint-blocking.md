@@ -562,7 +562,6 @@ Then no checkpoint decision is produced
 And the agent stop is not blocked by an all-clear message
 ```
 
-<!-- planned:checkpoint-bypasses-hook-xml-envelope -->
 #### UC-CP25: Checkpoint reasons use the hook-boundary control envelope
 
 ```gherkin
@@ -571,7 +570,6 @@ When TeleClaude delivers a non-empty checkpoint reason to that agent runtime
 Then the reason is framed by the canonical XML checkpoint control envelope
 And no bracket checkpoint envelope is emitted on the hook boundary
 ```
-<!-- /planned:checkpoint-bypasses-hook-xml-envelope -->
 
 ### Cross-context references
 
