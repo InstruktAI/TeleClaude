@@ -102,9 +102,11 @@ Two exemption claims are explicitly void:
 ### The human decides; the agent escalates
 
 A process change is executed only when the human decided it in a live
-conversation, and its doc contract is authored in that same session, with the
-human present. It is never relayed to another session and never delegated
-through a todo (`general/policy/human-contract`). Code that follows from a
+conversation, and its doc contract is authored in that same session. Human
+presence supplies the decision context, not permission to edit: the active
+participants first agree the outcome, and the human then releases it for
+authoring. It is never relayed to another session and never delegated through
+a todo (`general/policy/human-contract`). Code that follows from a
 changed process contract is ordinary functionality work, delivered against the
 contract the human's session already authored. An agent that senses a process-layer delta in its work and holds
 no such decision does not file a todo for it, does not prepare it, and does not

@@ -1,7 +1,7 @@
 ---
-description: 'The enforceable rules of doc-driven development: doc-only work is never
-  a todo, functionality work authors its snippets first, and every behavioral delta
-  is reflected in the doc layer.'
+description: 'The enforceable rules of doc-driven development: functionality authors
+  its contract first, behavioral deltas stay reflected, and current versus pending
+  truth remains explicit.'
 visibility: public
 ---
 
@@ -11,21 +11,10 @@ visibility: public
 
 ### Routing: documentation vs functionality
 
-- **Authority is decided by decision class, never by artifact class.** Whose
-  decision a change is comes from `general/policy/human-contract`: the human's
-  closed lane, or the agent's default autonomy everywhere else. The routing
-  rules below decide only where work executes — in-context or through a todo.
-  A doc-only change on the human's lane executes with the human present; an
-  agent-lane change reaches no human however documentation-shaped the diff.
-- **Doc-only changes are never promoted to a todo.** When a change touches
-  documentation only — doc snippets, ADRs, README, no functionality — the agent
-  executes it **in-context, immediately** (on `main`, per the doc scope of
-  `telec code commit`). Human presence is required only for human-lane doc work.
-  Agent-lane doc work executes autonomously in the session that owns the
-  decision. Neither path creates a separate approval step or requires the human
-  to edit or commit. The todo/lifecycle path exists **only** for work
-  that delivers functionality. Promoting doc-only work to a todo discards the live
-  design context that makes it correct and re-derives it cold; that is a violation.
+- **Todo routing has one owner.** `software-development/policy/todo-creation-discipline`
+  decides whether work executes in context or through a todo. This policy begins
+  after that routing decision and governs the documentation itself; it grants no
+  authoring authority.
 - **Cross-project doc work preserves the authoring session.** When the session
   holding the live design context needs to change documentation owned by another
   project, that caller authors the complete intended content in caller-owned
@@ -141,14 +130,6 @@ Documentation leads and code catches up (`software-development/principle/documen
 This policy is the enforceable _rules_ layer of that disposition — kept separate
 from the principle (the why) and the procedure (the how) so a rule is stated once.
 
-The routing rules exist because the failure mode is mechanical: agents pattern-match
-"big or structural" to "route it through the lifecycle," and propose a todo for
-documentation. For doc-only work whose design was just established between the human
-and the agent, a todo dispatches a fresh worker that never saw that context and
-re-derives it — destroying the very input that makes the change correct. The
-discriminator is **whether functionality is involved**, never size or apparent
-formality.
-
 The same preservation requirement applies across project boundaries. Moving the
 mechanical write to a project-owned session must not move authorship with it: the
 temporary files carry the already-authored document, while the receiving session
@@ -176,9 +157,6 @@ is made so no one has to derive it.
 
 ## Enforcement
 
-- A todo whose only deliverable is documentation must not be created; the work is
-  executed in-context. Reviewers and the lifecycle treat a doc-only todo as a
-  process violation.
 - A cross-project doc handoff that places document content in the dispatch message
   or lets the owning-project agent re-author the supplied files violates the
   authoring-session boundary.
@@ -196,3 +174,7 @@ is made so no one has to derive it.
 
 - Trivial implementation-internal changes with no contract change touch no docs —
   doc-first scales with the size and reach of the change.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md — owns whether work executes in context or through a todo.

@@ -58,12 +58,20 @@ All Committizen types are allowed.
 - Include migration notes when schema or data shape changes.
 - Squash noisy fixups before merge to keep history readable.
 - **`[skip ci]` for automation bookkeeping.** Any commit pushed to origin/main that contains only scaffolding, roadmap updates, or other non-code bookkeeping MUST include `[skip ci]` in the commit subject line. CI runs are reserved for actual code delivery. The integration push from `trees/_integration/` is the only push that should trigger CI.
-- **Commit first, then route review.** Committing is part of normal autonomous
-  agent work. An agent that has completed a coherent change commits it through
-  the sealed interface without asking the human for commit permission. In
+- **Commit authorized, coherent work first; then route review.** Committing is
+  part of normal autonomous agent work once the current authoring context has
+  produced a stable change it is authorized to materialize. A dispatched worker
+  or an agent-owned autonomous session does not ask the human for routine commit
+  permission. In
   `telec code commit --approved`, `--approved` means the agent has passed the
   commit gate and owns the pathspec-scoped commit; it does not mean the human
   approved the commit.
+- **Automation reports commit state; it never creates commit authority.** A
+  checkpoint, stop hook, dirty-tree card, or tool result may require attention
+  under its governing contract, but it does not turn a forming human
+  conversation into a finished change. Where the human has not released the
+  tracked change for commit, report what remains uncommitted and offer to
+  commit; do not commit it, revert it, or suppress the automation.
 - Before committing on shared `main`, run bare `telec code commit` to surface
   the gate card, then commit with `telec code commit --approved "<message>"`
   using the scoped pathspec the tool resolves. New untracked files require
@@ -114,9 +122,10 @@ never findings against that commit or the agent that made it. Every commit made
 through the surface carries both.
 
 Commit guidance, CLI help, agent addenda, and project-specific designs must not
-describe `--approved` as human approval or require a pre-commit human decision.
-They may reference this policy and document mechanics, but the commit-first
-rule lives here.
+describe `--approved` as human approval or require a pre-commit human decision
+for autonomously authorized work. They may reference this policy and document
+mechanics, but the commit-first rule and the human-conversation boundary live
+here.
 
 ## Exceptions
 

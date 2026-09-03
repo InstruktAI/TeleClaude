@@ -72,6 +72,10 @@ change under the marker is the one in violation, found by the human's sweep.
 
 ### Decision class decides authority; artifact class decides only execution
 
+Presence supplies a human-owned decision with its live context; it is not authoring release. While that conversation is still forming the outcome, Git-tracked files on shared `main` remain unchanged. Authoring begins only after every active participant has agreed the outcome and the human releases it for authoring.
+
+Platform-generated checkpoints, stop hooks, and auto-approval messages carry only the authority their governing contracts assign. They may report state or continue already-authorized work; they never supply a missing human decision, broaden current scope, or override a live constraint stated by the human.
+
 This policy answers whose decision a change is. Artifact class — doc-only versus
 functional, snippet versus code — decides only where the work executes, per
 `general/policy/documentation-discipline`; it never decides whose call it is.

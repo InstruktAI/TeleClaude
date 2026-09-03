@@ -9,6 +9,8 @@ visibility: 'public'
 
 Documentation is the source of truth for what the system is AND what it is becoming. Design happens in the document layer first; code catches up. A snippet that describes the intended shape of the system is not a wish or a forecast — it is the design, written down, shareable, reviewable, and binding on what gets built.
 
+“First” orders the documentation before implementation; it does not put a tracked document before the design has formed. Conversation and scratchpad work may shape an outcome, but they are not the contract. The document becomes that contract only after the active participants converge and the authoring context releases the agreed outcome for materialization.
+
 For this to work without becoming a fiction, a snippet's `delivered_by:` field carries the honesty signal. When `delivered_by:` is present, the snippet describes intended state — it lists the delivery slugs that will close the gap between the design and the current implementation. When `delivered_by:` is absent, the snippet describes the current platform contract.
 
 When the delivery slugs in `delivered_by:` reach `delivered`, the integrator clears the field. The reconciliation is enforced by the system, not left to memory.

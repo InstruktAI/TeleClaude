@@ -16,7 +16,7 @@ visibility: 'public'
 <!-- /planned-change:agent-artifact-source-layout -->
 
 
-- **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts (commands, skills, agents) are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision was made — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. The gate is the human's presence in the session, which the agent detects; it is neither a separate approval step nor a requirement that the human edit or commit the file. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; the agent commits the complete artifact and `telec sync` deploys it.
+- **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts (commands, skills, agents) are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision converged — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. Human presence supplies context, not permission to edit: an original explicit authoring request, or agreement by every active participant followed by the human's release, opens the tracked write. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; after the complete artifact is stable, `telec sync` deploys it and the commits policy governs its commit.
 - Any `AGENTS.master.md` in a project is inflated by `telec sync` into an adjacent `AGENTS.md`.
 
 
@@ -53,7 +53,7 @@ visibility: 'public'
 
 - Treating artifacts uniformly avoids cherry-picking and missing capabilities.
 - Agent artifacts govern agents and have no code coupling, so authoring them on `main` in the session that motivated them keeps their language and intent intact — dispatching them through a todo hands them to a worker that never heard the exchange, which loses the meaning in translation, and with no code delivery there is nothing for a todo to carry.
-- Deciding what an artifact should say and writing it are distinct acts. The human holds the first; the agent performs the second, as it does for every other file in the system. Rules that assign the human the mechanical act describe a division of labor that does not exist here, and an agent reading them either stalls waiting for work the human will never do or hands that work back.
+- Deciding what an artifact should say, releasing that decision for authoring, and writing it are distinct acts. The human holds the first two; the agent performs the mechanical write. Human presence preserves the live design context but never collapses those acts into one.
 - Inflating master files keeps agent runtimes in sync while keeping source files stable.
 - Thin, locked wrappers keep knowledge in its rightful home (snippets) and the master file from accreting a parallel, drifting manual.
 - Limiting `hooks` to Claude matches current agent capabilities and avoids invalid configs.

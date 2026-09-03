@@ -36,12 +36,18 @@ description: Decide whether a todo should exist, audit that decision at preparat
   directly merely because the filesystem permits it. If ownership cannot be
   established, resolve it before dispatching or filing rather than letting the
   current working directory decide.
+- **Documentation-only work creates no todo.** It executes in context under
+  `general/policy/documentation-discipline`; when a snippet enters
+  consideration, `general/procedure/doc-snippet-authoring` owns the authoring
+  gate.
 - **Execute small, settled code work in context (5m rule).** When the approach is known,
   the edit is bounded, and the work needs neither a plan, a builder, nor a
-  handoff, make the change on `main` in the human-present session and route the
-  commit through review. Importance does not decide this boundary; remaining
-  judgment does. A small change whose correctness is genuinely contested
-  still belongs in the lifecycle.
+  handoff, make the change on `main` only when an explicit execution request, a
+  bounded brief, or a completed human conversation in which every active
+  participant agreed the outcome and the human released the edit supplies
+  authority. Human presence alone supplies none. Importance does not decide
+  this boundary; remaining judgment does. A small change whose correctness is
+  genuinely contested still belongs in the lifecycle.
 - **Use the todo's `log` artifact for a breadcrumb.** A minimal FYI that
   changes neither scope nor a decision does not justify a new todo or a rewrite
   of `input`, `prd`, or `implementation-plan`.
@@ -165,6 +171,12 @@ Creation stays intentionally cheap. Its bounded check prevents obvious waste
 without forcing every creator to perform the preparation worker's deeper
 landscape analysis. The entry audit then reads the actual todo and current
 landscape before the input becomes authority for derived work.
+
+Documentation-only work stays in its live authoring context because a todo
+would dispatch a fresh worker that never saw the conversation which made the
+content correct. Re-deriving that intent cold destroys the information the
+handoff was supposed to preserve; routing it in context avoids the loss rather
+than merely saving lifecycle ceremony.
 
 The prior contract named violations but gave an observer no consequence to
 trigger. A live-claimant flag closes that gap at the moment cost is being

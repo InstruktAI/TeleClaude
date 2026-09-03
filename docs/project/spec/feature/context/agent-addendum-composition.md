@@ -12,7 +12,7 @@ visibility: 'public'
 ## What it is
 
 Addendum composition is the per-agent decoration step that runs after baseline
-inflation. For each target agent (`claude`, `codex`, `gemini`), the matching
+inflation. For each target agent (`claude`, `codex`, `gemini`, `deepseek`), the matching
 addendum Source file `<AGENT>.upper().md` (`CLAUDE.addendum.md`,
 `CODEX.addendum.md`, `GEMINI.addendum.md`) is read from the prefix root, run
 through token substitution (`{AGENT_PREFIX}` / `{{agent}}`), and concatenated
@@ -76,10 +76,11 @@ Scenario: Codex local-phase repo override mirrors the addendum
 
 ## Known caveats
 
-- Addendum filenames are derived as `<AGENT_NAME_UPPER>.addendum.md`, so only
-  `CLAUDE.addendum.md`, `CODEX.addendum.md`, and `GEMINI.addendum.md` are
-  consulted. There is no `AGENTS.addendum.md` support — files with that name
-  are ignored even though the name looks plausible.
+- Addendum filenames are derived as `<AGENT_NAME_UPPER>.addendum.md`, so
+  `CLAUDE.addendum.md`, `CODEX.addendum.md`, `GEMINI.addendum.md`, and
+  `DEEPSEEK.addendum.md` are consulted. There is no `AGENTS.addendum.md`
+  support — files with that name are ignored even though the name looks
+  plausible.
 - Missing addendum files are NOT errors. The composition step treats absence
   as "no decoration", which is correct for projects that opt out, but means
   a typo in the filename is indistinguishable from an intentional opt-out.

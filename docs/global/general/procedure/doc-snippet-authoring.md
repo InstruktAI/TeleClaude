@@ -1,8 +1,8 @@
 ---
-activation_trigger: Use when you are about to create or edit any doc snippet under docs/ — read before
-  the first line is written.
-description: Author documentation snippets according to the taxonomy, schema, and
-  policies.
+activation_trigger: Use when creating, changing, proposing, or drafting a documentation
+  snippet first enters consideration — before its shape is decided.
+description: Establish whether documentation work is ready and authorized, then author
+  snippets according to the taxonomy, schema, and policies.
 visibility: public
 ---
 
@@ -21,16 +21,38 @@ visibility: public
 
 ## Goal
 
-Create a new snippet that conforms to schema and is discoverable by tooling.
+Establish authority and convergence before materializing documentation, then
+create or update a snippet that conforms to schema and is discoverable by
+tooling.
 
 ## Preconditions
 
 - Snippet taxonomy and schema references available.
 - Target docs folder determined.
+- Authoring authority established in Step 0.
 
 ## Steps
 
-0.  **Earn the snippet.** Before drafting, name the specific future-agent question this snippet answers and confirm it is not already answered by a one-minute source read, an already-loaded global policy or principle, the project's README, or an existing snippet. If you cannot name the question, or any of those already answers it, do not write the snippet — either skip it, or add a one-line entry under "See also" of an existing snippet pointing to the upstream source. Apply `general/policy/snippet-value-contract` rigorously: the default is **skip unless justified**, not "produce when applicable."
+0.  **Establish authoring authority, then earn the snippet.** Load this procedure
+    when a snippet first enters consideration, before drafting its shape. A
+    bounded dispatched brief or an original explicit authoring request supplies
+    authority for its scope. When the current human conversation began as
+    exploration or design, authoring starts only after every active participant
+    agrees the outcome and the human releases it for materialization. Silence,
+    unilateral confidence, partial agreement, and automated checkpoint or
+    approval output supply none. Until the gate opens, keep forming work in
+    conversation or a non-authoritative scratchpad and stop before editing
+    Git-tracked documentation on shared `main`.
+
+    Once authorized, name the specific future-agent question this snippet
+    answers and confirm it is not already answered by a one-minute source read,
+    an already-loaded global policy or principle, the project's README, or an
+    existing snippet. If you cannot name the question, or any of those already
+    answers it, do not write the snippet — either skip it, or add a one-line
+    entry under "See also" of an existing snippet pointing to the upstream
+    source. Apply `general/policy/snippet-value-contract` rigorously: the default
+    is **skip unless justified**, not "produce when applicable."
+
 1.  Place the file at the correct path per the artifact-scope policy — the path determines `id`/`type`/`scope`/`domain` (the index build derives and materializes them; you do not author them).
 2.  Author top-down: broader context should point to narrower details, not the other way around.
 3.  Add frontmatter: `description` (required) and `visibility`; `id`/`type`/`scope`/`domain` are derived from the path and must NOT be authored. Classify `visibility` deliberately: `internal` is the default. Promote to `public` only when both conditions hold — (a) the snippet contains nothing sensitive (no credentials, no private infra, no non-public business intel, no personal data), and (b) the content is useful to anyone outside the project who asks the help desk about it. When in doubt, leave it `internal`. Visibility does not permit repository-local identity: internal snippets also use semantic placeholders for computer, user, host, path, and topology values, then direct readers to the runtime discovery surface. TeleClaude fleet snippets use `telec computers list` for computer, user, and host discovery, and `telec projects list --computer <computer>` for project locations. Repository privacy is reviewed semantically; never create or request a prose scanner for it.
@@ -40,7 +62,11 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 7.  Organize content inside those valid sections. Use subordinate headings such as `###` when they improve readability; do not flatten useful structure just to avoid internal headings.
 8.  If validation rejects a heading, first ask whether it should be downgraded under an existing schema section rather than deleted or flattened.
 
-9.  After any doc change, run `telec sync` to deploy all artifacts. Commit the regenerated index files as part of the task — they are build outputs of the sync step and reflect the current truth of the docs directory.
+9.  After the authorized documentation batch is stable, run `telec sync` to
+    deploy all artifacts. Keep the regenerated index files with the eventual
+    commit — they are build outputs of the sync step and reflect the current
+    truth of the docs directory. This step supplies neither authoring nor commit
+    authority.
 10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
 
 11. Avoid creating index.md files; only baseline.md manifests are allowed.

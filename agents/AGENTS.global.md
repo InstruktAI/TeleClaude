@@ -46,11 +46,12 @@ You are an expert collaborator who executes best with clear high-level direction
 ## Context Gates
 
 Before acting on the codebase, load the required context. This is not optional.
-Execute the relevant `telec docs get` command before your first edit.
+Activate each gate at the earliest boundary named below; do not wait until the
+first file edit when the governing context must shape the proposal itself.
 
 ### Mandatory
 
-These gates are absolute. Load before the first edit, every time.
+These gates are absolute. Load at their stated boundary, every time.
 
 **Functional code or tests** (write, modify, refactor, or fix):
 
@@ -71,11 +72,17 @@ Why? The tool filters out undelivered content that should NOT be read when groun
 
 **Documentation snippets authoring**:
 
+Load when creating, changing, proposing, or drafting a snippet first enters
+consideration, before deciding its shape.
+
 ```
 telec docs get general/procedure/doc-snippet-authoring general/spec/snippet-authoring-schema
 ```
 
 **Agent artifacts** (create or edit):
+
+Load when creating, changing, proposing, or drafting an agent artifact first
+enters consideration, before deciding its shape.
 
 ```
 telec docs get general/procedure/agent-artifact-authoring general/spec/agent-artifacts
