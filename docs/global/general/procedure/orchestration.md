@@ -110,7 +110,7 @@ Status semantics:
 3. Update the marker to the latest message timestamp when new messages appear.
 4. If `agent_status` is `active`, keep `orchestration-watch` live and continue waiting.
 5. If `agent_status` is `idle`, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo design` depending on the loop). Execute the returned script verbatim — it contains any durable state transitions, session-end commands, or `sessions send` relays for this exact moment.
-6. If `agent_status` is `unknown`, continue waiting for the next event.
+6. If `agent_status` is `unknown`, continue waiting for the next event — unless the tail carries a readiness-investigation pointer, which means the session has not become live within its readiness budget. Then inspect, classify and adapt under Agent Degradation Handling instead of waiting further.
 7. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`). Only send `telec sessions send` when the state machine output explicitly instructs it.
 
 ### When `orchestration-watch` Fires
@@ -120,7 +120,7 @@ Status semantics:
 3. Update the marker to the latest message timestamp when new messages appear.
 4. If `agent_status` is `active`, keep `orchestration-watch` live and continue waiting.
 5. If `agent_status` is `idle`, invoke the state machine again and execute its returned script verbatim.
-6. If `agent_status` is `unknown`, continue waiting for the next event.
+6. If `agent_status` is `unknown`, continue waiting for the next event — unless the tail carries a readiness-investigation pointer, which means the session has not become live within its readiness budget. Then inspect, classify and adapt under Agent Degradation Handling instead of waiting further.
 
 ### When Worker Needs Help
 
