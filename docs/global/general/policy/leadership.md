@@ -72,8 +72,8 @@ transfers ownership.
 
 For judgment formation, send the problem, the evidence, and source pointers —
 never the answer or the shape you expect. The peer establishes independent
-coverage first; only then do conclusions meet, over several breaths. One
-response is not falsification. Artifact review necessarily receives the
+coverage first; only then do conclusions meet, over several breaths when the
+disagreement warrants them. Artifact review necessarily receives the
 artifact, but never a preferred verdict, and still grounds independently before
 reconciling.
 
