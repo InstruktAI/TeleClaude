@@ -413,6 +413,20 @@ And PREPARED paths that resume an in-flight build emit no bulk child cleanup and
 ```
 <!-- /planned:terminal-child-session-cleanup -->
 
+<!-- planned:dead-parentless-orchestrator-claim-never-recovered -->
+#### UC-WPS23: A claim never stays attached to an orchestrator the platform has established cannot continue
+
+```gherkin
+Given a Todo whose active_runner names a runner-dispatched orchestrator
+And the platform has conclusively established that the session cannot continue consuming its accepted input
+When the platform's automatic recovery for that session reaches its outcome
+Then the claim does not remain attached indefinitely: the Todo is either driven again by the recovered session, or becomes unclaimed at its recorded phase with the release recorded on the Todo with its source, time, and the session it was released from
+And lifecycle_phase, stamps, artifacts, and any human gate are unchanged, so the lifecycle runner reassesses the recorded phase and never bypasses a gate
+And at no point do two live drivers hold the Todo
+And no human is asked to restart the session or release the claim
+```
+<!-- /planned:dead-parentless-orchestrator-claim-never-recovered -->
+
 ### Cross-context references
 
 - `agent_runtime` — drafting Phases load procedures into the orchestrator session inline; reviewer Phases (architecture-review, plan-review) and the drift-analyzer dispatch a worker session.
