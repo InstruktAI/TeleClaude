@@ -102,9 +102,6 @@ which `general/principle/session-lifecycle` assigns to the fleet overseer. The
 coordinator may end it only after current records show no live child, no
 nonterminal work or claim requiring recovery, a durable outcome independently
 retrievable without the session, and every material signal preserved or routed.
-Its standing peer falsifies those facts but grants no authority. The coordinator
-logs the disposition, then ends the orphan; ambiguity retains the session and
-routes the unresolved recovery instead.
 
 **Address, not content — into a governed session.** A pointer sent into another
 role's session carries where to look and which obligation it bears on: the
