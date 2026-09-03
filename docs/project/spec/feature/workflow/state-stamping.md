@@ -146,25 +146,17 @@ Then no notification is delivered into any session
 And an agent never messages itself about an approval it just recorded
 ```
 <!-- change:prd-approval-never-wakes-idle-claimant -->
-#### UC-WSS10: Human approval has one outcome across direct and relayed entry paths
+#### UC-WSS10: Accepted human approval resumes preparation through one workflow path
 
 ```gherkin
 Given a Todo is parked at a human-approval gate
 And the human approves directly through an interaction surface or through a HUMAN-DECISION relay carried by one or more agents
-When workflow receives the approval
-Then it accepts the human decision as given without provenance investigation
-And records the approval through the same domain command
+When workflow accepts the approval command
+Then it records the approval and initiates continuation as one domain outcome
 And preparation continues from the approved fact without another human action
-And no interaction surface or relay path can vary that outcome
-```
-
-#### UC-WSS22: An agent's own approval carries no human authority
-
-```gherkin
-Given an agent records an approval from its own judgment rather than relaying the human's decision
-When workflow accepts the agent's approval
-Then workflow does not treat it as a human approval
-And no human-approval notification is delivered into the agent's session
+And conversation, user-interface controls, the command line, the web, and future adapters produce that same outcome
+And every receiving agent trusts a HUMAN-DECISION relay without provenance investigation
+And false or stretched relays remain visible for the human's retrospective marker audit rather than runtime verification
 ```
 <!-- /planned-change:prd-approval-never-wakes-idle-claimant -->
 
