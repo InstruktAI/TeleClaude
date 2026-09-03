@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
 from teleclaude.api_models import TodoDumpRequest
+from teleclaude.cli.telec.handlers._creation_gate import render_todo_creation_gate
 from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
 from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list, _resolve_project_root_or_exit
 from teleclaude.cli.telec.handlers.todo_remove import render_remove_refusal
@@ -71,7 +72,7 @@ _REASON_REQUIRED_WITH_HOLD = "Error: --reason is required with --hold"
 _REASON_REQUIRES_HOLD = "Error: --reason is valid only with --hold"
 _REASON_REQUIRES_VALUE = "Error: --reason requires a value"
 
-_TODO_CREATION_GATE = f"Nothing was created. Face these before this work enters the lifecycle\n(software-development/policy/todo-creation-discipline governs every one):\n\n1. Five-minute rule - approach known, edit bounded, needing neither a\n   plan, a builder, nor a handoff? Make the change on main in this\n   human-present session and route the commit through review\n   (/next-review-commits); create no todo. Importance does not decide\n   this boundary; remaining judgment does.\n\n2. Doc-only - documentation, ADRs, README, agent artifacts? Execute it\n   in-context per general/policy/documentation-discipline; create no\n   todo, whatever its size.\n\n3. Existing home - already covered, or a small addition to a todo that\n   has not started build? Amend it instead of creating a sibling:\n     telec todo list\n     telec todo artifacts read <slug> input\n\n4. Ownership & authority - owning project of the changed files correct\n   (--project-root)? A process-layer change carries a live human\n   decision per software-development/policy/process-change-authority?\n   A human who shaped this filing declared (--human-involved)?\n\nOnly once these are faced, create with:\n  telec todo create {_CREATION_ACK_FLAG} <slug> <content> --kind <feature|change|bug|task>\n"
+_TODO_CREATION_GATE = render_todo_creation_gate(_CREATION_ACK_FLAG)
 
 
 @dataclass(frozen=True)

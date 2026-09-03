@@ -551,9 +551,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         "--approved",
                         desc=(
                             "Declares the pre-creation decisions were faced. Without it a complete creation "
-                            "request creates nothing and prints those decisions instead — the five-minute "
-                            "rule, doc-only routing, an existing home to amend, and ownership plus "
-                            "process-change authority."
+                            "request creates nothing and points to "
+                            "software-development/policy/todo-creation-discipline."
                         ),
                     ),
                     Flag("--icebox", desc="Create future todo parked in the icebox; does not auto-spawn"),
@@ -565,7 +564,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     Flag(
                         "--hold",
-                        desc="Create the todo with the dispatch brake set so router/runner pickup is suppressed until release; reserved for live-human prepare orchestration only.",
+                        desc="Exceptional create-time brake for valid work awaiting an external gate; suppresses future dispatch until release.",
                         hidden=True,
                     ),
                     Flag(
@@ -599,8 +598,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
                     "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
                     "deliberate exception: its content is a complete implementation-plan, not an input.)",
-                    "Use --icebox to place unfleshed future ideas directly into the icebox, while --hold is "
-                    "the human requested create-time parking flag for todos needing fleshing out progressively. "
+                    "Use --icebox for valid future work. Hidden --hold is an exceptional brake for valid work "
+                    "awaiting an external gate; neither surface makes unfinished intent valid. "
                     "--group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder "
                     "via the existing derivation; the first grouped child strips the parent's todo_state "
                     "while preserving all its artifacts as frozen evidence, and is refused once the parent's "

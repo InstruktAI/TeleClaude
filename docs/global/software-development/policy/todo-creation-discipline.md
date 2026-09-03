@@ -13,6 +13,12 @@ description: Decide whether a todo should exist, audit that decision at preparat
 
 ### Decide before creating
 
+- **Create only a valid todo.** Creation materializes intent into the lifecycle;
+  it is not a place to park a conversation that is still forming. The intended
+  outcome and every known contract that Prepare will consume have converged,
+  and no pending authoring, review, or commit is still expected to change them.
+  Otherwise create nothing and let the current session retain the conversation
+  until it is valid. Neither icebox nor hold makes unfinished intent valid.
 - **Run the bounded creation check before every `telec todo create`.** Read
   `telec todo list`. For each plausible match, read its `input`; if whether it
   has started build affects the choice, inspect its current state too. This is
@@ -26,6 +32,15 @@ description: Decide whether a todo should exist, audit that decision at preparat
   bypass artifact authority. A separate todo is warranted when the work is
   independently shippable, substantial in its own right, or the related todo
   is already building or finalizing.
+- **Do not infer a platform gap from missing automatic action.** When a report's
+  premise is that no role automatically owned the next move, establish which
+  agent observed the condition, which existing procedure governed its recovery,
+  what that agent attempted, what it changed before retrying, and the exact
+  sanctioned step that failed. If the deliberate agent-owned recovery path was
+  never attempted, execute or route that path and create no todo. Keep three
+  facts distinct: an observation that an action failed, a diagnosis that the
+  recipient cannot progress, and evidence that the platform lacks a required
+  capability.
 - **Route cross-project work through the project that owns the changed files.**
   Reading another project to establish ownership or gather evidence does not
   transfer execution ownership to the current session. For doc-only work, create
@@ -102,6 +117,14 @@ description: Decide whether a todo should exist, audit that decision at preparat
   identifies the todo, the source address grounding the concern, the section
   of this policy under challenge, and this reconciliation section. It carries
   addresses, not rewritten instructions or a proposed outcome.
+- **Communication precedes a dispatch brake.** When the todo already has a live
+  claimant, deliver the complete flag to that claimant first — through the
+  existing direct conversation when one exists, otherwise through ordinary
+  session messaging — and wait for its response. The response closes the loop:
+  it confirms what was understood and reveals whether derived work is already
+  contaminated. The claimant normally chooses and records its exit. A log is
+  durable evidence after understanding; it is never a substitute for delivering
+  the flag.
 - **A flag binds only a live claimant.** An unclaimed todo has no message-based
   flag path and consumes no active preparation effort; its next claimant must
   apply the Step 0a entry audit before deriving from it. Creation lineage is
@@ -136,7 +159,14 @@ description: Decide whether a todo should exist, audit that decision at preparat
     marker-only edits uncommitted. Automation-only marker removal requires no
     snippet review. Then depart under the departure discipline in
     `general/policy/reminder`.
-- **The flagger does not select or negotiate the exit.** After the complete
+- **External hold is the unreachable-claimant fallback.** Only a proven delivery
+  failure or other authoritative evidence that the claimant cannot answer —
+  never silence or impatience — permits the observer to set `hold` with the
+  grounded reason. That hold is only a brake against future dispatch while
+  session recovery resolves the claimant; it neither stops the current agent nor
+  proves that agent stopped. Route claimant recovery as a separate act.
+- **The flagger does not select or negotiate the exit.** Except for the
+  unreachable-claimant dispatch brake above, after the complete
   flag, it may send at most one source-grounded, address-only follow-up when a
   defense exposes a specific unresolved contradiction. When that follow-up
   arrives, the claimant pauses again and answers by choosing another exit or
@@ -177,6 +207,18 @@ would dispatch a fresh worker that never saw the conversation which made the
 content correct. Re-deriving that intent cold destroys the information the
 handoff was supposed to preserve; routing it in context avoids the loss rather
 than merely saving lifecycle ceremony.
+
+The absence of an automatic actor proves only how the system is arranged. When
+the contract assigns recovery to an observing agent, filing automation from
+that absence erases the agent's unattempted responsibility and turns a missed
+procedure into product scope. Requiring the failed sanctioned step preserves
+the difference between an observed symptom and a missing platform capability.
+
+Communication comes before a state brake because only the claimant can report
+what it understood and whether its current derivation remains usable. A hold is
+still necessary when that feedback path is provably unavailable, but it carries
+one narrow fact: future dispatch is paused. It says nothing about the current
+agent's state, so recovery remains a separate owned act.
 
 The prior contract named violations but gave an observer no consequence to
 trigger. A live-claimant flag closes that gap at the moment cost is being

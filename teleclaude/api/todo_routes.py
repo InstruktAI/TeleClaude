@@ -101,6 +101,10 @@ _DRIFT_TRACKED_ARTIFACT_NAMES = {
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_TASK_PLAN,
 }
+_CLAIMED_HOLD_WARNING = (
+    "Hold affects future dispatch only; claimed session {session_id} keeps running. "
+    "Contact it with `telec sessions send {session_id} <message>`."
+)
 
 
 # ── Response models ─────────────────────────────────────────────────────────
@@ -128,6 +132,12 @@ class _TodoUpdateResponse(BaseModel):
     unclaim: str | None = None
     warnings: list[str]
     folded_artifact: str | None = None
+
+
+def _claimed_hold_warnings(*, hold_value: bool | None, active_runner: object) -> list[str]:
+    if hold_value is not True or not isinstance(active_runner, str) or not active_runner:
+        return []
+    return [_CLAIMED_HOLD_WARNING.format(session_id=active_runner)]
 
 
 def _default_cwd() -> str:
@@ -280,6 +290,7 @@ async def todo_update(  # pyright: ignore
     await require_slug_in_todo(todos_db, slug)
     raw_state = await todos_db.read_state(slug)
     current_kind = raw_state.get("kind") if isinstance(raw_state, dict) else None
+    active_runner = raw_state.get("active_runner") if isinstance(raw_state, dict) else None
     schedule_kind = kind if kind is not None else current_kind
     if schedule is not None and schedule_kind != TODO_KIND_TASK:
         raise HTTPException(status_code=400, detail="schedule is valid only for kind='task'")
@@ -331,6 +342,7 @@ async def todo_update(  # pyright: ignore
         release=release,
         caller_session_id=identity.session_id,
     )
+    warnings.extend(_claimed_hold_warnings(hold_value=hold_value, active_runner=active_runner))
     unclaim_summary = await apply_unclaim_update(
         runtime_db,
         slug=slug,

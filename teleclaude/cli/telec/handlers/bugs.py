@@ -12,6 +12,7 @@ from typing import cast
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.telec.handlers._creation_gate import CREATION_VALIDITY_GATE_ITEM
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.config import config
@@ -63,22 +64,19 @@ _BUG_FILING_GATE = (
     "Nothing was filed. Face these before this bug enters the pipeline (bug-kind\n"
     "todos autostart their prepare lane, so filing is pipeline entry):\n"
     "\n"
-    "1. Five-minute rule — small and settled enough to fix directly? Fix it\n"
-    "   in-context on main now and dispatch a commit-SHA reviewer\n"
-    "   (/next-review-commits); file no bug.\n"
-    "\n"
-    "2. Duplication — already reported, already being fixed, or a triaged\n"
+    f"{CREATION_VALIDITY_GATE_ITEM}\n"
+    "- Duplication — already reported, already being fixed, or a triaged\n"
     "   known issue? Check:\n"
     "     telec todo list\n"
     "     telec bugs list\n"
     "     telec bugs suppressions\n"
     "\n"
-    "3. Ordering / dependency — downstream of, or dependent on, work already\n"
+    "- Ordering / dependency — downstream of, or dependent on, work already\n"
     "   in flight? Route it to that lane per the amendment/FYI rules in\n"
     "   software-development/policy/todo-creation-discipline; do not file a\n"
     "   sibling.\n"
     "\n"
-    "4. Validity & ownership — organic-trigger evidence in hand (not\n"
+    "- Evidence & ownership — organic-trigger evidence in hand (not\n"
     "   speculation from a single log line)? Owning project correct\n"
     "   (--project)?\n"
     "\n"
