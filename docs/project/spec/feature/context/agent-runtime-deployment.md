@@ -97,11 +97,9 @@ and no per-agent runtime receives any command artifact — native or
 otherwise. Commands are reached exclusively through the loader message
 TeleClaude composes at dispatch (and for machine-emitted procedure loads),
 which instructs the session to read the corpus document directly. The global
-corpus is the existing `~/.teleclaude/commands/` directory and is reusable
-across projects. Domain partitioning of that directory, per-tier corpora, and
-bare-name resolution across tiers are later contracts
-(`agent-artifact-source-layout`, `tier-command-corpus`) that this one does
-not foreclose: the loader accepts an optional domain segment in a name.
+corpus is the `~/.teleclaude/commands/` directory, reusable across projects. A
+canonical command name is a bare command token or one domain segment followed
+by a command token; the loader resolves both forms.
 
 Global skills compose to `~/.teleclaude/skills/` and are discovered through the
 catalog the master points at; they reach no runtime home. Tier-local skills
@@ -230,8 +228,7 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
 <!-- change:command-migration-to-singular-telec-skill -->
   Then the global phase produces no agent-home artifact writes
   And the local phase materializes tier-local skills from .agents/skills/ into the project-root CLI skill directories
-  And the local phase writes no command artifact and no subagent definition anywhere
-  And how a project-local command source is handled is owned by the later tier corpus contract, not by this phase
+  And the local phase writes no command artifact and no subagent definition into any runtime home
 <!-- /planned-change:command-migration-to-singular-telec-skill -->
   And each domain the project owns in business.publishes is a single symlink ~/.teleclaude/docs/<domain> to the project's docs/global/<domain>
 ```
