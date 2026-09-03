@@ -1,5 +1,5 @@
 ---
-description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, log what is worth knowing later, and carry to the human only what the human contract assigns to him.
+description: Watch the live fleet as its sole human-invoked overseer — challenge judgments whose basis is missing, restore attention fallen between roles, resolve evidence-complete true orphans, log what is worth knowing later, and carry to the human only what the human contract assigns to him.
 visibility: internal
 ---
 
