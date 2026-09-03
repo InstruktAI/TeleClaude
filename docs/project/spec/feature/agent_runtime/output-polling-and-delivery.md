@@ -404,7 +404,6 @@ Then the peer conversation contains the authored output without showing the inte
 And repeated goal continuations do not add copies of the internal context to the conversation
 ```
 
-<!-- planned:codex-content-item-provenance -->
 #### UC-OPD17: Codex content provenance controls human projection
 
 ```gherkin
@@ -415,7 +414,6 @@ And annotated runtime content and unknown annotations are never shown as operato
 And absent, malformed, or positionally incomplete annotations use bounded native-structure recognition without erasing ordinary operator text
 And peer and platform-authored segments retain their own authorship
 ```
-<!-- /planned:codex-content-item-provenance -->
 
 ### Cross-context references
 
