@@ -68,7 +68,8 @@ Current raw-to-normalized lifecycle mapping:
 | Claude | `SessionStart` | `session_start` | forwarded |
 | Claude | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
 | Claude | `PreToolUse` | `pre_tool_use` | forwarded |
-| Claude | `PermissionRequest` | `agent_blocked` | forwarded |
+| Claude | `Notification` where `notification_type` is `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, or `elicitation_url_dialog` | `agent_blocked` | forwarded |
+| Claude | `Notification` with any other `notification_type` | (none) | dropped |
 | Claude | `PostToolUse` | `post_tool_use` | forwarded |
 | Claude | `Stop` | `agent_stop` | forwarded |
 | Claude | `StopFailure` | `agent_turn_failed` | forwarded |
@@ -79,9 +80,9 @@ Current raw-to-normalized lifecycle mapping:
 | Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present | (none) | dropped |
 | Antigravity | `PreToolUse` | `pre_tool_use` | forwarded |
 | Antigravity | `PostInvocation` | `post_tool_use` | forwarded |
-| Antigravity | `Stop` where `error` is present | `agent_turn_failed` | forwarded |
-| Antigravity | `Stop` where `error` is absent and `fullyIdle == true` | `agent_stop` | forwarded |
-| Antigravity | `Stop` where `error` is absent and `fullyIdle == false` | (none) | dropped |
+| Antigravity | `Stop` where `terminationReason == "error"` | `agent_turn_failed` | forwarded |
+| Antigravity | `Stop` where `terminationReason != "error"` and `fullyIdle == true` | `agent_stop` | forwarded |
+| Antigravity | `Stop` where `terminationReason != "error"` and `fullyIdle == false` | (none) | dropped |
 | Codex | `SessionStart` | `session_start` | forwarded |
 | Codex | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
 | Codex | `PreToolUse` | `pre_tool_use` | forwarded |
@@ -100,13 +101,31 @@ waiting on an approval or input decision it cannot resolve itself, and a turn
 terminated by a runtime or provider failure. Coverage is whatever each provider
 natively exposes — a provider with no native signal for a kind produces no
 normalized event of that kind, and no substitute is inferred from adjacent
-events. Antigravity carries its failure state on the already-installed `Stop`
-event rather than a dedicated one; its three `Stop` conditions above are
-mutually exclusive and exhaustive.
+events.
 
-A provider that can emit both a turn-end and a turn-failure signal for one turn
-normalizes both; which of the two accounts for that turn to a subscribed caller
-is decided by the notification fan-out, not by normalization.
+`agent_blocked` names a state the session is in, never a decision it is about
+to take. For Claude the waiting state is `Notification`, whose
+`notification_type` names the cause; its `PermissionRequest` is the pre-prompt
+decision hook, fires for calls a hook may still allow without any prompt, and
+is therefore not installed for this purpose. Codex exposes no notification
+hook, and its `PermissionRequest` fires only for calls that actually require
+approval; TeleClaude installs no decision on it, so an observed occurrence is
+an approval the session cannot resolve itself.
+
+Antigravity carries both terminal outcomes on the already-installed `Stop`
+event rather than a dedicated one. `terminationReason` is the discriminator,
+taking `model_stop`, `max_steps_exceeded`, and `error` among its values; the
+sibling `error` member is an empty string on the normal path, so its presence
+does not distinguish a failure. The three `Stop` conditions above are mutually
+exclusive and exhaustive.
+
+**One terminal outcome per turn.** Every provider emits at most one of
+turn-end and turn-failure for a given turn, so the two never both account for
+one turn: Claude fires `StopFailure` in place of `Stop`; Antigravity resolves
+one `Stop` through the branch above; Codex exposes no failure signal; and on
+the DeepSeek Harness the error path raises past the turn-stopping dispatch that
+produces `Stop`. Consumers still treat the outcome as a single slot rather than
+relying on that exclusivity.
 
 No provider normalizes to `error`. That event is the platform's internal error
 channel — receiver faults and agent-restart faults — and carries no provider

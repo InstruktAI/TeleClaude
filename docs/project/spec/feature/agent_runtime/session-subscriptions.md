@@ -54,7 +54,11 @@ Given a target session T has registered listeners
 When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
 Then a system message "Notification — Session T [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
 And every active listener for T is iterated and delivered (subject to direct-link suppression below)
+<!-- planned-change:session-distress-ingestion -->
 And per-target notification dedup: a notification-flag record gates duplicate agent-stop notifications within the same turn; it is cleared by the next accepted native user entry that the runtime normalizer classifies as a real turn, including prompt input and complete registered platform or identity envelopes, but not by declared runtime side-channel artifacts
+<!-- change:session-distress-ingestion -->
+And per-turn notification dedup is scoped by (target, notification kind): a per-kind gate record admits at most one notification of each kind within the same turn, and turn-end and turn-failure share one terminal-outcome slot in it; the whole gate is cleared by the next accepted native user entry that the runtime normalizer classifies as a real turn, including prompt input and complete registered platform or identity envelopes, but not by declared runtime side-channel artifacts
+<!-- /planned-change:session-distress-ingestion -->
 
 
 <!-- planned-change:session-distress-ingestion -->
@@ -91,6 +95,7 @@ And no duplicate stop notification is delivered for the same turn
 #### Notification delivery — direct-link suppression
 
 ```
+<!-- planned-change:session-distress-ingestion -->
 Given a listener L for caller C on target T is about to be notified
 When the notification fan-out iterates and reaches L
 Then the active-link check for (C, T, mode="direct_link") runs
@@ -99,6 +104,21 @@ And otherwise the listener-message delivery is invoked against C's host pane
 And on successful host-pane delivery, the success counter is incremented and an info log is emitted
 And on delivery failure, a warning is logged but no retry is attempted
 And if the listener is one-shot, the record is removed after the delivery attempt (success or failure)
+<!-- change:session-distress-ingestion -->
+Given a turn-end notification for target T is about to be delivered to listener L for caller C
+When the notification fan-out iterates and reaches L
+Then the active-link check for (C, T, mode="direct_link") runs
+And if an active direct link exists between C and T, delivery is SKIPPED for L (listener record preserved)
+And otherwise the listener-message delivery is invoked against C's host pane
+And on successful host-pane delivery, the success counter is incremented and an info log is emitted
+And on delivery failure, a warning is logged but no retry is attempted
+And if the listener is one-shot, the record is removed after the delivery attempt (success or failure)
+
+Given a distress notification for target T is about to be delivered
+Then the audience is T's persistent listeners only, and one-shot records are neither read, delivered to, nor removed
+And the active-link check does not skip delivery for any member of that audience
+And a member counts as reached only when delivery to it is accepted
+<!-- /planned-change:session-distress-ingestion -->
 ```
 
 #### Per-pair serialization

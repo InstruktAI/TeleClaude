@@ -73,14 +73,33 @@ audience is empty.
   the same next-real-user-entry rule. A distress notification never consumes
   the turn-end notification's gate, and neither distress kind consumes the
   other's.
+- **The gate is agent_runtime-owned session state, carried as the set of
+  notification kinds already emitted for the current turn.** It replaces the
+  single stored turn-end boolean outright: the stored value is migrated forward
+  once — a set already emitted, otherwise empty — the old field is retired in
+  the same step, and no read path tolerates the old shape.
+- **Turn-end and turn-failure share one terminal-outcome slot in that gate.**
+  At most one terminal notification accounts for a target turn. A turn-failure
+  claims the slot whether or not a turn-end has already claimed it; a turn-end
+  claims it only when it is empty. The blocked kind has its own slot and does
+  not compete. Every mapped runtime already emits at most one terminal signal
+  per turn, so the slot arbitrates nothing today; it holds the invariant
+  independently of arrival order rather than resting on that exclusivity.
 - **The distress audience is persistent listeners only.** One-shot rows are
   outside it: a distress event neither reads, delivers to, nor removes a
   one-shot row, so its turn-end semantics above are untouched.
-- **Every distress event has exactly one recipient class.** When at least one
-  persistent listener is registered for the target, distress goes to those
-  listeners and the target's human-facing channel receives nothing. When none
-  is registered, distress goes to that channel instead. One-shot rows do not
-  count as watchers and so never suppress the fallback.
+- **A watcher counts only when delivery to it is accepted.** Registration is
+  not liveness: a persistent row outlives a crashed caller, and a failed
+  delivery leaves the row in place. The distress audience is therefore
+  attempted, and a member is reached only when its delivery is accepted.
+- **Every distress event has exactly one recipient class.** The audience is the
+  target's persistent listeners, plus its declared remote initiator when it has
+  one. When at least one member of that audience is reached, the target's
+  human-facing channel receives nothing. When no member is reached — none
+  registered, every row stale, every delivery refused, or the remote forward
+  reported undeliverable — distress goes to that channel instead. One-shot rows
+  are not in the audience and so never suppress the fallback, and the channel
+  is delivered to at most once per distress event.
 - **The fallback is the session's own output lane, not the platform push
   pipeline.** It is the surface that already carries this session's ordinary
   output. It is not the notification projector's action gate, which addresses
@@ -92,9 +111,11 @@ audience is empty.
   turn as complete.
 - **The recipient decision is made where the listeners live.** For a target on
   another computer, the origin daemon resolves the audience and the fallback,
-  then forwards an already-addressed distress notification. The receiving
+  then forwards an already-addressed distress notification and reads the
+  forward's reported outcome as that member's delivery result. The receiving
   daemon holds no listener rows for a target it did not create and makes no
-  audience or fallback decision of its own.
+  audience or fallback decision of its own; it reports whether it reached the
+  named initiator, and the origin daemon owns the fallback.
 <!-- /planned:session-distress-ingestion -->
 
 ## Primary flows
@@ -221,14 +242,14 @@ sequenceDiagram
     alt Already emitted
         Note over Gate: drop — one notice per kind per turn
     else First this turn
-        Coord->>Registry: persistent listeners for target?
-        alt One or more
-            loop For each persistent listener
-                Note over Registry: direct-link suppression does NOT apply
-                Registry->>Caller: deliver distress message
-            end
+        Coord->>Registry: audience = persistent listeners + declared remote initiator
+        loop For each audience member
+            Note over Registry: direct-link suppression does NOT apply
+            Registry->>Caller: attempt delivery
+        end
+        alt At least one accepted
             Note over Channel: receives nothing
-        else None
+        else None accepted
             Registry->>Channel: deliver distress message
         end
         Coord->>Gate: mark kind emitted for this turn
@@ -259,14 +280,18 @@ matching template rather than a turn-end one.
   never produced for targets on that runtime, and no adjacent event is
   substituted for it. Those targets stay exactly as silent in that state as
   before; the caller's vocabulary stays trustworthy for every other runtime.
-- **A block resolves immediately after it is reported.** The caller has already
+- **A block is answered shortly after it is reported.** The caller has already
   been told the target was waiting. The per-turn gate bounds this to one notice
   per turn, and the target's turn-end notification still arrives on its own
-  gate, so the caller sees the resolution without a separate all-clear.
-- **The target has no reachable human-facing channel and no persistent
-  listener.** The distress notification has nowhere to land; the failure is
-  logged and dropped, as an undeliverable listener notification already is. No
-  retry is attempted and the fallback is never redirected to another audience.
+  slot, so the caller sees the resolution without a separate all-clear.
+- **A persistent row outlives its caller.** Delivery to it is refused, so it
+  does not count as reached and does not hold off the human-facing fallback.
+  The row itself is left for the existing caller-cleanup and unsubscribe paths;
+  the distress fan-out never removes rows.
+- **The target has no reachable human-facing channel and no reached watcher.**
+  The distress notification has nowhere to land; the failure is logged and
+  dropped, as an undeliverable listener notification already is. No retry is
+  attempted and the fallback is never redirected to another audience.
 - **Distress arrives for a target whose caller is mid-turn.** Delivery uses the
   same control-payload handoff as turn-end, so it lands at the caller's next
   work boundary rather than interrupting a running turn.
