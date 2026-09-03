@@ -1,6 +1,8 @@
 ---
 description: 'When an agent_session_start hook arrives for a session the integration service has never seen, the dispatcher creates a headless session record inline from the hook payload before continuing normal event dispatch.'
 visibility: 'public'
+delivered_by:
+  - external-session-identity
 ---
 
 # Headless Session Bootstrap from Hook — Spec
@@ -48,6 +50,42 @@ And a session-started event is published with cluster visibility
 And the dispatcher continues normal dispatch for the now-existing session
 ```
 
+<!-- planned:external-session-identity -->
+#### UC-HB6: An attested session-start mints the session and its root binding
+
+```gherkin
+Given an agent CLI the daemon did not launch emits an agent-session-start hook
+And the receiver reaches the daemon over the local socket while still a descendant of the agent process
+And the daemon attests the receiver's process instance and finds no already-registered root in its ancestry
+And exactly one ancestor's executable identity is in the configured agent binary registry
+When the bootstrap runs
+Then the daemon mints the TeleClaude session id
+And it persists that ancestor as the session's immutable root process binding
+And it enqueues the hook event under the session it just minted
+And the native session id is recorded as provider metadata that selects nothing
+```
+
+#### UC-HB7: A descendant session-start stays owned by the registered session
+
+```gherkin
+Given an agent-session-start hook whose attested ancestry already contains a registered root
+When the bootstrap evaluates it
+Then no session is minted
+And the event is enqueued under the session that root already owns
+```
+
+#### UC-HB8: An unattestable session-start still becomes observable, without a binding
+
+```gherkin
+Given an agent-session-start hook whose live attested delivery does not reach the daemon
+When the receiver falls back to the durable outbox write and the dispatcher bootstraps from that entry
+Then the session record is created exactly as it is today
+And it carries no root process binding
+And a later session-scoped call from that process tree is refused rather than resolved
+And no machine-global login identity is presented as that session's identity
+```
+
+<!-- /planned:external-session-identity -->
 #### UC-HB2: Non-session-start event for unknown session is dropped
 
 ```gherkin

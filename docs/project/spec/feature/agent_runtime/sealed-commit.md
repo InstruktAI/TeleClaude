@@ -1,6 +1,8 @@
 ---
 description: 'Sealed commit interface for agent sessions inside the host pane. The git wrapper blocks raw `git add` / `git commit` and redirects to `telec code commit`, which constructs a pathspec-scoped commit from the resolved workspace scope plus declared `--include` paths. New untracked files, unmerged-index files, and partial-staged tracked files are explicitly accepted by `telec code add`. A path enters scope by being read as well as written, so a session that reads a file another session is concurrently editing can carry that session’s uncommitted work.'
 visibility: 'public'
+delivered_by:
+  - external-session-identity
 ---
 
 # Sealed Commit — Spec
@@ -630,6 +632,30 @@ And the commit's git committer remains the human account identity the work runs 
 And the message has a Session: <session id> trailer appended after the branding line
 ```
 
+<!-- planned:external-session-identity -->
+#### UC-CGIP-19 — An externally hosted session commits as its agent, not as the ambient human
+
+```gherkin
+Given a telec code commit invocation from a process inside an agent session the daemon did not launch
+And that session carries no session identity file and no session token
+And the daemon derives the owning session from the invoking process's attested ancestry
+When the commit lands
+Then the commit's git author is that session's agent bot identity
+And the message carries a Session: trailer naming the derived session
+And the honest-degrade path to the ambient human identity is not taken
+```
+
+#### UC-CGIP-20 — An unresolvable external session degrades, and never borrows another session
+
+```gherkin
+Given a telec code commit invocation whose attested ancestry matches no open session's root, or matches more than one
+When the resolution runs
+Then no session is derived
+And the invocation follows the existing no-agent-session behavior for the current terminal state
+And no session identity is adopted from the machine-global login record
+```
+
+<!-- /planned:external-session-identity -->
 #### UC-CGIP-17 — No agent session but a human terminal login degrades honestly to the human as author
 
 ```

@@ -1,6 +1,8 @@
 ---
 description: 'Practical identity rules for assigning hooks to the correct TeleClaude session.'
 visibility: 'public'
+delivered_by:
+  - external-session-identity
 ---
 
 # Session Identity Truth — Spec
@@ -59,11 +61,24 @@ Current runtime rule:
   reinterpreted as permission to mint a headless session.
 - A pane-attached invocation whose marker disappeared during teardown uses the
   live native-session fallback. A terminal or unresolved session is dropped.
+<!-- planned-change:external-session-identity -->
 - Only an invocation with neither a session identity marker nor pane attachment
   enters the headless route. It resolves through the native map and sessions store;
   an adapter mint event may create a new TeleClaude id only on this route. An agent
   CLI hosted by a foreign harness reaches TeleClaude on this route, and its stable
   native session id maps it to one durable session for the life of that conversation.
+<!-- change:external-session-identity -->
+- Only an invocation with neither a session identity marker nor pane attachment
+  enters the headless route. An agent CLI hosted by a foreign harness reaches
+  TeleClaude on this route. A session minted on this route carries a
+  daemon-minted root process binding, established from the attested connection
+  that delivered its session-start hook, and that binding is what later callers
+  are matched against.
+- The native session id is provider metadata on this route. It records which
+  conversation a hook belongs to; it never selects a TeleClaude session for an
+  authenticated caller, never rebinds a session to a different root, and never
+  revives a session whose root has exited.
+<!-- /planned-change:external-session-identity -->
 
 Fields that must be explained:
 

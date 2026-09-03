@@ -1,9 +1,22 @@
 ---
 description: 'Subprocess receiver invoked by agent CLIs that parses a hook payload, resolves a TeleClaude session, and enqueues the event for integration-side processing.'
 visibility: 'public'
+delivered_by:
+  - external-session-identity
 ---
 
 # Agent CLI Hook Reception — Spec
+
+<!-- planned:external-session-identity -->
+For an agent-session-start hook the receiver first attempts a live delivery over
+the daemon's local socket, so the daemon can attest the receiver's process
+instance while it is still a descendant of the agent. Attestation is only
+possible on that live connection: a durable record written outside it carries no
+evidence about the process that wrote it. When the live attempt does not reach
+the daemon, the receiver falls back to the durable outbox write unchanged, and
+the resulting session carries no root binding. Every other hook event uses the
+durable outbox path as before.
+<!-- /planned:external-session-identity -->
 
 ## What it is
 

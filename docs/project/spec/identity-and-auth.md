@@ -1,6 +1,8 @@
 ---
 description: 'Authoritative surface for system-wide identity, authentication, and person management.'
 visibility: 'public'
+delivered_by:
+  - external-session-identity
 ---
 
 # Identity and Auth — Spec
@@ -38,6 +40,15 @@ Protected local API routes use these headers:
 - `x-caller-session-id`: TeleClaude session identity (daemon-owned, for lineage and role derivation).
 - `x-tmux-session`: tmux server session name for cross-check.
 - `x-telec-email`: terminal login identity (`telec auth login`) for non-session callers.
+
+<!-- planned:external-session-identity -->
+A local connection additionally carries an attested-caller fact that is not a
+header: the kernel-held identity of the peer process on the other end of the
+socket, captured at connection-accept and held as typed request state. It is
+structurally separate from the headers above because no client can write it, and
+it is absent on every non-local transport. See
+`docs/project/design/architecture/local-caller-attestation.md`.
+<!-- /planned:external-session-identity -->
 
 ### 3) Agent session token auth
 

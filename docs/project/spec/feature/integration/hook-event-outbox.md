@@ -1,9 +1,20 @@
 ---
 description: 'Per-session outbox between the receiver subprocess and the integration service, providing durable, coalesced, retry-safe transport for agent CLI hook events.'
 visibility: 'public'
+delivered_by:
+  - external-session-identity
 ---
 
 # Hook Event Outbox — Spec
+
+<!-- planned:external-session-identity -->
+An agent-session-start event the daemon accepted over an attested live
+connection is enqueued by the daemon itself, under the session it minted. The
+dispatcher treats such an entry as belonging to a known session and does not
+re-run bootstrap for it. Durability, coalescing, retry, and ordering for every
+entry are unchanged: the attested path decides which session an entry is written
+under, never whether the entry survives.
+<!-- /planned:external-session-identity -->
 
 ## What it is
 

@@ -36,9 +36,10 @@ TeleClaudeNext repository.
   processes, runtime status, and session lifecycle transitions.
 <!-- change:external-session-identity -->
 - **Owns:** live-session acceptance and input execution, supervised agent
-  processes, runtime status, session lifecycle transitions, and the
-  owning-process identity recorded for a session whose agent process this
-  runtime did not launch.
+  processes, runtime status, session lifecycle transitions, and the root
+  process binding held for a session whose agent process this runtime did not
+  launch — the immutable process instance that defines which process tree the
+  session owns.
 <!-- /planned-change:external-session-identity -->
 - **Does not own:** provider transport or presentation, caller-identity policy,
   todo workflow, or durable historical projections.
@@ -48,10 +49,13 @@ TeleClaudeNext repository.
 <!-- change:external-session-identity -->
 - **Published contracts:** session commands, queries, and lifecycle signals
   exposed to integration, workflow, identity, and session mirrors. Two serve
-  caller attestation: a command recording a session's owning-process identity,
-  and a query resolving an attested process ancestry to the session that owns
-  it. The identity context reaches both only through these contracts, never by
-  reading hook internals, the native-session map, or session storage directly.
+  caller attestation: a command minting a session's root process binding from
+  evidence the daemon attested, and a query returning the open sessions whose
+  root occurs in a supplied verified ancestry. The query returns the matching
+  set, never a chosen winner; selecting among several is not a runtime
+  decision, and identity refuses rather than picking. The identity context
+  reaches both only through these contracts, never by reading hook internals,
+  the native-session map, or session storage directly.
 <!-- /planned-change:external-session-identity -->
 
 ## See Also

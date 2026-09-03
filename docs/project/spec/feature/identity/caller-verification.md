@@ -1,6 +1,8 @@
 ---
 description: "Resolve every authenticated inbound call into a `CallerIdentity` via the identity context's single caller-verification capability."
 visibility: 'public'
+delivered_by:
+  - external-session-identity
 ---
 
 # Caller Verification — Spec
@@ -12,7 +14,17 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:external-session-identity -->
 Caller verification is the identity context's single resolution capability: it turns the four caller-identity signals carried on every authenticated inbound call into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`). Every authorized operation begins with the same precedence — a session-token check, then a dual-factor session-id + tmux cross-check, then a terminal-email lookup, with a final fallback that either returns an admin-role Anonymous (single-user mode) or rejects the caller as unauthenticated (multi-user mode). The capability answers "who is this caller and what bands do they carry?" before any business logic runs.
+<!-- change:external-session-identity -->
+Caller verification is the identity context's single resolution capability: it turns the caller-identity signals carried on every authenticated inbound call into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`). Every authorized operation begins with the same precedence — a session-token check, then a dual-factor session-id + tmux cross-check, then the attested-caller branch for a local connection whose peer the kernel identifies, then a terminal-email lookup, with a final fallback that either returns an admin-role Anonymous (single-user mode) or rejects the caller as unauthenticated (multi-user mode). The capability answers "who is this caller and what bands do they carry?" before any business logic runs.
+
+The attested branch consumes integration's attested-caller signal and
+agent_runtime's root-membership answer; it interprets them and never gathers the
+evidence itself. It runs only where no earlier branch resolved, and a
+session-scoped call it cannot prove is refused rather than passed to the
+terminal-email branch — that branch names a human without naming a session.
+<!-- /planned-change:external-session-identity -->
 
 ## Canonical fields
 
@@ -72,6 +84,39 @@ When caller verification runs
 Then the terminal-identity branch returns a CallerIdentity with human_role=`admin` (Anonymous-admin fallback)
 ```
 
+<!-- planned:external-session-identity -->
+#### UC-CV-ATTESTED-RESOLVES: An attested local caller resolves to the session that owns its process tree
+
+```gherkin
+Given a call over the local socket carrying no session-token and no caller-session-id
+And the kernel identifies the connected peer process instance
+And exactly one open session's root process instance occurs in that peer's verified ancestry
+When caller verification runs
+Then the attested branch resolves that session
+And the returned CallerIdentity carries the session's existing principal and role
+And the terminal-email branch is not taken
+```
+
+#### UC-CV-ATTESTED-UNPROVEN: An attested caller owning no session is refused, never degraded
+
+```gherkin
+Given a call over the local socket carrying no session-token and no caller-session-id
+And no open session's root process instance occurs in the peer's verified ancestry
+When caller verification runs on a session-scoped operation
+Then the call is rejected as unauthenticated
+And no machine-global last-login identity is returned in place of a session identity
+```
+
+#### UC-CV-ATTESTED-AMBIGUOUS: Several owning roots refuse rather than pick one
+
+```gherkin
+Given a call over the local socket whose peer ancestry contains the root process instances of more than one open session
+When caller verification runs
+Then the call is rejected as ambiguous
+And no session is selected by proximity, age, or any other tie-break
+```
+
+<!-- /planned:external-session-identity -->
 #### UC-CV-SESSION-PRINCIPAL-HUMAN: A human-rooted session resolves to a human principal and clears the human gate
 
 ```

@@ -34,10 +34,13 @@ TeleClaudeNext.
 - **Owns:** principal resolution, authentication evidence, and the identity
   facts authorization decisions consume.
 <!-- change:external-session-identity -->
-- **Owns:** principal resolution, authentication evidence, the local peer
-  attestation that authenticates a caller with no pane on TeleClaude's own tmux
-  server, the session binding an externally hosted session establishes from that
-  attestation, and the identity facts authorization decisions consume.
+- **Owns:** principal resolution, authentication evidence, the interpretation
+  of the attested-caller signal that authenticates a caller with no pane on
+  TeleClaude's own tmux server, the resolution precedence that signal joins, the
+  refusal semantics when no session is proven, and the identity facts
+  authorization decisions consume. Capturing the kernel evidence belongs to
+  integration and associating it with a session belongs to agent_runtime;
+  identity consumes both through their published contracts.
 <!-- /planned-change:external-session-identity -->
 <!-- planned:company-member-roster -->
 - **Also owns:** organizational relationship resolution — what a person's

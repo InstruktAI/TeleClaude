@@ -1,6 +1,8 @@
 ---
 visibility: internal
 description: Frozen v1 ownership anchor for external-provider and process-boundary integration behavior.
+delivered_by:
+  - external-session-identity
 ---
 
 # Integration Domain Spec — Spec
@@ -28,8 +30,18 @@ implementation remain the current appliance contract.
 - **Does not own:** session-input acceptance or execution, identity policy,
   todo lifecycle, or presentation policy merely because integration carries
   the message.
+<!-- planned-change:external-session-identity -->
 - **Published contracts:** normalized inbound commands and events, outbound
   delivery requests and results, and provider-neutral transport types.
+<!-- change:external-session-identity -->
+- **Published contracts:** normalized inbound commands and events, outbound
+  delivery requests and results, provider-neutral transport types, and the
+  attested-caller signal — the kernel-held peer identity of the process on the
+  other end of a local connection, normalized at connection-accept and supplied
+  to identity. Integration carries that evidence and never interprets it: which
+  session owns the process is agent_runtime's answer, and what the caller is
+  authorized to do is identity's.
+<!-- /planned-change:external-session-identity -->
 
 ## See Also
 
