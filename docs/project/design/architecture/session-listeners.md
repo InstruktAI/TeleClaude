@@ -74,9 +74,8 @@ audience is empty.
   the turn-end notification's gate, and neither distress kind consumes the
   other's.
 - **The distress audience is persistent listeners only.** One-shot rows are
-  outside it: a distress event neither delivers to a one-shot row nor removes
-  it. Those rows are still delivered to, and removed by, the next turn-end
-  notification.
+  outside it: a distress event neither reads, delivers to, nor removes a
+  one-shot row, so its turn-end semantics above are untouched.
 - **Every distress event has exactly one recipient class.** When at least one
   persistent listener is registered for the target, distress goes to those
   listeners and the target's human-facing channel receives nothing. When none

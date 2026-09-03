@@ -126,7 +126,7 @@ This is the precise meaning of "suppression": the listener's interest is preserv
 <!-- planned-change:session-distress-ingestion -->
 - **One-shot vs persistent listeners are distinct rows.** Both share the suppression rule. Both are removed by `unsubscribe`. One-shot listeners additionally self-remove on first notify.
 <!-- change:session-distress-ingestion -->
-- **One-shot vs persistent listeners are distinct rows.** Both are removed by `unsubscribe`. One-shot listeners additionally self-remove on first notify — on a turn-end notification, the only kind they receive. Distress notifications address persistent listeners only: a one-shot row is neither delivered to nor consumed by a distress event, so the single reply its caller is waiting for survives.
+- **One-shot vs persistent listeners are distinct rows.** Both share the suppression rule. Both are removed by `unsubscribe`. One-shot listeners additionally self-remove on first notify — a turn-end notification, the only kind they receive. Distress notifications address persistent listeners only: a distress event neither reads, delivers to, nor removes a one-shot row.
 <!-- /planned-change:session-distress-ingestion -->
 - **`--close-link` and `unsubscribe` overlap on the link axis.** `--close-link` is convenient mid-conversation; `unsubscribe` is the umbrella verb that also clears the listener axis. Both severance paths leave the listener row intact except when `unsubscribe` is the verb used.
 - **Idempotence of `unsubscribe`.** Empty state returns success. The response payload reports which (listener / link) was actually removed:
