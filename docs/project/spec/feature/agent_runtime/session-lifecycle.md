@@ -236,7 +236,7 @@ And a caller delivering input to that session is refused rather than left waitin
 
 <!-- planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
 
-#### UC-SL28: A session is never presented as an active agent while its agent CLI is still gated
+#### UC-SL28: A trust decision already made for a configured root is carried forward at launch
 
 ```
 Given a session is about to launch an agent CLI in a working directory that resolves under a configured trusted root
@@ -245,8 +245,6 @@ Then the agent's own directory-trust state is consulted using that agent's docum
 And a trust decision the human already made for a configured root is carried forward to that agent wherever the agent supports being written to, so the CLI starts without presenting its directory-trust gate
 And a trust store that publishes no supported write surface is left untouched, and the unsatisfied gate is recorded as structured evidence naming the session, the agent, and the directory
 And a working directory resolving under no configured trusted root has no trust store consulted for a write, none modified, and the refusal recorded
-And until an activity hook proves the agent live, the session reports `lifecycle_status="initializing"` with derived `agent_status` `unknown`
-And host-pane output alone never raises that projection to `active`
 ```
 
 <!-- /planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
@@ -338,6 +336,33 @@ And the link is materialized via the standard ignition path
 And the launch intent's message is wrapped with the direct-conversation protocol header and rules block
 And the conversation link operates orthogonally to stop-listener subscriptions
 ```
+
+<!-- planned:session-liveness-has-no-single-authority -->
+#### UC-SL35: A normalized session_start is the sole evidence that a session is live
+
+```gherkin
+Given a session row exists and its agent command has been dispatched into a host pane
+And no normalized `session_start` hook has been handled for that session
+When any surface projects the session's state
+Then the session reports `lifecycle_status="initializing"` with derived `agent_status="unknown"`
+And row creation, launch-command dispatch, pane readiness, pane output, and generic activity timestamps never raise that projection
+And a handled normalized `session_start` is the only evidence that transitions the session to `active`
+And no other hook performs or implies that transition
+And a session that never receives one stays `initializing` and `unknown`
+```
+
+#### UC-SL36: Every lifecycle transition is performed by one owner with typed evidence
+
+```gherkin
+Given any code path that would change a session's `lifecycle_status`
+When the transition is performed
+Then it is performed through the session-lifecycle transition owner, carrying a typed transition reason and the evidence that authorizes it
+And no caller writes `lifecycle_status` directly
+And startup activation, headless adoption, restart or revive, recovery from a failed close, and restoration when an escalation relay ends are distinct named transitions, each with its own preconditions
+And bootstrap, restart or revive, and adoption leave the session `initializing` until a normalized `session_start` is handled for it
+And a transition requested without the evidence its reason requires is refused rather than written
+```
+<!-- /planned:session-liveness-has-no-single-authority -->
 
 ### Cross-context references
 
