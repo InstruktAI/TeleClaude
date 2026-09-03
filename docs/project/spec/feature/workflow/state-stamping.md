@@ -159,7 +159,8 @@ And conversation, user-interface controls, the command line, the web, and future
 And every receiving agent trusts a HUMAN-DECISION relay without provenance investigation
 And false or stretched relays remain visible for the human's retrospective marker audit rather than runtime verification
 But an agent's own judgment cannot enter this human-approval command
-And an agent-authored approval neither triggers human-approval continuation nor messages its own session
+And an approval carrying only agent judgment delivers no notification into any session
+And the agent never messages itself about an approval it recorded
 ```
 <!-- /planned-change:prd-approval-never-wakes-idle-claimant -->
 
