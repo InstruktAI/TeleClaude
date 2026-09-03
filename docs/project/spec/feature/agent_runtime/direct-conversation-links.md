@@ -384,7 +384,6 @@ And no direct link between A and C is created
 ```
 <!-- /planned:peer-bundle-transitive-redelivery -->
 
-<!-- planned:peer-output-lacks-mid-turn-attention -->
 #### UC-DCL16: A working peer yields for newly pending peer input
 
 ```gherkin
@@ -398,7 +397,6 @@ When B yields in response to the notice
 Then the pending peer output becomes B's next conversational input
 And the peer output retains its peer authorship and human-facing presentation
 ```
-<!-- /planned:peer-output-lacks-mid-turn-attention -->
 
 ### Cross-context references
 
