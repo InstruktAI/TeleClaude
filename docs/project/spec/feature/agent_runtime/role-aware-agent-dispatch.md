@@ -314,6 +314,20 @@ And normal automatic ordering selects the fallback
 And the caller receives the selected agent and typed fallback reason
 ```
 
+<!-- planned:dispatch-routing-reason-misclassified -->
+#### UC-RAAD-18: Reviewer independence reports a displaced automatic preference
+
+```gherkin
+Given a system-role caller explicitly prefers an automatically eligible agent for a fresh reviewer command
+And the preferred agent is the producer
+And another automatically eligible agent exists
+When TeleClaude selects the reviewer
+Then it selects an independent eligible agent without changing command-row relative order
+And the automated caller receives a typed reviewer-independence fallback reason
+And the dispatch decision reports that fallback is present
+```
+<!-- /planned:dispatch-routing-reason-misclassified -->
+
 ## Known caveats
 
 - The prepare orchestrator normally performs intake, architecture, and planning inline.
