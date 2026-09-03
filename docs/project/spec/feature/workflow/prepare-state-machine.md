@@ -292,18 +292,18 @@ Given the prepare machine derives a drafting phase whose script loads a procedur
 When the machine composes that script
 Then the procedure load is the same composed loader a dispatched command session receives — the structural marker line naming the canonical command with its arguments, followed by the instruction to read that corpus document as the active instruction set and the arguments labelled as its provided inputs
 And the loader body is composed by the one composition the dispatch door uses, so the two forms cannot diverge
-And no earlier directive form of procedure loading survives anywhere the machine emits one
+And every procedure load the machine emits carries that one form
 ```
 
-#### UC-WPS25: Live-session lookup finds composed titles and pre-cutover titles alike
+#### UC-WPS25: Live-session lookup matches a stored title with or without a leading slash
 
 ```gherkin
-Given a live session whose title was composed from structured dispatch fields as the canonical command name followed by its arguments, carrying no leading slash
-And another live session titled in the pre-cutover slash-prefixed form
-When the workflow resolves a live session for a slug and command, through either matcher family — the one that matches a command and slug together, and the one that matches a command prefix alone
+Given a live session whose title is the canonical command name followed by its arguments, with no leading slash
+And another live session whose title carries a leading slash before the same command name
+When the workflow resolves a live session for a slug and command, through either matcher family — the one matching a command and slug together, and the one matching a command prefix alone
 Then each session is found by the lookup that addresses it
-And neither family requires the retired leading slash to be present
-And a title whose command token matches but whose slug differs is still not matched
+And a leading slash in a stored title neither prevents a match nor is required for one
+And a title whose command token matches but whose slug differs is not matched
 ```
 
 <!-- /planned:command-loader-and-title-cutover -->
