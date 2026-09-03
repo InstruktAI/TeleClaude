@@ -288,12 +288,14 @@ async def build_session_messages_dto(
     last_activity_at = session.last_activity.isoformat() if session.last_activity else None
     last_input_at = session.last_message_sent_at.isoformat() if session.last_message_sent_at else None
     last_agent_stop_at = session.last_agent_stop_at.isoformat() if session.last_agent_stop_at else None
+    last_agent_idle_at = session.last_agent_idle_at.isoformat() if session.last_agent_idle_at else None
     agent_status = compute_agent_status(
         lifecycle_status=session.lifecycle_status,
         closed_at=session.closed_at,
         last_activity=session.last_activity,
         last_input_at=session.last_message_sent_at,
         last_agent_stop_at=session.last_agent_stop_at,
+        last_agent_idle_at=session.last_agent_idle_at,
         now=datetime.now(UTC),
     )
 
@@ -303,6 +305,7 @@ async def build_session_messages_dto(
         last_activity=last_activity_at,
         last_input_at=last_input_at,
         last_agent_stop_at=last_agent_stop_at,
+        last_agent_idle_at=last_agent_idle_at,
         agent_status=agent_status,
         messages=messages,
     )

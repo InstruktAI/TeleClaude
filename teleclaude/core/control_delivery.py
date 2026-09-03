@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import StrEnum
 
 from teleclaude.core.command_registry import get_command_service
@@ -16,6 +15,7 @@ from teleclaude.core.injected_text import (
     semantic_envelope,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_status import is_agent_turn_running
 from teleclaude.types.commands import ProcessMessageCommand
 
 IDLE_WAKE_TEXT = render_bracket_envelope(semantic_envelope(EnvelopeName.WAKE))
@@ -26,11 +26,6 @@ class ControlDeliveryWakeDecision(StrEnum):
 
     TIMESTAMP_DERIVED = "timestamp_derived"
     OBSERVED_IDLE = "observed_idle"
-
-
-def _turn_is_running(last_input_at: datetime | None, last_stop_at: datetime | None) -> bool:
-    """Use the agent-runtime turn timestamps without persisting duplicate state."""
-    return last_input_at is not None and (last_stop_at is None or last_input_at > last_stop_at)
 
 
 async def handoff_control_payload(
@@ -55,7 +50,11 @@ async def handoff_control_payload(
     session = await db.get_session(session_id)
     if session is None or (
         wake_decision is ControlDeliveryWakeDecision.TIMESTAMP_DERIVED
-        and _turn_is_running(session.last_message_sent_at, session.last_agent_stop_at)
+        and is_agent_turn_running(
+            last_input_at=session.last_message_sent_at,
+            last_agent_stop_at=session.last_agent_stop_at,
+            last_agent_idle_at=session.last_agent_idle_at,
+        )
     ):
         return row_id
 

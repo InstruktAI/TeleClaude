@@ -54,6 +54,21 @@ def is_session_terminal(*, lifecycle_status: str | None, closed_at: datetime | N
     return not is_session_open(closed_at=closed_at) or lifecycle_status in TERMINAL_LIFECYCLE_STATUSES
 
 
+def is_agent_turn_running(
+    *,
+    last_input_at: datetime | None,
+    last_agent_stop_at: datetime | None,
+    last_agent_idle_at: datetime | None,
+) -> bool:
+    """Return whether accepted input is later than every authoritative idle boundary."""
+    if not isinstance(last_input_at, datetime):
+        return False
+    idle_boundaries = [
+        boundary for boundary in (last_agent_stop_at, last_agent_idle_at) if isinstance(boundary, datetime)
+    ]
+    return not idle_boundaries or last_input_at > max(idle_boundaries)
+
+
 def compute_agent_status(
     *,
     lifecycle_status: str | None,
@@ -61,22 +76,29 @@ def compute_agent_status(
     last_activity: datetime | None,
     last_input_at: datetime | None,
     last_agent_stop_at: datetime | None,
+    last_agent_idle_at: datetime | None,
     now: datetime,
 ) -> AgentStatusValue:
     """Derive session activity status from lifecycle and observed timestamps.
 
     Terminal lifecycle markers are authoritative over activity timestamps.
-    The stop event is authoritative: once fired, the agent is idle unless
-    new input arrived after the stop (indicating a new turn started).
+    An agent stop or completed native command is authoritative: once either
+    fires, the agent is idle unless new input arrived after that boundary.
     Poller flushes that bump last_activity after the stop are not signal.
     """
     if is_session_terminal(lifecycle_status=lifecycle_status, closed_at=closed_at):
         return AgentStatusValue.IDLE
     if not isinstance(last_activity, datetime):
         return AgentStatusValue.UNKNOWN
-    if isinstance(last_agent_stop_at, datetime):
-        if not isinstance(last_input_at, datetime) or last_input_at <= last_agent_stop_at:
+    has_idle_boundary = isinstance(last_agent_stop_at, datetime) or isinstance(last_agent_idle_at, datetime)
+    if not is_agent_turn_running(
+        last_input_at=last_input_at,
+        last_agent_stop_at=last_agent_stop_at,
+        last_agent_idle_at=last_agent_idle_at,
+    ):
+        if has_idle_boundary:
             return AgentStatusValue.IDLE
-        if (now - last_activity).total_seconds() > STALL_THRESHOLD_SECONDS:
-            return AgentStatusValue.STALLED
+        return AgentStatusValue.ACTIVE
+    if has_idle_boundary and (now - last_activity).total_seconds() > STALL_THRESHOLD_SECONDS:
+        return AgentStatusValue.STALLED
     return AgentStatusValue.ACTIVE

@@ -19,6 +19,7 @@ class SessionSnapshotTimestampFields:
     last_input: str | None = None
     last_input_at: str | None = None
     last_agent_stop_at: str | None = None
+    last_agent_idle_at: str | None = None
     last_output_summary: str | None = None
     last_output_summary_at: str | None = None
 
@@ -54,6 +55,7 @@ class SessionDTOTimestampFields(BaseModel):
     last_input: str | None = None
     last_input_at: str | None = None
     last_agent_stop_at: str | None = None
+    last_agent_idle_at: str | None = None
     last_output_summary: str | None = None
     last_output_summary_at: str | None = None
 
@@ -116,6 +118,7 @@ class SessionRecentToolFields:
     last_tool_use_at: datetime | None = None
     last_checkpoint_at: datetime | None = None
     last_agent_stop_at: datetime | None = None
+    last_agent_idle_at: datetime | None = None
     working_slug: str | None = None
     turn_anchor_sha: str | None = None
 
@@ -131,5 +134,6 @@ class SessionRecentToolColumns(SQLModel):
     last_tool_use_at: datetime | None = None
     last_checkpoint_at: datetime | None = None
     last_agent_stop_at: datetime | None = None
+    last_agent_idle_at: datetime | None = None
     working_slug: str | None = None
     turn_anchor_sha: str | None = None

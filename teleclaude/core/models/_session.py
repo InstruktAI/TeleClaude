@@ -214,6 +214,7 @@ class SessionField(Enum):
     LAST_TOOL_USE_AT = "last_tool_use_at"
     LAST_CHECKPOINT_AT = "last_checkpoint_at"
     LAST_AGENT_STOP_AT = "last_agent_stop_at"
+    LAST_AGENT_IDLE_AT = "last_agent_idle_at"
     TURN_ANCHOR_SHA = "turn_anchor_sha"
 
 
@@ -297,6 +298,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             data["last_checkpoint_at"] = self.last_checkpoint_at.isoformat()
         if self.last_agent_stop_at:
             data["last_agent_stop_at"] = self.last_agent_stop_at.isoformat()
+        if self.last_agent_idle_at:
+            data["last_agent_idle_at"] = self.last_agent_idle_at.isoformat()
         if self.closed_at:
             data["closed_at"] = self.closed_at.isoformat()
         if self.last_memory_extraction_at:
@@ -367,6 +370,12 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             if isinstance(last_agent_stop_at_raw, str)
             else last_agent_stop_at_raw
         )
+        last_agent_idle_at_raw = data.get("last_agent_idle_at")
+        last_agent_idle_at = (
+            parse_iso_datetime(last_agent_idle_at_raw)
+            if isinstance(last_agent_idle_at_raw, str)
+            else last_agent_idle_at_raw
+        )
 
         # Parse origin_metadata from dict or keep empty
         origin_raw = data.get("origin_metadata")
@@ -432,6 +441,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             last_tool_use_at=ensure_utc(last_tool_use_at) if isinstance(last_tool_use_at, datetime) else None,
             last_checkpoint_at=ensure_utc(last_checkpoint_at) if isinstance(last_checkpoint_at, datetime) else None,
             last_agent_stop_at=ensure_utc(last_agent_stop_at) if isinstance(last_agent_stop_at, datetime) else None,
+            last_agent_idle_at=ensure_utc(last_agent_idle_at) if isinstance(last_agent_idle_at, datetime) else None,
             turn_anchor_sha=_get_optional_str("turn_anchor_sha"),
             last_output_summary=_get_optional_str("last_output_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),

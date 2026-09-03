@@ -22,6 +22,7 @@ from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentHookEventType,
+    AgentIdlePayload,
     AgentOutputPayload,
     AgentSessionStartPayload,
     AgentStopActivityEvent,
@@ -67,6 +68,9 @@ _AGENT_SESSION_LIFECYCLE_TRANSITION_EVENT = "agent_session_lifecycle_transition"
 _AGENT_SESSION_LIFECYCLE_TRANSITION_OUTCOME = "active"
 _AGENT_SESSION_LIFECYCLE_TRANSITION_REASON = "agent_session_started"
 _AGENT_SESSION_LIFECYCLE_STATUS = "active"
+_AGENT_IDLE_OBSERVED_EVENT = "agent_idle_observed"
+_AGENT_IDLE_OBSERVED_OUTCOME = "recorded"
+_AGENT_IDLE_MANUAL_NATIVE_COMMAND_REASON = "manual_native_command"
 
 
 class AgentCoordinator(
@@ -319,6 +323,9 @@ class AgentCoordinator(
                 outcome=_AGENT_SESSION_START_OBSERVED_OUTCOME,
                 reason=_AGENT_SESSION_START_NORMALIZED_HOOK_REASON,
             )
+        if context.event_type == AgentHookEvents.AGENT_IDLE:
+            await self.handle_agent_idle(context)
+            return
         await self._activate_initializing_session(context.session_id)
         if context.event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.handle_session_start(context)
@@ -328,6 +335,23 @@ class AgentCoordinator(
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
             await self.handle_user_prompt_submit(context)
+
+    async def handle_agent_idle(self, context: AgentEventContext) -> None:
+        """Record a provider-confirmed native command completion without finalizing output."""
+        payload = cast(AgentIdlePayload, context.data)
+        idle_at = datetime.now(UTC)
+        await db.update_session(
+            context.session_id,
+            last_agent_idle_at=idle_at.isoformat(),
+            last_activity=idle_at.isoformat(),
+        )
+        logger.info(
+            _AGENT_IDLE_OBSERVED_EVENT,
+            session_id=context.session_id,
+            outcome=_AGENT_IDLE_OBSERVED_OUTCOME,
+            reason=_AGENT_IDLE_MANUAL_NATIVE_COMMAND_REASON,
+            native_session_id=payload.session_id,
+        )
 
     async def _activate_initializing_session(self, session_id: str) -> None:
         """Persist agent liveness proved by any handled activity hook."""
