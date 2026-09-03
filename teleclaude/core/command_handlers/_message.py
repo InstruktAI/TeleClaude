@@ -34,7 +34,7 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_status import is_session_terminal
+from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
@@ -53,6 +53,13 @@ _CALLER_SEND_DELIVERY_FAILURE_NOTICE_TEMPLATE = (
     "Delivery to session {target_session_id} was exhausted before reaching its agent."
 )
 _CALLER_SEND_CONTROL_SOURCE_KEY_TEMPLATE = "caller-send-delivery-exhausted:{inbound_row_id}"
+_PEER_ATTENTION_HANDOFF_DECIDED_EVENT = "peer_attention_handoff_decided"
+_PEER_ATTENTION_MISSING_OCCURRENCE_REASON = "peer_occurrence_required"
+_PEER_ATTENTION_CONTROL_SOURCE_KEY_TEMPLATE = "peer-attention:{source_occurrence_id}"
+_PEER_ATTENTION_NOTIFICATION = (
+    "Peer input is pending. If unfinished work needs to resume, preserve continuation through the existing "
+    "reminder mechanism, then yield voluntarily so the peer input becomes your next conversational input."
+)
 
 
 class _CallerSendDeliveryExhaustedOutcome(StrEnum):
@@ -73,6 +80,20 @@ class _CallerSendDeliveryExhaustedReason(StrEnum):
     SELF_SEND = "self_send"
     CALLER_BECAME_UNAVAILABLE = "caller_became_unavailable"
     HANDOFF_ERROR = "handoff_error"
+
+
+class _PeerAttentionHandoffOutcome(StrEnum):
+    """Closed outcomes for a peer-attention handoff decision."""
+
+    ENQUEUED = "enqueued"
+    SKIPPED = "skipped"
+
+
+class _PeerAttentionHandoffReason(StrEnum):
+    """Closed running-turn reasons for a peer-attention handoff decision."""
+
+    TARGET_TURN_RUNNING = "target_turn_running"
+    TARGET_TURN_NOT_RUNNING = "target_turn_not_running"
 
 
 class _DeliveryLogFields(TypedDict):
@@ -100,6 +121,90 @@ class _CallerSendDeliveryExhaustedLogFields(TypedDict):
     outcome: _CallerSendDeliveryExhaustedOutcome
     reason: _CallerSendDeliveryExhaustedReason
     control_payload_row_id: NotRequired[int]
+
+
+class _PeerAttentionSnapshot(TypedDict):
+    """Pre-acceptance target state used for one peer-attention decision."""
+
+    source_occurrence_id: str
+    observed_last_input_at: datetime | None
+    observed_last_agent_stop_at: datetime | None
+    observed_last_agent_idle_at: datetime | None
+
+
+class _PeerAttentionHandoffLogFields(TypedDict):
+    """Body-free correlations and evidence for one peer-attention decision."""
+
+    source_occurrence_id: str
+    observed_last_input_at: datetime | None
+    observed_last_agent_stop_at: datetime | None
+    observed_last_agent_idle_at: datetime | None
+    target_session_id: str
+    outcome: _PeerAttentionHandoffOutcome
+    reason: _PeerAttentionHandoffReason
+    control_payload_row_id: NotRequired[int]
+
+
+def _capture_peer_attention_snapshot(
+    cmd: ProcessMessageCommand,
+    session: Session,
+) -> _PeerAttentionSnapshot | None:
+    """Capture the target state that determines a peer-attention handoff."""
+    if cmd.source_feature is not InjectedTextSourceFeature.PEER_BUNDLE:
+        return None
+    if not cmd.occurrence_key:
+        raise SessionMessageRejectedError(
+            session_id=cmd.session_id,
+            reason=_PEER_ATTENTION_MISSING_OCCURRENCE_REASON,
+        )
+    return {
+        "source_occurrence_id": cmd.occurrence_key,
+        "observed_last_input_at": session.last_message_sent_at,
+        "observed_last_agent_stop_at": session.last_agent_stop_at,
+        "observed_last_agent_idle_at": session.last_agent_idle_at,
+    }
+
+
+async def _handoff_peer_attention(
+    *,
+    session_id: str,
+    snapshot: _PeerAttentionSnapshot,
+) -> None:
+    """Persist one attention notice when peer input reached a working target."""
+    target_turn_running = is_agent_turn_running(
+        last_input_at=snapshot["observed_last_input_at"],
+        last_agent_stop_at=snapshot["observed_last_agent_stop_at"],
+        last_agent_idle_at=snapshot["observed_last_agent_idle_at"],
+    )
+    reason = (
+        _PeerAttentionHandoffReason.TARGET_TURN_RUNNING
+        if target_turn_running
+        else _PeerAttentionHandoffReason.TARGET_TURN_NOT_RUNNING
+    )
+    outcome = _PeerAttentionHandoffOutcome.SKIPPED
+    fields: _PeerAttentionHandoffLogFields = {
+        "source_occurrence_id": snapshot["source_occurrence_id"],
+        "observed_last_input_at": snapshot["observed_last_input_at"],
+        "observed_last_agent_stop_at": snapshot["observed_last_agent_stop_at"],
+        "observed_last_agent_idle_at": snapshot["observed_last_agent_idle_at"],
+        "target_session_id": session_id,
+        "outcome": outcome,
+        "reason": reason,
+    }
+    if target_turn_running:
+        control_payload_row_id = await handoff_control_payload(
+            session_id=session_id,
+            body=_PEER_ATTENTION_NOTIFICATION,
+            source_key=_PEER_ATTENTION_CONTROL_SOURCE_KEY_TEMPLATE.format(
+                source_occurrence_id=snapshot["source_occurrence_id"]
+            ),
+            envelope=semantic_envelope(EnvelopeName.NOTIFICATION),
+            wake_source_feature=InjectedTextSourceFeature.PEER_BUNDLE,
+        )
+        outcome = _PeerAttentionHandoffOutcome.ENQUEUED
+        fields["outcome"] = outcome
+        fields["control_payload_row_id"] = control_payload_row_id
+    logger.info(_PEER_ATTENTION_HANDOFF_DECIDED_EVENT, **fields)
 
 
 def _encode_inbound_payload(origin_metadata: Mapping[str, object] | None) -> str | None:
@@ -708,6 +813,8 @@ async def process_message(
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
+    peer_attention_snapshot = _capture_peer_attention_snapshot(cmd, session)
+
     # Durable structural provenance is persisted BEFORE queue acceptance: a
     # cross-computer bundle that fails to persist must reject the message
     # outright (propagates from here), not accept a bridge turn with no
@@ -744,6 +851,11 @@ async def process_message(
         caller_origin_suffix_len=cmd.caller_origin_suffix_len,
         post_insert_callback=_record_after_insert,
     )
+    if peer_attention_snapshot is not None:
+        await _handoff_peer_attention(
+            session_id=session_id,
+            snapshot=peer_attention_snapshot,
+        )
     if row_id is not None and (cmd.caller_origin_suffix_len or cmd.peer_bundle_segments):
         logger.info(
             "conversation_envelope_committed",
