@@ -158,7 +158,8 @@ And preparation continues from the approved fact without another human action
 And conversation, user-interface controls, the command line, the web, and future adapters produce that same outcome
 And every receiving agent trusts a HUMAN-DECISION relay without provenance investigation
 And false or stretched relays remain visible for the human's retrospective marker audit rather than runtime verification
-But an agent's own judgment never acquires human authority through this path
+But an agent's own judgment cannot enter this human-approval command
+And an agent-authored approval neither triggers human-approval continuation nor messages its own session
 ```
 <!-- /planned-change:prd-approval-never-wakes-idle-claimant -->
 
