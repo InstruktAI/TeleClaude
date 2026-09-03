@@ -570,7 +570,7 @@ Then the doc refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
 
-<!-- planned:command-migration-to-singular-telec-skill -->
+<!-- planned:command-loader-and-title-cutover -->
 
 #### UC-CGIP-12a — Slug worktree refuses agent-artifact paths
 
@@ -593,7 +593,7 @@ Then the agent-artifact refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
 
-<!-- /planned:command-migration-to-singular-telec-skill -->
+<!-- /planned:command-loader-and-title-cutover -->
 
 #### UC-CGIP-14 — A session with no resolvable transcript scopes to empty, not to an error
 

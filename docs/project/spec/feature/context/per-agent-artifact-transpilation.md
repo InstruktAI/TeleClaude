@@ -11,7 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 Per-agent artifact transpilation is the Sync step that converts validated
 Source artifacts (commands, skills, and agent definitions) into the format
@@ -25,7 +25,7 @@ HTML-comment preamble at the top of the body so the target agent's parser
 sees the shape it understands, and it applies a Codex-specific frontmatter
 escape to work around an upstream parser bug.
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 Per-agent artifact transpilation is the Sync step that renders validated
 Sources into their deployed form. Two outputs remain per-agent: the
@@ -43,14 +43,14 @@ corpus document so the loading agent sees the shape it understands, and it
 keeps target-specific transforms such as the Codex single-quote escape on the
 master.
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 ## Canonical fields
 
 ### Use cases
 
 ```
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 Scenario: Claude target receives YAML frontmatter with parameter preamble injection
   Given a source command artifact with a "parameters" field in its frontmatter
   When the transpiler processes the artifact for the Claude target
@@ -58,7 +58,7 @@ Scenario: Claude target receives YAML frontmatter with parameter preamble inject
   And the parameter-preamble injector renders an HTML-comment block describing parameters at the top of the body
   And the body's {AGENT_PREFIX} and {{agent}} tokens are substituted with Claude's prefix
   And the transpiled artifact is written under the Claude per-agent output directory
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 Scenario: TeleClaude command source is written to the shared command corpus
   Given a source command artifact with a "parameters" field in its frontmatter
   When the transpiler processes command artifacts for any target set
@@ -66,7 +66,7 @@ Scenario: TeleClaude command source is written to the shared command corpus
   And the parameter-preamble injector renders an HTML-comment block describing parameters at the top of the body
   And the normalized command document is written to the shared TeleClaude command corpus
   And no per-agent output of any kind is written for the command artifact
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 ```
 
 ```
@@ -104,21 +104,21 @@ Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ```
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 Scenario: Gemini command/agent is transpiled to TOML
   Given a source command or agent artifact (not a skill) targeting Gemini
   When the transpiler processes the artifact for the Gemini target
   Then the Gemini command/agent transform converts the frontmatter and body into a TOML representation
   And the TOML output is written under Gemini's per-agent output directory
   And skills continue to use the Markdown/YAML path on the same sync invocation
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 Scenario: No target receives a subagent definition; the Gemini target keeps its master and skills only
   Given the source tree carries no subagent definitions, because they are not an artifact class
   When the transpiler processes artifacts for the Gemini target
   Then no agent definition is transpiled to TOML or written under any Gemini output directory
   And source command artifacts are written to the shared TeleClaude command corpus, not a Gemini command output directory
   And tier-local skills continue to use the Markdown/YAML path on the same sync invocation
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 ```
 
 ```
@@ -155,7 +155,7 @@ Scenario: An agent synchronizes a skill package with upstream-authored structure
 ```
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 
-<!-- planned:command-migration-to-singular-telec-skill -->
+<!-- planned:command-loader-and-title-cutover -->
 
 #### UC-PAT2: Only tier-local skill packages are emitted per target
 
@@ -168,11 +168,11 @@ Scenario: Per-target skill emission is limited to tier-local packages
   And every other skill-rendering rule applies identically to both packages
 ```
 
-<!-- /planned:command-migration-to-singular-telec-skill -->
+<!-- /planned:command-loader-and-title-cutover -->
 
 ### Cross-context references
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 - **agent_runtime** — Each downstream agent CLI is the consumer of its
   transpiled format. Claude and Codex parse YAML frontmatter for every
@@ -180,7 +180,7 @@ Scenario: Per-target skill emission is limited to tier-local packages
   with YAML frontmatter for skills. All three read the parameter preamble
   from the body.
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 - **agent_runtime** — Each downstream agent CLI consumes two TeleClaude
   outputs: its entrypoint master, in that CLI's expected shape, and any
@@ -190,7 +190,7 @@ Scenario: Per-target skill emission is limited to tier-local packages
   loader names one, and global skills are discovered through the TeleClaude
   skills home the master points at.
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 ## Known caveats
 

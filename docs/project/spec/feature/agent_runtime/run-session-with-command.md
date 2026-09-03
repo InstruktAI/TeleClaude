@@ -11,15 +11,15 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 The run-session-with-command flow creates a brand-new agent session whose first agent input is a slash command — not a free-form user message. The CLI verb `telec sessions run --command /<cmd> --args ... --path ... --agent ... --mode ...` normalizes the request, resolves the effective agent, optionally rewrites the startup message for Codex, builds a typed launch intent that asks the agent*runtime service to start the agent and then deliver a message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the rewritten startup message is delivered and polling begins. This is conceptually distinct from `sessions start` because the session is \_preloaded* with a slash-command invocation — the very first thing the agent sees is the command, not a human turn.
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 The run-session-with-command flow creates a brand-new agent session whose first agent input loads and runs a selected TeleClaude command from the shared command corpus — not a free-form user message. The CLI verb `telec sessions run --command <cmd> --args ... --path ... --agent ... --mode ...` (a leading slash on the command is tolerated and stripped) normalizes the request, resolves the effective agent, composes the command loader startup message, sets the session title from the structured fields as `<cmd> <args>`, builds a typed launch intent that asks the agent_runtime service to start the agent and then deliver that message, and hands the request to session creation. The new session boots in its host pane with the resolved agent CLI; once the agent is ready, the loader message is delivered and polling begins. The loader is identical for every enabled runtime — no agent-specific rewrite exists. This is conceptually distinct from `sessions start` because the session is preloaded with a TeleClaude command: the very first thing the agent sees is the loader, not a human turn.
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 How the startup message reaches the agent depends on the agent CLI's own launch surface. An agent CLI that accepts an initial prompt as a launch argument receives the startup message that way — the message is part of the command that starts the agent, so the CLI consumes it when its own startup completes and there is no separate delivery step to time. An agent CLI with no such argument receives the startup message through prompt-state delivery once the readiness gate opens.
 
@@ -51,15 +51,15 @@ And the response carries the selected agent and typed routing reason
 Given a run-session request that omits the "agent" field
 When the agent_runtime service resolves the dispatch
 Then it treats the request as automatic preference
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 And resolves a recognized slash command through the canonical command-role registry
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 And resolves a recognized command through the canonical command-role registry
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 And uses that job role's exhaustive ordered agent row
 And a prepare-orchestrator request additionally uses the todo kind to select its row
 And an unmapped command uses the global Claude, Codex, Gemini order with a warning
@@ -137,7 +137,7 @@ And quota pressure does not reroute the manual preference
 
 #### Command and arguments normalization
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 ```
 Given a request with command "/next-build" and args "my-slug"
@@ -153,7 +153,7 @@ When the request is validated
 Then it is rejected with "command must start with '/'"
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 ```
 Given a request with command "next-build" and args "my-slug"
@@ -170,7 +170,7 @@ Then it is accepted and normalized to the bare command name
 And no request is rejected for lacking a leading slash
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 ```
 Given a request with an empty project
@@ -178,7 +178,7 @@ When the request is validated
 Then it is rejected with "project required"
 ```
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 ```
 Given a request whose normalized command is in the worker-lifecycle command set (next-build, next-review-build, next-finalize)
@@ -187,7 +187,7 @@ When the run-session preparation validates the request
 Then it is rejected with "/<command> requires a slug argument"
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 ```
 Given a request whose normalized command is in the worker-lifecycle command set (next-build, next-review-build, next-finalize)
@@ -196,9 +196,9 @@ When the run-session preparation validates the request
 Then it is rejected with "<command> requires a slug argument"
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 #### Codex loader-message rewrite
 
@@ -246,7 +246,7 @@ When the Codex rewrite runs
 Then the startup message is returned unchanged
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 #### Command loader-message assembly
 
@@ -308,7 +308,7 @@ And generated titles never replace it for the session's lifetime, keyed on the s
 And a session created without a dispatch command starts untitled and receives generated titles as today
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 #### Subfolder routing
 
@@ -340,7 +340,7 @@ And the created session's subdirectory is that worktree, so the workflow's live-
 
 #### Additional context propagation
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 ```
 Given a request with additional_context="<some preamble>"
@@ -349,7 +349,7 @@ Then the additional context is appended to BOTH the echoed full-command and the 
 And both Codex (post-loader-rewrite) and non-Codex agents receive the extended message
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 ```
 Given a request with additional_context="<some preamble>"
@@ -358,11 +358,11 @@ Then the additional context is appended to BOTH the echoed full-command and the 
 And every enabled runtime receives the identical extended message
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 #### Dispatch privilege enforcement
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 ```
 Given the resolved slash command maps to a target system role
@@ -372,7 +372,7 @@ And the target role is NOT in the caller's allowed dispatch set
 Then it is rejected with "role '<caller>' cannot dispatch /<command> (requires dispatch privilege for '<target>')"
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 ```
 Given the resolved command maps to a target system role
@@ -382,7 +382,7 @@ And the target role is NOT in the caller's allowed dispatch set
 Then it is rejected with "role '<caller>' cannot dispatch <command> (requires dispatch privilege for '<target>')"
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 ```
 Given a caller carrying the integrator system role
@@ -408,7 +408,7 @@ Then it is rejected — the tasker's dispatch grant is worker-only
 And tasker otherwise carries only Worker's permissions — it cannot drive the todo state machine
 ```
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 #### Lifecycle driver-start dedup
 
@@ -470,7 +470,7 @@ When the shared driver-start dedup check runs
 Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 #### Lifecycle driver-start dedup
 
@@ -532,7 +532,7 @@ When the shared driver-start dedup check runs
 Then the live-holder signal is authoritative and the request is refused — the retained claim does not exempt it
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 
@@ -545,7 +545,7 @@ behavior. A mode-blind subject collapses them, so the cheap lane is refused as a
 of the expensive one and its work lands on the wrong reviewer. Two starts at the same mode
 remain one subject and still dedup.
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 ```
 Given a live "/next-review-commits" session for project P opened by initiator session I
@@ -571,7 +571,7 @@ When the create-door dedup check runs
 Then the request is allowed, because a closed reviewer holds nothing and the next series opens its own
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 ```
 Given a live "next-review-commits" session for project P opened by initiator session I
@@ -597,7 +597,7 @@ When the create-door dedup check runs
 Then the request is allowed, because a closed reviewer holds nothing and the next series opens its own
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 #### UC-DSD1: Held unclaimed lifecycle create requests are allowed but keep hold
 
@@ -610,7 +610,7 @@ And the create door does not clear hold
 And hold release belongs to the lifecycle command's operator path after that path successfully claims or dispatches X
 ```
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 #### UC-DSD2: Generic create door stamps working_slug from a slash-command argument
 
@@ -624,7 +624,7 @@ And the create-door dedup check then refuses a duplicate driver for X exactly as
 And a command with no slug argument, such as "/next-integrate", stamps no working_slug
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 #### UC-DSD2: Generic create door stamps working_slug from a command argument
 
@@ -638,7 +638,7 @@ And the create-door dedup check then refuses a duplicate driver for X exactly as
 And a command with no slug argument, such as "next-integrate", stamps no working_slug
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 #### Initiator binding
 
@@ -656,17 +656,17 @@ And email-bearing identities additionally produce a web-origin metadata stamp on
 Given the run-session preparation has produced a run plan
 When the run flow dispatches the create flow
 Then it builds a create-session command via the canonical command mapper
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 And the launch intent kind is "agent then message" carrying the effective agent, thinking mode, and (rewritten) startup message
 And the initial-input value is the original "/<command> <args>" string (for human-facing echo)
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 And the launch intent kind is "agent then message" carrying the effective agent, thinking mode, and the composed loader startup message
 And the initial-input value is the bare "<command> <args>" string (for human-facing echo)
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 And a slug-bound lifecycle command stamps the create-session command's `working_slug` from the normalized args as creation-time metadata
 And the listener-skip flag mirrors the request's detach flag
 And on success the response carries the new session id, host pane reference, and the resolved agent
@@ -680,15 +680,15 @@ When the agent_runtime service creates the session
 Then the listener-skip flag is true on the create-session command
 And the caller's session is NOT registered as a listener on the new session
 And the caller will NOT receive output forwarding from the spawned session
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 And the spawned session still runs the slash command normally
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 And the spawned session still runs the TeleClaude command normally
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 ```
 
 ```
@@ -699,7 +699,7 @@ And the caller's session is registered as a listener on the new session via the 
 And turn-complete output from the spawned session is forwarded back to the caller
 ```
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 #### Invalid slash command handling
 
@@ -721,7 +721,7 @@ Then the startup message is passed to the agent start command as its initial-pro
 And no prompt-state delivery is attempted for that startup message
 ```
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 #### Unknown command handling
 
@@ -743,7 +743,7 @@ Then the startup message is passed to the agent start command as its initial-pro
 And no prompt-state delivery is attempted for that startup message
 ```
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 #### UC-RSC-RG1: Pre-render stillness does not establish startup readiness
 
@@ -779,26 +779,26 @@ And every existing-session delivery retains its occupancy-aware preservation beh
 
 ### Cross-context references
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 - **workflow** — slash commands resolved here correspond to workflow lifecycle verbs (`/next-build`, `/next-review-build`, `/next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command-prompt artifacts that Codex's loader reads.
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 - **workflow** — commands resolved here correspond to workflow lifecycle verbs (`next-build`, `next-review-build`, `next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command documents the composed loader reads.
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 - **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Web-origin identities produce web-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 - **context** — the slash-command resolution surface (command + skill discovery) lives in the context bounded context. agent_runtime only validates the token shape and routes; it does not interpret command semantics.
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 - **context** — the command corpus lives in the context bounded context. agent_runtime validates the run-session command token shape, routes the new-session dispatch, and composes the command loader message; it does not interpret command semantics.
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 
 - **config** — per-agent enablement gates the command-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their command-matrix row and generic session creation uses the Claude-first global order. Fresh-session thinking mode follows the same command matrix: explicit caller mode wins, command defaults are explicit, and an unrecognized command without an explicit mode is rejected. `next-review-commits` defaults to `med`; doc-only commit review explicitly supplies `fast`.
@@ -806,42 +806,42 @@ And every existing-session delivery retains its occupancy-aware preservation beh
 
 ## Known caveats
 
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 - **Codex loader-message rewrite is asymmetric.** Only `/next-*` commands are rewritten for Codex; other slash commands sent to Codex pass through verbatim. The `/next-` prefix is a shape rather than a command registry, so a retired or misspelled token matches it too; the rewrite therefore materializes the compiled prompt at `<commands-dir>/<cmd>.md` only when that file exists, and otherwise leaves the message verbatim for agent-side handling rather than deferring the failure to Codex's first read.
 - **The full-command and the startup message diverge for Codex.** The full-command (used for the human-visible "initial input" echo) keeps the `/next-* <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the rewritten startup message.
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 - **Command loader-message assembly is uniform.** Every enabled runtime receives the same loader; no agent-specific rewrite path exists, so no behavior difference can hide in one runtime.
 - **The full-command and the startup message diverge for every supported agent.** The full-command (used for the human-visible "initial input" echo) carries the bare `<command> <args>` form, while the startup message is the loader prompt. Don't infer one from the other, and don't derive lifecycle metadata from the loader startup message.
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 - **Claim-time session metadata repair is fallback only.** Both create doors — `/sessions/run` and the generic `POST /sessions` (New Session modal / `telec sessions start`) — stamp known slug-bound lifecycle metadata from the command argument at creation time. Workflow claim/adoption paths may backfill a missing `working_slug` later, but that repair does not replace creation-time stamping.
 
 - **`detach=true` does NOT cancel polling on the spawned session** — it only suppresses listener registration for the caller. The spawned session still has its own output polling and adapter routing.
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 - **Invalid slash commands are not rejected.** A typo in `--command` (e.g., `/nxt-build`) passes validation as long as it starts with `/` — it simply launches a session that immediately fails inside the agent. Validation here is shape-only.
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 - **Unknown command names are not rejected.** A typo in `--command` (e.g., `nxt-build`) passes validation — it simply launches a session that immediately fails inside the agent. Validation here is shape-only, and the shape no longer includes required punctuation: a bare command name is the expected form, and a leading slash is tolerated for compatibility rather than demanded.
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
 
 
 - **Worker-lifecycle slug guard fires AFTER dispatch resolution.** A preferred-agent or no-agents-available failure can mask a missing-slug error in the response; check the surface error code (slug-related vs. dispatch-related) to disambiguate.
 
 
 - **`subfolder` is not validated for traversal.** The entry trusts the caller; project-path joining and subdir sanitization happen downstream in the metadata-building path.
-<!-- planned-change:command-migration-to-singular-telec-skill -->
+<!-- planned-change:command-loader-and-title-cutover -->
 
 - **Dispatch privilege depends on role inference succeeding.** If the slash command isn't canonical (typo, custom command), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the slash command is canonical.
 
-<!-- change:command-migration-to-singular-telec-skill -->
+<!-- change:command-loader-and-title-cutover -->
 
 - **Dispatch privilege depends on role inference succeeding.** If the command isn't canonical (typo, unknown name), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the command is canonical.
 
-<!-- /planned-change:command-migration-to-singular-telec-skill -->
+<!-- /planned-change:command-loader-and-title-cutover -->
