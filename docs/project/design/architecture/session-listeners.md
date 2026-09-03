@@ -79,12 +79,14 @@ audience is empty.
   once — a set already emitted, otherwise empty — the old field is retired in
   the same step, and no read path tolerates the old shape.
 - **Turn-end and turn-failure share one terminal-outcome slot in that gate.**
-  At most one terminal notification accounts for a target turn. A turn-failure
-  claims the slot whether or not a turn-end has already claimed it; a turn-end
-  claims it only when it is empty. The blocked kind has its own slot and does
-  not compete. Every mapped runtime already emits at most one terminal signal
-  per turn, so the slot arbitrates nothing today; it holds the invariant
-  independently of arrival order rather than resting on that exclusivity.
+  The first terminal signal of a target turn claims the slot and is the only
+  terminal notification emitted for it; a second terminal signal for the same
+  turn emits nothing and is recorded as a diagnostic naming both outcomes. The
+  blocked kind has its own slot and does not compete. Normalization is what
+  makes the first signal the right one: every mapped runtime emits at most one
+  terminal signal per turn, so the slot never chooses between two accounts. It
+  bounds a runtime that violated that guarantee to one notice plus a
+  diagnostic, and claims no power to retract a notification already delivered.
 - **The distress audience is persistent listeners only.** One-shot rows are
   outside it: a distress event neither reads, delivers to, nor removes a
   one-shot row, so its turn-end semantics above are untouched.
@@ -268,9 +270,17 @@ matching template rather than a turn-end one.
 
 ## Failure modes
 
+<!-- planned-change:session-distress-ingestion -->
 - **Caller session crash with no clean shutdown.** Cleanup hook may not fire. Listener rows remain until a later caller cleanup pass or until the operator manually unsubscribes. Rows are inert — at worst they suppress on a target that no one is reading.
+<!-- change:session-distress-ingestion -->
+- **Caller session crash with no clean shutdown.** Cleanup hook may not fire. Listener rows remain until a later caller cleanup pass or until the operator manually unsubscribes. Rows are inert: for turn-end they at worst deliver toward a target nobody is reading, and for distress the refused delivery leaves the row uncounted so the human-facing fallback still fires.
+<!-- /planned-change:session-distress-ingestion -->
 - **Target session never stops.** Listener row remains until caller cleanup, unsubscribe, or target end.
+<!-- planned-change:session-distress-ingestion -->
 - **Notification injection fails (tmux gone).** Logged. A `one_shot=true` row is still removed (one-shot semantics preserved). A persistent row is retained; it becomes silent until tmux is restored or the caller is cleaned up.
+<!-- change:session-distress-ingestion -->
+- **Notification injection fails (tmux gone).** Logged. On a turn-end notification a `one_shot=true` row is still removed (one-shot semantics preserved), and a persistent row is retained and stays silent until tmux is restored or the caller is cleaned up. On a distress notification the refused delivery means that member was not reached, so it does not hold off the human-facing fallback; no row is removed either way.
+<!-- /planned-change:session-distress-ingestion -->
 - **Duplicate registration.** No-op. Returns False to caller; no error.
 - **Concurrent stop events for same target.** Listeners load + deliver under per-row locking; double-fire is prevented by the one-shot DELETE being atomic with the SELECT.
 - **Suppression check race.** A link severed mid-notify still suppresses for the current event (suppression evaluated at notify time); the next event delivers normally. Cost is at most one missed notification at the exact moment of sever, acceptable because the caller was actively conversing through the link until that moment.

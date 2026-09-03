@@ -146,14 +146,16 @@ stopped due to error"; the documented sample payload carries it as an empty
 string on a `model_stop` stop, so its presence does not distinguish a failed
 termination and `terminationReason` is the discriminator.
 
-**Evidence gap — full termination-reason set.** The installed 1.1.25 executable
-embeds executor symbols implying a wider set than the reference enumerates
-(`early_continue`, `halted_step`, `injected_response`, `max_forced_invocations`,
-`max_invocations`, `max_token_budget_exceeded`, `no_tool_call`,
-`terminal_custom_hook`, `terminal_step_type`, `unspecified`, `user_canceled`,
-alongside `error`). These are internal symbol names; their spelling on the hook
-wire is not established by any authoritative source; only the three documented
-values above are established.
+**Evidence gap — the termination-reason vocabulary is unsettled.** Two sources
+inside the installed 1.1.25 executable disagree. Its embedded hook contract
+gives `model_stop`, `max_steps_exceeded`, and `error` as example values, while
+its executor enumerates a different set of symbols — `early_continue`, `error`,
+`halted_step`, `injected_response`, `max_forced_invocations`, `max_invocations`,
+`max_token_budget_exceeded`, `no_tool_call`, `terminal_custom_hook`,
+`terminal_step_type`, `unspecified`, `user_canceled` — with no `model_stop` or
+`max_steps_exceeded` among them. Of the documented examples only `error` occurs
+as a literal string in the executable. No authoritative source establishes the
+complete set or its spelling on the hook wire.
 
 Its stdout object requires a `decision`. `continue` prevents stopping and re-enters the execution loop; any other value permits the stop. When the decision is `continue`, optional `reason` is injected as a system message.
 
