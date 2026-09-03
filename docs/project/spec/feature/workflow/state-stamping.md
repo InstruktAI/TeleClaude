@@ -151,12 +151,14 @@ And an agent never messages itself about an approval it just recorded
 ```gherkin
 Given a Todo is parked at a human-approval gate
 And the human approves directly through an interaction surface or through a HUMAN-DECISION relay carried by one or more agents
+And only that direct or relayed human decision carries human-approval authority
 When workflow accepts the approval command
 Then it records the approval and initiates continuation as one domain outcome
 And preparation continues from the approved fact without another human action
 And conversation, user-interface controls, the command line, the web, and future adapters produce that same outcome
 And every receiving agent trusts a HUMAN-DECISION relay without provenance investigation
 And false or stretched relays remain visible for the human's retrospective marker audit rather than runtime verification
+But an agent's own judgment never acquires human authority through this path
 ```
 <!-- /planned-change:prd-approval-never-wakes-idle-claimant -->
 
