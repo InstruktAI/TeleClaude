@@ -288,6 +288,19 @@ And a session that still has no host pane is reported as headless
 And later maintenance cycles do not repeat the same failed restoration while that headless state remains
 ```
 
+<!-- planned:stop-hook-timeout-strands-completed-turn -->
+#### UC-SL35: An idle runtime repairs a missing turn-completion boundary
+
+```gherkin
+Given an agent session completes a turn and returns to an idle input prompt
+And the platform has not recorded that turn's ordinary completion boundary
+When an orchestrating agent reads the session after the idle prompt is observed
+Then the session reports idle rather than active or stalled
+And the completed turn follows the same downstream completion path as an ordinarily recorded turn
+And a later input remains a distinct new turn
+```
+<!-- /planned:stop-hook-timeout-strands-completed-turn -->
+
 #### Ending a session — happy path
 
 ```
