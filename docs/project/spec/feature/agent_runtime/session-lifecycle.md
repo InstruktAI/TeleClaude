@@ -194,19 +194,6 @@ And the rest of that entry is unchanged
 ```
 
 
-<!-- planned-change:session-liveness-has-no-single-authority -->
-#### UC-SL23: An activity hook activates an initializing session
-
-```
-Given a non-headless session row exists with `lifecycle_status="initializing"`
-And the agent CLI process emits any activity hook for it (session_start, agent_stop, pre_tool_use, or user_prompt_submit)
-When agent_runtime handles the hook
-Then the session row is updated with `lifecycle_status="active"`
-And `native_session_id` and `native_log_file` are stored when the session_start hook carries them
-And normal live-session listing returns the session without requiring `include_initializing`
-And headless or closed lifecycle rows are not reactivated by any activity hook
-```
-<!-- change:session-liveness-has-no-single-authority -->
 #### UC-SL23: Only the declared runtime-start boundary establishes liveness
 
 ```gherkin
@@ -219,7 +206,6 @@ When the child runtime announces its declared start boundary
 Then the child is reported live and remains supervised
 And headless or terminal sessions are not reactivated
 ```
-<!-- /planned-change:session-liveness-has-no-single-authority -->
 
 #### UC-SL29: A silent in-turn session derives stalled
 
