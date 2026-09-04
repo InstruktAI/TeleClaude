@@ -822,8 +822,8 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
             ],
             "slow": [
                 {
-                    "model": "sol",
-                    "flags": "-m gpt-5.6-sol -c model_reasoning_effort='high' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
+                    "model": "astra",
+                    "flags": "-m gpt-6-astra -c model_reasoning_effort='high' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
                 }
             ],
             "default": [],
