@@ -227,6 +227,19 @@ Then the interactive screen remains unchanged and unsubmitted
 And delivery waits until the agent-specific complete composer can be identified
 ```
 
+<!-- planned:empty-codex-composer-misread-as-ambiguous -->
+#### UC-SID13: A complete empty Codex composer accepts platform input
+
+```gherkin
+Given a running Codex session shows its complete editable composer with no text
+And an accepted platform-authored input occurrence is ready for delivery
+When the platform observes the session before delivery
+Then the composer is recognized as empty and ready
+And the accepted input is pasted and submitted exactly once
+And the Codex agent receives the resulting turn
+```
+<!-- /planned:empty-codex-composer-misread-as-ambiguous -->
+
 #### UC-SID12: An exhausted session-originated send reports failure to its caller
 
 ```gherkin
