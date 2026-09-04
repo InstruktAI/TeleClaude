@@ -288,9 +288,9 @@ And the refusal is identical whether or not the named tier exists
 Given an agent session running under the identity of a person who is not a platform administrator
 And the session names a project tier explicitly by selector
 When the Selection policy resolves the request
-Then the request is resolved as it is today and the permitted material is returned
+Then the permitted material is returned
 And a deprecation notice states that the selector becomes administrator-only at the next major release
-And the notice is carried on the invocation rather than replacing its result
+And the notice accompanies the result rather than replacing it
 ```
 
 #### UC-DSP27: A non-administrator is refused an identity outside its assembled catalogs
