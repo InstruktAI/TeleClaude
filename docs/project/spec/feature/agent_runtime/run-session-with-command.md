@@ -300,14 +300,36 @@ Then the startup message is the command loader for ~/.teleclaude/commands/<comma
 And no slug argument is required
 ```
 
-#### UC-CLR3: Dispatched-session titles are composed from structured fields
+#### UC-CLR3: A dispatched session's title reflects its record fields and is read by nothing
 
 ```
 Given a run-session request with a normalized command and args
 When the session is created
 Then its title is "<command> <args>" composed from the structured dispatch fields — no leading slash and no wrapper token
-And generated titles never replace it for the session's lifetime, keyed on the session's job being set rather than on title shape
+And the title is a presentation of those fields: no consumer resolves a session, a command, or a slug by reading it
+And generated titles never replace it while the session's recorded command is set
 And a session created without a dispatch command starts untitled and receives generated titles as today
+```
+
+#### UC-CLR8: The session record carries the command the session was dispatched with
+
+```
+Given a run-session request whose command normalizes to a canonical name
+When the session is created
+Then the session record carries that normalized command alongside the system role, job, and working slug already derived from it
+And a corpus-resident command that the command-role registry does not map still records its command, though it carries no job
+And a session created without a dispatch command records no command
+And any consumer needing to know which command a session runs reads it from the record
+```
+
+#### UC-CLR9: Sessions predating the recorded command are migrated forward from their titles
+
+```
+Given sessions exist whose records predate the recorded command
+When the migration that introduces the field runs
+Then every session whose title begins with a slash-prefixed token records that token, without the slash, as its command
+And every other session records no command
+And the count of migrated sessions equals the count of slash-titled sessions, so a partial migration fails rather than silently dropping sessions
 ```
 
 <!-- /planned-change:command-loader-and-title-cutover -->
