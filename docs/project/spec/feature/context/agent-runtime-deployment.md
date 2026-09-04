@@ -260,7 +260,11 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   And the local phase materializes tier-local skills from .agents/skills/ into the project-root CLI skill directories
   And the local phase writes no command artifact and no subagent definition into any runtime home
 <!-- /planned-change:retire-native-artifact-deployment -->
+<!-- planned-change:serialize-docs-sync-across-processes -->
+  And each domain the project owns in business.publishes is a single symlink ~/.teleclaude/docs/<domain> to the project's docs/global/<domain>
+<!-- change:serialize-docs-sync-across-processes -->
   And each domain the project owns in business.publishes is materialized into the deployed documentation snapshot
+<!-- /planned-change:serialize-docs-sync-across-processes -->
 ```
 
 #### UC-ARD3: Deploy is refused from a slug worktree
@@ -278,11 +282,21 @@ Scenario: UC-ARD3 Deploy is refused from a slug worktree
 Scenario: UC-ARD4 Sync composes the per-domain single-owner docs tree
   Given two publishers, each declaring in business.publishes a different domain it owns
   When the documentation deployment step runs
+<!-- planned-change:serialize-docs-sync-across-processes -->
+  Then any stale real or symlinked ~/.teleclaude/docs from an older deploy is replaced
+  And ~/.teleclaude/docs is a real directory
+  And each published domain is a single symlink ~/.teleclaude/docs/<domain> to its owning publisher's docs/global/<domain> directory
+  And ~/.teleclaude/docs/general resolves to the Mother repo's docs/global/general
+  And ~/.teleclaude/docs/index.yaml is the union of every owners global index
+  And each published domain's domain-baseline-bundle.md resolves through the domain symlink to the owner's source directory
+  And a snippet removed from a source domain disappears from ~/.teleclaude/docs/<domain> on the next deploy with no orphan link
+<!-- change:serialize-docs-sync-across-processes -->
   Then ~/.teleclaude/docs remains a complete deployed snapshot throughout publication
   And each published domain and general are materialized from their single owning source
   And ~/.teleclaude/docs/index.yaml is the union of every owners global index
   And each published domain baseline is generated inside the same staged snapshot
   And a snippet removed from a source domain is absent from the next deployed snapshot
+<!-- /planned-change:serialize-docs-sync-across-processes -->
 ```
 
 ```
@@ -653,9 +667,15 @@ Scenario: UC-ARD30 A reference validates against its source, never against the d
 
 <!-- /planned-change:retire-native-artifact-deployment -->
 
+<!-- planned-change:serialize-docs-sync-across-processes -->
+- Documentation links are read-only by convention. Each per-domain directory
+  symlink resolves onto its owning publisher's live source directory, so a stray
+  edit through it mutates source; agents treat deployed docs as read-only.
+<!-- change:serialize-docs-sync-across-processes -->
 - Deployed documentation is read-only. It is a materialized snapshot; authored
   documentation changes only in its owning source tree and becomes visible after
   a successful synchronization publishes the next snapshot.
+<!-- /planned-change:serialize-docs-sync-across-processes -->
 
 <!-- planned-change:agent-artifact-source-layout -->
 
