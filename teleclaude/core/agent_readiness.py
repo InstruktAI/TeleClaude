@@ -325,6 +325,11 @@ def _extract_complete_codex_live_input_block(lines: list[str]) -> str | None:
 
 
 def _extract_complete_deepseek_live_region(lines: list[str]) -> str | None:
+    """Extract the DeepSeek composer up to its closing horizontal rule.
+
+    DeepSeek renders status and hint lines below that rule; they are not
+    editable composer content.
+    """
     marker = AgentName.DEEPSEEK.prompt_marker.strip()
     if not marker:
         return None
