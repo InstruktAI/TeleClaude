@@ -7,6 +7,7 @@ visibility: 'internal'
 
 ## What it is
 
+<!-- planned-change:envelope-recognition-is-shape-only -->
 Text arriving into an agent session's transcript may contain one or more closed
 platform envelopes alongside prompt input typed into the session. Reading an
 entry locates complete envelopes from the closed framing vocabulary and types
@@ -14,6 +15,16 @@ each one from its opening. A located envelope's body span carries that kind and
 its authorship; every span outside a located envelope, within a user entry, is
 prompt input. Classification is complete from the entry alone and never waits on
 a correlated receipt, so no span is left untyped.
+<!-- change:envelope-recognition-is-shape-only -->
+Text arriving into an agent session's transcript may contain complete platform
+envelopes alongside prompt input typed into the same entry. Recognition asks
+only whether a registered opening and its declared closure identify an
+envelope-shaped span. A recognized span carries the registered kind and the
+header fields as written; its body is opaque. Every other span is prompt input
+from the human in this session. Classification always covers the whole entry:
+an unrecognized span is ordinary input, never an error that can stop projection,
+reflection, or relay of that span or its neighbors.
+<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 Headers come in three kinds, distinguished by what their metadata is _for_:
 
@@ -43,6 +54,7 @@ the human's signature. Control payloads delivered through an agent runtime's
 hook boundary use that runtime's declared wrapper instead and never enter as
 unwrapped prompt text.
 
+<!-- planned-change:envelope-recognition-is-shape-only -->
 **Framing is single-sourced, and its closure is declared.** One definition per
 header declares its opening delimiter and its closure discipline. A **paired**
 header frames a body and derives its closing delimiter from that same
@@ -51,6 +63,15 @@ extent is always marked rather than inferred. An **auto-closed** header carries
 no body and is complete on its own. Which discipline a header follows is read
 from the definition, never guessed from whether a closing delimiter happens to
 appear, and one header never carries both.
+<!-- change:envelope-recognition-is-shape-only -->
+**Framing is single-sourced, and its closure is declared.** One registry
+definition declares each opening delimiter and its closure discipline. A
+**paired** envelope is recognizable when its registered opening and derived
+closing delimiter identify the span; an **auto-closed** envelope is complete at
+its opening. The writer emits that shape. The reader neither repairs nor
+rejects text that lacks it: such text remains ordinary human input, while
+recognizable neighboring envelopes remain independently classifiable.
+<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 ### Classification taxonomy
 
@@ -71,10 +92,20 @@ One native entry may therefore carry several ordered classified parts. Every
 consumer reads that same segmentation from the entry's own envelopes; a
 per-consumer predicate over rendered text is a defect.
 
+<!-- planned-change:envelope-recognition-is-shape-only -->
 Every platform envelope is emitted from the closed vocabulary below. Recognition
 requires an exact opening kind from that vocabulary and, for a paired header, its
 matching derived close; an auto-closed header is complete at its opening. A
 shared prefix or an opener outside the vocabulary establishes nothing.
+<!-- change:envelope-recognition-is-shape-only -->
+Every platform envelope is emitted from the closed vocabulary below.
+Recognition uses only the registered delimiter shape: an exact opening kind
+and, for paired envelopes, its derived close. The body is never scanned for
+validity, header fields are never checked against a second vocabulary, and no
+separator convention is a recognition precondition. Text that does not form a
+complete registered envelope establishes no platform identity and remains
+ordinary human input.
+<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 ## Canonical fields
 
@@ -153,6 +184,7 @@ content a human is actually there to read.
 
 ### Identity resolution
 
+<!-- planned-change:envelope-recognition-is-shape-only -->
 An identity header's rendered author is presentation; what may be read back from
 it turns on what the field is. A **self-describing** field carries the fact in a
 closed, validated vocabulary — the peer header's author token
@@ -166,6 +198,18 @@ agent's identity, with a job role as orthogonal metadata qualifying the identity
 rather than replacing it. Rendered framing carries the boundary and kind of the
 span it opens, which is how a span is located at all; it never carries
 loop-prevention facts, which compare structured source session ids.
+<!-- change:envelope-recognition-is-shape-only -->
+An identity header's rendered author is presentation. The peer header's author
+token (`human:<display>`, `agent:<runtime>/<thinking-mode>`,
+`machine:<role>`) is the author snapshot carried by the envelope itself. The
+reader trusts and presents that token; it does not reject an otherwise
+recognized envelope because the token is unknown to a local enum. Known tokens
+retain their richer alias and avatar presentation, while an unknown token
+degrades to its own carried text. The peer header's source session id supplies
+loop prevention without a second provenance store. A caller-origin session id
+remains a pointer resolved from the durable session record rather than from
+header prose.
+<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 That resolution happens once per event, and every surface renders from the one
 result: the pane header an agent reads and the alias a human sees on Discord
@@ -185,9 +229,15 @@ and every future lane alike.
   envelope's body it is body content, because bodies are never inspected; in an
   agent's own output it is that agent's content. Neither position re-frames the
   entry around it.
+<!-- planned-change:envelope-recognition-is-shape-only -->
 - Legacy transcript entries predating a vocabulary change retain the header shape
   in force when they were written; recognizing them is bounded by the cutover
   that introduced the new shape.
+<!-- change:envelope-recognition-is-shape-only -->
+- Envelope shapes outside the current registry receive no compatibility parser;
+  they remain ordinary human input unless their delimiters match a current
+  registered shape.
+<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 ## See Also
 
