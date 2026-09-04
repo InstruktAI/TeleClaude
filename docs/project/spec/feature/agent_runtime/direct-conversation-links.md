@@ -98,6 +98,8 @@ And the orchestrator segment is delivered as a real B-origin segment
 And no A-to-B-to-A echo segment is produced
 ```
 
+#### UC-DCL17: A third-party peer segment retains its original source
+
 ```
 Given B's transcript contains a canonical peer segment whose original source session is C
 And the segment was authored by the same human who participates in A and B
@@ -107,6 +109,8 @@ And its complete original peer header and body are preserved
 And human identity does not cause the segment to be suppressed or reassigned to B
 ```
 
+#### UC-DCL18: A trailing peer segment is not held as unanswered local input
+
 ```
 Given a C-origin peer segment is the last visible user-channel segment in B's transcript
 And B's turn-complete delivery runs for A
@@ -114,6 +118,8 @@ When the collector applies unanswered-turn handling
 Then the C-origin segment is not treated as a locally-authored human turn
 And it remains eligible without waiting for later local activity in B
 ```
+
+#### UC-DCL19: Eligibility is evaluated per peer segment
 
 ```
 Given one peer bundle in B's transcript contains an A-origin segment followed by a C-origin segment
@@ -123,6 +129,8 @@ And the A-origin segment is suppressed
 And the C-origin segment remains in its original order with its original attribution
 ```
 
+#### UC-DCL20: Forwarded occurrence time is independent of replay progress
+
 ```
 Given a C-origin peer segment carries original occurrence time C1 in its canonical header
 And B recorded the containing transcript entry at replay time B1
@@ -131,6 +139,8 @@ Then the rendered segment retains occurrence time C1
 And B-to-A pending bounds, delivery cursors, and deterministic dedupe use B1
 And the inner header time is never used as the replay progress clock
 ```
+
+#### UC-DCL21: Mixed local and peer text preserves ordered authorship
 
 <!-- planned-change:envelope-recognition-is-shape-only -->
 ```
