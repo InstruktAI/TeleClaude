@@ -413,6 +413,21 @@ Scenario: UC-ARD12 A removed command source disappears from ~/.teleclaude/comman
 ```
 
 
+<!-- planned:command-loader-and-title-cutover -->
+
+#### UC-ARD33: The corpus is reached only through the composed loader
+
+```
+Scenario: UC-ARD33 Both entry points read the corpus through the composed loader
+  Given TeleClaude command documents are deployed to ~/.teleclaude/commands/
+  When a session is dispatched for one of them
+  Then its startup message is the composed loader naming that corpus document
+  And a procedure load the state machine emits into an already-running session carries that same composed loader
+  And both are produced by one composition, so the two forms cannot diverge
+```
+
+<!-- /planned:command-loader-and-title-cutover -->
+
 <!-- planned:retire-native-artifact-deployment -->
 
 #### UC-ARD10: TeleClaude command corpus is reached only through the composed loader
@@ -423,8 +438,6 @@ Scenario: UC-ARD10 Command deployment separates the corpus from runtime artifact
   When sync runs in deploy mode
   Then the command documents are deployed to ~/.teleclaude/commands/
   And no per-agent runtime receives any command artifact for them
-  And `telec sessions run --command <name>` dispatches a new session whose startup message is the composed loader for the selected document
-  And machine-emitted procedure loads read the same corpus documents in an already-running session
 ```
 
 #### UC-ARD14: Legacy Gemini runtime locations receive nothing
