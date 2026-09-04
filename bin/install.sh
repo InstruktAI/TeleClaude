@@ -650,6 +650,128 @@ setup_frontend() {
     print_success "Frontend dependencies installed"
 }
 
+# Pinned together from gogcli's release checksums.txt.
+GOG_VERSION="0.38.1"
+GOG_LINUX_AMD64_SHA256="6576828ed6852949ba424b967c3ff4268b3d9c90e201f90fe3d539fe3a151ebb"
+GOG_LINUX_ARM64_SHA256="462342542472dcf361744cfe5e15a3540364b4c5120577e4519fffbd1afc6596"
+
+install_gog() {
+    local installed_version
+    if command -v gog &> /dev/null; then
+        if ! installed_version=$(gog --version 2>&1); then
+            print_error "gog is present but its version could not be read"
+            exit 1
+        fi
+        print_info "gog already installed: $installed_version"
+        return 0
+    fi
+
+    if [ "$OS" = "macos" ] || command -v brew &> /dev/null; then
+        if ! command -v brew &> /dev/null; then
+            print_error "Homebrew not found. Please install from https://brew.sh"
+            exit 1
+        fi
+        if ! brew install openclaw/tap/gogcli >> "$LOG_FILE" 2>&1; then
+            print_error "Failed to install gog with openclaw/tap/gogcli. See $LOG_FILE"
+            exit 1
+        fi
+        if ! installed_version=$(gog --version 2>&1); then
+            print_error "gog was installed but its version could not be read"
+            exit 1
+        fi
+        print_success "Installed gog: $installed_version"
+        return 0
+    fi
+
+    if [ "$OS" != "linux" ]; then
+        print_error "gog provisioning is unsupported on $OS"
+        exit 1
+    fi
+
+    # Linux hosts without Homebrew use the pinned release artifact directly.
+    local gog_arch expected_sha archive_name archive_url temp_dir archive_path actual_sha
+    case "$(uname -m)" in
+        x86_64|amd64)
+            gog_arch="amd64"
+            expected_sha="$GOG_LINUX_AMD64_SHA256"
+            ;;
+        aarch64|arm64)
+            gog_arch="arm64"
+            expected_sha="$GOG_LINUX_ARM64_SHA256"
+            ;;
+        *)
+            print_error "Unsupported Linux architecture for gog: $(uname -m)"
+            exit 1
+            ;;
+    esac
+
+    archive_name="gogcli_${GOG_VERSION}_linux_${gog_arch}.tar.gz"
+    archive_url="https://github.com/openclaw/gogcli/releases/download/v${GOG_VERSION}/${archive_name}"
+    if ! temp_dir=$(mktemp -d); then
+        print_error "Failed to create a temporary directory for gog provisioning"
+        exit 1
+    fi
+    trap 'rm -rf "$temp_dir"' EXIT
+
+    archive_path="$temp_dir/$archive_name"
+    if ! curl -fsSL "$archive_url" -o "$archive_path" >> "$LOG_FILE" 2>&1; then
+        print_error "Failed to download gog release $archive_url. See $LOG_FILE"
+        exit 1
+    fi
+
+    if command -v sha256sum &> /dev/null; then
+        if ! actual_sha=$(sha256sum "$archive_path" | awk '{print $1}'); then
+            print_error "Failed to calculate the gog release SHA-256"
+            exit 1
+        fi
+    elif command -v shasum &> /dev/null; then
+        if ! actual_sha=$(shasum -a 256 "$archive_path" | awk '{print $1}'); then
+            print_error "Failed to calculate the gog release SHA-256"
+            exit 1
+        fi
+    else
+        print_error "Cannot verify gog release integrity: sha256sum or shasum is required"
+        exit 1
+    fi
+    if [ "$actual_sha" != "$expected_sha" ]; then
+        print_error "gog release verification failed: expected $expected_sha, got $actual_sha"
+        exit 1
+    fi
+
+    if ! tar -xzf "$archive_path" -C "$temp_dir" >> "$LOG_FILE" 2>&1; then
+        print_error "Failed to extract verified gog release. See $LOG_FILE"
+        exit 1
+    fi
+    if [ ! -f "$temp_dir/gog" ]; then
+        print_error "Verified gog release did not contain the gog binary"
+        exit 1
+    fi
+    if ! mkdir -p "$TELEC_BIN_DIR"; then
+        print_error "Failed to create $TELEC_BIN_DIR for gog"
+        exit 1
+    fi
+    if ! mv "$temp_dir/gog" "$TELEC_BIN_DIR/gog"; then
+        print_error "Failed to place gog in $TELEC_BIN_DIR"
+        exit 1
+    fi
+    if ! chmod +x "$TELEC_BIN_DIR/gog"; then
+        print_error "Failed to make gog executable in $TELEC_BIN_DIR"
+        exit 1
+    fi
+    _ensure_local_bin_on_path
+    if ! installed_version=$("$TELEC_BIN_DIR/gog" --version 2>&1); then
+        print_error "gog was placed but its version could not be read"
+        exit 1
+    fi
+    print_success "Installed gog $installed_version from pinned release $GOG_VERSION"
+
+    if ! rm -rf "$temp_dir"; then
+        print_error "Failed to clean up gog provisioning files"
+        exit 1
+    fi
+    trap - EXIT
+}
+
 # Install system dependencies
 install_system_deps() {
     print_header "Installing System Dependencies"
@@ -695,6 +817,8 @@ install_system_deps() {
             print_info "Installing socat..."
             install_package socat
         fi
+
+        install_gog
 
         # Redis (conditional native install) — skip when a remote Redis is already
         # configured in .env. A local server is only needed when no REDIS_URL is set
