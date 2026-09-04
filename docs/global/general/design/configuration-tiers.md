@@ -219,9 +219,11 @@ wherever they are working, independently of the directory they are in.
 Someone with no relationship to a company is not shut out of it — they meet the
 snippet's own declaration and read what is public, which is how a help desk
 running inside a project registered to a company answers public questions for
-people who do not belong to it. Explicit selectors naming a person, a company, or
-a project override the derived scope and are available to platform admins only,
-whatever relationship the caller holds to the tier they name.
+people who do not belong to it. Explicit selectors naming a person or a company
+override the derived scope and are available to platform admins only, whatever
+relationship the caller holds to the tier they name. The project selector
+predates that rule and reaches every caller; it keeps its answer and carries a
+deprecation notice until the next major release, where it joins the other two.
 <!-- /planned:docs-tier-layering -->
 
 ## Failure modes

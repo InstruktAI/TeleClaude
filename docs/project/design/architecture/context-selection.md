@@ -189,6 +189,15 @@ a person, a company, or a project: naming a tier explicitly is reserved to
 platform administrators. A caller who is not one reads their derived scope,
 narrowed by the filters that name no tier.
 
+The rule binds the person and company selectors from their first release. The
+project selector predates it and today reaches every caller, so binding it is a
+narrowing of a published surface and is retired on the schedule the compatibility
+policy sets rather than at this delivery: the current answer keeps serving, the
+invocation carries a deprecation notice, and the refusal lands at the next major
+release. Until then the two groups differ in mechanism and agree in outcome — a
+caller who may not name a tier reaches nothing of it that it does not declare
+public.
+
 Retrieving a snippet by an identity already present in the caller's assembled
 catalogs is not naming a tier: it is the second phase of the discovery the caller
 was already permitted, and it stays open to everyone. Using an identity to pull
