@@ -115,6 +115,7 @@ left untouched.
 
 <!-- /planned-change:retire-native-artifact-deployment -->
 
+<!-- planned-change:serialize-docs-sync-across-processes -->
 After both phases, the global documentation tree is exposed at
 `~/.teleclaude/docs/` as a **per-domain composition with exactly one owning
 publisher per domain**. The root is a real directory rebuilt each sync. Each
@@ -127,6 +128,15 @@ as live views of the owner's source (no copy). The valid domains are exactly the
 union of every registered project's `business.publishes`; TeleClaude holds no
 central allow-list of valid domains, and adding a domain needs only a project
 that declares and serves it.
+<!-- change:serialize-docs-sync-across-processes -->
+After both phases, the global documentation tree is exposed at
+`~/.teleclaude/docs/` as a complete materialized snapshot. Each published domain
+and the cross-cutting `general` content are copied from their owning publisher
+sources into a staged generation, then the staged generation atomically replaces
+the deployed root. The valid domains are exactly the union of every registered
+project's `business.publishes`; TeleClaude holds no central allow-list of valid
+domains, and adding a domain needs only a project that declares and serves it.
+<!-- /planned-change:serialize-docs-sync-across-processes -->
 
 <!-- planned-change:agent-artifact-source-layout -->
 
@@ -148,12 +158,21 @@ one-owner-per-domain hard block like any other, for documentation and for
 domain-partitioned global commands alike.
 
 <!-- /planned-change:agent-artifact-source-layout -->
+<!-- planned-change:serialize-docs-sync-across-processes -->
 Sync-time split detection runs before composition: if more than one registered
 project declares the same domain in `business.publishes`, the deploy
 HARD-BLOCKS (exits non-zero, composes nothing) with `split domain ownership:
 <domain> claimed by <A> and <B>`. The single declaring project is the owner
 whose folder the domain symlinks to. This is the one cross-publisher integrity
 rule: a domain has exactly one owning publisher.
+<!-- change:serialize-docs-sync-across-processes -->
+Sync-time split detection runs before composition: if more than one registered
+project declares the same domain in `business.publishes`, the deploy
+HARD-BLOCKS (exits non-zero, composes nothing) with `split domain ownership:
+<domain> claimed by <A> and <B>`. The single declaring project supplies the
+materialized domain source. This runtime check is the cross-publisher integrity
+rule: a domain has exactly one owning publisher.
+<!-- /planned-change:serialize-docs-sync-across-processes -->
 
 The deploy writes the merged `index.yaml` at the root — the union of every
 owner's per-domain global index. Because no two owners share a domain, the union
@@ -163,6 +182,7 @@ the SessionStart hook, `telec docs`, and the index build — read one root
 unchanged.
 
 
+<!-- planned-change:serialize-docs-sync-across-processes -->
 For each published domain the deploy inflates the owner's `baseline.md` and
 `baseline-progressive.md`, then writes the result as `domain-baseline-bundle.md`
 **inside the owner's `docs/global/<domain>/` directory** (gitignored in the
@@ -174,6 +194,16 @@ before agent artifacts are transpiled, so a procedure that needs the generated
 bundle names it as an explicit Required Read. The transpiler expands that bundle
 into the consuming artifact; SessionStart does not select or inject command-domain
 baseline context.
+<!-- change:serialize-docs-sync-across-processes -->
+For each published domain the deploy inflates `baseline.md` and
+`baseline-progressive.md` into `domain-baseline-bundle.md` inside the staged
+generation. The bundle publishes with that generation and is single-source because
+split detection permits one owner per domain. Documentation composition and bundle
+generation complete before agent artifacts are transpiled, so a procedure that
+needs the generated bundle names it as an explicit Required Read. The transpiler
+expands that bundle into the consuming artifact; SessionStart does not select or
+inject command-domain baseline context.
+<!-- /planned-change:serialize-docs-sync-across-processes -->
 
 Global third-party docs are read from the mother repo source (`docs/third-party/`),
 not from under the docs tree.
@@ -230,7 +260,7 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   And the local phase materializes tier-local skills from .agents/skills/ into the project-root CLI skill directories
   And the local phase writes no command artifact and no subagent definition into any runtime home
 <!-- /planned-change:retire-native-artifact-deployment -->
-  And each domain the project owns in business.publishes is a single symlink ~/.teleclaude/docs/<domain> to the project's docs/global/<domain>
+  And each domain the project owns in business.publishes is materialized into the deployed documentation snapshot
 ```
 
 #### UC-ARD3: Deploy is refused from a slug worktree
@@ -248,13 +278,11 @@ Scenario: UC-ARD3 Deploy is refused from a slug worktree
 Scenario: UC-ARD4 Sync composes the per-domain single-owner docs tree
   Given two publishers, each declaring in business.publishes a different domain it owns
   When the documentation deployment step runs
-  Then any stale real or symlinked ~/.teleclaude/docs from an older deploy is replaced
-  And ~/.teleclaude/docs is a real directory
-  And each published domain is a single symlink ~/.teleclaude/docs/<domain> to its owning publisher's docs/global/<domain> directory
-  And ~/.teleclaude/docs/general resolves to the Mother repo's docs/global/general
-  And ~/.teleclaude/docs/index.yaml is the union of every owner's global index
-  And each published domain's domain-baseline-bundle.md resolves through the domain symlink to the owner's source directory
-  And a snippet removed from a source domain disappears from ~/.teleclaude/docs/<domain> on the next deploy with no orphan link
+  Then ~/.teleclaude/docs remains a complete deployed snapshot throughout publication
+  And each published domain and general are materialized from their single owning source
+  And ~/.teleclaude/docs/index.yaml is the union of every owners global index
+  And each published domain baseline is generated inside the same staged snapshot
+  And a snippet removed from a source domain is absent from the next deployed snapshot
 ```
 
 ```
@@ -625,9 +653,9 @@ Scenario: UC-ARD30 A reference validates against its source, never against the d
 
 <!-- /planned-change:retire-native-artifact-deployment -->
 
-- Documentation links are read-only by convention. Each per-domain directory
-  symlink resolves onto its owning publisher's live source directory, so a stray
-  edit through it mutates source; agents treat deployed docs as read-only.
+- Deployed documentation is read-only. It is a materialized snapshot; authored
+  documentation changes only in its owning source tree and becomes visible after
+  a successful synchronization publishes the next snapshot.
 
 <!-- planned-change:agent-artifact-source-layout -->
 
