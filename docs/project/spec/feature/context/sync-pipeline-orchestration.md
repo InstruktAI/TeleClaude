@@ -242,6 +242,17 @@ And validation reports a finding only when that source target is missing
 ```
 <!-- /planned:serialize-docs-sync-across-processes -->
 
+<!-- planned:fix-telec-sync-fails-from-teleclaude-a-secon -->
+#### UC-SPO16: A human operator can synchronize outside a project checkout
+
+```gherkin
+Given a human operator invokes telec sync from a directory that is not a project checkout
+When synchronization starts
+Then the command uses its registered synchronization source rather than treating the invocation directory as project source
+And the command does not fail because the invocation directory lacks project Git metadata or declares a non-project configuration
+```
+<!-- /planned:fix-telec-sync-fails-from-teleclaude-a-secon -->
+
 ### Cross-context references
 
 - **workflow / integration** — own todo delivery state and delivery-time
