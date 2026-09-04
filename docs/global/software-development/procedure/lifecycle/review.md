@@ -161,10 +161,22 @@ A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
+<!-- planned-change:review-round-cap-all-loops -->
 When a loop reaches its applicable documented cap without closure, no further
 review starts: the loop halts, the cause is classified — ambiguous contract,
 failed remediation, unstable target, or incomplete or noisy review — and the
 classification is escalated with the halt.
+<!-- change:review-round-cap-all-loops -->
+When a loop reaches its applicable documented cap without closure, no further
+review starts: the loop halts, the cause is classified — ambiguous contract,
+failed remediation, unstable target, or incomplete or noisy review — and the
+classification routes the next action with the halt. Failed remediation returns
+to the producer with adversarial-peer coverage; an unstable target returns to
+its producer; incomplete or noisy review goes to a different reviewer; and an
+ambiguous contract goes to its owner. The human is reached only for a
+human-owned contract or a safety gate. The halt classification is recorded to
+the coordinator log for evidence and recurrence, never for adjudication.
+<!-- /planned-change:review-round-cap-all-loops -->
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

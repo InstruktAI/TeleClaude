@@ -288,7 +288,7 @@ And a crash-recovered session re-entering the build derives identical instructio
 <!-- /planned:kickback-preserves-work-state -->
 
 <!-- planned:review-round-cap-all-loops -->
-#### UC-WSM12: Build review stops at the shared round limit and resumes only the next pass per human override
+#### UC-WSM12: Build review stops at the shared round limit and routes by halt classification
 
 ```gherkin
 Given a Todo has already admitted `DEFAULT_MAX_REVIEW_ROUNDS` build-review passes
@@ -297,10 +297,10 @@ When the orchestrator calls "telec todo work my-feature"
 Then the machine returns REVIEW_ROUND_LIMIT before emitting a reviewer dispatch, reuse, or follow-up beyond that limit
 And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
 And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
-When a human stamps "telec todo stamp my-feature --review-round-override build_review"
-And the orchestrator calls "telec todo work my-feature" again
-Then the machine admits and counts the next build-review pass
-And it blocks again before any later pass unless a human stamps another override
+Then the machine returns the review halt classification with its limit result
+And failed remediation or an unstable target returns to the producer with adversarial-peer coverage
+And incomplete or noisy review dispatches a different reviewer
+And only an ambiguous contract owned by a human or a safety gate reaches the human
 ```
 <!-- /planned:review-round-cap-all-loops -->
 

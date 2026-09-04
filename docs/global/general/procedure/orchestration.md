@@ -239,21 +239,16 @@ findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
 <!-- planned:review-round-cap-all-loops -->
-When `telec todo prepare ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator
-cancels `orchestration-watch`, emits no reviewer dispatch or follow-up, and does
-not stamp an exceptional verdict. It surfaces the capped phase, admitted-pass
-count, and current findings to the human, then stays idle with the active
-prepare session as the beacon. Preparation resumes only after the human
-directly runs `telec todo stamp {slug} --review-round-override <phase>`; the
-orchestrator then re-enters `telec todo prepare {slug}`, which admits the next
-pass before the same gate closes again.
-
-The same continuation gate applies when `telec todo work ...` reaches the
-build-review limit with unresolved findings. The orchestrator preserves the
-arithmetic verdict and stays idle; only a direct human
-`--review-round-override build_review` stamp permits the next build-review pass.
-The override never authorizes an approve verdict and must be repeated for
-every later pass.
+When a prepare or work state machine returns `REVIEW_ROUND_LIMIT`, the
+orchestrator cancels `orchestration-watch`, emits no unclassified reviewer
+dispatch or follow-up, and does not stamp an exceptional verdict. It records
+the cap and its classification to the coordinator log, then follows the
+classification required by `software-development/procedure/lifecycle/review`:
+failed remediation and unstable targets return to the producer with an
+adversarial peer; incomplete or noisy review goes to a different reviewer;
+an ambiguous contract goes to its owner. Reach the human only when that owner
+is human or a safety gate applies. The coordinator supplies precedent and
+recurrence evidence; it never adjudicates the individual review.
 <!-- /planned:review-round-cap-all-loops -->
 
 - Point workers to the kind-resolved approved intent artifact, optional

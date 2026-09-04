@@ -529,10 +529,10 @@ Verdict rules:
   human-directed resolution. Unbounded rounds are the defect this cap removes.
 <!-- change:review-round-cap-all-loops -->
 - **Round cap.** The prepare state machine admits plan-review passes through
-  `DEFAULT_MAX_REVIEW_ROUNDS` before requiring a direct human override for the
-  next pass. The cap never
-  changes verdict arithmetic: the reviewer writes the complete report and
-  stamps `approve` only at zero unresolved findings, or `needs_work` otherwise.
+  `DEFAULT_MAX_REVIEW_ROUNDS` before halting for the classification required by
+  `software-development/procedure/lifecycle/review`. The cap never changes
+  verdict arithmetic: the reviewer writes the complete report and stamps
+  `approve` only at zero unresolved findings, or `needs_work` otherwise.
 <!-- /planned-change:review-round-cap-all-loops -->
 
 Write the complete pass via `telec todo artifacts write {slug} plan-review-findings <content>`

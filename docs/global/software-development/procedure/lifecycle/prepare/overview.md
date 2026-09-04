@@ -54,9 +54,10 @@ focused procedure and advances through the machine-owned transitions.
    `DEFAULT_MAX_REVIEW_ROUNDS`. The machine persists the count before returning each
    reviewer instruction, and neither target nor report rewrites reset it. At
    the limit it returns `REVIEW_ROUND_LIMIT`, emits no reviewer instruction,
-   and leaves the active prepare session as the beacon. Only a direct human
-   `--review-round-override <phase>` stamp admits the next pass; every pass
-   beyond the current allowance requires another human stamp.
+   and preserves the active prepare session while the halt is classified under
+   `software-development/procedure/lifecycle/review`. The classification routes
+   agent-owned recovery to its producer or an independent reviewer; only an
+   ambiguous human-owned contract or safety gate reaches the human.
 <!-- /planned:review-round-cap-all-loops -->
 
 4. **Human PRD approval belongs to the feature lane only.** A drafted feature

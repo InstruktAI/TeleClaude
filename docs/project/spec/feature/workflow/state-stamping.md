@@ -106,17 +106,14 @@ And delivered historical records remain unchanged and readable
 ```
 
 <!-- planned:review-round-cap-all-loops -->
-#### UC-WSS21: Review-round continuation is a human-only next-pass stamp
+#### UC-WSS21: Review-round limits record a routed halt rather than a continuation stamp
 
 ```gherkin
-Given a PRD, architecture, or plan review has reached its current admitted-pass limit
-When a human runs "telec todo stamp my-slug --review-round-override <prd_review|architecture_review|plan_review|build_review>"
-Then the stamp binds the selected phase and records allowed_through_round as the next round after its current admitted-pass count
-And it records the human principal, timestamp, and caller session evidence through the normal atomic state-write boundary
-And a later human stamp is required before each further pass
-And the stamp is refused before mutation when the caller does not resolve directly to a human principal
-And it is refused when the selected phase is not capped at its current allowance
-And requirements_review is not an accepted value for this stamp
+Given a lifecycle review reaches its admitted-pass limit without a current approve verdict
+When the state machine returns REVIEW_ROUND_LIMIT
+Then it records the phase, admitted-pass count, and halt classification without mutating a continuation allowance
+And the state-write boundary has no review-round-override stamp or human-principal continuation path
+And the orchestrator records the classified halt to the coordinator log before routing recovery
 ```
 <!-- /planned:review-round-cap-all-loops -->
 

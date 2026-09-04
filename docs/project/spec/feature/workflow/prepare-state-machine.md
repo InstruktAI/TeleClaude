@@ -83,21 +83,20 @@ And no approve verdict is current for the reviewed artifact and report digests
 When the orchestrator calls "telec todo prepare my-change"
 Then the machine returns REVIEW_ROUND_LIMIT for that exact review phase
 And it emits no reviewer dispatch, reuse, or follow-up instruction
-And it preserves the lifecycle phase and active runner so the session remains the human-visible beacon
+And it preserves the lifecycle phase and active runner while the halt classification routes the next agent-owned action
 And rewriting the reviewed artifact or findings report does not reset the admitted-pass count
 And each admitted pass was counted and persisted before its reviewer instruction was returned
 ```
 
-#### UC-WPS22: A human override admits the next prepare-review pass
+#### UC-WPS22: A classified halt routes prepare-review recovery without reopening the cap
 
 ```gherkin
-Given a prepare review phase is blocked at its current admitted-pass limit
-And a human has stamped a review-round override for that exact phase
-When the orchestrator calls "telec todo prepare my-change"
-Then the machine admits and counts the next reviewer pass for that phase
-And the same phase blocks again before any later pass unless a human stamps another override
-And an override for one prepare review phase changes no other phase's allowance
-And an agent-authored or stale override cannot admit a pass
+Given a prepare review phase is blocked at its admitted-pass limit
+When the review halt is classified as failed remediation, unstable target, or incomplete or noisy review
+Then the machine returns the classification with the halt and preserves the cap
+And failed remediation or an unstable target routes to the producer with an adversarial peer
+And incomplete or noisy review routes to a different reviewer
+And an ambiguous contract reaches its owner only when that owner is human
 ```
 <!-- /planned:review-round-cap-all-loops -->
 
