@@ -27,14 +27,14 @@ retrieval flow:
 get` against the listed dependency IDs. The explicit follow-up keeps
    the caller in deliberate control of its context budget.
 <!-- change:required-reads-closure-guarantee -->
-3. **Phase 3 — follow up explicitly, or opt into the closure.** Required
-   reads are never auto-loaded by default. To pull a dependency, the caller
-   re-runs `telec docs get` against the listed dependency IDs — or passes
-   `--closure` on the fetch itself to receive every body in the required-read
-   closure in one pass, each snippet exactly once, with no pointer left to
-   follow. The default keeps the caller in deliberate control of its context
-   budget; the closure form is the caller's informed choice when the complete
-   contract must reach context, at the cost of a larger response.
+3. **Phase 3 — follow up explicitly.** Required reads are never auto-loaded
+   by default. To pull a dependency, the caller re-runs `telec docs get`
+   against the listed dependency IDs. Separately, the generated Activatable
+   Procedures catalog supplies a hidden one-pass fetch instruction for a
+   delivered activatable procedure; that instruction returns the procedure's
+   eligible transitive required-read closure exactly once. Ordinary retrieval
+   keeps the caller in deliberate control of its context budget and never
+   exposes or activates the hidden form.
 <!-- /planned-change:required-reads-closure-guarantee -->
 
 Role gating runs at phases 1 and 2 against the terminal session's
@@ -153,36 +153,43 @@ And Required reads resolution is NOT applied to that ID
 ```
 
 <!-- planned:required-reads-closure-guarantee -->
-#### UC-3PR7: Closure fetch loads the full required-read closure, deduplicated
+#### UC-3PR7: Catalog activation loads the full eligible required-read closure, deduplicated
 
 ```
-Given a requested snippet whose required-read closure spans multiple dependency levels
+Given a delivered activatable procedure listed in a generated Activatable Procedures catalog
+And its required-read closure spans multiple dependency levels
 And one dependency snippet is reachable through two different parents in that closure
-When the caller runs telec docs get <id> --closure
+When an agent executes the fetch instruction shown by that catalog entry
 Then the output renders the requested snippet body and the body of every snippet in the required-read closure
 And the dependency reachable through two parents renders exactly once
 And a "# Required reads (included)" header names the dependency IDs loaded beyond the requested set
 And no "# Required reads (not loaded)" header is emitted
 ```
 
-#### UC-3PR8: Default fetch names the closure form as the one-pass alternative
+#### UC-3PR8: The hidden activation option appears only on its two authorized surfaces
 
 ```
-Given a requested snippet with required reads and no --closure flag
-When the caller runs telec docs get <id>
-Then the "# Required reads (not loaded)" header lists the dependency IDs
-And a follow-up line names --closure as the one-pass way to load them all
-And no dependency body is rendered
+Given the CLI help, generated CLI documentation, baseline index instructions, default retrieval output, and generated Activatable Procedures catalogs
+When those surfaces are rendered
+Then the hidden activation option appears in the telec docs get leaf-help Notes
+And it appears in the generated Activatable Procedures catalog instruction
+But it is absent from CLI usage and option listings, generated CLI documentation, baseline index instructions, and default retrieval output
+And using it with multiple requested IDs, a non-activatable snippet, a pending procedure, a third-party document, or a scope, project, or target filter fails before retrieval
 ```
 
-#### UC-3PR9: Closure fetch fails loud on an unreadable closure member
+#### UC-3PR9: Catalog activation distinguishes unreadable from ineligible closure members
 
 ```
-Given a requested snippet whose required-read closure contains a dependency whose body cannot be read
-When the caller runs telec docs get <id> --closure
+Given a catalog-directed activatable-procedure fetch whose required-read graph contains an unreadable eligible dependency
+When the fetch resolves the procedure's closure
 Then the command exits non-zero with an error naming the unreadable dependency ID
 And the "# Required reads (included)" header never names a dependency whose body was not rendered
 And the output is never presented as a complete closure
+
+Given the same fetch resolves a dependency that is pending for another delivery and therefore not part of the current contract
+When the fetch resolves the procedure's closure
+Then that dependency is omitted without a hard failure
+And it is absent from the "# Required reads (included)" header
 ```
 <!-- /planned:required-reads-closure-guarantee -->
 
@@ -213,15 +220,16 @@ And the eligible global documentation and documentation published by registered 
   — the agent controls its context budget — but new agents routinely miss the
   follow-up step on first contact.
 <!-- change:required-reads-closure-guarantee -->
-- Required reads are never auto-loaded by default. The caller either re-runs
-  `telec docs get` with the listed dependency IDs or passes `--closure` to load
-  the full closure in one pass. The default is deliberate — the agent controls
-  its context budget — but instructed follow-up decays into skimming and
-  skipping, which is why procedure catalogs direct agents to the closure form.
-- The closure form resolves taxonomy snippets only: third-party IDs stay outside
-  Required-reads resolution, and a dependency whose visibility excludes the
-  caller's role is omitted from the closure output exactly as it is omitted from
-  the default header today.
+- Required reads are never auto-loaded by default. The caller re-runs
+  `telec docs get` with the listed dependency IDs. The default is deliberate:
+  ordinary retrieval preserves the caller's context budget, while a generated
+  Activatable Procedures catalog supplies the one-pass instruction only at the
+  procedure-activation boundary where complete context is required.
+- The catalog activation form accepts exactly one delivered activatable
+  taxonomy procedure and does not compose with scope, project, or target
+  filters. Third-party IDs stay outside Required-reads resolution; a dependency
+  whose visibility excludes the caller's role or whose pending state excludes it
+  from the current contract is absent from the included closure.
 <!-- /planned-change:required-reads-closure-guarantee -->
 - Denied IDs are surfaced rather than hidden. An anonymous caller can confirm
   the existence of an `internal` snippet even though they cannot read it. This

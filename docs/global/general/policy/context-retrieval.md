@@ -31,11 +31,10 @@ visibility: 'public'
 - Dependencies are NOT auto-expanded inline by default. The `# Required reads (not loaded)`
   header lists their IDs — fetch them explicitly with a follow-up `telec docs get` call if
   needed.
-- **Activatable procedures are fetched with `--closure`.** `telec docs get <id> --closure`
-  resolves the full required-read closure and returns every body in one pass, each snippet
-  exactly once, so nothing arrives as a pointer. Procedure catalogs direct agents to this
-  form, and it is the mandatory form when activating a procedure from a catalog. Any caller
-  may use it to receive a complete contract at the cost of a larger response.
+- **Activatable-procedure catalog instructions deliver their required-read closure in one
+  pass.** Executing the fetch instruction shown by the catalog returns the selected procedure
+  and every eligible transitive required read exactly once. Ordinary documentation retrieval
+  and its explicit follow-up flow remain unchanged.
 <!-- /planned-change:required-reads-closure-guarantee -->
 - **Third-party library docs: check consolidated docs first.** Before web searching or using
   Context7 for any library, framework, or tool, run `telec docs index --third-party` to check
