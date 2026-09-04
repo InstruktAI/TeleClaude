@@ -12,12 +12,12 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_dispatch import resolve_launch_model
-from teleclaude.core.agent_prompt_state import (
+from teleclaude.core.agent_readiness import (
     PromptDeliveryObservation,
     PromptDeliveryState,
+    await_agent_readiness,
     classify_prompt_delivery,
 )
-from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -14,7 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import tmux_bridge
-from teleclaude.core.agents import AgentName
+from teleclaude.core.agents import AgentName, resolve_parser_agent
 from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _AGENT_READINESS_DECIDED_EVENT = "agent_readiness_decided"
+_ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 
 
 class ReadinessSignal(StrEnum):
@@ -43,6 +45,21 @@ class _ReadinessTimeoutReason(StrEnum):
     """Closed reason for a readiness race without a signal."""
 
     NO_SIGNAL = "no_signal"
+
+
+class PromptDeliveryState(StrEnum):
+    """Whether the active agent composer can safely receive a submitted turn."""
+
+    EMPTY = "empty"
+    OCCUPIED = "occupied"
+    AMBIGUOUS = "ambiguous"
+
+
+@dataclass(frozen=True)
+class PromptDeliveryObservation:
+    """Content-independent observation of a complete live composer."""
+
+    state: PromptDeliveryState
 
 
 def _log_readiness_decision(
@@ -82,6 +99,10 @@ class AgentReadinessProfile(Protocol):
         """Return the normalized content that must settle before input is injected."""
         raise NotImplementedError
 
+    def observe_composer(self, output: str) -> PromptDeliveryObservation:
+        """Classify a complete editable composer for normal input delivery."""
+        raise NotImplementedError
+
 
 def _normalized_lines(output: str) -> list[str]:
     """Return ANSI-stripped lines from the visible readiness window."""
@@ -113,6 +134,7 @@ def _build_default_stability_view_with_ignored_patterns(
 class MarkerLineReadinessProfile:
     """Default readiness profile for marker-based agent prompts."""
 
+    agent: AgentName
     marker: str
     match_mode: str = "startswith"
     ignored_above_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)
@@ -139,6 +161,10 @@ class MarkerLineReadinessProfile:
             prompt,
             ignored_above_patterns=self.ignored_above_patterns,
         )
+
+    def observe_composer(self, output: str) -> PromptDeliveryObservation:
+        """Classify this marker-based agent's complete composer."""
+        return _classify_complete_composer(output, self.agent)
 
 
 _CODEX_AGENT_MARKERS = frozenset(
@@ -195,10 +221,18 @@ class CodexReadinessProfile:
             ignored_above_patterns=self.ignored_above_patterns,
         )
 
+    def observe_composer(self, output: str) -> PromptDeliveryObservation:
+        """Classify the complete Codex composer for normal input delivery."""
+        return _classify_complete_composer(output, AgentName.CODEX)
+
 
 _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
-    AgentName.CLAUDE: MarkerLineReadinessProfile(marker=AgentName.CLAUDE.prompt_marker),
+    AgentName.CLAUDE: MarkerLineReadinessProfile(
+        agent=AgentName.CLAUDE,
+        marker=AgentName.CLAUDE.prompt_marker,
+    ),
     AgentName.GEMINI: MarkerLineReadinessProfile(
+        agent=AgentName.GEMINI,
         marker=AgentName.GEMINI.prompt_marker,
         match_mode="contains",
     ),
@@ -206,12 +240,216 @@ _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
     # DeepSeek Harness is an interactive TUI in the pane; its input prompt is
     # the U+276F glyph (same prompt char as Claude), so marker-line readiness
     # applies just as it does for the other pane-based agents.
-    AgentName.DEEPSEEK: MarkerLineReadinessProfile(marker=AgentName.DEEPSEEK.prompt_marker),
+    AgentName.DEEPSEEK: MarkerLineReadinessProfile(
+        agent=AgentName.DEEPSEEK,
+        marker=AgentName.DEEPSEEK.prompt_marker,
+    ),
 }
 
 
 def _get_readiness_profile(agent_name: AgentName) -> AgentReadinessProfile:
     return _READINESS_PROFILES[agent_name]
+
+
+def classify_prompt_delivery(
+    output: str,
+    active_agent: str | None,
+) -> PromptDeliveryObservation:
+    """Classify delivery through the selected agent's canonical readiness profile."""
+    agent = resolve_parser_agent(active_agent)
+    return _get_readiness_profile(agent).observe_composer(output)
+
+
+def _classify_complete_composer(output: str, agent: AgentName) -> PromptDeliveryObservation:
+    live_region = _extract_complete_live_region(output, agent)
+    if live_region is None:
+        return PromptDeliveryObservation(PromptDeliveryState.AMBIGUOUS)
+    if _live_region_has_input(live_region, agent):
+        return PromptDeliveryObservation(PromptDeliveryState.OCCUPIED)
+    return PromptDeliveryObservation(PromptDeliveryState.EMPTY)
+
+
+def _extract_complete_live_region(output: str, agent: AgentName) -> str | None:
+    lines = output.rstrip().split("\n")
+    if agent is AgentName.CODEX:
+        return _extract_complete_codex_live_region(lines)
+    if agent is AgentName.GEMINI:
+        return _extract_complete_gemini_live_region(lines)
+    if agent is AgentName.DEEPSEEK:
+        return _extract_complete_deepseek_live_region(lines)
+    marker = agent.prompt_marker.strip()
+    if not marker:
+        return None
+    for idx in range(len(lines) - 1, -1, -1):
+        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
+            return _extract_complete_claude_live_region(lines[idx:])
+    return None
+
+
+def _extract_complete_claude_live_region(lines: list[str]) -> str | None:
+    input_lines: list[str] = []
+    for line in lines:
+        input_lines.append(line)
+        if _is_horizontal_rule_line(line):
+            return "\n".join(input_lines)
+    return None
+
+
+def _extract_complete_codex_live_region(lines: list[str]) -> str | None:
+    marker = AgentName.CODEX.prompt_marker.strip()
+    if not marker:
+        return None
+    for idx in range(len(lines) - 1, -1, -1):
+        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
+            return _extract_complete_codex_live_input_block(lines[idx:])
+    return None
+
+
+def _extract_complete_codex_live_input_block(lines: list[str]) -> str | None:
+    input_lines: list[str] = []
+    marker = AgentName.CODEX.prompt_marker.strip()
+    previous_was_blank = False
+    for idx, line in enumerate(lines):
+        normalized = strip_ansi_codes(line).strip()
+        if idx > 0 and _is_codex_composer_chrome_line(line):
+            input_lines.append(line)
+            return "\n".join(input_lines)
+        if idx > 0 and previous_was_blank and "\x1b[" in line and normalized.count("·") >= 2:
+            return "\n".join(input_lines)
+        if idx > 0 and marker and normalized.startswith(marker):
+            input_lines.append(line)
+            return "\n".join(input_lines)
+        input_lines.append(line)
+        previous_was_blank = not normalized
+    return None
+
+
+def _extract_complete_deepseek_live_region(lines: list[str]) -> str | None:
+    marker = AgentName.DEEPSEEK.prompt_marker.strip()
+    if not marker:
+        return None
+    for idx in range(len(lines) - 1, -1, -1):
+        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
+            input_lines: list[str] = []
+            for line in lines[idx:]:
+                if input_lines and _is_horizontal_rule_line(line):
+                    return "\n".join(input_lines)
+                input_lines.append(line)
+            return None
+    return None
+
+
+def _extract_complete_gemini_live_region(lines: list[str]) -> str | None:
+    for idx in range(len(lines) - 1, -1, -1):
+        if AgentName.GEMINI.prompt_marker not in strip_ansi_codes(lines[idx]):
+            continue
+        start_idx = idx
+        for preceding_idx in range(idx - 1, max(-1, idx - 20), -1):
+            if strip_ansi_codes(lines[preceding_idx]).strip().startswith(">"):
+                start_idx = preceding_idx
+                break
+        return "\n".join(lines[start_idx : idx + 1])
+    return _extract_complete_gemini_bordered_live_region(lines)
+
+
+def _extract_complete_gemini_bordered_live_region(lines: list[str]) -> str | None:
+    for idx in range(len(lines) - 1, -1, -1):
+        if not strip_ansi_codes(lines[idx]).strip().startswith(">"):
+            continue
+        has_border_above = idx > 0 and _is_horizontal_rule_line(lines[idx - 1])
+        has_border_below = idx + 1 < len(lines) and _is_horizontal_rule_line(lines[idx + 1])
+        if not has_border_above and not has_border_below:
+            continue
+        end_idx = idx + 1
+        while end_idx < len(lines):
+            stripped = strip_ansi_codes(lines[end_idx]).strip()
+            if _is_horizontal_rule_line(lines[end_idx]) or AgentName.GEMINI.prompt_marker in stripped:
+                return "\n".join(lines[idx : end_idx + 1])
+            end_idx += 1
+    return None
+
+
+def _live_region_has_input(live_region: str, agent: AgentName) -> bool:
+    """Return whether a complete composer contains operator-authored input."""
+    for raw_line in live_region.splitlines():
+        if _is_prompt_chrome_line(raw_line, agent):
+            continue
+        input_part = _strip_live_prompt_marker(raw_line, agent)
+        input_part = _strip_generated_segments(input_part)
+        if _normalize_text(input_part).strip():
+            return True
+    return False
+
+
+def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
+    stripped = strip_ansi_codes(raw_line).strip()
+    if not stripped or _is_horizontal_rule_line(raw_line):
+        return True
+    if agent is AgentName.GEMINI and stripped == AgentName.GEMINI.prompt_marker:
+        return True
+    if agent is AgentName.CODEX and _is_codex_composer_chrome_line(raw_line):
+        return True
+    return False
+
+
+def _is_codex_composer_chrome_line(line: str) -> bool:
+    normalized = _fold_prompt_whitespace(line).lower()
+    return ("shift + tab" in normalized and "esc dismiss" in normalized) or (
+        normalized.startswith("gpt-") and "·" in normalized
+    )
+
+
+def _is_horizontal_rule_line(raw_line: str) -> bool:
+    stripped = strip_ansi_codes(raw_line).strip()
+    return bool(stripped) and set(stripped) <= {"─"}
+
+
+def _strip_live_prompt_marker(raw_line: str, agent: AgentName) -> str:
+    marker = ">" if agent is AgentName.GEMINI else agent.prompt_marker.strip()
+    if not marker:
+        return raw_line
+    marker_pos = raw_line.find(marker)
+    if marker_pos < 0 or strip_ansi_codes(raw_line[:marker_pos]).strip():
+        return raw_line
+    return raw_line[marker_pos + len(marker) :]
+
+
+def _normalize_text(text: str) -> str:
+    stripped = strip_ansi_codes(text or "")
+    return stripped.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
+
+
+def _fold_prompt_whitespace(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _strip_generated_segments(text: str) -> str:
+    if "\x1b[" not in text:
+        return text
+
+    out: list[str] = []
+    active_generated_style = False
+    idx = 0
+    while idx < len(text):
+        if text[idx] == "\x1b":
+            match = _ANSI_SGR_RE.match(text, idx)
+            if match:
+                params = [param for param in match.group(1).split(";") if param]
+                if not params or "0" in params:
+                    active_generated_style = False
+                else:
+                    if "22" in params and "2" not in params:
+                        active_generated_style = False
+                    if "23" in params and "3" not in params:
+                        active_generated_style = False
+                    if "2" in params or "3" in params:
+                        active_generated_style = True
+                idx = match.end()
+                continue
+        if not active_generated_style:
+            out.append(text[idx])
+        idx += 1
+    return "".join(out)
 
 
 async def _capture_snapshot(tmux_session_name: str) -> str:
