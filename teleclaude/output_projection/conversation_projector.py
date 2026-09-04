@@ -138,6 +138,7 @@ def _project_user_text(
             entry_index=entry_idx,
             file_index=file_index,
             author=author,
+            source_segment=segment,
         )
 
 

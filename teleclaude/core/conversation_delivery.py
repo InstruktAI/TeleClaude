@@ -43,7 +43,7 @@ from teleclaude.core.conversation_segments import (
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.injected_text import TranscriptEntryKind, cut_transcript_entry
+from teleclaude.core.injected_text import TranscriptEntryKind
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
 from teleclaude.core.session_listeners import (
     ConversationLink,
@@ -82,6 +82,7 @@ _PEER_PASS_FAILED_EVENT = "conversation_delivery_peer_pass_failed"
 _CURSOR_BACKFILLED_EVENT = "conversation_delivery_cursor_backfilled"
 _TEXT_PART_SEPARATOR = "\n\n"
 _EMPTY_BLOCK_TEXT = ""
+_ENTRY_TIMESTAMP_FIELD = "timestamp"
 _LEGACY_PRE_CUTOVER_REASON = "legacy_pre_cutover"
 _DELIVERY_DISPOSITION_EVENT = "conversation_delivery_segment_disposition"
 _SEGMENT_ECHO_SUPPRESSED_EVENT = "conversation_segment_echo_suppressed"
@@ -130,22 +131,9 @@ async def _collect_visible_conversation_segments_since(
 ) -> list[CollectedSegment] | _MalformedConversationSegment:
     """Collect visible user and assistant text after the provided cursor.
 
-    Reads the transcript, projects, and cuts local or forwarded segments.
-    Local authorship is the projector's own classification. Whether a user
-    block is peer content is decided by its native entry's durable
-    accepted-turn binding, never by the rendered prefix: a binding proving an
-    ``injected_peer`` part is the only path into bundle correlation, and the
-    exact matching peer bundle is then correlated by durable bundle identity
-    (the accepted row's own ``source_message_id``) — never by the array
-    position bundles happen to arrive in. A binding that exists and proves no
-    ``injected_peer`` part is structural proof the entry is ordinary local
-    content, even when its text happens to start with a peer segment header —
-    it is never routed into the bridge path. Only a peer-shaped block with no
-    binding at all — a genuine binding race, not evidence either way — raises
-    a hold. A binding proving an ``injected_peer`` part whose bundle does not
-    reconcile also fails closed: returns a failure so the caller holds
-    delivery without cursor advancement, rather than falling back to
-    re-parsing rendered text under a guessed attribution.
+    Each projected block carries its own source cut. Peer envelopes retain
+    their original author while local spans use the projector's classification.
+    A malformed peer envelope returns its containing entry's replay boundary.
     """
 
     def _collect() -> list[CollectedSegment]:
@@ -189,14 +177,12 @@ async def _collect_visible_conversation_segments_since(
             if not raw_text.strip():
                 continue
             if block.role == TranscriptChannel.USER:
-                raw_entry = entries[block.entry_index]
-                entry_text = extract_real_user_text_from_entry(raw_entry, agent_name)
-                entry_id = (
-                    native_entry_id(raw_entry, agent_name, timestamp=raw_entry.get("timestamp"), text=entry_text)
-                    if entry_text is not None
-                    else None
-                )
-                if entry_text is not None and is_conversation_bridge_message(entry_text):
+                source_segment = block.source_segment
+                if (
+                    source_segment is not None
+                    and source_segment.kind is TranscriptEntryKind.IDENTITY_CONTENT
+                    and is_conversation_bridge_message(source_segment.opening or _EMPTY_BLOCK_TEXT)
+                ):
                     _flush()
                     current_role = None
                     current_author = None
@@ -206,19 +192,21 @@ async def _collect_visible_conversation_segments_since(
                     if block_timestamp is None:
                         continue
                     try:
-                        for cut in cut_transcript_entry(entry_text, is_user_entry=True):
-                            if cut.kind is not TranscriptEntryKind.IDENTITY_CONTENT:
-                                continue
-                            for peer_segment in parse_peer_segments(cut.text):
-                                segments.append(
-                                    ForwardedProjectedSegment(
-                                        source_timestamp=block_timestamp,
-                                        peer_segment=peer_segment,
-                                    )
+                        for peer_segment in parse_peer_segments(source_segment.text):
+                            segments.append(
+                                ForwardedProjectedSegment(
+                                    source_timestamp=block_timestamp,
+                                    peer_segment=peer_segment,
                                 )
+                            )
                     except MalformedPeerSegmentError as exc:
+                        raw_entry = entries[block.entry_index]
+                        entry_text = extract_real_user_text_from_entry(raw_entry, agent_name) or source_segment.text
+                        entry_id = native_entry_id(
+                            raw_entry, agent_name, timestamp=raw_entry.get(_ENTRY_TIMESTAMP_FIELD), text=entry_text
+                        )
                         raise _MalformedConversationSegmentError(
-                            entry_ref=entry_id if entry_id is not None else entry_text,
+                            entry_ref=entry_id,
                             entry_text=entry_text,
                             entry_timestamp=block_timestamp,
                             reason=ConversationDeliveryRefusalReason.BUNDLE_AUTHOR_INVALID,

@@ -15,6 +15,7 @@ from teleclaude.config.schema import (
     OutputVisibilityValue,
 )
 from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.core.injected_text import TranscriptCutSegment
 
 type JsonScalar = str | int | float | bool | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -214,6 +215,7 @@ class ProjectedBlock:
     # (thinking, pre_tool_use, tool_result, compaction) is never read for
     # authorship, so it keeps the AGENT default.
     author: ProjectedAuthor = field(default_factory=lambda: ProjectedAuthor(kind=ProjectedAuthorKind.AGENT))
+    source_segment: TranscriptCutSegment | None = None
 
 
 @dataclass(frozen=True)
