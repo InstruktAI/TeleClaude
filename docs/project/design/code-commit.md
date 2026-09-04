@@ -379,9 +379,10 @@ code commit` runs `handle_format` then `handle_lint` against `quality_paths`
     declared path (`--include`, `--only`, `telec code add`) alike; a declared
     path outside it is refused, never carried. The retained-set term consumes
     the reconciliation context's published membership answer where one is
-    published; a repository whose owner publishes none carries no such term,
-    and this surface neither decides membership nor substitutes an answer in
-    either case.
+    published — a three-result answer per path, of which only `retained`
+    admits, `not-retained` and `outside` alike excluding; a repository whose
+    owner publishes none carries no such term, and this surface neither
+    decides membership nor substitutes an answer in either case.
 
 12. **Config publishes facts at two coordinates; this contract owns both
     decisions.** The tier answers config publishes grant no operation. Seal
