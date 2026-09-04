@@ -202,11 +202,13 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
 #### UC-SPO12: Concurrent syncs observe a complete documentation deployment
 
 ```gherkin
-Given an agent starts documentation validation while another process requests synchronization on the same host
+Given an agent validates a documentation reference on a host before that reference has been deployed
+And another process requests documentation synchronization on the same host
 When the two synchronization runs overlap
-Then validation and deployment execute as one serialized operation per host
-And each validator observes a complete deployed documentation tree
-And no validator reports a deployed reference missing solely because another synchronization is rebuilding that tree
+Then validation resolves the reference from its registered publisher source
+And validation does not depend on a deployed documentation tree existing
+And synchronization publishes a complete deployed documentation-root snapshot
+And no validator reports a valid reference missing solely because another synchronization is rebuilding that tree
 ```
 
 #### UC-SPO13: Interrupted serialization does not permanently block synchronization
@@ -216,6 +218,27 @@ Given a synchronization run stops while it owns host-wide serialization
 When another agent later requests synchronization
 Then the later run can acquire serialization after the abandoned ownership is released
 And a run that cannot acquire serialization within the bounded wait exits non-zero with an explicit failure
+```
+<!-- /planned:serialize-docs-sync-across-processes -->
+
+<!-- planned:serialize-docs-sync-across-processes -->
+#### UC-SPO14: Runtime documentation readers observe complete snapshots
+
+```gherkin
+Given a runtime reader opens deployed documentation while synchronization publishes a replacement
+When the publication completes
+Then the reader observes either the complete prior snapshot or the complete replacement snapshot
+And the deployed documentation root and its published domains are never absent or partially composed
+```
+
+#### UC-SPO15: Source validation works before first deployment
+
+```gherkin
+Given a registered publisher owns a referenced documentation domain
+And no deployed documentation tree has been created on the host
+When an agent validates an artifact or snippet reference to that domain
+Then validation resolves the reference in the owning publisher source tree
+And validation reports a finding only when that source target is missing
 ```
 <!-- /planned:serialize-docs-sync-across-processes -->
 
