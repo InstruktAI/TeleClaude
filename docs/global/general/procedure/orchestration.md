@@ -241,8 +241,9 @@ tier blocks the verdict — there is no fourth tier and no deferral path.
 <!-- planned:review-round-cap-all-loops -->
 When a prepare or work state machine returns `REVIEW_ROUND_LIMIT`, the
 orchestrator cancels `orchestration-watch`, emits no unclassified reviewer
-dispatch or follow-up, and does not stamp an exceptional verdict. It records
-the cap and its classification to the coordinator log, then follows the
+dispatch or follow-up, and does not stamp an exceptional verdict. It classifies
+the halt under `software-development/procedure/lifecycle/review`, carries that
+fact to the coordinator for its `carried` log record, then follows the
 classification required by `software-development/procedure/lifecycle/review`:
 failed remediation and unstable targets return to the producer with an
 adversarial peer; incomplete or noisy review goes to a different reviewer;

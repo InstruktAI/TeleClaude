@@ -111,9 +111,9 @@ And delivered historical records remain unchanged and readable
 ```gherkin
 Given a lifecycle review reaches its admitted-pass limit without a current approve verdict
 When the state machine returns REVIEW_ROUND_LIMIT
-Then it records the phase, admitted-pass count, and halt classification without mutating a continuation allowance
+Then it reports the phase, admitted-pass count, and current review evidence without mutating a continuation allowance
 And the state-write boundary has no review-round-override stamp or human-principal continuation path
-And the orchestrator records the classified halt to the coordinator log before routing recovery
+And the orchestrator classifies the halt and carries it to the coordinator before routing recovery
 ```
 <!-- /planned:review-round-cap-all-loops -->
 

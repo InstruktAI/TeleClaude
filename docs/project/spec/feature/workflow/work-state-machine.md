@@ -297,7 +297,7 @@ When the orchestrator calls "telec todo work my-feature"
 Then the machine returns REVIEW_ROUND_LIMIT before emitting a reviewer dispatch, reuse, or follow-up beyond that limit
 And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
 And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
-Then the machine returns the review halt classification with its limit result
+Then the machine returns its limit result with the phase, admitted-pass count, and current review evidence for orchestrator classification
 And failed remediation or an unstable target returns to the producer with adversarial-peer coverage
 And incomplete or noisy review dispatches a different reviewer
 And only an ambiguous contract owned by a human or a safety gate reaches the human

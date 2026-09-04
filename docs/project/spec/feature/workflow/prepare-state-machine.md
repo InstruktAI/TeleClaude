@@ -83,7 +83,7 @@ And no approve verdict is current for the reviewed artifact and report digests
 When the orchestrator calls "telec todo prepare my-change"
 Then the machine returns REVIEW_ROUND_LIMIT for that exact review phase
 And it emits no reviewer dispatch, reuse, or follow-up instruction
-And it preserves the lifecycle phase and active runner while the halt classification routes the next agent-owned action
+And it preserves the lifecycle phase and active runner for orchestrator classification under the review procedure
 And rewriting the reviewed artifact or findings report does not reset the admitted-pass count
 And each admitted pass was counted and persisted before its reviewer instruction was returned
 ```
@@ -92,8 +92,8 @@ And each admitted pass was counted and persisted before its reviewer instruction
 
 ```gherkin
 Given a prepare review phase is blocked at its admitted-pass limit
-When the review halt is classified as failed remediation, unstable target, or incomplete or noisy review
-Then the machine returns the classification with the halt and preserves the cap
+When the orchestrator classifies the halt from the current review evidence under the review procedure
+Then the machine preserves the cap and reports the phase, admitted-pass count, and evidence required for that classification
 And failed remediation or an unstable target routes to the producer with an adversarial peer
 And incomplete or noisy review routes to a different reviewer
 And an ambiguous contract reaches its owner only when that owner is human

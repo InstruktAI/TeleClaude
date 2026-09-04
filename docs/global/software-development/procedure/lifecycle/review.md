@@ -170,7 +170,7 @@ classification is escalated with the halt.
 When a loop reaches its applicable documented cap without closure, no further
 review starts: the loop halts, the cause is classified — ambiguous contract,
 failed remediation, unstable target, or incomplete or noisy review — and the
-classification routes the next action with the halt. Failed remediation returns
+orchestrator classification routes the next action with the halt. Failed remediation returns
 to the producer with adversarial-peer coverage; an unstable target returns to
 its producer; incomplete or noisy review goes to a different reviewer; and an
 ambiguous contract goes to its owner. The human is reached only for a
