@@ -430,7 +430,7 @@ Scenario: UC-ARD33 Both entry points read the corpus through the composed loader
 
 <!-- planned:retire-native-artifact-deployment -->
 
-#### UC-ARD10: TeleClaude command corpus is reached only through the composed loader
+#### UC-ARD10: Command documents deploy to the corpus and to no runtime home
 
 ```
 Scenario: UC-ARD10 Command deployment separates the corpus from runtime artifacts
