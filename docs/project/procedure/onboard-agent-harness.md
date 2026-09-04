@@ -206,7 +206,8 @@ runner, launcher, or configuration templates can omit it silently.
 2. `teleclaude/core/agent_readiness.py` — the readiness profile and complete
    composer observation. A pane-based TUI uses marker-line readiness, and its
    profile owns the live input geometry needed to distinguish a complete empty
-   or occupied composer from any other interactive screen.
+   or occupied composer from any other interactive screen; do not leave a
+   comment claiming a headless posture the runtime does not have.
 3. `teleclaude/core/tmux_bridge/_keys.py` — per-agent input escaping, if the
    harness mishandles any character.
 <!-- /planned-change:fix-tmux-exit-leads-to-compaction -->
