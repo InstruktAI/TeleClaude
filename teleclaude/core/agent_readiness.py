@@ -25,6 +25,9 @@ logger = get_logger(__name__)
 
 _AGENT_READINESS_DECIDED_EVENT = "agent_readiness_decided"
 _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+_ANSI_ESCAPE_PREFIX = "\x1b["
+_CODEX_FOOTER_INDENTATION = "  "
+_CODEX_WORKSPACE_PATH_PREFIX = "~/"
 
 
 class ReadinessSignal(StrEnum):
@@ -314,7 +317,7 @@ def _extract_complete_codex_live_input_block(lines: list[str]) -> str | None:
         if idx > 0 and _is_codex_composer_chrome_line(line):
             input_lines.append(line)
             return "\n".join(input_lines)
-        if idx > 0 and previous_was_blank and "\x1b[" in line and normalized.count("·") >= 2:
+        if idx > 0 and previous_was_blank and _is_complete_codex_passive_workspace_footer(line, lines[idx + 1 :]):
             return "\n".join(input_lines)
         if idx > 0 and marker and normalized.startswith(marker):
             input_lines.append(line)
@@ -322,6 +325,15 @@ def _extract_complete_codex_live_input_block(lines: list[str]) -> str | None:
         input_lines.append(line)
         previous_was_blank = not normalized
     return None
+
+
+def _is_complete_codex_passive_workspace_footer(line: str, trailing_lines: list[str]) -> bool:
+    """Return whether a terminal status row closes Codex's passive composer."""
+    return (
+        _ANSI_ESCAPE_PREFIX in line
+        and strip_ansi_codes(line).startswith(_CODEX_FOOTER_INDENTATION + _CODEX_WORKSPACE_PATH_PREFIX)
+        and all(not strip_ansi_codes(trailing_line).strip() for trailing_line in trailing_lines)
+    )
 
 
 def _extract_complete_deepseek_live_region(lines: list[str]) -> str | None:
