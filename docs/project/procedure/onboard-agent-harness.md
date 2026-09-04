@@ -194,15 +194,6 @@ runner, launcher, or configuration templates can omit it silently.
 ### 4. Readiness and input
 
 1. `_PROMPT_MARKERS_BY_AGENT` — the verified idle glyph.
-<!-- planned-change:fix-tmux-exit-leads-to-compaction -->
-2. `teleclaude/core/agent_readiness.py` — the readiness profile. A pane-based
-   TUI uses marker-line readiness; do not leave a comment claiming a headless
-   posture the runtime does not have.
-3. `teleclaude/core/agent_prompt_state.py` — a live-region extractor when the
-   composer has a border or renders status lines beneath the input.
-4. `teleclaude/core/tmux_bridge/_keys.py` — per-agent input escaping, if the
-   harness mishandles any character.
-<!-- change:fix-tmux-exit-leads-to-compaction -->
 2. `teleclaude/core/agent_readiness.py` — the readiness profile and complete
    composer observation. A pane-based TUI uses marker-line readiness, and its
    profile owns the live input geometry needed to distinguish a complete empty
@@ -210,7 +201,6 @@ runner, launcher, or configuration templates can omit it silently.
    comment claiming a headless posture the runtime does not have.
 3. `teleclaude/core/tmux_bridge/_keys.py` — per-agent input escaping, if the
    harness mishandles any character.
-<!-- /planned-change:fix-tmux-exit-leads-to-compaction -->
 
 ### 5. Hooks
 
