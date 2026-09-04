@@ -217,27 +217,6 @@ And automation-only marker cleanup creates no snippet-review obligation
 ```
 
 
-<!-- planned:hard-purge-leaves-runner-claim-bound -->
-#### UC-TR-OVERRIDE-RELEASES-BINDING: An overridden removal releases the holder's binding
-
-```
-Given a Todo whose claim names a live session other than the caller
-When the operator runs the removal with the explicit override flag
-Then the holding session's runner binding for that slug is released through the runtime-owned claim-release path
-And the durable removed entry still records the claim value the removal displaced
-And the session, its transcript, and its own lifecycle are otherwise untouched
-```
-
-#### UC-TR-PURGE-LEAVES-NO-BOUND-SESSION: Hard purge leaves no session addressing the purged slug
-
-```
-Given a removed entry reaching hard purge while some live session still names that slug as its runner binding
-When routine maintenance purges the entry
-Then each such binding is released through the same runtime-owned claim-release path before the entry is deleted
-And no retention is extended and no tombstone is kept waiting for a binding to clear
-And a session left alive as a beacon stays alive, holding no binding to a Todo that no longer exists
-```
-<!-- /planned:hard-purge-leaves-runner-claim-bound -->
 
 ### Cross-context references
 
