@@ -1,7 +1,7 @@
 ---
-description: 'The installer provisions the gog Google Workspace CLI as a system dependency on macOS and Linux: idempotent presence handling, integrity-verified fallback fetches, and loud actionable failure.'
-delivered_by:
-  - installer-gog-dependency
+description: 'The installer provisions the gog Google Workspace CLI as a system dependency
+  on macOS and Linux: idempotent presence handling, integrity-verified fallback fetches,
+  and loud actionable failure.'
 ---
 
 # Google Workspace CLI Provisioning — Spec
