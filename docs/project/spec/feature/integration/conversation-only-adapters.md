@@ -1,7 +1,6 @@
 ---
-description: Non-Discord human-facing adapters provide identity binding and conversation input→response delivery without operator-console controls.
-delivered_by:
-  - adapters-input-response-only
+description: Non-Discord human-facing adapters provide identity binding and conversation
+  input→response delivery without operator-console controls.
 ---
 
 # Conversation-Only Adapters — Spec
