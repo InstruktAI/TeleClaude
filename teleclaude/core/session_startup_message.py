@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from teleclaude.constants import NON_SLUG_BOUND_COMMANDS
 from teleclaude.paths import COMMANDS_DIR
 
@@ -10,6 +12,12 @@ _NON_SLUG_BOUND_VALUES = {command.value for command in NON_SLUG_BOUND_COMMANDS}
 
 class StartupMessageError(ValueError):
     """A startup message violates the selected runtime's contract."""
+
+
+def resolve_command_document(command_name: str) -> Path | None:
+    """Return the installed command document for a canonical command, if present."""
+    prompt_path = COMMANDS_DIR / f"{command_name}.md"
+    return prompt_path if prompt_path.is_file() else None
 
 
 def prepare_startup_message(startup_message: str, *, selected_agent: str) -> str:
@@ -22,8 +30,8 @@ def prepare_startup_message(startup_message: str, *, selected_agent: str) -> str
     command_token, _, remainder = stripped_message.partition(" ")
     command_name = command_token.lstrip("/")
     args = remainder.strip()
-    prompt_path = COMMANDS_DIR / f"{command_name}.md"
-    if not prompt_path.is_file():
+    prompt_path = resolve_command_document(command_name)
+    if prompt_path is None:
         return startup_message
     if not args and command_name not in _NON_SLUG_BOUND_VALUES:
         raise StartupMessageError(f"/{command_name} requires a slug argument")

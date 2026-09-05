@@ -41,6 +41,7 @@ from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config as global_config
 from teleclaude.config.loader import load_person_config, load_project_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription
+from teleclaude.constants import JOB_SPEC_ID_PREFIX
 from teleclaude.core.models import HumanActionIntent, Session
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -53,6 +54,8 @@ from teleclaude.services.project_jobs import ProjectJobOrchestrator
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
+
+_NEXT_RUN_JOB_COMMAND = "/next-run-job"
 
 # Ensure repo root is in path for job imports
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -313,18 +316,10 @@ def _release_pidlock() -> None:
         pass
 
 
-def _build_agent_job_message(job_name: str, config: JobScheduleConfig) -> str | None:
-    """Build canonical job prompt from structured ``job`` config."""
-    if config.message:
-        logger.error("agent job uses deprecated message field", name=job_name)
-        return None
-
-    job_ref = str(config.job or "").strip()
-    if not job_ref:
-        logger.error("agent job has no job field", name=job_name)
-        return None
-
-    return f"/next-run-job {job_name}"
+def _job_command_args(job_name: str, schedule: JobScheduleConfig | None) -> str:
+    """Build the two config identities the run boundary validates for an agent job."""
+    job_spec = str(schedule.job or "").strip() if schedule else ""
+    return f"{job_name} {JOB_SPEC_ID_PREFIX}{job_spec}"
 
 
 def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
@@ -333,10 +328,6 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
     Instead of spawning a subprocess directly, this sends a request to the daemon
     to create a session with job metadata. The daemon handles execution.
     """
-    message = _build_agent_job_message(job_name, config)
-    if not message:
-        return None
-
     # Job sessions are always created on the local computer where the runner is active
     computer = global_config.computer.name
     # Project root is assumed to be current repo root
@@ -346,10 +337,11 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
         client = TelecAPIClient()
         await client.connect()
         try:
-            response = await client.create_scheduled_session(
+            response = await client.run_session(
                 computer=computer,
                 project_path=project_path,
-                job=job_name,
+                command=_NEXT_RUN_JOB_COMMAND,
+                args=_job_command_args(job_name, config),
             )
             return response.session_id
         except Exception as e:
@@ -388,14 +380,6 @@ def _run_log_bug_hunter_orchestrated() -> bool:
         await client.connect()
         try:
 
-            async def _create_session(cmd: CreateSessionCommand) -> dict[str, str]:
-                response = await client.create_scheduled_session(
-                    computer=computer,
-                    project_path=cmd.project_path,
-                    job=cmd.job or LOG_BUG_HUNTER_JOB,
-                )
-                return {"session_id": response.session_id}
-
             async def _list_active_sessions() -> list[Session]:
                 # The service only reads ``session.job`` — ``SessionDTO`` carries
                 # the same attribute, so we cast at this narrow boundary instead
@@ -404,6 +388,16 @@ def _run_log_bug_hunter_orchestrated() -> bool:
                 return cast(list[Session], dtos)
 
             async def _run_for_project(node: ProjectNode) -> bool:
+                async def _create_session(cmd: CreateSessionCommand) -> dict[str, str]:
+                    job_name = cmd.job or LOG_BUG_HUNTER_JOB
+                    response = await client.run_session(
+                        computer=computer,
+                        project_path=cmd.project_path,
+                        command=_NEXT_RUN_JOB_COMMAND,
+                        args=_job_command_args(job_name, node.config.jobs.get(job_name)),
+                    )
+                    return {"session_id": response.session_id}
+
                 service = LogBugHunterService(
                     create_session=_create_session,
                     list_active_sessions=_list_active_sessions,

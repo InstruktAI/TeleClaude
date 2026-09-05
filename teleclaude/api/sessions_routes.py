@@ -32,11 +32,8 @@ from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.api.run_session_shapes import infer_role_and_slug_from_message
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_create_launch import (
-    ScheduledLaunch,
     build_launch_intent,
     resolve_enabled_agent,
-    resolve_scheduled_launch,
-    scheduled_create_request,
 )
 from teleclaude.api.session_direct_messages import (
     _build_direct_message_context,
@@ -57,7 +54,6 @@ from teleclaude.api.sessions_actions_routes import guard_generic_create_session
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
-    ScheduledSessionRequest,
     SendMessageRequest,
     SendMessageResponseDTO,
     SessionDTO,
@@ -285,7 +281,6 @@ def _parse_list_sessions_query(
 async def _prepare_create_session(
     request: CreateSessionRequest,
     identity: CallerIdentity,
-    scheduled_launch: ScheduledLaunch | None = None,
 ) -> tuple[MessageMetadata, str | None, str | None, SessionLaunchIntent | None, Session | None]:
     """Prepare session creation metadata, initiator ID, and launch intent."""
     initiator_session_id = _extract_initiator_session_id(request, identity)
@@ -294,8 +289,8 @@ async def _prepare_create_session(
     effective_human_role = _resolve_effective_human_role(request.human_role, identity.human_role)
 
     inferred_role, inferred_job, _ = infer_role_and_slug_from_message(request.message)
-    req_system_role = scheduled_launch.system_role if scheduled_launch else inferred_role
-    req_job = scheduled_launch.job if scheduled_launch else inferred_job
+    req_system_role = inferred_role
+    req_job = inferred_job
 
     metadata = _build_metadata(
         origin=origin,
@@ -317,7 +312,6 @@ async def _prepare_create_session(
         identity,
         validated_request_agent,
         effective_thinking_mode,
-        scheduled_launch,
     )
     metadata.launch_intent = launch_intent
     return metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session
@@ -395,8 +389,6 @@ async def list_sessions(
 async def _create_session_response(
     request: CreateSessionRequest,
     identity: CallerIdentity,
-    *,
-    scheduled_launch: ScheduledLaunch | None = None,
 ) -> CreateSessionResponseDTO:
     """Create a session after the caller path has established routing authority."""
     logger.info(
@@ -416,7 +408,7 @@ async def _create_session_response(
             initial_input,
             _launch_intent,
             direct_caller_session,
-        ) = await _prepare_create_session(request, identity, scheduled_launch)
+        ) = await _prepare_create_session(request, identity)
     except UnidentifiableCallerError as exc:
         logger.warning(
             _UNIDENTIFIABLE_CALLER_EVENT,
@@ -443,7 +435,7 @@ async def _create_session_response(
         if isinstance(cmd, CreateSessionCommand) and cmd.launch_intent and cmd.launch_intent.dispatch_mode
         else AgentDispatchMode.AUTOMATIC
     )
-    command_entry_point = scheduled_launch.entry_point if scheduled_launch else SessionEntryPoint.API_CREATE
+    command_entry_point = SessionEntryPoint.API_CREATE
     try:
         guard_result = await guard_generic_create_session(request, cmd, identity)
     except RunSessionRefusal as exc:
@@ -460,7 +452,7 @@ async def _create_session_response(
         cmd.entry_point = command_entry_point
         if cmd.launch_intent is not None:
             cmd.launch_intent.entry_point = cmd.entry_point
-        if scheduled_launch is None and cmd.job == "reviewer" and initiator_session_id:
+        if cmd.job == "reviewer" and initiator_session_id:
             producer = await db.get_session(initiator_session_id)
             cmd.producer_agent = producer.active_agent if producer is not None else None
     try:
@@ -556,18 +548,6 @@ async def create_session(
 ) -> CreateSessionResponseDTO:
     """Create a generic session with only automatic or manual-preference intent."""
     return await _create_session_response(request, identity)
-
-
-@router.post("/internal/cron/sessions", response_model_exclude_none=True)
-async def create_scheduled_session(
-    request: ScheduledSessionRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_start),
-) -> CreateSessionResponseDTO:
-    """Create a scheduled session from daemon-loaded job configuration only."""
-    scheduled_launch = resolve_scheduled_launch(request)
-    return await _create_session_response(
-        scheduled_create_request(request, scheduled_launch), identity, scheduled_launch=scheduled_launch
-    )
 
 
 @router.delete(

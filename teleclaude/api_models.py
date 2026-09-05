@@ -37,16 +37,6 @@ class CreateSessionRequest(BaseModel):
     origin_metadata: dict[str, object] | None = None  # guard: loose-dict
 
 
-class ScheduledSessionRequest(BaseModel):
-    """Machine-only cron request; routing intent is derived by the daemon."""
-
-    model_config = ConfigDict(frozen=True)
-
-    computer: str = Field(..., min_length=2)
-    project_path: str = Field(..., min_length=2)
-    job: str = Field(..., min_length=1)
-
-
 class CreateSessionResponseDTO(BaseModel):
     """Response from session creation."""
 
