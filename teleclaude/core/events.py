@@ -301,32 +301,6 @@ def _recovery_timestamp(value: object) -> datetime | None:
     return parse_iso_datetime(value) if isinstance(value, str) else None
 
 
-# UI commands mapping (intentionally lowercase - not a constant despite dict type)
-UiCommands = {
-    "agent_restart": "Restart generic agent session",
-    "agent_resume": "Resume an AI agent session",
-    "claude": "Start Claude (alias for /agent claude)",
-    "claude_plan": "Navigate to Claude plan mode",
-    "gemini": "Start Gemini (alias for /agent gemini)",
-    "codex": "Start Codex (alias for /agent codex)",
-    "backspace": "Send BACKSPACE key (optional count)",
-    "cancel": "Send CTRL+C to interrupt current command",
-    "cancel2x": "Send CTRL+C twice (for stubborn programs)",
-    "ctrl": "Send CTRL+key (e.g., /ctrl d for CTRL+D)",
-    "enter": "Send ENTER key",
-    "escape": "Send ESC key (exit Vim insert mode, etc.)",
-    "escape2x": "Send ESC twice (for Agent, etc.)",
-    "help": "Show help message",
-    "key_down": "Send DOWN arrow key (optional repeat count)",
-    "key_left": "Send LEFT arrow key (optional repeat count)",
-    "key_right": "Send RIGHT arrow key (optional repeat count)",
-    "key_up": "Send UP arrow key (optional repeat count)",
-    "kill": "Force kill current process (SIGKILL)",
-    "shift_tab": "Send SHIFT+TAB key (optional count)",
-    "tab": "Send TAB key",
-}
-
-
 class TeleClaudeEvents:
     """Standard TeleClaude events that daemon handles.
 

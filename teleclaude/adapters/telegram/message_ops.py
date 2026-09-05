@@ -1,13 +1,12 @@
 """Message operations mixin for Telegram adapter.
 
-Handles sending, editing, and deleting messages in Telegram topics.
+Handles sending, editing, and deleting messages in private Telegram chats.
 """
 
 from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -77,13 +76,9 @@ class MessageOperationsMixin:
 
     Required from host class:
     - bot: ExtBot[None] (property)
-    - supergroup_id: int (instance variable)
     - _ensure_started() -> None
     - _pending_edits: dict[str, EditContext]
     - _last_edit_hash: dict[str, str]
-
-    Required from ChannelOperationsMixin (via MRO):
-    - _wait_for_topic_ready(topic_id: int, title: str) -> None
     """
 
     # Abstract properties - implemented by TelegramAdapter
@@ -93,12 +88,8 @@ class MessageOperationsMixin:
         raise NotImplementedError
 
     # Abstract instance variables (declared for type hints)
-    supergroup_id: int
     _pending_edits: dict[str, EditContext]
     _last_edit_hash: dict[str, str]
-
-    if TYPE_CHECKING:
-        _wait_for_topic_ready: Callable[[int, str], Awaitable[None]]
 
     def _ensure_started(self) -> None:
         """Ensure the adapter is started before operations."""
@@ -211,7 +202,6 @@ class MessageOperationsMixin:
     async def _send_document_with_retry(
         self,
         chat_id: int,
-        message_thread_id: int | None,
         file_path: str,
         filename: str,
         caption: str | None = None,
@@ -221,21 +211,14 @@ class MessageOperationsMixin:
         guard: allow-string-compare
         """
         with open(file_path, "rb") as file_handle:
-            try:
-                return await self.bot.send_document(
-                    chat_id=chat_id,
-                    message_thread_id=message_thread_id,
-                    document=file_handle,
-                    filename=filename,
-                    caption=caption,
-                    write_timeout=15.0,
-                    read_timeout=15.0,
-                )
-            except BadRequest as exc:
-                if "message thread not found" in str(exc).lower():
-                    logger.warning("Topic %s not ready yet; retrying document send", message_thread_id)
-                    raise TimeoutError("message thread not found") from exc
-                raise
+            return await self.bot.send_document(
+                chat_id=chat_id,
+                document=file_handle,
+                filename=filename,
+                caption=caption,
+                write_timeout=15.0,
+                read_timeout=15.0,
+            )
 
     async def edit_message(
         self, destination: Destination, message_id: str, text: str, *, metadata: MessageMetadata | None = None
@@ -411,54 +394,12 @@ class MessageOperationsMixin:
 
         message = await self._send_document_with_retry(
             destination.chat_id,
-            None,
             file_path,
             Path(file_path).name,
             caption,
         )
 
         return str(message.message_id)
-
-    async def send_general_message(self, text: str, *, metadata: MessageMetadata | None = None) -> str:
-        """Send message to Telegram supergroup general topic."""
-        self._ensure_started()
-        metadata = metadata or MessageMetadata()
-
-        message_thread_id = metadata.message_thread_id
-        parse_mode = metadata.parse_mode
-        reply_markup = metadata.reply_markup
-
-        # Type guard for reply_markup
-        if reply_markup is not None and not isinstance(
-            reply_markup,
-            InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply,
-        ):
-            reply_markup = None
-
-        result = await self._send_general_message_with_retry(
-            message_thread_id,
-            text,
-            parse_mode,
-            reply_markup,
-        )
-        return str(result.message_id)
-
-    @command_retry(max_retries=3, max_timeout=15.0)
-    async def _send_general_message_with_retry(
-        self,
-        message_thread_id: int | None,
-        text: str,
-        parse_mode: str | None,
-        reply_markup: object | None,
-    ) -> Message:
-        """Internal method with retry logic for general-topic messages."""
-        return await self.bot.send_message(
-            chat_id=self.supergroup_id,
-            message_thread_id=message_thread_id,
-            text=text,
-            parse_mode=parse_mode,
-            reply_markup=reply_markup,  # type: ignore[arg-type]
-        )
 
     def _edit_already_satisfied(self, attempt: EditAttempt) -> bool:
         """Return True when an edit can be skipped or folded into an in-flight retry."""

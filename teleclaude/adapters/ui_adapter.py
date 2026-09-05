@@ -22,7 +22,6 @@ from teleclaude.adapters.ui.delivery_mixin import OutputDeliveryMixin
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.events import UiCommands
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript._utils import _parse_timestamp
@@ -48,9 +47,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
     # Adapter key for metadata storage (subclasses MUST override)
     ADAPTER_KEY: str = "unknown"
-
-    # Optional command handler overrides: command -> handler method name
-    COMMAND_HANDLER_OVERRIDES: dict[str, str] = {}
 
     # Platform API property name for the message ID (e.g. "id" for Discord/WhatsApp,
     # "message_id" for Telegram). Used when constructing platform API calls.
@@ -310,24 +306,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Clear output message ID in this adapter's origin_metadata section."""
         await self._set_origin_field(session, output_message_id=None)
         logger.debug("Cleared output_message_id: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
-
-    # === Command Registration ===
-
-    def _get_command_handlers(self) -> list[tuple[str, object]]:
-        """Get command handlers by convention: command_name -> _handle_{command_name}.
-
-        Returns:
-            List of (command_name, handler_method) tuples
-        """
-        handlers: list[tuple[str, object]] = []
-        for command, _ in UiCommands.items():
-            handler_name = self.COMMAND_HANDLER_OVERRIDES.get(command, f"_handle_{command}")
-            handler: object = getattr(self, handler_name, None)
-            if handler:
-                handlers.append((command, handler))
-            else:
-                logger.warning("Handler %s not found for command %s", handler_name, command)
-        return handlers
 
     # === Output Message Management (Default Implementations) ===
 
