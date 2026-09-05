@@ -46,6 +46,7 @@ from teleclaude.core.project_state import resolve_project_state_root as resolve_
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.core.todos_db._rows import TodoRow
+from teleclaude.core.todos_db._state import TodoStatusStateRead
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import HoldAuditState, TodoState
@@ -293,8 +294,7 @@ async def _is_live_runner(db: Db, session_id: str | None) -> bool:
     return bool(session_id and await is_live_session_id(db, session_id))
 
 
-async def _read_runner_todo(todos_db: TodosDb, row: TodoRow) -> _RunnerTodoRead:
-    status_read = await todos_db.read_status_and_state_by_id(row["id"])
+def _read_runner_todo(row: TodoRow, status_read: TodoStatusStateRead) -> _RunnerTodoRead:
     current_status = status_read.status
     state = status_read.state
     if current_status in _TERMINAL_TODO_STATUSES:
@@ -440,11 +440,13 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
         await todos_db.list_todo(include_icebox=True, include_delivered=True, include_removed=True),
         key=lambda row: {"removed": 0, "delivered": 1, "icebox": 2, "active": 3}.get(row["status"], -1),
     )
+    status_reads = await todos_db.read_status_and_states_by_id([row["id"] for row in rows])
     deps = await todos_db.load_deps()
     loaded: dict[str, RunnerTodo] = {}
     reconciled: list[str] = []
     for row in rows:
-        read = await _read_runner_todo(todos_db, row)
+        status_read = status_reads.get(row["id"], TodoStatusStateRead(status=None, state=None, is_holder=False))
+        read = _read_runner_todo(row, status_read)
         todo = read.todo
         if todo is None:
             # A structural holder (status == 'holder') is deliberately

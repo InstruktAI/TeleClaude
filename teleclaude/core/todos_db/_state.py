@@ -299,6 +299,37 @@ class TodosDbStateMixin:
                 self._on_mutation("todo_updated", None)
             return TodoStatusStateRead(status=entry.status, state=payload, is_holder=is_holder)
 
+    async def read_status_and_states_by_id(self, todo_ids: list[str]) -> dict[str, TodoStatusStateRead]:
+        """Read current statuses and upcycled states for a corpus in one session."""
+        if not todo_ids:
+            return {}
+
+        async with self._session() as session:  # type: ignore[attr-defined]
+            result = await session.exec(
+                select(Todo, TodoStateModel)
+                .outerjoin(TodoStateModel, TODO_TABLE.c.id == TODO_STATE_TABLE.c.id)
+                .where(TODO_TABLE.c.id.in_(todo_ids))
+            )
+            reads: dict[str, TodoStatusStateRead] = {}
+            migrated = False
+            for entry, state_model in result.all():
+                is_holder = entry.status == TodoStatus.HOLDER.value
+                if is_holder or state_model is None:
+                    reads[entry.id] = TodoStatusStateRead(status=entry.status, state=None, is_holder=is_holder)
+                    continue
+                raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+                payload = upcycle_state_dict(raw_state)
+                if self._record_v2_to_v3_if_needed(entry.slug, raw_state, payload):
+                    state_model.state = json.dumps(payload, default=str)
+                    state_model.updated_at = datetime.now(UTC).isoformat()
+                    session.add(state_model)
+                    migrated = True
+                reads[entry.id] = TodoStatusStateRead(status=entry.status, state=payload, is_holder=False)
+            if migrated:
+                await session.commit()
+                self._on_mutation("todo_updated", None)
+            return reads
+
     async def get_state(self, slug: str) -> dict[str, StateValue] | None:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
         return await self.read_state(slug)
