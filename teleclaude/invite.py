@@ -11,7 +11,6 @@ Provides:
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
@@ -34,7 +33,7 @@ _TELECLAUDE_DIR = TELECLAUDE_HOME
 _PEOPLE_DIR = PEOPLE_DIR
 _PROJECT_ROOT = Path(__file__).parent.parent  # teleclaude package parent
 _TEMPLATES_DIR = _PROJECT_ROOT / "templates" / "emails"
-_EMPTY_CONFIG_DOCUMENT: Mapping[str, object] = {}
+_PERSON_SLUG_FIELD = "slug"
 
 
 # --- Bot Resolution ---
@@ -144,7 +143,7 @@ def scaffold_personal_workspace(person_slug: str, display_name: str | None = Non
         write_declared_config(
             workspace_config,
             ConfigKind.PERSON,
-            _EMPTY_CONFIG_DOCUMENT,
+            {_PERSON_SLUG_FIELD: person_slug},
             schema_root=_TELECLAUDE_DIR,
         )
         logger.info("Created teleclaude.yml for %s workspace", person_slug)

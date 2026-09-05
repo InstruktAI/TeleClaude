@@ -87,7 +87,9 @@ def resolve_person_channel(slug: str, *, channel: MessagingChannel | None = None
     if person is None:
         raise PersonNotFoundError(f"No person found for slug '{slug}'")
 
-    person_config = load_person_config_for_entry(person, PEOPLE_DIR) or PersonConfig(kind=ConfigKind.PERSON)
+    person_config = load_person_config_for_entry(person, PEOPLE_DIR) or PersonConfig(
+        kind=ConfigKind.PERSON, slug=person.slug
+    )
     resolved_channel = channel or person_config.preferred_channel or MessagingChannel.EMAIL
 
     if resolved_channel is MessagingChannel.TELEGRAM:

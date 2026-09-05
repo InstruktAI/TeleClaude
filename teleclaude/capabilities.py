@@ -8,8 +8,9 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.context_root import load_declared_config_kind
 from teleclaude.config.loader import load_project_config
-from teleclaude.config.schema import ProjectConfig
+from teleclaude.config.schema import ConfigKind, ProjectConfig
 from teleclaude.paths import ConfigFileName
 
 logger = get_logger(__name__)
@@ -21,6 +22,12 @@ class CapabilityName(StrEnum):
     CODE = "code"
     DOCS = "docs"
     AGENTS = "agents"
+
+
+class PermissionSurface(StrEnum):
+    """Closed vocabulary for tier-material participation answers."""
+
+    DOCUMENTATION = "documentation"
 
 
 @dataclass(frozen=True)
@@ -51,8 +58,42 @@ class ProjectCapabilityState:
     config: ProjectConfig | None
 
 
+@dataclass(frozen=True)
+class TierPermissions:
+    """The three independent permission answers for one declared tier."""
+
+    invocation_context: bool
+    surfaces: frozenset[PermissionSurface]
+    project_subscriptions: Capabilities
+
+    def participates_in(self, surface: PermissionSurface) -> bool:
+        """Return whether this tier's material participates in one surface."""
+        return surface in self.surfaces
+
+
 NOT_A_TARGET = Capabilities(is_target=False, code=False, docs=False, agents=False)
 ALL_CAPABILITIES = Capabilities(is_target=True, code=True, docs=True, agents=True)
+_DOCUMENTATION_SURFACE = frozenset({PermissionSurface.DOCUMENTATION})
+_GLOBAL_TIER_PERMISSIONS = TierPermissions(
+    invocation_context=True,
+    surfaces=_DOCUMENTATION_SURFACE,
+    project_subscriptions=NOT_A_TARGET,
+)
+_PERSON_TIER_PERMISSIONS = TierPermissions(
+    invocation_context=True,
+    surfaces=_DOCUMENTATION_SURFACE,
+    project_subscriptions=NOT_A_TARGET,
+)
+_COMPANY_TIER_PERMISSIONS = TierPermissions(
+    invocation_context=False,
+    surfaces=_DOCUMENTATION_SURFACE,
+    project_subscriptions=NOT_A_TARGET,
+)
+_NON_PROJECT_TIER_PERMISSIONS = {
+    ConfigKind.GLOBAL: _GLOBAL_TIER_PERMISSIONS,
+    ConfigKind.PERSON: _PERSON_TIER_PERMISSIONS,
+    ConfigKind.COMPANY: _COMPANY_TIER_PERMISSIONS,
+}
 
 
 def capabilities_from_project_config(config: ProjectConfig) -> Capabilities:
@@ -70,10 +111,28 @@ def resolve_capabilities(project_root: Path) -> Capabilities:
     return resolve_project_capability_state(project_root).capabilities
 
 
+def resolve_tier_permissions(root: Path) -> TierPermissions:
+    """Resolve the three permission axes from a root's declared tier."""
+    manifest_path = root / ConfigFileName.OVERLAY
+    kind = load_declared_config_kind(manifest_path)
+    if kind is not ConfigKind.PROJECT:
+        return _NON_PROJECT_TIER_PERMISSIONS[kind]
+    capability_state = resolve_project_capability_state(root)
+    surfaces = _DOCUMENTATION_SURFACE if capability_state.capabilities.docs else frozenset()
+    return TierPermissions(
+        invocation_context=True,
+        surfaces=surfaces,
+        project_subscriptions=capability_state.capabilities,
+    )
+
+
 def resolve_project_capability_state(project_root: Path) -> ProjectCapabilityState:
     """Resolve capabilities and retain the parsed overlay for downstream consumers."""
     manifest_path = project_root / ConfigFileName.OVERLAY
     if not manifest_path.is_file():
+        return ProjectCapabilityState(capabilities=NOT_A_TARGET, config=None)
+
+    if load_declared_config_kind(manifest_path) is not ConfigKind.PROJECT:
         return ProjectCapabilityState(capabilities=NOT_A_TARGET, config=None)
 
     config = load_project_config(manifest_path)

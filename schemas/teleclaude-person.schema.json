@@ -393,6 +393,11 @@
       "title": "Kind",
       "type": "string"
     },
+    "slug": {
+      "tier": "internal",
+      "title": "Slug",
+      "type": "string"
+    },
     "creds": {
       "$ref": "#/$defs/CredsConfig",
       "default": {
@@ -471,7 +476,7 @@
       "default": null
     }
   },
-  "required": ["kind"],
+  "required": ["kind", "slug"],
   "title": "PersonConfig",
   "type": "object"
 }
