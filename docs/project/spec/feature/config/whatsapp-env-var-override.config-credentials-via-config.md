@@ -1,8 +1,5 @@
 ---
-id: teleclaude/spec/feature/config/whatsapp-env-var-override
-type: spec
-domain: project
-scope: project
+visibility: public
 description: WhatsApp credentials and service identifiers resolve through the generic machine-config placeholder boundary, with the explicit enabled flag remaining authoritative.
 ---
 
