@@ -415,7 +415,6 @@ And absent, malformed, or positionally incomplete annotations use bounded native
 And peer and platform-authored segments retain their own authorship
 ```
 
-<!-- planned:per-lane-output-propagation -->
 #### UC-OPD18: A silent completion preserves the last real session output
 
 ```gherkin
@@ -424,7 +423,6 @@ When that session completes a later turn whose entire authored output is `NOOP`
 Then the observing agent still reads the same substantive output as the session's most recent visible output
 And the silent completion does not replace it with an empty output or deliver it again as new output
 ```
-<!-- /planned:per-lane-output-propagation -->
 
 ### Cross-context references
 
