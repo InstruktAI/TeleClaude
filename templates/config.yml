@@ -27,6 +27,8 @@ redis:
   # output_stream_maxlen: 10000
   # output_stream_ttl: 3600
 
+database_url: ${DATABASE_URL}
+
 # Agent summary & session-title generation. Providers are tried in order: the local
 # (OpenAI-compatible, e.g. LM Studio) provider first when enabled, then the
 # cloud providers in `provider_priority` — each skipped silently when its API
@@ -36,16 +38,20 @@ summarizer:
     enabled: false
     base_url: ${SUMMARIZER_LLM_BASE_URL} # OpenAI-compatible endpoint, e.g. http://localhost:1234/v1
     model: ${SUMMARIZER_LLM_MODEL} # the model id loaded in your local server (e.g. an instruct model)
+    api_key: ${SUMMARIZER_LOCAL_API_KEY}
   provider_priority:
     - openai
     - anthropic
     - google
   openai:
     model: gpt-5-nano
+    api_key: ${OPENAI_API_KEY}
   anthropic:
     model: claude-haiku-4-5
+    api_key: ${ANTHROPIC_API_KEY}
   google:
     model: gemini-2.5-flash
+    api_key: ${GOOGLE_API_KEY}
 
 # Admin adapter that houses the administration of ALL computer and their projects,
 # So highly recommended to enable it for mobile interaction with the platform.
@@ -55,6 +61,9 @@ discord:
   token: ${DISCORD_BOT_TOKEN}
   # Guild (server) ID.
   guild_id: ${DISCORD_GUILD_ID}
+  help_desk_channel_id: ${DISCORD_HELP_DESK_CHANNEL_ID}
+  escalation_channel_id: ${DISCORD_ESCALATION_CHANNEL_ID}
+  all_sessions_channel_id: ${DISCORD_ALL_SESSIONS_CHANNEL_ID}
   # All channel/category IDs below are auto-provisioned on startup.
   # The master computer (computer.is_master) creates the shared structure —
   # Operations, Help Desk (Customer Sessions, Escalations), and Team. Non-master
@@ -67,6 +76,8 @@ telegram:
   enabled: false
   # Bot token.
   bot_token: ${TELEGRAM_BOT_TOKEN}
+  alert_username: ${TELEGRAM_ALERT_USERNAME}
+  alert_chat_id: ${TELEGRAM_ALERT_CHAT_ID}
 
 # WhatsApp adapter for public helpdesk and member alerting
 whatsapp:
@@ -77,12 +88,17 @@ whatsapp:
   verify_token: ${WHATSAPP_VERIFY_TOKEN}
   template_name: ${WHATSAPP_TEMPLATE_NAME}
   template_language: en_US
+  business_number: ${WHATSAPP_BUSINESS_NUMBER}
 
 email:
   # Outbound email (SMTP relay). Enable to send member invites etc. by email.
   # When disabled or unconfigured, email is simply not sent (callers gate on availability).
-  # Credentials live in .env: SMTP_USERNAME, SMTP_KEY, EMAIL_FROM (+ optional SMTP_RELAY, EMAIL_REPLYTO).
   enabled: false
+  smtp_username: ${SMTP_USERNAME}
+  smtp_key: ${SMTP_KEY}
+  email_from: ${EMAIL_FROM}
+  reply_to: ${EMAIL_REPLYTO}
+  smtp_relay: ${SMTP_RELAY}
 
 # Lifecycle-runner control plane (per-machine daemon runtime config).
 # Autostart governs whether the lifecycle runner self-dispatches workflow todos.
@@ -119,7 +135,7 @@ stt:
   enabled: true
   service_priority:
     - parakeet # Local MLX (free, private, fast on Apple Silicon)
-    - openai # Cloud Whisper API (fallback) that needs OPENAI_API_KEY env var set
+    - openai # Cloud Whisper API fallback
   services:
     parakeet:
       enabled: true
@@ -127,9 +143,10 @@ stt:
       # Example local path:
       # ${HOME}/.cache/lm-studio/models/mlx-community/parakeet-tdt-0.6b-v3
       model: mlx-community/parakeet-tdt-0.6b-v3
-    # OpenAI Whisper API as fallback when no local model is available. Requires OPENAI_API_KEY in env.
+    # OpenAI Whisper API as fallback when no local model is available.
     openai:
       enabled: false
+      api_key: ${OPENAI_API_KEY}
 
 # Text-to-Speech Configuration
 tts:
@@ -243,6 +260,7 @@ tts:
         - name: dylan
     elevenlabs:
       enabled: true
+      api_key: ${ELEVENLABS_API_KEY}
       voices:
         - name: Rachel
           voice_id: 21m00Tcm4TlvDq8ikWAM
@@ -270,6 +288,7 @@ tts:
           voice_id: oWAxZDx7w5VEj9dCyTzz
     openai:
       enabled: true
+      api_key: ${OPENAI_API_KEY}
       voices:
         - name: alloy
         - name: echo

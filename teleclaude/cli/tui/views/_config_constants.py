@@ -7,12 +7,35 @@ from enum import StrEnum
 from types import UnionType
 from typing import Any, Literal, Union, get_args, get_origin
 
+from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, Field
 from rich.style import Style
 
 from teleclaude.cli.config_handlers import EnvVarStatus
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, get_neutral_color
 from teleclaude.config.schema import PersonEntry
+
+logger = get_logger(__name__)
+
+CONFIG_TUI_OBSERVATION_EVENT = "config_tui_observation"
+OUTCOME_FIELD = "outcome"
+
+
+class ConfigTuiOutcome(StrEnum):
+    """Closed outcome vocabulary for config-TUI observations."""
+
+    RENDER_REQUESTED = "render_requested"
+    RENDERED = "rendered"
+    SAVE_REQUESTED = "save_requested"
+    SAVED = "saved"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+    GUIDED_COMPLETENESS = "guided_completeness"
+
+
+def observe_config_tui(outcome: ConfigTuiOutcome, **details: object) -> None:
+    """Emit a sanitized config-TUI lifecycle observation."""
+    logger.info(CONFIG_TUI_OBSERVATION_EVENT, **{OUTCOME_FIELD: outcome.value, **details})
 
 
 class Subtab(StrEnum):
@@ -52,43 +75,6 @@ class TtsConfig(BaseModel):
     )
 
 
-class TelegramAdapterConfig(BaseModel):
-    """Telegram admin adapter configuration. The token is the TELEGRAM_BOT_TOKEN env secret."""
-
-    enabled: bool = Field(default=False, description="Enable for customers and personal agents")
-    bot_token: str = Field(default="", description="Telegram Bot API token from @BotFather")
-
-
-class DiscordAdapterConfig(BaseModel):
-    """Discord admin adapter configuration."""
-
-    enabled: bool = Field(default=False, description="Enable for admins")
-    token: str = Field(default="", description="Discord bot token from the Developer Portal")
-    guild_id: str = Field(default="", description="Discord server (guild) ID")
-
-
-class WhatsAppAdapterConfig(BaseModel):
-    """WhatsApp business adapter configuration."""
-
-    enabled: bool = Field(default=False, description="Enable for customers and personal agents")
-    phone_number_id: str = Field(default="", description="Meta WhatsApp business phone number ID")
-    access_token: str = Field(default="", description="Meta system-user access token")
-    webhook_secret: str = Field(default="", description="App secret for webhook signature verification")
-    verify_token: str = Field(default="", description="Shared token for webhook challenge-response")
-    template_name: str = Field(default="", description="Approved template for 24h-window messages")
-    template_language: str = Field(default="en_US", description="Template language code")
-
-
-class EmailAdapterConfig(BaseModel):
-    """Email via SMTP relay (e.g. Brevo). All values are .env secrets/settings."""
-
-    email_from: str = Field(default="", description="Sender identity (Name <addr>)")
-    email_replyto: str = Field(default="", description="Reply-To header")
-    smtp_username: str = Field(default="", description="SMTP relay username")
-    smtp_key: str = Field(default="", description="SMTP relay key / password")
-    smtp_relay: str = Field(default="", description="SMTP relay host:port")
-
-
 class BackupAdapterConfig(BaseModel):
     """S3 backup target. Credentials are .env secrets."""
 
@@ -106,14 +92,6 @@ class FirecrawlAdapterConfig(BaseModel):
     api_key: str = Field(default="", description="Firecrawl API key (web scraping)")
 
 
-class AIKeysConfig(BaseModel):
-    """LLM provider API keys (summarizer, agents, Gemini/Nano Banana image gen)."""
-
-    anthropic_api_key: str = Field(default="", description="Anthropic API key (Claude summarizer)")
-    openai_api_key: str = Field(default="", description="OpenAI API key (Whisper STT, summarizer fallback)")
-    google_api_key: str = Field(default="", description="Google API key (Gemini agent, Nano Banana, summarizer)")
-
-
 class RedisInfraConfig(BaseModel):
     """Redis connection — essential infrastructure. Values are .env secrets."""
 
@@ -121,39 +99,11 @@ class RedisInfraConfig(BaseModel):
     password: str = Field(default="", description="Redis password (blank if the server has no auth)")
 
 
-class AdaptersConfig(BaseModel):
-    """Messaging-platform adapters."""
-
-    discord: DiscordAdapterConfig = Field(default_factory=DiscordAdapterConfig)
-    telegram: TelegramAdapterConfig = Field(default_factory=TelegramAdapterConfig)
-    whatsapp: WhatsAppAdapterConfig = Field(default_factory=WhatsAppAdapterConfig)
-
-
 class ProvidersConfig(BaseModel):
-    """Service providers (LLM keys, email, backup, web scraping)."""
+    """External provider settings that are not machine config credentials."""
 
-    ai: AIKeysConfig = Field(default_factory=AIKeysConfig)
-    email: EmailAdapterConfig = Field(default_factory=EmailAdapterConfig)
     backup: BackupAdapterConfig = Field(default_factory=BackupAdapterConfig)
     firecrawl: FirecrawlAdapterConfig = Field(default_factory=FirecrawlAdapterConfig)
-
-
-class SummarizerTabConfig(BaseModel):
-    """Summary/title provider settings, surfaced in the Summarizer subtab.
-
-    local_base_url is the ${SUMMARIZER_LLM_BASE_URL} env secret; the rest persist
-    to the config.yml summarizer section.
-    """
-
-    local_enabled: bool = Field(default=False, description="Use a local OpenAI-compatible summarizer first")
-    local_base_url: str = Field(default="", description="Local OpenAI-compatible endpoint (e.g. LM Studio)")
-    local_model: str = Field(default="", description="Model id loaded in the local server")
-    provider_priority: list[str] = Field(
-        default_factory=list, description="Cloud fallback order: openai/anthropic/google"
-    )
-    openai_model: str = Field(default="", description="OpenAI model for summaries")
-    anthropic_model: str = Field(default="", description="Anthropic model for summaries")
-    google_model: str = Field(default="", description="Google Gemini model for summaries")
 
 
 _PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")

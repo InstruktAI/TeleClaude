@@ -41,6 +41,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
     },
     "telegram": {
         "enabled": False,
+        "bot_token": None,
+        "alert_username": None,
+        "alert_chat_id": None,
     },
     "discord": {
         "enabled": False,
@@ -60,6 +63,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "access_token": None,
         "webhook_secret": None,
         "verify_token": None,
+        "business_number": None,
         "template_name": None,
         "template_language": "en_US",
     },
@@ -82,10 +86,21 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
             "openai": {
                 "enabled": False,
                 "voices": [],
+                "api_key": None,
             },
             "elevenlabs": {
                 "enabled": False,
                 "voices": [],
+                "api_key": None,
+            },
+        },
+    },
+    "stt": {
+        "enabled": False,
+        "services": {
+            "openai": {
+                "enabled": False,
+                "api_key": None,
             },
         },
     },
@@ -94,6 +109,15 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "music_dir": None,
         "volume": 1.0,
     },
+    "email": {
+        "enabled": False,
+        "smtp_username": None,
+        "smtp_key": None,
+        "email_from": None,
+        "reply_to": None,
+        "smtp_relay": "smtp-relay.brevo.com:587",
+    },
+    "database_url": None,
     "workflow": {
         "autostart": {
             "feature": False,

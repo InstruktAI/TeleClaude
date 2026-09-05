@@ -185,6 +185,9 @@ class TelegramConfig:
     """Telegram adapter configuration."""
 
     enabled: bool = False
+    bot_token: str | None = None
+    alert_username: str | None = None
+    alert_chat_id: str | None = None
     qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig, metadata={"tier": Tier.INTERNAL})
 
 
@@ -209,9 +212,9 @@ class DiscordConfig:
     enabled: bool
     token: str | None
     guild_id: int | None
-    help_desk_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
-    escalation_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
-    all_sessions_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
+    help_desk_channel_id: int | None = None
+    escalation_channel_id: int | None = None
+    all_sessions_channel_id: int | None = None
     operator_chat_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
     announcements_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
     general_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
@@ -228,6 +231,7 @@ class WhatsAppConfig:
     access_token: str | None = None
     webhook_secret: str | None = None
     verify_token: str | None = None
+    business_number: str | None = None
     api_version: str = field(default="v21.0", metadata={"tier": Tier.INTERNAL})
     template_name: str | None = None
     template_language: str = "en_US"
@@ -236,13 +240,14 @@ class WhatsAppConfig:
 
 @dataclass
 class EmailConfig:
-    """Email (SMTP) sending capability. Credentials live in .env; this is the toggle.
-
-    Off by default — explicit opt-in like every other capability. Required-field
-    validation and the send gate enforce that an enabled email is configured.
-    """
+    """Email (SMTP) sending capability and its typed delivery fields."""
 
     enabled: bool = False
+    smtp_username: str | None = None
+    smtp_key: str | None = None
+    email_from: str | None = None
+    reply_to: str | None = None
+    smtp_relay: str | None = None
 
 
 @dataclass
@@ -260,6 +265,7 @@ class TTSServiceConfig:
     enabled: bool
     voices: list[TTSServiceVoiceConfig] | None = None
     model: str | None = None  # Optional local path or HF repo id
+    api_key: str | None = None
     params: dict[str, object] | None = None  # guard: loose-dict - Model-specific kwargs are dynamic.
 
 
@@ -303,6 +309,7 @@ class STTServiceConfig:
 
     enabled: bool
     model: str | None = None  # HF repo id or local path (for parakeet)
+    api_key: str | None = None
 
 
 @dataclass
@@ -458,7 +465,7 @@ class TeleclaudeConfig:
     default_agent: str = field(metadata={"tier": Tier.PUBLIC})
     terminal: TerminalConfig = field(metadata={"tier": Tier.INTERNAL})
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig, metadata={"tier": Tier.TUI})
-    email: EmailConfig = field(default_factory=EmailConfig, metadata={"tier": Tier.PUBLIC})
+    email: EmailConfig = field(default_factory=EmailConfig, metadata={"tier": Tier.TUI})
     tts: TTSConfig | None = field(default=None, metadata={"tier": Tier.TUI})
     stt: STTConfig | None = field(default=None, metadata={"tier": Tier.TUI})
     chiptunes: ChiptunesConfig | None = field(default=None, metadata={"tier": Tier.TUI})
@@ -467,7 +474,9 @@ class TeleclaudeConfig:
     )
     workflow: WorkflowConfig = field(default_factory=WorkflowConfig, metadata={"tier": Tier.PUBLIC})
     deployment: DeploymentConfig = field(default_factory=DeploymentConfig, metadata={"tier": Tier.PUBLIC})
+    database_url: str | None = field(default=None, metadata={"tier": Tier.PUBLIC})
     summarizer: SummarizerConfig | None = field(default=None, metadata={"tier": Tier.TUI})
+    load_id: str = field(default="", metadata={"tier": Tier.INTERNAL})
     experiments: list[ExperimentConfig] = field(
         default_factory=list,
         metadata={

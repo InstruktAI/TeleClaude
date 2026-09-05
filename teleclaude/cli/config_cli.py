@@ -34,6 +34,7 @@ from teleclaude.cli.config_handlers import (
 )
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _maybe_show_help, _usage
+from teleclaude.config import config
 from teleclaude.config.migrations import migrate_person_slugs_if_needed
 from teleclaude.config.schema import PersonEntry, TelegramCreds
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
@@ -260,8 +261,7 @@ def _people_add(args: list[str], use_json: bool) -> None:
                 except ValueError as e:
                     logger.warning("Failed to resolve Discord bot user ID: %s", e)
 
-                # WhatsApp number from env
-                whatsapp_number = os.environ.get("WHATSAPP_BUSINESS_NUMBER")  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
+                whatsapp_number = config.whatsapp.business_number
 
                 # Generate links
                 links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
@@ -587,8 +587,7 @@ def _handle_invite(args: list[str]) -> None:
         except ValueError as e:
             logger.warning("Failed to resolve Discord bot user ID: %s", e)
 
-        # WhatsApp number from env
-        whatsapp_number = os.environ.get("WHATSAPP_BUSINESS_NUMBER")  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
+        whatsapp_number = config.whatsapp.business_number
 
         # Generate links
         links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)

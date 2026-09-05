@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.capabilities import Capabilities, resolve_capabilities
+from teleclaude.config import config
 from teleclaude.config._blueprint import generate_sample_file
 from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.docs_index import build_all_indexes
@@ -120,7 +121,7 @@ def _sync_locked(
 
     # Phase 2: Record provenance
     if capabilities.docs:
-        _record_snippet_provenance_from_environment(project_root)
+        _record_snippet_provenance_from_config(project_root)
 
     # Phase 3: Build indexes
     if capabilities.docs:
@@ -191,9 +192,9 @@ def sync_bootstrap(project_root: Path) -> None:
         print(str(exc), file=sys.stderr)
 
 
-def _record_snippet_provenance_from_environment(project_root: Path) -> int:
+def _record_snippet_provenance_from_config(project_root: Path) -> int:
     """Record first-acquisition provenance for snippet delivered_by slugs."""
-    database_url = os.environ.get("DATABASE_URL")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+    database_url = config.database_url
     if not database_url:
         return 0
 

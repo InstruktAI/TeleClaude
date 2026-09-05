@@ -29,12 +29,12 @@ from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _SUBTABS,
     AdapterSectionProjection,
-    AIKeysConfig,
     BackupAdapterConfig,
-    EmailAdapterConfig,
+    ConfigTuiOutcome,
     FirecrawlAdapterConfig,
     ProvidersConfig,
     Subtab,
+    observe_config_tui,
     project_adapter_sections,
 )
 from teleclaude.cli.tui.views._project_actions import _load_raw_config, _resolve_config_path
@@ -46,6 +46,7 @@ from teleclaude.config import (
     ChiptunesConfig,
     ComputerConfig,
     DiscordConfig,
+    EmailConfig,
     RedisConfig,
     STTConfig,
     SummarizerConfig,
@@ -407,10 +408,29 @@ class ConfigContent(
         cached = self._reflected_cache.get(tab)
         if cached is not None:
             return cached
+        render_cycle_id = str(uuid4())
+        observe_config_tui(ConfigTuiOutcome.RENDER_REQUESTED, render_cycle_id=render_cycle_id, subtab=tab.value)
         fields = self._build_reflected_fields(tab)
         resolve_env_placeholders(fields)
+        observe_config_tui(
+            ConfigTuiOutcome.RENDERED,
+            render_cycle_id=render_cycle_id,
+            field_paths=[field.key for field in fields],
+            source_kinds={field.key: self._field_source_kind(field) for field in fields},
+        )
         self._reflected_cache[tab] = fields
         return fields
+
+    def _field_source_kind(self, field: ReflectedField) -> str:
+        """Classify a rendered field source without exposing its value."""
+        if field.env_var:
+            return "placeholder"
+        node: object = self._raw_config
+        for part in field.key.split("."):
+            if not isinstance(node, dict) or part not in node:
+                return "default"
+            node = node[part]
+        return "literal"
 
     def _build_reflected_fields(self, tab: Subtab) -> list[ReflectedField]:
         """Construct the reflected fields for a subtab from the current raw config."""
@@ -496,19 +516,6 @@ class ConfigContent(
                 telegram_obj, prefix="telegram", section="Telegram", owning_source="machine", inherited_tier=Tier.TUI
             )
 
-            # Add environment-backed Telegram bot token manually
-            fields.append(
-                ReflectedField(
-                    key="telegram.bot_token",
-                    name="Bot Token",
-                    field_type=str,
-                    value=telegram_data.get("bot_token", "${TELEGRAM_BOT_TOKEN}"),
-                    description="Telegram Bot API token from @BotFather",
-                    section="Telegram",
-                    owning_source="machine",
-                )
-            )
-
             discord_data = self._raw_config.get("discord", {})
             merged_discord = deep_merge(_default_section("discord"), discord_data)
             discord_fields = {f.name for f in dataclasses.fields(DiscordConfig)}
@@ -537,20 +544,7 @@ class ConfigContent(
             return fields
 
         if tab == Subtab.PROVIDERS:
-            # Providers remain environment-only settings
             providers_obj = ProvidersConfig(
-                ai=AIKeysConfig(
-                    anthropic_api_key="${ANTHROPIC_API_KEY}",
-                    openai_api_key="${OPENAI_API_KEY}",
-                    google_api_key="${GOOGLE_API_KEY}",
-                ),
-                email=EmailAdapterConfig(
-                    email_from="${EMAIL_FROM}",
-                    email_replyto="${EMAIL_REPLYTO}",
-                    smtp_username="${SMTP_USERNAME}",
-                    smtp_key="${SMTP_KEY}",
-                    smtp_relay="${SMTP_RELAY}",
-                ),
                 backup=BackupAdapterConfig(
                     aws_access_key_id="${AWS_ACCESS_KEY_ID}",
                     aws_secret_access_key="${AWS_SECRET_ACCESS_KEY}",
@@ -561,7 +555,19 @@ class ConfigContent(
                 ),
                 firecrawl=FirecrawlAdapterConfig(api_key="${FIRECRAWL_API_KEY}"),
             )
-            return reflect_schema(providers_obj, section="Providers", owning_source="machine", inherited_tier=Tier.TUI)
+            fields = reflect_schema(
+                providers_obj, section="Providers", owning_source="machine", inherited_tier=Tier.TUI
+            )
+            email_data = self._raw_config.get("email", {})
+            merged_email = deep_merge(_default_section("email"), email_data)
+            email_fields = {field.name for field in dataclasses.fields(EmailConfig)}
+            email_obj = EmailConfig(**{key: value for key, value in merged_email.items() if key in email_fields})
+            fields.extend(
+                reflect_schema(
+                    email_obj, prefix="email", section="Email", owning_source="machine", inherited_tier=Tier.TUI
+                )
+            )
+            return fields
 
         if tab == Subtab.SUMMARIZER:
             summarizer_obj = parse_summarizer_config(self._raw_config.get("summarizer", {})) or SummarizerConfig()
@@ -572,11 +578,6 @@ class ConfigContent(
                 owning_source="machine",
                 inherited_tier=Tier.TUI,
             )
-            # Map summarizer models to their correct YAML paths
-            for f in fields:
-                if f.key.startswith("summarizer.models."):
-                    provider = f.key.split(".")[-1]
-                    f.key = f"summarizer.{provider}.model"
             return fields
 
         if tab == Subtab.TTS_STT:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib
-import os
 from collections.abc import Awaitable, Callable, Mapping
 from types import ModuleType
 from typing import TYPE_CHECKING, Protocol, cast
@@ -127,21 +126,11 @@ class DiscordAdapter(
         self.client = client
         self.task_registry = task_registry
         self._discord: ModuleType = importlib.import_module("discord")
-        configured_token = config.discord.token.strip() if config.discord.token else ""
-        self._token = configured_token or os.getenv("DISCORD_BOT_TOKEN", "").strip()  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
-        self._guild_id = config.discord.guild_id or self._parse_optional_int(os.getenv("DISCORD_GUILD_ID"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
-        self._help_desk_channel_id = config.discord.help_desk_channel_id or self._parse_optional_int(
-            # guard: direct-env-read - temporary migration: config-credentials-via-config
-            os.getenv("DISCORD_HELP_DESK_CHANNEL_ID")
-        )
-        self._all_sessions_channel_id = config.discord.all_sessions_channel_id or self._parse_optional_int(
-            # guard: direct-env-read - temporary migration: config-credentials-via-config
-            os.getenv("DISCORD_ALL_SESSIONS_CHANNEL_ID")
-        )
-        self._escalation_channel_id: int | None = config.discord.escalation_channel_id or self._parse_optional_int(
-            # guard: direct-env-read - temporary migration: config-credentials-via-config
-            os.getenv("DISCORD_ESCALATION_CHANNEL_ID")
-        )
+        self._token = config.discord.token.strip() if config.discord.token else ""
+        self._guild_id = config.discord.guild_id
+        self._help_desk_channel_id = config.discord.help_desk_channel_id
+        self._all_sessions_channel_id = config.discord.all_sessions_channel_id
+        self._escalation_channel_id: int | None = config.discord.escalation_channel_id
         self._operator_chat_channel_id: int | None = config.discord.operator_chat_channel_id
         self._announcements_channel_id: int | None = config.discord.announcements_channel_id
         self._general_channel_id: int | None = config.discord.general_channel_id

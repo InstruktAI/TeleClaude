@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING, Any, get_args
+from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
 
@@ -21,31 +22,19 @@ from teleclaude.cli.tui.views._config_constants import (
     _GUIDED_STEPS,
     _SUBTABS,
     AdapterSectionProjection,
+    ConfigTuiOutcome,
     Subtab,
+    observe_config_tui,
 )
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
-from teleclaude.config import DEFAULT_CONFIG, config
-from teleclaude.config._coerce import as_bool
+from teleclaude.config import DEFAULT_CONFIG, build_config_from_raw, config, config_path, reload_config
 from teleclaude.config.loader import load_company_config_for_slug, save_company_config
 from teleclaude.config.schema import PersonEntry
-from teleclaude.config.validation import missing_required_fields, validated_sections
+from teleclaude.config.validation import is_unresolved_placeholder, missing_required_fields, validated_sections
 
 
 def _apply_field_to_global_config(key: str, deserialized: Any) -> None:
     parts = key.split(".")
-    # Special case for summarizer cloud models
-    if (
-        len(parts) == 3
-        and parts[0] == "summarizer"
-        and parts[1] in ("openai", "anthropic", "google")
-        and parts[2] == "model"
-    ):
-        provider = parts[1]
-        if config.summarizer is not None:
-            config.summarizer.models[provider] = deserialized
-        return
-
-    # Standard traversal, descending list indices, dict members, and attributes alike.
     obj = config
     for part in parts[:-1]:
         obj = _descend(obj, part)
@@ -451,11 +440,15 @@ class ConfigContentEditingMixin:
         section_name, field_name = key.split(".", 1)
         if section_name not in validated_sections():
             return None
-        section = dict(self._raw_config.get(section_name) or {})  # type: ignore[attr-defined]
+        candidate_raw = dict(self._raw_config)  # type: ignore[attr-defined]
+        section = dict(candidate_raw.get(section_name) or {})
         section[field_name] = deserialized
-        if not as_bool(section.get("enabled", False)):
+        candidate_raw[section_name] = section
+        candidate = build_config_from_raw(candidate_raw, config_path.parent)
+        typed_section = getattr(candidate, section_name)
+        if not typed_section.enabled:
             return None  # disabled (or being disabled) never blocks
-        missing = missing_required_fields(section_name, section)
+        missing = missing_required_fields(section_name, typed_section)
         if missing:
             return f"{section_name} is enabled but not configured: fill {', '.join(missing)} (or disable it)."
         return None
@@ -487,6 +480,8 @@ class ConfigContentEditingMixin:
 
     def _save_reflected_field(self, key: str, raw_value: Any) -> None:
         """Parse, validate, and write a reflected field value back to its source."""
+        operation_id = str(uuid4())
+        observe_config_tui(ConfigTuiOutcome.SAVE_REQUESTED, operation_id=operation_id, field_paths=[key])
         tab = _SUBTABS[self.active_subtab]  # type: ignore[attr-defined]
         if tab == Subtab.PEOPLE and self._expanded_person is not None:  # type: ignore[attr-defined]
             fields = self.person_reflected_fields
@@ -503,9 +498,16 @@ class ConfigContentEditingMixin:
             if f.env_var:
                 # ${VAR}-backed field: persist to .env, leave the placeholder in config.yml.
                 set_env_var(f.env_var, str(deserialized))
+                reload_config()
             elif f.owning_source == "machine":
                 block_reason = self._section_write_block_reason(key, deserialized)
                 if block_reason is not None:
+                    observe_config_tui(
+                        ConfigTuiOutcome.BLOCKED,
+                        operation_id=operation_id,
+                        field_paths=[key],
+                        source="config",
+                    )
                     self._status_message = block_reason  # type: ignore[attr-defined]
                     self._status_is_error = True  # type: ignore[attr-defined]
                     return
@@ -572,9 +574,21 @@ class ConfigContentEditingMixin:
             self._edit_buffer = ""  # type: ignore[attr-defined]
             self._status_message = f"Saved {f.name} successfully."  # type: ignore[attr-defined]
             self._status_is_error = False  # type: ignore[attr-defined]
+            observe_config_tui(
+                ConfigTuiOutcome.SAVED,
+                operation_id=operation_id,
+                field_paths=[key],
+                source="environment" if f.env_var else "config",
+            )
             self.refresh_data()  # type: ignore[attr-defined]
 
         except Exception as exc:
+            observe_config_tui(
+                ConfigTuiOutcome.FAILED,
+                operation_id=operation_id,
+                field_paths=[key],
+                source="environment" if f.env_var else "config",
+            )
             self._status_message = f"Failed to save {f.name}: {exc}"  # type: ignore[attr-defined]
             self._status_is_error = True  # type: ignore[attr-defined]
             self.refresh(layout=True)  # type: ignore[attr-defined]
@@ -656,8 +670,25 @@ class ConfigContentEditingMixin:
             # Non-blocking or immediately considered complete
             return True
         if step.subtab == Subtab.INFRA:
-            # Redis is mandatory infrastructure; the step is not satisfied until it is set.
-            return bool(os.environ.get("REDIS_URL"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+            redis = self._raw_config.get("redis", {})  # type: ignore[attr-defined]
+            redis_url = redis.get("url") if isinstance(redis, dict) else None
+            if redis_url is None:
+                disposition = "default"
+                complete = False
+            elif is_unresolved_placeholder(redis_url):
+                disposition = "unresolved"
+                complete = False
+            else:
+                disposition = "explicit"
+                complete = True
+            observe_config_tui(
+                ConfigTuiOutcome.GUIDED_COMPLETENESS,
+                operation_id=str(uuid4()),
+                step="infra",
+                complete=complete,
+                source=disposition,
+            )
+            return complete
         if step.subtab == Subtab.PEOPLE:
             # People step is complete with at least one admin-role person.
             return any(p.role == "admin" for p in self._people_data)  # type: ignore[attr-defined]

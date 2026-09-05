@@ -9,7 +9,6 @@ Refactored to be adapter-agnostic utility that accepts generic callbacks.
 """
 
 import asyncio
-import os
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -64,18 +63,8 @@ def _get_service_chain() -> list[tuple[str, STTBackend]]:
     return list(BACKENDS.items())
 
 
-def init_voice_handler(api_key: str | None = None) -> None:
-    """Initialize voice handler.
-
-    Kept for backward compatibility with daemon lifecycle.
-    The OpenAI backend now lazy-inits from OPENAI_API_KEY env var,
-    so this is effectively a no-op unless you need to set the key explicitly.
-
-    Args:
-        api_key: OpenAI API key (sets env var for the Whisper backend)
-    """
-    if api_key:
-        os.environ.setdefault("OPENAI_API_KEY", api_key)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+def init_voice_handler() -> None:
+    """Initialize the configured voice backends."""
     logger.info("Voice handler initialized (STT backends: %s)", list(BACKENDS.keys()))
 
 

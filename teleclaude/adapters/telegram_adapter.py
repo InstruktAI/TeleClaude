@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -151,14 +150,10 @@ class TelegramAdapter(
         self.client = client
         self.task_registry = task_registry
 
-        # Get global config singleton
-        # config already imported
-
-        # Extract values from environment
-        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+        bot_token = config.telegram.bot_token
         if not bot_token:
-            raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
-        self.bot_token: str = bot_token  # Guaranteed non-None after check
+            raise ValueError("telegram.bot_token is required in config.yml")
+        self.bot_token: str = bot_token
 
         # Extract from config singleton
         self.trusted_dirs = config.computer.get_all_trusted_dirs()

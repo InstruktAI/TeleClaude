@@ -6,29 +6,38 @@
 """Send an ops Telegram message via Bot API.
 
 This entrypoint is intended for break-glass alerts when TeleClaude is down.
-It targets a username (not chat IDs) via TELEGRAM_ALERT_USERNAME by default.
+It uses the configured Telegram alert username or chat ID by default.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
+import sys
 import urllib.parse
 import urllib.request
 from typing import TypedDict
 
 from instrukt_ai_logging import configure_logging, get_logger
 
+from teleclaude.config import config
 from teleclaude.constants import MAIN_MODULE
 
 configure_logging("teleclaude")
 logger = get_logger(__name__)
 
 
-DEFAULT_TOKEN_ENV = "TELEGRAM_BOT_TOKEN"
-DEFAULT_USERNAME_ENV = "TELEGRAM_ALERT_USERNAME"
-DEFAULT_CHAT_ID_ENV = "TELEGRAM_ALERT_CHAT_ID"
+TOKEN_ENV_FLAG = "--token-env"
+USERNAME_ENV_FLAG = "--username-env"
+CHAT_ID_ENV_FLAG = "--chat-id-env"
+TOKEN_CONFIG_PATH = "telegram.bot_token"
+USERNAME_CONFIG_PATH = "telegram.alert_username"
+CHAT_ID_CONFIG_PATH = "telegram.alert_chat_id"
+DEPRECATED_FLAGS = {
+    TOKEN_ENV_FLAG: TOKEN_CONFIG_PATH,
+    USERNAME_ENV_FLAG: USERNAME_CONFIG_PATH,
+    CHAT_ID_ENV_FLAG: CHAT_ID_CONFIG_PATH,
+}
 
 
 class ApiResponse(TypedDict, total=False):
@@ -61,16 +70,14 @@ def _normalize_username(value: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     """Parse CLI options and send a Telegram Bot API message."""
     parser = argparse.ArgumentParser(description="Send an ops Telegram message (Bot API sendMessage).")
-    parser.add_argument("--token-env", default=DEFAULT_TOKEN_ENV, help="Env var containing bot token.")
+    parser.add_argument(TOKEN_ENV_FLAG, help="Deprecated; configure telegram.bot_token instead.")
     parser.add_argument(
-        "--username-env",
-        default=DEFAULT_USERNAME_ENV,
-        help="Env var containing the target Telegram username (without chat IDs).",
+        USERNAME_ENV_FLAG,
+        help="Deprecated; configure telegram.alert_username instead.",
     )
     parser.add_argument(
-        "--chat-id-env",
-        default=DEFAULT_CHAT_ID_ENV,
-        help="Env var containing the target Telegram chat_id (e.g. supergroup).",
+        CHAT_ID_ENV_FLAG,
+        help="Deprecated; configure telegram.alert_chat_id instead.",
     )
     parser.add_argument(
         "--to",
@@ -86,21 +93,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout seconds.")
     parser.add_argument("--parse-mode", default=None, help="Optional parse_mode (e.g. MarkdownV2, HTML).")
 
-    args = parser.parse_args(argv)
+    command_args = argv if argv is not None else sys.argv[1:]
+    args = parser.parse_args(command_args)
+    for flag, config_path in DEPRECATED_FLAGS.items():
+        if any(argument == flag or argument.startswith(f"{flag}=") for argument in command_args):
+            logger.warning("deprecated_argument", argument=flag, config_path=config_path)
 
-    token = os.getenv(args.token_env)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+    token = config.telegram.bot_token
     if not token:
-        logger.error("missing_token_env", env=args.token_env)
+        logger.error("missing_config", config_path=TOKEN_CONFIG_PATH)
         return 2
 
-    raw_chat_id = args.chat_id or os.getenv(args.chat_id_env, "")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+    raw_chat_id = args.chat_id or config.telegram.alert_chat_id or ""
     chat_id = str(raw_chat_id).strip() if raw_chat_id is not None else ""
 
-    raw_username = args.to or os.getenv(args.username_env, "")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+    raw_username = args.to or config.telegram.alert_username or ""
     username = _normalize_username(raw_username)
 
     if not chat_id and not username:
-        logger.error("missing_alert_target", chat_id_env=args.chat_id_env, username_env=args.username_env)
+        logger.error("missing_alert_target", chat_id_config=CHAT_ID_CONFIG_PATH, username_config=USERNAME_CONFIG_PATH)
         return 2
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"

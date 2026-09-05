@@ -13,12 +13,21 @@ import asyncio
 import httpx
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
+from teleclaude.services.provider_observation import (
+    Provider,
+    ProviderOutcome,
+    client_cleanup_details,
+    new_operation_id,
+    observe_provider,
+)
+
 logger = get_logger(__name__)
 
 WHATSAPP_MAX_MESSAGE_LENGTH = 4096
 
 
-async def _close_client(client: httpx.AsyncClient) -> None:
+async def _close_client(client: httpx.AsyncClient) -> bool:
     """Close a request-scoped HTTP client safely during shutdown."""
     task = asyncio.current_task()
     task_name = task.get_name() if task is not None else "unknown"
@@ -29,8 +38,9 @@ async def _close_client(client: httpx.AsyncClient) -> None:
         if str(exc) != "Event loop is closed":
             raise
         logger.warning("whatsapp http client close hit closed loop", task_name=task_name)
-        return
+        return False
     logger.debug("whatsapp http client close done", task_name=task_name)
+    return True
 
 
 async def send_whatsapp_message(
@@ -43,55 +53,107 @@ async def send_whatsapp_message(
     timeout_s: float = 10.0,
 ) -> str:
     """Send a WhatsApp text message via the WhatsApp Cloud API."""
-    if not phone_number or not phone_number.strip():
-        raise ValueError("phone_number is required")
-    if not content or not content.strip():
-        raise ValueError("Notification content is empty")
-    if not phone_number_id or not phone_number_id.strip():
-        raise ValueError("phone_number_id is required")
-    if not access_token or not access_token.strip():
-        raise ValueError("access_token is required")
-
-    text = content[:WHATSAPP_MAX_MESSAGE_LENGTH]
-    if len(content) > WHATSAPP_MAX_MESSAGE_LENGTH:
-        logger.warning(
-            "whatsapp message truncated",
-            original_len=len(content),
-            max_len=WHATSAPP_MAX_MESSAGE_LENGTH,
-        )
-
-    url = f"https://graph.facebook.com/{api_version}/{phone_number_id}/messages"
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": phone_number,
-        "type": "text",
-        "text": {"body": text},
-    }
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-
-    task = asyncio.current_task()
-    task_name = task.get_name() if task is not None else "unknown"
-    logger.debug("whatsapp http client create", task_name=task_name, phone_number=phone_number)
-    client = httpx.AsyncClient(timeout=timeout_s)
+    operation_id = new_operation_id()
+    observation_details = {"credential_source": "config", "load_id": config.load_id}
+    observe_provider(
+        Provider.WHATSAPP,
+        ProviderOutcome.ACCEPTED,
+        operation_id,
+        **observation_details,
+    )
+    terminal_observed = False
+    client_cleanup_completed = False
     try:
-        response = await client.post(url, json=payload, headers=headers)
-    finally:
-        await _close_client(client)
+        if not phone_number or not phone_number.strip():
+            raise ValueError("phone_number is required")
+        if not content or not content.strip():
+            observe_provider(
+                Provider.WHATSAPP,
+                ProviderOutcome.REJECTED,
+                operation_id,
+                reason="empty_content",
+                **observation_details,
+            )
+            terminal_observed = True
+            raise ValueError("Notification content is empty")
+        if not phone_number_id or not phone_number_id.strip():
+            observe_provider(Provider.WHATSAPP, ProviderOutcome.MISSING_CONFIG, operation_id, **observation_details)
+            terminal_observed = True
+            raise ValueError("phone_number_id is required")
+        if not access_token or not access_token.strip():
+            observe_provider(Provider.WHATSAPP, ProviderOutcome.MISSING_CONFIG, operation_id, **observation_details)
+            terminal_observed = True
+            raise ValueError("access_token is required")
 
-    if response.status_code >= 400:
+        text = content[:WHATSAPP_MAX_MESSAGE_LENGTH]
+        if len(content) > WHATSAPP_MAX_MESSAGE_LENGTH:
+            logger.warning(
+                "whatsapp message truncated",
+                original_len=len(content),
+                max_len=WHATSAPP_MAX_MESSAGE_LENGTH,
+            )
+
+        url = f"https://graph.facebook.com/{api_version}/{phone_number_id}/messages"
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "text",
+            "text": {"body": text},
+        }
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        task = asyncio.current_task()
+        task_name = task.get_name() if task is not None else "unknown"
+        logger.debug("whatsapp http client create", task_name=task_name, phone_number=phone_number)
+        client = httpx.AsyncClient(timeout=timeout_s)
         try:
-            body = response.json()
-            detail = body.get("error", {}).get("message") or response.text[:200]
-        except (ValueError, KeyError):
-            detail = response.text[:200]
-        raise RuntimeError(f"WhatsApp send failed (HTTP {response.status_code}): {detail}")
+            response = await client.post(url, json=payload, headers=headers)
+        finally:
+            client_cleanup_completed = await _close_client(client)
 
-    message_id = str(response.json()["messages"][0]["id"])
-    logger.info("whatsapp message sent", phone_number=phone_number, message_id=message_id)
-    return message_id
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                detail = body.get("error", {}).get("message") or response.text[:200]
+            except (ValueError, KeyError):
+                detail = response.text[:200]
+            raise RuntimeError(f"WhatsApp send failed (HTTP {response.status_code}): {detail}")
+
+        message_id = str(response.json()["messages"][0]["id"])
+        logger.info("whatsapp message sent", phone_number=phone_number, message_id=message_id)
+        observe_provider(
+            Provider.WHATSAPP,
+            ProviderOutcome.SENT,
+            operation_id,
+            message_id=message_id,
+            **observation_details,
+            **client_cleanup_details(client_cleanup_completed),
+        )
+        terminal_observed = True
+        return message_id
+    except asyncio.CancelledError:
+        if not terminal_observed:
+            observe_provider(
+                Provider.WHATSAPP,
+                ProviderOutcome.REJECTED,
+                operation_id,
+                **observation_details,
+                **client_cleanup_details(client_cleanup_completed),
+            )
+        raise
+    except Exception:
+        if not terminal_observed:
+            observe_provider(
+                Provider.WHATSAPP,
+                ProviderOutcome.REJECTED,
+                operation_id,
+                **observation_details,
+                **client_cleanup_details(client_cleanup_completed),
+            )
+        raise
 
 
 async def fetch_whatsapp_media_bytes(

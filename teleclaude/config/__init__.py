@@ -10,9 +10,11 @@ import socket
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 from dotenv import dotenv_values
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config._bootstrap import resolve_runtime_config_path
 from teleclaude.config._chiptunes import ChiptunesConfig as ChiptunesConfig
@@ -56,6 +58,7 @@ from teleclaude.config._remote_computers import parse_remote_computers as _parse
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
 from teleclaude.config._summarizer import SummarizerLocalConfig as SummarizerLocalConfig
 from teleclaude.config._summarizer import parse_summarizer_config as _parse_summarizer_config
+from teleclaude.config.observation import credential_field_sources, credential_section_availability
 from teleclaude.config.tiers import Tier, dataclass_field_tier, effective_tier, in_public_sample
 from teleclaude.constants import (
     AGENT_PROTOCOL,
@@ -74,6 +77,19 @@ from teleclaude.constants import (
 from teleclaude.paths import PROJECT_ENV_PATH, ConfigFileName
 from teleclaude.runtime.binaries import resolve_agent_binary, resolve_tmux_binary
 from teleclaude.utils import expand_env_vars
+
+logger = get_logger(__name__)
+
+CONFIG_LOAD_EVENT = "config_load_observation"
+CONFIG_LOAD_ACCEPTED = "accepted"
+CONFIG_LOAD_RESOLVED = "resolved"
+CONFIG_LOAD_REJECTED = "rejected"
+CONFIG_LOAD_STAGE = "stage"
+CONFIG_LOAD_BUILD = "build"
+CONFIG_LOAD_ID = "load_id"
+CONFIG_LOAD_OUTCOME = "outcome"
+CONFIG_LOAD_FIELD_SOURCES = "field_sources"
+CONFIG_LOAD_SECTION_AVAILABILITY = "section_availability"
 
 # Project root (relative to this file)
 _project_root = Path(__file__).parent.parent.parent
@@ -425,6 +441,7 @@ def _parse_tts_service(service_data: object) -> TTSServiceConfig | None:
         enabled=_as_bool(service_data.get("enabled", False)),
         voices=voices if voices else None,
         model=str(service_data.get("model")) if service_data.get("model") else None,
+        api_key=str(service_data.get("api_key")) if service_data.get("api_key") else None,
         params=params,
     )
 
@@ -540,6 +557,7 @@ def parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # 
                 services[service_name] = STTServiceConfig(
                     enabled=_as_bool(service_data.get("enabled", False)),
                     model=str(service_data.get("model")) if service_data.get("model") else None,
+                    api_key=str(service_data.get("api_key")) if service_data.get("api_key") else None,
                 )
 
     return STTConfig(enabled=stt_enabled, service_priority=service_priority, services=services)
@@ -556,8 +574,17 @@ def _parse_optional_int(value: object) -> int | None:
     return None
 
 
+def _parse_optional_str(value: object) -> str | None:
+    """Normalize an optional machine-config scalar to a non-empty string."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _build_config(
     raw: dict[str, object],  # guard: loose-dict - YAML deserialization input
+    load_id: str,
 ) -> TeleclaudeConfig:
     """Build typed TeleclaudeConfig from raw dict with proper type conversion."""
     comp_raw = raw["computer"]
@@ -685,24 +712,13 @@ def _build_config(
     whatsapp_enabled_flag = False
 
     if isinstance(whatsapp_raw, dict):
-        whatsapp_phone_number_id = (
-            str(whatsapp_raw.get("phone_number_id")) if whatsapp_raw.get("phone_number_id") else None
-        )
-        whatsapp_access_token = str(whatsapp_raw.get("access_token")) if whatsapp_raw.get("access_token") else None
-        whatsapp_webhook_secret = (
-            str(whatsapp_raw.get("webhook_secret")) if whatsapp_raw.get("webhook_secret") else None
-        )
-        whatsapp_verify_token = str(whatsapp_raw.get("verify_token")) if whatsapp_raw.get("verify_token") else None
-        whatsapp_template_name = str(whatsapp_raw.get("template_name")) if whatsapp_raw.get("template_name") else None
+        whatsapp_phone_number_id = _parse_optional_str(whatsapp_raw.get("phone_number_id"))
+        whatsapp_access_token = _parse_optional_str(whatsapp_raw.get("access_token"))
+        whatsapp_webhook_secret = _parse_optional_str(whatsapp_raw.get("webhook_secret"))
+        whatsapp_verify_token = _parse_optional_str(whatsapp_raw.get("verify_token"))
+        whatsapp_template_name = _parse_optional_str(whatsapp_raw.get("template_name"))
         whatsapp_template_language = str(whatsapp_raw.get("template_language") or "en_US")
         whatsapp_enabled_flag = _as_bool(whatsapp_raw.get("enabled", False))
-
-    whatsapp_phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID") or whatsapp_phone_number_id
-    whatsapp_access_token = os.getenv("WHATSAPP_ACCESS_TOKEN") or whatsapp_access_token
-    whatsapp_webhook_secret = os.getenv("WHATSAPP_WEBHOOK_SECRET") or whatsapp_webhook_secret
-    whatsapp_verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN") or whatsapp_verify_token
-    whatsapp_template_name = os.getenv("WHATSAPP_TEMPLATE_NAME") or whatsapp_template_name
-    whatsapp_template_language = os.getenv("WHATSAPP_TEMPLATE_LANGUAGE") or whatsapp_template_language
 
     # The explicit `enabled` flag is authoritative. Presence of credentials must
     # never force-enable the adapter — config-shipped ${VAR} placeholders are
@@ -755,6 +771,13 @@ def _build_config(
         ),
         telegram=TelegramConfig(
             enabled=_as_bool(telegram_raw.get("enabled", False)) if isinstance(telegram_raw, dict) else False,
+            bot_token=_parse_optional_str(telegram_raw.get("bot_token")) if isinstance(telegram_raw, dict) else None,
+            alert_username=(
+                _parse_optional_str(telegram_raw.get("alert_username")) if isinstance(telegram_raw, dict) else None
+            ),
+            alert_chat_id=(
+                _parse_optional_str(telegram_raw.get("alert_chat_id")) if isinstance(telegram_raw, dict) else None
+            ),
             qos=TelegramQoSConfig(),
         ),
         discord=DiscordConfig(
@@ -805,16 +828,28 @@ def _build_config(
             api_version=WHATSAPP_API_VERSION,
             template_name=whatsapp_template_name,
             template_language=whatsapp_template_language,
+            business_number=(
+                _parse_optional_str(whatsapp_raw.get("business_number")) if isinstance(whatsapp_raw, dict) else None
+            ),
             qos=WhatsAppQoSConfig(),
         ),
-        email=EmailConfig(enabled=email_enabled),
+        email=EmailConfig(
+            enabled=email_enabled,
+            smtp_username=_parse_optional_str(email_raw.get("smtp_username")) if isinstance(email_raw, dict) else None,
+            smtp_key=_parse_optional_str(email_raw.get("smtp_key")) if isinstance(email_raw, dict) else None,
+            email_from=_parse_optional_str(email_raw.get("email_from")) if isinstance(email_raw, dict) else None,
+            reply_to=_parse_optional_str(email_raw.get("reply_to")) if isinstance(email_raw, dict) else None,
+            smtp_relay=_parse_optional_str(email_raw.get("smtp_relay")) if isinstance(email_raw, dict) else None,
+        ),
         tts=parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=parse_stt_config(stt_raw),  # type: ignore[arg-type]
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
         process_janitor=_parse_process_janitor_config(process_janitor_raw),  # type: ignore[arg-type]
         workflow=_parse_workflow_config(workflow_raw),  # type: ignore[arg-type]
         deployment=_parse_deployment_config(deployment_raw),  # type: ignore[arg-type]
+        database_url=_parse_optional_str(raw.get("database_url")),
         summarizer=_parse_summarizer_config(summarizer_raw),  # type: ignore[arg-type]
+        load_id=load_id,
         experiments=experiments,
         remote_computers=remote_computers,
     )
@@ -834,6 +869,12 @@ def restart_required_sections(changed: list[str]) -> list[str]:
 
 def build_config_from_raw(raw_user_config: object, sibling_dir: Path) -> TeleclaudeConfig:
     """Build the typed config from raw YAML and adjacent machine-config files."""
+    load_id = str(uuid4())
+    field_sources = credential_field_sources(raw_user_config)
+    logger.info(
+        CONFIG_LOAD_EVENT,
+        **{CONFIG_LOAD_ID: load_id, CONFIG_LOAD_OUTCOME: CONFIG_LOAD_ACCEPTED, CONFIG_LOAD_STAGE: CONFIG_LOAD_BUILD},
+    )
     user_config: Any = (
         strip_unset_placeholders(expand_env_vars(raw_user_config)) if isinstance(raw_user_config, dict) else {}
     )
@@ -854,7 +895,28 @@ def build_config_from_raw(raw_user_config: object, sibling_dir: Path) -> Telecla
         pass
 
     merged = deep_merge(DEFAULT_CONFIG, user_config)  # type: ignore[arg-type]
-    return _build_config(merged)
+    try:
+        resolved = _build_config(merged, load_id)
+    except Exception:
+        logger.info(
+            CONFIG_LOAD_EVENT,
+            **{
+                CONFIG_LOAD_ID: load_id,
+                CONFIG_LOAD_OUTCOME: CONFIG_LOAD_REJECTED,
+                CONFIG_LOAD_STAGE: CONFIG_LOAD_BUILD,
+            },
+        )
+        raise
+    logger.info(
+        CONFIG_LOAD_EVENT,
+        **{
+            CONFIG_LOAD_ID: load_id,
+            CONFIG_LOAD_OUTCOME: CONFIG_LOAD_RESOLVED,
+            CONFIG_LOAD_FIELD_SOURCES: field_sources,
+            CONFIG_LOAD_SECTION_AVAILABILITY: credential_section_availability(resolved),
+        },
+    )
+    return resolved
 
 
 def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
