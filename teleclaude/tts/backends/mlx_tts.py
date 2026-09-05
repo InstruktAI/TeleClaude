@@ -75,7 +75,7 @@ class MLXTTSBackend:
 
     def _resolve_cli_bin(self) -> str | None:
         """Find mlx-audio CLI executable for subprocess fallback."""
-        cli_from_env = os.getenv("TELECLAUDE_MLX_TTS_CLI_BIN")
+        cli_from_env = os.getenv("TELECLAUDE_MLX_TTS_CLI_BIN")  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
         if cli_from_env:
             candidate = str(Path(cli_from_env).expanduser())
             if Path(candidate).exists():
@@ -263,7 +263,7 @@ class MLXTTSBackend:
             }
 
             if model_type == "voice_design":
-                generate_kwargs["instruct"] = os.getenv("TELECLAUDE_MLX_TTS_INSTRUCT", DEFAULT_VOICE_DESIGN_INSTRUCT)
+                generate_kwargs["instruct"] = os.getenv("TELECLAUDE_MLX_TTS_INSTRUCT", DEFAULT_VOICE_DESIGN_INSTRUCT)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 
             # Merge config params, but never let user params override the internally-
             # controlled keys. Overriding `play` would cause double-playback (echo);

@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 # User's shell basename, computed once at import
 # Used for shell readiness detection in is_process_running()/wait_for_shell_ready()
-_SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()
+_SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
 _TMUX_OPERATION_ERRORS = (OSError, ValueError, SubprocessTimeoutError)
 _TMUX_DIAGNOSTIC_ERRORS = (OSError, ValueError, TypeError, psutil.Error, SubprocessTimeoutError)
 _SNAPSHOT_MARKER = "__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__"

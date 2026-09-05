@@ -89,7 +89,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
                        instead of killing orphans.
         """
         self.state = PaneState()
-        self._in_tmux = bool(os.environ.get("TMUX"))
+        self._in_tmux = bool(os.environ.get("TMUX"))  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         self._layout_state = _PaneLayoutState()
         self._session_catalog: dict[str, SessionDTO] = {}
         self._reload_state = _ReloadPaneState()
@@ -492,7 +492,7 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
         reloads) over display-message (which returns the currently FOCUSED
         pane — wrong if the user clicked a session pane before reload).
         """
-        pane_id = os.environ.get("TMUX_PANE")
+        pane_id = os.environ.get("TMUX_PANE")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         if pane_id:
             return pane_id
         output = self._run_tmux("display-message", "-p", "#{pane_id}")

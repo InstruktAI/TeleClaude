@@ -51,8 +51,9 @@ def _run_make_test(worktree_root: Path, *, timeout_seconds: int) -> _TestRunResu
     # Strip platform-environment leakage so the project resolves its own
     # interpreter and packages exactly as it would standalone.
     env = {
+        # guard: direct-env-read - allowed: child-process environment construction
         key: value for key, value in os.environ.items() if key not in {"VIRTUAL_ENV", "PYTHONPATH", "PYTEST_ADDOPTS"}
-    }
+    }  # fmt: skip
     env["PWD"] = str(worktree_root)
     env["TELEC_INVOCATION_CWD"] = str(worktree_root)
     # subprocess is the point of this gate: the project's native `make test`

@@ -112,7 +112,7 @@ def _handle_sync(args: list[str]) -> None:
         elif args[i] == "--skip-validation":
             # Hidden, watcher-only: the live-reload watcher must never block. Reject
             # for any other caller — agents must not bypass the validation gate.
-            if os.environ.get("TELEC_DOCS_WATCHER") != "1":
+            if os.environ.get("TELEC_DOCS_WATCHER") != "1":  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
                 raise SystemExit("--skip-validation is reserved for the docs watcher")
             skip_validation = True
             i += 1
@@ -245,7 +245,7 @@ async def _send_revive_enter_via_api(session_id: str, *, computer: str | None = 
 def _attach_tmux_session(tmux_session_name: str) -> None:
     """Attach or switch to a tmux session."""
     tmux = config.computer.tmux_binary
-    if os.environ.get("TMUX"):
+    if os.environ.get("TMUX"):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         subprocess.run([tmux, "switch-client", "-t", tmux_session_name], check=False)
         return
 
@@ -302,9 +302,9 @@ def _handle_projects(args: list[str]) -> None:
 
 def _maybe_kill_tui_session() -> None:
     """Kill the tc_tui tmux session if telec created it."""
-    if os.environ.get(TUI_ENV_KEY) != ENV_ENABLE:
+    if os.environ.get(TUI_ENV_KEY) != ENV_ENABLE:  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         return
-    if not os.environ.get(TMUX_ENV_KEY):
+    if not os.environ.get(TMUX_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         return
 
     tmux = config.computer.tmux_binary
@@ -328,7 +328,7 @@ def _maybe_kill_tui_session() -> None:
 
 def _ensure_tmux_mouse_on() -> None:
     """Ensure tmux mouse is enabled for the current window."""
-    if not os.environ.get(TMUX_ENV_KEY):
+    if not os.environ.get(TMUX_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         return
     tmux = config.computer.tmux_binary
     try:
@@ -343,7 +343,7 @@ def _ensure_tmux_mouse_on() -> None:
 
 def _ensure_tmux_status_hidden_for_tui() -> None:
     """Hide tmux status bar for the dedicated tc_tui session."""
-    if not os.environ.get(TMUX_ENV_KEY):
+    if not os.environ.get(TMUX_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         return
     tmux = config.computer.tmux_binary
     try:

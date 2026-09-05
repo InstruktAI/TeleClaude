@@ -40,7 +40,7 @@ async def send_telegram_dm(
     timeout_s: float = 10.0,
 ) -> str:
     """Send a Telegram message or document directly by chat_id."""
-    token = os.getenv(token_env)
+    token = os.getenv(token_env)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     if not token:
         raise ValueError("Missing Telegram bot token")
 

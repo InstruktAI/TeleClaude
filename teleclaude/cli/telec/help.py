@@ -371,7 +371,7 @@ def _print_completion(value: str, description: str) -> None:
 
 def _handle_completion() -> None:
     """Handle shell completion requests."""
-    comp_line = os.environ.get("COMP_LINE", "")
+    comp_line = os.environ.get("COMP_LINE", "")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     try:
         parts = shlex.split(comp_line, posix=True)
     except ValueError:

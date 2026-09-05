@@ -75,7 +75,7 @@ def init_voice_handler(api_key: str | None = None) -> None:
         api_key: OpenAI API key (sets env var for the Whisper backend)
     """
     if api_key:
-        os.environ.setdefault("OPENAI_API_KEY", api_key)
+        os.environ.setdefault("OPENAI_API_KEY", api_key)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     logger.info("Voice handler initialized (STT backends: %s)", list(BACKENDS.keys()))
 
 

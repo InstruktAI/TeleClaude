@@ -27,7 +27,7 @@ def _wrapper_dirs() -> set[Path]:
 def _find_real_git() -> str:
     """Walk PATH, skip the wrapper directory, return the first real git binary."""
     wrapper_dirs = _wrapper_dirs()
-    for entry in os.environ.get("PATH", "").split(os.pathsep):
+    for entry in os.environ.get("PATH", "").split(os.pathsep):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         entry_path = Path(entry).expanduser().resolve()
         if entry_path in wrapper_dirs:
             continue
@@ -40,7 +40,7 @@ def _find_real_git() -> str:
 # Point gitpython at the real binary BEFORE import to prevent recursion
 # through the wrapper (whose shebang is uv run).
 GIT_EXECUTABLE = _find_real_git()
-os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = GIT_EXECUTABLE
+os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = GIT_EXECUTABLE  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
 # ---------------------------------------------------------------------------
 # Observability: log every gitpython invocation (argv, rc, duration, stderr).
 #
@@ -150,7 +150,7 @@ def no_autostash_env() -> dict[str, str]:
     stash is repo-wide — auto-stash from one worktree corrupts another. Pass this
     to GitPython's env parameter to prevent stash creation without polluting os.environ.
     """
-    env = os.environ.copy()
+    env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
     count = int(env.get("GIT_CONFIG_COUNT", "0"))
     env[f"GIT_CONFIG_KEY_{count}"] = "rebase.autoStash"
     env[f"GIT_CONFIG_VALUE_{count}"] = "false"

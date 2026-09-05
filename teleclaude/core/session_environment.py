@@ -45,7 +45,7 @@ def build_agent_session_environment(
 ) -> dict[str, str]:
     """Return env vars explicitly allowed for an agent tmux session."""
 
-    source = source_env if source_env is not None else os.environ
+    source = source_env if source_env is not None else os.environ  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     env_vars: dict[str, str] = {}
     for name in _load_agent_env_allow_list(project_path):
         if name in source:

@@ -103,7 +103,7 @@ __all__ = [
 def main() -> None:
     """Main entry point for telec CLI."""
     # Handle shell completion before any other setup
-    if os.environ.get("TELEC_COMPLETE"):
+    if os.environ.get("TELEC_COMPLETE"):  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         _handle_completion()
         return
 
@@ -175,7 +175,7 @@ def _handle_cli_argv(argv: list[str]) -> None:
 
 
 def _start_tui(logger: InstruktAILogger) -> None:
-    if not os.environ.get(TMUX_ENV_KEY):
+    if not os.environ.get(TMUX_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         _exec_tmux_tui()
         return
 
@@ -209,7 +209,7 @@ def _exec_tmux_tui() -> None:
             capture_output=True,
         )
 
-    tui_env = filter_tui_tmux_environment(os.environ)
+    tui_env = filter_tui_tmux_environment(os.environ)  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
     tui_env[TUI_ENV_KEY] = ENV_ENABLE
     tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME]
     for key, value in tui_env.items():

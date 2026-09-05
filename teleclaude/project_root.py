@@ -49,10 +49,10 @@ def resolve_invocation_cwd() -> Path:
     2. ``PWD`` (shell environment, survives ``uv run --directory``).
     3. ``Path.cwd()`` (process cwd; potentially hijacked by uv).
     """
-    explicit = os.environ.get("TELEC_INVOCATION_CWD")
+    explicit = os.environ.get("TELEC_INVOCATION_CWD")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     if explicit:
         return Path(explicit)
-    pwd = os.environ.get("PWD")
+    pwd = os.environ.get("PWD")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     if pwd:
         return Path(pwd)
     return Path.cwd()

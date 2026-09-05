@@ -261,7 +261,7 @@ def _people_add(args: list[str], use_json: bool) -> None:
                     logger.warning("Failed to resolve Discord bot user ID: %s", e)
 
                 # WhatsApp number from env
-                whatsapp_number = os.environ.get("WHATSAPP_BUSINESS_NUMBER")
+                whatsapp_number = os.environ.get("WHATSAPP_BUSINESS_NUMBER")  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
 
                 # Generate links
                 links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)
@@ -447,7 +447,7 @@ def _env_set(pairs: list[str], use_json: bool) -> None:
         if not key or not value:
             continue
         _write_env_var(env_file, key, value)
-        os.environ[key] = value
+        os.environ[key] = value  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
         results.append({"name": key, "set": True})
 
     if use_json:
@@ -588,7 +588,7 @@ def _handle_invite(args: list[str]) -> None:
             logger.warning("Failed to resolve Discord bot user ID: %s", e)
 
         # WhatsApp number from env
-        whatsapp_number = os.environ.get("WHATSAPP_BUSINESS_NUMBER")
+        whatsapp_number = os.environ.get("WHATSAPP_BUSINESS_NUMBER")  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
 
         # Generate links
         links = generate_invite_links(token, telegram_username, discord_bot_id, whatsapp_number)

@@ -402,7 +402,7 @@ def discover_codex_transcript_path(native_session_id: str) -> str | None:
 
 def discover_current_codex_transcript_path() -> str | None:
     """Resolve the current Codex parent transcript from the live shell environment."""
-    current_thread_id = os.environ.get("CODEX_THREAD_ID", "").strip()
+    current_thread_id = os.environ.get("CODEX_THREAD_ID", "").strip()  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
     if not current_thread_id:
         return None
     return discover_codex_transcript_path(current_thread_id)

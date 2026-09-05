@@ -521,7 +521,7 @@ class _TelecConnectionClient:
 
     def _read_tmux_session_name(self) -> str | None:
         """Read tmux session name from tmux server for dual-factor checks."""
-        if not os.getenv(_TMUX_ENV):
+        if not os.getenv(_TMUX_ENV):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
             return None
         try:
             result = subprocess.run(

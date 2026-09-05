@@ -68,14 +68,14 @@ def dispatch_refresh(repo_root: Path, *, main_sha: str | None) -> None:
     """
     if main_sha is None:
         return
-    if os.environ.get(INTEGRATOR_GITOP_ENV) == ENV_ENABLE:
+    if os.environ.get(INTEGRATOR_GITOP_ENV) == ENV_ENABLE:  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         return
     if _dispatched_from_slug_worktree():
         return
     try:
         if not _lock_is_free(refresh_lock_path(repo_root)):
             return
-        env = dict(os.environ)
+        env = dict(os.environ)  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
         env["GRAPHIFY_REPO_ROOT"] = str(repo_root)
         subprocess.Popen(
             [sys.executable, "-m", "teleclaude.core.blueprint.refresh"],

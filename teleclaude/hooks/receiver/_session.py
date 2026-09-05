@@ -172,7 +172,7 @@ def _get_cached_session_id(agent: str, native_session_id: str | None) -> str | N
 
 
 def _get_tmux_contract_tmpdir() -> str:
-    tmpdir = os.getenv("TMPDIR") or os.getenv("TMP") or os.getenv("TEMP")
+    tmpdir = os.getenv("TMPDIR") or os.getenv("TMP") or os.getenv("TEMP")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     if not isinstance(tmpdir, str) or not tmpdir.strip():
         raise ValueError("TMUX hook contract violated: TMPDIR/TMP/TEMP is missing")
     return tmpdir
@@ -247,7 +247,7 @@ def _resolved_or_none(path: Path) -> Path | None:
 
 def _own_tmux_socket_path() -> Path | None:
     """Return the socket of the tmux server TeleClaude hosts its own panes on."""
-    tmux_tmpdir = os.getenv(_TMUX_TMPDIR_ENV) or _TMUX_DEFAULT_TMPDIR
+    tmux_tmpdir = os.getenv(_TMUX_TMPDIR_ENV) or _TMUX_DEFAULT_TMPDIR  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     socket_dir = f"{_TMUX_SOCKET_DIR_PREFIX}{os.getuid()}"
     return _resolved_or_none(Path(tmux_tmpdir) / socket_dir / _TMUX_DEFAULT_SOCKET_NAME)
 
@@ -263,7 +263,7 @@ def _in_own_tmux_pane() -> bool:
     as TeleClaude's own pane. That preserves managed-teardown attribution for a
     dying session rather than minting a headless session from its final hooks.
     """
-    tmux_env = os.getenv(_TMUX_ENV)
+    tmux_env = os.getenv(_TMUX_ENV)  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     if not tmux_env:
         return False
     socket_field = tmux_env.split(_TMUX_ENV_FIELD_SEPARATOR, 1)[0].strip()

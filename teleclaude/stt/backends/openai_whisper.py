@@ -19,7 +19,7 @@ class OpenAIWhisperBackend:
         """Lazy-init the OpenAI client on first use."""
         if self._client is not None:
             return True
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
         if not api_key:
             logger.debug("OpenAI Whisper STT unavailable: OPENAI_API_KEY not set")
             return False

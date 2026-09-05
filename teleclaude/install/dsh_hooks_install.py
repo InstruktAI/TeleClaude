@@ -34,7 +34,7 @@ def configure_dsh(
     package declares its own ``dsh.bundle.patch`` and the DSH installer composes
     that patch when the package is added to a profile.
     """
-    dsh_home = Path(os.environ.get("DSH_HOME", Path.home() / ".dsh"))
+    dsh_home = Path(os.environ.get("DSH_HOME", Path.home() / ".dsh"))  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     hooks_path = dsh_home / "hooks.json"
     hooks_path.parent.mkdir(parents=True, exist_ok=True)
 

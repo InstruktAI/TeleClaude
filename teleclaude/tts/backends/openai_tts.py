@@ -25,7 +25,7 @@ class OpenAITTSBackend:
             True if successful, False otherwise
         """
         try:
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = os.getenv("OPENAI_API_KEY")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
             if not api_key:
                 logger.debug("OPENAI_API_KEY not set")
                 return False

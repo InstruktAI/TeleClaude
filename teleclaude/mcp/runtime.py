@@ -290,7 +290,7 @@ def _launch_command(server: McpServerConfig) -> tuple[str, list[str]]:
 
 
 def _build_child_env(server: McpServerConfig, env_values: dict[str, str]) -> dict[str, str]:
-    child_env = {key: value for key, value in os.environ.items() if key in _PROCESS_ENV_ALLOWLIST}
+    child_env = {key: value for key, value in os.environ.items() if key in _PROCESS_ENV_ALLOWLIST}  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
     for name, value in server.env.items():
         child_env[name] = _resolve_placeholders(value, env_values)
     if server.transport != McpTransport.STDIO:

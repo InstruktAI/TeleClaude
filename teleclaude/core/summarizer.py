@@ -83,8 +83,11 @@ async def summarize_agent_output(agent_output: str) -> tuple[str | None, str]:
 
 def _provider_api_key(provider: str) -> str | None:
     return {
+        # guard: direct-env-read - temporary migration: config-credentials-via-config
         "anthropic": os.getenv("ANTHROPIC_API_KEY"),
+        # guard: direct-env-read - temporary migration: config-credentials-via-config
         "openai": os.getenv("OPENAI_API_KEY"),
+        # guard: direct-env-read - temporary migration: config-credentials-via-config
         "google": os.getenv("GOOGLE_API_KEY"),
     }.get(provider)
 
@@ -115,6 +118,7 @@ async def _call_summarizer(
                 schema,
                 parser,
                 base_url=summ.local.base_url,
+                # guard: direct-env-read - temporary migration: config-credentials-via-config
                 api_key=os.getenv("SUMMARIZER_LOCAL_API_KEY", _LOCAL_API_KEY_FALLBACK),
                 model=summ.local.model,
             )

@@ -77,7 +77,7 @@ def attach_tmux_session(
     if not tmux_session_name:
         return False
 
-    if not os.environ.get("TMUX"):
+    if not os.environ.get("TMUX"):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         return False
 
     local_tmux = config.computer.tmux_binary

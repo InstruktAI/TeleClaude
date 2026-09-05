@@ -135,7 +135,7 @@ def _positionals(args: list[str], *, allowed_flags: set[str], usage: str) -> lis
 def _resolve_quality_scope(project_root: Path, *, files: list[str], run_all: bool) -> list[str] | None:
     if files:
         return _validate_or_exit(files, project_root)
-    if run_all or os.environ.get("CI"):
+    if run_all or os.environ.get("CI"):  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         return None
 
     scope_resolution = resolve_workspace_scope_resolution(project_root)

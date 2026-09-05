@@ -48,7 +48,7 @@ def resolve_env_placeholders(fields: list[ReflectedField]) -> None:
         if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
             var = value[2:-1]
             field.env_var = var
-            field.value = os.environ.get(var, "")
+            field.value = os.environ.get(var, "")  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
 
 
 def _unpack_union(t: Any) -> list[Any]:

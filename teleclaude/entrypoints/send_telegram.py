@@ -88,15 +88,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    token = os.getenv(args.token_env)
+    token = os.getenv(args.token_env)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     if not token:
         logger.error("missing_token_env", env=args.token_env)
         return 2
 
-    raw_chat_id = args.chat_id or os.getenv(args.chat_id_env, "")
+    raw_chat_id = args.chat_id or os.getenv(args.chat_id_env, "")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     chat_id = str(raw_chat_id).strip() if raw_chat_id is not None else ""
 
-    raw_username = args.to or os.getenv(args.username_env, "")
+    raw_username = args.to or os.getenv(args.username_env, "")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     username = _normalize_username(raw_username)
 
     if not chat_id and not username:
