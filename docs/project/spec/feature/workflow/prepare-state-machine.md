@@ -344,15 +344,6 @@ And no reused prepare worker is exempt from caller-scoped prepared-cleanup
 ```
 <!-- /planned-change:terminal-child-session-cleanup -->
 
-<!-- planned-change:kickback-preserves-work-state -->
-#### UC-WPS2: PREPARED cleanup is unchanged without unblocked children
-
-```gherkin
-Given "parent" reaches PREPARED but has no dependent children whose prepare gate it satisfies
-When the machine derives PREPARED
-Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
-```
-<!-- change:kickback-preserves-work-state -->
 #### UC-WPS2: PREPARED cleanup is unchanged without unblocked children
 
 ```gherkin
@@ -361,7 +352,6 @@ And "parent" carries no in-flight build
 When the machine derives PREPARED
 Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
 ```
-<!-- /planned-change:kickback-preserves-work-state -->
 
 #### UC-WPS5: PREPARED emits a runner wake-up, not a child dispatch
 
@@ -376,7 +366,6 @@ And it does not emit a fresh `/next-prepare` run for any child
 And the lifecycle runner handles child eligibility and dispatch from the event wake-up
 ```
 
-<!-- planned:kickback-preserves-work-state -->
 #### UC-WPS19: PREPARED with an in-flight build directs resume instead of self-end
 
 ```gherkin
@@ -388,7 +377,6 @@ And the self-end instruction is omitted from the emitted cleanup
 And other live prepare-lane sessions for the slug are still ended, and the live builder session is not among them
 And the direction derives from the Todo's durable build residue, not from the session's memory of how it arrived
 ```
-<!-- /planned:kickback-preserves-work-state -->
 
 ### Explicit slug required
 

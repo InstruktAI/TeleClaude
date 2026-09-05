@@ -247,7 +247,6 @@ And only a current approve advances to review_approved
 And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
 ```
 
-<!-- planned:kickback-preserves-work-state -->
 #### UC-WSM9: Kickback work re-entry hands off to prepare in place with all working state preserved
 
 ```gherkin
@@ -285,7 +284,6 @@ And a live builder receives the same instructions as a message instead of a seco
 And the record of which plan version the build executes against settles only when the builder stamps build-complete under the amended plan
 And a crash-recovered session re-entering the build derives identical instructions from durable state alone
 ```
-<!-- /planned:kickback-preserves-work-state -->
 
 <!-- planned:review-round-cap-all-loops -->
 #### UC-WSM12: Build review stops at the shared round limit and routes by halt classification
