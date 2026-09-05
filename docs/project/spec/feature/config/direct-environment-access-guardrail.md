@@ -1,7 +1,6 @@
 ---
-description: Direct process-environment access in runtime Python is blocked unless the access belongs to a narrow, explicitly classified boundary.
-delivered_by:
-  - config-env-guardrail
+description: Direct process-environment access in runtime Python is blocked unless
+  the access belongs to a narrow, explicitly classified boundary.
 ---
 
 # Direct Environment Access Guardrail — Spec
