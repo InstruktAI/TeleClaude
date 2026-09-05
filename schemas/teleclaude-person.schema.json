@@ -167,6 +167,28 @@
       "title": "JobWhenConfig",
       "type": "object"
     },
+    "MailAccount": {
+      "description": "One declared mail account available to a person's assistant.",
+      "properties": {
+        "connector": {
+          "$ref": "#/$defs/MailConnector"
+        },
+        "address": {
+          "minLength": 1,
+          "title": "Address",
+          "type": "string"
+        }
+      },
+      "required": ["connector", "address"],
+      "title": "MailAccount",
+      "type": "object"
+    },
+    "MailConnector": {
+      "description": "Connector vocabulary for mail accounts an assistant may invoke.",
+      "enum": ["google", "microsoft"],
+      "title": "MailConnector",
+      "type": "string"
+    },
     "MessagingChannel": {
       "description": "Named delivery channel vocabulary for person-addressed messaging routing.",
       "enum": ["telegram", "discord", "whatsapp", "email"],
@@ -426,6 +448,14 @@
       },
       "tier": "internal",
       "title": "Subscriptions",
+      "type": "array"
+    },
+    "mail_accounts": {
+      "items": {
+        "$ref": "#/$defs/MailAccount"
+      },
+      "tier": "internal",
+      "title": "Mail Accounts",
       "type": "array"
     },
     "interests": {

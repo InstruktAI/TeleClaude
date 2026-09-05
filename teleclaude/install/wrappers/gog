@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  DIRECTORY="$(cd "$(dirname "$SOURCE")" && pwd)"
+  TARGET="$(readlink "$SOURCE")"
+  if [[ "$TARGET" == /* ]]; then
+    SOURCE="$TARGET"
+  else
+    SOURCE="$DIRECTORY/$TARGET"
+  fi
+done
+
+INSTALL_DIR="$(cd "$(dirname "$SOURCE")/../../.." && pwd)"
+export TELEC_INVOCATION_CWD="$PWD"
+export UV_NO_SYNC=1
+exec uv run --directory "$INSTALL_DIR" --quiet python -m teleclaude.entrypoints.assistant_connector "$@"
