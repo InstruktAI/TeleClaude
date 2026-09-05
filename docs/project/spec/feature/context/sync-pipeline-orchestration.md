@@ -198,7 +198,6 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
   And a --skip-deploy run, and deploy-mode sync from the main checkout or the integration worktree, are unaffected
 ```
 
-<!-- planned:serialize-docs-sync-across-processes -->
 #### UC-SPO12: Concurrent syncs observe a complete documentation deployment
 
 ```gherkin
@@ -219,9 +218,7 @@ When another agent later requests synchronization
 Then the later run can acquire serialization after the abandoned ownership is released
 And a run that cannot acquire serialization within the bounded wait exits non-zero with an explicit failure
 ```
-<!-- /planned:serialize-docs-sync-across-processes -->
 
-<!-- planned:serialize-docs-sync-across-processes -->
 #### UC-SPO14: Runtime documentation readers observe complete snapshots
 
 ```gherkin
@@ -240,7 +237,6 @@ When an agent validates an artifact or snippet reference to that domain
 Then validation resolves the reference in the owning publisher source tree
 And validation reports a finding only when that source target is missing
 ```
-<!-- /planned:serialize-docs-sync-across-processes -->
 
 <!-- planned:fix-telec-sync-fails-from-teleclaude-a-secon -->
 #### UC-SPO16: A human operator can synchronize outside a project checkout
