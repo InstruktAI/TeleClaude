@@ -198,6 +198,18 @@ And prior output generations remain sealed against new-turn edits
 And pending delivery resumes idempotently from durable state rather than from adapter memory or positional transcript indices
 ```
 
+<!-- planned:codex-revival-input-readiness-cycle -->
+#### UC-SR8: A revived conversation receives its first continuation
+
+```gherkin
+Given an agent caller has revived a previously headless Codex conversation
+And the prior conversation is restored at a complete empty editable prompt
+When the caller sends the first continuation through the platform
+Then the continuation is submitted exactly once to the resumed agent
+And the resumed agent receives the resulting turn in the restored conversation
+```
+<!-- /planned:codex-revival-input-readiness-cycle -->
+
 ### Cross-context references
 
 - **identity** — the revive clearance resolves the caller identity (session token + role); the caller's session id, email, and origin metadata are stamped onto any freshly-minted session row as initiator session id and terminal-origin metadata.
@@ -215,3 +227,7 @@ And pending delivery resumes idempotently from durable state rather than from ad
 - **Revival on an open running session has the same effect as restart.** Reviving a row whose agent is still alive will terminate the agent process and relaunch it; the verb is named for the typical case (closed/ended) but the underlying path is symmetric.
 - **`--attach` is a client-side affordance only.** The agent_runtime service never attaches the caller's terminal to a host pane; the CLI handler attaches locally after a successful revive response.
 - **No completion-event guarantees on the response.** Unlike agent restart, revive awaits the restart-agent flow synchronously and returns when the relaunch has been dispatched; agent readiness is observed downstream (e.g., via the session-ready signal on the event bus), not in the response.
+
+## See Also
+
+- ~/.teleclaude/docs/general/principle/session-lifecycle.md — unfinished governed sessions remain available for their continuing work.
