@@ -443,11 +443,6 @@ environment_variables:
   # process startup and freezes it; it is the only env var that moves a
   # TeleClaude-owned path.
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
-<!-- planned-change:config-tunables-via-config -->
-  # Log control
-  - TELECLAUDE_LOG_LEVEL # platform log level honored by the daemon and the git wrapper; propagated into agent sessions; listed in the Env subtab via _ADAPTER_ENV_VARS["system"]
-<!-- change:config-tunables-via-config -->
-<!-- /planned-change:config-tunables-via-config -->
   # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
   # commented out in .env / .env.sample and is NOT part of make install yet.
   # AI keys / Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields, saved to .env)
@@ -617,7 +612,6 @@ cloud providers in `provider_priority`, each skipped silently when its typed
 `anthropic` uses its own. Empty summaries (for example, all configured providers
 being unavailable) suppress agent-stop TTS and leave generic session titles.
 
-<!-- planned:config-tunables-via-config -->
 Runtime settings owned by the machine-config aggregate use these additional
 sections. Unless marked otherwise, these fields are internal: they retain the
 built-in values shown here and remain absent from the generated public template
@@ -688,7 +682,6 @@ watermark greater than or equal to the resolved high watermark becomes
 to the inclusive range from zero through `session_max_pending`. The high
 watermark's omitted-value derivation subtracts the literal value eight and is
 independent of a configured critical reserve.
-<!-- /planned:config-tunables-via-config -->
 
 <!-- planned-change:move-discord-reflection-state-to-db -->
 

@@ -132,7 +132,6 @@ And the machine configuration retains the placeholder rather than the resolved s
 And changing the process environment after configuration loading does not bypass the effective configuration
 ```
 
-<!-- planned:config-tunables-via-config -->
 #### UC-CFG-LOAD-9: Machine configuration governs runtime settings
 
 ```gherkin
@@ -142,7 +141,6 @@ Then a declared setting uses the machine-configured value
 And an undeclared setting preserves the built-in runtime behavior
 And ambient process environment values cannot override the selected value
 ```
-<!-- /planned:config-tunables-via-config -->
 
 ### Cross-context references
 
