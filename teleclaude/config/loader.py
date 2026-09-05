@@ -2,7 +2,7 @@
 
 import os
 import stat
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +15,7 @@ from ruamel.yaml import YAML
 from teleclaude.config.advancement import advance_config
 from teleclaude.config.context_root import resolve_context_root
 from teleclaude.config.declaration import write_declared_config
+from teleclaude.config.person_claim import capture_required, migrate_person_claim_for_target
 from teleclaude.config.schema import (
     AppConfig,
     CompanyConfig,
@@ -64,6 +65,7 @@ def load_config[T: BaseModel](
     root: Path,
     *,
     default_fields: Mapping[str, object] | None = None,
+    pre_validation: Callable[[], None] | None = None,
 ) -> T:
     """Load YAML config from ``path`` and validate it with ``model_class``.
 
@@ -89,6 +91,8 @@ def load_config[T: BaseModel](
         return model_class.model_validate(defaults)
 
     advance_config(path, kind, root)
+    if pre_validation is not None:
+        pre_validation()
     try:
         with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
@@ -176,7 +180,24 @@ def load_global_config(path: Path | None = None) -> GlobalConfig:
 def load_person_config(path: Path, *, registered_slug: str | None = None) -> PersonConfig:
     """Load per-person configuration."""
     default_fields = {_PERSON_SLUG_FIELD: registered_slug} if registered_slug is not None else None
-    return load_config(path, PersonConfig, ConfigKind.PERSON, path.parent, default_fields=default_fields)
+    return load_config(
+        path,
+        PersonConfig,
+        ConfigKind.PERSON,
+        path.parent,
+        default_fields=default_fields,
+        pre_validation=_person_claim_pre_validation(path),
+    )
+
+
+def _person_claim_pre_validation(path: Path) -> Callable[[], None]:
+    """Build the person-only transition that runs after generic tier advancement."""
+
+    def migrate_person_claim() -> None:
+        people: Iterable[PersonEntry] = load_global_config().people if capture_required() else ()
+        migrate_person_claim_for_target(path, people)
+
+    return migrate_person_claim
 
 
 def load_company_config(path: Path) -> CompanyConfig:
