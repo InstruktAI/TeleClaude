@@ -68,7 +68,6 @@ These effects compound: pool starvation delays request handlers, background work
 
 - **Single round-trip per batch.** `claim_hook_outbox_batch()` issues one `UPDATE...WHERE id IN (...)` instead of N individual claims. When partial claiming occurs (some rows already locked), a follow-up SELECT verifies which rows were claimed.
 
-<!-- planned:runner-corpus-load-scoping-and-batching -->
 
 ### Lifecycle Runner Corpus Load
 
@@ -79,7 +78,6 @@ The lifecycle runner loads the project's whole todo corpus on every dispatch pas
 - **The row set stays whole.** The fetch spans every status. Terminal and iceboxed rows carry the runner's per-reason skip accounting, the driver-concurrency accounting (a live driver on a terminal row still counts against the dispatch cap), the stale-driver reconciliation, and the manual-start path's `DELIVERED` / `REMOVED` / `ICEBOX` diagnostics. Narrowing the fetch to dispatchable statuses drops all four.
 - **Holder classification comes from the row's durable status.** A structural holder has the `holder` status and no lifecycle state, so the snapshot carries that status forward without a child-group query. The runner skips the holder directly, preventing it from being reconstituted as a kind-less dispatch candidate.
 
-<!-- /planned:runner-corpus-load-scoping-and-batching -->
 
 ### Event Loop Policy
 
