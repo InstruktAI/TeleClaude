@@ -48,7 +48,15 @@ from teleclaude.config.declaration import schema_filename
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config.schema_export import export_tier_schemas
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
-from teleclaude.domains import publishes_for_root, triggers_for_root
+from teleclaude.docs_publication import publish_generation
+from teleclaude.docs_publishers import (
+    DocsPublisherResolutionError,
+    Publisher,
+    gather_publishers,
+    git_common_root,
+    publisher_resolution,
+)
+from teleclaude.domains import triggers_for_root
 from teleclaude.global_skills import compose_global_skill_catalog, global_skill_source_root
 from teleclaude.mcp.registry import McpRegistry, load_effective_registry, load_project_declarations, project_mcp_root
 from teleclaude.paths import (
@@ -56,12 +64,10 @@ from teleclaude.paths import (
     DEPLOYED_COMMANDS_MANIFEST_PATH,
     GLOBAL_DOCS_DIR,
     TELECLAUDE_HOME,
-    ConfigFileName,
 )
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
-from teleclaude.slug import normalize_slug
 from teleclaude.snippet_validation import derive_snippet_classification, generated_domain_bundle_domain, load_domains
 
 Transform = Callable[[Post], str]
@@ -1050,7 +1056,7 @@ def _expand_point_directives(
 
 def _expand_mcp_index_directives(content: str) -> str:
     """Render the machine-wide MCP index in global agent-facing sources."""
-    registry = load_effective_registry(_resolve_git_common_root(_REPO_ROOT))
+    registry = load_effective_registry(git_common_root(_REPO_ROOT))
     return MCP_INDEX_DIRECTIVE_RE.sub(lambda _match: _render_mcp_index(registry), content)
 
 
@@ -1104,145 +1110,19 @@ def _inflate_domain_baseline(
 _DOMAIN_AGNOSTIC_DIR = "general"
 
 
-def _project_slug(project_root: Path) -> str:
-    """Canonical slug for a project root, read minimally from ``teleclaude.yml``.
-
-    Mirrors ``teleclaude.docs_index.get_project_slug`` — ``project_slug``, then
-    slugified ``project_name``, then slugified directory name — but reads the
-    config with a plain ``yaml.safe_load`` so this script does not import the
-    index/config-loader chain at module load. That keeps the standalone
-    ``uv run`` invocation self-contained instead of dragging in the full app
-    dependency graph (per ``scripts``' standalone-execution policy).
-    """
-    config_file = project_root / ConfigFileName.OVERLAY
-    if config_file.is_file():
-        try:
-            payload = yaml.safe_load(config_file.read_text(encoding="utf-8"))
-        except yaml.YAMLError:
-            payload = None
-        if isinstance(payload, dict):
-            slug = payload.get("project_slug")
-            if isinstance(slug, str) and slug.strip():
-                return slug.strip()
-            name = payload.get("project_name")
-            if isinstance(name, str) and name.strip():
-                return normalize_slug(name)
-    return normalize_slug(project_root.name)
-
-
-class _Publisher(NamedTuple):
-    """A registered project's global-docs contribution."""
-
-    slug: str
-    docs_global: Path
-    publishes: frozenset[str]
-
-
-def gather_publishers(project_root: Path, current_docs_global: Path) -> list[_Publisher]:
-    """Collect every registered project that contributes global docs.
-
-    The current project (the one being synced) contributes via
-    ``current_docs_global`` — the live checkout, so a worktree's edits compose
-    rather than the registered repo's stale copy. Its registered root (and the
-    shared git common root, for worktree syncs) is skipped in the manifest sweep
-    so it is never counted twice.
-    """
-    publishers = [
-        _Publisher(_project_slug(project_root), current_docs_global, frozenset(publishes_for_root(project_root)))
-    ]
-    seen = {project_root.resolve(), _resolve_git_common_root(project_root).resolve()}
-    for root in load_roots():
-        resolved = root.resolve()
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        docs_global = root / "docs" / "global"
-        if not docs_global.is_dir():
-            continue
-        publishers.append(_Publisher(_project_slug(root), docs_global, frozenset(publishes_for_root(root))))
-    return publishers
-
-
-def _find_mother_publisher(publishers: list[_Publisher]) -> _Publisher | None:
-    """The publisher whose docs source belongs to the Mother repo's canonical checkout.
-
-    The cross-cutting ``general`` domain is owned by the Mother repo, identified by
-    comparing git canonical roots (:func:`_resolve_git_common_root`), not by exact
-    ``docs_global`` path equality. ``_REPO_ROOT`` reflects wherever the running
-    ``distribute.py`` happens to be loaded from, which can diverge from the checkout
-    a publisher's live ``docs_global`` resolves through (main vs. a linked worktree
-    of the same repo) even though both belong to the same Mother repo. Comparing
-    canonical roots instead of raw paths keeps Mother identification correct
-    regardless of which checkout's code is executing or which checkout's docs a
-    publisher's live source resolves through.
-    """
-    mother_root = _resolve_git_common_root(_REPO_ROOT).resolve()
-    for pub in publishers:
-        pub_root = pub.docs_global.parent.parent
-        if _resolve_git_common_root(pub_root).resolve() == mother_root:
-            return pub
-    return None
-
-
-def domain_owners(publishers: list[_Publisher]) -> dict[str, _Publisher]:
-    """Map every owned domain to its single owning publisher; block on a split.
-
-    One owner per domain is structural: if two registered publishers declare the
-    same domain in ``business.publishes``, the deploy hard-blocks with a
-    ``split domain ownership`` error and composes nothing. The cross-cutting
-    ``general`` domain is owned by the Mother repo (when it carries a ``general``
-    tree), not by any ``publishes`` declaration.
-    """
-    owner: dict[str, _Publisher] = {}
-    # `general` is Mother-owned by definition; reserve it before processing the
-    # declarations so a side project that declares `general` in business.publishes
-    # is hard-blocked as a split, not silently overridden by Mother afterwards.
-    mother = _find_mother_publisher(publishers)
-    if mother is not None:
-        owner[_DOMAIN_AGNOSTIC_DIR] = mother
-    for pub in publishers:
-        for domain in sorted(pub.publishes):
-            existing = owner.get(domain)
-            if existing is not None and existing.slug != pub.slug:
-                raise SystemExit(f"split domain ownership: {domain} claimed by {existing.slug} and {pub.slug}")
-            owner[domain] = pub
-    # Drop the reservation when Mother carries no `general` tree, so composition
-    # never tries to link a non-existent source dir.
-    if mother is not None and not (mother.docs_global / _DOMAIN_AGNOSTIC_DIR).is_dir():
-        owner.pop(_DOMAIN_AGNOSTIC_DIR, None)
-    return owner
-
-
-def compose_docs_root(owner_by_domain: dict[str, _Publisher], deploy_docs_root: Path) -> None:
-    """Compose ``~/.teleclaude/docs`` as one directory symlink per owned domain.
-
-    The deployed root is a real directory; each owned domain is a single symlink
-    ``<root>/<domain>`` pointing at its owning publisher's ``docs/global/<domain>``
-    source folder (a live view). One owner per domain makes this structural — a
-    symlink has exactly one target — so a removed or renamed source snippet
-    vanishes through the directory symlink with no per-file relink. Build outputs
-    (the merged ``index.yaml`` and each domain's ``domain-baseline-bundle.md``)
-    are written by their own steps.
-    """
-    if deploy_docs_root.is_symlink():
-        deploy_docs_root.unlink()
-    elif deploy_docs_root.is_dir():
-        shutil.rmtree(deploy_docs_root)
-    elif os.path.lexists(deploy_docs_root):
-        deploy_docs_root.unlink(missing_ok=True)
-    deploy_docs_root.mkdir(parents=True, exist_ok=True)
-
-    linked = 0
+def materialize_docs_root(owner_by_domain: dict[str, Publisher], staged_root: Path) -> None:
+    """Copy every registered domain into one staged documentation generation."""
+    copied = 0
     for domain in sorted(owner_by_domain):
         src = owner_by_domain[domain].docs_global / domain
         if not src.is_dir():
             continue
-        (deploy_docs_root / domain).symlink_to(src)
-        linked += 1
-    print(f"  Composed docs root: {deploy_docs_root} ({linked} domain symlink(s))")
+        shutil.copytree(src, staged_root / domain, symlinks=False)
+        copied += 1
+    print(f"  Materialized docs root: {staged_root} ({copied} domain tree(s))")
 
 
-def write_merged_index(publishers: list[_Publisher], deploy_docs_root: Path) -> None:
+def write_merged_index(publishers: list[Publisher], deploy_docs_root: Path) -> None:
     """Write the union of every publisher's global ``index.yaml`` to the root.
 
     One owner per domain (enforced structurally by ``domain_owners`` /
@@ -1279,28 +1159,19 @@ def write_merged_index(publishers: list[_Publisher], deploy_docs_root: Path) -> 
 
 
 def generate_domain_baselines(
-    owner_by_domain: dict[str, _Publisher],
-    deploy_docs_root: Path,
+    owner_by_domain: dict[str, Publisher],
+    staged_root: Path,
     project_root: Path,
     observation: DistributionObservation | None = None,
 ) -> None:
-    """Write each owned domain's ``domain-baseline-bundle.md`` into its source dir.
-
-    One owner per domain means a single contributor: each domain's
-    ``baseline.md`` is inflated once and written as
-    ``<owner>/docs/global/<domain>/domain-baseline-bundle.md`` in the owner's
-    source tree (gitignored). Because ``~/.teleclaude/docs/<domain>`` is a
-    symlink to that folder, the SessionStart hook path
-    ``~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`` resolves through it
-    to the same file. The cross-cutting ``general`` domain carries no bundle.
-    """
+    """Write each owned domain's baseline bundle into the staged generation."""
     header_template = "# {name} — Platform Baseline\n\n"
-    entries_by_id = _load_index_entries(deploy_docs_root / "index.yaml")
+    entries_by_id = _load_index_entries(staged_root / "index.yaml")
     failures: list[tuple[str, str]] = []
     for domain in sorted(owner_by_domain):
         if domain == _DOMAIN_AGNOSTIC_DIR:
             continue
-        domain_src = owner_by_domain[domain].docs_global / domain
+        domain_src = staged_root / domain
         baseline_src = domain_src / "baseline.md"
         if not baseline_src.exists():
             continue
@@ -1328,20 +1199,13 @@ def generate_domain_baselines(
         raise SystemExit("\n".join(lines))
 
 
-def ensure_global_snippets_link(deploy_docs_root: Path) -> None:
-    """Expose global support fragments under the legacy deployed snippets path."""
-    source = _REPO_ROOT / "docs" / "global" / "snippets"
-    if not source.is_dir():
+def materialize_global_snippets(mother: Publisher | None, staged_root: Path) -> None:
+    """Copy Mother-owned support fragments into the staged generation."""
+    if mother is None:
         return
-
-    target = deploy_docs_root / "snippets"
-    if target.is_symlink() and target.resolve() == source.resolve():
-        return
-    if target.is_symlink() or target.is_file():
-        target.unlink()
-    elif target.exists():
-        shutil.rmtree(target)
-    target.symlink_to(source)
+    source = mother.docs_global / "snippets"
+    if source.is_dir():
+        shutil.copytree(source, staged_root / "snippets", symlinks=False)
 
 
 def _resolve_domain_triggers(project_root: Path) -> dict[str, str]:
@@ -1354,7 +1218,7 @@ def _resolve_domain_triggers(project_root: Path) -> dict[str, str]:
     with no dependency on a previously-deployed artifact.
     """
     triggers: dict[str, str] = dict(triggers_for_root(project_root))
-    seen = {project_root.resolve(), _resolve_git_common_root(project_root).resolve()}
+    seen = {project_root.resolve(), git_common_root(project_root).resolve()}
     for root in load_roots():
         resolved = root.resolve()
         if resolved in seen:
@@ -1415,26 +1279,39 @@ def deploy_documentation(
     deploy_docs_root: Path | None = None,
     observation: DistributionObservation | None = None,
 ) -> None:
-    """The documentation deployment step: compose the single-owner docs root.
+    """The documentation deployment step: publish one complete docs generation.
 
     Gathers every contributing publisher (the current project contributes from
     ``docs_source_dir``, its live checkout, so a worktree's edits compose),
-    resolves the one owner per domain — hard-blocking on a split before anything
-    is composed — then rebuilds the deployed root as one directory symlink per
-    domain, writes the merged index, and regenerates each owned domain's
-    ``domain-baseline-bundle.md``. A split domain ownership and bundle-inflation
-    failures abort the deploy.
+    resolves the one owner per domain — hard-blocking on a split before any
+    publication — then materializes domains, support fragments, indexes, and
+    baseline bundles beside the deployed root. The completed staging generation
+    exchanges with the live root atomically.
     """
     if not docs_source_dir.is_dir():
         return
     target = deploy_docs_root if deploy_docs_root is not None else GLOBAL_DOCS_DIR
     print("\nDeploying documentation...")
     publishers = gather_publishers(project_root, docs_source_dir.resolve())
-    owner_by_domain = domain_owners(publishers)
-    compose_docs_root(owner_by_domain, target)
-    ensure_global_snippets_link(target)
-    write_merged_index(publishers, target)
-    generate_domain_baselines(owner_by_domain, target, project_root, observation)
+    try:
+        with publisher_resolution(project_root, publishers=publishers) as registry:
+            owner_by_domain = registry.owners
+            mother = registry.mother
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staged_root = Path(tempfile.mkdtemp(prefix=".docs.next-", dir=target.parent))
+            try:
+                materialize_docs_root(owner_by_domain, staged_root)
+                materialize_global_snippets(mother, staged_root)
+                write_merged_index(publishers, staged_root)
+                generate_domain_baselines(owner_by_domain, staged_root, project_root, observation)
+                previous_root = publish_generation(staged_root, target)
+            except Exception:
+                shutil.rmtree(staged_root, ignore_errors=True)
+                raise
+    except DocsPublisherResolutionError as exc:
+        raise SystemExit(str(exc)) from exc
+    if previous_root is not None:
+        shutil.rmtree(previous_root)
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
@@ -1503,28 +1380,29 @@ def _write_project_agents(
     observation: DistributionObservation | None,
 ) -> None:
     """Generate AGENTS.md and CLAUDE.md next to a project AGENTS.master.md."""
-    raw = master_path.read_text(encoding="utf-8")
-    inflated = expand_inline_refs(
-        raw,
-        project_root=project_root,
-        current_path=master_path,
-        warn_only=warn_only,
-        observation=observation,
-    )
-    if master_path == project_root / _PROJECT_MASTER_FILENAME:
-        sections = _progressive_sibling_sections(
-            project_root / _PROJECT_DOCS_RELATIVE_PATH,
-            scope=ProjectScope(),
+    with publisher_resolution(project_root):
+        raw = master_path.read_text(encoding="utf-8")
+        inflated = expand_inline_refs(
+            raw,
             project_root=project_root,
+            current_path=master_path,
             warn_only=warn_only,
+            observation=observation,
         )
-        if sections:
-            inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=sections)
-        canonical_project_root = project_mcp_root(_resolve_git_common_root(project_root))
-        if canonical_project_root is not None:
-            project_index = _render_mcp_index(load_project_declarations(canonical_project_root))
-            if project_index:
-                inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=project_index)
+        if master_path == project_root / _PROJECT_MASTER_FILENAME:
+            sections = _progressive_sibling_sections(
+                project_root / _PROJECT_DOCS_RELATIVE_PATH,
+                scope=ProjectScope(),
+                project_root=project_root,
+                warn_only=warn_only,
+            )
+            if sections:
+                inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=sections)
+            canonical_project_root = project_mcp_root(git_common_root(project_root))
+            if canonical_project_root is not None:
+                project_index = _render_mcp_index(load_project_declarations(canonical_project_root))
+                if project_index:
+                    inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=project_index)
     agents_path = master_path.parent / "AGENTS.md"
     agents_path.write_text(_strip_lock_sentinels(inflated), encoding="utf-8")
     claude_path = master_path.parent / "CLAUDE.md"
@@ -1565,47 +1443,16 @@ def _render_global_skill_catalog(
     observation: DistributionObservation | None,
 ) -> str:
     """Render the Mother-owned catalog through the normal inline directive pipeline."""
-    raw = catalog_master.read_text(encoding=_UTF8)
-    inflated = expand_inline_refs(
-        raw,
-        project_root=mother_root,
-        current_path=catalog_master,
-        warn_only=warn_only,
-        observation=observation,
-    )
-    return _strip_lock_sentinels(inflated)
-
-
-def _resolve_git_common_root(project_root: Path) -> Path:
-    """Resolve canonical repo root from git common dir when available.
-
-    In git worktrees, this returns the main repository root (parent of `.git`),
-    preventing shared runtime artifacts from being bound to ephemeral worktree paths.
-    Falls back to ``project_root`` unchanged when git info isn't available,
-    including when ``project_root`` doesn't exist on disk (a registered
-    publisher's root need not exist for path-only comparisons).
-    """
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-            cwd=project_root,
-            capture_output=True,
-            text=True,
-            check=False,
+    with publisher_resolution(mother_root):
+        raw = catalog_master.read_text(encoding=_UTF8)
+        inflated = expand_inline_refs(
+            raw,
+            project_root=mother_root,
+            current_path=catalog_master,
+            warn_only=warn_only,
+            observation=observation,
         )
-    except OSError:
-        return project_root
-    if result.returncode != 0:
-        return project_root
-
-    common_dir = result.stdout.strip()
-    if not common_dir:
-        return project_root
-
-    common_path = Path(common_dir).resolve()
-    if common_path.name != ".git":
-        return project_root
-    return common_path.parent
+        return _strip_lock_sentinels(inflated)
 
 
 def _resolve_pipeline_capabilities(
@@ -1662,7 +1509,7 @@ def main() -> None:  # noqa: C901
     agents_root = os.path.join(teleclaude_root, "agents")
     dot_agents_root = os.path.join(project_root, ".agents")
     os.chdir(project_root)
-    canonical_root = _resolve_git_common_root(project_root_path)
+    canonical_root = git_common_root(project_root_path)
     master_docs_dir = os.path.join(project_root, "docs", "global")
     canonical_docs_dir = os.path.join(canonical_root, "docs", "global")
     docs_source_dir = master_docs_dir if os.path.isdir(master_docs_dir) else canonical_docs_dir
@@ -1896,7 +1743,7 @@ def main() -> None:  # noqa: C901
             shutil.rmtree(dist_dir)
         os.makedirs(dist_dir)
 
-    def _run_phase(  # noqa: C901
+    def _run_phase_cached(  # noqa: C901
         *,
         sources: list[dict[str, str]],
         prefix_root: str,
@@ -2118,6 +1965,29 @@ def main() -> None:  # noqa: C901
                 )
 
             print("Deployment complete.")
+
+    def _run_phase(
+        *,
+        sources: list[dict[str, str]],
+        prefix_root: str,
+        dist_dir: str,
+        deploy_root: str,
+        emit_repo_codex: bool,
+        deploy_enabled: bool,
+        is_global_phase: bool,
+        scope_key: str,
+    ) -> None:
+        with publisher_resolution(project_root_path):
+            _run_phase_cached(
+                sources=sources,
+                prefix_root=prefix_root,
+                dist_dir=dist_dir,
+                deploy_root=deploy_root,
+                emit_repo_codex=emit_repo_codex,
+                deploy_enabled=deploy_enabled,
+                is_global_phase=is_global_phase,
+                scope_key=scope_key,
+            )
 
     if args.deploy:
         compose_global_skill_catalog(

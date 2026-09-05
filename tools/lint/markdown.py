@@ -20,7 +20,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.resource_validation import clear_errors, get_errors, validate_all_snippets
+from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockAccess, DocsLockOperation, docs_lease
+from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
+from teleclaude.resource_validation import _error, clear_errors, get_errors, validate_all_snippets
 
 # Directories to scan for markdown files
 MARKDOWN_DIRS = [
@@ -178,6 +180,19 @@ def _validate_files(file_paths: list[Path], repo_root: Path) -> list[str]:
     return all_errors
 
 
+def _validate_snippets_with_lease(repo_root: Path, *, paths: list[Path] | None = None) -> list[str]:
+    """Run the snippet reader under shared access to one deployed generation."""
+    clear_errors()
+    try:
+        with docs_lease(DocsLockAccess.SHARED, DocsLockOperation.VALIDATION), publisher_resolution(repo_root):
+            validate_all_snippets(repo_root, paths=paths)
+    except DocsLeaseTimeoutError as exc:
+        return [str(exc)]
+    except DocsPublisherResolutionError as exc:
+        _error("snippet_global_source_resolution_failed", path=str(repo_root), reason=str(exc))
+    return [_format_validation_finding(finding) for finding in get_errors()]
+
+
 def main() -> int:
     """Run markdown validation.
 
@@ -202,18 +217,14 @@ def main() -> int:
             return 0
 
         all_errors = _validate_files(resolved, repo_root)
-        clear_errors()
-        validate_all_snippets(repo_root, paths=resolved)
-        all_errors.extend(_format_validation_finding(finding) for finding in get_errors())
+        all_errors.extend(_validate_snippets_with_lease(repo_root, paths=resolved))
     else:
         markdown_files_list = _find_markdown_files(repo_root)
         if not markdown_files_list:
             return 0
 
         all_errors = _validate_files(markdown_files_list, repo_root)
-        clear_errors()
-        validate_all_snippets(repo_root)
-        all_errors.extend(_format_validation_finding(finding) for finding in get_errors())
+        all_errors.extend(_validate_snippets_with_lease(repo_root))
 
     if all_errors:
         print("\n❌ Markdown validation failed:\n", file=sys.stderr)
