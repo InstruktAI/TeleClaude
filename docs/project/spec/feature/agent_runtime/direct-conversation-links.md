@@ -142,18 +142,6 @@ And the inner header time is never used as the replay progress clock
 
 #### UC-DCL21: Mixed local and peer text preserves ordered authorship
 
-<!-- planned-change:envelope-recognition-is-shape-only -->
-```
-Given a human has local text before an appended structured peer block in one native prompt
-And the human may add more local text after the unchanged peer block before submitting
-When the resulting native user entry is bound
-Then its ordered authored parts preserve the local-human prefix, peer-authored part, and local-human suffix
-And the peer part is rendered for the agent with a readable opening header and `[/TeleClaude - Peer]` closing footer
-And the surrounding local text remains attributed to the human in the viewing session
-And the rendered delimiters are never parsed to establish the boundary or authorship
-And an altered or ambiguous injected peer span surfaces an input conflict instead of guessed attribution
-```
-<!-- change:envelope-recognition-is-shape-only -->
 ```gherkin
 Given a human has local text before or after a complete peer envelope in one native prompt
 And any other envelope-looking text in that prompt has no complete registered shape
@@ -163,7 +151,6 @@ And every span outside complete recognized envelopes is attributed to the human 
 And all spans remain eligible for their normal delivery path
 And recognition produces no conflict, refusal, or dropped neighboring content
 ```
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 #### Listener suppression while linked
 
@@ -244,21 +231,6 @@ And the second observes the existing active link and reuses it, severing any dup
 And no concurrent path produces orphaned link rows or split member rosters
 ```
 
-<!-- planned-change:envelope-recognition-is-shape-only -->
-#### UC-DCL2: Cross-delivered segments preserve provenance and agent-facing rendering
-
-```
-Given an active direct link exists between sessions A and B
-And one outbound bundle from B contains registered role-authored, human-authored, and agent-authored envelope segments
-When the conversation-delivery pipeline accepts and renders the bundle for A
-Then the shared cutter parses each registered envelope to recover its boundary, kind, structured header fields, and original source session
-And peer provenance is accepted only when that source session is a live member of the active link
-And loop prevention suppresses only a segment whose parsed original source equals A
-And every eligible segment retains its occurrence time, opaque body, and immutable event author
-And every readable peer opening header and closing footer is derived from those fields for the agent-facing transcript
-And no outer peer wrapper or generic inner author marker is emitted
-```
-<!-- change:envelope-recognition-is-shape-only -->
 #### UC-DCL2: Cross-delivered segments preserve envelope authorship without a shadow record
 
 ```gherkin
@@ -271,7 +243,6 @@ And a token outside the reader's known vocabulary is presented from its carried 
 And loop prevention suppresses only a segment whose carried source session equals A
 And no duplicate bundle record or content-validation result is required for delivery
 ```
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 #### UC-DCL6: Discord renders each peer segment as its own message under the author's aliased identity and avatar
 
@@ -305,18 +276,6 @@ And the message may use the webhook default avatar
 But it is not relabelled as TeleClaude, the intermediary session, or an agent
 ```
 
-<!-- planned-change:envelope-recognition-is-shape-only -->
-#### UC-DCL9: Multi-hop forwarding preserves the original source and suppresses echo
-
-```
-Given session B receives an A-origin segment and later forwards its turn to C
-When B-to-C delivery runs
-Then the forwarded segment retains A as its structured original source
-And C sees the original author and occurrence time
-And any later delivery toward A suppresses that segment by structured source identity
-And no intermediary header parsing participates in the decision
-```
-<!-- change:envelope-recognition-is-shape-only -->
 #### UC-DCL9: Multi-hop forwarding preserves the original envelope source and suppresses echo
 
 ```gherkin
@@ -327,7 +286,6 @@ And C sees the carried author and occurrence label
 And any later delivery toward A suppresses that segment by the carried source session identity
 And no separate provenance record or content validation participates in the decision
 ```
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 #### UC-DCL13: A bare NOOP turn is never cross-shared
 
@@ -377,18 +335,6 @@ And the human-typed turn is delivered under the human marker
 And the injection is excluded whether its heading names a directory or stands alone
 ```
 
-<!-- planned-change:envelope-recognition-is-shape-only -->
-#### UC-DCL11: A freshly ignited link delivers the peer's first turn without silent stall
-
-```gherkin
-Given a direct link is ignited between two live sessions
-When the peer completes its first turn after ignition
-Then every eligible segment of that turn is delivered to the counterpart session in order
-And a segment the delivery path cannot process receives a bounded, durable disposition with an explicit error record instead of being retried without limit
-And a delivery direction whose cursor cannot advance surfaces that condition as an explicit error
-And no direction of the link stalls silently while its counterpart direction continues to flow
-```
-<!-- change:envelope-recognition-is-shape-only -->
 #### UC-DCL11: A freshly ignited link delivers every classified span without recognition failure
 
 ```gherkin
@@ -399,7 +345,6 @@ And envelope content, header-field vocabulary, separators, or incomplete envelop
 And the delivery cursor advances only with the successfully handed-off content
 And no direction of the link stalls because recognition could not classify a span
 ```
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 #### UC-DCL12: Peer presentation stays ordered and at-most-once under platform rate limiting
 
@@ -411,18 +356,6 @@ And no segment is presented more than once, however many retries its delivery ne
 And a segment whose delivery ultimately fails receives a durable disposition instead of an unbounded retry
 ```
 
-<!-- planned-change:envelope-recognition-is-shape-only -->
-#### UC-DCL5: An unframed entry never stalls a direction
-
-```gherkin
-Given a direct link is active between two sessions
-And a source entry carries no platform-authored envelope the delivery path can resolve
-When peer delivery processes that entry
-Then the entry is delivered as the source session's own content, or recorded as skipped with its reason
-And the directional delivery cursor advances past that entry
-And later turns from that source continue to reach the counterpart session
-```
-<!-- change:envelope-recognition-is-shape-only -->
 #### UC-DCL5: Unrecognized envelope-looking text remains deliverable human input
 
 ```gherkin
@@ -434,7 +367,6 @@ And recognizable envelopes beside it are delivered under their own authorship
 And the directional delivery cursor advances only after the resulting content is handed off
 And later turns from that source continue to reach the counterpart session
 ```
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 #### UC-DCL14: A reproduced delimiter in an agent's own turn never re-frames it
 

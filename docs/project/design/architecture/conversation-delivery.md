@@ -30,12 +30,8 @@ advances on its own cursor; no durable side record mediates that reading.
 - Durable inbound rows carrying full content, source event keys, actor metadata,
   and acceptance time, for delivery, dedupe, and idle-wake decisions.
 - Active direct links and directional delivery cursors.
-<!-- planned-change:envelope-recognition-is-shape-only -->
-- Structured peer bundles accepted from local or remote transport.
-<!-- change:envelope-recognition-is-shape-only -->
 - Peer-envelope text accepted from local or remote transport under a stable
   delivery occurrence key.
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 - Per-adapter delivery generations and platform message receipts.
 
 **Outputs:**
@@ -44,14 +40,9 @@ advances on its own cursor; no durable side record mediates that reading.
   its kind, and its resolved author.
 - Ordered assistant output routed to the adapter generation belonging to its
   turn.
-<!-- planned-change:envelope-recognition-is-shape-only -->
-- A structured peer bundle with stable bundle and segment identities, immutable
-  event authorship, original source session, occurrence time, and body.
-<!-- change:envelope-recognition-is-shape-only -->
 - One ordered peer message whose recognized envelopes carry source session,
   author token, occurrence label, and opaque body without a duplicate bundle
   record.
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 - Readable delimiters around every platform-authored block in the agent-facing
   transcript, which are the parser's input and the reader's framing alike.
 - Discord messages authored through `<Identity>[ - <raw JobRole>][ (peer)]`
@@ -86,19 +77,12 @@ flowchart LR
 - **Only headers are read.** Boundaries and kind come from the opening and its
   declared closing. Envelope bodies are never inspected — not for nested
   openings, not for shape, not for content — and pass through unaltered.
-<!-- planned-change:envelope-recognition-is-shape-only -->
-- **Bodies carry no live delimiter.** Envelope bodies are composed by the
-  platform and are not edited afterwards, so a body never contains a delimiter
-  that could terminate its own envelope. This is a stated premise of the design,
-  not a condition the parser defends against.
-<!-- change:envelope-recognition-is-shape-only -->
 - **Recognition never grades a body.** The reader matches only registered
   opening and closing delimiters. Body content, separators, and header-field
   vocabulary cannot invalidate a recognized envelope. The human may type
   before, after, around, or through injected framing and owns whether the
   resulting text still forms an identifiable envelope; every unrecognized span
   remains ordinary human input.
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 - **One registry declares the grammar.** Each opening shape, the kind it
   denotes, and whether it is auto-closed or paired with a derived closing are
   declared once. Recognition, construction, and rendering read that declaration;
@@ -139,25 +123,6 @@ flowchart LR
 
 ### Peer transport and authorship
 
-<!-- planned-change:envelope-recognition-is-shape-only -->
-- **The envelope is the structure.** Peer detection, segment boundaries,
-  loop-prevention, source identity, and Discord presentation read the envelope's
-  opening and the fields it carries. No consumer re-derives them from a body, a
-  prefix test over whole-entry text, or a session-level summary.
-- **Event identity is immutable.** Each segment snapshots author class, agent
-  runtime and historical mode, human reference and display identity, or raw
-  `JobRole`, independently of later session configuration.
-- **Forwarding preserves origin.** Multi-hop relay keeps the stable segment ID,
-  original source session, author, occurrence time, and body. Target-specific
-  echo suppression compares structured original source session IDs.
-- **Cursor advance follows durable acceptance.** A source cursor advances only
-  after the target atomically accepts the bundle and its structured provenance
-  under the stable bundle key.
-- **A cursor always advances or delivers.** Every directional outcome is
-  terminal: an entry is delivered, or it is recorded as skipped with its reason
-  and the cursor moves past it. A direction is never held pending a condition
-  that may never arrive.
-<!-- change:envelope-recognition-is-shape-only -->
 - **The envelope is the structure.** Peer detection, segment boundaries,
   loop prevention, source identity, and presentation read the registered shape
   and the header fields as written. No consumer inspects the body, classifies a
@@ -173,7 +138,6 @@ flowchart LR
   only after the target accepts the framed message under its stable delivery
   occurrence key. Transport failure keeps the cursor retryable; recognition
   never produces a skip or terminal disposition.
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 ### Discord presentation and observability
 
@@ -219,17 +183,6 @@ flowchart LR
 ### Direct peer delivery
 
 1. Project eligible source entries after the directional cursor.
-<!-- planned-change:envelope-recognition-is-shape-only -->
-2. Preserve inherited structured segments and create structured segments for
-   local turns, assigning stable identities and immutable event authorship.
-3. Suppress only segments whose structured original source equals the target.
-4. Persist the pending upper bound and hand off one bundle under its stable
-   bundle key.
-5. Atomically accept bundle content and provenance at the target, then advance
-   the source cursor.
-6. Render readable delimiters for the agent. Discord independently renders each
-   eligible segment body through its resolved alias and avatar.
-<!-- change:envelope-recognition-is-shape-only -->
 2. Preserve every complete inherited peer envelope and frame local turns with
    new envelopes from their resolved authors.
 3. Suppress only a recognized envelope whose carried source session equals the
@@ -240,7 +193,6 @@ flowchart LR
 6. The agent receives readable delimiters. Discord independently renders each
    recognized peer body through its carried alias and avatar, and ordinary spans
    through the human-input lane.
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 
 ### Startup and pane recovery
 
@@ -266,15 +218,10 @@ flowchart LR
   entry to one kind and one author, losing the ordering a reader depends on.
 - Inspecting an envelope body reintroduces content authority: a quoted
   delimiter or header then changes how the surrounding entry is read.
-<!-- planned-change:envelope-recognition-is-shape-only -->
-- A classification outcome that is neither delivered nor skipped freezes its
-  direction permanently, and the silence is indistinguishable from an idle link.
-<!-- change:envelope-recognition-is-shape-only -->
 - Treating malformed-looking framing as a refusal or terminal disposition lets
   recognition freeze or skip conversational content. Classification is total
   instead: a complete registered envelope is typed, and every other span is
   ordinary human input.
-<!-- /planned-change:envelope-recognition-is-shape-only -->
 - Looking up mutable session identity at render time rewrites historical author
   mode or fails when the source row is remote or gone.
 - Blind webhook resend after a lost response duplicates a message that Discord
