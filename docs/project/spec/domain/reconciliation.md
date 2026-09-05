@@ -22,14 +22,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 ### Ownership boundary
 
-<!-- planned-change:person-home-repository -->
-- **Owns:** comparison of declared installation capabilities with observed
-  machine state and selection of sanctioned convergence actions.
-- **Does not own:** service lifecycle mechanics, configuration schema, or
-  application behavior of the capabilities it reconciles.
-- **Published contracts:** reconciliation observations, plans, and outcomes
-  consumed by sanctioned installation and service-control surfaces.
-<!-- change:person-home-repository -->
 - **Owns:** comparison of declared installation capabilities with observed
   machine state and selection of sanctioned convergence actions, including the
   rule deciding which material the home's history retains.
@@ -42,7 +34,6 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   `not-retained`, or `outside` — the last where the path resolves beyond the home
   root. The predicate reports membership only; the consumer's response to a
   result is that consumer's own contract.
-<!-- /planned-change:person-home-repository -->
 
 ## See Also
 
