@@ -119,8 +119,9 @@ And this holds for an operation never seen before as well as one recognised as p
   presents as isolation while providing none. This contract states direction and
   makes no confinement claim; confinement belongs to whoever owns the per-person
   secret store. What an invocation cannot reach is an account outside the acting
-  person's declaration; two people declaring the same account share whatever is
-  stored for it.
+  person's declaration. Whether one address may be declared by more than one
+  person is not settled by this contract; where it occurs, both invocations
+  resolve whatever is stored for that address.
 
 ## See Also
 

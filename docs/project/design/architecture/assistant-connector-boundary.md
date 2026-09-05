@@ -32,7 +32,11 @@ Three contexts participate, and the split follows meaning rather than hosting:
 - **Agent runtime** owns that a session reaches the boundary rather than the raw
   tool, and carries the facts the boundary consumes.
 
-Sending is not this design's subject; `assistant-instructed-send` owns it.
+Sending is not this design's subject, and no other work owns it today: the todo
+that was to publish the fact a send gate would consume has been removed and its
+contract never landed. The conduct policy's send rule therefore rests on the
+assistant's own compliance and on what the account's authorization grant
+permits, not on this boundary.
 
 ### The person is consumed, never derived
 
@@ -109,7 +113,10 @@ entry point is published, not for what it may contain.
 - The boundary never resolves, accepts, or overrides which person a session acts
   as, and never reaches into a workspace other than its own.
 - Settings operations are refused by controls the connector itself applies, not
-  by this boundary's judgment of what an invocation would reach.
+  by this boundary's judgment of what an invocation would reach. The same
+  construction refuses any operation outside the permitted set, including one the
+  platform has never seen, because the allowlist admits by name rather than
+  excluding by recognition.
 - Nothing above this boundary names a vendor tool.
 - A connector's state location and its secret store are separate concerns. This
   boundary directs the first and makes no claim about the second, so directing
@@ -137,9 +144,14 @@ regardless of where its state is directed.
 What keeps one person's invocation away from another's credentials is the
 account binding rather than the state location. Stored secrets are keyed by
 address, and an invocation may name only an address the acting person has
-declared, so it resolves that person's own credential and no other. Reaching
-another person's credential would require naming their address, which no
-person's declaration contains.
+declared, so it resolves the credential for that address and no other. Reaching
+a credential outside that set would require naming an address the acting person
+has not declared, which the binding refuses.
+
+This is a statement about addresses, not about people. Where two people declare
+the same address they share whatever is stored for it, including an
+authorization only one of them performed — whether that may occur is a product
+question this design does not settle and does not depend on.
 
 Confinement in the stronger sense — a store one person's process cannot read at
 all — belongs to whoever owns the per-person secret store, and this design
@@ -164,6 +176,12 @@ defines none.
 - **Two concurrent invocations for one person can rotate a credential under each
   other.** The connector's native behavior governs it, and nothing here
   serializes refreshes.
+- **A shared declaration is indistinguishable from a sole one at this boundary.**
+  The boundary checks an address against the acting person's own declaration and
+  asks nothing about who else declared it, so two people declaring one address
+  each pass their own check and meet in the connector's store. Restricting that
+  is a product decision recorded against this delivery and unanswered; no
+  mechanism here anticipates either answer.
 
 ## See Also
 
