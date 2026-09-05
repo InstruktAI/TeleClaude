@@ -614,6 +614,18 @@
       "default": null,
       "title": "Company"
     },
+    "person": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Person"
+    },
     "env_allow_list": {
       "default": [],
       "items": {

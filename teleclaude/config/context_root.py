@@ -31,7 +31,7 @@ def resolve_context_root(start: Path) -> ContextRoot | None:
     while True:
         marker = current / ConfigFileName.OVERLAY
         if marker.is_file():
-            kind = _load_kind(marker)
+            kind = load_declared_config_kind(marker)
             if kind is ConfigKind.COMPANY:
                 return None
             return ContextRoot(path=current, kind=kind)
@@ -40,7 +40,8 @@ def resolve_context_root(start: Path) -> ContextRoot | None:
         current = current.parent
 
 
-def _load_kind(path: Path) -> ConfigKind:
+def load_declared_config_kind(path: Path) -> ConfigKind:
+    """Read a root's declared configuration tier, advancing eligible documents."""
     raw = yaml.safe_load(path.read_text(encoding=_UTF8))
     if isinstance(raw, dict) and _KIND_FIELD not in raw:
         advance_context_config(path, path.parent)

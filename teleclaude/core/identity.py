@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _DISCORD_AVATAR_BINDING_EVENT = "discord_avatar_binding_lifecycle"
+_PERSON_CONTEXT_BINDING_REGISTRY_UNAVAILABLE = "Person registry is unavailable for context binding"
 
 
 class DiscordAvatarBindingOutcome(StrEnum):
@@ -44,6 +46,35 @@ class ReflectionAvatarSource(StrEnum):
     CALLER_SUPPLIED = "caller_supplied"
     IDENTITY_STORED = "identity_stored"
     NONE = "none"
+
+
+class PersonContextBindingRefusal(StrEnum):
+    """Closed refusal vocabulary for person-context binding."""
+
+    UNKNOWN = "unknown"
+    AMBIGUOUS = "ambiguous"
+    DISAGREEING = "disagreeing"
+
+
+class PersonContextBindingRegistryError(ValueError):
+    """The person registry could not be read to validate a context claim."""
+
+
+@dataclass(frozen=True)
+class AcceptedPersonContextBinding:
+    """A validated person-context binding that publishes one registered person."""
+
+    person: PersonEntry
+
+
+@dataclass(frozen=True)
+class RefusedPersonContextBinding:
+    """A person-context claim that does not resolve to one valid binding."""
+
+    refusal: PersonContextBindingRefusal
+
+
+PersonContextBinding = AcceptedPersonContextBinding | RefusedPersonContextBinding
 
 
 def observe_discord_avatar_binding(
@@ -129,6 +160,8 @@ class IdentityResolver:
 
     def __init__(self) -> None:
         self._by_email: dict[str, PersonEntry] = {}
+        self._by_slug: dict[str, list[PersonEntry]] = {}
+        self._by_context_root: dict[Path, PersonEntry] = {}
         self._by_username: dict[str, PersonEntry] = {}
         self._by_telegram_user_id: dict[int, PersonEntry] = {}
         self._by_discord_user_id: dict[str, PersonEntry] = {}
@@ -138,6 +171,7 @@ class IdentityResolver:
         self._by_whatsapp_phone: dict[str, PersonEntry] = {}
         self._color_by_email: dict[str, PersonChipColor] = {}
         self._registered_people_count: int = 0
+        self._registry_load_error: Exception | None = None
         self._config_mtime_ns: int | None = None
         self._people_mtime_ns: int | None = None
         self._load_config()
@@ -181,6 +215,13 @@ class IdentityResolver:
         """Return the stored Discord avatar URL for a person."""
         return self._discord_avatar_by_email.get(person.email.lower())
 
+    @staticmethod
+    def _context_root_for(person: PersonEntry) -> Path | None:
+        """Return the registry-designated workspace root for one person."""
+        if person.slug is None:
+            return None
+        return (_PEOPLE_DIR / person.slug).expanduser().resolve()
+
     def _reload_if_stale(self) -> None:
         """Reload config if any source file changed (mtime-based)."""
         try:
@@ -201,6 +242,8 @@ class IdentityResolver:
     def _load_config(self) -> None:
         """Load global and per-person configuration to build lookup maps."""
         self._by_email.clear()
+        self._by_slug.clear()
+        self._by_context_root.clear()
         self._by_username.clear()
         self._by_telegram_user_id.clear()
         self._by_discord_user_id.clear()
@@ -210,10 +253,12 @@ class IdentityResolver:
         self._by_whatsapp_phone.clear()
         self._color_by_email.clear()
         self._registered_people_count = 0
+        self._registry_load_error = None
 
         try:
             global_config = load_global_config()
         except Exception as e:
+            self._registry_load_error = e
             logger.error("Failed to load global config for identity resolution: %s", e)
             return
 
@@ -221,6 +266,11 @@ class IdentityResolver:
         people_by_key: dict[str, PersonEntry] = {}
         for person in global_config.people:
             self._by_email[person.email.lower()] = person
+            if person.slug:
+                self._by_slug.setdefault(person.slug, []).append(person)
+                context_root = self._context_root_for(person)
+                if context_root is not None:
+                    self._by_context_root[context_root] = person
             if person.username:
                 self._by_username[person.username.lower()] = person
             people_by_key[self._normalize_key(person.name)] = person
@@ -263,6 +313,24 @@ class IdentityResolver:
                 normalized_phone = self._normalize_phone_number(str(whatsapp_creds.phone_number))
                 if normalized_phone:
                     self._by_whatsapp_phone[normalized_phone] = person
+
+    def resolve_person_context_binding(self, claim: str, context_root: Path) -> PersonContextBinding:
+        """Validate a declared person claim against the registry and its designated root."""
+        self._reload_if_stale()
+        if self._registry_load_error is not None:
+            raise PersonContextBindingRegistryError(
+                _PERSON_CONTEXT_BINDING_REGISTRY_UNAVAILABLE
+            ) from self._registry_load_error
+        matches = self._by_slug.get(claim, [])
+        if not matches:
+            return RefusedPersonContextBinding(PersonContextBindingRefusal.UNKNOWN)
+        if len(matches) != 1:
+            return RefusedPersonContextBinding(PersonContextBindingRefusal.AMBIGUOUS)
+        person = matches[0]
+        resolved_root = context_root.expanduser().resolve()
+        if self._by_context_root.get(resolved_root) is not person:
+            return RefusedPersonContextBinding(PersonContextBindingRefusal.DISAGREEING)
+        return AcceptedPersonContextBinding(person)
 
     def resolve_by_email(self, email: str) -> IdentityContext:
         """Resolve identity from email address."""

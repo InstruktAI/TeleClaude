@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -177,6 +177,7 @@ OUTPUT_VISIBILITY_WEB: Final = "web"
 OUTPUT_VISIBILITY_BOTH: Final = "both"
 OUTPUT_VISIBILITY_OFF: Final = "off"
 OutputVisibilityValue = Literal["mobile", "web", "both", "off"]
+_PROJECT_OWNER_CONFLICT = "Project configuration cannot declare both company and person owners"
 
 
 class PersonEntry(BaseModel):
@@ -509,6 +510,7 @@ class ProjectConfig(BaseModel):
     project_name: str | None = None
     description: str | None = None
     company: str | None = None
+    person: str | None = None
     env_allow_list: list[str] = []
     frontend_root: str | None = None
     business: BusinessConfig = BusinessConfig()
@@ -536,14 +538,14 @@ class ProjectConfig(BaseModel):
         validate_slug(stripped)
         return stripped
 
-    @field_validator("company")
+    @field_validator("company", "person")
     @classmethod
-    def validate_company_membership(cls, value: str | None) -> str | None:
-        """Enforce kebab-case slug format on the project's company membership.
+    def validate_project_owner(cls, value: str | None) -> str | None:
+        """Enforce kebab-case slug format on a declared project owner.
 
-        Empty/missing values normalize to ``None`` — a project under no company
-        umbrella is valid. A malformed slug is rejected rather than silently
-        resolving to another company's context.
+        Empty/missing values normalize to ``None`` so ownerless projects remain
+        valid. A malformed slug is rejected rather than silently resolving to a
+        different owner.
         """
         if value is None:
             return None
@@ -552,6 +554,13 @@ class ProjectConfig(BaseModel):
             return None
         validate_slug(stripped)
         return stripped
+
+    @model_validator(mode="after")
+    def reject_multiple_owners(self) -> Self:
+        """Reject a project declaration that names both ownership alternatives."""
+        if self.company is not None and self.person is not None:
+            raise ValueError(_PROJECT_OWNER_CONFLICT)
+        return self
 
     @field_validator("env_allow_list")
     @classmethod
@@ -635,6 +644,7 @@ class PersonConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     kind: Literal[ConfigKind.PERSON] = Field(json_schema_extra={"tier": Tier.INTERNAL})
+    slug: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
     creds: CredsConfig = CredsConfig()
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []
@@ -642,6 +652,14 @@ class PersonConfig(BaseModel):
     settings: PersonSettings = PersonSettings()
     color: PersonChipColor | None = None
     preferred_channel: MessagingChannel | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def validate_person_claim(cls, value: str) -> str:
+        """Validate the registered identity claim carried by this overlay."""
+        stripped = value.strip()
+        validate_slug(stripped)
+        return stripped
 
     @field_validator("interests", mode="before")
     @classmethod

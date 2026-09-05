@@ -247,7 +247,7 @@ def get_global_config(path: Path | None = None) -> GlobalConfig:
 def get_person_config(slug: str) -> PersonConfig:
     """Load per-person config from ~/.teleclaude/people/{slug}/teleclaude.yml."""
     person_path = _PEOPLE_DIR / slug / ConfigFileName.OVERLAY
-    return load_person_config(person_path)
+    return load_person_config(person_path, registered_slug=slug)
 
 
 def list_people(config: GlobalConfig | None = None) -> list[PersonEntry]:
@@ -306,7 +306,7 @@ def add_person(entry: PersonEntry) -> None:
     config.people.append(entry)
     save_global_config(config)
 
-    person_config = PersonConfig(kind=ConfigKind.PERSON)
+    person_config = PersonConfig(kind=ConfigKind.PERSON, slug=entry.slug)
     save_person_config(entry.slug, person_config)
     logger.info("Added person '%s' (slug '%s') with role '%s'", entry.name, entry.slug, entry.role)
 

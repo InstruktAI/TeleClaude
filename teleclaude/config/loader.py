@@ -2,6 +2,7 @@
 
 import os
 import stat
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,10 @@ from teleclaude.slug import validate_slug
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
+_PERSON_SLUG_FIELD = "slug"
+_PERSON_CLAIM_MISMATCH = "Person config claim '{claim}' does not match save target '{target}'"
+_UNRESOLVED_COMPANY_OWNER = "Project declares unresolved company owner: {owner}"
+_UNRESOLVED_PERSON_OWNER = "Project declares unresolved person owner: {owner}"
 
 
 def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
@@ -52,7 +57,14 @@ def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
                     _warn_unknown_keys(item, f"{path}.{field_name}[{idx}]", config_path)
 
 
-def load_config[T: BaseModel](path: Path, model_class: type[T], kind: ConfigKind, root: Path) -> T:
+def load_config[T: BaseModel](
+    path: Path,
+    model_class: type[T],
+    kind: ConfigKind,
+    root: Path,
+    *,
+    default_fields: Mapping[str, object] | None = None,
+) -> T:
     """Load YAML config from ``path`` and validate it with ``model_class``.
 
     Args:
@@ -62,8 +74,9 @@ def load_config[T: BaseModel](path: Path, model_class: type[T], kind: ConfigKind
     Returns:
         The validated configuration model.
     """
+    defaults = {"kind": kind, **(default_fields or {})}
     if not path.exists():
-        return model_class.model_validate({"kind": kind})
+        return model_class.model_validate(defaults)
 
     try:
         with open(path, encoding="utf-8") as f:
@@ -73,7 +86,7 @@ def load_config[T: BaseModel](path: Path, model_class: type[T], kind: ConfigKind
         raise ValueError(f"Failed to read config file {path}: {e}") from e
 
     if not raw:
-        return model_class.model_validate({"kind": kind})
+        return model_class.model_validate(defaults)
 
     advance_config(path, kind, root)
     try:
@@ -142,6 +155,9 @@ def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
 
 def save_person_config(slug: str, config: PersonConfig) -> None:
     """Atomic write of per-person config keyed by slug. Creates directory if needed."""
+    validate_slug(slug)
+    if config.slug != slug:
+        raise ValueError(_PERSON_CLAIM_MISMATCH.format(claim=config.slug, target=slug))
     person_dir = PEOPLE_DIR / slug
     person_dir.mkdir(parents=True, exist_ok=True)
     target = person_dir / ConfigFileName.OVERLAY
@@ -157,9 +173,10 @@ def load_global_config(path: Path | None = None) -> GlobalConfig:
     return load_config(path, GlobalConfig, ConfigKind.GLOBAL, path.parent)
 
 
-def load_person_config(path: Path) -> PersonConfig:
+def load_person_config(path: Path, *, registered_slug: str | None = None) -> PersonConfig:
     """Load per-person configuration."""
-    return load_config(path, PersonConfig, ConfigKind.PERSON, path.parent)
+    default_fields = {_PERSON_SLUG_FIELD: registered_slug} if registered_slug is not None else None
+    return load_config(path, PersonConfig, ConfigKind.PERSON, path.parent, default_fields=default_fields)
 
 
 def load_company_config(path: Path) -> CompanyConfig:
@@ -301,7 +318,9 @@ def load_person_config_for_entry(person: PersonEntry, people_dir: Path = PEOPLE_
     person_config_path = find_person_config_path(person, people_dir)
     if person_config_path is None:
         return None
-    return load_person_config(person_config_path)
+    if person.slug is None:
+        raise ValueError(f"Person '{person.name}' has no registered slug")
+    return load_person_config(person_config_path, registered_slug=person.slug)
 
 
 def _find_person_entry(
@@ -371,9 +390,11 @@ def load_app_config(workspace: Path) -> AppConfig:
     if project_config is not None and project_config.company:
         company_config = load_company_config_for_slug(project_config.company, COMPANIES_ROOT)
         if company_config is None:
-            # The project declares a company that does not resolve — surface the
-            # misconfiguration; the company layer stays None (no other company leaks).
-            logger.warning("project_company_unresolved", company=project_config.company)
+            raise ValueError(_UNRESOLVED_COMPANY_OWNER.format(owner=project_config.company))
+    if project_config is not None and project_config.person:
+        person_owner = _find_person_entry(people=global_config.people, person_slug=project_config.person)
+        if person_owner is None:
+            raise ValueError(_UNRESOLVED_PERSON_OWNER.format(owner=project_config.person))
 
     return AppConfig(
         global_=global_config,
