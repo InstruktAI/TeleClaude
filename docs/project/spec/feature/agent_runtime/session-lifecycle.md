@@ -337,7 +337,6 @@ Then the session is not treated as terminal (a stuck or in-flight close must sti
 And the close command is dispatched and the request is accepted as usual
 ```
 
-<!-- planned:terminal-child-session-cleanup -->
 #### UC-SL30: Caller-scoped termination closes every direct child and nothing else
 
 ```gherkin
@@ -351,7 +350,6 @@ And a child that cannot be closed leaves the operation failed with the residual 
 And a caller that cannot be identified is refused before any session is affected
 And a targetless request with a computer override is refused before any session is affected
 ```
-<!-- /planned:terminal-child-session-cleanup -->
 
 #### Direct-link sessions
 

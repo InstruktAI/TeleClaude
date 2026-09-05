@@ -57,30 +57,12 @@ state mutation outside the supported lifecycle surface.
 
 ### Terminal Child Cleanup
 
-<!-- planned-change:terminal-child-session-cleanup -->
-The explicit worker IDs in a terminal state-machine script are immediate cleanup
-instructions, not an exhaustive child inventory. After executing those lines and
-before arming `session-departure`:
-
-1. Run bare `telec sessions list` with no flags. Its default scope is every live
-   session spawned by the current session.
-2. End every session it returns with `telec sessions end <session_id>`.
-3. Run bare `telec sessions list` again. Repeat cleanup until it returns no live
-   children.
-
-An orchestrator never substitutes `--all`, a job filter, remembered worker IDs,
-or the state machine's explicit list for this caller-scoped enumeration. A child
-that cannot be ended blocks self-departure; the owning session stays alive as the
-signal. Only an empty bare listing satisfies the session-lifecycle requirement
-that the dispatcher outlive and clean up all of its children.
-<!-- change:terminal-child-session-cleanup -->
 At a true terminal state, the state-machine script invokes bare `telec sessions
 end` before self-departure. That operation owns caller-scoped enumeration and
 closes every live direct child across computers; the orchestrator never expands
 it into listing prose, remembered worker ids, or per-child commands. A failure
 blocks self-departure, while a non-terminal handoff or resume emits no bulk
 cleanup so the sessions needed for continuing work remain live.
-<!-- /planned-change:terminal-child-session-cleanup -->
 
 ### Container Slug Handling
 

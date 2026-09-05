@@ -300,7 +300,6 @@ And incomplete or noisy review dispatches a different reviewer
 And only an ambiguous contract owned by a human or a safety gate reaches the human
 ```
 
-<!-- planned:terminal-child-session-cleanup -->
 #### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure
 
 ```gherkin
@@ -311,7 +310,6 @@ And only after that operation succeeds does the script direct the orchestrator t
 And the script contains neither remembered child identifiers nor a manual child-listing loop
 And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and prepare-to-work resumes emit no bulk child cleanup
 ```
-<!-- /planned:terminal-child-session-cleanup -->
 
 ### Cross-context references
 
