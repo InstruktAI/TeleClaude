@@ -15,6 +15,7 @@ from .models import (
     PrescribedReminderSlug,
     Reminder,
     ReminderAutoCancelOutcome,
+    ReminderCancellationProtectedError,
     ReminderEntry,
     ReminderEvent,
     ReminderRecurrence,
@@ -37,7 +38,7 @@ from .observability import (
     observe_submission,
     observe_transition,
 )
-from .profiles import PrescribedReminderInput, format_prescribed_reminder
+from .profiles import PrescribedReminderInput, format_prescribed_reminder, profile_cancellation_protected
 
 if TYPE_CHECKING:
     from teleclaude.core.db import Db
@@ -111,15 +112,25 @@ class ReminderService:
 
     async def cancel(self, *, session_id: str, slug: str) -> ReminderEntry | None:
         """Idempotently cancel one caller-owned reminder."""
-        transaction_id = str(uuid4())
+        cancellation_id = str(uuid4())
         async with self._mutation_lock:
-            entry = await self._db.cancel_reminder(session_id=session_id, slug=slug)
+            reminder = await self._db.get_reminder(session_id=session_id, slug=slug)
+            protected_slugs = (
+                (reminder.slug,) if reminder is not None and profile_cancellation_protected(reminder.profile) else ()
+            )
+            entry = None if protected_slugs else await self._db.cancel_reminder(session_id=session_id, slug=slug)
         observe_cancel(
             session_id,
             slug=slug,
             entries=[entry] if entry is not None else [],
-            transaction_id=transaction_id,
+            cancellation_id=cancellation_id,
+            protected_slugs=protected_slugs,
         )
+        if protected_slugs:
+            raise ReminderCancellationProtectedError(
+                cancellation_id=cancellation_id,
+                protected_slugs=protected_slugs,
+            )
         if entry is not None:
             observe_transition(entry)
             self._wake.set()
@@ -127,10 +138,29 @@ class ReminderService:
 
     async def cancel_all(self, *, session_id: str) -> builtins.list[ReminderEntry]:
         """Idempotently cancel every caller-owned reminder in one transaction."""
-        transaction_id = str(uuid4())
+        cancellation_id = str(uuid4())
         async with self._mutation_lock:
-            entries = await self._db.cancel_all_reminders(session_id=session_id, append_entries=True)
-        observe_cancel(session_id, slug=None, entries=entries, transaction_id=transaction_id)
+            reminders = await self._db.list_reminders(session_id=session_id)
+            protected_slugs = tuple(
+                reminder.slug for reminder in reminders if profile_cancellation_protected(reminder.profile)
+            )
+            entries = (
+                []
+                if protected_slugs
+                else await self._db.cancel_all_reminders(session_id=session_id, append_entries=True)
+            )
+        observe_cancel(
+            session_id,
+            slug=None,
+            entries=entries,
+            cancellation_id=cancellation_id,
+            protected_slugs=protected_slugs,
+        )
+        if protected_slugs:
+            raise ReminderCancellationProtectedError(
+                cancellation_id=cancellation_id,
+                protected_slugs=protected_slugs,
+            )
         for entry in entries:
             observe_transition(entry)
         if entries:

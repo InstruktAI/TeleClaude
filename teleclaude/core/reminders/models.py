@@ -11,6 +11,7 @@ from teleclaude.core.dates import ensure_utc
 
 _POSITIVE_AFTER_ERROR = "after_seconds must be finite and positive"
 _POSITIVE_INTERVAL_ERROR = "interval_seconds must be finite and positive"
+_CANCEL_PROTECTED_ERROR = "selected reminder is protected from cancellation"
 
 
 class ReminderTrigger(StrEnum):
@@ -48,6 +49,15 @@ class ReminderAutoCancelOutcome(StrEnum):
     CANCELLED = "cancelled"
     ANSWERED = "answered"
     UNRESOLVED = "unresolved"
+
+
+class ReminderCancellationProtectedError(Exception):
+    """A public cancellation selected one or more protected reminder profiles."""
+
+    def __init__(self, *, cancellation_id: str, protected_slugs: tuple[str, ...]) -> None:
+        super().__init__(_CANCEL_PROTECTED_ERROR)
+        self.cancellation_id = cancellation_id
+        self.protected_slugs = protected_slugs
 
 
 class ReminderSubmissionPath(StrEnum):
@@ -146,6 +156,7 @@ class Reminder:
     armed_at: datetime
     generation: int
     occurrence_key: str
+    firing_count: int
     sliding: bool = False
     auto_cancel: bool = False
     pending_answer_occurrence_key: str | None = None
@@ -153,6 +164,10 @@ class Reminder:
     pending_answer_at: datetime | None = None
     claimed_occurrence_key: str | None = None
     claimed_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.firing_count < 0:
+            raise ValueError("firing_count cannot be negative")
 
 
 @dataclass(frozen=True)
@@ -173,6 +188,20 @@ class ReminderEntry:
     sliding: bool = False
     auto_cancel: bool = False
     cancel_reason: ReminderCancelReason | None = None
+    firing_number: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.firing_number is not None and self.firing_number <= 0:
+            raise ValueError("firing_number must be positive")
+        if self.transition is ReminderTransition.FIRING and self.firing_number is None:
+            raise ValueError("firing reminder entry is missing firing_number")
+        if self.transition is not ReminderTransition.FIRING and self.firing_number is not None:
+            raise ValueError("non-firing reminder entry cannot carry firing_number")
+
+    @property
+    def elapsed_since_armed_seconds(self) -> int:
+        """Return this entry's non-negative elapsed duration from its arm instant."""
+        return max(int((self.occurred_at - self.armed_at).total_seconds()), 0)
 
 
 @dataclass(frozen=True)
