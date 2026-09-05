@@ -163,20 +163,36 @@ appended to the producer's work.
 
 <!-- planned-change:review-round-cap-all-loops -->
 When a loop reaches its applicable documented cap without closure, no further
-review starts: the loop halts, the cause is classified — ambiguous contract,
-failed remediation, unstable target, or incomplete or noisy review — and the
-classification is escalated with the halt.
+automatic review starts. The orchestrator classifies the cause — ambiguous
+contract, failed remediation, unstable target, or incomplete or noisy review —
+and owns the recovery direction under `general/policy/human-contract`.
+Failed remediation returns to the producer with adversarial-peer coverage;
+an unstable target returns to its producer; incomplete or noisy review goes
+to a different reviewer; an ambiguous contract goes to its decision owner.
+Human escalation follows the closed human lane, never the round count.
 <!-- change:review-round-cap-all-loops -->
 When a loop reaches its applicable documented cap without closure, no further
-review starts: the loop halts, the cause is classified — ambiguous contract,
-failed remediation, unstable target, or incomplete or noisy review — and the
-orchestrator classification routes the next action with the halt. Failed remediation returns
-to the producer with adversarial-peer coverage; an unstable target returns to
-its producer; incomplete or noisy review goes to a different reviewer; and an
-ambiguous contract goes to its owner. The human is reached only for a
-human-owned contract or a safety gate. The halt classification is recorded to
-the coordinator log for evidence and recurrence, never for adjudication.
+automatic review starts. The orchestrator classifies the cause — ambiguous
+contract, failed remediation, unstable target, or incomplete or noisy review —
+and owns the recovery direction under `general/policy/human-contract`.
+Failed remediation returns to the producer with adversarial-peer coverage;
+an unstable target returns to its producer; incomplete or noisy review goes
+to a different reviewer; an ambiguous contract goes to its decision owner.
+Human escalation follows the closed human lane, never the round count.
+The halt classification is recorded to the coordinator log for evidence
+and recurrence, never as a substitute review verdict.
 <!-- /planned-change:review-round-cap-all-loops -->
+
+Before authorizing a bounded continuation, the orchestrator records the
+classification, the evidence or changed approach that makes another attempt
+different, the responsible owner and the closure condition. The reviewer
+judges the corrected target independently; authorization to continue is not
+approval of the target. Repeating an unchanged attempt is not recovery.
+If no grounded next attempt exists, preserve the unresolved result and its
+missing evidence with an accountable agent owner. Use supported lifecycle
+operations; a missing recovery route is handled under
+`general/policy/human-contract`, never by fabricating a verdict or resetting
+counts to conceal the halt.
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

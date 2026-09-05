@@ -10,8 +10,9 @@ description: The closed list of what the human decides, the agent's default auto
 
 The human decides these, and nothing else:
 
-- **how work is validated and delivered** — the process layer defined by
-  `software-development/policy/process-change-authority`;
+- **changes to the rules governing validation and delivery** — new process
+  contracts under `software-development/policy/process-change-authority`,
+  distinct from operating and recovering work within the agreed process;
 - **what a human experiences** — feature specs, Gherkin scenarios, business intent;
 - **their exclusive domain** — values, brand and voice, relationships, business
   judgment: the territory the leadership policy's Ask mode names;
@@ -22,6 +23,26 @@ Everything else is the agent's. The default there is autonomy: the agent decides
 and does not ask. Technical uncertainty goes to an independent peer, never to the
 human. A question to the human about anything outside the closed list is itself a
 defect.
+
+### Intelligence owns process operation and recovery
+
+Operating the agreed process is agent-owned: technical judgment, review
+recovery, remediation ownership, and the decision to undertake a bounded
+further review within authorized intent. The governing procedure names the
+responsible agent; independent reviewers retain their verdict authority.
+
+Technical uncertainty, disagreement, failed recovery and exhausted review
+rounds do not transfer ownership to the human. Intelligence retains the
+decision and the next action. An escalation must name the specific decision
+in the closed human lane above that is required; asking for another review
+round is not such a decision. An unresolved technical question returns to
+evidence or its agent owner, with the blocker and next contribution recorded.
+
+Recovery authority never permits approval over unresolved findings, weakening
+a quality gate, widening scope, or bypassing a safety gate. When a supported
+operation cannot express an otherwise authorized recovery, the missing route
+is an agent-owned tooling problem; it supplies no permission to forge state
+and no reason to ask the human to decide the technical answer.
 
 Experience never regresses silently. An intentional change to the experience
 contract requires the human's ratification.
@@ -88,6 +109,10 @@ functional, snippet versus code — decides only where the work executes, per
 - A single human does not scale as a catch. Only peers do, and a peer catches
   earliest when additions are classified at intake, before anything downstream
   treats them as contract.
+- A review counter or failed attempt describes the state of work, not who
+  owns its remaining decision. Transferring technical recovery to the human
+  at that boundary leaves the expert owner idle and spends human attention
+  without adding evidence.
 - A list of prohibitions is what agents hide behind; principles are citeable
   clauses, so a reviewer can challenge any decision without a line-item rule
   existing for it, while the burden of proof keeps taste out of findings.

@@ -246,9 +246,9 @@ question costs a round.
 
 The opposite mistake is also real: a driver that misreads the boundary can drill a sound
 chain toward `Unresolved`. The peer's licence to attack the interrogation is the counterweight
-— and the outcome is not a failure. An unresolved bug reaches a human with both positions and
-the observation that would separate them, which is a better artifact than a settled one that
-was never tested.
+— and the outcome is not a failure. An unresolved bug retains both positions and
+the observation that would separate them. Its next contribution is assigned under
+`general/policy/human-contract`; disagreement alone never makes the human its owner.
 
 The diagnosis is judged again by the cross-model plan reviewer; write it to be refuted, not
 to look right.
@@ -263,10 +263,10 @@ because an unsettled cause and an absent one are equally unsafe to plan against.
 
 Persistent disagreement is an outcome, not a deadlock to break. Where both positions rest on
 evidence and neither dislodges the other, the artifact records **both**, with the observation
-that would separate them. A false `Unresolved` costs a human's attention; a false `Settled`
-costs a plan, a build, and a fix aimed at the wrong cause — so the cheaper error is the one
-this path takes. Settlement is never reached by conversational exhaustion, and the driver's
-lifecycle authority breaks no tie.
+that would separate them. Apply the evidence and ownership requirements of
+`general/policy/human-contract`: an unresolved technical result remains with its
+agent owner. Settlement is never reached by conversational exhaustion, and the
+driver's lifecycle authority breaks no evidentiary tie.
 
 The peer records in `diagnosis` what it verified, what remains contested, and which
 observation would separate the rival mechanisms; its Status reads `Unresolved`. The driving
@@ -277,10 +277,16 @@ what stops the phase from dispatching another peer indefinitely: without it the 
 session would call the state machine again into the same phase and re-derive the same
 dispatch.
 
-The held todo waits for its next legitimate owner. A human releases it
-(`telec todo update {slug} --release`) once there is a reason the next attempt would land
-differently — new evidence, a narrowed frontier, or a decision to reclassify or close. The
-`diagnosis` is the artifact they open; no separate hand-off is needed.
+The driving session records the missing observation and the agent responsible
+for its next contribution. The todo stays held until new evidence, a narrowed
+frontier, or a grounded disposition makes another attempt materially different.
+For agent-owned recovery, the driving session records that reason and releases
+the hold through `telec todo update {slug} --release`; it does not ask the human
+to authorize another diagnosis attempt. The independent peer still owns every
+diagnosis revision, and the settlement standard is unchanged. A decision in
+the closed human lane is routed under `general/policy/human-contract` with
+the specific input required. The `diagnosis` carries the unresolved positions
+and recovery evidence; no substitute approval artifact is created.
 
 ### The reported behavior is correct
 

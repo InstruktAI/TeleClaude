@@ -520,13 +520,15 @@ telec todo stamp {slug} --verdict needs_work --phase plan_review
 Verdict rules:
 
 - The §6a lane execution gate passes first: the `Lane anticipation` section verdicts every catalog lane. A verdict is not stamped over an incomplete sweep.
-- `approve` only when unresolved Critical and unresolved Important findings are both zero.
-- `needs_work` when any unresolved Critical or Important finding remains.
+- `approve` only when no Requirement-Violation, Critical or Important finding remains unresolved.
+- `needs_work` when any finding in those three tiers remains unresolved.
 <!-- planned-change:review-round-cap-all-loops -->
-- **Round cap.** The second `needs_work` on a plan ends the autonomous loop:
-  the claimant carries the surviving findings to the human for direction
-  instead of re-entering drafting, and the reviewer's next pass judges only the
-  human-directed resolution. Unbounded rounds are the defect this cap removes.
+- **Round cap.** The second `needs_work` on a plan halts automatic re-entry
+  for classification and recovery under
+  `software-development/procedure/lifecycle/review` §6. The orchestrator
+  owns that direction; the reviewer retains the verdict. A further bounded
+  review follows the recorded recovery, not a request for human permission
+  to spend another round.
 <!-- change:review-round-cap-all-loops -->
 - **Round cap.** The prepare state machine admits plan-review passes through
   `DEFAULT_MAX_REVIEW_ROUNDS` before halting for the classification required by
@@ -561,7 +563,8 @@ Review artifact: plan-review-findings
 ## Recovery
 
 - If unresolved Critical or Important findings remain, mark `needs_work`. The
-  state machine will dispatch the plan drafter again with the findings.
+  state machine routes the findings while the loop is admitted; at its cap,
+  follow the shared review procedure's classification and recovery path.
 - If upstream artifacts themselves are the problem (plan is correct but PRD,
   architecture, or in-scope feature specs are wrong), flag as blocker — the affected
   upstream artifact must be re-reviewed first.

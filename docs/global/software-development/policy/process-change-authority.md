@@ -39,6 +39,20 @@ Restoring code to match the current process-layer contract is a bug fix, not a
 process change: the docs are the process, and code drifting from them is a
 defect.
 
+### Operating the agreed process is agent-owned
+
+Apply `general/policy/human-contract` when deciding who owns a recovery.
+Classifying a halted review, selecting its remediation owner, resolving a
+technical disagreement, or authorizing a bounded further review under the
+existing contract does not change the process. These are judgments the
+process requires its agents to make, not new human approval gates.
+
+An operational decision does not waive verdict arithmetic, independence,
+scope or safety. Changing those governing requirements is a process change;
+executing their recovery provisions is not. An agent escalating an actual
+process change names the rule that must change, rather than presenting
+uncertainty or a spent review count as the proposed delta.
+
 ### Repairing broken process text is a defect fix, not a process change
 
 Process-layer text that contradicts a higher-scope snippet, or that binds

@@ -22,7 +22,6 @@ instructed by the state machine and supervises their progress.
 
 ### The doc layer is frozen — prepare authors, work executes
 
-
 Prepare is the only lifecycle phase that authors doc snippets, on `main`,
 serialized by `telec sync`. From PREPARED onward the doc layer is frozen for the
 
@@ -107,9 +106,10 @@ machine merges `origin/main` into the worktree before dispatch/review; if that
 machine-owned merge returns `MERGE_MAIN_FAILED`, the builder's own procedure
 carries the recovery mechanics. Failed lint/test gates, dirty worktrees,
 missing stamps, and stale branch publication are the same: the child mutates
-the worktree; the orchestrator composes no guidance and escalates when the
-blocker is human-owned, architectural, or a worker unable to proceed from its
-own brief.
+the worktree. When the child cannot proceed from its brief, the orchestrator
+classifies and routes recovery under `general/procedure/orchestration` and
+`general/policy/human-contract`; a technical or architectural blocker does
+not itself require the human.
 
 Review/fix loops are capped by `max_review_rounds` (default 3). No fresh fixer
 session is dispatched — the original builder handles the fix cycle, and the next
@@ -176,20 +176,23 @@ the orchestrator has not read is not, and no amount of elapsed time makes it so.
 Read the state before using this. A verdict already stamped needs nothing, and
 re-stamping over a worker that was mid-write is how two records disagree.
 
-### 9. Kickback to prepare (human-gated)
+### 9. Kickback to prepare (orchestrator-owned)
 
 A build can stall on a plan defect that no fix resolves — the implementation plan
 cannot be executed as written and needs re-derivation, not a fix round. The builder
-surfaces the reason and idles; that idle session is the signal the human reads.
+surfaces the reason to its orchestrator and preserves its work.
 
-The kickback is human-gated. The orchestrator never invokes it on its own
-initiative and a worker never invokes it at all. The orchestrator has already
-tailed the builder's blocking reason, so the human talks only to the orchestrator:
-they read the signal together, and only when re-preparation is judged resolvable
-does the human direct the orchestrator to invoke it. If the signal shows no way
-out, the kickback is not the move — the human handles it another way.
+The orchestrator owns the technical kickback decision under
+`general/policy/human-contract`; the worker does not invoke it. Read the
+builder's evidence, establish why re-preparation can resolve the plan defect
+within authorized intent, and record that direction before acting. A change
+to product intent, scope, the governing process contract, or a safety-gated
+action follows its human authority path. An unresolved technical question
+returns to evidence and its agent owner, never to a human merely because a
+fix round failed. Kickback supplies no approval of the revised plan; normal
+independent preparation review remains required.
 
-On that direction the orchestrator runs
+On that grounded direction the orchestrator runs
 `telec todo stamp [slug] --kickback --reason "<why the plan cannot be built>"`. The
 stamp appends the reason to `input` (creating `input` when the todo has none) and
 invalidates the implementation-plan, so the phase derives back to `plan_drafting`.
@@ -216,9 +219,12 @@ reverts what the amendment invalidates, keeps what still serves, and continues.
 
 ## Recovery
 
-- If a worker stalls, do not compose recovery guidance; escalate when it cannot proceed from its own brief.
-- If stuck after two recovery iterations, record blockers only with evidence that the remaining decision is human-owned, architectural, or outside work scope.
-- If review/fix loops hit the cap, the orchestrator owns pragmatic closure.
+- If a worker stalls or cannot proceed from its brief, inspect and route its
+  recovery under `general/procedure/orchestration`.
+- Failed recovery iterations require a grounded reassessment and an accountable
+  owner, not automatic human escalation; apply `general/policy/human-contract`.
+- At a review cap, the orchestrator owns the shared review procedure's
+  classification and bounded recovery; unresolved findings still block approval.
 - The state machine checkpoint is crash-safe — re-calling `telec todo work` resumes from last state.
 
 ## See also

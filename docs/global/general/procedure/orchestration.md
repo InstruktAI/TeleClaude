@@ -46,7 +46,14 @@ actually did the work recorded there.
 4. When a notification arrives OR `orchestration-watch` fires, invoke the state machine again.
 5. Repeat until the state machine emits a terminal cleanup script that includes `telec sessions end self`.
 
-The state machine owns every concrete decision: dispatch, session ending, phase transitions, fix relay, terminal cleanup. The orchestrator never decides session lifecycle or branches on verdict — if the script says `telec sessions end <id>`, end that session; if the script says `telec sessions send <id> "..."`, send that message. The exception is `telec sessions end self` — the orchestrator's own departure, enacted through `session-departure` rather than run inline. The only orchestrator-owned behaviors are prescribed-reminder management and tailing discipline.
+The state machine owns execution: dispatch, session ending, phase transitions,
+fix relay and terminal cleanup. Execute its returned script; enact
+`telec sessions end self` through `session-departure` rather than inline.
+At a halt, the orchestrator owns classification and recovery routing under
+`software-development/procedure/lifecycle/review` and
+`general/policy/human-contract`, alongside reminder management and tailing.
+That judgment never substitutes for an independent verdict or authorizes a
+state mutation outside the supported lifecycle surface.
 
 ### Terminal Child Cleanup
 
@@ -125,11 +132,15 @@ Status semantics:
 ### When Worker Needs Help
 
 1. Cancel `orchestration-watch`.
-2. Escalate to the human when the evidence shows a human-owned decision, an architectural
-   choice, missing intent, repeated failed recovery attempts, or a worker unable to
-   proceed from its own brief. Do not compose guidance and do not mutate code or tests
-   yourself.
-3. If resolution remains agent-owned, set `orchestration-watch` again and continue waiting. If escalation needs a human decision, leave it cancelled; the session is the beacon.
+2. Classify the remaining decision under `general/policy/human-contract`.
+   Route technical recovery to the responsible agent with the evidence and
+   governing addresses. An architectural question, repeated failed attempts,
+   or an exhausted brief does not itself make the decision human-owned.
+   Do not author the worker's code or tests. Escalate to the human only with
+   the specific human-owned decision or safety gate that prevents progress.
+3. Record the next contribution and its owner. If the orchestrator retains a
+   gated next move, set `orchestration-watch` again before waiting. If the next
+   move belongs elsewhere, leave it cancelled; preserve the routed blocker.
 4. Do not send acknowledgement-only/no-op guidance.
 
 ### Agent Degradation Handling (Orchestrator-Owned)
@@ -205,10 +216,10 @@ credit, or instability:
 
 ### Review Round Limit Handling (Orchestrator-Owned)
 
-When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator does not
-approve. The arithmetic-verdict rule from `lifecycle/work/review` applies at all
-round counts — round limit is not an escape hatch and there is no Suggestion-tier
-floor that lets unresolved findings pass.
+When a preparation or work review reaches its documented cap, apply
+`software-development/procedure/lifecycle/review` §6. The orchestrator owns
+the halt classification and recovery direction; the reviewer retains the
+verdict. `general/policy/human-contract` governs any escalation.
 
 1. Inspect current evidence:
    - `telec todo artifacts read {slug} review-findings`
@@ -216,13 +227,14 @@ floor that lets unresolved findings pass.
 2. Decide and act:
    - If any unresolved **Requirement-Violation**, **Critical**, or **Important**
      finding remains, keep `review=changes_requested`. Record the blocker summary
-     in `review-closure.md`. Sessions stay alive as signal for the human. The
-     orchestrator does not stamp approve under any circumstance.
+     in the phase-specific review artifact. Preserve the required sessions
+     and name the next contribution's agent owner. No approve is stamped
+     while a finding remains unresolved.
    - If every finding is resolved, mark `review=approved`. The verdict is
      arithmetic: zero unresolved findings means APPROVE.
-   - If the loop is genuinely stuck (e.g. circular fix attempts, contradictory
-     findings, or a violation no fix can address), escalate to the human with the
-     accumulated findings and rationale. Do not invent a closure path.
+   - If the loop is stuck, classify and route it under the shared review
+     procedure. A technical recovery or further bounded review does not
+     require human approval. A decision in the closed human lane does.
 3. Record rationale in todo artifacts so the closure is auditable.
 
 When an orchestrator or human closes any preparation or build review through a
@@ -240,16 +252,13 @@ tier blocks the verdict — there is no fourth tier and no deferral path.
 
 <!-- planned:review-round-cap-all-loops -->
 When a prepare or work state machine returns `REVIEW_ROUND_LIMIT`, the
-orchestrator cancels `orchestration-watch`, emits no unclassified reviewer
-dispatch or follow-up, and does not stamp an exceptional verdict. It classifies
-the halt under `software-development/procedure/lifecycle/review`, carries that
-fact to the coordinator for its `carried` log record, then follows the
-classification required by `software-development/procedure/lifecycle/review`:
-failed remediation and unstable targets return to the producer with an
-adversarial peer; incomplete or noisy review goes to a different reviewer;
-an ambiguous contract goes to its owner. Reach the human only when that owner
-is human or a safety gate applies. The coordinator supplies precedent and
-recurrence evidence; it never adjudicates the individual review.
+orchestrator emits no unclassified reviewer dispatch or follow-up and does
+not stamp an exceptional verdict. It applies the shared review procedure's
+classification and recovery direction, records the next contribution and
+owner, and supplies the coordinator with halt evidence for recurrence
+analysis. Reminder ownership follows `general/policy/reminder`; the halt
+alone never transfers the next move to the human. The coordinator supplies
+precedent and recurrence evidence; it never substitutes its own review verdict.
 <!-- /planned:review-round-cap-all-loops -->
 
 - Point workers to the kind-resolved approved intent artifact, optional

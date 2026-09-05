@@ -55,9 +55,9 @@ focused procedure and advances through the machine-owned transitions.
    reviewer instruction, and neither target nor report rewrites reset it. At
    the limit it returns `REVIEW_ROUND_LIMIT`, emits no reviewer instruction,
    and preserves the active prepare session while the halt is classified under
-   `software-development/procedure/lifecycle/review`. The classification routes
-   agent-owned recovery to its producer or an independent reviewer; only an
-   ambiguous human-owned contract or safety gate reaches the human.
+   `software-development/procedure/lifecycle/review`. The orchestrator owns
+   that classification and bounded recovery direction; escalation follows
+   `general/policy/human-contract` rather than the review count.
 <!-- /planned:review-round-cap-all-loops -->
 
 4. **Human PRD approval belongs to the feature lane only.** A drafted feature
@@ -322,7 +322,10 @@ applies here too. Report `PREPARED` to the human, then end per
 
 If reviewer verdicts cannot be resolved through normal revision rounds, or if
 drift cannot be cleanly re-derived, the state machine derives `BLOCKED`.
-Surface the blocker to the human for direction.
+Classify the remaining decision under `general/policy/human-contract` and
+record its evidence, next contribution and owner. Review halts follow
+`software-development/procedure/lifecycle/review` §6. `BLOCKED` is a work
+state, not a declaration that the human owns its recovery.
 
 ## Outputs
 
@@ -363,12 +366,14 @@ Surface the blocker to the human for direction.
   question to surface the missing goal/actor/outcome. Update the input
   artifact with the human's elaboration, then repeat the authority and kind
   gates before entering the routed lane.
-- **State machine returns an unfamiliar recommendation.** Surface this to the
-  user; do not improvise.
+- **State machine returns an unfamiliar recommendation.** Read its governing
+  contract and route any unresolved technical discrepancy to its agent owner
+  under `general/policy/human-contract`; do not improvise a state transition.
 - **Procedure loading fails.** Report the failure; do not proceed without the
   procedure loaded.
-- **Reviewer dispatch fails repeatedly.** Surface as a blocker; do not grind
-  without reviewer verification.
+- **Reviewer dispatch fails repeatedly.** Preserve the failure evidence and
+  apply `general/procedure/orchestration` recovery. The attempts do not
+  substitute for reviewer verification or establish human ownership.
 - **Human disengages mid-flow.** State machine retains current state; next
   session resumes where things were left.
 - **Conflict between standin-produced artifact and real human's intent.**
