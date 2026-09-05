@@ -1389,6 +1389,14 @@ configure_agent_cli() {
     fi
 }
 
+activate_home_repository() {
+    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/bin/init/activate_home_repository.py"; then
+        print_success "Home repository activated"
+    else
+        print_warning "Home repository activation needs operator attention"
+    fi
+}
+
 setup_git_filters() {
     print_header "Setting up Git Filters"
     print_info "Configuring teleclaude-docs smudge/clean filters..."
@@ -1468,6 +1476,7 @@ main() {
     setup_mcp_config
     if [ "$CI_MODE" = false ]; then
         configure_agent_cli
+        activate_home_repository
     fi
     setup_git_filters
     if [ "$CI_MODE" = false ]; then
