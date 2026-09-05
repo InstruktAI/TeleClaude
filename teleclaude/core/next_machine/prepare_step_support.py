@@ -88,12 +88,12 @@ async def prepare_step_prepared(db: Db, todos_db: TodosDb, slug: str, *, project
         raise RuntimeError(f"prepared todo state is missing for {slug}")
     model = TodoState.model_validate(state)
     resume_work = bool(model.build_start_base_sha)
-    live_sessions = await find_live_root_prepare_lifecycle_sessions_for_slug(db, slug)
-    self_end_session = await find_live_root_next_prepare_session_for_slug(db, slug)
-    excluded_from_id_cleanup: set[str] = set()
-    if self_end_session is not None:
-        excluded_from_id_cleanup.add(self_end_session)
-    session_ids_to_end = [session_id for session_id in live_sessions if session_id not in excluded_from_id_cleanup]
+    session_ids_to_end: list[str] | None = None
+    if resume_work:
+        live_sessions = await find_live_root_prepare_lifecycle_sessions_for_slug(db, slug)
+        self_end_session = await find_live_root_next_prepare_session_for_slug(db, slug)
+        excluded_from_id_cleanup = {self_end_session} if self_end_session is not None else set()
+        session_ids_to_end = [session_id for session_id in live_sessions if session_id not in excluded_from_id_cleanup]
     _log_prepare_completed(model, slug=slug, resume_work=resume_work)
     return False, format_prepared(
         slug,

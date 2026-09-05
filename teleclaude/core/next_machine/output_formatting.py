@@ -426,24 +426,14 @@ def format_error(code: str, message: str, next_call: str = "") -> str:
 def format_prepared(
     slug: str,
     session_ids_to_end: list[str] | None = None,
-    auto_continue_operations: list[str] | None = None,
     *,
     resume_work: bool = False,
 ) -> str:
-    """Format the PREPARED terminal message for the prepare state machine.
-
-    Cleanup is the single cleanup point for the prepare lifecycle. When
-    auto-continue operations exist, they run before cleanup so fresh dispatches
-    are started before the current session ends.
-    """
-    operations = ""
-    if auto_continue_operations:
-        operation_lines = "\n".join(auto_continue_operations)
-        operations = f"AUTO-CONTINUE:\nExecute in order:\n{operation_lines}\n\n"
+    """Format the PREPARED terminal message for the prepare state machine."""
 
     cleanup_lines = list(f"telec sessions end {sid}" for sid in session_ids_to_end or [])
     if not resume_work:
-        cleanup_lines.append("telec sessions end self")
+        cleanup_lines.extend(("telec sessions end", "telec sessions end self"))
     cleanup = "\n".join(cleanup_lines)
     cleanup_block = f"{cleanup}\n\n" if cleanup else ""
 
@@ -453,12 +443,8 @@ def format_prepared(
             f"After ending the other prepare-lifecycle sessions above, call `telec todo work {slug}` "
             "in this same session."
         )
-    elif auto_continue_operations:
-        terminal_note = "AUTO-CONTINUE dispatched dependent prepare work."
     else:
         terminal_note = f"{slug} is prepared; any drift is reconciled. Run the cleanup above and self-end."
-    if auto_continue_operations:
-        return f"PREPARED: {slug} is ready for work.\n\n{operations}{cleanup_block}{terminal_note}"
 
     return f"{cleanup_block}PREPARED: {slug} is ready for work.\n\n{terminal_note}"
 
@@ -566,7 +552,7 @@ Read the prepare orchestrator procedure:
 Then call `telec todo prepare {slug}` and follow its output verbatim. When PREPARED directs BUILD RESUME REQUIRED, call `telec todo work {slug}` in this same session."""
 
 
-def format_finalize_handoff_complete(slug: str, child_session_ids: list[str] | None = None) -> str:
+def format_finalize_handoff_complete(slug: str) -> str:
     """Format the terminal handoff step after finalize readiness is recorded."""
     steps: list[str] = []
     steps.append(
@@ -574,13 +560,8 @@ def format_finalize_handoff_complete(slug: str, child_session_ids: list[str] | N
         f'The integrator will spawn automatically when the projection reports READY."'
     )
 
-    step = 2
-    if child_session_ids:
-        end_cmds = "\n   ".join(f"telec sessions end {sid}" for sid in child_session_ids)
-        steps.append(f"{step}. End child sessions:\n   {end_cmds}")
-        step += 1
-
-    steps.append(f"{step}. End this orchestrator session:\n   telec sessions end self")
+    steps.append("2. End child sessions:\n   telec sessions end")
+    steps.append("3. End this orchestrator session:\n   telec sessions end self")
 
     instructions = "\n".join(steps)
     return f"""FINALIZE HANDOFF COMPLETE: {slug}

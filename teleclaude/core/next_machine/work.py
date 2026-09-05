@@ -141,6 +141,7 @@ def _format_no_current_work_slug() -> str:
     return (
         "NO_CURRENT_WORK_SLUG: Work orchestrator sessions are scoped to a single slug.\n\n"
         "Execute:\n\n"
+        "telec sessions end\n"
         "telec sessions end self\n\n"
         "No work-stage action is required. Daemon-runner pickup owns selecting future work."
     )

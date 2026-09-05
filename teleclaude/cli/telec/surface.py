@@ -236,12 +236,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ORCH_TASKER, human=_HR_ADMIN),
             ),
             "end": CommandDef(
-                desc="End (terminate) a session ('self' to end own session)",
-                args="<session_id> [--computer <host>]",
+                desc="End a session, or every direct child of the calling session when targetless",
+                args="[<session_id>] [--computer <host>]",
                 flags=[
                     _H,
                     _FLAG_SESSION,
                     _FLAG_COMPUTER,
+                ],
+                notes=[
+                    "With no target, closes every live direct child of the calling session across computers.",
+                    "Targetless cleanup is idempotent and rejects --computer so caller scope cannot be narrowed.",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH_TASKER | _SYS_INTG, human=_HR_MEMBER),
             ),

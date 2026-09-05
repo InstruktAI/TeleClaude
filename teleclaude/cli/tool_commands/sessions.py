@@ -9,9 +9,13 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 
+from pydantic import TypeAdapter, ValidationError
+
+from teleclaude.api_models import SessionDTO
 from teleclaude.cli.telec.handlers.misc import _handle_revive
-from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.cli.tool_client import ToolAPIError, print_json, tool_api_call, tool_api_request
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
 
@@ -19,6 +23,16 @@ _COORDINATE_SUBCOMMAND = "coordinate"
 _COORDINATE_HELP_FLAGS = ("-h", "--help")
 _COORDINATE_ENDPOINT = "/sessions/self/coordinate"
 _POST_METHOD = "POST"
+_BULK_END_TIMEOUT_S = 30.0
+_BULK_END_POLL_INTERVAL_S = 0.25
+_SESSION_LIST_ADAPTER = TypeAdapter(list[SessionDTO])
+_OPTION_PREFIX = "-"
+_SESSION_END_TARGET_FLAGS = ("--session", "-s")
+_SESSION_END_COMPUTER_FLAG = "--computer"
+_SESSION_END_MISSING_TARGET_ERROR = "Error: --session requires a session_id"
+_SESSION_END_DUPLICATE_TARGET_ERROR = "Error: do not specify more than one session_id"
+_SESSION_END_MISSING_COMPUTER_ERROR = "Error: --computer requires a computer name"
+_SESSION_END_UNRECOGNIZED_ARGUMENT_ERROR = "Error: unrecognized sessions end argument: {}"
 
 
 def handle_sessions(args: list[str]) -> None:
@@ -449,15 +463,18 @@ def handle_sessions_run(args: list[str]) -> None:
 def handle_sessions_end(args: list[str]) -> None:
     """End (terminate) a session.
 
-    Usage: telec sessions end <session_id> [--computer <name>]
+    Usage: telec sessions end [<session_id>] [--computer <name>]
 
     session_id may be 'self' to end the caller's own session
     (resolved from $TMPDIR/teleclaude_identity.json).
+    Without a session_id, closes every live direct child of the authenticated
+    caller across computers.
 
     Gracefully terminates the session: kills the tmux session, deletes the
     session record, and cleans up all resources (listeners, workspace dirs).
 
     Examples:
+      telec sessions end
       telec sessions end abc123
       telec sessions end self
       telec sessions end abc123 --computer remote-macbook
@@ -468,25 +485,51 @@ def handle_sessions_end(args: list[str]) -> None:
 
     session_id: str | None = None
     computer = "local"
+    target_specified = False
+    computer_specified = False
 
     if args and not args[0].startswith("-"):
         session_id = args[0]
+        target_specified = True
         args = args[1:]
 
     i = 0
     while i < len(args):
-        if args[i] in ("--session", "-s") and i + 1 < len(args):
+        argument = args[i]
+        if argument in _SESSION_END_TARGET_FLAGS:
+            if i + 1 >= len(args) or args[i + 1].startswith(_OPTION_PREFIX):
+                print(_SESSION_END_MISSING_TARGET_ERROR, file=sys.stderr)
+                raise SystemExit(1)
+            if target_specified:
+                print(_SESSION_END_DUPLICATE_TARGET_ERROR, file=sys.stderr)
+                raise SystemExit(1)
             session_id = args[i + 1]
+            target_specified = True
             i += 2
-        elif args[i] == "--computer" and i + 1 < len(args):
+        elif argument == _SESSION_END_COMPUTER_FLAG:
+            if i + 1 >= len(args) or args[i + 1].startswith(_OPTION_PREFIX):
+                print(_SESSION_END_MISSING_COMPUTER_ERROR, file=sys.stderr)
+                raise SystemExit(1)
             computer = args[i + 1]
+            computer_specified = True
             i += 2
         else:
-            i += 1
+            print(_SESSION_END_UNRECOGNIZED_ARGUMENT_ERROR.format(argument), file=sys.stderr)
+            raise SystemExit(1)
 
-    if not session_id:
-        print("Error: session_id required", file=sys.stderr)
+    if target_specified and not session_id:
+        print(_SESSION_END_MISSING_TARGET_ERROR, file=sys.stderr)
         raise SystemExit(1)
+    if computer_specified and not computer:
+        print(_SESSION_END_MISSING_COMPUTER_ERROR, file=sys.stderr)
+        raise SystemExit(1)
+
+    if not target_specified:
+        if computer_specified:
+            print("Error: --computer is not supported when ending caller child sessions", file=sys.stderr)
+            raise SystemExit(1)
+        _end_caller_child_sessions()
+        return
 
     if session_id == "self":
         session_id = get_session_id()
@@ -496,6 +539,70 @@ def handle_sessions_end(args: list[str]) -> None:
 
     data = tool_api_call("DELETE", f"/sessions/{session_id}", params={"computer": computer})
     print_json(data)
+
+
+def _end_caller_child_sessions() -> None:
+    """Close every direct child of the authenticated caller and verify convergence."""
+    if not get_session_id():
+        print("Error: caller identity is required to end caller child sessions", file=sys.stderr)
+        raise SystemExit(1)
+
+    deadline = time.monotonic() + _BULK_END_TIMEOUT_S
+    ended_session_ids: set[str] = set()
+    residual_session_ids: list[str] = []
+
+    while True:
+        children = _list_caller_child_sessions()
+        residual_session_ids = [session.session_id for session in children]
+        if not children:
+            print_json({"status": "success", "closed_session_ids": sorted(ended_session_ids)})
+            return
+
+        for child in children:
+            try:
+                tool_api_request(
+                    "DELETE",
+                    f"/sessions/{child.session_id}",
+                    params={"computer": child.computer},
+                )
+            except ToolAPIError as exc:
+                _fail_bulk_end(
+                    f"failed to close child session {child.session_id}: {exc.message}",
+                    residual_session_ids,
+                )
+            ended_session_ids.add(child.session_id)
+
+        if time.monotonic() >= deadline:
+            _fail_bulk_end("timed out waiting for child sessions to close", residual_session_ids)
+        time.sleep(_BULK_END_POLL_INTERVAL_S)
+
+
+def _list_caller_child_sessions() -> list[SessionDTO]:
+    """Read the caller-scoped child projection and reject malformed routing records."""
+    try:
+        data = tool_api_request("GET", "/sessions")
+        sessions = _SESSION_LIST_ADAPTER.validate_python(data)
+    except (ToolAPIError, ValidationError) as exc:
+        print(f"Error: failed to list caller child sessions: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    session_computers: dict[str, str] = {}
+    for session in sessions:
+        if not session.computer:
+            print(f"Error: caller child session {session.session_id} is missing computer routing", file=sys.stderr)
+            raise SystemExit(1)
+        existing_computer = session_computers.setdefault(session.session_id, session.computer)
+        if existing_computer != session.computer:
+            print(f"Error: caller child session {session.session_id} has conflicting computer routing", file=sys.stderr)
+            raise SystemExit(1)
+    return sessions
+
+
+def _fail_bulk_end(reason: str, residual_session_ids: list[str]) -> None:
+    """Report an incomplete caller-scoped cleanup as a terminal command failure."""
+    residuals = ", ".join(sorted(set(residual_session_ids)))
+    print(f"Error: caller child cleanup failed: {reason}; residual session IDs: {residuals}", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def handle_sessions_restart(args: list[str]) -> None:
