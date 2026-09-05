@@ -5,19 +5,25 @@ from __future__ import annotations
 import json
 import sys
 from enum import StrEnum
+from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.config.context_root import resolve_context_root
-from teleclaude.mcp.registry import TELECLAUDE_MCP_CONFIG_FILE, RegistryError, load_effective_registry
+from teleclaude.mcp.registry import (
+    TELECLAUDE_MCP_CONFIG_FILE,
+    RegistryError,
+    load_effective_registry,
+    project_mcp_root,
+)
 from teleclaude.mcp.timeouts import (
     MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS,
     MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS,
 )
 from teleclaude.paths import REPO_ROOT
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
 
 __all__ = ["_handle_mcp"]
 
@@ -88,10 +94,13 @@ def _handle_list(args: list[str]) -> None:
             continue
         _fail_usage("mcp list")
     invocation_project: str | None = None
+    project_scope = False
     try:
         context = resolve_context_root(resolve_invocation_cwd())
         invocation_project = context.path.name if context is not None else None
-        registry = load_effective_registry(REPO_ROOT)
+        project_root = project_mcp_root(context.path) if context is not None else None
+        project_scope = project_root is not None
+        registry = load_effective_registry(resolve_project_root(REPO_ROOT), project_root=project_root)
     except (FileNotFoundError, RegistryError) as exc:
         logger.info(
             _MCP_REGISTRY_LIST_RESOLUTION_EVENT,
@@ -100,6 +109,7 @@ def _handle_list(args: list[str]) -> None:
             registry_authority=McpRegistryListAuthority.TELECLAUDE_REPOSITORY.value,
             registry_filename=TELECLAUDE_MCP_CONFIG_FILE,
             invocation_project=invocation_project,
+            project_scope=project_scope,
             reason=McpRegistryListFailureReason.REGISTRY_LOAD_FAILED.value,
         )
         print(f"Error: {exc}", file=sys.stderr)
@@ -112,6 +122,7 @@ def _handle_list(args: list[str]) -> None:
         registry_authority=McpRegistryListAuthority.TELECLAUDE_REPOSITORY.value,
         registry_filename=TELECLAUDE_MCP_CONFIG_FILE,
         invocation_project=invocation_project,
+        project_scope=project_scope,
         enabled_server_count=len(servers),
     )
     if raw_json:
@@ -137,6 +148,7 @@ def _handle_list_tools(args: list[str]) -> None:
         "GET",
         f"/mcp/servers/{positionals[0]}/tools",
         timeout=MCP_LIST_TOOLS_CLIENT_TIMEOUT_SECONDS,
+        project_root=_tool_project_root(),
     )
     if raw_json:
         print_json(response)
@@ -172,6 +184,7 @@ def _handle_call(args: list[str]) -> None:
         f"/mcp/servers/{slug}/tools/{tool_name}/call",
         json_body=arguments,
         timeout=MCP_TOOL_CALL_CLIENT_TIMEOUT_SECONDS,
+        project_root=_tool_project_root(),
     )
     print_json(response)
 
@@ -179,3 +192,9 @@ def _handle_call(args: list[str]) -> None:
 def _fail_usage(command: str) -> None:
     print(_usage(command))
     raise SystemExit(1)
+
+
+def _tool_project_root() -> Path | None:
+    """Return the eligible canonical project root for tool API requests."""
+    context = resolve_context_root(resolve_invocation_cwd())
+    return project_mcp_root(context.path) if context is not None else None

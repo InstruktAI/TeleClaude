@@ -10,7 +10,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
+from teleclaude.config.context_root import resolve_context_root
+from teleclaude.config.schema import ConfigKind
 from teleclaude.mcp.jsonc import JsoncError, JsonObject, load_jsonc_object
+from teleclaude.paths import REPO_ROOT
+from teleclaude.project_root import resolve_project_root
 
 TELECLAUDE_MCP_CONFIG_FILE = "teleclaude-mcp.jsonc"
 TELECLAUDE_MCP_LOCAL_CONFIG_FILE = "teleclaude-mcp.local.jsonc"
@@ -61,6 +65,7 @@ class McpServerConfig:
     url: str | None = None
     headers: dict[str, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
+    hidden: bool = False
     enabled: bool = True
     lazy: bool = True
     idle_ttl_seconds: float = DEFAULT_IDLE_TTL_SECONDS
@@ -85,6 +90,7 @@ class McpServerConfig:
             "trigger": self.trigger or "",
             "transport": self.transport.value,
             "enabled": self.enabled,
+            "hidden": self.hidden,
             "lazy": self.lazy,
             "requiresEnv": list(self.env_references),
         }
@@ -165,9 +171,34 @@ class McpRegistry:
         return server
 
 
-def load_effective_registry(repo_root: Path) -> McpRegistry:
-    """Load the merged TeleClaude MCP registry for ``repo_root``."""
-    servers = _load_effective_server_specs(repo_root)
+def project_mcp_root(root: Path) -> Path | None:
+    """Return the canonical registry-bearing project root for ``root``."""
+    context = resolve_context_root(root)
+    if context is None or context.kind is not ConfigKind.PROJECT:
+        return None
+    try:
+        project_root = resolve_project_root(context.path)
+    except FileNotFoundError:
+        return None
+    if project_root == resolve_project_root(REPO_ROOT):
+        return None
+    if not any(
+        (project_root / filename).is_file()
+        for filename in (TELECLAUDE_MCP_CONFIG_FILE, TELECLAUDE_MCP_LOCAL_CONFIG_FILE)
+    ):
+        return None
+    return project_root
+
+
+def load_effective_registry(repo_root: Path, project_root: Path | None = None) -> McpRegistry:
+    """Load the machine-wide registry with an optional project overlay."""
+    servers = _load_effective_server_specs(repo_root, project_root=project_root)
+    return McpRegistry(servers={slug: _parse_server(slug, spec) for slug, spec in servers.items()})
+
+
+def load_project_declarations(project_root: Path) -> McpRegistry:
+    """Load only a project's canonical shared and local MCP declarations."""
+    servers = _load_project_server_specs(project_root)
     return McpRegistry(servers={slug: _parse_server(slug, spec) for slug, spec in servers.items()})
 
 
@@ -198,7 +229,7 @@ def launch_reference_spec(spec: JsonObject) -> JsonObject:
     return {key: spec[key] for key in ("command", "args", "url", "headers", "env") if key in spec}
 
 
-def _load_effective_server_specs(repo_root: Path) -> McpServers:
+def _load_effective_server_specs(repo_root: Path, *, project_root: Path | None = None) -> McpServers:
     shared_path = repo_root / TELECLAUDE_MCP_CONFIG_FILE
     local_path = repo_root / TELECLAUDE_MCP_LOCAL_CONFIG_FILE
     compat_shared_path = repo_root / COMPAT_MCP_CONFIG_FILE
@@ -212,7 +243,19 @@ def _load_effective_server_specs(repo_root: Path) -> McpServers:
         _read_teleclaude_servers(shared_path, required=False),
         _read_teleclaude_servers(local_path, required=False),
     )
-    return _merge_mcp_servers(compat, canonical)
+    machine_servers = _merge_mcp_servers(compat, canonical)
+    if project_root is None:
+        return machine_servers
+    return _merge_mcp_servers(machine_servers, _load_project_server_specs(project_root))
+
+
+def _load_project_server_specs(project_root: Path) -> McpServers:
+    shared_path = project_root / TELECLAUDE_MCP_CONFIG_FILE
+    local_path = project_root / TELECLAUDE_MCP_LOCAL_CONFIG_FILE
+    return _merge_mcp_servers(
+        _read_teleclaude_servers(shared_path, required=False),
+        _read_teleclaude_servers(local_path, required=False),
+    )
 
 
 def _read_teleclaude_servers(path: Path, *, required: bool) -> McpServers:
@@ -266,6 +309,7 @@ def _parse_server(slug: str, spec: JsonObject) -> McpServerConfig:
         url=url,
         headers=headers,
         env=env,
+        hidden=_optional_bool(slug, spec, "hidden", default=False),
         enabled=_optional_bool(slug, spec, "enabled", default=True),
         lazy=lazy.enabled,
         idle_ttl_seconds=lazy.idle_ttl_seconds,

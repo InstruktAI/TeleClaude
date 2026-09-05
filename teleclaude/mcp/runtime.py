@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -23,6 +25,7 @@ from teleclaude.mcp.registry import (
     RegistryError,
     extract_env_names_from_text,
     load_effective_registry,
+    project_mcp_root,
     remote_proxy_command,
 )
 from teleclaude.mcp.timeouts import (
@@ -36,6 +39,14 @@ logger = get_logger(__name__)
 
 _ENV_REFERENCE_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:[:?+\-=][^}]*)?\}|([A-Za-z_][A-Za-z0-9_]*))")
 MCP_STDIO_STREAM_LIMIT_BYTES = 1024 * 1024
+_INVALID_PROJECT_CONTEXT_CODE = "invalid_project_context"
+_INVALID_PROJECT_CONTEXT_MESSAGE = "Invalid project MCP context"
+_RUNTIME_CLOSE_FAILED_MESSAGE = "MCP runtime close failed"
+_RUNTIME_REAP_FAILED_MESSAGE = "MCP runtime reap failed"
+_MACHINE_RUNTIME_IDENTIFIER = "machine"
+_PROJECT_RUNTIME_IDENTIFIER_TEMPLATE = "project:{digest}"
+
+type RegistryLoader = Callable[[], McpRegistry]
 
 
 class McpRuntimeError(RuntimeError):
@@ -84,11 +95,13 @@ class McpRuntime:
         repo_root: Path,
         env_path: Path = ENV_PATH,
         registry: McpRegistry | None = None,
+        registry_loader: RegistryLoader | None = None,
         clock: _Clock | None = None,
     ) -> None:
         self._repo_root = repo_root
         self._env_path = env_path
         self._registry = registry
+        self._registry_loader = registry_loader
         self._clock = clock
         self._leases: dict[str, _Lease] = {}
         self._lease_lock = asyncio.Lock()
@@ -218,7 +231,11 @@ class McpRuntime:
             raise McpRuntimeError("MCP server failed to start", code="startup_failed", slug=server.slug) from exc
 
     def _load_registry(self) -> McpRegistry:
-        return self._registry or load_effective_registry(self._repo_root)
+        if self._registry is not None:
+            return self._registry
+        if self._registry_loader is not None:
+            return self._registry_loader()
+        return load_effective_registry(self._repo_root)
 
     def _load_env_values(self) -> dict[str, str]:
         values: dict[str, str] = {}
@@ -241,6 +258,87 @@ class McpRuntime:
         if self._clock is not None and hasattr(self._clock, "now"):
             return float(self._clock.now())
         return time.monotonic()
+
+
+class McpRuntimePool:
+    """Own per-project MCP runtimes and their isolated lease state."""
+
+    def __init__(
+        self,
+        *,
+        repo_root: Path,
+        env_path: Path = ENV_PATH,
+        clock: _Clock | None = None,
+    ) -> None:
+        self._repo_root = repo_root
+        self._env_path = env_path
+        self._clock = clock
+        self._runtimes: dict[Path, McpRuntime] = {
+            repo_root: McpRuntime(repo_root=repo_root, env_path=env_path, clock=clock)
+        }
+
+    @property
+    def machine_runtime(self) -> McpRuntime:
+        """Return the permanent machine-wide runtime."""
+        return self._runtimes[self._repo_root]
+
+    def runtime_for(self, project_root: Path | None) -> McpRuntime:
+        """Return the isolated runtime for a validated project scope."""
+        if project_root is None:
+            return self.machine_runtime
+        try:
+            canonical_root = project_mcp_root(project_root)
+        except (OSError, ValueError) as exc:
+            raise McpRuntimeError(
+                _INVALID_PROJECT_CONTEXT_MESSAGE,
+                code=_INVALID_PROJECT_CONTEXT_CODE,
+            ) from exc
+        if canonical_root is None:
+            raise McpRuntimeError(
+                _INVALID_PROJECT_CONTEXT_MESSAGE,
+                code=_INVALID_PROJECT_CONTEXT_CODE,
+            )
+        runtime = self._runtimes.get(canonical_root)
+        if runtime is None:
+            runtime = McpRuntime(
+                repo_root=self._repo_root,
+                env_path=self._env_path,
+                registry_loader=lambda: load_effective_registry(self._repo_root, project_root=canonical_root),
+                clock=self._clock,
+            )
+            self._runtimes[canonical_root] = runtime
+        return runtime
+
+    async def reap_idle(self) -> None:
+        """Reap idle leases in every runtime without blocking other scopes."""
+        for root, runtime in list(self._runtimes.items()):
+            try:
+                await runtime.reap_idle()
+            except Exception as exc:
+                logger.warning(
+                    _RUNTIME_REAP_FAILED_MESSAGE,
+                    runtime_scope=self._runtime_identifier(root),
+                    error_type=type(exc).__name__,
+                )
+
+    async def close(self) -> None:
+        """Close every runtime without blocking cleanup of another scope."""
+        for root, runtime in list(self._runtimes.items()):
+            try:
+                await runtime.close()
+            except Exception as exc:
+                logger.warning(
+                    _RUNTIME_CLOSE_FAILED_MESSAGE,
+                    runtime_scope=self._runtime_identifier(root),
+                    error_type=type(exc).__name__,
+                )
+
+    def _runtime_identifier(self, root: Path) -> str:
+        """Return a stable path-free identifier for one pooled runtime."""
+        if root == self._repo_root:
+            return _MACHINE_RUNTIME_IDENTIFIER
+        digest = hashlib.sha256(str(root).encode()).hexdigest()[:12]
+        return _PROJECT_RUNTIME_IDENTIFIER_TEMPLATE.format(digest=digest)
 
 
 class _Clock(Protocol):
