@@ -318,19 +318,6 @@ artifacts/snippets and normal docs retrieval.
 
 ### Use cases
 
-<!-- planned-change:terminal-child-session-cleanup -->
-#### UC-WPS1: PREPARED auto-continues into unblocked child prepare
-
-```gherkin
-Given "parent" reaches lifecycle_phase=PREPARED and "child" has edge {child: [parent]} and child's prepare gate is now satisfied
-When the orchestrator calls "telec todo prepare parent" and the machine derives PREPARED
-Then the machine, in addition to emitting parent's prepared-cleanup, derives the now-unblocked dependent children (prepare gate satisfied for every dep)
-And for each such child it emits a CONCRETE auto-continue operation — not a human-in-the-loop suggestion
-And the emitted operation reuses an open prepare worker: it locates the parent's live prepare worker via the slug+command match and emits "telec sessions send <parent_worker> '<drive prepare for child>'" so the child's prepare builds on the parent's just-frozen design held in that worker's context
-And when no live parent prepare worker exists it falls back to a fresh "telec sessions run --command /next-prepare --args child"
-And when auto-continue reuses the parent worker, that worker is NOT ended by prepared-cleanup; only other live parent sessions (e.g. reviewers) are ended
-```
-<!-- change:terminal-child-session-cleanup -->
 #### UC-WPS1: PREPARED cleanup is independent of dependent dispatch
 
 ```gherkin
@@ -340,18 +327,7 @@ Then dependent dispatch remains runner-owned through the wake-up in UC-WPS5
 And the terminal response closes every live direct child of the calling orchestrator before self-departure
 And no reused prepare worker is exempt from caller-scoped prepared-cleanup
 ```
-<!-- /planned-change:terminal-child-session-cleanup -->
 
-<!-- planned-change:terminal-child-session-cleanup -->
-#### UC-WPS2: PREPARED cleanup is unchanged without unblocked children
-
-```gherkin
-Given "parent" reaches PREPARED but has no dependent children whose prepare gate it satisfies
-And "parent" carries no in-flight build
-When the machine derives PREPARED
-Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
-```
-<!-- change:terminal-child-session-cleanup -->
 #### UC-WPS2: PREPARED cleanup is caller-scoped without unblocked children
 
 ```gherkin
@@ -363,7 +339,6 @@ And only after that operation succeeds does the response direct the orchestrator
 And it contains neither remembered child identifiers nor a manual child-listing loop
 And it emits no auto-continue operation
 ```
-<!-- /planned-change:terminal-child-session-cleanup -->
 
 #### UC-WPS5: PREPARED emits a runner wake-up, not a child dispatch
 
@@ -412,7 +387,6 @@ Then the prepare machine returns TODO_NOT_FOUND with a concrete todo-create next
 And no roadmap row is created for "unknown-prepare"
 ```
 
-<!-- planned:terminal-child-session-cleanup -->
 #### UC-WPS20: Terminal prepare cleanup is caller-scoped and precedes departure
 
 ```gherkin
@@ -423,7 +397,6 @@ And only after that operation succeeds does the script direct the orchestrator t
 And the script contains neither remembered child identifiers nor a manual child-listing loop
 And PREPARED paths that resume an in-flight build emit no bulk child cleanup and do not end the orchestrator
 ```
-<!-- /planned:terminal-child-session-cleanup -->
 
 
 ### Cross-context references
