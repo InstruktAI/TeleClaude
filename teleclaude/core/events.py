@@ -41,9 +41,11 @@ class AgentHookEvents(StrEnum):
     """Internal hook event vocabulary shared after provider normalization."""
 
     AGENT_ERROR = "error"
+    AGENT_BLOCKED = "agent_blocked"
     AGENT_IDLE = "agent_idle"
     AGENT_SESSION_START = "session_start"
     AGENT_STOP = "agent_stop"
+    AGENT_TURN_FAILED = "agent_turn_failed"
     CHECKPOINT_SEEN = "checkpoint_seen"
     NATIVE_METADATA_UPDATE = "native_metadata_update"
     NATIVE_SESSION_REFRESH = "native_session_refresh"
@@ -63,12 +65,19 @@ class AgentStopCompletionSource(StrEnum):
 
 
 ALL_AGENT_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(AgentHookEvents)
+_DISTRESS_REASON_FIELD = "reason"
+_DISTRESS_NOTIFICATION_TYPE_FIELD = "notification_type"
+_DISTRESS_ERROR_FIELD = "error"
+_DISTRESS_TERMINATION_REASON_FIELD = "terminationReason"
+_DISTRESS_ERROR_MESSAGE_FIELD = "message"
 RECEIVER_HANDLED_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_ERROR,
+        AgentHookEvents.AGENT_BLOCKED,
         AgentHookEvents.AGENT_IDLE,
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.AGENT_STOP,
+        AgentHookEvents.AGENT_TURN_FAILED,
         AgentHookEvents.PRE_TOOL_USE,
         AgentHookEvents.POST_TOOL_USE,
         AgentHookEvents.USER_PROMPT_SUBMIT,
@@ -146,12 +155,24 @@ class AgentIdlePayload:
     source_computer: str | None = None
 
 
+@dataclass(frozen=True)
+class AgentDistressPayload:
+    """Internal payload for a provider-reported blocked or failed turn."""
+
+    session_id: str | None = None
+    transcript_path: str | None = None
+    source_computer: str | None = None
+    reason: str | None = None
+    raw: Mapping[str, object] = field(default_factory=dict)
+
+
 AgentEventPayload = Union[
     AgentSessionStartPayload,
     UserPromptSubmitPayload,
     AgentOutputPayload,
     AgentStopPayload,
     AgentIdlePayload,
+    AgentDistressPayload,
 ]
 
 
@@ -162,6 +183,8 @@ SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
     AgentHookEvents.USER_PROMPT_SUBMIT,
     AgentHookEvents.AGENT_IDLE,
     AgentHookEvents.AGENT_STOP,
+    AgentHookEvents.AGENT_BLOCKED,
+    AgentHookEvents.AGENT_TURN_FAILED,
     AgentHookEvents.PRE_TOOL_USE,
     AgentHookEvents.POST_TOOL_USE,
 }
@@ -209,6 +232,15 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             raw=frozen_raw,
         )
 
+    if event_type in {AgentHookEvents.AGENT_BLOCKED, AgentHookEvents.AGENT_TURN_FAILED}:
+        return AgentDistressPayload(
+            session_id=native_id,
+            transcript_path=cast(str | None, data.get("transcript_path")),
+            source_computer=cast(str | None, data.get("source_computer")),
+            reason=_distress_reason(data),
+            raw=frozen_raw,
+        )
+
     if event_type in {AgentHookEvents.PRE_TOOL_USE, AgentHookEvents.POST_TOOL_USE}:
         return AgentOutputPayload(
             session_id=native_id,
@@ -221,6 +253,24 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
         f"Unsupported agent hook event_type '{event_type}' for payload building. "
         f"Supported types: {sorted(SUPPORTED_PAYLOAD_TYPES)}"
     )
+
+
+def _distress_reason(data: Mapping[str, object]) -> str | None:
+    """Extract the provider token that explains a normalized distress event."""
+    for reason_field in (
+        _DISTRESS_REASON_FIELD,
+        _DISTRESS_NOTIFICATION_TYPE_FIELD,
+        _DISTRESS_ERROR_FIELD,
+        _DISTRESS_TERMINATION_REASON_FIELD,
+    ):
+        value = data.get(reason_field)
+        if isinstance(value, str) and value:
+            return value
+        if reason_field == _DISTRESS_ERROR_FIELD and isinstance(value, Mapping):
+            message = value.get(_DISTRESS_ERROR_MESSAGE_FIELD)
+            if isinstance(message, str) and message:
+                return message
+    return None
 
 
 def build_codex_task_recovery_stop_payload(data: Mapping[str, object]) -> AgentStopPayload:

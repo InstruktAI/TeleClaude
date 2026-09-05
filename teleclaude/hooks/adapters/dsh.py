@@ -90,7 +90,7 @@ class DshAdapter(HookAdapter):
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
             DshHookEvent.STOP_FAILURE: NativeHookSpec(
-                AgentHookEvents.AGENT_ERROR,
+                AgentHookEvents.AGENT_TURN_FAILED,
                 frozenset(),
             ),
         }

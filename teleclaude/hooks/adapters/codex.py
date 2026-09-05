@@ -46,6 +46,7 @@ class CodexHookEvent(StrEnum):
     USER_PROMPT_SUBMIT = "UserPromptSubmit"
     PRE_TOOL_USE = "PreToolUse"
     POST_TOOL_USE = "PostToolUse"
+    PERMISSION_REQUEST = "PermissionRequest"
     STOP = "Stop"
 
 
@@ -74,6 +75,7 @@ class CodexAdapter(HookAdapter):
                 frozenset({HookPurpose.CONTROL_DELIVERY}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
+            CodexHookEvent.PERMISSION_REQUEST: NativeHookSpec(AgentHookEvents.AGENT_BLOCKED, frozenset()),
             CodexHookEvent.STOP: NativeHookSpec(
                 AgentHookEvents.AGENT_STOP,
                 frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),

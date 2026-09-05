@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from instrukt_ai_logging import get_logger
@@ -25,6 +26,19 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+
+
+class TurnNotificationRecord(StrEnum):
+    """Notification outcomes recorded for the current session turn."""
+
+    TERMINAL_TURN_END = "terminal_turn_end"
+    TERMINAL_TURN_FAILED = "terminal_turn_failed"
+    BLOCKED = "blocked"
+
+
+_TERMINAL_NOTIFICATION_RECORDS: frozenset[TurnNotificationRecord] = frozenset(
+    {TurnNotificationRecord.TERMINAL_TURN_END, TurnNotificationRecord.TERMINAL_TURN_FAILED}
+)
 
 
 class _LifecycleTransitionFields(TypedDict):
@@ -953,35 +967,24 @@ class DbSessionsMixin:
             rows = result.all()
             return [self._to_core_session(row) for row in rows]
 
-    async def set_notification_flag(self, session_id: str, value: bool) -> None:
-        """Set notification_sent flag in UX state.
-
-        Used by Agent notification hook to signal that notification was sent.
-
-        Args:
-            session_id: Session ID
-            value: Flag value (True = notification sent, False = cleared)
-        """
-        await self.update_session(session_id, notification_sent=1 if value else 0)
-
-    async def clear_notification_flag(self, session_id: str) -> None:
-        """Clear notification_sent flag in UX state.
-
-        Called by polling coordinator when output resumes to re-enable notifications.
-
-        Args:
-            session_id: Session ID
-        """
-        await self.update_session(session_id, notification_sent=0)
-
-    async def get_notification_flag(self, session_id: str) -> bool:
-        """Get notification_sent flag from UX state.
-
-        Args:
-            session_id: Session ID
-
-        Returns:
-            True if notification was sent, False otherwise
-        """
+    async def claim_turn_notification(
+        self, session_id: str, record: TurnNotificationRecord
+    ) -> tuple[bool, frozenset[TurnNotificationRecord]]:
+        """Claim one notification outcome without allowing two terminal accounts."""
         session = await self.get_session(session_id)
-        return bool(session.notification_sent) if session else False
+        if session is None:
+            return False, frozenset()
+        recorded = frozenset(
+            TurnNotificationRecord(value) for value in session.turn_notifications_sent.split(",") if value
+        )
+        if record in recorded or (
+            record in _TERMINAL_NOTIFICATION_RECORDS and recorded & _TERMINAL_NOTIFICATION_RECORDS
+        ):
+            return False, recorded
+        updated = recorded | {record}
+        await self.update_session(session_id, turn_notifications_sent=",".join(sorted(updated)))
+        return True, updated
+
+    async def clear_turn_notifications(self, session_id: str) -> None:
+        """Clear all notification outcomes when a new user turn begins."""
+        await self.update_session(session_id, turn_notifications_sent="")

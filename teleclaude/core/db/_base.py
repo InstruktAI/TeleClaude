@@ -106,7 +106,7 @@ class DbBase:
             initiator_computer=row.initiator_computer if hasattr(row, "initiator_computer") else None,
             detached=bool(row.detached) if hasattr(row, "detached") and row.detached is not None else False,
             output_message_id=row.output_message_id,
-            notification_sent=bool(row.notification_sent) if row.notification_sent is not None else False,
+            turn_notifications_sent=row.turn_notifications_sent or "",
             native_session_id=row.native_session_id,
             native_log_file=row.native_log_file,
             active_agent=row.active_agent,

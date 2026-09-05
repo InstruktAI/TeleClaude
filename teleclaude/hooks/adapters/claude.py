@@ -39,6 +39,7 @@ _POST_COMPACT_TRIGGER_FIELD = "trigger"
 _POST_COMPACT_MANUAL_TRIGGER = "manual"
 _POST_COMPACT_AUTO_TRIGGER = "auto"
 _INVALID_POST_COMPACT_TRIGGER = "Claude PostCompact payload requires a manual or auto trigger"
+_NOTIFICATION_TYPE_FIELD = "notification_type"
 
 
 class ClaudeHookEvent(StrEnum):
@@ -50,6 +51,20 @@ class ClaudeHookEvent(StrEnum):
     POST_TOOL_USE = "PostToolUse"
     POST_COMPACT = "PostCompact"
     STOP = "Stop"
+    NOTIFICATION = "Notification"
+    STOP_FAILURE = "StopFailure"
+
+
+class ClaudeNotificationType(StrEnum):
+    """Claude notification types that leave a session waiting for input."""
+
+    PERMISSION_PROMPT = "permission_prompt"
+    AGENT_NEEDS_INPUT = "agent_needs_input"
+    ELICITATION_DIALOG = "elicitation_dialog"
+    ELICITATION_URL_DIALOG = "elicitation_url_dialog"
+
+
+_BLOCKING_NOTIFICATION_TYPES: frozenset[str] = frozenset(ClaudeNotificationType)
 
 
 class ClaudeAdapter(HookAdapter):
@@ -86,6 +101,8 @@ class ClaudeAdapter(HookAdapter):
                 frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
+            ClaudeHookEvent.NOTIFICATION: NativeHookSpec(AgentHookEvents.AGENT_BLOCKED, frozenset()),
+            ClaudeHookEvent.STOP_FAILURE: NativeHookSpec(AgentHookEvents.AGENT_TURN_FAILED, frozenset()),
         }
     )
     supports_hook_checkpoint: bool = True
@@ -100,6 +117,11 @@ class ClaudeAdapter(HookAdapter):
 
     def normalize_event(self, raw_event_type: str, data: JsonDict) -> HookEventNormalization:
         """Map only provider-confirmed manual compaction to an idle boundary."""
+        if raw_event_type == ClaudeHookEvent.NOTIFICATION:
+            notification_type = data.get(_NOTIFICATION_TYPE_FIELD)
+            if notification_type in _BLOCKING_NOTIFICATION_TYPES:
+                return HookEventNormalization(AgentHookEvents.AGENT_BLOCKED, HookNormalizationReason.MAPPED_EVENT)
+            return HookEventNormalization(None, HookNormalizationReason.PROVIDER_NOT_IDLE)
         if raw_event_type == ClaudeHookEvent.POST_COMPACT:
             trigger = data.get(_POST_COMPACT_TRIGGER_FIELD)
             if trigger == _POST_COMPACT_MANUAL_TRIGGER:

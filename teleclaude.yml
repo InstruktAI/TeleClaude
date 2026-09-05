@@ -83,7 +83,7 @@ checkpoint:
         include: [pyproject.toml, requirements*.txt]
       actions: [deps]
     - scope:
-        include: [teleclaude/install/**, teleclaude/project_setup/**, templates/**]
+        include: [teleclaude/install/**, teleclaude/project_setup/**, teleclaude/hooks/adapters/**, templates/**]
       actions: [install]
     - scope:
         include: [teleclaude/cli/tui/**]

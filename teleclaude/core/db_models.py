@@ -43,7 +43,7 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     initiator_computer: str | None = None
     detached: bool | None = False
     output_message_id: str | None = None
-    notification_sent: int | None = 0
+    turn_notifications_sent: str | None = ""
     native_session_id: str | None = None
     native_log_file: str | None = None
     active_agent: str | None = None

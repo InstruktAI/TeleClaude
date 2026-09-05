@@ -18,7 +18,11 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SystemCommandContext, parse_command_string
 from teleclaude.core.models import JsonDict, RedisInboundMessage
-from teleclaude.core.session_listeners import deliver_remote_stop_notification
+from teleclaude.core.session_listeners import (
+    NotificationKind,
+    deliver_remote_distress_notification,
+    deliver_remote_stop_notification,
+)
 from teleclaude.core.session_message_projection import (
     SessionMessageProjectionOptions,
     build_session_messages_dto,
@@ -231,7 +235,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 return
 
             cmd_name, cmd_args = parse_command_string(parsed.command)
-            if cmd_name in {"stop_notification", "input_notification"}:
+            if cmd_name in {"stop_notification", "distress_notification"}:
                 result = await self._handle_agent_notification_command(cmd_name, cmd_args)
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
@@ -301,7 +305,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 logger.debug("Failed to send Redis error response for %s", message_id, exc_info=True)
 
     async def _handle_agent_notification_command(self, cmd_name: str, args: list[str]) -> JsonDict:
-        """Handle stop_notification/input_notification commands as direct deliveries.
+        """Handle direct caller-notification commands delivered across computers.
 
         These arrive on the initiator's own daemon, naming a session that was
         created elsewhere — there is no local row for it, and so no local
@@ -339,6 +343,26 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 occurrence_key=occurrence_key,
             )
             return {"status": "success", "data": None}
+
+        if cmd_name == "distress_notification":
+            if len(args) < 5:
+                return {"status": "error", "error": "invalid distress_notification args"}
+            target_session_id, source_computer, caller_session_id, raw_kind, title_b64 = args[:5]
+            occurrence_key = args[5] if len(args) > 5 else None
+            try:
+                notification_kind = NotificationKind(raw_kind)
+            except ValueError:
+                return {"status": "error", "error": "invalid distress notification kind"}
+            title = None
+            if title_b64 != "-":
+                try:
+                    title = base64.b64decode(title_b64).decode()
+                except _DECODE_EXCEPTIONS:
+                    return {"status": "error", "error": "invalid distress notification title"}
+            delivered = await deliver_remote_distress_notification(
+                caller_session_id, target_session_id, source_computer, notification_kind, title, occurrence_key
+            )
+            return {"status": "success", "data": {"delivered": delivered}}
 
         return {"status": "error", "error": f"unsupported agent notification: {cmd_name}"}
 
