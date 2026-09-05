@@ -1,6 +1,7 @@
 """Extraction, TTS, snapshot, and notification mixin for AgentCoordinator."""
 
 import base64
+import json
 import random
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -11,8 +12,14 @@ from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
+from teleclaude.core.db._sessions import TurnNotificationRecord
 from teleclaude.core.models import MessageMetadata
-from teleclaude.core.session_listeners import notify_stop
+from teleclaude.core.session_listeners import (
+    NotificationKind,
+    notify_distress,
+    notify_distress_human_fallback,
+    notify_stop,
+)
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.tts.manager import TTSManager
@@ -23,6 +30,7 @@ if TYPE_CHECKING:
     from teleclaude.core.events import AgentStopPayload
 
 logger = get_logger(__name__)
+_DISTRESS_COMMAND = "/distress_notification {session_id} {computer} {caller} {kind} {title} {occurrence}"
 
 
 class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
@@ -99,11 +107,12 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
     ) -> None:
         """Notify local listeners via tmux injection (once per turn).
 
-        Turn-gated: the notification_sent flag prevents duplicate notifications
-        from heartbeat-induced agent_stop events within the same turn.
-        Cleared automatically by handle_user_prompt_submit on the next real prompt.
+        Terminal outcomes contend for one per-turn notification slot.
         """
-        if await db.get_notification_flag(target_session_id):
+        claimed, _records = await db.claim_turn_notification(
+            target_session_id, TurnNotificationRecord.TERMINAL_TURN_END
+        )
+        if not claimed:
             logger.debug(
                 "Skipping duplicate stop notification for session %s (already notified this turn)",
                 target_session_id,
@@ -115,9 +124,95 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         if "\n\nADDITIONAL CONTEXT" in display_title:
             display_title = display_title.split("\n\nADDITIONAL CONTEXT")[0]
         computer = source_computer or LOCAL_COMPUTER
-        notified = await notify_stop(target_session_id, computer, title=display_title)
-        if notified:
-            await db.set_notification_flag(target_session_id, True)
+        await notify_stop(target_session_id, computer, title=display_title)
+
+    async def _notify_session_distress(
+        self, target_session_id: str, notification_kind: NotificationKind, source_computer: str | None = None
+    ) -> None:
+        """Notify persistent listeners after claiming the matching turn slot."""
+        record = (
+            TurnNotificationRecord.BLOCKED
+            if notification_kind is NotificationKind.BLOCKED
+            else TurnNotificationRecord.TERMINAL_TURN_FAILED
+        )
+        claimed, records = await db.claim_turn_notification(target_session_id, record)
+        if not claimed:
+            logger.info(
+                "turn_notification_slot_claimed",
+                session_id=target_session_id,
+                claimed_member=record,
+                outcome="rejected",
+                recorded_members=sorted(records),
+            )
+            return
+        logger.info(
+            "turn_notification_slot_claimed",
+            session_id=target_session_id,
+            claimed_member=record,
+            outcome="claimed",
+        )
+        session = await db.get_session(target_session_id)
+        title = session.title if session else None
+        computer = source_computer or LOCAL_COMPUTER
+        reached = await notify_distress(target_session_id, computer, notification_kind, title)
+        remote_reached = await self._forward_distress_to_initiator(session, notification_kind, computer, title)
+        fallback_delivered = False
+        if not reached and not remote_reached:
+            fallback_delivered = await notify_distress_human_fallback(
+                target_session_id, computer, notification_kind, self.client, title
+            )
+        logger.info(
+            "distress_audience_resolved",
+            target_session_id=target_session_id,
+            notification_kind=notification_kind,
+            reached=sorted(reached),
+            remote_initiator_session_id=(session.initiator_session_id if session else None),
+            remote_reached=remote_reached,
+            outcome=("subscriber_delivery" if reached or remote_reached else "human_fallback"),
+            fallback_delivered=fallback_delivered,
+        )
+
+    async def _forward_distress_to_initiator(
+        self, session: object | None, notification_kind: NotificationKind, computer: str, title: str | None
+    ) -> bool:
+        """Forward distress and count a remote subscriber only when delivery succeeds."""
+        if session is None:
+            return False
+        session_id = getattr(session, "session_id", None)
+        caller = getattr(session, "initiator_session_id", None)
+        destination = getattr(session, "initiator_computer", None)
+        if not all(isinstance(value, str) and value for value in (session_id, caller, destination)):
+            return False
+        if destination == config.computer.name:
+            return False
+        encoded_title = base64.b64encode(title.encode()).decode() if title else "-"
+        try:
+            request_id = await self.client.send_request(
+                destination,
+                _DISTRESS_COMMAND.format(
+                    session_id=session_id,
+                    computer=computer,
+                    caller=caller,
+                    kind=notification_kind,
+                    title=encoded_title,
+                    occurrence=uuid4().hex,
+                ),
+                MessageMetadata(),
+            )
+            response = json.loads(await self.client.read_response(request_id, target_computer=destination))
+            data = response.get("data") if isinstance(response, dict) else None
+            delivered = data.get("delivered") if isinstance(data, dict) else None
+            result = delivered is True
+        except (OSError, RuntimeError, TimeoutError, ValueError, json.JSONDecodeError):
+            result = False
+        logger.info(
+            "distress_forward_result",
+            session_id=session_id,
+            initiator_session_id=caller,
+            destination_computer=destination,
+            delivered=result,
+        )
+        return result
 
     async def _forward_stop_to_initiator(self, session_id: str) -> None:
         """Forward stop event to a remote initiator via Redis.

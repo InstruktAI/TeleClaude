@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     initiator_session_id TEXT,
     initiator_computer TEXT,
     output_message_id TEXT,
-    notification_sent INTEGER DEFAULT 0,
+    turn_notifications_sent TEXT NOT NULL DEFAULT '',
     native_session_id TEXT,
     native_log_file TEXT,
     active_agent TEXT,

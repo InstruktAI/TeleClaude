@@ -86,6 +86,8 @@ HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
     {
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.AGENT_STOP,
+        AgentHookEvents.AGENT_BLOCKED,
+        AgentHookEvents.AGENT_TURN_FAILED,
         AgentHookEvents.AGENT_ERROR,
     }
 )
@@ -106,6 +108,8 @@ HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.USER_PROMPT_SUBMIT,
         AgentHookEvents.AGENT_STOP,
+        AgentHookEvents.AGENT_BLOCKED,
+        AgentHookEvents.AGENT_TURN_FAILED,
         AgentHookEvents.AGENT_ERROR,
         AgentHookEvents.CHECKPOINT_SEEN,
         AgentHookEvents.NATIVE_METADATA_UPDATE,

@@ -19,6 +19,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentActivityEvent,
+    AgentDistressPayload,
     AgentEventContext,
     AgentHookEvents,
     AgentHookEventType,
@@ -44,6 +45,7 @@ from teleclaude.core.session_lifecycle import (
     decide_codex_stop_recovery,
     transition_session,
 )
+from teleclaude.core.session_listeners import NotificationKind
 from teleclaude.core.session_output import is_bare_noop_output
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
@@ -339,6 +341,10 @@ class AgentCoordinator(
             await self.handle_session_start(context)
         elif context.event_type == AgentHookEvents.AGENT_STOP:
             await self.handle_agent_stop(context)
+        elif context.event_type == AgentHookEvents.AGENT_BLOCKED:
+            await self.handle_agent_distress(context, NotificationKind.BLOCKED)
+        elif context.event_type == AgentHookEvents.AGENT_TURN_FAILED:
+            await self.handle_agent_distress(context, NotificationKind.TURN_FAILED)
         elif context.event_type == AgentHookEvents.PRE_TOOL_USE:
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
@@ -359,6 +365,15 @@ class AgentCoordinator(
             outcome=_AGENT_IDLE_OBSERVED_OUTCOME,
             reason=_AGENT_IDLE_MANUAL_NATIVE_COMMAND_REASON,
             native_session_id=payload.session_id,
+        )
+
+    async def handle_agent_distress(self, context: AgentEventContext, notification_kind: NotificationKind) -> None:
+        """Notify watchers when a provider reports a blocked or failed turn."""
+        payload = cast(AgentDistressPayload, context.data)
+        await self._notify_session_distress(
+            context.session_id,
+            notification_kind,
+            source_computer=payload.source_computer,
         )
 
     async def handle_session_start(self, context: AgentEventContext) -> None:
@@ -501,8 +516,9 @@ class AgentCoordinator(
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id)
             return
 
-        # Clear notification flag when new prompt starts (all sessions)
-        await db.set_notification_flag(session_id, False)
+        # A real prompt starts a new turn and re-opens all notification outcomes.
+        await db.clear_turn_notifications(session_id)
+        logger.info("turn_notification_gate_cleared", session_id=session_id)
 
         # Snapshot HEAD as the turn-start anchor for scoped path resolution.
         # Captured here because user_prompt_submit is the canonical turn boundary:

@@ -14,7 +14,8 @@ import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from enum import StrEnum
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
@@ -24,7 +25,11 @@ from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
+from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_status import is_session_terminal
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
 _PAIR_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
@@ -40,6 +45,8 @@ _STOP_NOTIFICATION_TITLE_TEMPLATE = ' "{title}"'
 _STOP_NOTIFICATION_LOCATION_TEMPLATE = " on {computer}"
 _STOP_NOTIFICATION_COMPUTER_SELECTOR_TEMPLATE = " --computer {computer}"
 _STOP_NOTIFICATION_NO_PART = ""
+_BLOCKED_NOTIFICATION_TEMPLATE = "Session{location_part}{title_part} is waiting for approval or input. Use telec sessions tail {target_session_id}{computer_selector} to inspect."
+_FAILED_NOTIFICATION_TEMPLATE = "Session{location_part}{title_part} failed its turn. Use telec sessions tail {target_session_id}{computer_selector} to inspect."
 
 
 @dataclass
@@ -59,6 +66,14 @@ class NotificationLocality:
 
     location_part: str
     computer_selector: str
+
+
+class NotificationKind(StrEnum):
+    """Caller-facing session notification kinds."""
+
+    TURN_END = "turn_end"
+    BLOCKED = "blocked"
+    TURN_FAILED = "turn_failed"
 
 
 @dataclass
@@ -350,7 +365,9 @@ async def get_stale_targets(max_age_minutes: int = 10) -> list[str]:
     return stale_targets
 
 
-async def _notify_listeners(target_session_id: str, message: str, *, occurrence_key: str) -> int:
+async def _notify_listeners(
+    target_session_id: str, message: str, *, occurrence_key: str, notification_kind: NotificationKind
+) -> set[str]:
     """Internal: notify all listeners with a pre-built message.
 
     Args:
@@ -363,7 +380,7 @@ async def _notify_listeners(target_session_id: str, message: str, *, occurrence_
     listeners = await get_listeners(target_session_id)
     if not listeners:
         logger.debug("No listeners for session %s", target_session_id)
-        return 0
+        return set()
 
     preview = message.replace("\n", "\\n")[:160]
     logger.debug(
@@ -372,8 +389,10 @@ async def _notify_listeners(target_session_id: str, message: str, *, occurrence_
         ",".join(listener.caller_session_id for listener in listeners),
         preview,
     )
-    success_count = 0
+    reached: set[str] = set()
     for listener in listeners:
+        if notification_kind is not NotificationKind.TURN_END and listener.one_shot:
+            continue
         # Suppress delivery while the caller holds an active direct link with the
         # target. The active-conversation channel supersedes passive notification
         # for the duration of the link. The listener row is preserved — delivery
@@ -384,7 +403,7 @@ async def _notify_listeners(target_session_id: str, message: str, *, occurrence_
             target_session_id,
             mode="direct_link",
         )
-        if active_link is not None:
+        if notification_kind is NotificationKind.TURN_END and active_link is not None:
             logger.debug(
                 "Suppressing listener notify: caller=%s target=%s (active direct link %s)",
                 listener.caller_session_id,
@@ -401,10 +420,10 @@ async def _notify_listeners(target_session_id: str, message: str, *, occurrence_
                 envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=message),
             )
             logger.info("Notified caller %s", listener.caller_session_id)
-            success_count += 1
+            reached.add(listener.caller_session_id)
         except SessionMessageRejectedError:
             logger.warning("Failed to notify caller %s", listener.caller_session_id)
-        if listener.one_shot:
+        if notification_kind is NotificationKind.TURN_END and listener.one_shot:
             await db.unregister_listener(
                 target_session_id=target_session_id,
                 caller_session_id=listener.caller_session_id,
@@ -413,7 +432,7 @@ async def _notify_listeners(target_session_id: str, message: str, *, occurrence_
                 "One-shot listener removed: caller=%s target=%s", listener.caller_session_id, target_session_id
             )
 
-    return success_count
+    return reached
 
 
 def _notification_locality(computer: str) -> NotificationLocality:
@@ -438,11 +457,29 @@ def _stop_notification_message(target_session_id: str, computer: str, title: str
     return body
 
 
+def _distress_notification_message(
+    target_session_id: str, computer: str, title: str | None, notification_kind: NotificationKind
+) -> str:
+    title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
+    locality = _notification_locality(computer)
+    template = (
+        _BLOCKED_NOTIFICATION_TEMPLATE
+        if notification_kind is NotificationKind.BLOCKED
+        else _FAILED_NOTIFICATION_TEMPLATE
+    )
+    return template.format(
+        location_part=locality.location_part,
+        title_part=title_part,
+        target_session_id=target_session_id,
+        computer_selector=locality.computer_selector,
+    )
+
+
 async def notify_stop(
     target_session_id: str,
     computer: str,
     title: str | None = None,
-) -> int:
+) -> set[str]:
     """Notify listeners that a session finished its turn.
 
     Args:
@@ -454,7 +491,46 @@ async def notify_stop(
         Number of listeners successfully notified
     """
     message = _stop_notification_message(target_session_id, computer, title)
-    return await _notify_listeners(target_session_id, message, occurrence_key=uuid4().hex)
+    return await _notify_listeners(
+        target_session_id, message, occurrence_key=uuid4().hex, notification_kind=NotificationKind.TURN_END
+    )
+
+
+async def notify_distress(
+    target_session_id: str,
+    computer: str,
+    notification_kind: NotificationKind,
+    title: str | None = None,
+) -> set[str]:
+    """Notify persistent listeners of a blocked or failed target session."""
+    message = _distress_notification_message(target_session_id, computer, title, notification_kind)
+    reached = await _notify_listeners(
+        target_session_id, message, occurrence_key=uuid4().hex, notification_kind=notification_kind
+    )
+    return reached
+
+
+async def notify_distress_human_fallback(
+    target_session_id: str,
+    computer: str,
+    notification_kind: NotificationKind,
+    client: "AdapterClient",
+    title: str | None,
+) -> bool:
+    """Deliver unwatched distress only to the target session's own adapter."""
+    target = await db.get_session(target_session_id)
+    if target is None:
+        return False
+    message = _distress_notification_message(target_session_id, computer, title, notification_kind)
+    return (
+        await client.send_message(
+            target,
+            message,
+            metadata=MessageMetadata(target_adapter_key=target.last_input_origin),
+            cleanup_trigger=CleanupTrigger.NEXT_TURN,
+            ephemeral=False,
+        )
+    ) is not None
 
 
 async def deliver_remote_stop_notification(
@@ -495,6 +571,31 @@ async def deliver_remote_stop_notification(
             target_session_id=target_session_id,
             reason=exc.reason,
         )
+        return False
+    return True
+
+
+async def deliver_remote_distress_notification(
+    caller_session_id: str,
+    target_session_id: str,
+    computer: str,
+    notification_kind: NotificationKind,
+    title: str | None = None,
+    occurrence_key: str | None = None,
+) -> bool:
+    """Deliver a forwarded distress notification directly to the remote caller."""
+    caller = await db.get_session(caller_session_id)
+    if caller is None:
+        return False
+    message = _distress_notification_message(target_session_id, computer, title, notification_kind)
+    try:
+        await handoff_control_payload(
+            session_id=caller_session_id,
+            body=message,
+            source_key=f"listener:{target_session_id}:{caller_session_id}:{occurrence_key or uuid4().hex}",
+            envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=message),
+        )
+    except SessionMessageRejectedError:
         return False
     return True
 
