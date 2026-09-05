@@ -32,11 +32,11 @@ Three contexts participate, and the split follows meaning rather than hosting:
 - **Agent runtime** owns that a session reaches the boundary rather than the raw
   tool, and carries the facts the boundary consumes.
 
-Sending is not this design's subject, and no other work owns it today: the todo
-that was to publish the fact a send gate would consume has been removed and its
-contract never landed. The conduct policy's send rule therefore rests on the
-assistant's own compliance and on what the account's authorization grant
-permits, not on this boundary.
+Sending is not this design's subject. No gate here applies the conduct policy's
+send rule: holding it would need a published fact identifying a run in which a
+person's instruction can exist, and no context publishes one. That rule
+therefore rests on the assistant's own compliance and on what the account's
+authorization grant permits, not on this boundary.
 
 ### The person is consumed, never derived
 
@@ -179,9 +179,9 @@ defines none.
 - **A shared declaration is indistinguishable from a sole one at this boundary.**
   The boundary checks an address against the acting person's own declaration and
   asks nothing about who else declared it, so two people declaring one address
-  each pass their own check and meet in the connector's store. Restricting that
-  is a product decision recorded against this delivery and unanswered; no
-  mechanism here anticipates either answer.
+  each pass their own check and meet in the connector's store. Whether that may
+  occur is an unsettled product question, and no mechanism here anticipates
+  either answer.
 
 ## See Also
 
