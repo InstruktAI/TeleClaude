@@ -26,6 +26,7 @@ _PERSIST_SUMMARY_STOP_PARAMETER = "stop_iso"
 _PERSIST_SUMMARY_RAW_OUTPUT_PARAMETER = "raw_output"
 _PERSIST_SUMMARY_VALUE_PARAMETER = "summary"
 _PERSIST_SUMMARY_AT_PARAMETER = "summary_at"
+_EXPECTED_STOP_PARAMETER = "expected_stop_iso"
 
 
 class DbAgentStopsMixin:
@@ -51,6 +52,7 @@ class DbAgentStopsMixin:
             "last_agent_stop_at": stop_iso,
         }
 
+        parameters: dict[str, str | None]
         if output_disposition is StopOutputDisposition.PRESERVE:
             statement = (
                 "UPDATE sessions SET last_activity = :stop_iso, last_agent_stop_at = :stop_iso "
@@ -59,7 +61,6 @@ class DbAgentStopsMixin:
             )
             parameters = {
                 "stop_iso": stop_iso,
-                "expected_stop_iso": expected_stop_iso,
                 "session_id": session_id,
             }
         else:
@@ -84,7 +85,6 @@ class DbAgentStopsMixin:
                 "raw_output": raw_output,
                 "output_at": output_at,
                 "patch_json": json.dumps(patch),
-                "expected_stop_iso": expected_stop_iso,
                 "session_id": session_id,
             }
             updated_fields.update(
@@ -95,6 +95,9 @@ class DbAgentStopsMixin:
                     "last_output_stop_at": output_at,
                 }
             )
+
+        if expected_stop_iso is not None:
+            parameters[_EXPECTED_STOP_PARAMETER] = expected_stop_iso
 
         async with self._session() as db_session:
             result = await db_session.exec(
