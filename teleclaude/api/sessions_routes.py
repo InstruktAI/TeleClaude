@@ -29,7 +29,7 @@ from teleclaude.api.auth import (
     clearance_sessions_start,
 )
 from teleclaude.api.run_session_refusals import RunSessionRefusal
-from teleclaude.api.run_session_shapes import infer_role_and_slug_from_message
+from teleclaude.api.run_session_shapes import infer_command_from_message, infer_role_and_slug_from_message
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_create_launch import (
     build_launch_intent,
@@ -419,6 +419,7 @@ async def _create_session_response(
             "initiator_session_id": initiator_session_id,
             "initial_input": initial_input,
             "title": request.title,
+            "command": infer_command_from_message(request.message),
             "working_slug": infer_role_and_slug_from_message(request.message)[2],
         },
         metadata,

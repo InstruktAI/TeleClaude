@@ -188,6 +188,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
     title: str
     project_path: str | None = None
     subdir: str | None = None
+    command: str | None = None
     working_slug: str | None = None
     thinking_mode: str | None = None
     active_agent: str | None = None
@@ -211,6 +212,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
                 "title": session.title,
                 "project_path": session.project_path,
                 "subdir": session.subdir,
+                "command": session.command,
                 "working_slug": session.working_slug,
                 "thinking_mode": session.thinking_mode,
                 "active_agent": session.active_agent,
@@ -945,7 +947,7 @@ class RunSessionRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     computer: str = Field(default="local")
-    command: str = Field(..., min_length=1, description="Slash command (e.g. '/next-build')")
+    command: str = Field(..., min_length=1, description="Command name (e.g. 'next-build')")
     args: str = Field(default="", description="Command arguments")
     project: str = Field(..., min_length=1, description="Project path")
     agent: Literal["claude", "gemini", "codex", "deepseek"] | None = None

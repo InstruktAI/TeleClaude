@@ -290,13 +290,13 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return head == "telec" and rest[:1] == ["reload"]
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
-    if evidence == "/next-review-commits":
-        # Only a real dispatch: `telec sessions run --command /next-review-commits`,
-        # with the slash-command as the value of --command (not merely mentioned).
+    if evidence == "next-review-commits":
+        # Only a real dispatch: `telec sessions run --command next-review-commits`,
+        # with the command name as the value of --command (not merely mentioned).
         if head != "telec" or "sessions" not in rest or "run" not in rest or "--command" not in tokens:
             return False
         command_idx = tokens.index("--command")
-        return command_idx + 1 < len(tokens) and tokens[command_idx + 1] == "/next-review-commits"
+        return command_idx + 1 < len(tokens) and tokens[command_idx + 1] in {evidence, f"/{evidence}"}
     if evidence == "review commits":
         # Only a remediation dispatch: `telec sessions send <reviewer> "review commits ..."`,
         # with the review request as the message payload (a token starting with it).

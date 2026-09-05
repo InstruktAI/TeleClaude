@@ -183,7 +183,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "run": CommandDef(
-                desc="Run a slash command on a new agent session",
+                desc="Run a canonical command on a new agent session",
                 args=(
                     "[--command <cmd>] [--path <path>] [--args <val>] [--agent <name>]"
                     " [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--detach]"
@@ -191,7 +191,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ),
                 flags=[
                     _H,
-                    Flag("--command", desc="Slash command (e.g. /next-build)"),
+                    Flag("--command", desc="Bare canonical command (e.g. next-build)"),
                     _FLAG_PATH,
                     Flag("--args", desc="Command arguments"),
                     _FLAG_AGENT,
@@ -202,8 +202,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--additional-context", desc="Additional context for the worker, appended to startup message"),
                 ],
                 notes=[
-                    "Creates a fresh session and runs the slash command as the first agent message.",
-                    "Worker lifecycle commands: /next-build, /next-review-build, /next-finalize.",
+                    "Creates a fresh session and runs the bare canonical command as the first agent message.",
+                    "Worker lifecycle commands: next-build, next-review-build, next-finalize.",
                     (
                         "--detach: do not use unless explicitly instructed. Sanctioned only for a "
                         "personal-assistant dispatching an orchestrator to a project. --detach disables "
@@ -212,7 +212,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 ],
                 examples=[
-                    "telec sessions run --command /next-build --args my-slug",
+                    "telec sessions run --command next-build --args my-slug",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH_TASKER, human=_HR_MEMBER),
             ),

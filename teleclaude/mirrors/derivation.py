@@ -26,7 +26,7 @@ from teleclaude.utils.transcript import StructuredMessage, normalize_runtime_use
 # Bump to force every existing mirror to re-derive through the reconciliation loop.
 # Note that a bump re-runs full generation per transcript, summarizer call included,
 # so it is not the cheap route for a classification-only change.
-DERIVATION_VERSION = 2
+DERIVATION_VERSION = 3
 
 _TITLE_MAX_CHARS = 120
 
@@ -55,6 +55,7 @@ _BUILTIN_COMMANDS: frozenset[str] = frozenset(
 
 _CLAUDE_COMMAND_NAME_RE = re.compile(r"<command-name>\s*/?([\w-]+)\s*</command-name>")
 _CLAUDE_COMMAND_ARGS_RE = re.compile(r"<command-args>([\s\S]*?)</command-args>")
+_COMMAND_MARKER_RE = re.compile(r"^TELECLAUDE COMMAND:\s*([\w-]+)(?:\s+(\S+))?", re.MULTILINE)
 _LOADER_RE = re.compile(
     r"Read\s+\S*?commands/([\w-]+)\.md\s+and follow it exactly as the active instruction set",
 )
@@ -88,7 +89,7 @@ class LaunchInfo:
 
     command: str | None = None
     slug: str | None = None
-    via: str | None = None  # "claude-tag" | "loader" | "leading-slash"
+    via: str | None = None  # "command-marker" | "claude-tag" | "loader" | "leading-slash"
 
 
 def is_worker_command(command: str | None) -> bool:
@@ -165,6 +166,10 @@ def strip_injected_blocks(text: str, agent_name: AgentName = AgentName.CLAUDE) -
 
 def detect_launch_in_text(text: str) -> LaunchInfo:
     """Detect a launch command in a single user-turn text, by marker priority."""
+    marker_match = _COMMAND_MARKER_RE.search(text)
+    if marker_match:
+        return LaunchInfo(command=marker_match.group(1), slug=marker_match.group(2), via="command-marker")
+
     name_match = _CLAUDE_COMMAND_NAME_RE.search(text)
     if name_match:
         command = name_match.group(1)

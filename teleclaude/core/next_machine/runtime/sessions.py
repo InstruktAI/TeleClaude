@@ -10,7 +10,7 @@ from teleclaude.constants import ROLE_ORCHESTRATOR, WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.session_status import compute_agent_status
 
-TitlePrefixes = str | tuple[str, ...]
+CommandValues = str | tuple[str, ...]
 PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
     SlashCommand.NEXT_PREPARE.value,
     SlashCommand.NEXT_PREPARE_INTAKE.value,
@@ -23,17 +23,15 @@ PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
 )
 
 
-def _normalize_prefixes(title_prefixes: TitlePrefixes) -> tuple[str, ...]:
-    """Return a uniform tuple of accepted title prefixes."""
-    if isinstance(title_prefixes, str):
-        return (title_prefixes,)
-    return title_prefixes
+def _normalize_commands(command_values: CommandValues) -> tuple[str, ...]:
+    """Return a uniform tuple of canonical command values."""
+    values = (command_values,) if isinstance(command_values, str) else command_values
+    return tuple(value.lstrip("/") for value in values)
 
 
-def _matches_title_prefix(title: str | None, title_prefixes: TitlePrefixes) -> bool:
-    """Return whether a session title matches any accepted command prefix."""
-    normalized_title = (title or "").lstrip()
-    return any(normalized_title.startswith(prefix) for prefix in _normalize_prefixes(title_prefixes))
+def _matches_command(command: str | None, command_values: CommandValues) -> bool:
+    """Return whether a recorded command matches one of the requested values."""
+    return command in _normalize_commands(command_values)
 
 
 def _expected_subdir(slug: str, subdir_override: str | None) -> str | None:
@@ -52,7 +50,7 @@ def _expected_subdir(slug: str, subdir_override: str | None) -> str | None:
 async def find_live_session_for_slug(
     db: Db,
     slug: str,
-    title_prefixes: TitlePrefixes,
+    command_values: CommandValues,
     subdir_override: str | None = None,
 ) -> str | None:
     """Return the newest live session id for a slug and command-family prefix."""
@@ -61,7 +59,7 @@ async def find_live_session_for_slug(
     for session in sessions:
         if session.subdir != expected_subdir:
             continue
-        if _matches_title_prefix(session.title, title_prefixes):
+        if session.working_slug == slug and _matches_command(session.command, command_values):
             return session.session_id
     return None
 
@@ -69,7 +67,7 @@ async def find_live_session_for_slug(
 async def find_live_session_with_status_for_slug(
     db: Db,
     slug: str,
-    title_prefixes: TitlePrefixes,
+    command_values: CommandValues,
     subdir_override: str | None = None,
 ) -> tuple[str | None, str]:
     """Return the newest live session id plus computed agent status for a slug."""
@@ -78,7 +76,7 @@ async def find_live_session_with_status_for_slug(
     for session in sessions:
         if session.subdir != expected_subdir:
             continue
-        if not _matches_title_prefix(session.title, title_prefixes):
+        if session.working_slug != slug or not _matches_command(session.command, command_values):
             continue
         return (
             session.session_id,
@@ -116,47 +114,6 @@ async def is_live_session_id(db: Db, session_id: str) -> bool:
     return session.lifecycle_status != "closed"
 
 
-_TITLE_SLUG_BOUNDARIES = (" ", "\t", "\n")
-
-
-def _matches_boundary_prefix(normalized_title: str, expected_title: str) -> bool:
-    """Return True when ``normalized_title`` equals ``expected_title`` or continues past a boundary char.
-
-    Shared by every exact-command title matcher below: a bare ``startswith``
-    would let a same-prefix command or slug (``/next-review-commits-v2``,
-    ``my-slug-extra``) falsely match a lookup for the shorter form.
-    """
-    if normalized_title == expected_title:
-        return True
-    return (
-        normalized_title.startswith(expected_title)
-        and normalized_title[len(expected_title) : len(expected_title) + 1] in _TITLE_SLUG_BOUNDARIES
-    )
-
-
-def _matches_command_slug_title(title: str | None, slug: str, command_values: TitlePrefixes) -> bool:
-    """Return True when a root title matches ``/<command> <slug>`` with a slug boundary."""
-    normalized_title = (title or "").lstrip()
-    return any(
-        _matches_boundary_prefix(normalized_title, f"/{command_value} {slug}")
-        for command_value in _normalize_prefixes(command_values)
-    )
-
-
-def _matches_command_only_title(title: str | None, command_values: TitlePrefixes) -> bool:
-    """Return True when a title matches ``/<command>`` exactly or continues past a boundary.
-
-    Used where the subject has no slug to key on (commit review): a bare prefix
-    match would let a same-prefix command (``/next-review-commits-v2``) falsely
-    hold the ``/next-review-commits`` subject.
-    """
-    normalized_title = (title or "").lstrip()
-    return any(
-        _matches_boundary_prefix(normalized_title, f"/{command_value}")
-        for command_value in _normalize_prefixes(command_values)
-    )
-
-
 async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: str) -> str | None:
     """Return the newest live prepare worker id for an exact slug+command match.
 
@@ -170,7 +127,7 @@ async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: st
     for session in sessions:
         if session.subdir is not None:
             continue
-        if _matches_command_slug_title(session.title, slug, command_value):
+        if session.working_slug == slug and _matches_command(session.command, command_value):
             return session.session_id
     return None
 
@@ -184,11 +141,8 @@ async def find_live_reviewer_for_slug(
 ) -> str | None:
     """Return the newest live reviewer session for an exact project+slug+command match.
 
-    Composes the primitives already used by their respective callers:
-    :func:`_matches_command_slug_title` for the exact ``/<command> <slug>``
-    title semantics (a bare prefix match would let an unrelated command whose
-    title merely begins with the requested one falsely hold the subject),
-    :func:`_expected_subdir` for the per-slug scope, and :func:`_same_project_root`
+    Composes exact command and slug fields with :func:`_expected_subdir` for the
+    per-slug scope, and :func:`_same_project_root`
     so a same-named slug in a different project never holds this subject — R1
     defines the subject as ``(project, slug, review command)``. This serves all
     three slug-bound reviewer families — ``/next-review-build`` runs in the slug
@@ -204,7 +158,7 @@ async def find_live_reviewer_for_slug(
             continue
         if not _same_project_root(session.project_path, project_root):
             continue
-        if _matches_command_slug_title(session.title, slug, command_value):
+        if session.working_slug == slug and _matches_command(session.command, command_value):
             return session.session_id
     return None
 
@@ -220,7 +174,9 @@ async def find_live_root_prepare_lifecycle_sessions_for_slug(db: Db, slug: str) 
     return [
         session.session_id
         for session in sessions
-        if session.subdir is None and _matches_command_slug_title(session.title, slug, PREPARE_LIFECYCLE_COMMANDS)
+        if session.subdir is None
+        and session.working_slug == slug
+        and _matches_command(session.command, PREPARE_LIFECYCLE_COMMANDS)
     ]
 
 
@@ -259,8 +215,7 @@ async def list_live_commit_reviewers_for_initiator(
     return tuple(
         (session.session_id, session.thinking_mode or "")
         for session in sessions
-        if _same_project_root(session.project_path, project_root)
-        and _matches_command_only_title(session.title, command_value)
+        if _same_project_root(session.project_path, project_root) and _matches_command(session.command, command_value)
     )
 
 
@@ -299,7 +254,7 @@ async def find_live_commit_reviewer_for_initiator(
             continue
         if session.thinking_mode != thinking_mode:
             continue
-        if _matches_command_only_title(session.title, command_value):
+        if _matches_command(session.command, command_value):
             return session.session_id
     return None
 
