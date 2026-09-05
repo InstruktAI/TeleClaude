@@ -1,7 +1,7 @@
 ---
-description: 'Every route the platform provides for reaching a mail or calendar connector leads to the mediated boundary that binds and gates the invocation, and none leads to the raw tool.'
-delivered_by:
-  - personal-mail-tool-launcher
+description: Every route the platform provides for reaching a mail or calendar connector
+  leads to the mediated boundary that binds and gates the invocation, and none leads
+  to the raw tool.
 ---
 
 # Assistant Connector Access — Spec
