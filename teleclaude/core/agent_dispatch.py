@@ -60,6 +60,7 @@ class AgentDispatchReason(StrEnum):
     HELD_WITHOUT_DRIVER = "held_without_driver"
     WORKING_SLUG_INFERRED = "working_slug_inferred"
     WORKING_SLUG_PRESENT = "working_slug_present"
+    JOB_COMMAND_GENERIC_CREATE = "job_command_generic_create"
     STARTUP_PREPARED = "startup_prepared"
     SESSION_COMMITTED = "session_committed"
     LAUNCH_QUEUED = "launch_queued"
@@ -237,6 +238,7 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.NEXT_CREATE_ART: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.NEXT_CREATE_HTML: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.NEXT_DEFER: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
+    SlashCommand.NEXT_RUN_JOB: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.FAST),
 }
 _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
 

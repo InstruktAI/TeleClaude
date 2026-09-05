@@ -77,6 +77,7 @@ ROLE_TASKER = "tasker"
 # generic cron agent job) is the only role band permitted a no-human lineage
 # root at todo/bug creation — see project/spec/domain/workflow.
 ROLE_JOB_RUNNER = "job_runner"
+JOB_SPEC_ID_PREFIX = "project/spec/jobs/"
 
 
 class DriverLaunchClass(StrEnum):
@@ -329,6 +330,7 @@ class SlashCommand(str, Enum):
     NEXT_CREATE_ART = "next-create-art"
     NEXT_CREATE_HTML = "next-create-html"
     NEXT_DEFER = "next-defer"
+    NEXT_RUN_JOB = "next-run-job"
 
 
 # Canonical `/next-*` commands that may run without a todo slug: the prepare
@@ -343,6 +345,7 @@ NON_SLUG_BOUND_COMMANDS = frozenset(
         SlashCommand.NEXT_INTEGRATE,
         SlashCommand.NEXT_REVIEW_COMMITS,
         SlashCommand.NEXT_COORDINATE,
+        SlashCommand.NEXT_RUN_JOB,
     }
 )
 
@@ -368,6 +371,7 @@ class JobRole(str, Enum):
     ARTIST = "artist"
     FRONTENDER = "frontender"
     INTEGRATOR = "integrator"
+    JOB_RUNNER = "job-runner"
 
 
 # Maps slash commands to the (system_role, job_role) a session running that command holds.
@@ -404,6 +408,7 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
     SlashCommand.NEXT_COORDINATE: (ROLE_ORCHESTRATOR, JobRole.COORDINATOR),
     SlashCommand.NEXT_CREATE: (ROLE_ORCHESTRATOR, JobRole.CREATE_ORCHESTRATOR),
+    SlashCommand.NEXT_RUN_JOB: (ROLE_JOB_RUNNER, JobRole.JOB_RUNNER),
 }
 
 # The launch commands whose session is a dispatched worker — one derivation of the role

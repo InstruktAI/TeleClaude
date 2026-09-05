@@ -34,6 +34,7 @@ from teleclaude.api.auth import (
     clearance_sessions_unsubscribe,
     clearance_sessions_voice,
 )
+from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_refusals import RunSessionRefusal, resolve_run_session_agent
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug
 from teleclaude.api.session_access import check_session_access
@@ -116,7 +117,9 @@ WORKTREE_BOUND_WORKER_COMMANDS = {
     SlashCommand.NEXT_FINALIZE,
 }
 
-NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.NEXT_REVIEW_COMMITS}
+NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.NEXT_REVIEW_COMMITS, SlashCommand.NEXT_RUN_JOB}
+
+_JOB_COMMAND_GENERIC_CREATE_DETAIL = "next-run-job must be dispatched through /sessions/run"
 
 SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
     command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
@@ -334,14 +337,15 @@ async def guard_generic_create_session(
     cmd: object,
     identity: CallerIdentity,
 ) -> DriverStartGuardResult:
-    """Guard the generic ``POST /sessions`` create door against a duplicate driver.
-
-    Resolves the would-be ``working_slug`` from the request the same way the
-    create-session primitive does (the "trees/<slug>" worktree subdir, else the
-    command's own slug) and runs the shared driver-start guard.
-    """
+    """Guard generic session creation against forbidden job commands and duplicate drivers."""
     if not isinstance(cmd, CreateSessionCommand):
         return DriverStartGuardResult()
+    if _normalize_command(_leading_command(request.message)) is SlashCommand.NEXT_RUN_JOB:
+        raise RunSessionRefusal(
+            status_code=400,
+            detail=_JOB_COMMAND_GENERIC_CREATE_DETAIL,
+            reason=AgentDispatchReason.JOB_COMMAND_GENERIC_CREATE,
+        )
     return await enforce_driver_start_guard(
         project_path=request.project_path,
         working_slug=resolve_working_slug_from_subdir(request.subdir) or cmd.working_slug,
@@ -357,13 +361,29 @@ def _prepare_run_session(
     entry_point: SessionEntryPoint,
 ) -> RunSessionPlan:
     """Normalize run-session inputs into a create-session plan."""
-    effective_agent = resolve_run_session_agent(request)
-    dispatch_mode, preferred_agent = classify_fresh_agent_preference(
-        effective_agent,
-        caller_system_role=identity.system_role,
-    )
     normalized_cmd = request.command.lstrip("/")
     normalized_args = request.args.strip()
+    try:
+        slash_cmd = SlashCommand(normalized_cmd)
+    except ValueError:
+        slash_cmd = None
+    is_job_command = slash_cmd is SlashCommand.NEXT_RUN_JOB
+    if is_job_command:
+        effective_agent, thinking_mode, job = normalize_job_run_request(request, normalized_args)
+        dispatch_mode = AgentDispatchMode.FIXED
+        preferred_agent = None
+        entry_point = SessionEntryPoint.CRON
+    else:
+        effective_agent = resolve_run_session_agent(request)
+        dispatch_mode, preferred_agent = classify_fresh_agent_preference(
+            effective_agent,
+            caller_system_role=identity.system_role,
+        )
+        thinking_mode = resolve_run_session_thinking_mode(
+            caller_mode=(RunSessionThinkingMode(request.thinking_mode) if request.thinking_mode is not None else None),
+            command=slash_cmd,
+        )
+        job = None
     full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
     startup_message = full_command
     if request.additional_context:
@@ -404,10 +424,6 @@ def _prepare_run_session(
     if identity.email:
         origin_metadata = WebOriginMetadata(email=identity.email)
 
-    try:
-        slash_cmd = SlashCommand(normalized_cmd)
-    except ValueError:
-        slash_cmd = None
     role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
 
     if role_info and identity.system_role:
@@ -423,11 +439,6 @@ def _prepare_run_session(
                 reason=AgentDispatchReason.DISPATCH_PRIVILEGE_FORBIDDEN,
             )
 
-    thinking_mode = resolve_run_session_thinking_mode(
-        caller_mode=(RunSessionThinkingMode(request.thinking_mode) if request.thinking_mode is not None else None),
-        command=slash_cmd,
-    )
-
     return RunSessionPlan(
         effective_agent=effective_agent,
         full_command=full_command,
@@ -442,7 +453,7 @@ def _prepare_run_session(
         initiator_session_id=initiator_session_id,
         origin_metadata=origin_metadata,
         system_role=role_info[0] if role_info else None,
-        job=role_info[1].value if role_info else None,
+        job=job if is_job_command else role_info[1].value if role_info else None,
         working_slug=working_slug,
         entry_point=entry_point,
     )
@@ -712,12 +723,7 @@ async def _run_session(
     *,
     entry_point: SessionEntryPoint,
 ) -> CreateSessionResponseDTO:
-    """Run a slash command on a new agent session.
-
-    Creates a new session with a typed launch intent derived from the given
-    slash command, arguments, project, agent, and thinking mode.
-    Clearance is enforced by the clearance_sessions_run dependency.
-    """
+    """Run a slash command on a new agent session."""
     request_id = str(uuid.uuid4())
     normalized_command = request.command.lstrip("/") if request.command.startswith("/") else None
     command_kind = "prepare" if normalized_command == SlashCommand.NEXT_PREPARE.value else normalized_command
@@ -726,6 +732,7 @@ async def _run_session(
         requested_command = SlashCommand(normalized_command) if normalized_command else None
     except ValueError:
         requested_command = None
+    request_entry_point = SessionEntryPoint.CRON if requested_command is SlashCommand.NEXT_RUN_JOB else entry_point
     role_info = COMMAND_ROLE_MAP.get(requested_command) if requested_command else None
     if (
         role_info
@@ -754,7 +761,7 @@ async def _run_session(
         request_id=request_id,
         dispatch_mode=dispatch_mode,
         agent_supplied=agent_supplied,
-        entry_point=entry_point,
+        entry_point=request_entry_point,
         command_kind=command_kind,
         working_slug_present=bool(normalized_command and infer_working_slug(normalized_command, request.args.strip())),
         caller_kind_present=False,
@@ -772,12 +779,12 @@ async def _run_session(
             raise RunSessionRefusal(
                 status_code=400, detail="project required", reason=AgentDispatchReason.PROJECT_REQUIRED
             )
-        plan = _prepare_run_session(request, identity, entry_point)
+        plan = _prepare_run_session(request, identity, request_entry_point)
     except RunSessionRefusal as exc:
         emit_run_outcome(
             selected_agent=None,
             request_id=request_id,
-            entry_point=entry_point,
+            entry_point=request_entry_point,
             dispatch_mode=dispatch_mode,
             outcome=run_refusal_outcome(exc.reason),
             reason=exc.reason,
@@ -790,7 +797,7 @@ async def _run_session(
         emit_run_outcome(
             selected_agent=None,
             request_id=request_id,
-            entry_point=entry_point,
+            entry_point=request_entry_point,
             dispatch_mode=dispatch_mode,
             outcome=run_refusal_outcome(exc.reason),
             reason=exc.reason,
@@ -806,6 +813,7 @@ async def _run_session(
         job=plan.job,
     )
     metadata.launch_intent = plan.launch_intent
+    dispatch_mode = plan.launch_intent.dispatch_mode or dispatch_mode
 
     cmd = CommandMapper.map_api_input(
         "new_session",

@@ -126,14 +126,6 @@ class CreateSessionArgs(TypedDict, total=False):
     metadata: NotRequired[dict[str, object] | None]  # guard: loose-dict - dynamic payload
 
 
-class ScheduledSessionArgs(TypedDict):
-    """Daemon-scheduled job inputs; routing facts are server-derived."""
-
-    computer: Required[str]
-    project_path: Required[str]
-    job: Required[str]
-
-
 class RunSessionArgs(TypedDict, total=False):
     """Accepted keyword arguments for slash-command sessions."""
 
@@ -641,22 +633,6 @@ class _TelecSessionAPI:
             "/sessions",
             timeout=30.0,
             request_options=RequestOptions(json_body=payload),
-        )
-        return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
-
-    async def create_scheduled_session(self, **kwargs: Unpack[ScheduledSessionArgs]) -> CreateSessionResponseDTO:
-        """Ask the daemon to derive a configured cron job's launch intent."""
-        resp = await self._request(
-            "POST",
-            "/internal/cron/sessions",
-            timeout=30.0,
-            request_options=RequestOptions(
-                json_body={
-                    "computer": kwargs["computer"],
-                    "project_path": kwargs["project_path"],
-                    "job": kwargs["job"],
-                }
-            ),
         )
         return TypeAdapter(CreateSessionResponseDTO).validate_json(resp.text)
 
