@@ -335,7 +335,6 @@ metadata only: it does not create environment requirements or change a daemon
 lease fingerprint. `lazy` values shown above are defaults, not required
 boilerplate.
 
-<!-- planned:per-project-mcp-registry -->
 
 A TeleClaude project's own `teleclaude-mcp.jsonc` and optional
 `teleclaude-mcp.local.jsonc` at its checkout root declare project-local MCP
@@ -352,7 +351,6 @@ into generated agent entrypoints while remaining fully served and listed by the
 runtime `telec mcp list` surface; `hidden` affects neither startup, credential
 lookup, nor lease fingerprints.
 
-<!-- /planned:per-project-mcp-registry -->
 
 <!-- planned:person-scoped-mcp-credentials -->
 
@@ -368,17 +366,6 @@ Committed registry files use the portable relative `$schema` reference.
 Machine-local generated examples may use an absolute `file://` schema reference
 to the installed schema under `~/.teleclaude/schemas/`.
 
-<!-- planned-change:per-project-mcp-registry -->
-
-The effective TeleClaude MCP registry is the nested merge of
-`teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` by server slug. The
-installer and daemon never mutate either input file. `mcp.json` and
-`mcp.local.json` remain compatibility import inputs for the transition window:
-they use the native JSON `mcpServers` shape, are normalized into the TeleClaude
-registry model, and do not keep native agent MCP publication enabled by
-default.
-
-<!-- change:per-project-mcp-registry -->
 
 The effective TeleClaude MCP registry is resolved per invocation scope by one
 config-owned resolver. For machine-wide scope it is the nested merge of the
@@ -393,7 +380,6 @@ project local, later layers taking precedence — and compatibility inputs are
 never read from a project root. The installer and daemon never mutate any
 input file.
 
-<!-- /planned-change:per-project-mcp-registry -->
 
 <!-- planned-change:person-scoped-mcp-credentials -->
 

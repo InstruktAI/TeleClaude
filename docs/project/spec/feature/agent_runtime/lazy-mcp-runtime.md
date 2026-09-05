@@ -79,7 +79,6 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 <!-- /planned:person-scoped-mcp-credentials -->
 
-<!-- planned:per-project-mcp-registry -->
 
 - The effective registry is resolved per invocation project. A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root are deep-merged over the machine-wide TeleClaude registry, with project definitions taking precedence over machine-wide definitions and the local overlay taking precedence over the shared file within each root. Invocations from a project subdirectory or a todo worktree resolve the owning project checkout's registry. Invocations from outside any TeleClaude project keep their current per-subcommand behavior.
 - The daemon keys runtimes, leases, and fingerprints per resolved project root. A lease never serves a differing definition from another root; the existing drift and fingerprint rules apply within each root. Environment placeholders on project declarations resolve exactly as machine-wide ones do — from the TeleClaude environment at lease start, never through agent sessions and never into any file.
@@ -87,7 +86,6 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - `telec sync` bakes a project MCP server index — the project's own declarations with their activation triggers — into that project's generated agent entrypoint files, parallel to the machine-wide baked index. A project with no registry declarations gets no such section and is untouched.
 - Server definitions in either registry may declare `hidden: true` (default `false`). A hidden server is excluded from the baked agent-entrypoint indexes — machine-wide and project alike — while remaining fully served and listed by the runtime `telec mcp list` surface.
 
-<!-- /planned:per-project-mcp-registry -->
 
 ### Use cases
 
@@ -310,7 +308,6 @@ Then the configured server slugs and their activation triggers are listed from t
 And the command exits successfully without contacting the daemon
 ```
 
-<!-- planned:per-project-mcp-registry -->
 
 #### UC-LMCP-15: Project registry augments the project's own catalog only
 
@@ -370,7 +367,6 @@ And the runtime listing shows it with its activation trigger
 And its tools remain listable and callable
 ```
 
-<!-- /planned:per-project-mcp-registry -->
 
 
 ## Known caveats
