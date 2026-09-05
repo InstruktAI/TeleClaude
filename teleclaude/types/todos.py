@@ -108,7 +108,11 @@ class ApprovalsState(BaseModel):
 
 
 class ReviewVerdictState(BaseModel):
-    """Verdict state for a prepare review phase."""
+    """Verdict state for a prepare review phase.
+
+    ``rounds`` counts admitted reviewer-dispatch passes and advances immediately
+    before the reviewer instruction is emitted.
+    """
 
     verdict: str = ""
     reviewed_at: str = ""
@@ -124,8 +128,9 @@ class BuildReviewState(BaseModel):
     """Verdict state for the work (build) review phase.
 
     Unlike prepare reviews, the build review tracks a baseline_commit so that
-    re-review dispatch can restrict diff scope to commits since the last
-    verdict. ``round`` increments on every ``changes_requested`` verdict.
+    re-review dispatch can restrict diff scope to commits since the last verdict.
+    ``round`` counts admitted reviewer-dispatch passes and advances immediately
+    before a fresh or reused reviewer instruction is emitted.
     """
 
     verdict: str = ""

@@ -14,6 +14,11 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import PhaseStatus, StateValue
 from teleclaude.core.next_machine.git_ops import get_head_commit, review_surface_overlap_files
 from teleclaude.core.next_machine.output_formatting import format_error
+from teleclaude.core.next_machine.review_rounds import (
+    admit_build_review,
+    build_review_admission,
+    format_review_round_limit,
+)
 from teleclaude.core.next_machine.runtime.scripts import (
     format_review_ground_shift_script,
     format_review_in_progress_script,
@@ -84,14 +89,6 @@ async def _resolve_live_review(
     """Handle review that is still owned by an active reviewer session."""
     needs_initial_baseline = review_round == 0 and not baseline_commit and bool(current_head)
     needs_head_refresh = bool(current_head and dispatch_head != current_head)
-    if needs_initial_baseline or needs_head_refresh:
-        await _persist_review_dispatch_metadata(
-            context.todos_db,
-            context.slug,
-            state,
-            baseline_commit=current_head if needs_initial_baseline else None,
-            dispatch_head=current_head if current_head else None,
-        )
 
     if head_before_merge and current_head and head_before_merge != current_head:
         overlapping_files = await asyncio.to_thread(
@@ -101,6 +98,22 @@ async def _resolve_live_review(
             current_head,
         )
         if overlapping_files:
+            admission = build_review_admission(state)
+            if not admission.allowed:
+                return ReviewResolution(
+                    state=state,
+                    status=PhaseStatus.PENDING.value,
+                    instruction=format_review_round_limit(context.slug, admission),
+                )
+            await admit_build_review(context.todos_db, context.slug, state, admission)
+            if needs_initial_baseline or needs_head_refresh:
+                await _persist_review_dispatch_metadata(
+                    context.todos_db,
+                    context.slug,
+                    state,
+                    baseline_commit=current_head if needs_initial_baseline else None,
+                    dispatch_head=current_head if current_head else None,
+                )
             return ReviewResolution(
                 state=state,
                 status=PhaseStatus.PENDING.value,
@@ -113,6 +126,14 @@ async def _resolve_live_review(
                     next_step=f"telec todo work {context.slug}",
                 ),
             )
+    if needs_initial_baseline or needs_head_refresh:
+        await _persist_review_dispatch_metadata(
+            context.todos_db,
+            context.slug,
+            state,
+            baseline_commit=current_head if needs_initial_baseline else None,
+            dispatch_head=current_head if current_head else None,
+        )
     return ReviewResolution(
         state=state,
         status=PhaseStatus.PENDING.value,

@@ -835,8 +835,6 @@ def apply_authoritative_signal(
         model.build_plan_digest = model.artifacts.implementation_plan.digest
         model.build_completed_at = now
         _reset_finalize(model)
-        if current == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
-            model.build_review.round += 1
         _clear_build_review(model)
         return _move_to(model, LifecyclePhase.BUILD_COMPLETE)
 
