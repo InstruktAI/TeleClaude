@@ -71,6 +71,16 @@ Then the person's declared accounts do not include their identity address
 And the person remains resolvable by that identity address
 ```
 
+#### UC-CFG-MAIL-5: An address another person has declared is still a valid declaration
+
+```gherkin
+Given a person whose configuration declares a mail account
+And another person's configuration declares an account with the same address
+When either configuration is loaded
+Then that account is preserved for the person who declared it
+And neither declaration is rejected on account of the other
+```
+
 ## Known caveats
 
 - An entry declares a connector and an address and nothing further. How a person
@@ -79,6 +89,10 @@ And the person remains resolvable by that identity address
 - This contract governs what a person may declare. Which declared account an
   invocation acts as, and what it may then do, belongs to the boundary that
   launches the connector.
+- A declaration is not policed for uniqueness across people. Two people who
+  declare the same address share whatever the connector stores for it, including
+  an authorization only one of them performed; keeping them apart would need a
+  per-person secret store this contract does not own.
 
 ## See Also
 
