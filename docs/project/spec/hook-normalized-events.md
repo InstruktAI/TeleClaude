@@ -34,35 +34,6 @@ This spec must always document:
 
 Current raw-to-normalized lifecycle mapping:
 
-<!-- planned-change:session-distress-ingestion -->
-| Agent       | Raw event and condition                                                        | Normalized event     | Forwarding |
-| ----------- | ------------------------------------------------------------------------------ | -------------------- | ---------- |
-| Claude      | `SessionStart`                                                                 | `session_start`      | forwarded  |
-| Claude      | `UserPromptSubmit`                                                             | `user_prompt_submit` | forwarded  |
-| Claude      | `PreToolUse`                                                                   | `pre_tool_use`       | forwarded  |
-| Claude      | `PostToolUse`                                                                  | `post_tool_use`      | forwarded  |
-| Claude      | `Stop`                                                                         | `agent_stop`         | forwarded  |
-| Claude      | `PostCompact` where `trigger == manual`                                        | `agent_idle`          | forwarded  |
-| Claude      | `PostCompact` where `trigger == auto`                                          | (none)                | dropped    |
-| Antigravity | `PreInvocation` where `invocationNum == 0`                                     | `session_start`      | forwarded  |
-| Antigravity | `PreInvocation` where `invocationNum > 0` and latest transcript role is `user` | `user_prompt_submit` | forwarded  |
-| Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present    | (none)               | dropped    |
-| Antigravity | `PreToolUse`                                                                   | `pre_tool_use`       | forwarded  |
-| Antigravity | `PostInvocation`                                                               | `post_tool_use`      | forwarded  |
-| Antigravity | `Stop` where `fullyIdle == true`                                               | `agent_stop`         | forwarded  |
-| Antigravity | `Stop` where `fullyIdle == false`                                              | (none)               | dropped    |
-| Codex       | `SessionStart`                                                                 | `session_start`      | forwarded  |
-| Codex       | `UserPromptSubmit`                                                             | `user_prompt_submit` | forwarded  |
-| Codex       | `PreToolUse`                                                                   | `pre_tool_use`       | forwarded  |
-| Codex       | `PostToolUse`                                                                  | `post_tool_use`      | forwarded  |
-| Codex       | `Stop`                                                                         | `agent_stop`         | forwarded  |
-| DeepSeek    | `SessionStart`                                                                 | `session_start`      | forwarded  |
-| DeepSeek    | `UserPromptSubmit`                                                             | `user_prompt_submit` | forwarded  |
-| DeepSeek    | `PreToolUse`                                                                   | `pre_tool_use`       | forwarded  |
-| DeepSeek    | `PostToolUse`                                                                  | `post_tool_use`      | forwarded  |
-| DeepSeek    | `Stop`                                                                         | `agent_stop`         | forwarded  |
-| DeepSeek    | `StopFailure`                                                                  | `error`              | forwarded  |
-<!-- change:session-distress-ingestion -->
 | Agent | Raw event and condition | Normalized event | Forwarding |
 | ----- | ----------------------- | ---------------- | ---------- |
 | Claude | `SessionStart` | `session_start` | forwarded |
@@ -141,7 +112,6 @@ relying on that exclusivity.
 No provider normalizes to `error`. That event is the platform's internal error
 channel — receiver faults and agent-restart faults — and carries no provider
 turn state.
-<!-- /planned-change:session-distress-ingestion -->
 
 Conditional mappings are evaluated against the provider payload before session
 resolution or any receiver side effect. A condition that does not match produces

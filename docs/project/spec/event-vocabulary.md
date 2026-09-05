@@ -13,32 +13,6 @@ The Event Vocabulary defines the shared language used between TeleClaude adapter
 
 ### Machine-Readable Surface
 
-<!-- planned-change:session-distress-ingestion -->
-```yaml
-standard_events:
-  - session_started
-  - session_closed
-  - session_updated
-  - agent_event
-  - agent_activity
-  - error
-  - system_command
-
-agent_hook_events:
-  - session_start
-  - user_prompt_submit
-  - pre_tool_use
-  - post_tool_use
-  - agent_stop
-  - agent_idle
-  - error
-
-canonical_outbound_activity_events:
-  - user_prompt_submit
-  - agent_output_update
-  - agent_stop
-```
-<!-- change:session-distress-ingestion -->
 ```yaml
 standard_events:
   - session_started
@@ -72,7 +46,6 @@ terminated by a runtime or provider failure. Which native provider event
 produces each is owned by `project/spec/hook-normalized-events`. They add no
 canonical outbound activity type. `error` remains the platform's internal error
 channel and no longer carries any provider turn state.
-<!-- /planned-change:session-distress-ingestion -->
 
 ### Canonical Outbound Activity Vocabulary
 
