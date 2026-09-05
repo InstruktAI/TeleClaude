@@ -34,6 +34,11 @@ from teleclaude.core.next_machine.output_formatting import (
     format_worker_redispatch,
 )
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason
+from teleclaude.core.next_machine.review_rounds import (
+    admit_prepare_review,
+    format_review_round_limit,
+    prepare_review_admission,
+)
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.snippet_validation import snippet_body_digest
@@ -145,6 +150,7 @@ The worker produces {expected}.
 async def _dispatch_worker(
     *,
     db: Db,
+    todos_db: TodosDb,
     slug: str,
     cwd: str,
     phase: PreparePhase,
@@ -155,7 +161,11 @@ async def _dispatch_worker(
     additional_context: str = "",
     pre_dispatch: str = "",
 ) -> tuple[bool, str]:
-    _ = state, blockers  # not surfaced in verbatim dispatch script
+    _ = blockers  # not surfaced in verbatim dispatch script
+    admission = prepare_review_admission(state, phase)
+    if admission is not None:
+        if not admission.allowed:
+            return False, format_review_round_limit(slug, admission)
     # Reuse-or-spawn: prefer an existing live prepare worker for this
     # slug+command and emit `telec sessions send` instead of spawning a
     # fresh one. Prepare workers persist with subdir=None (no worktree on
@@ -167,6 +177,8 @@ async def _dispatch_worker(
     # double quotes trigger command substitution.
     worker_id = await find_live_prepare_worker_for_slug(db, slug, command.value)
     if worker_id is not None:
+        if admission is not None:
+            await admit_prepare_review(todos_db, slug, state, admission)
         base_message = (
             f"Re-run your task for {slug}. The relevant artifact(s) have been "
             f"updated since your prior pass. If a review-findings artifact "
@@ -185,6 +197,8 @@ async def _dispatch_worker(
         )
 
     # No live worker — spawn a fresh one.
+    if admission is not None:
+        await admit_prepare_review(todos_db, slug, state, admission)
     project_root = _derive_project_root(cwd, slug)
     request = ToolCallRequest(
         command=f"/{command.value}",
@@ -346,6 +360,7 @@ async def _prepare_dispatch(
     if phase == PreparePhase.PRD_REVIEW:
         return await _dispatch_worker(
             db=db,
+            todos_db=todos_db,
             slug=slug,
             cwd=cwd,
             phase=phase,
@@ -371,6 +386,7 @@ async def _prepare_dispatch(
     if phase == PreparePhase.ARCHITECTURE_REVIEW:
         return await _dispatch_worker(
             db=db,
+            todos_db=todos_db,
             slug=slug,
             cwd=cwd,
             phase=phase,
@@ -384,6 +400,7 @@ async def _prepare_dispatch(
         if not (diagnosis.digest or diagnosis.produced_at) or peer_session_id is None:
             return await _dispatch_worker(
                 db=db,
+                todos_db=todos_db,
                 slug=slug,
                 cwd=cwd,
                 phase=phase,
@@ -410,6 +427,7 @@ async def _prepare_dispatch(
     if phase == PreparePhase.PLAN_REVIEW:
         return await _dispatch_worker(
             db=db,
+            todos_db=todos_db,
             slug=slug,
             cwd=cwd,
             phase=phase,
@@ -429,6 +447,7 @@ async def _prepare_dispatch(
         if _has_status(drift, DRIFT_PENDING):
             return await _dispatch_worker(
                 db=db,
+                todos_db=todos_db,
                 slug=slug,
                 cwd=cwd,
                 phase=PreparePhase.BLOCKED,
@@ -450,6 +469,7 @@ async def _prepare_dispatch(
         if _has_status(drift, DRIFT_PENDING):
             return await _dispatch_worker(
                 db=db,
+                todos_db=todos_db,
                 slug=slug,
                 cwd=cwd,
                 phase=phase,

@@ -23,7 +23,6 @@ from teleclaude.constants import ARTIFACT_REVIEW_FINDINGS, WORKTREE_DIR, SlashCo
 from teleclaude.core.db import Db
 from teleclaude.core.integration_bridge import emit_review_approved
 from teleclaude.core.next_machine._types import (
-    DEFAULT_MAX_REVIEW_ROUNDS,
     REVIEW_DIFF_NOTE,
     StateValue,
     WorkPhase,
@@ -61,6 +60,11 @@ from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine.review_rounds import (
+    admit_build_review,
+    build_review_admission,
+    format_review_round_limit,
+)
 from teleclaude.core.next_machine.review_runtime import ReviewDispatchContext, resolve_pending_review_state
 
 logger = get_logger(__name__)
@@ -387,27 +391,6 @@ async def _work_step_build_complete(
             await _commit_writer(writer, todos_db, slug, state)
             return True, ""
 
-    build_review_raw = state.get("build_review")
-    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
-    round_raw = build_review.get("round", 0)
-    round_num = round_raw if isinstance(round_raw, int) else 0
-
-    if round_num > DEFAULT_MAX_REVIEW_ROUNDS:
-        return False, format_error(
-            "REVIEW_ROUND_LIMIT",
-            (
-                f"Review rounds exceeded for {slug}: current={round_num}, "
-                f"max={DEFAULT_MAX_REVIEW_ROUNDS}. "
-                f"Per lifecycle/work/review severity schema and general/procedure/orchestration "
-                f"Review Round Limit Handling: round limit is not an escape hatch. The schema has "
-                f"three tiers (Requirement-Violation, Critical, Important) and every tier blocks the "
-                f"verdict. Approve is permitted only when every finding is resolved. If any finding "
-                f"remains, keep review=changes_requested; if the loop is genuinely stuck, escalate "
-                f"to the human with the accumulated findings. Read review-findings and verify."
-            ),
-            next_call=f"telec todo artifacts read {slug} review-findings",
-        )
-
     # Reconcile live-review state: detects ground shifts, reuses active reviewers.
     resolution = await resolve_pending_review_state(
         ReviewDispatchContext(db=db, todos_db=todos_db, worktree_cwd=worktree_cwd, slug=slug),
@@ -418,24 +401,26 @@ async def _work_step_build_complete(
     if resolution.instruction is not None:
         return False, resolution.instruction
 
-    # Re-read after state mutation by resolve_pending_review_state
-    build_review_raw = state.get("build_review")
-    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
-    round_raw = build_review.get("round", 0)
-    round_num = round_raw if isinstance(round_raw, int) else 0
+    admission = build_review_admission(state)
+    if not admission.allowed:
+        return False, format_review_round_limit(slug, admission)
 
     # No live reviewer claimed the review — dispatch a fresh one.
+    build_review_raw = state.get("build_review")
+    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     kind_raw = state.get("kind")
     kind = kind_raw if isinstance(kind_raw, str) else KIND_FEATURE
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
     reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
+    await admit_build_review(todos_db, slug, state, admission)
+    round_num = admission.candidate
 
-    if round_num > 0 and reviewer_id is not None:
+    if reviewer_id is not None:
         head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
         baseline_text = baseline or "unset"
         message = (
-            f"Re-review round {round_num + 1}/{DEFAULT_MAX_REVIEW_ROUNDS} for {slug}. "
+            f"Re-review round {round_num}/{admission.maximum} for {slug}. "
             f"Incremental scope: review only commits since baseline {baseline_text} "
             f"up to HEAD {head_sha or '<unknown>'}. "
             f"Read `telec todo artifacts read {slug} review-findings` first — your re-review "

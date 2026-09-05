@@ -30,7 +30,7 @@ from teleclaude.constants import (
     STATE_KEY_TASK_PLAN,
     WORKTREE_DIR,
 )
-from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS, StateValue, default_state
+from teleclaude.core.next_machine._types import StateValue, default_state
 from teleclaude.core.next_machine.file_io import file_sha256 as _file_sha256
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.core.next_machine.git_ops import (
@@ -302,50 +302,6 @@ async def ensure_quality_checklist(todos_db: TodosDb, slug: str) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Review state helpers
-# ---------------------------------------------------------------------------
-
-
-def _review_scope_note(cwd: str, slug: str) -> str:
-    """Build an iterative review scope note from build_review state.
-
-    Used by the work-review step handler when dispatching re-review messages
-    to a live reviewer session. Reads the ``build_review`` substructure on v1
-    state; earlier schemas are reset on read.
-    """
-    state = read_phase_state(cwd, slug)
-    build_review_raw = state.get("build_review")
-    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
-    round_raw = build_review.get("round")
-    review_round = round_raw if isinstance(round_raw, int) else 0
-    next_round = review_round + 1
-    baseline = build_review.get("baseline_commit")
-    baseline_sha = baseline if isinstance(baseline, str) else ""
-    if next_round == 1:
-        target_text = baseline_sha if baseline_sha else "current HEAD"
-        return (
-            f"Review iteration: round 1/{DEFAULT_MAX_REVIEW_ROUNDS}. "
-            f"Round 1 is full-scope. Review the current worktree state at {target_text}."
-        )
-    baseline_text = baseline_sha if baseline_sha else "unset"
-    return (
-        f"Review iteration: round {next_round}/{DEFAULT_MAX_REVIEW_ROUNDS}. "
-        "Round 2+ must be incremental: review only commits since "
-        f"{baseline_text}."
-    )
-
-
-def _is_review_round_limit_reached(cwd: str, slug: str) -> tuple[bool, int, int]:
-    """Return whether next review round would exceed the hard cap."""
-    state = read_phase_state(cwd, slug)
-    build_review_raw = state.get("build_review")
-    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
-    round_raw = build_review.get("round")
-    review_round = round_raw if isinstance(round_raw, int) else 0
-    return (review_round + 1) > DEFAULT_MAX_REVIEW_ROUNDS, review_round, DEFAULT_MAX_REVIEW_ROUNDS
-
-
 def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | None:
     """Read breakdown state from todos.db for the given slug.
 
@@ -447,8 +403,6 @@ __all__ = [
     "_BUILD_VERDICT_PHASE",
     "_BUILD_VERDICT_VALUES",
     "_file_sha256",
-    "_is_review_round_limit_reached",
-    "_review_scope_note",
     "ensure_quality_checklist",
     "has_pending_deferrals",
     "is_bug_todo",
