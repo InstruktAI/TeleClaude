@@ -17,6 +17,46 @@ from teleclaude.constants import (
 )
 
 DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration structure
+    "hook_outbox": {
+        "poll_interval_s": 1,
+        "batch_size": 25,
+        "lock_ttl_s": 30,
+        "base_backoff_s": 1,
+        "max_backoff_s": 60,
+        "session_idle_timeout_s": 5,
+        "session_max_pending": 32,
+        "session_critical_reserve": 8,
+        "summary_interval_s": 15,
+        "backlog_warn_threshold": 20,
+        "lag_warn_threshold_s": 3,
+        "warn_log_interval_s": 15,
+        "max_lag_samples": 2048,
+        "staleness_ttl_s": 300,
+    },
+    "api": {
+        "tcp_port": 8420,
+        "watch_interval_s": 5,
+        "watch_lag_threshold_ms": 250,
+        "watch_inflight_threshold_s": 1,
+        "watch_dump_cooldown_s": 30,
+        "mcp_reaper_interval_s": 30,
+        "ws_control_send_timeout_s": 30,
+        "ws_default_send_timeout_s": 15,
+        "ws_replaceable_send_timeout_s": 5,
+    },
+    "daemon": {
+        "api_restart_max": 5,
+        "api_restart_window_s": 60,
+        "api_restart_backoff_s": 1,
+        "resource_snapshot_interval_s": 60,
+        "launchd_watch_interval_s": 300,
+        "launchd_watch_enabled": True,
+        "startup_gate_timeout_s": 15,
+        "startup_gate_poll_interval_s": 0.25,
+        "agent_prompt_ready_timeout_s": 60,
+        "log_level": "INFO",
+        "legacy_gemini_root": "~/.gemini/tmp",
+    },
     "computer": {
         "name": "unknown",
         # Empty/None sentinels mark fields the loader derives at runtime.
@@ -93,6 +133,11 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
                 "voices": [],
                 "api_key": None,
             },
+            "mlx": {
+                "enabled": False,
+                "cli_bin": None,
+                "instruct": "A clear, natural conversational voice.",
+            },
         },
     },
     "stt": {
@@ -101,6 +146,11 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
             "openai": {
                 "enabled": False,
                 "api_key": None,
+            },
+            "parakeet": {
+                "enabled": False,
+                "model": "mlx-community/parakeet-tdt-0.6b-v3",
+                "cli_bin": None,
             },
         },
     },

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from collections.abc import Coroutine
 from datetime import UTC, datetime
@@ -12,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_io
 from teleclaude.core.agent_readiness import await_agent_readiness, pane_shows_ready_prompt
 from teleclaude.core.agents import _get_agent_config
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 AGENT_START_STABILIZE_QUIET_S = 3.0  # How long output must be quiet to be "stable"
-AGENT_PROMPT_READY_TIMEOUT_S = float(os.getenv("AGENT_PROMPT_READY_TIMEOUT_S", "60"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+AGENT_PROMPT_READY_TIMEOUT_S = config.daemon.agent_prompt_ready_timeout_s
 _AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT = "agent_startup_delivery_opportunity"
 _AGENT_STARTUP_DELIVERY_DECIDED_EVENT = "agent_startup_delivery_decided"
 

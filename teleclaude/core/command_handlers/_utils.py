@@ -1,12 +1,12 @@
 """Shared utilities, types, and decorators for command handlers."""
 
 import functools
-import os
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, TypedDict
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
 from teleclaude.core.db import db
 
 if TYPE_CHECKING:
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Startup gate: bounded wait for session to exit "initializing" before tmux injection.
-STARTUP_GATE_TIMEOUT_S = float(os.getenv("STARTUP_GATE_TIMEOUT_S", "15"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-STARTUP_GATE_POLL_INTERVAL_S = float(os.getenv("STARTUP_GATE_POLL_INTERVAL_S", "0.25"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+STARTUP_GATE_TIMEOUT_S = config.daemon.startup_gate_timeout_s
+STARTUP_GATE_POLL_INTERVAL_S = config.daemon.startup_gate_poll_interval_s
 
 
 # Result from end_session

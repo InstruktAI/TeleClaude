@@ -6,6 +6,7 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
+from teleclaude.config import config
 from teleclaude.config.loader import load_global_config, load_project_config
 from teleclaude.runtime.environment import filter_platform_session_environment
 from teleclaude.utils import resolve_project_config_path
@@ -53,4 +54,5 @@ def build_agent_session_environment(
 
     env_vars.update(filter_platform_session_environment(source))
     env_vars.update(filter_platform_session_environment(platform_env or {}))
+    env_vars["TELECLAUDE_LOG_LEVEL"] = config.daemon.log_level
     return env_vars

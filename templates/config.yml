@@ -321,3 +321,5 @@ chiptunes:
 deployment:
   channel: alpha
   pinned_minor: ''
+daemon:
+  log_level: INFO

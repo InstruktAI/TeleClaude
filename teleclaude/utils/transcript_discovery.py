@@ -12,6 +12,7 @@ from uuid import UUID
 
 import zstandard
 
+from teleclaude.config import config
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path, read_codex_transcript_meta
@@ -74,7 +75,7 @@ def _session_root(agent: AgentName) -> Path:
 
 def _legacy_gemini_root() -> Path:
     """Legacy Gemini CLI transcript root, superseded by the Antigravity brain dir."""
-    return Path(os.getenv("TELECLAUDE_LEGACY_GEMINI_ROOT", "~/.gemini/tmp")).expanduser()  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+    return Path(config.daemon.legacy_gemini_root).expanduser()
 
 
 def _session_roots(agent: AgentName) -> list[Path]:

@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass, field
 
+from teleclaude.config import config
 from teleclaude.core.models import JsonDict
 
 API_WS_PING_INTERVAL_S = 20.0
 API_WS_PING_TIMEOUT_S = 20.0
-API_WS_CONTROL_SEND_TIMEOUT_S = float(os.getenv("API_WS_CONTROL_SEND_TIMEOUT_S", "30"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-API_WS_DEFAULT_SEND_TIMEOUT_S = float(os.getenv("API_WS_DEFAULT_SEND_TIMEOUT_S", "15"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-API_WS_REPLACEABLE_SEND_TIMEOUT_S = float(os.getenv("API_WS_REPLACEABLE_SEND_TIMEOUT_S", "5"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+API_WS_CONTROL_SEND_TIMEOUT_S = config.api.ws_control_send_timeout_s
+API_WS_DEFAULT_SEND_TIMEOUT_S = config.api.ws_default_send_timeout_s
+API_WS_REPLACEABLE_SEND_TIMEOUT_S = config.api.ws_replaceable_send_timeout_s
 
 API_WS_CONTROL_EVENTS = frozenset(
     {

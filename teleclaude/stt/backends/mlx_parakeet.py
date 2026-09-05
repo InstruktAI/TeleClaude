@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import os
 import shutil
 import subprocess
 import tempfile
@@ -13,6 +12,7 @@ from threading import Lock
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.config._models import STTServiceConfig
 from teleclaude.mlx_utils import is_local_path, resolve_model_ref
 
 load_stt_model = None
@@ -22,8 +22,7 @@ _mlx_audio_import_attempted = False
 logger = get_logger(__name__)
 
 DEFAULT_MODEL = "mlx-community/parakeet-tdt-0.6b-v3"
-MODEL_ENV_VAR = "TELECLAUDE_PARAKEET_MODEL"
-CLI_BIN_ENV_VAR = "TELECLAUDE_PARAKEET_CLI_BIN"
+PARAKEET_SERVICE = "parakeet"
 
 
 class MLXParakeetBackend:
@@ -49,9 +48,9 @@ class MLXParakeetBackend:
             logger.info("Parakeet STT: using HuggingFace model %s (downloaded on first use)", self._model_ref)
 
     def _resolve_cli_bin(self) -> str | None:
-        cli_from_env = os.getenv(CLI_BIN_ENV_VAR)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-        if cli_from_env:
-            candidate = str(Path(cli_from_env).expanduser())
+        configured_cli_bin = self._service_config().cli_bin
+        if configured_cli_bin:
+            candidate = str(Path(configured_cli_bin).expanduser())
             if Path(candidate).exists():
                 return candidate
 
@@ -66,17 +65,15 @@ class MLXParakeetBackend:
         return None
 
     def _resolve_model_ref(self) -> str:
-        model_from_env = os.getenv(MODEL_ENV_VAR)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-        if model_from_env:
-            return resolve_model_ref(model_from_env)
+        return resolve_model_ref(self._service_config().model or DEFAULT_MODEL)
 
-        configured_ref: str | None = None
+    @staticmethod
+    def _service_config() -> STTServiceConfig:
         if config.stt and config.stt.services:
-            parakeet_cfg = config.stt.services.get("parakeet")
-            if parakeet_cfg and parakeet_cfg.model:
-                configured_ref = parakeet_cfg.model
-
-        return resolve_model_ref(configured_ref or DEFAULT_MODEL)
+            configured = config.stt.services.get(PARAKEET_SERVICE)
+            if configured is not None:
+                return configured
+        return STTServiceConfig(enabled=False, model=DEFAULT_MODEL)
 
     def _ensure_model(self) -> bool:
         with self._model_lock:

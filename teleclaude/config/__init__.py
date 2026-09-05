@@ -24,6 +24,7 @@ from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
 from teleclaude.config._models import AgentConfig as AgentConfig
 from teleclaude.config._models import ComputerConfig as ComputerConfig
 from teleclaude.config._models import CredsConfig as CredsConfig
+from teleclaude.config._models import DaemonConfig as DaemonConfig
 from teleclaude.config._models import DeploymentConfig as DeploymentConfig
 from teleclaude.config._models import DiscordConfig as DiscordConfig
 from teleclaude.config._models import DiscordQoSConfig as DiscordQoSConfig
@@ -55,6 +56,9 @@ from teleclaude.config._models import WorkflowConfig as WorkflowConfig
 from teleclaude.config._models import WorkflowRunnerMode as WorkflowRunnerMode
 from teleclaude.config._remote_computers import RemoteComputerConfig as RemoteComputerConfig
 from teleclaude.config._remote_computers import parse_remote_computers as _parse_remote_computers
+from teleclaude.config._runtime_tunables import parse_api_config as _parse_api_config
+from teleclaude.config._runtime_tunables import parse_daemon_config as parse_daemon_config
+from teleclaude.config._runtime_tunables import parse_hook_outbox_config as _parse_hook_outbox_config
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
 from teleclaude.config._summarizer import SummarizerLocalConfig as SummarizerLocalConfig
 from teleclaude.config._summarizer import parse_summarizer_config as _parse_summarizer_config
@@ -443,6 +447,8 @@ def _parse_tts_service(service_data: object) -> TTSServiceConfig | None:
         model=str(service_data.get("model")) if service_data.get("model") else None,
         api_key=str(service_data.get("api_key")) if service_data.get("api_key") else None,
         params=params,
+        cli_bin=_parse_optional_str(service_data.get("cli_bin")),
+        instruct=str(service_data.get("instruct") or "A clear, natural conversational voice."),
     )
 
 
@@ -558,6 +564,7 @@ def parse_stt_config(raw_stt: dict[str, object] | None) -> STTConfig | None:  # 
                     enabled=_as_bool(service_data.get("enabled", False)),
                     model=str(service_data.get("model")) if service_data.get("model") else None,
                     api_key=str(service_data.get("api_key")) if service_data.get("api_key") else None,
+                    cli_bin=_parse_optional_str(service_data.get("cli_bin")),
                 )
 
     return STTConfig(enabled=stt_enabled, service_priority=service_priority, services=services)
@@ -598,6 +605,9 @@ def _build_config(
     whatsapp_raw = raw.get("whatsapp", {})
     creds_raw = raw.get("creds", {})
     terminal_raw = raw.get("terminal", {})
+    hook_outbox_raw = raw.get("hook_outbox")
+    api_raw = raw.get("api")
+    daemon_raw = raw.get("daemon")
     tts_raw = raw.get("tts", None)
     stt_raw = raw.get("stt", None)
     chiptunes_raw = raw.get("chiptunes", None)
@@ -754,6 +764,9 @@ def _build_config(
             directory_check_interval=DIRECTORY_CHECK_INTERVAL,
             output_cadence_s=OUTPUT_CADENCE_S,
         ),
+        hook_outbox=_parse_hook_outbox_config(hook_outbox_raw),
+        api=_parse_api_config(api_raw),
+        daemon=parse_daemon_config(daemon_raw),
         redis=RedisConfig(
             url=str(redis_raw["url"]),
             password=str(redis_raw["password"]) if redis_raw["password"] else None,

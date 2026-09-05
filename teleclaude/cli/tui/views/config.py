@@ -45,6 +45,7 @@ from teleclaude.config import (
     DEFAULT_CONFIG,
     ChiptunesConfig,
     ComputerConfig,
+    DaemonConfig,
     DiscordConfig,
     EmailConfig,
     RedisConfig,
@@ -54,6 +55,7 @@ from teleclaude.config import (
     TTSConfig,
     WhatsAppConfig,
     deep_merge,
+    parse_daemon_config,
     parse_stt_config,
     parse_tts_config,
 )
@@ -79,8 +81,8 @@ def _apply_tts_applicability(tts: TTSConfig, fields: list[ReflectedField]) -> li
 
     Engine capabilities are derived from the data, not a fixed registry (MLX engines
     are any service with a ``model``): name-based engines never use ``voice_id``,
-    static engines never consume ``model``/``params``, and an engine without a voice
-    list has no ``voices`` leaf.
+    static engines never consume ``model``/``params``/``cli_bin``/``instruct``, and
+    an engine without a voice list has no ``voices`` leaf.
     """
     drop: set[str] = set()
     for name, svc in (tts.services or {}).items():
@@ -88,6 +90,8 @@ def _apply_tts_applicability(tts: TTSConfig, fields: list[ReflectedField]) -> li
         if not svc.model:
             drop.add(f"{base}.model")
             drop.add(f"{base}.params")
+            drop.add(f"{base}.cli_bin")
+            drop.add(f"{base}.instruct")
         voices = svc.voices
         if not voices:
             drop.add(f"{base}.voices")
@@ -477,6 +481,18 @@ class ConfigContent(
             )
             fields = reflect_schema(
                 computer_obj, prefix="computer", section="Computer", owning_source="machine", inherited_tier=Tier.TUI
+            )
+
+            daemon_data = deep_merge(_default_section("daemon"), self._raw_config.get("daemon", {}))
+            daemon_obj: DaemonConfig = parse_daemon_config(daemon_data)
+            fields.extend(
+                reflect_schema(
+                    daemon_obj,
+                    prefix="daemon",
+                    section="Daemon",
+                    owning_source="machine",
+                    inherited_tier=Tier.TUI,
+                )
             )
 
             redis_data = self._raw_config.get("redis", {})

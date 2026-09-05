@@ -42,7 +42,13 @@ if sys.platform == "darwin":
                     continue
                 if service_cfg.model:
                     try:
-                        BACKENDS[service_name] = MLXTTSBackend(service_name, service_cfg.model, service_cfg.params)
+                        BACKENDS[service_name] = MLXTTSBackend(
+                            service_name,
+                            service_cfg.model,
+                            service_cfg.params,
+                            service_cfg.cli_bin,
+                            service_cfg.instruct,
+                        )
                         logger.info("Registered MLX TTS backend: %s (model=%s)", service_name, service_cfg.model)
                     except Exception:
                         logger.warning("MLX TTS backend '%s' failed to initialize", service_name, exc_info=True)

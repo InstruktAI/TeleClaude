@@ -12,7 +12,6 @@ Example log query: `instrukt-ai-logs teleclaude --since 10m`.
 from __future__ import annotations
 
 import logging
-import os
 
 from instrukt_ai_logging import configure_logging
 
@@ -24,7 +23,7 @@ def setup_logging(level: str | None = None, *, source: str | None = None) -> Non
     """Configure TeleClaude logging.
 
     Args:
-        level: Optional override for `TELECLAUDE_LOG_LEVEL`.
+        level: Optional explicit application log level.
         source: Logical identity of the producing process within the teleclaude
             app. Default writes to `teleclaude.log` (the daemon). Sibling
             processes pass their own bare stem (e.g. `source="docs-watch"`,
@@ -33,13 +32,13 @@ def setup_logging(level: str | None = None, *, source: str | None = None) -> Non
             `$XDG_STATE_HOME`). The `instrukt-ai-logs` CLI merges across all
             files.
     """
-    if level:
-        os.environ["TELECLAUDE_LOG_LEVEL"] = level  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-
     if source is not None:
         configure_logging("teleclaude", source=source)
     else:
         configure_logging("teleclaude")
+
+    if level:
+        logging.getLogger("teleclaude").setLevel(level)
 
     # teleclaude.events is a separate top-level package — configure_logging only
     # sets the "teleclaude" logger to INFO. Without this, teleclaude.events.*

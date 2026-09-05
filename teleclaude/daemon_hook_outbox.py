@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 from collections.abc import Callable, Coroutine, Mapping
 from datetime import UTC, datetime, timedelta
@@ -59,28 +58,22 @@ _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap with
 _HEADLESS_DEFAULT_THINKING_MODE = "med"
 
 # Hook outbox worker
-HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_SESSION_MAX_PENDING: int = int(os.getenv("HOOK_OUTBOX_SESSION_MAX_PENDING", "32"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_SESSION_CRITICAL_RESERVE: int = int(os.getenv("HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", "8"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK: int = int(
-    # guard: direct-env-read - temporary migration: config-tunables-via-config
-    os.getenv("HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK", str(max(1, HOOK_OUTBOX_SESSION_MAX_PENDING - 8)))
-)
-HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK: int = int(
-    # guard: direct-env-read - temporary migration: config-tunables-via-config
-    os.getenv("HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK", str(max(0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK // 3)))
-)
-HOOK_OUTBOX_SUMMARY_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_SUMMARY_INTERVAL_S", "15"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD: int = int(os.getenv("HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD", "20"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_LAG_WARN_THRESHOLD_S: float = float(os.getenv("HOOK_OUTBOX_LAG_WARN_THRESHOLD_S", "3"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_WARN_LOG_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_WARN_LOG_INTERVAL_S", "15"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_MAX_LAG_SAMPLES: int = int(os.getenv("HOOK_OUTBOX_MAX_LAG_SAMPLES", "2048"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-HOOK_OUTBOX_STALENESS_TTL_S: float = float(os.getenv("HOOK_OUTBOX_STALENESS_TTL_S", "300"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_POLL_INTERVAL_S = config.hook_outbox.poll_interval_s
+HOOK_OUTBOX_BATCH_SIZE = config.hook_outbox.batch_size
+HOOK_OUTBOX_LOCK_TTL_S = config.hook_outbox.lock_ttl_s
+HOOK_OUTBOX_BASE_BACKOFF_S = config.hook_outbox.base_backoff_s
+HOOK_OUTBOX_MAX_BACKOFF_S = config.hook_outbox.max_backoff_s
+HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S = config.hook_outbox.session_idle_timeout_s
+HOOK_OUTBOX_SESSION_MAX_PENDING = config.hook_outbox.session_max_pending
+HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = config.hook_outbox.session_critical_reserve
+HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK = config.hook_outbox.session_claim_high_watermark
+HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK = config.hook_outbox.session_claim_low_watermark
+HOOK_OUTBOX_SUMMARY_INTERVAL_S = config.hook_outbox.summary_interval_s
+HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD = config.hook_outbox.backlog_warn_threshold
+HOOK_OUTBOX_LAG_WARN_THRESHOLD_S = config.hook_outbox.lag_warn_threshold_s
+HOOK_OUTBOX_WARN_LOG_INTERVAL_S = config.hook_outbox.warn_log_interval_s
+HOOK_OUTBOX_MAX_LAG_SAMPLES = config.hook_outbox.max_lag_samples
+HOOK_OUTBOX_STALENESS_TTL_S = config.hook_outbox.staleness_ttl_s
 
 HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
     {
@@ -90,17 +83,6 @@ HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
         AgentHookEvents.AGENT_TURN_FAILED,
         AgentHookEvents.AGENT_ERROR,
     }
-)
-
-HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK = min(  # pyright: ignore[reportConstantRedefinition]
-    HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK, HOOK_OUTBOX_SESSION_MAX_PENDING
-)
-if HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK >= HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK:
-    HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK = max(  # pyright: ignore[reportConstantRedefinition]
-        0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK - 1
-    )
-HOOK_OUTBOX_SESSION_CRITICAL_RESERVE = min(  # pyright: ignore[reportConstantRedefinition]
-    max(HOOK_OUTBOX_SESSION_CRITICAL_RESERVE, 0), HOOK_OUTBOX_SESSION_MAX_PENDING
 )
 
 HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(

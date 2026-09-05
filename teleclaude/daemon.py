@@ -235,22 +235,20 @@ _record_import_timing("teleclaude.transport.workflow_bridge", _t)
 init_voice_handler = voice_message_handler.init_voice_handler
 
 
-# Logging defaults (can be overridden via environment variables)
-DEFAULT_LOG_LEVEL = "INFO"
 SLOW_STARTUP_WARNING_S = 30.0
 # Startup retry configuration
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
 
 # API server restart policy (centralized in lifecycle)
-API_RESTART_MAX = int(os.getenv("API_RESTART_MAX", "5"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-API_RESTART_WINDOW_S = float(os.getenv("API_RESTART_WINDOW_S", "60"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-API_RESTART_BACKOFF_S = float(os.getenv("API_RESTART_BACKOFF_S", "1"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+API_RESTART_MAX = config.daemon.api_restart_max
+API_RESTART_WINDOW_S = config.daemon.api_restart_window_s
+API_RESTART_BACKOFF_S = config.daemon.api_restart_backoff_s
 
 # Resource monitoring
-RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-LAUNCHD_WATCH_INTERVAL_S = float(os.getenv("LAUNCHD_WATCH_INTERVAL_S", "300"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-LAUNCHD_WATCH_ENABLED = os.getenv("TELECLAUDE_LAUNCHD_WATCH", "1") == "1"  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+RESOURCE_SNAPSHOT_INTERVAL_S = config.daemon.resource_snapshot_interval_s
+LAUNCHD_WATCH_INTERVAL_S = config.daemon.launchd_watch_interval_s
+LAUNCHD_WATCH_ENABLED = config.daemon.launchd_watch_enabled
 
 
 def _is_retryable_startup_error(error: Exception) -> bool:
@@ -1430,8 +1428,7 @@ async def main() -> None:
 
     # Note: .env already loaded at module import time (before config expansion)
 
-    # Setup logging from environment variables
-    log_level = os.getenv("TELECLAUDE_LOG_LEVEL", DEFAULT_LOG_LEVEL)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+    log_level = config.daemon.log_level
     setup_logging(level=log_level)
     _emit_import_timing_logs()
     logger.info("Starting TeleClaude Daemon (version=v2-append-only-v3)")

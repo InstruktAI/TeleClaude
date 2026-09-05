@@ -251,6 +251,60 @@ class EmailConfig:
 
 
 @dataclass
+class HookOutboxConfig:
+    """Resolved hook-outbox delivery and queue limits."""
+
+    poll_interval_s: float
+    batch_size: int
+    lock_ttl_s: float
+    base_backoff_s: float
+    max_backoff_s: float
+    session_idle_timeout_s: float
+    session_max_pending: int
+    session_critical_reserve: int
+    session_claim_high_watermark: int
+    session_claim_low_watermark: int
+    summary_interval_s: float
+    backlog_warn_threshold: int
+    lag_warn_threshold_s: float
+    warn_log_interval_s: float
+    max_lag_samples: int
+    staleness_ttl_s: float
+
+
+@dataclass
+class ApiConfig:
+    """Resolved API transport and monitoring tunables."""
+
+    tcp_port: int
+    watch_interval_s: float
+    watch_lag_threshold_ms: float
+    watch_inflight_threshold_s: float
+    watch_dump_cooldown_s: float
+    mcp_reaper_interval_s: float
+    ws_control_send_timeout_s: float
+    ws_default_send_timeout_s: float
+    ws_replaceable_send_timeout_s: float
+
+
+@dataclass
+class DaemonConfig:
+    """Daemon lifecycle, monitoring, and logging configuration."""
+
+    api_restart_max: int = field(metadata={"tier": Tier.INTERNAL})
+    api_restart_window_s: float = field(metadata={"tier": Tier.INTERNAL})
+    api_restart_backoff_s: float = field(metadata={"tier": Tier.INTERNAL})
+    resource_snapshot_interval_s: float = field(metadata={"tier": Tier.INTERNAL})
+    launchd_watch_interval_s: float = field(metadata={"tier": Tier.INTERNAL})
+    launchd_watch_enabled: bool = field(metadata={"tier": Tier.INTERNAL})
+    startup_gate_timeout_s: float = field(metadata={"tier": Tier.INTERNAL})
+    startup_gate_poll_interval_s: float = field(metadata={"tier": Tier.INTERNAL})
+    agent_prompt_ready_timeout_s: float = field(metadata={"tier": Tier.INTERNAL})
+    log_level: str = field(metadata={"tier": Tier.TUI})
+    legacy_gemini_root: str = field(metadata={"tier": Tier.INTERNAL})
+
+
+@dataclass
 class TTSServiceVoiceConfig:
     """Voice configuration for a TTS service."""
 
@@ -267,6 +321,8 @@ class TTSServiceConfig:
     model: str | None = None  # Optional local path or HF repo id
     api_key: str | None = None
     params: dict[str, object] | None = None  # guard: loose-dict - Model-specific kwargs are dynamic.
+    cli_bin: str | None = None
+    instruct: str = "A clear, natural conversational voice."
 
 
 @dataclass
@@ -310,6 +366,7 @@ class STTServiceConfig:
     enabled: bool
     model: str | None = None  # HF repo id or local path (for parakeet)
     api_key: str | None = None
+    cli_bin: str | None = None
 
 
 @dataclass
@@ -447,6 +504,9 @@ class TeleclaudeConfig:
 
     computer: ComputerConfig = field(metadata={"tier": Tier.TUI})
     polling: PollingConfig = field(metadata={"tier": Tier.INTERNAL})
+    hook_outbox: HookOutboxConfig = field(metadata={"tier": Tier.INTERNAL})
+    api: ApiConfig = field(metadata={"tier": Tier.INTERNAL})
+    daemon: DaemonConfig = field(metadata={"tier": Tier.TUI})
     redis: RedisConfig = field(metadata={"tier": Tier.TUI})
     event_reliability: EventReliabilityConfig = field(metadata={"tier": Tier.INTERNAL})
     telegram: TelegramConfig = field(metadata={"tier": Tier.TUI})

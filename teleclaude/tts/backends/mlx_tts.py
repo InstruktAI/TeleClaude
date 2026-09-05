@@ -1,6 +1,5 @@
 """Unified MLX TTS backend — local on-device speech synthesis for any mlx_audio model."""
 
-import os
 import shutil
 import subprocess
 import tempfile
@@ -45,12 +44,15 @@ class MLXTTSBackend:
         service_name: str,
         model_ref: str,
         params: dict[str, object] | None = None,  # guard: loose-dict - Backend kwargs vary by model.
+        cli_bin: str | None = None,
+        instruct: str = DEFAULT_VOICE_DESIGN_INSTRUCT,
     ) -> None:
         self._service_name = service_name
         self._model = None
         self._model_ref = resolve_model_ref(model_ref)
         self._params = params or {}
-        self._cli_bin = self._resolve_cli_bin()
+        self._cli_bin = self._resolve_cli_bin(cli_bin)
+        self._instruct = instruct
         self._validate_config()
 
     def _validate_config(self) -> None:
@@ -73,11 +75,10 @@ class MLXTTSBackend:
                 self._model_ref,
             )
 
-    def _resolve_cli_bin(self) -> str | None:
+    def _resolve_cli_bin(self, configured_cli_bin: str | None) -> str | None:
         """Find mlx-audio CLI executable for subprocess fallback."""
-        cli_from_env = os.getenv("TELECLAUDE_MLX_TTS_CLI_BIN")  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
-        if cli_from_env:
-            candidate = str(Path(cli_from_env).expanduser())
+        if configured_cli_bin:
+            candidate = str(Path(configured_cli_bin).expanduser())
             if Path(candidate).exists():
                 return candidate
 
@@ -263,7 +264,7 @@ class MLXTTSBackend:
             }
 
             if model_type == "voice_design":
-                generate_kwargs["instruct"] = os.getenv("TELECLAUDE_MLX_TTS_INSTRUCT", DEFAULT_VOICE_DESIGN_INSTRUCT)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+                generate_kwargs["instruct"] = self._instruct
 
             # Merge config params, but never let user params override the internally-
             # controlled keys. Overriding `play` would cause double-playback (echo);
