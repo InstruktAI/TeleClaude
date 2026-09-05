@@ -1,8 +1,8 @@
 ---
-visibility: 'public'
-description: 'Onboarding dispatches at most one live analysis or assessment session per project or company root, resolving the holder from the session record and failing closed when liveness cannot be established.'
-delivered_by:
-  - command-loader-and-title-cutover
+visibility: public
+description: Onboarding dispatches at most one live analysis or assessment session
+  per project or company root, resolving the holder from the session record and failing
+  closed when liveness cannot be established.
 ---
 
 # Onboarding Dispatch Dedup — Spec
