@@ -1,7 +1,6 @@
 ---
-description: How the effective MCP registry is resolved per invocation project — resolver layering, per-root daemon runtimes, and the baked MCP indexes.
-delivered_by:
-  - per-project-mcp-registry
+description: How the effective MCP registry is resolved per invocation project — resolver
+  layering, per-root daemon runtimes, and the baked MCP indexes.
 ---
 
 # MCP Registry Resolution — Design

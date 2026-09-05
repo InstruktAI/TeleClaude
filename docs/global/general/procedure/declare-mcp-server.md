@@ -1,8 +1,10 @@
 ---
-description: Take a human's request for an MCP server from need to a working, correctly scoped declaration — machine-wide or project-local — served through the standard telec mcp surface.
-activation_trigger: Use when a human asks to add, register, or declare an MCP server — machine-wide or for one project only — or when a task needs an MCP capability that no configured server provides.
-delivered_by:
-  - per-project-mcp-registry
+description: Take a human's request for an MCP server from need to a working, correctly
+  scoped declaration — machine-wide or project-local — served through the standard
+  telec mcp surface.
+activation_trigger: Use when a human asks to add, register, or declare an MCP server
+  — machine-wide or for one project only — or when a task needs an MCP capability
+  that no configured server provides.
 ---
 
 # Declare MCP Server — Procedure
