@@ -285,7 +285,6 @@ And the record of which plan version the build executes against settles only whe
 And a crash-recovered session re-entering the build derives identical instructions from durable state alone
 ```
 
-<!-- planned:review-round-cap-all-loops -->
 #### UC-WSM12: Build review stops at the shared round limit and routes by halt classification
 
 ```gherkin
@@ -300,7 +299,6 @@ And failed remediation or an unstable target returns to the producer with advers
 And incomplete or noisy review dispatches a different reviewer
 And only an ambiguous contract owned by a human or a safety gate reaches the human
 ```
-<!-- /planned:review-round-cap-all-loops -->
 
 <!-- planned:terminal-child-session-cleanup -->
 #### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure

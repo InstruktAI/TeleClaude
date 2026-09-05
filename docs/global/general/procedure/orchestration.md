@@ -250,7 +250,6 @@ category to reach approve. Per the review procedure severity schema, such
 findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
-<!-- planned:review-round-cap-all-loops -->
 When a prepare or work state machine returns `REVIEW_ROUND_LIMIT`, the
 orchestrator emits no unclassified reviewer dispatch or follow-up and does
 not stamp an exceptional verdict. It applies the shared review procedure's
@@ -259,7 +258,6 @@ owner, and supplies the coordinator with halt evidence for recurrence
 analysis. Reminder ownership follows `general/policy/reminder`; the halt
 alone never transfers the next move to the human. The coordinator supplies
 precedent and recurrence evidence; it never substitutes its own review verdict.
-<!-- /planned:review-round-cap-all-loops -->
 
 - Point workers to the kind-resolved approved intent artifact, optional
   `architecture` when present, and `implementation-plan` for the execution

@@ -231,13 +231,11 @@ clear it. An empty day is a valid day. The log is write-only for this role — i
 is never read back to decide anything; fleet awareness comes from live sources
 each sweep, and the session's own context holds its working state.
 
-<!-- planned:review-round-cap-all-loops -->
 A classified capped-review halt received from an orchestrator is a `carried`
 moment when it is worth preserving: the coordinator writes the entry with its
 phase, classification, subject, and source. It uses live review evidence and
 its active sweep context to supply precedent and recognize recurrence; the log
 never adjudicates the individual review or becomes a read-back decision source.
-<!-- /planned:review-round-cap-all-loops -->
 
 ### 7. Carry to the human
 

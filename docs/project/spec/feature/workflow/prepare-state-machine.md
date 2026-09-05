@@ -73,7 +73,6 @@ And no legacy empty-digest verdict is grandfathered through the gate
 And requirements_review is never derived as a live phase
 ```
 
-<!-- planned:review-round-cap-all-loops -->
 #### UC-WPS21: Every prepare review phase stops at the shared round limit
 
 ```gherkin
@@ -98,7 +97,6 @@ And failed remediation or an unstable target routes to the producer with an adve
 And incomplete or noisy review routes to a different reviewer
 And an ambiguous contract reaches its owner only when that owner is human
 ```
-<!-- /planned:review-round-cap-all-loops -->
 
 #### UC-WPS8: A PRD rewritten after human approval is re-approved before the gate advances
 

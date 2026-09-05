@@ -522,20 +522,11 @@ Verdict rules:
 - The §6a lane execution gate passes first: the `Lane anticipation` section verdicts every catalog lane. A verdict is not stamped over an incomplete sweep.
 - `approve` only when no Requirement-Violation, Critical or Important finding remains unresolved.
 - `needs_work` when any finding in those three tiers remains unresolved.
-<!-- planned-change:review-round-cap-all-loops -->
-- **Round cap.** The second `needs_work` on a plan halts automatic re-entry
-  for classification and recovery under
-  `software-development/procedure/lifecycle/review` §6. The orchestrator
-  owns that direction; the reviewer retains the verdict. A further bounded
-  review follows the recorded recovery, not a request for human permission
-  to spend another round.
-<!-- change:review-round-cap-all-loops -->
 - **Round cap.** The prepare state machine admits plan-review passes through
   `DEFAULT_MAX_REVIEW_ROUNDS` before halting for the classification required by
   `software-development/procedure/lifecycle/review`. The cap never changes
   verdict arithmetic: the reviewer writes the complete report and stamps
   `approve` only at zero unresolved findings, or `needs_work` otherwise.
-<!-- /planned-change:review-round-cap-all-loops -->
 
 Write the complete pass via `telec todo artifacts write {slug} plan-review-findings <content>`
 before stamping, with severity levels (Critical, Important), full lane

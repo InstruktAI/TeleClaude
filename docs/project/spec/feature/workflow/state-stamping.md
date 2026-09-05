@@ -105,7 +105,6 @@ And legacy import never synthesizes requirements_review or plan_review approval 
 And delivered historical records remain unchanged and readable
 ```
 
-<!-- planned:review-round-cap-all-loops -->
 #### UC-WSS21: Review-round limits record a routed halt rather than a continuation stamp
 
 ```gherkin
@@ -115,7 +114,6 @@ Then it reports the phase, admitted-pass count, and current review evidence with
 And the state-write boundary has no review-round-override stamp or human-principal continuation path
 And the orchestrator classifies the halt and carries it to the coordinator before routing recovery
 ```
-<!-- /planned:review-round-cap-all-loops -->
 
 ```
 Given a Todo whose nature does not require architecture work
