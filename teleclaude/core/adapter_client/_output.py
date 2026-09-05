@@ -601,8 +601,8 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             fresh_session = await db.get_session(session.session_id)
             if fresh_session is not None:
                 session = fresh_session
-            stop_at = session.last_agent_stop_at
-            if not isinstance(stop_at, datetime) or not session.last_output_raw:
+            output_stop_at = session.last_output_stop_at
+            if not isinstance(output_stop_at, datetime) or not session.last_output_raw:
                 continue
 
             # Enumerate the obligations this session actually took, never
@@ -634,13 +634,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 due_at = adapter.get_final_output_due_at(session)
                 if due_at is None and adapter_type != origin_adapter:
                     continue
-                # An enrolled lane is measured against the obligation it took,
-                # not against the stop time: a normal delivery records its
-                # receipt with the projection's timestamp, which can precede the
-                # stop and would otherwise read as outstanding on every boot and
-                # replay output the session already has. A legacy origin lane
-                # carries no obligation and keeps the stop-time comparison.
-                settled_at = due_at if due_at is not None else stop_at
+                # An enrolled lane is measured against the obligation it took.
+                # The legacy-origin path uses the retained payload's own stop
+                # version, never a later control-only completion.
+                settled_at = due_at if due_at is not None else output_stop_at
                 delivered_at = adapter.get_last_delivered_at(session)
                 if delivered_at is not None and delivered_at >= settled_at:
                     continue
@@ -650,10 +647,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                     "send_output_update",
                     session.last_output_raw,
                     0.0,
-                    stop_at.timestamp(),
+                    output_stop_at.timestamp(),
                     is_final=True,
                     include_adapters={adapter_type},
-                    delivery_ts=stop_at,
+                    delivery_ts=output_stop_at,
                     output_metadata=_output_presentation_metadata(session),
                 )
                 session_repaired = True

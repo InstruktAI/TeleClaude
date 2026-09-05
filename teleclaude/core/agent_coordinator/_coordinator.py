@@ -46,7 +46,7 @@ from teleclaude.core.session_lifecycle import (
     transition_session,
 )
 from teleclaude.core.session_listeners import NotificationKind
-from teleclaude.core.session_output import is_bare_noop_output
+from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.status_contract import serialize_status_event
@@ -55,10 +55,10 @@ from teleclaude.events.envelope import EventVisibility
 from teleclaude.session_scoping._git import read_head_sha
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
-from teleclaude.utils.transcript import extract_last_user_message_with_timestamp
+from teleclaude.utils.transcript import extract_last_user_message_with_timestamp, transcript_has_stop_response
 
 from ._fanout import _FanoutMixin
-from ._helpers import _is_checkpoint_prompt, transcript_has_assistant_entry, wait_for_transcript_ready
+from ._helpers import _is_checkpoint_prompt, wait_for_transcript_ready
 from ._slow_work import schedule as schedule_slow_work
 
 if TYPE_CHECKING:
@@ -614,7 +614,7 @@ class AgentCoordinator(
 
         stop_at = datetime.now(UTC)
         stop_timestamp = stop_at.isoformat()
-        raw_output, _link_output, output_suppressed = await self._prepare_agent_stop_output(session_id, payload)
+        output_result = await self._prepare_agent_stop_output(session_id, payload)
 
         # One durable transition: the stop version, the payload belonging to it,
         # the cleared summary, and every lane enrolled to recover that payload.
@@ -622,12 +622,17 @@ class AgentCoordinator(
         # payload replays the prior turn. Extraction reads the transcript and
         # writes nothing, so it is safe to run before this write.
         routing_session = await db.get_session(session_id)
-        owed_lanes = self.client.resolve_final_output_lanes(routing_session) if routing_session else []
+        owed_lanes = (
+            self.client.resolve_final_output_lanes(routing_session)
+            if routing_session is not None and output_result.has_substantive_output
+            else []
+        )
         await db.stage_agent_stop(
             session_id,
             stop_at=stop_at,
-            raw_output=raw_output,
-            owed_lanes=owed_lanes if raw_output else [],
+            raw_output=output_result.raw_output,
+            output_disposition=output_result.disposition,
+            owed_lanes=owed_lanes,
             known_ui_lanes=self.client.canonical_ui_lanes(),
         )
         if self.reminder_service is not None:
@@ -636,7 +641,7 @@ class AgentCoordinator(
                     session_id=context.session_id,
                     event_id=f"{context.event_type}:{stop_timestamp}",
                     anchor=ReminderEventAnchor.AGENT_STOP,
-                    authored_bare_sentinel=output_suppressed,
+                    authored_bare_sentinel=output_result.is_suppressed,
                 )
             )
 
@@ -648,62 +653,45 @@ class AgentCoordinator(
         self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=stop_timestamp)
 
         # Immediate projection pull on stop — final output must be captured.
-        await self._signal_projection_activity(session_id, final_version=stop_at if raw_output else None)
+        await self._signal_projection_activity(
+            session_id,
+            final_version=stop_at if output_result.has_substantive_output else None,
+        )
 
         await self._finalize_agent_stop(
             session_id,
             payload,
             source_computer,
-            suppress_notifications=output_suppressed,
+            suppress_notifications=output_result.is_suppressed,
         )
 
-        if not output_suppressed:
+        if not output_result.is_suppressed:
             schedule_slow_work(
                 session_id=session_id,
                 event_type=AgentHookEvents.AGENT_STOP,
-                runner=lambda: self._run_agent_stop_slow_work(session_id, payload, raw_output),
+                runner=lambda: self._run_agent_stop_slow_work(session_id, payload, stop_at, output_result),
             )
 
-    async def _prepare_agent_stop_output(
-        self, session_id: str, payload: AgentStopPayload
-    ) -> tuple[str | None, str | None, bool]:
+    async def _prepare_agent_stop_output(self, session_id: str, payload: AgentStopPayload) -> StopOutputResult:
         """Fast extraction step shared by handler and slow runner.
 
-        Reads the transcript, applies ANSI stripping and checkpoint-prompt
-        rules, and returns the normalized ``(raw_output, link_output)``
-        pair plus whether the output is structurally suppressed. No LLM, no
-        TTS, no DB writes.
+        Reads the transcript, applies ANSI stripping, and returns the typed
+        output result. No LLM, no TTS, no DB writes.
         """
         payload_output_raw = payload.raw.get(_HOOK_MESSAGE_KEY)
         if isinstance(payload_output_raw, str):
             payload_output = strip_ansi_codes(payload_output_raw) if config.terminal.strip_ansi else payload_output_raw
-            if is_bare_noop_output(payload_output):
+            result = classify_stop_output(payload_output)
+            if result.is_suppressed:
                 self._log_bare_noop_suppression(session_id)
-                return None, None, True
+                return result
 
-        raw_output = await self._extract_agent_output(session_id, payload)
-        forwarded_output_raw = payload.raw.get("linked_output")
-        forwarded_output = forwarded_output_raw if isinstance(forwarded_output_raw, str) else None
-        link_output = raw_output or forwarded_output
-
-        if raw_output:
-            if config.terminal.strip_ansi:
-                raw_output = strip_ansi_codes(raw_output)
-            if not raw_output.strip():
-                logger.debug("Skip stop summary/TTS (agent output empty after normalization)", session=session_id)
-                raw_output = None
-                link_output = None
-            elif is_bare_noop_output(raw_output):
-                self._log_bare_noop_suppression(session_id)
-                raw_output = None
-                link_output = None
-                return raw_output, link_output, True
-            else:
-                link_output = raw_output
-        if payload.prompt and _is_checkpoint_prompt(payload.prompt, raw_payload=payload.raw):
-            link_output = None
-
-        return raw_output, link_output, False
+        result = await self._extract_agent_output(session_id, payload)
+        if result.raw_output is not None and config.terminal.strip_ansi:
+            result = classify_stop_output(strip_ansi_codes(result.raw_output))
+        if result.is_suppressed:
+            self._log_bare_noop_suppression(session_id)
+        return result
 
     def _log_bare_noop_suppression(self, session_id: str) -> None:
         """Record one body-free structural suppression decision."""
@@ -718,7 +706,8 @@ class AgentCoordinator(
         self,
         session_id: str,
         payload: AgentStopPayload,
-        raw_output_initial: str | None,
+        stop_at: datetime,
+        output_result_initial: StopOutputResult,
     ) -> None:
         """Composite slow runner scheduled by ``handle_agent_stop``.
 
@@ -734,19 +723,32 @@ class AgentCoordinator(
         through the rest of the chain. Title generation runs against the
         now-ready file too, so it benefits from the same wait.
         """
-        raw_output = raw_output_initial
-        if raw_output is None:
+        output_result = output_result_initial
+        if output_result.kind is StopOutputKind.UNAVAILABLE:
             session = await db.get_session(session_id)
             if session is not None:
+                try:
+                    active_agent = AgentName.from_str(session.active_agent) if session.active_agent else None
+                except ValueError:
+                    active_agent = None
+                native_entry_id = payload.native_turn_id
                 ready = await wait_for_transcript_ready(
                     session,
-                    content_predicate=transcript_has_assistant_entry,
+                    content_predicate=(
+                        lambda entries: (
+                            transcript_has_stop_response(
+                                entries,
+                                active_agent,
+                                native_entry_id=native_entry_id,
+                            )
+                            if active_agent is not None
+                            else False
+                        )
+                    ),
                 )
                 if ready:
-                    raw_output, _, output_suppressed = await self._prepare_agent_stop_output(session_id, payload)
-                    if output_suppressed:
-                        return
-                    if raw_output:
+                    output_result = await self._prepare_agent_stop_output(session_id, payload)
+                    if output_result.kind is not StopOutputKind.UNAVAILABLE:
                         # Stage the recovered payload against the stop version
                         # already persisted, then re-signal projection. The fast
                         # path signalled while the transcript was still empty, so
@@ -759,35 +761,45 @@ class AgentCoordinator(
                         # Same staging operation as the fast path, against the
                         # stop version already persisted. The fast path could not
                         # enrol: it had no payload to be owed yet.
-                        staged_stop_at = session.last_agent_stop_at
-                        if staged_stop_at is not None:
-                            await db.stage_agent_stop(
-                                session_id,
-                                stop_at=staged_stop_at,
-                                raw_output=raw_output,
-                                owed_lanes=self.client.resolve_final_output_lanes(session),
-                                known_ui_lanes=self.client.canonical_ui_lanes(),
-                            )
-                        await self._signal_projection_activity(session_id, final_version=staged_stop_at)
+                        accepted = await db.stage_agent_stop(
+                            session_id,
+                            stop_at=stop_at,
+                            raw_output=output_result.raw_output,
+                            output_disposition=output_result.disposition,
+                            owed_lanes=(
+                                self.client.resolve_final_output_lanes(session)
+                                if output_result.has_substantive_output
+                                else []
+                            ),
+                            known_ui_lanes=self.client.canonical_ui_lanes(),
+                            expected_stop_at=stop_at,
+                        )
+                        if not accepted:
+                            return
+                        if output_result.has_substantive_output:
+                            await self._signal_projection_activity(session_id, final_version=stop_at)
 
-        if raw_output:
-            summary = await self._summarize_output(session_id, raw_output)
+        if output_result.has_substantive_output and output_result.raw_output is not None:
+            summary = await self._summarize_output(session_id, output_result.raw_output)
             # Persist raw output regardless of summary success — the fallback
             # display path uses raw_output when summary is absent, so dropping
             # it on summarizer failure regresses output visibility. Write
             # last_output_summary unconditionally (None when summarize
             # failed) so a stale summary from a prior turn cannot bleed
             # into this turn's display.
-            await db.update_session(
+            accepted = await db.persist_agent_stop_summary(
                 session_id,
-                last_output_raw=raw_output,
-                last_output_summary=summary,
-                last_output_at=datetime.now(UTC).isoformat(),
+                stop_at=stop_at,
+                raw_output=output_result.raw_output,
+                summary=summary,
+                summary_at=datetime.now(UTC),
             )
+            if not accepted:
+                return
             logger.debug(
                 "Stored agent output: session=%s raw_len=%d summary_len=%d",
                 session_id,
-                len(raw_output),
+                len(output_result.raw_output),
                 len(summary) if summary else 0,
             )
             # TUI summary emit + TTS gate on summary content only — empty

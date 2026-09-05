@@ -103,6 +103,9 @@ class SessionRecentOutputFields:
     # `last_message_sent_at` cannot relabel older input with a newer time.
     last_input_written_at: datetime | None = None
     last_output_raw: str | None = None
+    # The stop that produced the retained output. This differs from
+    # last_agent_stop_at after a suppressed completion advances control state.
+    last_output_stop_at: datetime | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None
     last_output_digest: str | None = None

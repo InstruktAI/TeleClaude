@@ -3,12 +3,63 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from enum import StrEnum
 
 NOOP_SENTINEL = "NOOP"
 _CONTENT_KEY = "content"
 _TEXT_KEY = "text"
 _TYPE_KEY = "type"
+
+
+class StopOutputKind(StrEnum):
+    """Observed result of extracting the response for one agent stop."""
+
+    SUBSTANTIVE = "substantive"
+    EMPTY = "empty"
+    SUPPRESSED_NOOP = "suppressed_noop"
+    UNAVAILABLE = "unavailable"
+
+
+class StopOutputDisposition(StrEnum):
+    """The atomic persistence action chosen by agent-runtime."""
+
+    PRESERVE = "preserve"
+    REPLACE = "replace"
+
+
+@dataclass(frozen=True)
+class StopOutputResult:
+    """Typed stop extraction result; storage never infers it from text."""
+
+    kind: StopOutputKind
+    raw_output: str | None = None
+
+    @property
+    def disposition(self) -> StopOutputDisposition:
+        """Return the explicit persistence choice for this observed result."""
+        if self.kind in {StopOutputKind.SUPPRESSED_NOOP, StopOutputKind.UNAVAILABLE}:
+            return StopOutputDisposition.PRESERVE
+        return StopOutputDisposition.REPLACE
+
+    @property
+    def is_suppressed(self) -> bool:
+        """Return whether this turn is a structural no-output completion."""
+        return self.kind is StopOutputKind.SUPPRESSED_NOOP
+
+    @property
+    def has_substantive_output(self) -> bool:
+        """Return whether this stop replaces retained output with a payload."""
+        return self.kind is StopOutputKind.SUBSTANTIVE
+
+
+def classify_stop_output(text: str) -> StopOutputResult:
+    """Classify one normalized, corresponding agent response."""
+    if not text.strip():
+        return StopOutputResult(StopOutputKind.EMPTY)
+    if is_bare_noop_output(text):
+        return StopOutputResult(StopOutputKind.SUPPRESSED_NOOP)
+    return StopOutputResult(StopOutputKind.SUBSTANTIVE, raw_output=text)
 
 
 class _AssistantOutputPartType(StrEnum):

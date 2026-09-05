@@ -10,6 +10,7 @@ import asyncio
 
 from teleclaude.paths import MAIN_DB_PATH
 
+from ._agent_stops import DbAgentStopsMixin
 from ._base import DbBase
 from ._control_delivery import ControlDeliveryRecord, DbControlDeliveryMixin
 from ._conversation_delivery import DbConversationDeliveryMixin
@@ -41,6 +42,7 @@ from ._webhooks import DbWebhooksMixin
 
 
 class Db(
+    DbAgentStopsMixin,
     DbControlDeliveryMixin,
     DbRemindersMixin,
     DbConversationDeliveryMixin,

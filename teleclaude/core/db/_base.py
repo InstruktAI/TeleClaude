@@ -121,6 +121,9 @@ class DbBase:
                 row.last_projected_at if hasattr(row, "last_projected_at") else None
             ),
             last_output_raw=row.last_output_raw,
+            last_output_stop_at=DbBase._coerce_datetime(
+                row.last_output_stop_at if hasattr(row, "last_output_stop_at") else None
+            ),
             last_output_at=DbBase._coerce_datetime(row.last_output_at),
             last_tool_done_at=DbBase._coerce_datetime(row.last_tool_done_at),
             last_tool_use_at=DbBase._coerce_datetime(row.last_tool_use_at),
