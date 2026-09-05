@@ -379,7 +379,7 @@ And the turn is delivered to the counterpart with its text unaltered
 And the sending session's direction continues to deliver its later turns
 ```
 
-<!-- planned:peer-bundle-transitive-redelivery -->
+<!-- planned:exclusive-two-peer-direct-links -->
 #### UC-DCL15: A session already in direct conversation rejects a third peer
 
 ```gherkin
@@ -391,7 +391,7 @@ And the response identifies B as A's active conversation peer
 And the A-to-B conversation remains active
 And no direct link between A and C is created
 ```
-<!-- /planned:peer-bundle-transitive-redelivery -->
+<!-- /planned:exclusive-two-peer-direct-links -->
 
 #### UC-DCL16: A working peer yields for newly pending peer input
 
