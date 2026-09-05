@@ -30,11 +30,7 @@ authoritative model definitions.
 
 | **Project config** | `<project-root>/teleclaude.yml` | `ProjectConfig` | `project_slug`, `project_name`, `frontend_root`, `business`, `jobs`, `hooks`, `channel_subscriptions`, `code`, `docs`, `agents` |
 
-<!-- planned-change:person-tier-declarations -->
-| **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `creds`, `subscriptions`, `interests`, `settings` |
-<!-- change:person-tier-declarations -->
 | **Per-person config** | `~/.teleclaude/people/{slug}/teleclaude.yml` | `PersonConfig` | `slug`, `creds`, `subscriptions`, `interests`, `settings` |
-<!-- /planned-change:person-tier-declarations -->
 
 <!-- planned-change:company-member-roster -->
 | **Company config** | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `CompanyConfig` | `name`, `slug`, `git`, `description`, `erp_id`, `owner` (folder-discovered; composed alongside `project`) |
@@ -152,7 +148,6 @@ membership and the single determinant of its company context (doc-snippet
 surfacing and session-start injection). Ownership/validation is authoritative in
 `project/spec/domain/config`.
 
-<!-- planned:person-tier-declarations -->
 `PersonConfig` carries a `slug` key — `slug: string` — the declared identity
 claim naming the registered person the workspace belongs to, kebab-case and
 format-validated by the model. Whether the claim binds the context to that
@@ -168,7 +163,6 @@ neither remains valid and composes no company. A declared owner naming a
 company or person that no registry knows refuses composition with a clear
 result naming the unresolved owner; no partial owner state reaches consumers.
 The contract is `project/spec/feature/config/project-ownership`.
-<!-- /planned:person-tier-declarations -->
 
 `env_allow_list` is an explicit pass-through list for agent sessions. It is the
 authorization/filter surface: a name not listed in the effective allow list must

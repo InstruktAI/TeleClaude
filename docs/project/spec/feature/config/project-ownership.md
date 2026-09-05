@@ -1,8 +1,8 @@
 ---
 visibility: public
-description: A project's owner is a declared relationship on the project itself — a company or a person, never both, and validly neither — resolved from that declaration rather than from the directory that contains the project.
-delivered_by:
-  - person-tier-declarations
+description: A project's owner is a declared relationship on the project itself —
+  a company or a person, never both, and validly neither — resolved from that declaration
+  rather than from the directory that contains the project.
 ---
 
 # Project Ownership — Spec
