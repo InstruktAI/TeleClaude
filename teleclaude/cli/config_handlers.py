@@ -35,6 +35,7 @@ from teleclaude.config.loader import (
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
 from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
+from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
 from teleclaude.paths import GLOBAL_CONFIG_PATH, INVITATIONS_PATH, PROJECT_ENV_PATH, TELECLAUDE_HOME, ConfigFileName
 
 logger = get_logger(__name__)
@@ -428,55 +429,6 @@ def find_person_by_invite_token(token: str) -> tuple[str, PersonConfig] | None:
 # --- Validation ---
 
 
-def _is_env_var_required(info: EnvVarInfo, app_config: Any | None) -> bool:
-    """Whether this env var is required by the currently enabled adapters/services.
-
-    Returns True only when the corresponding adapter/service has an active enable
-    flag in config.yml. Groups without a config-level enable flag (`backup`,
-    `firecrawl`, `system`, and cloud summarizer API keys) are treated as opt-in:
-    their absence is silently OK because the runtime falls through.
-    """
-    group = info.adapter
-    if group == "redis":
-        # Redis env vars are optional: an unset REDIS_URL falls back to the
-        # redis://localhost:6379 default in DEFAULT_CONFIG, and auth-less local
-        # Redis needs no REDIS_PASSWORD. Reachability is enforced at the /ready
-        # start boundary, not by env-var presence.
-        return False
-    if app_config is None:
-        return False
-    if group == "telegram":
-        return bool(getattr(app_config.telegram, "enabled", False))
-    if group == "discord":
-        return bool(getattr(app_config.discord, "enabled", False))
-    if group == "whatsapp":
-        return bool(getattr(app_config.whatsapp, "enabled", False))
-    if group == "email":
-        email_cfg = getattr(app_config, "email", None)
-        return bool(getattr(email_cfg, "enabled", False)) if email_cfg else False
-    if group == "voice":
-        # ELEVENLABS_API_KEY required only when ElevenLabs is an enabled TTS or STT service.
-        for section_attr in ("tts", "stt"):
-            section = getattr(app_config, section_attr, None)
-            if not section or not getattr(section, "enabled", False):
-                continue
-            services = getattr(section, "services", None) or {}
-            elevenlabs = services.get("elevenlabs")
-            if elevenlabs and getattr(elevenlabs, "enabled", False):
-                return True
-        return False
-    if group == "ai":
-        # Local summarizer vars are gated by summarizer.local.enabled.
-        # Cloud provider keys (ANTHROPIC/OPENAI/GOOGLE) are optional fallbacks —
-        # the summarizer skips a provider silently when its key is absent.
-        if info.name in ("SUMMARIZER_LLM_BASE_URL", "SUMMARIZER_LLM_MODEL"):
-            summarizer = getattr(app_config, "summarizer", None)
-            local = getattr(summarizer, "local", None) if summarizer else None
-            return bool(local and getattr(local, "enabled", False))
-        return False
-    return False
-
-
 def validate_all() -> list[ValidationResult]:
     """Run full-system validation: schema + cross-reference + env vars."""
     results: list[ValidationResult] = []
@@ -543,21 +495,26 @@ def validate_all() -> list[ValidationResult]:
                 )
             )
 
-    # Validate environment variables — filtered by adapter enablement so
-    # disabled adapters (whatsapp, email when off) don't false-positive.
-    env_status = check_env_vars()
-    missing = [s for s in env_status if not s.is_set and _is_env_var_required(s.info, app_config)]
-    if missing:
+    missing_sections: dict[str, list[str]] = {}
+    if app_config is not None:
+        for section_name in ("telegram", "discord", "whatsapp", "email"):
+            section = getattr(app_config, section_name)
+            if section.enabled:
+                missing = missing_required_fields(section_name, section)
+                if missing:
+                    missing_sections[section_name] = missing
+        missing_sections.update(missing_enabled_service_fields(app_config))
+    if missing_sections:
         results.append(
             ValidationResult(
-                area="environment",
+                area="config credentials",
                 passed=False,
-                errors=[f"Missing: {s.info.name} ({s.info.description})" for s in missing],
-                suggestions=[f"Set {s.info.name}={s.info.example}" for s in missing],
+                errors=[f"{section}: {', '.join(fields)}" for section, fields in missing_sections.items()],
+                suggestions=["Set the missing values through config.yml or the configuration TUI."],
             )
         )
-    elif env_status:
-        results.append(ValidationResult(area="environment", passed=True))
+    else:
+        results.append(ValidationResult(area="config credentials", passed=True))
 
     return results
 

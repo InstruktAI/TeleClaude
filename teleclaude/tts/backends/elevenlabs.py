@@ -1,8 +1,8 @@
 """ElevenLabs backend - premium voice synthesis."""
 
-import os
-
 from instrukt_ai_logging import get_logger
+
+from teleclaude.config import config
 
 logger = get_logger(__name__)
 
@@ -22,9 +22,11 @@ class ElevenLabsBackend:
             True if successful, False otherwise
         """
         try:
-            api_key = os.getenv("ELEVENLABS_API_KEY")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+            services = config.tts.services if config.tts else None
+            service = services.get("elevenlabs") if services else None
+            api_key = service.api_key if service else None
             if not api_key:
-                logger.debug("ELEVENLABS_API_KEY not set")
+                logger.debug("tts.services.elevenlabs.api_key not set")
                 return False
 
             if not voice_id:

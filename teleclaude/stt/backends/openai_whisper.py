@@ -1,10 +1,11 @@
 """OpenAI Whisper STT backend — cloud-based transcription."""
 
-import os
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 from openai import AsyncOpenAI
+
+from teleclaude.config import config
 
 logger = get_logger(__name__)
 
@@ -19,9 +20,11 @@ class OpenAIWhisperBackend:
         """Lazy-init the OpenAI client on first use."""
         if self._client is not None:
             return True
-        api_key = os.getenv("OPENAI_API_KEY")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+        services = config.stt.services if config.stt else None
+        service = services.get("openai") if services else None
+        api_key = service.api_key if service else None
         if not api_key:
-            logger.debug("OpenAI Whisper STT unavailable: OPENAI_API_KEY not set")
+            logger.debug("OpenAI Whisper STT unavailable: stt.services.openai.api_key not set")
             return False
         self._client = AsyncOpenAI(api_key=api_key)
         return True
@@ -41,7 +44,7 @@ class OpenAIWhisperBackend:
             FileNotFoundError: If audio file does not exist
         """
         if not self._ensure_client():
-            raise RuntimeError("OpenAI Whisper STT unavailable: OPENAI_API_KEY not set")
+            raise RuntimeError("OpenAI Whisper STT unavailable: stt.services.openai.api_key not set")
 
         audio_path = Path(audio_file_path)
         if not audio_path.exists():

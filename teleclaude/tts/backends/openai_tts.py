@@ -7,6 +7,8 @@ import tempfile
 from instrukt_ai_logging import get_logger
 from openai import OpenAI
 
+from teleclaude.config import config
+
 logger = get_logger(__name__)
 
 
@@ -25,9 +27,11 @@ class OpenAITTSBackend:
             True if successful, False otherwise
         """
         try:
-            api_key = os.getenv("OPENAI_API_KEY")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+            services = config.tts.services if config.tts else None
+            service = services.get("openai") if services else None
+            api_key = service.api_key if service else None
             if not api_key:
-                logger.debug("OPENAI_API_KEY not set")
+                logger.debug("tts.services.openai.api_key not set")
                 return False
 
             voice = voice_name or "nova"

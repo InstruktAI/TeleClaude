@@ -9,7 +9,6 @@ here means it cannot drift between surfaces.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 
 
@@ -31,48 +30,32 @@ def is_unresolved_placeholder(value: object) -> bool:
 
 @dataclass(frozen=True)
 class _RequiredField:
-    """A required field and where it resolves from.
-
-    ``config_attr`` is read off the config section first; if it is empty or an
-    unresolved placeholder, ``env_var`` (if any) is consulted. ``label`` is the
-    human-facing field name surfaced in the "not configured" message.
-    """
+    """A required typed field and its human-facing validation label."""
 
     label: str
-    config_attr: str | None
-    env_var: str | None
+    config_attr: str
 
 
-# Per-section required fields, encoding each section's real resolution path
-# (discord: config token or env; telegram & email: env-only; whatsapp: config or env).
+# Per-section required fields, read only from the typed config aggregate.
 _REQUIRED_FIELDS: dict[str, tuple[_RequiredField, ...]] = {
-    "discord": (_RequiredField("token", "token", "DISCORD_BOT_TOKEN"),),
-    "telegram": (_RequiredField("bot token", None, "TELEGRAM_BOT_TOKEN"),),
+    "discord": (_RequiredField("token", "token"),),
+    "telegram": (_RequiredField("bot token", "bot_token"),),
     "whatsapp": (
-        _RequiredField("phone_number_id", "phone_number_id", "WHATSAPP_PHONE_NUMBER_ID"),
-        _RequiredField("access_token", "access_token", "WHATSAPP_ACCESS_TOKEN"),
+        _RequiredField("phone_number_id", "phone_number_id"),
+        _RequiredField("access_token", "access_token"),
     ),
     "email": (
-        _RequiredField("SMTP_USERNAME", None, "SMTP_USERNAME"),
-        _RequiredField("SMTP_KEY", None, "SMTP_KEY"),
-        _RequiredField("EMAIL_FROM", None, "EMAIL_FROM"),
+        _RequiredField("smtp_username", "smtp_username"),
+        _RequiredField("smtp_key", "smtp_key"),
+        _RequiredField("email_from", "email_from"),
     ),
 }
 
 
 def _resolve_field(cfg: object, spec: _RequiredField) -> str:
-    """Resolve a required field to its effective value (config field, else env).
-
-    ``cfg`` may be a parsed config object (startup) or a raw config-section dict
-    (config TUI, pre-persist) — both are read through one path.
-    """
-    if spec.config_attr is not None:
-        raw = cfg.get(spec.config_attr) if isinstance(cfg, dict) else getattr(cfg, spec.config_attr, None)
-        if not is_unresolved_placeholder(raw):
-            return str(raw).strip()
-    if spec.env_var:
-        return os.getenv(spec.env_var, "").strip()
-    return ""
+    """Read one required field from its config section."""
+    raw = cfg.get(spec.config_attr) if isinstance(cfg, dict) else getattr(cfg, spec.config_attr, None)
+    return "" if is_unresolved_placeholder(raw) else str(raw).strip()
 
 
 def missing_required_fields(section: str, cfg: object) -> list[str]:
@@ -88,6 +71,33 @@ def missing_required_fields(section: str, cfg: object) -> list[str]:
 def validated_sections() -> frozenset[str]:
     """Config sections that carry required-field requirements (callers gate on these)."""
     return frozenset(_REQUIRED_FIELDS)
+
+
+def missing_enabled_service_fields(config: object) -> dict[str, list[str]]:
+    """Return missing typed fields for enabled optional provider services."""
+    missing: dict[str, list[str]] = {}
+    summarizer = getattr(config, "summarizer", None)
+    local = getattr(summarizer, "local", None) if summarizer is not None else None
+    if local is not None and getattr(local, "enabled", False):
+        local_missing = [
+            field_name
+            for field_name in ("base_url", "model")
+            if is_unresolved_placeholder(getattr(local, field_name, None))
+        ]
+        if local_missing:
+            missing["summarizer.local"] = local_missing
+
+    for section_name in ("tts", "stt"):
+        section = getattr(config, section_name, None)
+        if section is None or not getattr(section, "enabled", False):
+            continue
+        services = getattr(section, "services", None)
+        elevenlabs = services.get("elevenlabs") if services else None
+        if elevenlabs is not None and getattr(elevenlabs, "enabled", False):
+            if is_unresolved_placeholder(getattr(elevenlabs, "api_key", None)):
+                missing[f"{section_name}.services.elevenlabs"] = ["api_key"]
+
+    return missing
 
 
 def is_section_available(section: str, cfg: object) -> bool:

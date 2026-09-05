@@ -10,13 +10,13 @@ Provides:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import httpx
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.config_handlers import get_person_config, save_person_config
+from teleclaude.config import config
 from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.schema import ConfigKind, DiscordCreds
 from teleclaude.core.identity import (
@@ -39,11 +39,11 @@ _PERSON_SLUG_FIELD = "slug"
 # --- Bot Resolution ---
 
 
-async def resolve_telegram_bot_username(token_env: str = "TELEGRAM_BOT_TOKEN") -> str:
+async def resolve_telegram_bot_username() -> str:
     """Resolve Telegram bot username from token via getMe API."""
-    token = os.getenv(token_env)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+    token = config.telegram.bot_token
     if not token:
-        raise ValueError(f"Environment variable {token_env} not set")
+        raise ValueError("telegram.bot_token is not configured")
 
     url = f"https://api.telegram.org/bot{token}/getMe"
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -61,11 +61,11 @@ async def resolve_telegram_bot_username(token_env: str = "TELEGRAM_BOT_TOKEN") -
             raise ValueError(f"Failed to resolve Telegram bot username: {e}") from e
 
 
-async def resolve_discord_bot_user_id(token_env: str = "DISCORD_BOT_TOKEN") -> str:
+async def resolve_discord_bot_user_id() -> str:
     """Resolve Discord bot user ID from token via GET /users/@me."""
-    token = os.getenv(token_env)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
+    token = config.discord.token
     if not token:
-        raise ValueError(f"Environment variable {token_env} not set")
+        raise ValueError("discord.token is not configured")
 
     url = "https://discord.com/api/v10/users/@me"
     headers = {"Authorization": f"Bot {token}"}
