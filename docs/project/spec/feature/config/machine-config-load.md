@@ -120,7 +120,6 @@ And the deep-merge with the default config produces only default values
 And config construction raises a validation error downstream because the required `agents` section is missing
 ```
 
-<!-- planned:config-credentials-via-config -->
 #### UC-CFG-LOAD-8: Env-backed credentials remain file-declared and service-available
 
 ```gherkin
@@ -132,7 +131,6 @@ And the service is available using that effective configuration
 And the machine configuration retains the placeholder rather than the resolved secret
 And changing the process environment after configuration loading does not bypass the effective configuration
 ```
-<!-- /planned:config-credentials-via-config -->
 
 <!-- planned:config-tunables-via-config -->
 #### UC-CFG-LOAD-9: Machine configuration governs runtime settings

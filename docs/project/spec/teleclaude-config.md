@@ -406,12 +406,10 @@ not a publication target. Legacy Gemini MCP settings are not managed.
 
 ### Environment variables
 
-<!-- planned:config-credentials-via-config -->
 The credential variables below are secret-storage inputs for `${VAR}`
 placeholders in machine `config.yml`. Generic YAML expansion resolves them at
 config load; runtime consumers read only the resulting typed fields and never
 consult the process environment directly.
-<!-- /planned:config-credentials-via-config -->
 
 ```yaml
 environment_variables:
@@ -544,7 +542,6 @@ services:
 <!-- /planned:distributed-todo-postgres -->
 telegram:
   enabled: boolean
-<!-- planned:config-credentials-via-config -->
   bot_token: string | null # normally ${TELEGRAM_BOT_TOKEN}
   alert_username: string | null # normally ${TELEGRAM_ALERT_USERNAME}
   alert_chat_id: string | null # normally ${TELEGRAM_ALERT_CHAT_ID}
@@ -565,18 +562,13 @@ whatsapp:
   template_language: string
   business_number: string | null # normally ${WHATSAPP_BUSINESS_NUMBER}
 database_url: string | null # optional snippet-provenance database; normally ${DATABASE_URL}
-<!-- /planned:config-credentials-via-config -->
 email:
-<!-- planned-change:config-credentials-via-config -->
-  enabled: boolean # outbound SMTP; creds in .env (SMTP_USERNAME/SMTP_KEY/EMAIL_FROM). Disabled/unconfigured → email not sent (callers gate on availability).
-<!-- change:config-credentials-via-config -->
   enabled: boolean # outbound SMTP; disabled or incomplete config is unavailable
   smtp_username: string | null # normally ${SMTP_USERNAME}
   smtp_key: string | null # normally ${SMTP_KEY}
   email_from: string | null # normally ${EMAIL_FROM}
   reply_to: string | null # normally ${EMAIL_REPLYTO}
   smtp_relay: string # normally ${SMTP_RELAY}; defaults to smtp-relay.brevo.com:587
-<!-- /planned-change:config-credentials-via-config -->
 agents:
   default: string
   claude|gemini|codex|deepseek:
@@ -603,20 +595,11 @@ summarizer:
     enabled: boolean
     base_url: string # ${SUMMARIZER_LLM_BASE_URL}
     model: string # ${SUMMARIZER_LLM_MODEL}
-<!-- planned:config-credentials-via-config -->
     api_key: string | null # normally ${SUMMARIZER_LOCAL_API_KEY}
-<!-- /planned:config-credentials-via-config -->
   provider_priority: list[string] # cloud fallback order: openai|anthropic|google
-<!-- planned-change:config-credentials-via-config -->
-  openai: { model: string } # dateless alias, e.g. gpt-5-nano
-  anthropic: { model: string } # e.g. claude-haiku-4-5
-  google: { model: string } # e.g. gemini-2.5-flash; uses Gemini's OpenAI-compatible endpoint
-<!-- change:config-credentials-via-config -->
   openai: { model: string, api_key: string | null } # API key normally ${OPENAI_API_KEY}
   anthropic: { model: string, api_key: string | null } # API key normally ${ANTHROPIC_API_KEY}
   google: { model: string, api_key: string | null } # API key normally ${GOOGLE_API_KEY}; uses Gemini's OpenAI-compatible endpoint
-<!-- /planned-change:config-credentials-via-config -->
-<!-- planned:config-credentials-via-config -->
 stt:
   enabled: boolean
   services:
@@ -626,22 +609,13 @@ tts:
   services:
     openai: { enabled: boolean, api_key: string | null } # API key normally ${OPENAI_API_KEY}
     elevenlabs: { enabled: boolean, api_key: string | null } # API key normally ${ELEVENLABS_API_KEY}
-<!-- /planned:config-credentials-via-config -->
 ```
 
-<!-- planned-change:config-credentials-via-config -->
-Summary/title generation tries `local` (when `enabled` + `base_url`) first, then the
-cloud providers in `provider_priority`, each skipped silently when its API key
-(`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`) is absent. `local`/`openai`/
-`google` share the OpenAI SDK; `anthropic` uses its own. Empty summaries (e.g. all
-providers out of credit) suppress agent-stop TTS and leave generic session titles.
-<!-- change:config-credentials-via-config -->
 Summary/title generation tries `local` (when `enabled` + `base_url`) first, then the
 cloud providers in `provider_priority`, each skipped silently when its typed
 `api_key` field is absent. `local`, `openai`, and `google` share the OpenAI SDK;
 `anthropic` uses its own. Empty summaries (for example, all configured providers
 being unavailable) suppress agent-stop TTS and leave generic session titles.
-<!-- /planned-change:config-credentials-via-config -->
 
 <!-- planned:config-tunables-via-config -->
 Runtime settings owned by the machine-config aggregate use these additional
