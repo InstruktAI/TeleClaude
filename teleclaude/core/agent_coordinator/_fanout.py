@@ -20,10 +20,11 @@ from teleclaude.core.session_listeners import (
     notify_distress_human_fallback,
     notify_stop,
 )
+from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.tts.manager import TTSManager
-from teleclaude.utils.transcript import extract_last_agent_message
+from teleclaude.utils.transcript import extract_stop_agent_message
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -49,17 +50,13 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         except Exception as exc:
             logger.warning("TTS session_start failed: %s", exc)
 
-    async def _extract_agent_output(self, session_id: str, payload: "AgentStopPayload") -> str | None:
-        """Extract last agent output from transcript.
-
-        Returns:
-            Raw output text, or None if extraction fails or no output found.
-        """
+    async def _extract_agent_output(self, session_id: str, payload: "AgentStopPayload") -> StopOutputResult:
+        """Extract the corresponding stop response without falling back to history."""
         session = await db.get_session(session_id)
         transcript_path = payload.transcript_path or (session.native_log_file if session else None)
         if not transcript_path:
             logger.debug("Extract skipped (missing transcript path)", session=session_id)
-            return None
+            return StopOutputResult(StopOutputKind.UNAVAILABLE)
 
         raw_agent_name = payload.raw.get("agent_name")
         agent_name_value = raw_agent_name if isinstance(raw_agent_name, str) and raw_agent_name else None
@@ -67,20 +64,24 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             agent_name_value = session.active_agent
         if not agent_name_value:
             logger.debug("Extract skipped (missing agent name)", session=session_id)
-            return None
+            return StopOutputResult(StopOutputKind.UNAVAILABLE)
 
         try:
             agent_name = AgentName.from_str(agent_name_value)
         except ValueError:
             logger.warning("Extract skipped (unknown agent '%s')", agent_name_value)
-            return None
+            return StopOutputResult(StopOutputKind.UNAVAILABLE)
 
-        last_message = extract_last_agent_message(transcript_path, agent_name, 1)
-        if not last_message or not last_message.strip():
-            logger.debug("Extract skipped (no agent output)", session=session_id)
-            return None
-
-        return last_message
+        native_entry_id = payload.native_turn_id
+        message = extract_stop_agent_message(
+            transcript_path,
+            agent_name,
+            native_entry_id=native_entry_id,
+        )
+        if message is None:
+            logger.debug("Extract unavailable (no corresponding agent response)", session=session_id)
+            return StopOutputResult(StopOutputKind.UNAVAILABLE)
+        return classify_stop_output(message)
 
     async def _summarize_output(self, session_id: str, raw_output: str) -> str | None:
         """Summarize raw agent output via LLM.

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_projected_at TEXT,
     last_conversation_injected_at TEXT,
     last_output_raw TEXT,
+    last_output_stop_at TEXT,
     last_output_at TEXT,
     last_output_summary TEXT,
     last_output_digest TEXT,

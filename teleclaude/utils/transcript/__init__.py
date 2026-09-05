@@ -36,9 +36,11 @@ from teleclaude.utils.transcript._extraction import (
     extract_last_user_message_with_timestamp,
     extract_latest_codex_task_lifecycle,
     extract_recent_transcript_turns,
+    extract_stop_agent_message,
     extract_workdir_from_transcript,
     get_assistant_messages_since,
     parse_session_transcript,
+    transcript_has_stop_response,
 )
 from teleclaude.utils.transcript._identity import native_entry_id
 from teleclaude.utils.transcript._iterators import (
@@ -187,6 +189,7 @@ __all__ = [
     "extract_messages_from_chain",
     "extract_real_user_text_from_entry",
     "extract_recent_transcript_turns",
+    "extract_stop_agent_message",
     "extract_structured_messages",
     "extract_tool_calls_current_turn",
     "extract_workdir_from_transcript",
@@ -212,6 +215,7 @@ __all__ = [
     "render_agent_output",
     "render_clean_agent_output",
     "resolve_claude_turn_commitment",
+    "transcript_has_stop_response",
 ]
 
 

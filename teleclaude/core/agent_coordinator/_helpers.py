@@ -128,31 +128,6 @@ async def wait_for_transcript_ready(
         await asyncio.sleep(poll_interval_s)
 
 
-def transcript_has_assistant_entry(entries: list[JsonDict]) -> bool:
-    """Predicate: transcript contains at least one assistant message entry.
-
-    Used by ``wait_for_transcript_ready`` to detect *file readiness* — i.e.
-    that the agent has flushed its turn-final response to disk. Content
-    semantics (empty vs non-empty text) are NOT considered here: codex
-    legitimately emits ``final_answer`` with empty text when its turn
-    produced no chat reply (file write, no commentary, exit). That is a
-    completed turn, not a flush-pending state. Downstream extraction
-    decides whether to summarize based on the actual text.
-    """
-    for entry in entries:
-        message_field = entry.get("message")
-        if isinstance(message_field, dict):
-            role = message_field.get("role")
-        else:
-            payload = entry.get("payload")
-            if not isinstance(payload, dict):
-                continue
-            role = payload.get("role")
-        if role == "assistant":
-            return True
-    return False
-
-
 @dataclass
 class _SuppressionState:  # pyright: ignore[reportUnusedClass]
     """Tracks repeated no-op events so logs can be sampled."""
@@ -192,6 +167,5 @@ def _is_checkpoint_prompt(
 __all__ = [
     "_is_checkpoint_prompt",
     "transcript_expected_to_exist",
-    "transcript_has_assistant_entry",
     "wait_for_transcript_ready",
 ]
