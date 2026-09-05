@@ -282,6 +282,7 @@ def _derive_work_block(state_model: TodoState) -> dict[str, StateValue]:
     """Project work-phase progress facts."""
     return {
         "build_start_base_sha": state_model.build_start_base_sha,
+        "build_plan_digest": state_model.build_plan_digest,
         "build_completed_at": state_model.build_completed_at,
         "build_gate_claim_at": state_model.build_gate_claim_at,
         "finalize": state_model.finalize.model_dump(),

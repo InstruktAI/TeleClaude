@@ -47,6 +47,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_error,
     format_finalize_handoff_complete,
     format_orchestration_watch_instruction,
+    format_plan_reconcile_note,
     format_send_command,
     format_tool_call,
     format_uncommitted_changes,
@@ -82,6 +83,15 @@ PLAN_ONLY_ARTIFACT_CONTRACT = (
     "for this {kind} work."
 )
 _PLAN_ONLY_WORK_KINDS = PLAN_ONLY_PREPARE_KINDS
+_BUILD_RECONCILE_EVENT = "todo_build_reconcile_routed"
+_BUILD_RECONCILE_MESSAGE = "todo build reconciliation routed"
+_BUILD_RECONCILE_SENT_LIVE = "sent_live_builder"
+_BUILD_RECONCILE_DISPATCHED_FRESH = "dispatched_fresh_builder"
+_BUILD_RECONCILE_NOT_REQUIRED = "not_required"
+_BUILD_RECONCILE_DIGEST_MISMATCH = "plan_digest_mismatch"
+_BUILD_RECONCILE_DIGEST_MATCH = "plan_digest_match"
+_BUILD_RECONCILE_NO_DIGEST = "no_build_plan_digest"
+_EMPTY_TEXT = ""
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +236,43 @@ async def _work_step_build_started(
         )
 
     command = SlashCommand.NEXT_BUILD
+    model = StateWriter(state).state
+    old_plan_digest = model.build_plan_digest
+    current_plan_digest = model.artifacts.implementation_plan.digest
+    reconciliation_required = bool(old_plan_digest) and old_plan_digest != current_plan_digest
+    reconciliation_note = (
+        format_plan_reconcile_note(slug, old_plan_digest, current_plan_digest)
+        if reconciliation_required
+        else _EMPTY_TEXT
+    )
+    reconciliation_reason = (
+        _BUILD_RECONCILE_DIGEST_MISMATCH if reconciliation_required else _reconcile_absence_reason(old_plan_digest)
+    )
     builder_id = await find_live_session_for_slug(db, slug, f"/{command.value}")
     if builder_id is not None:
+        if reconciliation_required:
+            _log_build_reconcile_route(
+                slug=slug,
+                outcome=_BUILD_RECONCILE_SENT_LIVE,
+                reason=reconciliation_reason,
+                builder_session_id=builder_id,
+                old_plan_digest=old_plan_digest,
+                current_plan_digest=current_plan_digest,
+            )
+            return False, format_worker_redispatch(
+                builder_id,
+                slug=slug,
+                message=reconciliation_note,
+                advance_call=f"telec todo work {slug}",
+            )
+        _log_build_reconcile_route(
+            slug=slug,
+            outcome=_BUILD_RECONCILE_NOT_REQUIRED,
+            reason=reconciliation_reason,
+            builder_session_id=builder_id,
+            old_plan_digest=old_plan_digest,
+            current_plan_digest=current_plan_digest,
+        )
         return False, (
             f"BUILDER ACTIVE: {slug}\n\n"
             f"Builder session {builder_id} has not stamped build completion yet. "
@@ -235,6 +280,14 @@ async def _work_step_build_started(
             f"then call telec todo work {slug}."
         )
 
+    _log_build_reconcile_route(
+        slug=slug,
+        outcome=_BUILD_RECONCILE_DISPATCHED_FRESH if reconciliation_required else _BUILD_RECONCILE_NOT_REQUIRED,
+        reason=reconciliation_reason,
+        builder_session_id=_EMPTY_TEXT,
+        old_plan_digest=old_plan_digest,
+        current_plan_digest=current_plan_digest,
+    )
     return False, format_tool_call(
         ToolCallRequest(
             command=command,
@@ -246,9 +299,36 @@ async def _work_step_build_started(
                 f"When the build is committed and ready for review, "
                 f"run `telec todo stamp {slug} --build-complete`."
             ),
+            additional_context=reconciliation_note,
             next_call=f"telec todo work {slug}",
             post_block=_builder_idle_post_block(slug),
         )
+    )
+
+
+def _reconcile_absence_reason(old_plan_digest: str) -> str:
+    return _BUILD_RECONCILE_DIGEST_MATCH if old_plan_digest else _BUILD_RECONCILE_NO_DIGEST
+
+
+def _log_build_reconcile_route(
+    *,
+    slug: str,
+    outcome: str,
+    reason: str,
+    builder_session_id: str,
+    old_plan_digest: str,
+    current_plan_digest: str,
+) -> None:
+    logger.info(
+        _BUILD_RECONCILE_MESSAGE,
+        event=_BUILD_RECONCILE_EVENT,
+        outcome=outcome,
+        reason=reason,
+        slug=slug,
+        caller_session_id=get_session_id() or _EMPTY_TEXT,
+        builder_session_id=builder_session_id,
+        old_plan_digest=old_plan_digest,
+        current_plan_digest=current_plan_digest,
     )
 
 

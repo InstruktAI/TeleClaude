@@ -255,12 +255,13 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[7] = 7
+    schema_version: Literal[8] = 8
     phase: str = "pending"
     lifecycle_phase: LifecyclePhase | None = LifecyclePhase.DRAFT
     prepare_phase: str = Field(default="", exclude=True)
     work_phase: str = Field(default="", exclude=True)
     build_start_base_sha: str = ""
+    build_plan_digest: str = ""
     build_completed_at: str = ""
     build_gate_claim_at: str = ""
     kind: str | None = TODO_KIND_DEFAULT  # canonical values: see teleclaude.types.todo_kind.ALL_DUMP_KINDS

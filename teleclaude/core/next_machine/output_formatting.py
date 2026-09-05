@@ -28,15 +28,16 @@ __all__ = [
     "format_command_loader_message",
     "format_error",
     "format_finalize_handoff_complete",
-    "format_kickback_terminal",
     "format_orchestration_watch_instruction",
     "format_pending_classes_for_dispatch",
+    "format_plan_reconcile_note",
     "format_prepared",
     "format_procedure_load",
     "format_stash_debt",
     "format_tool_call",
     "format_uncommitted_changes",
     "format_work_entry_drift_bounce",
+    "format_work_entry_kickback_handoff",
     "format_work_entry_substantive_handoff",
     "format_worker_redispatch",
     "parse_human_in_loop",
@@ -427,7 +428,7 @@ def format_prepared(
     session_ids_to_end: list[str] | None = None,
     auto_continue_operations: list[str] | None = None,
     *,
-    suppress_self_end: bool = False,
+    resume_work: bool = False,
 ) -> str:
     """Format the PREPARED terminal message for the prepare state machine.
 
@@ -441,25 +442,41 @@ def format_prepared(
         operations = f"AUTO-CONTINUE:\nExecute in order:\n{operation_lines}\n\n"
 
     cleanup_lines = list(f"telec sessions end {sid}" for sid in session_ids_to_end or [])
-    if not suppress_self_end:
+    if not resume_work:
         cleanup_lines.append("telec sessions end self")
     cleanup = "\n".join(cleanup_lines)
     cleanup_block = f"{cleanup}\n\n" if cleanup else ""
 
-    terminal_note = (
-        "AUTO-CONTINUE dispatched dependent prepare work."
-        if auto_continue_operations
-        else (
-            f"{slug} is prepared; any drift is reconciled. If you reached this as a terminal "
-            f"prepare, run the cleanup above and self-end. If you bounced here in-line from "
-            f"telec todo work {slug} to reconcile drift, skip the self-end and resume that "
-            f"work — you know your own lineage."
+    if resume_work:
+        terminal_note = (
+            f"BUILD RESUME REQUIRED: {slug} retains durable build residue. "
+            f"After ending the other prepare-lifecycle sessions above, call `telec todo work {slug}` "
+            "in this same session."
         )
-    )
+    elif auto_continue_operations:
+        terminal_note = "AUTO-CONTINUE dispatched dependent prepare work."
+    else:
+        terminal_note = f"{slug} is prepared; any drift is reconciled. Run the cleanup above and self-end."
     if auto_continue_operations:
         return f"PREPARED: {slug} is ready for work.\n\n{operations}{cleanup_block}{terminal_note}"
 
     return f"{cleanup_block}PREPARED: {slug} is ready for work.\n\n{terminal_note}"
+
+
+def format_plan_reconcile_note(slug: str, old_digest: str, new_digest: str) -> str:
+    """Render the durable reconciliation instructions for an amended build plan."""
+    return f"""PLAN RECONCILIATION REQUIRED: {slug}
+
+The implementation plan changed after this build started.
+
+Previous plan digest: {old_digest}
+Current plan digest: {new_digest}
+
+Read the exact amendment:
+
+`telec todo artifacts diff {slug} implementation-plan {old_digest} {new_digest}`
+
+Revert commits the amendment invalidates, retain commits still required by the amended plan, and continue implementation. Stamp `telec todo stamp {slug} --build-complete` only after reconciliation is complete."""
 
 
 def format_uncommitted_changes(slug: str) -> str:
@@ -510,8 +527,8 @@ def format_work_entry_substantive_handoff(slug: str) -> str:
     adopts this session as the slug's prepare-orchestrator in place — the
     generic claim-reflection mechanism confers prepare-write authority the
     moment that call runs, before any artifact write happens. Once prepare
-    reaches PREPARED again, its own terminal output recognizes this session's
-    lineage and directs it to resume work rather than self-end.
+    reaches PREPARED again, durable build residue directs it to resume work
+    rather than self-end.
     """
     loader = format_command_loader_message(SlashCommand.NEXT_PREPARE.value, slug)
     return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
@@ -525,7 +542,28 @@ Become the prepare orchestrator for {slug}. Read the prepare orchestrator proced
 
 {loader}
 
-Then call `telec todo prepare {slug}` and follow its output verbatim. The prepare state machine re-derives the affected artifact and reaches PREPARED — its terminal output will recognize you bounced in from work and tell you to resume work in this same session rather than self-end."""
+Then call `telec todo prepare {slug}` and follow its output verbatim. The prepare state machine re-derives the affected artifact and reaches PREPARED — durable build residue then directs this same session to resume work rather than self-end."""
+
+
+def format_work_entry_kickback_handoff(slug: str) -> str:
+    """Hand a kicked-back work orchestrator into prepare without teardown."""
+    loader = format_command_loader_message(SlashCommand.NEXT_PREPARE.value, slug)
+    return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
+
+WORK_ENTRY_KICKBACK: {slug} was kicked back to plan drafting. Its worktree, local and remote branch, workspace, build commits, and live sessions remain intact.
+
+Your slug claim is unchanged. Calling `telec todo prepare {slug}` next adopts you as {slug}'s prepare-orchestrator in place.
+
+NEXT ACTION:
+Read the durable kickback context:
+
+`telec todo artifacts read {slug} input`
+
+Read the prepare orchestrator procedure:
+
+{loader}
+
+Then call `telec todo prepare {slug}` and follow its output verbatim. When PREPARED directs BUILD RESUME REQUIRED, call `telec todo work {slug}` in this same session."""
 
 
 def format_finalize_handoff_complete(slug: str, child_session_ids: list[str] | None = None) -> str:
@@ -551,39 +589,6 @@ INSTRUCTIONS FOR ORCHESTRATOR:
 {instructions}
 
 Work-stage responsibility for {slug} is complete. Do not call telec todo work {slug} again."""
-
-
-def format_kickback_terminal(slug: str, child_session_ids: list[str] | None = None) -> str:
-    """Format the terminal cleanup after a todo is kicked back to plan drafting.
-
-    The kickback stamp already invalidated the implementation-plan and recorded the
-    reason in the todo's input. The work machine has released the slug's working
-    resources (worktree + local/remote branch + workspace dir). All that remains is
-    to end the slug's workers and this orchestrator so the runner re-dispatches a
-    fresh prepare that re-derives the plan from the input kickback block.
-    """
-    steps: list[str] = []
-    steps.append(
-        f'1. Report: "Todo {slug} was kicked back to plan drafting. Its working resources '
-        f"(worktree + branch) were released; the runner will re-dispatch a fresh prepare "
-        f'that reads the input kickback block as re-derivation context."'
-    )
-
-    step = 2
-    if child_session_ids:
-        end_cmds = "\n   ".join(f"telec sessions end {sid}" for sid in child_session_ids)
-        steps.append(f"{step}. End child sessions:\n   {end_cmds}")
-        step += 1
-
-    steps.append(f"{step}. End this orchestrator session:\n   telec sessions end self")
-
-    instructions = "\n".join(steps)
-    return f"""KICKBACK TO PLAN DRAFTING: {slug}
-
-INSTRUCTIONS FOR ORCHESTRATOR:
-{instructions}
-
-Work-stage responsibility for {slug} is released. Do not call telec todo work {slug} again."""
 
 
 def format_stash_debt(slug: str, count: int) -> str:

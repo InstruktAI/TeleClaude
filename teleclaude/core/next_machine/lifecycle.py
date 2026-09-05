@@ -83,14 +83,17 @@ __all__ = [
     "lifecycle_phase_index",
     "pending_approval_gate",
     "phase_is_complete",
+    "plan_review_current",
     "prd_approval_current",
     "prepare_blockers",
     "prepare_review_verdict_from_state",
     "require_lifecycle_phase",
+    "reset_finalize",
 ]
 
 _ArtifactPresence = Mapping[str, bool]
 _FEATURE_KINDS = FEATURE_PREPARE_KINDS
+_EMPTY_TEXT = ""
 READY_BAND_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
         LifecyclePhase.PREPARED,
@@ -459,6 +462,29 @@ def _review_current(review: ReviewVerdictState, current_target_digest: str, curr
     )
 
 
+def plan_review_current(state: TodoState | Mapping[str, object]) -> bool:
+    """Return whether raw-state callers can prove the plan review is current.
+
+    Prepare phase derivation owns the stricter report-artifact binding in
+    ``_review_current``. Runner, manual-start, and dependency callers only
+    receive durable state, so this projection deliberately validates the
+    approving verdict, non-empty review evidence, and current plan target.
+    """
+    try:
+        model = state if isinstance(state, TodoState) else TodoState.model_validate(state)
+    except ValueError:
+        return False
+    current_plan_digest = model.artifacts.implementation_plan.digest
+    review = model.plan_review
+    return (
+        bool(current_plan_digest)
+        and review.verdict == "approve"
+        and bool(review.reviewed_target_digest)
+        and bool(review.review_report_digest)
+        and review.reviewed_target_digest == current_plan_digest
+    )
+
+
 def _current_report_digest(review_phase: str, report_digests: Mapping[str, str] | None) -> str:
     if report_digests is None:
         return ""
@@ -478,6 +504,11 @@ def _clear_build_review(model: TodoState) -> None:
 def _reset_finalize(model: TodoState) -> None:
     model.finalize.status = "pending"
     model.finalize.ready_at = ""
+
+
+def reset_finalize(model: TodoState) -> None:
+    """Clear the lifecycle-owned finalize readiness projection."""
+    _reset_finalize(model)
 
 
 async def derive_lifecycle_drift(
@@ -624,8 +655,8 @@ def prepare_review_verdict_from_state(state: Mapping[str, object]) -> str | None
 
 
 def _upcycle_blockers(model: TodoState) -> list[str]:
-    if model.schema_version < 7:
-        return ["todo state could not be upcycled to schema_version 7"]
+    if model.schema_version < 8:
+        return ["todo state could not be upcycled to schema_version 8"]
     return []
 
 
@@ -789,7 +820,10 @@ def apply_authoritative_signal(
 
     if signal == "build_started" and current == LifecyclePhase.PREPARED:
         model.build_start_base_sha = get_head_commit(worktree_cwd or "")
+        if not model.build_plan_digest:
+            model.build_plan_digest = model.artifacts.implementation_plan.digest
         model.build_completed_at = ""
+        model.build_gate_claim_at = _EMPTY_TEXT
         _clear_build_review(model)
         _reset_finalize(model)
         return _move_to(model, LifecyclePhase.BUILD_STARTED)
@@ -798,6 +832,7 @@ def apply_authoritative_signal(
         LifecyclePhase.BUILD_STARTED,
         LifecyclePhase.REVIEW_CHANGES_REQUESTED,
     ):
+        model.build_plan_digest = model.artifacts.implementation_plan.digest
         model.build_completed_at = now
         _reset_finalize(model)
         if current == LifecyclePhase.REVIEW_CHANGES_REQUESTED:

@@ -40,6 +40,7 @@ from teleclaude.constants import (
     STATE_KEY_REQUIREMENTS,
     STATE_KEY_TASK_PLAN,
     WORKTREE_DIR,
+    JobRole,
 )
 from teleclaude.core.dates import is_recurring_schedule
 from teleclaude.core.db import db as runtime_db
@@ -48,7 +49,7 @@ from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
 from teleclaude.core.next_machine.git_ops import get_head_commit, get_origin_main_sha, has_build_commits_beyond_main
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_ENTRY_PHASE, KIND_TASK
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, diagnosis_settled_current
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, diagnosis_settled_current, reset_finalize
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.next_machine.provenance import (
     read_owned_snippet_digests,
@@ -114,6 +115,16 @@ _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_TASK_PLAN: STATE_KEY_TASK_PLAN,
 }
 _KIND_ASSIGN_VALUE = "kind_assign"
+_EMPTY_TEXT = ""
+_KICKBACK_REQUEST_ACCEPTED_EVENT = "todo_kickback_request_accepted"
+_KICKBACK_APPLIED_EVENT = "todo_kickback_applied"
+_KICKBACK_REQUEST_ACCEPTED_MESSAGE = "todo kickback request accepted"
+_KICKBACK_APPLIED_MESSAGE = "todo kickback applied"
+_KICKBACK_ACCEPTED_OUTCOME = "accepted"
+_KICKBACK_APPLIED_OUTCOME = "plan_invalidated"
+_KICKBACK_CLAIM_REASON = "work_orchestrator_claim"
+_KICKBACK_REASON = "kickback"
+_DEPENDENCY_GATE_CLOSED = "closed"
 
 
 class HumanGateStamp(StrEnum):
@@ -178,6 +189,7 @@ async def apply_todo_stamp(
         caller_session_id=caller_session_id,
         active_runner=writer.state.active_runner,
     )
+    _log_kickback_request_acceptance(stamp_type, slug=slug, caller_session_id=caller_session_id)
 
     if stamp_type == "verdict":
         return await _apply_verdict_stamp(todos_db, cwd, slug, phase or "", value, caller_session_id or "", request_id)
@@ -276,6 +288,7 @@ async def apply_todo_stamp(
             slug,
             reason=value,
             repo_root=cwd,
+            caller_session_id=caller_session_id or _EMPTY_TEXT,
         )
     elif stamp_type == "task_outcome":
         return await _apply_task_outcome_stamp(
@@ -290,6 +303,19 @@ async def apply_todo_stamp(
         raise ValueError(f"unknown stamp type: {stamp_type}")
 
     return await writer.commit(todos_db, slug)
+
+
+def _log_kickback_request_acceptance(stamp_type: str, *, slug: str, caller_session_id: str | None) -> None:
+    if stamp_type != _KICKBACK_REASON:
+        return
+    logger.info(
+        _KICKBACK_REQUEST_ACCEPTED_MESSAGE,
+        event=_KICKBACK_REQUEST_ACCEPTED_EVENT,
+        outcome=_KICKBACK_ACCEPTED_OUTCOME,
+        reason=_KICKBACK_CLAIM_REASON,
+        slug=slug,
+        caller_session_id=caller_session_id or _EMPTY_TEXT,
+    )
 
 
 async def _apply_kind_assign_stamp(
@@ -700,6 +726,7 @@ async def _apply_kickback_stamp(
     *,
     reason: str,
     repo_root: str,
+    caller_session_id: str,
 ) -> dict[str, StateValue]:
     """Send an unbuildable todo back to plan drafting.
 
@@ -736,7 +763,23 @@ async def _apply_kickback_stamp(
         snippet_digest_fn=snippet_body_digest,
     )
     ApprovalsManager(writer).cascade_substantive_drift(ARTIFACT_IMPLEMENTATION_PLAN)
-    return await writer.commit(todos_db, slug)
+    writer.state.build_gate_claim_at = _EMPTY_TEXT
+    reset_finalize(writer.state)
+    payload = await writer.commit(todos_db, slug)
+    logger.info(
+        _KICKBACK_APPLIED_MESSAGE,
+        event=_KICKBACK_APPLIED_EVENT,
+        outcome=_KICKBACK_APPLIED_OUTCOME,
+        reason=_KICKBACK_REASON,
+        slug=slug,
+        caller_session_id=caller_session_id,
+        old_plan_digest=writer.state.build_plan_digest,
+        current_plan_digest=writer.state.artifacts.implementation_plan.digest,
+        build_gate_claim_present=bool(writer.state.build_gate_claim_at),
+        finalize_status=writer.state.finalize.status,
+        dependency_gate=_DEPENDENCY_GATE_CLOSED,
+    )
+    return payload
 
 
 async def _apply_task_outcome_stamp(
@@ -815,7 +858,12 @@ async def _validate_stamp_authority(
                 f"{caller_session_id or '<none>'} has system_role={system_role or '<none>'}. "
                 "A worker session or a plain operator shell cannot kick a todo back to plan drafting."
             )
-        return
+        job = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "job") if caller_session_id else None
+        if job != JobRole.WORK_ORCHESTRATOR.value:
+            raise PermissionError(
+                f"kickback stamp for {slug} is work-orchestrator-only; caller session "
+                f"{caller_session_id or '<none>'} has job={job or '<none>'}."
+            )
 
     live_claimant = active_runner if active_runner and await is_live_session_id(runtime_db, active_runner) else None
     raw_working_slug = (
