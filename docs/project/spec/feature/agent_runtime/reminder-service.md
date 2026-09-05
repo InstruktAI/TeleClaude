@@ -130,18 +130,6 @@ And the response identifies the prescribed profile surface
 And a non-prescribed valid slug remains available for arbitrary self-reminders
 ```
 
-<!-- planned-change:reminder-lifecycle-mechanisms -->
-#### UC-RMS6: A session inspects and cancels its own reminders
-
-```gherkin
-Given a session owns live time-scheduled and event-anchored reminders
-When it lists reminders
-Then it sees only its own reminders with slug, intent, schedule, recurrence, and next firing time when one exists
-When it cancels one slug or atomically cancels all
-Then the selected live reminders and their pending event anchors are removed idempotently
-And already accepted session input is not recalled
-```
-<!-- change:reminder-lifecycle-mechanisms -->
 #### UC-RMS6: A session inspects and cancels its own reminders
 
 ```gherkin
@@ -153,7 +141,6 @@ Then every selected reminder and its pending event anchor is removed idempotentl
 And an operation selecting a reminder whose profile protects cancellation is rejected before any selected reminder is removed
 And already accepted session input is not recalled
 ```
-<!-- /planned-change:reminder-lifecycle-mechanisms -->
 
 #### UC-RMS7: A firing one-shot reminder is handed to control delivery once
 
@@ -340,7 +327,6 @@ And reminder projection failure neither terminates native polling nor becomes hu
 And the immutable historical entry remains unchanged as audit truth
 ```
 
-<!-- planned:reminder-lifecycle-mechanisms -->
 #### UC-RMS25: A cancellation-protected reminder remains continuously armed
 
 ```gherkin
@@ -364,7 +350,6 @@ And it states the elapsed time since that arming
 When the reminder is atomically replaced and later fires
 Then the occurrence number and elapsed time are measured from the replacement
 ```
-<!-- /planned:reminder-lifecycle-mechanisms -->
 
 ## Known caveats
 
