@@ -136,18 +136,6 @@ def _artifact_contract_note(slug: str, kind: str) -> str:
     return _prepared_artifact_note(slug)
 
 
-async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
-    """List child sessions spawned by the current orchestrator session."""
-    if not session_id:
-        return []
-    try:
-        child_sessions = await db.list_sessions(initiator_session_id=session_id)
-        return [session.session_id for session in child_sessions]
-    except Exception:
-        logger.warning("Failed to query child sessions for cleanup", session_id=session_id)
-        return []
-
-
 # ---------------------------------------------------------------------------
 # Phase handlers
 # ---------------------------------------------------------------------------
@@ -710,9 +698,7 @@ async def _work_step_finalize_ready(
 ) -> tuple[bool, str]:
     """FINALIZE_READY: terminal cleanup. End child sessions and self."""
     _ = todos_db, cwd, worktree_cwd, state
-    session_id = get_session_id() or ""
-    child_session_ids = await _list_child_session_ids(db, session_id)
-    return False, format_finalize_handoff_complete(slug, child_session_ids)
+    return False, format_finalize_handoff_complete(slug)
 
 
 # ---------------------------------------------------------------------------
