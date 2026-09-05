@@ -14,7 +14,8 @@ originator session, full UUID per identity invariant. ``computer`` is the
 originator host.
 
 The bracket is the marker. Receivers distinguish machine content from human
-content by the leading bracket — there is no separate stripping pass.
+content by complete registered envelope shape — there is no separate stripping
+pass.
 
 A direct-conversation peer message is a distinct, simpler contract: one
 ``HumanFacingMessage`` header and closing footer per authored segment, no
@@ -31,29 +32,20 @@ outer wrapper —
 ``machine:<role>``. ``utc-minute`` is the original occurrence timestamp
 truncated to the minute in UTC. Exact precision and internal identifiers stay
 in transcript and delivery metadata as structured provenance — they are never
-rendered. The header and footer are presentation only: they bound the span
-for the receiving agent, but attribution is a durable, structural fact
-(peer bundle segments, accepted-turn bindings) — nothing parses this pair
-to derive or verify authorship.
+rendered. The header and footer carry presentation and source facts. Complete
+registered shapes are the sole recognition contract; bodies remain opaque and
+header values are carried rather than validated.
 
 The peer segment header sits outside the reserved ``[TeleClaude ...]`` control
-namespace, so control-header recognition can never mismatch it. A legacy
-``[TeleClaude - Peer (session_id) · author-token · utc-minute]`` shape,
-written before the header moved out of that namespace, is still recognized —
-but its recovery caller in ``conversation_delivery.py`` gates on two proofs
-before trusting it: the entry must be older than the turn-binding cutover,
-and a correlated accepted row (delivered, never bound) must exist for its
-content. ``parse_peer_segments`` itself performs neither check and trusts its
-input unconditionally — it is reachable only after its caller has verified
-both.
+namespace, so control-header recognition can never mismatch it. Retired
+shapes remain ordinary human input.
 """
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from types import MappingProxyType
 
 from teleclaude.constants import (
@@ -72,13 +64,13 @@ from teleclaude.core.injected_text import (
     MachineRoleLabel,
     envelope_bracket_opening,
     identity_content_envelope,
+    is_peer_opening,
     render_bracket_envelope,
+    scan_injected_envelopes,
     semantic_envelope,
 )
-from teleclaude.core.models import HumanFacingMessage, MessageAuthor
-from teleclaude.helpers.agent_types import AgentName, ThinkingMode
+from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
 
-_ORCHESTRATOR_ROLE = "Orchestrator"
 _EMPTY_SYSTEM_ROLE = ""
 
 _CATEGORY_PREFIX_TEMPLATE = " - {category}"
@@ -87,56 +79,13 @@ _EMPTY_CATEGORY = ""
 _UTC_MINUTE_FORMAT = "%Y-%m-%dT%H:%MZ"
 _SECTION_SEPARATOR = "\n\n"
 _EMPTY_RENDERED_MESSAGE = ""
-_SESSION_ID_FIELD = "{session_id}"
-_AUTHOR_TOKEN_FIELD = "{author_token}"
-_TIMESTAMP_FIELD = "{occurred_at}"
-_SOURCE_SESSION_ID_GROUP = "source_session_id"
-_TIMESTAMP_GROUP = "timestamp"
-_SOURCE_SESSION_ID_PATTERN = (
-    rf"(?P<{_SOURCE_SESSION_ID_GROUP}>[0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-"
-    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-)
-_AUTHOR_TOKEN_GROUP = "author_token"
-_AUTHOR_TOKEN_PATTERN = rf"(?P<{_AUTHOR_TOKEN_GROUP}>.+?)"
-_TIMESTAMP_PATTERN = rf"(?P<{_TIMESTAMP_GROUP}>.+?)"
-
-# Peer segment header — outside the reserved `[TeleClaude ...]` control
-# namespace: `[Peer (session_id · author-token · utc-minute)]`. Post-cutover
-# content is always resolved structurally (accepted-turn binding + peer
-# bundle), never text-parsed, so only the rendering template and the
-# detection prefix are needed — no parsing pattern.
 _PEER_HEADER_TEMPLATE = ENVELOPE_REGISTRY[EnvelopeName.PEER].bracket_opening
-_PEER_BRIDGE_PREFIX = _PEER_HEADER_TEMPLATE.split(_SESSION_ID_FIELD, maxsplit=1)[0]
-_PEER_HEADER_PATTERN_TEXT = (
-    re.escape(_PEER_HEADER_TEMPLATE)
-    .replace(re.escape(_SESSION_ID_FIELD), _SOURCE_SESSION_ID_PATTERN)
-    .replace(re.escape(_AUTHOR_TOKEN_FIELD), _AUTHOR_TOKEN_PATTERN)
-    .replace(re.escape(_TIMESTAMP_FIELD), _TIMESTAMP_PATTERN)
-)
-_PEER_HEADER_PATTERN = re.compile(rf"^{_PEER_HEADER_PATTERN_TEXT}", re.MULTILINE)
-
-# Legacy peer segment header, in force before the header moved out of the
-# reserved `[TeleClaude ...]` control namespace. `parse_peer_segments` parses
-# this grammar exclusively — used only by `_recover_legacy_peer_segments`
-# (conversation_delivery.py), itself bounded to entries older than the
-# turn-binding cutover with a correlated durable record; never reachable from
-# text shape alone.
-_LEGACY_HEADER_TEMPLATE = ENVELOPE_REGISTRY[EnvelopeName.LEGACY_PEER].bracket_opening
-_LEGACY_PEER_BRIDGE_PREFIX = _LEGACY_HEADER_TEMPLATE.split(_SESSION_ID_FIELD, maxsplit=1)[0]
-_LEGACY_PEER_HEADER_PATTERN_TEXT = (
-    re.escape(_LEGACY_HEADER_TEMPLATE)
-    .replace(re.escape(_SESSION_ID_FIELD), _SOURCE_SESSION_ID_PATTERN)
-    .replace(re.escape(_AUTHOR_TOKEN_FIELD), _AUTHOR_TOKEN_PATTERN)
-    .replace(re.escape(_TIMESTAMP_FIELD), _TIMESTAMP_PATTERN)
-)
-_LEGACY_PEER_BRIDGE_PREFIX_PATTERN = re.compile(rf"^{re.escape(_LEGACY_PEER_BRIDGE_PREFIX)}", re.MULTILINE)
-_LEGACY_PEER_HEADER_PATTERN = re.compile(rf"^{_LEGACY_PEER_HEADER_PATTERN_TEXT}", re.MULTILINE)
-
-_BRIDGE_PREFIXES: tuple[str, ...] = (_PEER_BRIDGE_PREFIX, _LEGACY_PEER_BRIDGE_PREFIX)
-
-
-class MalformedPeerSegmentError(ValueError):
-    """Raised when a peer bridge block does not use the canonical segment grammar."""
+_PEER_SOURCE_FIELD = f"{{{EnvelopeField.SESSION_ID.value}}}"
+_PEER_AUTHOR_FIELD = f"{{{EnvelopeField.AUTHOR_TOKEN.value}}}"
+_PEER_OCCURRENCE_FIELD = f"{{{EnvelopeField.OCCURRED_AT.value}}}"
+_PEER_HEADER_PREFIX, _PEER_HEADER_SOURCE_TAIL = _PEER_HEADER_TEMPLATE.split(_PEER_SOURCE_FIELD, maxsplit=1)
+_PEER_HEADER_FIELD_SEPARATOR, _PEER_HEADER_AUTHOR_TAIL = _PEER_HEADER_SOURCE_TAIL.split(_PEER_AUTHOR_FIELD, maxsplit=1)
+_, _PEER_HEADER_SUFFIX = _PEER_HEADER_AUTHOR_TAIL.split(_PEER_OCCURRENCE_FIELD, maxsplit=1)
 
 
 @dataclass(frozen=True)
@@ -251,146 +200,67 @@ def format_peer_header(message: HumanFacingMessage) -> str:
     )
 
 
-def is_conversation_bridge_message(text: str) -> bool:
-    """Return True when text is a peer segment header, current or legacy shape."""
-    stripped = text.lstrip()
-    return any(stripped.startswith(prefix) for prefix in _BRIDGE_PREFIXES)
-
-
-def parse_peer_segments(text: str) -> tuple[ParsedPeerSegment, ...]:
-    """Parse one or more structurally complete peer segments without reading bodies.
-
-    Recognizes the current ``[Peer (...)]`` grammar and the pre-cutover
-    ``[TeleClaude - Peer ...]`` shape. A bridge block must consist entirely of
-    line-anchored canonical headers and their bodies. The exact header/body
-    slice for every segment is kept for onward rendering; the typed author and
-    source session UUID feed destination-specific presentation and echo
-    prevention.
-    """
-    position = 0
-    parsed: list[ParsedPeerSegment] = []
-    while position < len(text):
-        header_match = _PEER_HEADER_PATTERN.match(text, position)
-        current_header = header_match is not None
-        if header_match is None:
-            header_match = _LEGACY_PEER_HEADER_PATTERN.match(text, position)
-        if header_match is None:
-            raise MalformedPeerSegmentError
-        try:
-            occurred_at = datetime.strptime(header_match.group(_TIMESTAMP_GROUP), _UTC_MINUTE_FORMAT).replace(
-                tzinfo=UTC
-            )
-            author = _parse_peer_author(
-                session_id=header_match.group(_SOURCE_SESSION_ID_GROUP),
-                token=header_match.group(_AUTHOR_TOKEN_GROUP),
-            )
-        except ValueError as exc:
-            raise MalformedPeerSegmentError from exc
-        header_pattern = _PEER_HEADER_PATTERN if current_header else _LEGACY_PEER_HEADER_PATTERN
-        bridge_prefix = _PEER_BRIDGE_PREFIX if current_header else _LEGACY_PEER_BRIDGE_PREFIX
-        next_bridge_prefix = text.find(bridge_prefix, header_match.end())
-        next_header = header_pattern.search(text, header_match.end())
-        if next_bridge_prefix < 0:
-            segment_end = len(text)
-        else:
-            if next_header is None or next_header.start() != next_bridge_prefix:
-                raise MalformedPeerSegmentError
-            segment_end = next_header.start()
-            if not text[:segment_end].endswith(_SECTION_SEPARATOR):
-                raise MalformedPeerSegmentError
-            segment_end -= len(_SECTION_SEPARATOR)
-        rendered_segment = text[position:segment_end]
-        body_suffix = rendered_segment[header_match.end() - position :]
-        if not body_suffix:
-            body = _EMPTY_RENDERED_MESSAGE
-        elif body_suffix.startswith(_SECTION_SEPARATOR):
-            body = body_suffix.removeprefix(_SECTION_SEPARATOR)
-        else:
-            raise MalformedPeerSegmentError
-        if current_header:
-            closing = format_peer_footer()
-            if not body.endswith(closing):
-                raise MalformedPeerSegmentError
-            body = body[: -len(closing)].removesuffix(_SECTION_SEPARATOR)
-        parsed.append(
+def peer_segments_from_entry(text: str, *, occurred_at: datetime) -> tuple[ParsedPeerSegment, ...]:
+    """Extract peer segments from complete registry-recognized envelopes."""
+    segments: list[ParsedPeerSegment] = []
+    for candidate in scan_injected_envelopes(text):
+        if not is_peer_opening(candidate.opening):
+            continue
+        source_session_id, author_token, _ = _peer_header_fields(candidate.opening)
+        body_start, body_end = candidate.body_span
+        segments.append(
             ParsedPeerSegment(
-                original_source_session_id=header_match.group(_SOURCE_SESSION_ID_GROUP),
-                author=author,
+                original_source_session_id=source_session_id,
+                author=_peer_author_from_token(session_id=source_session_id, token=author_token),
                 occurred_at=occurred_at,
-                body=body,
-                rendered_segment=rendered_segment,
+                body=text[body_start:body_end].strip(),
+                rendered_segment=text[candidate.envelope_span[0] : candidate.envelope_span[1]],
             )
         )
-        if next_bridge_prefix < 0:
-            break
-        position = next_header.start()
-    if not parsed:
-        raise MalformedPeerSegmentError
-    return tuple(parsed)
+    return tuple(segments)
 
 
-def peer_segment_from_authored_span(
-    *,
-    original_source_session_id: str,
-    author: MessageAuthor,
-    occurred_at: datetime,
-    body: str,
-    author_job_role: str | None = None,
-) -> ParsedPeerSegment:
-    """Reconstruct a ``ParsedPeerSegment`` from a durably persisted authored span.
-
-    The structural counterpart to ``parse_peer_segments``: author, source
-    session, and occurrence time are typed facts read from durable storage,
-    not extracted by regex from rendered text. The rendered form is derived
-    the same way outbound rendering derives it, so onward forwarding is
-    byte-identical to the text-parsed path it replaces.
-    """
-    message = HumanFacingMessage(author=author, occurred_at=occurred_at, body=body)
-    rendered_segment = _render_peer_message(message)
-    return ParsedPeerSegment(
-        original_source_session_id=original_source_session_id,
-        author=author,
-        occurred_at=occurred_at,
-        body=body,
-        rendered_segment=rendered_segment,
-        author_job_role=author_job_role,
+def _peer_header_fields(opening: str) -> tuple[str, str, str]:
+    """Return the carried structural fields from a recognized peer opening."""
+    fields = (
+        opening.removeprefix(_PEER_HEADER_PREFIX)
+        .removesuffix(_PEER_HEADER_SUFFIX)
+        .split(_PEER_HEADER_FIELD_SEPARATOR, maxsplit=2)
     )
+    return fields[0], fields[1], fields[2]
 
 
-def _parse_peer_author(*, session_id: str, token: str) -> MessageAuthor:
-    """Decode one closed peer-header author token without display inference."""
+def _peer_author_from_token(*, session_id: str, token: str) -> MessageAuthor:
+    """Decode a carried peer token without validating its vocabulary."""
     author_kind, separator, value = token.partition(":")
-    if not separator or not value:
-        raise ValueError("Peer author token is malformed")
-    if author_kind == "human":
+    if separator and value and author_kind == "human":
         return MessageAuthor.for_human(session_id=session_id, display_name=value)
-    if author_kind == "agent":
+    if separator and value and author_kind == "agent":
         runtime, mode_separator, thinking_mode = value.partition("/")
-        if (
-            not mode_separator
-            or not runtime
-            or not thinking_mode
-            or runtime not in AgentName.choices()
-            or thinking_mode not in ThinkingMode.choices()
-        ):
-            raise ValueError("Peer agent token is malformed")
-        return MessageAuthor.for_agent(
+        if mode_separator and runtime and thinking_mode:
+            return MessageAuthor(
+                kind=MessageAuthorKind.AGENT,
+                display=f"{runtime.title()}/{thinking_mode}",
+                session_id=session_id,
+                agent_runtime=runtime,
+                thinking_mode=thinking_mode,
+            )
+    if separator and value and author_kind == "machine":
+        return MessageAuthor(
+            kind=MessageAuthorKind.MACHINE,
+            display=value,
             session_id=session_id,
-            active_agent=runtime,
-            thinking_mode=thinking_mode,
+            machine_role=value,
         )
-    if author_kind == "machine":
-        return MessageAuthor.for_machine(session_id=session_id, role_label=MachineRoleLabel(value).value)
-    raise ValueError("Peer author token is unknown")
+    return MessageAuthor.for_human(session_id=session_id, display_name=token)
 
 
 def format_peer_footer() -> str:
     """Build the canonical closing delimiter for a human-facing peer segment.
 
-    Bounds the injected span for the receiving agent's benefit only —
-    presentation, never authority. Nothing in this module or its consumers
-    parses the footer back out to derive or verify attribution; the durable
-    accepted-turn binding is what makes composed authorship structural.
+    The registry's paired-envelope recognizer uses this declared delimiter to
+    bound the opaque peer span. After recognition, the opening carries the
+    source and presentation fields used for attribution.
     """
     return ENVELOPE_REGISTRY[EnvelopeName.PEER].bracket_closing
 
@@ -438,8 +308,3 @@ def format_identity_conversation(*, header: str, body: str) -> tuple[str, int, i
     envelope = identity_content_envelope(header, body)
     body_start, body_end = envelope.body_span
     return envelope.rendered, body_start, len(envelope.rendered) - body_end
-
-
-def is_orchestrator_dispatch_message(text: str) -> bool:
-    """Return True when text is an orchestrator dispatch."""
-    return text.lstrip().startswith(f"[{_ORCHESTRATOR_ROLE} ")

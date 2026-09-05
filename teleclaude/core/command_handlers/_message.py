@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.control_delivery import handoff_control_payload
-from teleclaude.core.db import InboundQueueRow, PeerBundleSegmentInput, db
+from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import FileEventContext, SessionLifecycleContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
@@ -30,7 +30,6 @@ from teleclaude.core.models import (
     MessageAuthor,
     MessageAuthorKind,
     MessageMetadata,
-    PeerBundleSegmentWireDict,
     Session,
 )
 from teleclaude.core.origins import InputOrigin
@@ -746,54 +745,6 @@ def _caller_author_from_command(cmd: ProcessMessageCommand) -> MessageAuthor | N
     )
 
 
-def _peer_bundle_segment_from_wire(segment: PeerBundleSegmentWireDict) -> PeerBundleSegmentInput:
-    """Rebuild one durable bundle segment input from its cross-computer wire dict."""
-    author = MessageAuthor(
-        kind=MessageAuthorKind(segment["author_kind"]),
-        display=segment["author_display"],
-        session_id=segment["original_source_session_id"],
-        agent_runtime=segment["author_agent_runtime"],
-        thinking_mode=segment["author_thinking_mode"],
-        machine_role=segment["author_machine_role"],
-    )
-    return PeerBundleSegmentInput(
-        original_source_session_id=segment["original_source_session_id"],
-        author=author,
-        author_job_role=segment["author_job_role"],
-        occurred_at=datetime.fromisoformat(segment["occurred_at"]),
-        body=segment["body"],
-    )
-
-
-async def _persist_peer_bundle_from_command(cmd: ProcessMessageCommand) -> None:
-    """Persist a cross-computer-delivered peer bundle on the receiving computer's own DB.
-
-    The structural counterpart to same-computer delivery's direct local
-    write (`conversation_bundle_delivery.py`'s `_persist_peer_bundle_segments`):
-    cross-computer delivery cannot write into a remote DB directly, so the
-    sending computer carries the bundle across the wire on the command
-    itself, and the receiving computer persists it here, once, BEFORE the
-    message is accepted into the inbound queue. Propagates on failure —
-    caught by `execute_command_envelope`'s standard error response, which
-    the sender reads and treats as a failed delivery (no cursor advance,
-    retried next pass, same-computer symmetry) — never swallowed. A
-    swallowed failure here would accept a bridge turn with no bundle behind
-    it: permanently unrelayable, since nothing retries structural
-    persistence for an already-accepted row.
-    """
-    if not cmd.peer_bundle_key or not cmd.peer_bundle_link_id or not cmd.peer_bundle_source_session_id:
-        return
-    if not cmd.peer_bundle_segments:
-        return
-    await db.create_peer_bundle(
-        bundle_key=cmd.peer_bundle_key,
-        link_id=cmd.peer_bundle_link_id,
-        source_session_id=cmd.peer_bundle_source_session_id,
-        target_session_id=cmd.session_id,
-        segments=[_peer_bundle_segment_from_wire(segment) for segment in cmd.peer_bundle_segments],
-    )
-
-
 async def process_message(
     cmd: ProcessMessageCommand,
     client: "AdapterClient",
@@ -814,12 +765,6 @@ async def process_message(
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
     peer_attention_snapshot = _capture_peer_attention_snapshot(cmd, session)
-
-    # Durable structural provenance is persisted BEFORE queue acceptance: a
-    # cross-computer bundle that fails to persist must reject the message
-    # outright (propagates from here), not accept a bridge turn with no
-    # bundle behind it that nothing later retries.
-    await _persist_peer_bundle_from_command(cmd)
 
     origin = cmd.origin or ""
 
@@ -856,12 +801,12 @@ async def process_message(
             session_id=session_id,
             snapshot=peer_attention_snapshot,
         )
-    if row_id is not None and (cmd.caller_origin_suffix_len or cmd.peer_bundle_segments):
+    if row_id is not None and cmd.caller_origin_suffix_len:
         logger.info(
             "conversation_envelope_committed",
             outcome="success",
             inbound_row_id=row_id,
-            caller_session_id=cmd.caller_session_id or cmd.peer_bundle_source_session_id,
+            caller_session_id=cmd.caller_session_id,
             target_session_id=session_id,
             response_boundary=True,
         )

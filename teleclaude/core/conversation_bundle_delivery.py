@@ -16,9 +16,8 @@ from teleclaude.config import config
 from teleclaude.core.command_dispatch import parse_remote_dispatch_data_diagnosed
 from teleclaude.core.conversation_messages import format_peer_message, resolve_session_event_author
 from teleclaude.core.conversation_segments import ConversationSegment, LocalConversationPayload
-from teleclaude.core.db import PeerBundleSegmentInput, db
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
-from teleclaude.core.models import MessageAuthor, MessageMetadata, PeerBundleSegmentWireDict
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import ProcessMessageCommand
 
@@ -60,87 +59,15 @@ def _sender_identity(
     return sender_computer, actor_id
 
 
-def _segment_authored_span(segment: ConversationSegment, *, source_session_id: str) -> PeerBundleSegmentInput:
-    """Reduce one composed segment to its durable authored-span input."""
-    if isinstance(segment.payload, LocalConversationPayload):
-        message = segment.payload.message
-        return PeerBundleSegmentInput(
-            original_source_session_id=source_session_id,
-            author=message.author,
-            author_job_role=None,
-            occurred_at=message.occurred_at,
-            body=message.body,
-        )
-    peer_segment = segment.payload.peer_segment
-    return PeerBundleSegmentInput(
-        original_source_session_id=peer_segment.original_source_session_id,
-        author=peer_segment.author,
-        author_job_role=None,
-        occurred_at=peer_segment.occurred_at,
-        body=peer_segment.body,
-    )
-
-
-def _segment_to_wire_dict(segment: PeerBundleSegmentInput) -> PeerBundleSegmentWireDict:
-    """Serialize one authored-span input to a cross-computer wire dict.
-
-    The counterpart to `command_handlers/_message.py`'s
-    `_peer_bundle_segment_from_wire`, which decodes this exact shape back
-    into a typed author on the receiving computer.
-    """
-    return {
-        "original_source_session_id": segment.original_source_session_id,
-        "author_kind": segment.author.kind.value,
-        "author_display": segment.author.display,
-        "author_agent_runtime": segment.author.agent_runtime,
-        "author_thinking_mode": segment.author.thinking_mode,
-        "author_machine_role": segment.author.machine_role,
-        "author_job_role": segment.author_job_role,
-        "occurred_at": segment.occurred_at.isoformat(),
-        "body": segment.body,
-    }
-
-
-async def _persist_peer_bundle_segments(
-    *,
-    bundle_key: str,
-    link_id: str,
-    source_session_id: str,
-    target_session_id: str,
-    segments: list[ConversationSegment],
-) -> None:
-    """Durably record the bundle's structural provenance before it is sent.
-
-    This is what lets the target session relay the content onward by durable
-    bundle identity, without re-deriving structure by parsing its own
-    rendered transcript text. Persistence must succeed before the framed text
-    is sent — a caught-and-logged failure here used to leave the fallback
-    text-parsing path silently reachable forever for this block, after the
-    cursor had already advanced; propagating instead makes the whole
-    delivery fail closed (no send, no cursor advance) so the next pass
-    retries both atomically.
-    """
-    await db.create_peer_bundle(
-        bundle_key=bundle_key,
-        link_id=link_id,
-        source_session_id=source_session_id,
-        target_session_id=target_session_id,
-        segments=[_segment_authored_span(segment, source_session_id=source_session_id) for segment in segments],
-    )
-
-
-async def persist_direct_ignition_bundle(
+def direct_ignition_occurrence_key(
     *,
     link_id: str,
     source_session_id: str,
     target_session_id: str,
-    author: MessageAuthor,
-    author_job_role: str | None,
     occurred_at: datetime,
-    body: str,
 ) -> str:
-    """Persist the direct ignition's single authored span before dispatch."""
-    bundle_key = _delivery_key(
+    """Return the deterministic occurrence key for direct ignition delivery."""
+    return _delivery_key(
         link_id=link_id,
         source_session_id=source_session_id,
         target_session_id=target_session_id,
@@ -148,22 +75,6 @@ async def persist_direct_ignition_bundle(
         from_timestamp=occurred_at,
         to_timestamp=occurred_at,
     )
-    await db.create_peer_bundle(
-        bundle_key=bundle_key,
-        link_id=link_id,
-        source_session_id=source_session_id,
-        target_session_id=target_session_id,
-        segments=[
-            PeerBundleSegmentInput(
-                original_source_session_id=source_session_id,
-                author=author,
-                author_job_role=author_job_role,
-                occurred_at=occurred_at,
-                body=body,
-            )
-        ],
-    )
-    return bundle_key
 
 
 async def deliver_bundle(
@@ -213,21 +124,6 @@ async def deliver_bundle(
     )
 
     if target_computer == config.computer.name:
-        # Same-computer delivery shares this daemon's own DB with the target
-        # session, so the structural record is written directly here — the
-        # receiving session's own relay-onward collector reads it back by
-        # durable identity. Persisted BEFORE the text is sent: an exception
-        # here fails the whole delivery closed (propagates to the caller,
-        # no cursor advance) rather than sending text with no structural
-        # record behind it — the exact gap that let the fallback text-parsing
-        # path stay silently reachable after a persistence failure.
-        await _persist_peer_bundle_segments(
-            bundle_key=source_message_id,
-            link_id=link_id,
-            source_session_id=source_session.session_id,
-            target_session_id=target_session_id,
-            segments=segments,
-        )
         caller_author = resolve_session_event_author(
             session_id=source_session.session_id,
             system_role=source_session.system_role,
@@ -266,15 +162,8 @@ async def deliver_bundle(
         )
         return True, latest_ts, source_message_id
 
-    # Cross-computer delivery cannot write into the target computer's DB
-    # directly, so the structural bundle is carried on the command itself
-    # and persisted by the receiving computer on receipt
-    # (`command_handlers/_message.py`'s `_persist_peer_bundle_from_command`)
-    # — the structural counterpart to the same-computer branch's direct
-    # local write above. Routed through `command_payload` (matching
-    # `forward_command_to_peer`'s established pattern), never the raw-string
-    # command form, which the receiving side's dispatcher does not resolve
-    # to message acceptance at all.
+    # Routed through command_payload so the remote command handler accepts the
+    # framed text through its normal deduplicated inbound path.
     cross_computer_command = ProcessMessageCommand(
         session_id=target_session_id,
         text=framed_message,
@@ -286,13 +175,6 @@ async def deliver_bundle(
         actor_name=actor_name,
         source_message_id=source_message_id,
         source_channel_id=link_id,
-        peer_bundle_key=source_message_id,
-        peer_bundle_link_id=link_id,
-        peer_bundle_source_session_id=source_session.session_id,
-        peer_bundle_segments=[
-            _segment_to_wire_dict(_segment_authored_span(segment, source_session_id=source_session.session_id))
-            for segment in segments
-        ],
     )
     message_id = await client.send_request(
         target_computer,
@@ -301,14 +183,8 @@ async def deliver_bundle(
         session_id=target_session_id,
         command_payload=cross_computer_command.to_dict(),
     )
-    # The receiving computer's acceptance is not assumed: it persists the
-    # structural bundle BEFORE queueing the message and rejects the whole
-    # command if that fails (`_persist_peer_bundle_from_command`). Reading
-    # the response here — the same pattern `forward_command_to_peer` already
-    # uses for every other cross-computer command — surfaces that rejection
-    # as an exception, so the caller treats it as a failed delivery (no
-    # cursor advance, retried next pass) instead of reporting success for a
-    # bundle the target never actually accepted.
+    # A remote acceptance failure is surfaced as an exception, so the caller
+    # retains the cursor and retries the handoff.
     response_text = await client.read_response(message_id, timeout=10.0, target_computer=target_computer)
     await parse_remote_dispatch_data_diagnosed(
         client,

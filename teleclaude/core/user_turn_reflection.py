@@ -15,11 +15,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.conversation_messages import (
-    MalformedPeerSegmentError,
-    is_conversation_bridge_message,
-    parse_peer_segments,
-)
+from teleclaude.core.conversation_messages import peer_segments_from_entry
 from teleclaude.core.db import db
 from teleclaude.core.db._rows import InboundQueueRow
 from teleclaude.core.identity import resolve_discord_author_alias
@@ -28,6 +24,7 @@ from teleclaude.core.injected_text import (
     TranscriptCutSegment,
     TranscriptEntryKind,
     cut_transcript_entry,
+    is_peer_opening,
 )
 from teleclaude.core.models import MessageAuthor, MessageAuthorKind
 
@@ -82,12 +79,8 @@ async def _resolve_identity_segment_presentation(
 ) -> _IdentitySegmentPresentation | None:
     """Resolve one identity segment to its caller's presentation, or None."""
     opening = segment.opening or ""
-    if is_conversation_bridge_message(opening):
-        try:
-            parsed = parse_peer_segments(segment.text)
-        except MalformedPeerSegmentError:
-            return None
-        peer = parsed[0]
+    if is_peer_opening(opening):
+        peer = peer_segments_from_entry(segment.text, occurred_at=delivered_after or datetime.now(UTC))[0]
         actor_name, actor_avatar_url = resolve_discord_author_alias(
             peer.author,
             owning_session_id=session.session_id,
