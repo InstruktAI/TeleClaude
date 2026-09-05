@@ -50,6 +50,7 @@ from teleclaude.config.schema_export import export_tier_schemas
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.domains import publishes_for_root, triggers_for_root
 from teleclaude.global_skills import compose_global_skill_catalog, global_skill_source_root
+from teleclaude.mcp.registry import McpRegistry, load_effective_registry, load_project_declarations, project_mcp_root
 from teleclaude.paths import (
     COMMANDS_DIR,
     DEPLOYED_COMMANDS_MANIFEST_PATH,
@@ -67,6 +68,7 @@ Transform = Callable[[Post], str]
 
 INLINE_REF_RE = re.compile(r"@([\w./~\-]+\.md)")
 EXEC_DIRECTIVE_RE = re.compile(r"<!--\s*@exec:\s*(.+?)\s*-->")
+MCP_INDEX_DIRECTIVE_RE = re.compile(r"<!--\s*@mcp-index\s*-->")
 LOCK_SENTINEL_RE = re.compile(r"^[ \t]*<!--\s*/?LOCKED_FILE\b.*?-->[ \t]*\n?", re.MULTILINE | re.DOTALL)
 _AGENTS_ENABLED_FLAG = "--agents-enabled"
 _DOCS_ENABLED_FLAG = "--docs-enabled"
@@ -94,6 +96,9 @@ _COMMANDS_MANIFEST_EXPECTED_OBJECT_DETAIL = "expected an object"
 _COMMANDS_MANIFEST_EXPECTED_SCOPE_ENTRIES_DETAIL = "expected scope-to-list entries"
 _COMMANDS_MANIFEST_BASENAME_DETAIL = "command names must be basenames"
 _CONFIG_SCHEMA_DIRECTORY = "schemas"
+_MCP_INDEX_HEADER = "## Available MCP Servers\n\n"
+_MCP_INDEX_ENTRY_TEMPLATE = "- `{slug}` — {trigger}"
+_MCP_INDEX_ENTRY_WITHOUT_TRIGGER_TEMPLATE = "- `{slug}`"
 
 logger = get_logger(__name__)
 
@@ -1038,7 +1043,28 @@ def _expand_point_directives(
         )
     if EXEC_DIRECTIVE_RE.search(content):
         content = expand_exec_directives(content, project_root=project_root, warn_only=warn_only)
+    if MCP_INDEX_DIRECTIVE_RE.search(content):
+        content = _expand_mcp_index_directives(content)
     return content
+
+
+def _expand_mcp_index_directives(content: str) -> str:
+    """Render the machine-wide MCP index in global agent-facing sources."""
+    registry = load_effective_registry(_resolve_git_common_root(_REPO_ROOT))
+    return MCP_INDEX_DIRECTIVE_RE.sub(lambda _match: _render_mcp_index(registry), content)
+
+
+def _render_mcp_index(registry: McpRegistry) -> str:
+    """Render visible enabled server declarations with their activation triggers."""
+    lines: list[str] = []
+    for server in registry.enabled_servers():
+        if server.hidden:
+            continue
+        if server.trigger is None or not server.trigger.strip():
+            lines.append(_MCP_INDEX_ENTRY_WITHOUT_TRIGGER_TEMPLATE.format(slug=server.slug))
+            continue
+        lines.append(_MCP_INDEX_ENTRY_TEMPLATE.format(slug=server.slug, trigger=server.trigger.strip()))
+    return _MCP_INDEX_HEADER + _NEWLINE.join(lines) if lines else ""
 
 
 def _inflate_domain_baseline(
@@ -1494,6 +1520,11 @@ def _write_project_agents(
         )
         if sections:
             inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=sections)
+        canonical_project_root = project_mcp_root(_resolve_git_common_root(project_root))
+        if canonical_project_root is not None:
+            project_index = _render_mcp_index(load_project_declarations(canonical_project_root))
+            if project_index:
+                inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=project_index)
     agents_path = master_path.parent / "AGENTS.md"
     agents_path.write_text(_strip_lock_sentinels(inflated), encoding="utf-8")
     claude_path = master_path.parent / "CLAUDE.md"

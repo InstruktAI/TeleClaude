@@ -29,6 +29,11 @@
           "type": "string",
           "description": "Agent-facing activation trigger advertised by telec mcp list."
         },
+        "hidden": {
+          "type": "boolean",
+          "default": false,
+          "description": "Exclude this server from baked agent-entrypoint indexes while keeping it available at runtime."
+        },
         "transport": {
           "type": "string",
           "enum": ["stdio", "http", "sse", "streamable-http"],

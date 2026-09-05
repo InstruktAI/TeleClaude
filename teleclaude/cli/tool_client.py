@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 import httpx
 
@@ -25,6 +26,7 @@ from teleclaude.session_identity import get_session_id, get_session_token
 _TUI_SESSION_NAME = "tc_tui"
 _API_SOCKET_ENV = "TELECLAUDE_API_SOCKET_PATH"
 _TMUX_ENV = "TMUX"
+_PROJECT_ROOT_HEADER = "x-teleclaude-project-root"
 type QueryParamValue = str | int | float | bool | None
 type ToolQueryParams = (
     Mapping[str, QueryParamValue | Sequence[QueryParamValue]]
@@ -72,6 +74,7 @@ def tool_api_request(
     params: ToolQueryParams | None = None,
     timeout: float = 30.0,
     socket_path: str | None = None,
+    project_root: Path | None = None,
 ) -> object:
     """Make a synchronous API call to the daemon.
 
@@ -108,6 +111,8 @@ def tool_api_request(
         headers["x-telec-email"] = terminal_email
     if tmux_session:
         headers["x-tmux-session"] = tmux_session
+    if project_root is not None:
+        headers[_PROJECT_ROOT_HEADER] = str(project_root)
 
     try:
         transport = httpx.HTTPTransport(uds=resolved_socket_path)
@@ -153,6 +158,7 @@ def tool_api_call(
     params: ToolQueryParams | None = None,
     timeout: float = 30.0,
     socket_path: str | None = None,
+    project_root: Path | None = None,
 ) -> object:
     """Make a synchronous API call and exit on failure."""
     try:
@@ -163,6 +169,7 @@ def tool_api_call(
             params=params,
             timeout=timeout,
             socket_path=socket_path,
+            project_root=project_root,
         )
     except ToolAPIError as exc:
         print(f"Error: {exc.message}", file=sys.stderr)
