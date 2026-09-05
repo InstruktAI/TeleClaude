@@ -9,7 +9,7 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 7
+LATEST_TODO_STATE_SCHEMA_VERSION = 8
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
@@ -18,6 +18,9 @@ _V4_SCHEMA_VERSION = 4
 _V5_SCHEMA_VERSION = 5
 _V6_SCHEMA_VERSION = 6
 _V7_SCHEMA_VERSION = 7
+_V8_SCHEMA_VERSION = 8
+_BUILD_PLAN_DIGEST_KEY = "build_plan_digest"
+_EMPTY_TEXT = ""
 _LEGACY_HANDED_OFF_PHASE = "handed_off"
 
 _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
@@ -310,6 +313,14 @@ def _upcycle_v6_to_v7(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     return migrated
 
 
+def _upcycle_v7_to_v8(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Add durable implementation-plan provenance for build reconciliation."""
+    migrated = dict(raw)
+    migrated.setdefault(_BUILD_PLAN_DIGEST_KEY, _EMPTY_TEXT)
+    migrated["schema_version"] = _V8_SCHEMA_VERSION
+    return migrated
+
+
 def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
     version = _detect_schema_version(migrated)
@@ -333,6 +344,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v5_to_v6(migrated)
         elif version == _V6_SCHEMA_VERSION:
             migrated = _upcycle_v6_to_v7(migrated)
+        elif version == _V7_SCHEMA_VERSION:
+            migrated = _upcycle_v7_to_v8(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)

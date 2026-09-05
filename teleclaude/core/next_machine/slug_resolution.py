@@ -17,6 +17,7 @@ from teleclaude.core.next_machine.lifecycle import (
     is_ready_for_work,
     is_work_lifecycle_phase,
     lifecycle_phase_index,
+    plan_review_current,
 )
 from teleclaude.types.lifecycle import TASK_LIFECYCLE_PHASES
 
@@ -210,6 +211,8 @@ def _state_counts_as_dependency_prepared(state: dict[str, StateValue] | None) ->
         # A task's deliverable is a run product: its PREPARED phase records only
         # that the task-plan is drafted, not that anything was produced. A task
         # dependency is satisfied solely through the delivered set, never here.
+        return False
+    if not plan_review_current(state):
         return False
     approvals = state.get("approvals")
     if isinstance(approvals, dict):

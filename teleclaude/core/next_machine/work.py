@@ -28,7 +28,6 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     WorkPhase,
 )
-from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
@@ -48,12 +47,12 @@ from teleclaude.core.next_machine.lifecycle import (
 from teleclaude.core.next_machine.output_formatting import (
     MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE,
     format_error,
-    format_kickback_terminal,
     format_orchestration_watch_instruction,
     format_pending_classes_for_dispatch,
     format_send_command,
     format_stash_debt,
     format_work_entry_drift_bounce,
+    format_work_entry_kickback_handoff,
     format_work_entry_substantive_handoff,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
@@ -67,7 +66,7 @@ from teleclaude.core.next_machine.slug_resolution import (
 )
 from teleclaude.core.next_machine.state_io import ensure_quality_checklist
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.next_machine.work_steps import _list_child_session_ids, _work_dispatch
+from teleclaude.core.next_machine.work_steps import _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.session_identity import get_session_id
@@ -84,6 +83,15 @@ logger = get_logger(__name__)
 # Single-flight lock registry — one per (canonical_cwd, slug) pair.
 # _SINGLE_FLIGHT_GUARD is the threading.Lock protecting mutations; defined in _types.
 _SINGLE_FLIGHT_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
+_WORK_ENTRY_ACCEPTED_EVENT = "todo_work_entry_accepted"
+_WORK_ENTRY_ROUTED_EVENT = "todo_work_entry_routed"
+_WORK_ENTRY_ACCEPTED_MESSAGE = "todo work entry accepted"
+_WORK_ENTRY_ROUTED_MESSAGE = "todo work entry routed"
+_PREPARE_HANDOFF_OUTCOME = "prepare_handoff"
+_KICKBACK_REASON = "kickback"
+_SUBSTANTIVE_DRIFT_REASON = "substantive_drift"
+_RESOURCE_ACTION_PRESERVE = "preserve"
+_EMPTY_TEXT = ""
 
 
 async def _get_slug_single_flight_lock(cwd: str, slug: str) -> asyncio.Lock:
@@ -166,13 +174,14 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if precondition_error is not None:
         return precondition_error
 
+    _log_work_entry_accepted(resolved_slug)
+    kickback_handoff = await _check_work_entry_kickback(todos_db, resolved_slug)
+    if kickback_handoff is not None:
+        return kickback_handoff
+
     drift_error = await _check_work_entry_drift(db, todos_db, resolved_slug, cwd, phase_slug)
     if drift_error is not None:
         return drift_error
-
-    kickback_terminal = await _check_work_entry_kickback(db, todos_db, resolved_slug, cwd)
-    if kickback_terminal is not None:
-        return kickback_terminal
 
     worktree_cwd, ensure_error = await _ensure_worktree_ready(cwd, resolved_slug, phase_slug)
     if ensure_error is not None:
@@ -394,12 +403,13 @@ async def _check_work_entry_drift(
             project_root=cwd,
             pending_classes=format_pending_classes_for_dispatch(drift_result),
         )
+    _log_work_entry_routed(writer, resolved_slug, _SUBSTANTIVE_DRIFT_REASON)
     _log_next_work_phase(phase_slug, "drift_check", drift_started, "handoff", reason)
     return format_work_entry_substantive_handoff(resolved_slug)
 
 
-async def _check_work_entry_kickback(db: Db, todos_db: TodosDb, resolved_slug: str, cwd: str) -> str | None:
-    """Recognize a human-gated kickback on work re-entry and terminate this work session.
+async def _check_work_entry_kickback(todos_db: TodosDb, resolved_slug: str) -> str | None:
+    """Recognize a kickback on work re-entry and preserve the active work state.
 
     A kickback (``telec todo stamp <slug> --kickback``) invalidates the implementation-plan
     by marking ``plan_review.cleared_by_substantive_drift``. After a *work* call the stored
@@ -407,10 +417,8 @@ async def _check_work_entry_kickback(db: Db, todos_db: TodosDb, resolved_slug: s
     it is unique to a kickback here (drift-analyze substantive verdicts occur only in the
     prepare lane, where the plan is re-approved and the flag self-clears before work resumes).
 
-    Unlike the in-line code-drift bounce, this is terminal: it releases the slug's working
-    resources (worktree + local/remote branch + workspace dir, keeping the durable todo and
-    artifacts) so the re-derived plan's fresh work phase cannot reuse stale branch state, then
-    emits the cleanup script (end workers, end self) so the runner re-dispatches a fresh prepare.
+    Unlike the former terminal path, this preserves the worktree, branch, workspace,
+    and live sessions while handing the claiming work orchestrator into prepare.
     """
     kickback_started = perf_counter()
     state = await todos_db.read_state(resolved_slug)
@@ -420,11 +428,33 @@ async def _check_work_entry_kickback(db: Db, todos_db: TodosDb, resolved_slug: s
     if not writer.state.plan_review.cleared_by_substantive_drift:
         return None
 
-    await asyncio.to_thread(cleanup_delivered_slug, cwd, resolved_slug)
-    session_id = get_session_id() or ""
-    child_session_ids = await _list_child_session_ids(db, session_id)
-    _log_next_work_phase(resolved_slug, "kickback_terminal", kickback_started, "terminal", "plan_review_cleared")
-    return format_kickback_terminal(resolved_slug, child_session_ids)
+    _log_work_entry_routed(writer, resolved_slug, _KICKBACK_REASON)
+    _log_next_work_phase(resolved_slug, "kickback_handoff", kickback_started, "handoff", _KICKBACK_REASON)
+    return format_work_entry_kickback_handoff(resolved_slug)
+
+
+def _log_work_entry_accepted(slug: str) -> None:
+    logger.info(
+        _WORK_ENTRY_ACCEPTED_MESSAGE,
+        event=_WORK_ENTRY_ACCEPTED_EVENT,
+        slug=slug,
+        caller_session_id=get_session_id() or _EMPTY_TEXT,
+    )
+
+
+def _log_work_entry_routed(writer: StateWriter, slug: str, reason: str) -> None:
+    logger.info(
+        _WORK_ENTRY_ROUTED_MESSAGE,
+        event=_WORK_ENTRY_ROUTED_EVENT,
+        outcome=_PREPARE_HANDOFF_OUTCOME,
+        reason=reason,
+        slug=slug,
+        caller_session_id=get_session_id() or _EMPTY_TEXT,
+        build_residue_present=bool(writer.state.build_start_base_sha),
+        old_plan_digest=writer.state.build_plan_digest,
+        current_plan_digest=writer.state.artifacts.implementation_plan.digest,
+        resource_action=_RESOURCE_ACTION_PRESERVE,
+    )
 
 
 def _work_entry_drift_verdict(

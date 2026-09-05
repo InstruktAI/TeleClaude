@@ -67,7 +67,9 @@ class RunnerTodo:
     task_plan_digest: str = ""
     task_approved: bool = False
     task_approved_digest: str = ""
-    plan_review_cleared: bool = False
+    plan_review_current: bool = False
+    current_plan_digest: str = ""
+    reviewed_plan_digest: str = ""
 
 
 @dataclass(frozen=True)
