@@ -1516,6 +1516,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
+            "pre-commit": CommandDef(
+                desc="Run the thin pre-commit backstop",
+                flags=[_H],
+                hidden=True,
+            ),
         },
     ),
 }

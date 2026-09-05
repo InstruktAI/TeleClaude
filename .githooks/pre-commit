@@ -1,5 +1,3 @@
 #!/usr/bin/env bash
 # teleclaude: compatibility entrypoint for the canonical hook.
-set -euo pipefail
-_repo_root="$(git rev-parse --show-toplevel 2>/dev/null || exit 0)"
-exec "$_repo_root/templates/quality/githooks/pre-commit" "$@"
+exec telec code pre-commit

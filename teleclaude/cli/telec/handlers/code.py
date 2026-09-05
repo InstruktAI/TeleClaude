@@ -24,6 +24,7 @@ from teleclaude.cli.telec.handlers._code_git_state import (
     resolve_current_branch,
     working_tree_snapshot,
 )
+from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
@@ -78,6 +79,7 @@ class CodeSubcommand(StrEnum):
     ADD = "add"
     BLUEPRINT = "blueprint"
     OWNERS = "owners"
+    PRE_COMMIT = "pre-commit"
 
 
 _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
@@ -104,6 +106,9 @@ def handle_code(args: list[str]) -> None:
         print(_usage(_CODE_NAMESPACE))
         return
     rest = args[1:]
+    if sub is CodeSubcommand.PRE_COMMIT:
+        handle_code_pre_commit(rest)
+        return
     _require_code_capability(sub)
     if sub is CodeSubcommand.LINT:
         handle_lint(rest)
