@@ -4,8 +4,6 @@ description: A person context is accepted as belonging to a registered person on
   when that binding is independently validated; an unknown, mismatched, or ambiguous
   claim fails closed and confers neither person-scoped visibility nor person-scoped
   write authority.
-delivered_by:
-  - person-tier-declarations
 ---
 
 # Person Context Binding — Spec

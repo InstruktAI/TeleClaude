@@ -4,8 +4,6 @@ description: Permission is answered per declared tier along three independent ax
   — whether the tier establishes an invocation context, whether its material participates
   in a surface, and whether it carries optional project subscriptions — so no tier
   inherits another tier default and no answer on one axis grants anything on another.
-delivered_by:
-  - person-tier-declarations
 ---
 
 # Tier Permissions — Spec

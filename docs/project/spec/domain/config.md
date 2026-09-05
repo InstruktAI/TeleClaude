@@ -56,7 +56,6 @@ TeleClaudeNext.
   invocation, read from the nearest ancestor configuration file's own
   declaration. Consumers call it and never walk the ancestor chain or read a
   tier declaration themselves.
-<!-- planned:person-tier-declarations -->
 - **Also published:** the tier-permission answer — for a root's declared tier,
   whether it establishes an invocation context, whether its material
   participates in a named surface from the closed surface set, and whether it
@@ -75,7 +74,6 @@ TeleClaudeNext.
   The behavioral contracts are
   `project/spec/feature/identity/person-context-binding` and
   `project/spec/feature/config/project-ownership`.
-<!-- /planned:person-tier-declarations -->
 - **Also does not own:** where a project's shared state lives. That rule reads
   the checkout-and-worktree relation rather than any configuration, and belongs
   to the context that creates linked worktrees and defines what they share.
