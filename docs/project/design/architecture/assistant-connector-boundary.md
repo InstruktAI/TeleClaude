@@ -1,7 +1,7 @@
 ---
-description: "How an agent session reaches an external mail or calendar connector: the person binding it consumes rather than derives, the layer each responsibility sits in, and how the settings prohibition is held by the connector's own controls."
-delivered_by:
-  - personal-mail-tool-launcher
+description: 'How an agent session reaches an external mail or calendar connector:
+  the person binding it consumes rather than derives, the layer each responsibility
+  sits in, and how the settings prohibition is held by the connector''s own controls.'
 ---
 
 # Assistant Connector Boundary — Design

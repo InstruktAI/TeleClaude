@@ -1,7 +1,8 @@
 ---
-description: "Invoking an external mail or calendar connector on a person's behalf: binding the invocation to one declared account, directing that person's state, and applying the personal-assistant prohibitions to what the invocation is determined to reach."
-delivered_by:
-  - personal-mail-tool-launcher
+description: 'Invoking an external mail or calendar connector on a person''s behalf:
+  binding the invocation to one declared account, directing that person''s state,
+  and applying the personal-assistant prohibitions to what the invocation is determined
+  to reach.'
 ---
 
 # Assistant Connector Invocation — Spec

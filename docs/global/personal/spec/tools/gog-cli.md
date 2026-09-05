@@ -10,13 +10,6 @@ description: The permitted gog invocations for personal Gmail and Calendar work,
 mail and calendar, and preparing drafts. It is never reached through an MCP
 server: one pathway means one place the gates live.
 
-<!-- planned-change:personal-mail-tool-launcher -->
-Every person has their own state root under their workspace, holding their
-accounts, tokens, aliases and per-account settings. Which person's mail a
-command touches is decided entirely by that root, and it is selected for the
-agent — an agent does not choose an account, and does not see the unwrapped
-binary.
-<!-- change:personal-mail-tool-launcher -->
 Every person has their own state root under their workspace, holding their
 configuration, aliases and per-account settings. Which mail a command touches is
 decided by the account the invocation names, not by that root alone: the root
@@ -31,7 +24,6 @@ acts as. That is not free choice — the reachable set is the person's own
 declaration and nothing outside it — and it is required rather than defaulted:
 an invocation means the same thing before and after that person declares a
 second account.
-<!-- /planned-change:personal-mail-tool-launcher -->
 
 ## Canonical fields
 
@@ -68,18 +60,6 @@ spec: the tool permits them, and the conduct policy decides when they run.
 
 ### Refused by the tool
 
-<!-- planned-change:personal-mail-tool-launcher -->
-Every settings operation, on every path — send-as identities, forwarding,
-filters, vacation responders, anything that silently reroutes future mail. The
-tool carries these commands and nothing in it blocks them; what refuses them is
-the account's authorization grant, which excludes the Gmail settings scopes, so
-the API rejects the operation whatever is invoked.
-
-Sending has no such structural refusal today. The grant permits it, the tool
-performs it, and the flags that would withhold it are supplied by the caller
-rather than compiled in. Until a launch boundary constructs the invocation, an
-unattended run is restrained by the contract above and not by the tool.
-<!-- change:personal-mail-tool-launcher -->
 Every settings operation, on every path — send-as identities, forwarding,
 filters, vacation responders, anything that silently reroutes future mail. The
 tool carries these commands, so the refusal is held in two places outside them.
@@ -92,25 +72,17 @@ Sending has no such structural refusal. The grant permits it, the tool performs
 it, and the flags that would withhold it are supplied by the caller rather than
 compiled in. What restrains it is the conduct policy's mandate rule, under which
 what an assistant writes of its own accord stays a draft.
-<!-- /planned-change:personal-mail-tool-launcher -->
 
 An agent that receives a refusal reports it; it does not look for another route.
 
 ## Known caveats
 
-<!-- planned-change:personal-mail-tool-launcher -->
-- The person's tokens live in their own state root. On a machine with a single
-  operating-system account, separation between persons is organizational rather
-  than enforced by the system — real isolation means separate machines or
-  accounts.
-<!-- change:personal-mail-tool-launcher -->
 - The person's state root holds their configuration and per-account settings;
   their stored secrets live in a namespace shared across the machine, keyed by
   address rather than by person. What keeps one person's invocation away from
   another's credential is that it may name only an address that person has
   declared. On a machine with a single operating-system account, separation
   between persons is otherwise organizational rather than enforced.
-<!-- /planned-change:personal-mail-tool-launcher -->
 - Google's authorization is a one-time human ceremony per account. Until it is
   done, every command fails for that account and the assistant says so instead
   of working around it.

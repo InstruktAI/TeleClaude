@@ -1,7 +1,7 @@
 ---
-description: 'A person declares the mail accounts their assistant may act as — each naming a normalized connector and an address — separately from the identity address by which the person is known.'
-delivered_by:
-  - personal-mail-tool-launcher
+description: A person declares the mail accounts their assistant may act as — each
+  naming a normalized connector and an address — separately from the identity address
+  by which the person is known.
 ---
 
 # Person Mail Accounts — Spec
