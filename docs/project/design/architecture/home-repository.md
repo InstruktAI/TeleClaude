@@ -1,8 +1,10 @@
 ---
 visibility: internal
-delivered_by:
-  - person-home-repository
-description: How the TeleClaude home's local-only history is realized — a declared retained set evaluated by an authoritative membership predicate isolated from ambient ignore sources and index state, a fail-closed validation guarding the write activation itself performs, and a canonical three-result membership contract for the consumers that ask.
+description: How the TeleClaude home's local-only history is realized — a declared
+  retained set evaluated by an authoritative membership predicate isolated from ambient
+  ignore sources and index state, a fail-closed validation guarding the write activation
+  itself performs, and a canonical three-result membership contract for the consumers
+  that ask.
 ---
 
 # Home Repository — Design

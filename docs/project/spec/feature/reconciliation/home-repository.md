@@ -5,8 +5,6 @@ description: 'The TeleClaude home is one local-only version-controlled history w
   it, activation over an already-populated home is idempotent, material already retained
   in breach of the rule surfaces rather than being silently dropped, and roots owned
   by someone else stay foreign.'
-delivered_by:
-  - person-home-repository
 ---
 
 # Home Repository — Spec
