@@ -1,7 +1,6 @@
 ---
-description: Scheduled agent jobs enter the canonical command-session dispatch contract and receive authenticated job-runner identity.
-delivered_by:
-  - restore-canonical-agent-job-dispatch
+description: Scheduled agent jobs enter the canonical command-session dispatch contract
+  and receive authenticated job-runner identity.
 ---
 
 # Scheduled Agent Command Dispatch — Spec
