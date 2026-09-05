@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -14,9 +14,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.task_registry import TaskRegistry
 
-from telegram import Update
 from telegram.constants import ChatAction
-from telegram.ext import filters
 
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import telegram_policy
@@ -24,7 +22,7 @@ from teleclaude.config import config
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.models import MessageMetadata, Session, TelegramAdapterMetadata, TelegramMetadataField
+from teleclaude.core.models import MessageMetadata, PeerInfo, Session, TelegramAdapterMetadata
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
     continuation_prefix_for_markdown_v2_state,
@@ -36,8 +34,6 @@ from teleclaude.utils.markdown import (
     truncate_markdown_v2_with_consumed,
 )
 
-from .telegram.channel_ops import ChannelOperationsMixin
-from .telegram.command_handlers import CommandHandlersMixin
 from .telegram.input_handlers import InputHandlersMixin
 from .telegram.lifecycle import LifecycleMixin, TelegramApp
 from .telegram.message_ops import EditContext, MessageOperationsMixin
@@ -52,39 +48,13 @@ class TelegramAdapter(
     PrivateHandlersMixin,
     LifecycleMixin,
     InputHandlersMixin,
-    CommandHandlersMixin,
     MessageOperationsMixin,
-    ChannelOperationsMixin,
     UiAdapter,
 ):
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
     OUTPUT_MESSAGE_ID_FIELD = "message_id"
-
-    COMMAND_HANDLER_OVERRIDES = {
-        "agent_resume": "_handle_agent_resume_command",
-        "cancel": "_handle_cancel_command",
-    }
-
-    # Simple commands that just emit an event with session_id, args, and message_id.
-    # These are generated dynamically via _handle_simple_command template.
-    # Format: list of command names (string)
-    SIMPLE_COMMAND_EVENTS: list[str] = [
-        "cancel2x",
-        "kill",
-        "tab",
-        "enter",
-        "escape",
-        "escape2x",
-        "ctrl",
-        "shift_tab",
-        "backspace",
-        "key_up",
-        "key_down",
-        "key_left",
-        "key_right",
-    ]
 
     # -------------------------------------------------------------------------
     # Markdown strategy — MarkdownV2
@@ -166,17 +136,11 @@ class TelegramAdapter(
         self._processed_voice_messages: set[str] = set()  # Track processed voice message IDs with edit state
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
         self._last_edit_hash: dict[str, str] = {}  # message_id -> content hash (skip no-op edits)
-        self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
-        self._topic_ready_events: dict[int, asyncio.Event] = {}  # topic_id -> readiness event
-        self._topic_ready_cache: set[int] = set()  # topic_ids confirmed via forum_topic_created
         self._startup_housekeeping_task: asyncio.Task[None] | None = None
 
         # Output QoS scheduler: coalesces stale payloads and enforces pacing budget.
         qos_policy = telegram_policy(config.telegram.qos)
         self._qos_scheduler: OutputQoSScheduler = OutputQoSScheduler(qos_policy)
-
-        # Register simple command handlers dynamically
-        self.register_simple_command_handlers()
 
     # --- Per-adapter output message tracking ---
     # Telegram stores output tracking in origin_metadata to prevent cross-adapter races.
@@ -185,6 +149,20 @@ class TelegramAdapter(
     def _tg(session: Session) -> TelegramAdapterMetadata:
         """Read Telegram section from origin_metadata."""
         return TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram"))
+
+    async def discover_peers(self) -> list[PeerInfo]:
+        """Declare that Telegram has no remote peer-discovery surface."""
+        return []
+
+    async def poll_output_stream(
+        self,
+        session: Session,
+        timeout: float = 300.0,
+    ) -> AsyncIterator[str]:
+        """Declare Telegram's unsupported remote output-stream operation."""
+        _ = session, timeout
+        raise NotImplementedError("Telegram adapter does not support poll_output_stream")
+        yield ""
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Telegram private chat."""
@@ -195,76 +173,6 @@ class TelegramAdapter(
             chat_id=int(str(user_id)),
             action=ChatAction.TYPING,
         )
-
-    async def recover_lane_error(
-        self,
-        session: Session,
-        error: Exception,
-        task_factory: Callable[[UiAdapter, Session], Awaitable[object]],
-        display_title: str,
-    ) -> object | None:
-        """Recover from missing Telegram thread by resetting topic metadata and retrying."""
-        message = str(error).lower()
-        if (
-            "message thread not found" not in message
-            and "topic_deleted" not in message
-            and "telegram topic_id missing" not in message
-        ):
-            raise error
-
-        logger.warning(
-            "[TG_RECOVER] Missing thread detected for session %s (error=%s); resetting channel metadata",
-            session.session_id,
-            error,
-        )
-        refreshed = await db.get_session(session.session_id)
-        recovery_session = refreshed or session
-
-        # Evict stale topic from readiness cache so subsequent sends don't
-        # skip the wait and immediately hit "thread not found" again.
-        stale_tg = self._tg(recovery_session)
-        if stale_tg.topic_id:
-            self._topic_ready_cache.discard(stale_tg.topic_id)
-            self._topic_ready_events.pop(stale_tg.topic_id, None)
-
-        await db.update_origin_metadata(
-            recovery_session.session_id,
-            "telegram",
-            {
-                TelegramMetadataField.TOPIC_ID: None,
-                TelegramMetadataField.OUTPUT_MESSAGE_ID: None,
-                TelegramMetadataField.FOOTER_MESSAGE_ID: None,
-                TelegramMetadataField.CHAR_OFFSET: 0,
-            },
-        )
-        await db.update_session(
-            recovery_session.session_id,
-            last_output_digest=None,
-        )
-
-        try:
-            retry_session = await self.ensure_channel(recovery_session)
-
-            # Wait for the new topic to be ready before retrying, preventing
-            # the retry from failing immediately with "thread not found".
-            new_tg = self._tg(retry_session)
-            if new_tg.topic_id:
-                await self._wait_for_topic_ready(new_tg.topic_id, retry_session.title)
-
-            result = await task_factory(self, retry_session)
-            logger.info(
-                "[TG_RECOVER] Recovered lane after missing thread for session %s",
-                session.session_id,
-            )
-            return result
-        except Exception as retry_exc:
-            logger.error(
-                "[TG_RECOVER] Recovery retry failed for session %s: initial=%s retry=%s",
-                session.session_id,
-                error,
-                retry_exc,
-            )
-            return None
 
     def format_output(self, tmux_output: str) -> str:
         """Format tmux output with Telegram MarkdownV2 escaping and line shortening."""
@@ -432,26 +340,3 @@ class TelegramAdapter(
         return 0.5
 
     # ==================== Helper Methods ====================
-
-    def _validate_update_for_command(self, update: Update) -> bool:
-        """Check if update has required fields for command handling.
-
-        Returns:
-            True if update.effective_user and update.effective_message exist, False otherwise
-        """
-        return update.effective_user is not None and update.effective_message is not None
-
-    def _event_to_command(self, event_name: str) -> str:
-        """Convert event name to command name (underscores to hyphens).
-
-        Args:
-            event_name: Event name like "new_session" or "key_up"
-
-        Returns:
-            Command name like "new-session" or "key-up"
-        """
-        return event_name.replace("_", "-")
-
-    def _get_command_handler_update_filter(self) -> filters.BaseFilter:
-        """Return UpdateType filter for command handlers."""
-        return filters.UpdateType.MESSAGE

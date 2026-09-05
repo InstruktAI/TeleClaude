@@ -7,15 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-import traceback
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import timedelta
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
-from telegram import Document, Message, PhotoSize, Update
+from telegram import Document, PhotoSize, Update
 from telegram.ext import ContextTypes
 
 from teleclaude.core.command_registry import get_command_service
@@ -33,23 +33,49 @@ if TYPE_CHECKING:
     class _InputHandlersHost(Protocol):
         client: AdapterClient
         _processed_voice_messages: set[str]
-        _topic_ready_events: dict[int, asyncio.Event]
-        _topic_ready_cache: set[int]
         _metadata: Callable[..., MessageMetadata]
         send_message: Callable[..., Awaitable[str | None]]
-        _get_session_from_topic: Callable[[Update], Awaitable[Session | None]]
+        _get_private_session_for_update: Callable[[Update], Awaitable[Session | None]]
         _dispatch_command: Callable[
             [Session, str | None, MessageMetadata, str, Mapping[str, object], Callable[[], Awaitable[object]]],
             Awaitable[object],
         ]
-        _send_general_message_with_retry: Callable[[int | None, str, str | None, object | None], Awaitable[Message]]
         task_registry: object
 
 
 logger = get_logger(__name__)
 
 
-class IncomingFileType(str, Enum):
+class ConversationModality(StrEnum):
+    """Supported conversational modalities at the Telegram boundary."""
+
+    TEXT = "text"
+    VOICE = "voice"
+    DOCUMENT = "document"
+    PHOTO = "photo"
+
+
+class ConversationInputOutcome(StrEnum):
+    """Terminal decisions for a supported Telegram input."""
+
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+class ConversationInputReason(StrEnum):
+    """Closed reasons for Telegram input decisions."""
+
+    CANCELLED = "cancelled"
+    DELIVERY_FAILED = "delivery_failed"
+    DISPATCHED = "dispatched"
+    DUPLICATE = "duplicate"
+    HANDLER_FAILED = "handler_failed"
+    SESSION_CREATION_FAILED = "session_creation_failed"
+    UNBOUND_IDENTITY = "unbound_identity"
+    UNSUPPORTED_INPUT = "unsupported_input"
+
+
+class IncomingFileType(StrEnum):
     """Supported inbound file types."""
 
     DOCUMENT = "document"
@@ -62,52 +88,76 @@ FILE_SUBDIR: dict[IncomingFileType, str] = {
 }
 
 
-def _describe_message_content(message: Message) -> list[str]:
-    """Describe Telegram message content types for debug logging."""
-    message_parts: list[str] = []
-    if message.text:
-        message_parts.append(f"text: '{message.text[:50]}'")
-    if message.voice:
-        message_parts.append("voice")
-    if message.photo:
-        message_parts.append("photo")
-    if message.document:
-        message_parts.append("document")
-    if message.forum_topic_created:
-        message_parts.append("forum_topic_created")
-    if message.forum_topic_closed:
-        message_parts.append("forum_topic_closed")
-    if message.forum_topic_reopened:
-        message_parts.append("forum_topic_reopened")
-    if message.forum_topic_edited:
-        message_parts.append("forum_topic_edited")
-    if message.delete_chat_photo:
-        message_parts.append("delete_chat_photo")
-    if message.new_chat_members:
-        message_parts.append("new_chat_members")
-    if message.left_chat_member:
-        message_parts.append("left_chat_member")
-    return message_parts
+def observe_conversation_input_decision(
+    *,
+    modality: ConversationModality,
+    source_message_id: str,
+    outcome: ConversationInputOutcome,
+    reason: ConversationInputReason,
+    session_id: str | None = None,
+) -> None:
+    """Record the terminal routing decision for one private Telegram input."""
+    logger.info(
+        "telegram_conversation_input_decided",
+        origin="telegram",
+        modality=modality.value,
+        source_message_id=source_message_id,
+        outcome=outcome.value,
+        reason=reason.value,
+        session_id=session_id,
+    )
 
 
-def _describe_update_extras(update: Update) -> list[str]:
-    """Describe non-message update types for debug logging."""
-    extras: list[str] = []
-    if update.callback_query:
-        extras.append(f"callback_query: {update.callback_query.data}")
-    if update.inline_query:
-        extras.append(f"inline_query: {update.inline_query.query}")
-    if update.poll:
-        extras.append("poll update")
-    if update.poll_answer:
-        extras.append("poll_answer")
-    if update.my_chat_member:
-        extras.append("my_chat_member")
-    if update.chat_member:
-        extras.append("chat_member")
-    if update.chat_join_request:
-        extras.append("chat_join_request")
-    return extras
+@dataclass
+class ConversationInputDecision:
+    """Record one correlated terminal decision for a supported handler turn."""
+
+    modality: ConversationModality
+    source_message_id: str
+    session_id: str | None = None
+    _recorded: bool = False
+
+    def bind_session(self, session: Session) -> None:
+        """Attach the resolved session to all later decisions."""
+        self.session_id = session.session_id
+
+    def accept(self) -> None:
+        """Record successful dispatch."""
+        self._record(ConversationInputOutcome.ACCEPTED, ConversationInputReason.DISPATCHED)
+
+    def reject(self, reason: ConversationInputReason) -> None:
+        """Record a rejected handler turn once."""
+        self._record(ConversationInputOutcome.REJECTED, reason)
+
+    def reject_for_error(self, error: Exception | asyncio.CancelledError) -> None:
+        """Record failure before preserving the handler's propagation semantics."""
+        reason = (
+            ConversationInputReason.CANCELLED
+            if isinstance(error, asyncio.CancelledError)
+            else ConversationInputReason.HANDLER_FAILED
+        )
+        self.reject(reason)
+
+    def reject_if_unreported(self) -> None:
+        """Close a supported handler turn that returned without dispatching."""
+        self.reject(ConversationInputReason.UNSUPPORTED_INPUT)
+
+    @property
+    def recorded(self) -> bool:
+        """Whether this handler turn has reached a terminal decision."""
+        return self._recorded
+
+    def _record(self, outcome: ConversationInputOutcome, reason: ConversationInputReason) -> None:
+        if self._recorded:
+            return
+        observe_conversation_input_decision(
+            modality=self.modality,
+            source_message_id=self.source_message_id,
+            outcome=outcome,
+            reason=reason,
+            session_id=self.session_id,
+        )
+        self._recorded = True
 
 
 class InputHandlersMixin:
@@ -116,33 +166,56 @@ class InputHandlersMixin:
     Required from host class:
     - client: AdapterClient
     - _processed_voice_messages: set[str]
-    - _topic_ready_events: dict[int, asyncio.Event]
-    - _topic_ready_cache: set[int]
     - _metadata(**kwargs: object) -> AdapterMetadata
-    - _get_session_from_topic(update: Update) -> Optional[Session]
+    - _get_private_session_for_update(update: Update) -> Optional[Session]
     """
 
     # Abstract properties/attributes (declared for type hints)
     client: AdapterClient
     _processed_voice_messages: set[str]
-    _topic_ready_events: dict[int, asyncio.Event]
-    _topic_ready_cache: set[int]
+
+    async def _observe_private_update(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Record private ingress before modality handlers decide how to route it."""
+        message = update.effective_message
+        if message is None:
+            return
+        modality = "text"
+        if message.voice:
+            modality = "voice"
+        elif message.document:
+            modality = "document"
+        elif message.photo:
+            modality = "photo"
+        logger.info(
+            "telegram_private_update_received",
+            origin="telegram",
+            modality=modality,
+            source_message_id=str(message.message_id),
+            chat_type="private",
+        )
 
     async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle voice messages in topics - both new and edited messages."""
+        """Handle voice messages in private chats, including edited messages."""
+        message = update.effective_message
+        if message is None:
+            return
+        decision = ConversationInputDecision(ConversationModality.VOICE, str(message.message_id))
+        try:
+            await self._route_voice_message(update, decision)
+        except asyncio.CancelledError as error:
+            decision.reject_for_error(error)
+            raise
+        except Exception as error:
+            decision.reject_for_error(error)
+            raise
+        decision.reject_if_unreported()
+
+    async def _route_voice_message(self, update: Update, decision: ConversationInputDecision) -> None:
+        """Route one supported voice message after its decision record is armed."""
         # Handle both regular messages and edited messages
         message = update.effective_message
         if not message or not update.effective_user:
             return
-
-        logger.info("=== VOICE MESSAGE HANDLER CALLED ===")
-        logger.info(
-            "Message ID: %s (edited: %s)",
-            message.message_id,
-            update.edited_message is not None,
-        )
-        logger.info("User: %s", update.effective_user.id)
-        logger.info("Thread ID: %s", message.message_thread_id)
 
         # Check if we've already processed this message
         # For edited messages, include edit_date so each edit is unique
@@ -153,6 +226,7 @@ class InputHandlersMixin:
         dedup_key_str = f"{message.message_id}:{edit_suffix}"
         if dedup_key_str in self._processed_voice_messages:
             logger.debug("Skipping duplicate voice message: %s", dedup_key_str)
+            decision.reject(ConversationInputReason.DUPLICATE)
             return
 
         # Mark as processed
@@ -164,17 +238,16 @@ class InputHandlersMixin:
             self._processed_voice_messages.remove(oldest_str)
 
         host = cast("_InputHandlersHost", self)
-        session = await host._get_session_from_topic(update)
+        session = await host._get_private_session_for_update(update)
         if not session:
-            logger.warning(
-                "No session found for voice message in thread %s",
-                message.message_thread_id,
-            )
+            decision.reject(ConversationInputReason.UNBOUND_IDENTITY)
             return
+        decision.bind_session(session)
 
         # Download voice file to temp location
         voice = message.voice
         if not voice:
+            decision.reject(ConversationInputReason.UNSUPPORTED_INPUT)
             return
         voice_file = await voice.get_file()
 
@@ -186,8 +259,6 @@ class InputHandlersMixin:
         try:
             # Download the file
             await voice_file.download_to_drive(temp_file_path)
-            logger.info("Downloaded voice message to: %s", temp_file_path)
-
             cmd = HandleVoiceCommand(
                 session_id=session.session_id,
                 file_path=str(temp_file_path),
@@ -209,27 +280,47 @@ class InputHandlersMixin:
             if registry is None:
                 raise RuntimeError("Telegram voice handling requires task_registry")
             registry.spawn(get_command_service().handle_voice(cmd), name=f"voice-{message.message_id}")
-        except (OSError, RuntimeError, TypeError, ValueError) as error:
-            error_msg = str(error) if str(error).strip() else "Unknown error"
-            logger.error("Failed to download voice message: %s", error_msg)
+            decision.accept()
+        except (OSError, RuntimeError, TypeError, ValueError):
+            logger.error("telegram_voice_input_failed", source_message_id=str(message.message_id))
             host = cast("_InputHandlersHost", self)
             await host.send_message(
                 session,
-                f"❌ Failed to download voice message: {error_msg}",
+                "❌ Failed to download voice message.",
                 metadata=MessageMetadata(parse_mode=None),
             )
+            decision.reject(ConversationInputReason.DELIVERY_FAILED)
 
     async def _handle_file_attachment(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle file attachments (documents, photos) in topics - both new and edited messages."""
+        """Handle file attachments in private chats, including edited messages."""
+        message = update.message or update.edited_message
+        if message is None:
+            return
+        modality = ConversationModality.DOCUMENT if message.document else ConversationModality.PHOTO
+        decision = ConversationInputDecision(modality, str(message.message_id))
+        try:
+            await self._route_file_attachment(update, decision)
+        except asyncio.CancelledError as error:
+            decision.reject_for_error(error)
+            raise
+        except Exception as error:
+            decision.reject_for_error(error)
+            raise
+        decision.reject_if_unreported()
+
+    async def _route_file_attachment(self, update: Update, decision: ConversationInputDecision) -> None:
+        """Route one supported document or photo after its decision record is armed."""
         # Handle both regular messages and edited messages
         message = update.message or update.edited_message
         if not message or not update.effective_user:
             return
 
         host = cast("_InputHandlersHost", self)
-        session = await host._get_session_from_topic(update)
+        session = await host._get_private_session_for_update(update)
         if not session:
+            decision.reject(ConversationInputReason.UNBOUND_IDENTITY)
             return
+        decision.bind_session(session)
 
         # Get file object (either document or photo)
         file_obj: Document | PhotoSize | None = None
@@ -247,10 +338,12 @@ class InputHandlersMixin:
             file_type = IncomingFileType.PHOTO
 
         if not file_obj:
+            decision.reject(ConversationInputReason.UNSUPPORTED_INPUT)
             return
 
         if file_type is None:
             logger.error("file_type is None, cannot route file attachment")
+            decision.reject(ConversationInputReason.UNSUPPORTED_INPUT)
             return
         # Determine subdirectory based on file type
         subdir = FILE_SUBDIR.get(file_type, "files")
@@ -258,6 +351,7 @@ class InputHandlersMixin:
         session_workspace.mkdir(parents=True, exist_ok=True)
         if file_name is None:
             logger.error("file_name is None, cannot save file")
+            decision.reject(ConversationInputReason.UNSUPPORTED_INPUT)
             return
         file_path = session_workspace / file_name
 
@@ -265,8 +359,6 @@ class InputHandlersMixin:
             # Download file to session workspace
             telegram_file = await file_obj.get_file()
             await telegram_file.download_to_drive(file_path)
-            logger.info("Downloaded %s to: %s", file_type, file_path)
-
             await get_command_service().handle_file(
                 HandleFileCommand(
                     session_id=session.session_id,
@@ -276,9 +368,9 @@ class InputHandlersMixin:
                     file_size=(file_obj.file_size if hasattr(file_obj, "file_size") else 0),
                 )
             )
-        except (OSError, RuntimeError, TypeError, ValueError) as e:
-            # Log detailed error for debugging
-            logger.error("Failed to download %s: %s", file_type, str(e))
+            decision.accept()
+        except (OSError, RuntimeError, TypeError, ValueError):
+            logger.error("telegram_attachment_input_failed", source_message_id=str(message.message_id))
 
             # Send user-friendly error message
             message_id = await host.send_message(
@@ -288,55 +380,16 @@ class InputHandlersMixin:
             )
             if message_id:
                 await db.add_pending_deletion(session.session_id, message_id)
-
-    async def _log_all_updates(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Log all Telegram updates for debugging (catch-all handler).
-
-        This helps discover events like pull-to-refresh, scroll events, etc.
-        """
-        try:
-            update_dict = update.to_dict()
-
-            # Extract key info
-            update_id = update.update_id
-            user = update.effective_user
-            chat = update.effective_chat
-            message: Message | None = update.message or update.edited_message
-
-            log_parts = [f"📩 Telegram Update #{update_id}"]
-
-            if user:
-                log_parts.append(f"from user {user.id} (@{user.username})")
-
-            if chat:
-                log_parts.append(f"in chat {chat.id} ({chat.type})")
-
-            if message:
-                msg_type = _describe_message_content(message)
-                if msg_type:
-                    log_parts.append(f"content: [{', '.join(msg_type)}]")
-
-            log_parts.extend(_describe_update_extras(update))
-
-            logger.info(" | ".join(log_parts))
-
-            # Always log full update dict for comprehensive event tracking
-            # This ensures we can see ALL events including topic deletions
-            logger.debug("Full update data: %s", update_dict)
-
-        except (TypeError, ValueError, AttributeError) as error:
-            logger.error("Error logging update: %s", error)
+            decision.reject(ConversationInputReason.DELIVERY_FAILED)
 
     async def _handle_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle errors that occur in handlers."""
-        logger.error("Exception while handling update %s:", update, exc_info=context.error)
-
-        # Log full traceback
-        if context.error:
-            logger.error(
-                "Full traceback:\n%s",
-                "".join(traceback.format_exception(type(context.error), context.error, context.error.__traceback__)),
-            )
+        logger.error(
+            "telegram_update_handler_failed",
+            update_type=type(update).__name__,
+            error_type=type(context.error).__name__ if context.error else None,
+            exc_info=context.error,
+        )
 
     async def handle_file_attachment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Public wrapper for inbound file routing."""

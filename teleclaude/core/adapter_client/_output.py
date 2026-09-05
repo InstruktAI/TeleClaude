@@ -531,6 +531,17 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             if receipt is not None and receipt >= version:
                 continue
             result = await self._route_to_ui(session, "send_output_update", *args, include_adapters={lane})
+            committed_receipt = adapter.get_last_delivered_at(session)
+            if result and committed_receipt is not None and committed_receipt >= version:
+                message_ids = self._message_ids_from_result(result)
+                logger.info(
+                    "ui_lane_final_output_committed",
+                    adapter=lane,
+                    outcome="delivered",
+                    session_id=session.session_id,
+                    delivery_version=version.isoformat(),
+                    platform_message_id=message_ids[-1] if message_ids else None,
+                )
             if lane == origin_adapter:
                 origin_result = result
         return str(origin_result) if origin_result else None

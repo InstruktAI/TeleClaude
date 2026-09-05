@@ -17,7 +17,6 @@ from teleclaude.types.commands import (
     KeysCommand,
     ProcessMessageCommand,
     RestartAgentCommand,
-    ResumeAgentCommand,
     StartAgentCommand,
 )
 
@@ -69,81 +68,6 @@ def _source_feature_for_origin(origin: str) -> InjectedTextSourceFeature:
 
 class CommandMapper:
     """Maps transport-specific payloads to internal command models."""
-
-    @staticmethod
-    def map_telegram_input(
-        event: str,
-        args: list[str],
-        metadata: MessageMetadata,
-        session_id: str | None = None,
-    ) -> InternalCommand:
-        """Map Telegram adapter input to internal command."""
-        if event in KEY_COMMANDS:
-            return KeysCommand(
-                session_id=session_id or "",
-                key=event,
-                args=args,
-            )
-
-        if event == EVENT_NEW_SESSION:
-            initial_input = None
-            if metadata.launch_intent and metadata.launch_intent.message:
-                initial_input = metadata.launch_intent.message
-            elif args:
-                initial_input = " ".join(args)
-            return CreateSessionCommand(
-                project_path=metadata.project_path or "",
-                initial_input=initial_input,
-                subdir=metadata.subdir,
-                origin=InputOrigin.TELEGRAM.value,
-                origin_metadata=metadata.origin_metadata,
-                launch_intent=metadata.launch_intent,
-            )
-
-        if event == "message":
-            return ProcessMessageCommand(
-                session_id=session_id or "",
-                text=" ".join(args),
-                origin=metadata.origin or InputOrigin.TELEGRAM.value,
-                text_kind=TranscriptEntryKind.ORDINARY,
-                source_feature=InjectedTextSourceFeature.TELEGRAM,
-                occurrence_key=metadata.platform_message_id,
-                actor_id=metadata.actor_id,
-                actor_name=metadata.actor_name,
-                actor_avatar_url=metadata.actor_avatar_url,
-                source_message_id=metadata.platform_message_id,
-                origin_metadata=metadata.origin_metadata,
-            )
-
-        if event == "agent":
-            agent_name = args[0] if args else get_default_agent()
-            agent_args = args[1:] if len(args) > 1 else []
-            return StartAgentCommand(
-                session_id=session_id or "",
-                agent_name=agent_name,
-                args=agent_args,
-                origin=metadata.origin or InputOrigin.TELEGRAM.value,
-            )
-
-        if event == "agent_resume":
-            agent_name = args[0] if args else None
-            return ResumeAgentCommand(
-                session_id=session_id or "",
-                agent_name=agent_name,
-                origin=metadata.origin or InputOrigin.TELEGRAM.value,
-            )
-
-        if event == "agent_restart":
-            agent_name = args[0] if args else None
-            return RestartAgentCommand(
-                session_id=session_id or "",
-                agent_name=agent_name,
-            )
-
-        if event == "exit":
-            return CloseSessionCommand(session_id=session_id or "")
-
-        raise ValueError(f"Unknown telegram command: {event}")
 
     @staticmethod
     def map_api_input(

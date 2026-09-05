@@ -45,13 +45,11 @@ if TYPE_CHECKING:
         is_master: bool
         _qos_scheduler: OutputQoSScheduler
         _startup_housekeeping_task: asyncio.Task[None] | None
-        _get_command_handlers: Callable[[], list[tuple[str, object]]]
-        _get_command_handler_update_filter: Callable[[], filters.BaseFilter]
         _handle_private_start: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_private_text: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_voice_message: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_file_attachment: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
-        _log_all_updates: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
+        _observe_private_update: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_error: Callable[[object, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
 
 
@@ -78,11 +76,10 @@ class LifecycleMixin:
     - is_master: bool
     - _qos_scheduler: OutputQoSScheduler
     - _startup_housekeeping_task: asyncio.Task[None] | None
-    - _get_command_handlers() -> list[tuple[str, object]]
-    - _get_command_handler_update_filter() -> filters.BaseFilter
     - _handle_private_start, _handle_private_text
     - _handle_voice_message, _handle_file_attachment
-    - _log_all_updates, _handle_error
+    - _observe_private_update
+    - _handle_error
     """
 
     # Set during start(); None before that.
@@ -110,6 +107,7 @@ class LifecycleMixin:
     async def start(self) -> None:
         """Initialize and start Telegram bot."""
         host = cast("_LifecycleHost", self)
+        logger.info("telegram_adapter_start_requested", adapter="telegram")
         # Create application with concurrent updates enabled
         # CRITICAL: concurrent_updates must be > 0 or updates can be silently dropped
         # when handlers are busy (e.g., during active polling)
@@ -156,20 +154,11 @@ class LifecycleMixin:
         assert self.app is not None  # Help mypy - app is guaranteed non-None after build()
         assert self.app.updater is not None  # Updater is created by builder
 
-        # Register command handlers
-        # IMPORTANT: For commands, handle ONLY new messages.
-        # Edited command updates can duplicate execution (MESSAGE + EDITED_MESSAGE).
-        for command_name, handler in host._get_command_handlers():
-            typed_handler = cast(
-                Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]],
-                handler,
-            )
-            cmd_handler: object = CommandHandler(
-                command_name,
-                typed_handler,
-                filters=host._get_command_handler_update_filter(),
-            )
-            self.app.add_handler(cmd_handler)  # type: ignore[arg-type]
+        private_ingress_observer: object = MessageHandler(
+            filters.ChatType.PRIVATE,
+            host._observe_private_update,
+        )
+        self.app.add_handler(private_ingress_observer, group=-1)  # type: ignore[arg-type]
 
         # Handle /start command in private chats (invite token binding)
         private_start_handler: object = CommandHandler(
@@ -186,29 +175,19 @@ class LifecycleMixin:
         )
         self.app.add_handler(private_text_handler)  # type: ignore[arg-type]
 
-        # Handle voice messages in topics - both new and edited
-        # NOTE: Do NOT add filters.ChatType.SUPERGROUP - it doesn't match forum topic messages (Telegram quirk)
-        # Authorization is handled inside _handle_voice_message via _get_session_from_topic
         voice_handler: object = MessageHandler(
-            filters.VOICE & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
+            filters.VOICE & filters.ChatType.PRIVATE & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
             host._handle_voice_message,
         )
         self.app.add_handler(voice_handler)  # type: ignore[arg-type]
 
-        # Handle file attachments (documents, photos, etc.) in topics - both new and edited
-        # NOTE: Do NOT add filters.ChatType.SUPERGROUP - it doesn't match forum topic messages (Telegram quirk)
         file_handler: object = MessageHandler(
-            (filters.Document.ALL | filters.PHOTO) & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
+            (filters.Document.ALL | filters.PHOTO)
+            & filters.ChatType.PRIVATE
+            & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
             host._handle_file_attachment,
         )
         self.app.add_handler(file_handler)  # type: ignore[arg-type]
-
-        # Add catch-all handler to log ALL updates (for debugging)
-        log_handler: object = MessageHandler(
-            filters.ALL,
-            host._log_all_updates,
-        )
-        self.app.add_handler(log_handler, group=999)  # type: ignore[arg-type]
 
         # Register error handler to catch all exceptions
         self.app.add_error_handler(host._handle_error)
@@ -218,12 +197,18 @@ class LifecycleMixin:
         await self.app.start()
         await self.app.updater.start_polling()
 
-        # Get bot info for diagnostics
-        bot_info = await self.bot.get_me()
+        handlers = [handler for group in self.app.handlers.values() for handler in group]
+        command_handlers = [handler for handler in handlers if isinstance(handler, CommandHandler)]
+        binding_command_count = sum("start" in handler.commands for handler in command_handlers)
+        operator_command_count = sum(
+            any(command != "start" for command in handler.commands) for handler in command_handlers
+        )
         logger.info(
-            "Telegram adapter started. Bot: @%s (ID: %s)",
-            bot_info.username,
-            bot_info.id,
+            "telegram_adapter_surface_ready",
+            outcome="conversation_only",
+            operator_command_count=operator_command_count,
+            binding_command_count=binding_command_count,
+            supported_modalities="text,voice,document,photo",
         )
 
     async def stop(self) -> None:
