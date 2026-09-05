@@ -218,6 +218,20 @@ class PersonEntry(BaseModel):
         return stripped
 
 
+class MailConnector(StrEnum):
+    """Connector vocabulary for mail accounts an assistant may invoke."""
+
+    GOOGLE = "google"
+    MICROSOFT = "microsoft"
+
+
+class MailAccount(BaseModel):
+    """One declared mail account available to a person's assistant."""
+
+    connector: MailConnector
+    address: str = Field(min_length=1)
+
+
 class OutputVisibilitySettings(BaseModel):
     """Per-person visibility preferences for projected output categories."""
 
@@ -647,6 +661,7 @@ class PersonConfig(BaseModel):
     slug: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
     creds: CredsConfig = CredsConfig()
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
+    mail_accounts: list[MailAccount] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []
     companies: list[str] = []
     settings: PersonSettings = PersonSettings()

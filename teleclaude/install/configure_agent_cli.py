@@ -849,6 +849,7 @@ def main() -> None:
     print(f"Configuring agent CLIs from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")
+    install_agent_wrapper(repo_root, "gog")
     install_agent_wrapper(repo_root, "teleclaude-shell")
     install_shell_environment()
     install_env_symlink(repo_root)

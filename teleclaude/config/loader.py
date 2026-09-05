@@ -3,6 +3,8 @@
 import os
 import stat
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ from teleclaude.config.schema import (
     CompanyConfig,
     ConfigKind,
     GlobalConfig,
+    MailAccount,
     OutputVisibilitySettings,
     PersonConfig,
     PersonEntry,
@@ -35,6 +38,34 @@ _PERSON_SLUG_FIELD = "slug"
 _PERSON_CLAIM_MISMATCH = "Person config claim '{claim}' does not match save target '{target}'"
 _UNRESOLVED_COMPANY_OWNER = "Project declares unresolved company owner: {owner}"
 _UNRESOLVED_PERSON_OWNER = "Project declares unresolved person owner: {owner}"
+_UTF8 = "utf-8"
+
+
+class DeclaredMailAccountRefusal(StrEnum):
+    """Closed reasons a named person account cannot be resolved."""
+
+    MISSING_REGISTERED_SLUG = "missing_registered_slug"
+    CANONICAL_DOCUMENT_MISSING = "canonical_document_missing"
+    PERSISTED_CLAIM_MISMATCH = "persisted_claim_mismatch"
+    ACCOUNT_NOT_DECLARED = "account_not_declared"
+
+
+@dataclass(frozen=True)
+class ResolvedDeclaredMailAccount:
+    """A canonical person document's declared account and state root."""
+
+    account: MailAccount
+    state_root: Path
+
+
+@dataclass(frozen=True)
+class RefusedDeclaredMailAccount:
+    """A closed refusal from canonical declared-account resolution."""
+
+    reason: DeclaredMailAccountRefusal
+
+
+DeclaredMailAccountResolution = ResolvedDeclaredMailAccount | RefusedDeclaredMailAccount
 
 
 def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
@@ -332,6 +363,31 @@ def find_person_config_path(person: PersonEntry, people_dir: Path = PEOPLE_DIR) 
         if normalize_person_config_key(person_config_path.parent.name) in person_keys:
             return person_config_path
     return None
+
+
+def resolve_declared_mail_account(
+    person: PersonEntry,
+    address: str,
+    people_dir: Path = PEOPLE_DIR,
+) -> DeclaredMailAccountResolution:
+    """Resolve one declared account from its person's canonical overlay only."""
+    registered_slug = person.slug
+    if registered_slug is None:
+        return RefusedDeclaredMailAccount(DeclaredMailAccountRefusal.MISSING_REGISTERED_SLUG)
+    validate_slug(registered_slug)
+    state_root = people_dir / registered_slug
+    config_path = state_root / ConfigFileName.OVERLAY
+    if not config_path.is_file():
+        return RefusedDeclaredMailAccount(DeclaredMailAccountRefusal.CANONICAL_DOCUMENT_MISSING)
+    raw_document: object = yaml.safe_load(config_path.read_text(encoding=_UTF8))
+    persisted_claim = raw_document.get(_PERSON_SLUG_FIELD) if isinstance(raw_document, Mapping) else None
+    if persisted_claim != registered_slug:
+        return RefusedDeclaredMailAccount(DeclaredMailAccountRefusal.PERSISTED_CLAIM_MISMATCH)
+    config = load_person_config(config_path)
+    for account in config.mail_accounts:
+        if account.address == address:
+            return ResolvedDeclaredMailAccount(account=account, state_root=state_root)
+    return RefusedDeclaredMailAccount(DeclaredMailAccountRefusal.ACCOUNT_NOT_DECLARED)
 
 
 def load_person_config_for_entry(person: PersonEntry, people_dir: Path = PEOPLE_DIR) -> PersonConfig | None:
