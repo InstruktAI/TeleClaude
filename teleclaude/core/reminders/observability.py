@@ -55,6 +55,10 @@ def observe_transition(entry: ReminderEntry) -> None:
         next_fire_at=entry.schedule.next_fire_at.isoformat() if entry.schedule.next_fire_at else None,
         prior_generation=entry.generation - 1 if entry.transition is ReminderTransition.REPLACED else None,
         cancel_reason=entry.cancel_reason.value if entry.cancel_reason is not None else None,
+        firing_number=entry.firing_number,
+        elapsed_since_armed_seconds=(
+            entry.elapsed_since_armed_seconds if entry.transition is ReminderTransition.FIRING else None
+        ),
         agent_delivery=("control_delivery" if entry.transition is ReminderTransition.FIRING else "record_only"),
     )
 
@@ -116,6 +120,8 @@ def observe_envelope_composed(entry: ReminderEntry, *, explicit_noop: bool, auto
         silent_answer_allowed=False if explicit_noop else None,
         auto_cancel=auto_cancel,
         consequence_included=auto_cancel,
+        firing_number=entry.firing_number,
+        elapsed_since_armed_seconds=entry.elapsed_since_armed_seconds,
     )
 
 
@@ -222,19 +228,21 @@ def observe_cancel(
     *,
     slug: str | None,
     entries: list[ReminderEntry],
-    transaction_id: str,
+    cancellation_id: str,
+    protected_slugs: tuple[str, ...] = (),
 ) -> None:
     """Record an idempotent cancellation result."""
     logger.info(
         _CANCEL_EVENT,
-        outcome="success" if entries else "already_absent",
-        reason="owner_requested",
+        outcome="protected" if protected_slugs else "success" if entries else "already_absent",
+        reason="cancel_protected" if protected_slugs else "owner_requested",
         owner_session_id=session_id,
         slug=slug,
         count=len(entries),
-        transaction_id=transaction_id,
+        cancellation_id=cancellation_id,
         generations=[entry.generation for entry in entries],
         occurrence_keys=[entry.occurrence_key for entry in entries],
+        protected_slugs=protected_slugs,
     )
 
 

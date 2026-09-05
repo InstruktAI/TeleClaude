@@ -615,6 +615,7 @@ CREATE TABLE IF NOT EXISTS reminders (
     next_fire_at TEXT,
     generation INTEGER NOT NULL,
     occurrence_key TEXT NOT NULL,
+    firing_count INTEGER NOT NULL DEFAULT 0 CHECK(firing_count >= 0),
     sliding INTEGER NOT NULL DEFAULT 0,
     auto_cancel INTEGER NOT NULL DEFAULT 0,
     pending_answer_occurrence_key TEXT,
@@ -653,7 +654,8 @@ CREATE TABLE IF NOT EXISTS reminder_entries (
     occurrence_key TEXT NOT NULL,
     sliding INTEGER NOT NULL DEFAULT 0,
     auto_cancel INTEGER NOT NULL DEFAULT 0,
-    cancel_reason TEXT
+    cancel_reason TEXT,
+    firing_number INTEGER CHECK(firing_number IS NULL OR firing_number > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_reminder_entries_session

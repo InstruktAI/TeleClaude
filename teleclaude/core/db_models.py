@@ -300,6 +300,7 @@ class ReminderRow(SQLModel, table=True):
     next_fire_at: str | None = None
     generation: int
     occurrence_key: str
+    firing_count: int = 0
     sliding: bool = False
     auto_cancel: bool = False
     pending_answer_occurrence_key: str | None = None
@@ -333,6 +334,7 @@ class ReminderEntryRow(SQLModel, table=True):
     sliding: bool = False
     auto_cancel: bool = False
     cancel_reason: str | None = None
+    firing_number: int | None = None
 
 
 class OutputConsumerReceiptRow(SQLModel, table=True):

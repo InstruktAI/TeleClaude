@@ -69,6 +69,7 @@ class PrescribedReminderProfile:
     accepted_parameters: frozenset[str]
     sliding: bool = False
     auto_cancel: bool = False
+    cancellation_protected: bool = False
 
 
 def _required(value: str | None, field: str) -> str:
@@ -172,7 +173,9 @@ PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
     PrescribedReminderSlug.ORCHESTRATION_WATCH: PrescribedReminderProfile(
         _orchestration_watch, frozenset({"target_slug", "after"})
     ),
-    PrescribedReminderSlug.COORDINATOR_SWEEP: PrescribedReminderProfile(_coordinator_sweep, frozenset({"after"})),
+    PrescribedReminderSlug.COORDINATOR_SWEEP: PrescribedReminderProfile(
+        _coordinator_sweep, frozenset({"after"}), cancellation_protected=True
+    ),
     PrescribedReminderSlug.INTEGRATOR_MAIN_CLEARANCE: PrescribedReminderProfile(
         _integrator_main_clearance, frozenset({"after"})
     ),
@@ -202,3 +205,8 @@ def accepted_prescribed_parameters(slug: PrescribedReminderSlug) -> frozenset[st
 def profile_auto_cancels(slug: PrescribedReminderSlug | None) -> bool:
     """Return whether a prescribed profile declares explicit NOOP cancellation."""
     return slug is not None and PROFILE_REGISTRY[slug].auto_cancel
+
+
+def profile_cancellation_protected(slug: PrescribedReminderSlug | None) -> bool:
+    """Return whether a prescribed profile refuses public cancellation."""
+    return slug is not None and PROFILE_REGISTRY[slug].cancellation_protected

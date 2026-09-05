@@ -21,6 +21,7 @@ from teleclaude.core.reminders import (
     PrescribedReminderInput,
     PrescribedReminderSlug,
     Reminder,
+    ReminderCancellationProtectedError,
     ReminderEntry,
     ReminderSchedule,
     ReminderSetRequest,
@@ -46,6 +47,7 @@ _REPEAT_SHAPE_ERROR = "repeat requires a relative after schedule"
 _PRESCRIBED_FIELD_ERROR = "prescribed reminder received unsupported parameters"
 _RFC3339_ERROR = "at must be an RFC3339 timestamp with an explicit timezone"
 _DURATION_ERROR = "duration must be a finite positive interval"
+_CANCEL_PROTECTED_DETAIL = "selected reminder is protected from cancellation"
 
 _set_clearance = require_clearance("telec reminders set")
 _list_clearance = require_clearance("telec reminders list")
@@ -182,6 +184,8 @@ def _observe_outcome(
     slug: str | None,
     reason: str | None = None,
     presentation_mode: str | None = None,
+    cancellation_id: str | None = None,
+    protected_slugs: tuple[str, ...] = (),
 ) -> None:
     logger.info(
         _API_OUTCOME_EVENT,
@@ -191,6 +195,8 @@ def _observe_outcome(
         outcome=outcome,
         reason=reason,
         presentation_mode=presentation_mode,
+        cancellation_id=cancellation_id,
+        protected_slugs=protected_slugs,
     )
 
 
@@ -255,7 +261,19 @@ async def cancel_all_reminders(
     """Idempotently cancel every caller-owned reminder."""
     if not all_reminders:
         raise HTTPException(status_code=422, detail="all=true is required")
-    entries = await _service().cancel_all(session_id=_session_id(identity))
+    try:
+        entries = await _service().cancel_all(session_id=_session_id(identity))
+    except ReminderCancellationProtectedError as exc:
+        _observe_outcome(
+            request,
+            outcome="rejected",
+            identity=identity,
+            slug=None,
+            reason="cancel_protected",
+            cancellation_id=exc.cancellation_id,
+            protected_slugs=exc.protected_slugs,
+        )
+        raise HTTPException(status_code=409, detail=_CANCEL_PROTECTED_DETAIL) from exc
     _observe_outcome(
         request,
         outcome="success",
@@ -280,7 +298,19 @@ async def cancel_reminder(
     identity: CallerIdentity = Depends(_cancel_clearance),
 ) -> ReminderMutationResponseDTO:
     """Idempotently cancel one caller-owned reminder."""
-    entry = await _service().cancel(session_id=_session_id(identity), slug=slug)
+    try:
+        entry = await _service().cancel(session_id=_session_id(identity), slug=slug)
+    except ReminderCancellationProtectedError as exc:
+        _observe_outcome(
+            request,
+            outcome="rejected",
+            identity=identity,
+            slug=slug,
+            reason="cancel_protected",
+            cancellation_id=exc.cancellation_id,
+            protected_slugs=exc.protected_slugs,
+        )
+        raise HTTPException(status_code=409, detail=_CANCEL_PROTECTED_DETAIL) from exc
     outcome = "success" if entry is not None else "already_absent"
     presentation = format_mutation_acknowledgement(entry) if entry is not None else None
     _observe_outcome(

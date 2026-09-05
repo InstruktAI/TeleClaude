@@ -58,6 +58,7 @@ def _decode_reminder(row: db_models.ReminderRow) -> Reminder:
         armed_at=armed_at,
         generation=row.generation,
         occurrence_key=row.occurrence_key,
+        firing_count=row.firing_count,
         sliding=row.sliding,
         auto_cancel=row.auto_cancel,
         pending_answer_occurrence_key=row.pending_answer_occurrence_key,
@@ -88,6 +89,7 @@ def _decode_entry(row: db_models.ReminderEntryRow) -> ReminderEntry:
         sliding=row.sliding,
         auto_cancel=row.auto_cancel,
         cancel_reason=ReminderCancelReason(row.cancel_reason) if row.cancel_reason is not None else None,
+        firing_number=row.firing_number,
     )
 
 
@@ -106,6 +108,7 @@ def _new_reminder_row(request: ReminderSetRequest, *, generation: int, armed_at:
         next_fire_at=schedule.next_fire_at.isoformat() if schedule.next_fire_at is not None else None,
         generation=generation,
         occurrence_key=str(uuid4()),
+        firing_count=0,
         sliding=request.sliding,
         auto_cancel=request.auto_cancel,
     )
@@ -118,6 +121,7 @@ def _entry_row(
     occurred_at: datetime,
     next_fire_at: datetime | None = None,
     cancel_reason: ReminderCancelReason | None = None,
+    firing_number: int | None = None,
 ) -> db_models.ReminderEntryRow:
     return db_models.ReminderEntryRow(
         session_id=reminder.session_id,
@@ -139,6 +143,7 @@ def _entry_row(
         sliding=reminder.sliding,
         auto_cancel=reminder.auto_cancel,
         cancel_reason=cancel_reason.value if cancel_reason is not None else None,
+        firing_number=firing_number,
     )
 
 
@@ -343,6 +348,7 @@ class DbRemindersMixin:
                 return _decode_entry(existing)
             row.claimed_occurrence_key = occurrence_key
             row.claimed_at = ensure_utc(fired_at).isoformat()
+            row.firing_count += 1
             next_fire_at = None
             if row.recurrence == ReminderRecurrence.RECURRING.value:
                 if row.interval_seconds is None:
@@ -353,6 +359,7 @@ class DbRemindersMixin:
                 transition=ReminderTransition.FIRING,
                 occurred_at=ensure_utc(fired_at),
                 next_fire_at=next_fire_at,
+                firing_number=row.firing_count,
             )
             db_session.add(row)
             db_session.add(entry_row)
