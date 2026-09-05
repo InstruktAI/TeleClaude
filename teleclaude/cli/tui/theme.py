@@ -50,7 +50,7 @@ class _ThemeRuntime:
 
 
 def _get_tmux_socket_path() -> str | None:
-    tmux_env = os.environ.get("TMUX")
+    tmux_env = os.environ.get("TMUX")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     if not tmux_env:
         return None
     return tmux_env.split(",", 1)[0] or None
@@ -74,7 +74,7 @@ def _get_tmux_appearance_mode() -> str | None:
 
 
 def _get_env_appearance_mode() -> str | None:
-    mode = (os.environ.get("APPEARANCE_MODE") or "").strip().lower()
+    mode = (os.environ.get("APPEARANCE_MODE") or "").strip().lower()  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
     if mode in {THEME_MODE_DARK, THEME_MODE_LIGHT}:
         return mode
     return None

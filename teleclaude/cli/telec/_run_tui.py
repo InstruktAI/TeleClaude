@@ -101,7 +101,7 @@ def _run_tui(start_view: int = 1, config_guided: bool = False) -> None:
 
     if reload_requested:
         # Mark as reload so the new process skips re-applying pane layout.
-        os.environ["TELEC_RELOAD"] = "1"
+        os.environ["TELEC_RELOAD"] = "1"  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         executable, argv = _resolve_reload_exec_argv()
         os.execvp(executable, argv)
 

@@ -350,7 +350,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             self.theme = "teleclaude-light-agent" if is_agent else "teleclaude-light"
 
         self.api = api
-        is_reload = bool(os.environ.pop("TELEC_RELOAD", ""))
+        is_reload = bool(os.environ.pop("TELEC_RELOAD", ""))  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         self._init_state = _AppInitState(
             start_view=start_view,
             config_guided=config_guided,

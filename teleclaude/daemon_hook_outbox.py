@@ -59,26 +59,28 @@ _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap with
 _HEADLESS_DEFAULT_THINKING_MODE = "med"
 
 # Hook outbox worker
-HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
-HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))
-HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
-HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
-HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
-HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))
-HOOK_OUTBOX_SESSION_MAX_PENDING: int = int(os.getenv("HOOK_OUTBOX_SESSION_MAX_PENDING", "32"))
-HOOK_OUTBOX_SESSION_CRITICAL_RESERVE: int = int(os.getenv("HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", "8"))
+HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S: float = float(os.getenv("HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S", "5"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_SESSION_MAX_PENDING: int = int(os.getenv("HOOK_OUTBOX_SESSION_MAX_PENDING", "32"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_SESSION_CRITICAL_RESERVE: int = int(os.getenv("HOOK_OUTBOX_SESSION_CRITICAL_RESERVE", "8"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK: int = int(
+    # guard: direct-env-read - temporary migration: config-tunables-via-config
     os.getenv("HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK", str(max(1, HOOK_OUTBOX_SESSION_MAX_PENDING - 8)))
 )
 HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK: int = int(
+    # guard: direct-env-read - temporary migration: config-tunables-via-config
     os.getenv("HOOK_OUTBOX_SESSION_CLAIM_LOW_WATERMARK", str(max(0, HOOK_OUTBOX_SESSION_CLAIM_HIGH_WATERMARK // 3)))
 )
-HOOK_OUTBOX_SUMMARY_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_SUMMARY_INTERVAL_S", "15"))
-HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD: int = int(os.getenv("HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD", "20"))
-HOOK_OUTBOX_LAG_WARN_THRESHOLD_S: float = float(os.getenv("HOOK_OUTBOX_LAG_WARN_THRESHOLD_S", "3"))
-HOOK_OUTBOX_WARN_LOG_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_WARN_LOG_INTERVAL_S", "15"))
-HOOK_OUTBOX_MAX_LAG_SAMPLES: int = int(os.getenv("HOOK_OUTBOX_MAX_LAG_SAMPLES", "2048"))
-HOOK_OUTBOX_STALENESS_TTL_S: float = float(os.getenv("HOOK_OUTBOX_STALENESS_TTL_S", "300"))
+HOOK_OUTBOX_SUMMARY_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_SUMMARY_INTERVAL_S", "15"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD: int = int(os.getenv("HOOK_OUTBOX_BACKLOG_WARN_THRESHOLD", "20"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_LAG_WARN_THRESHOLD_S: float = float(os.getenv("HOOK_OUTBOX_LAG_WARN_THRESHOLD_S", "3"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_WARN_LOG_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_WARN_LOG_INTERVAL_S", "15"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_MAX_LAG_SAMPLES: int = int(os.getenv("HOOK_OUTBOX_MAX_LAG_SAMPLES", "2048"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+HOOK_OUTBOX_STALENESS_TTL_S: float = float(os.getenv("HOOK_OUTBOX_STALENESS_TTL_S", "300"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 
 HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
     {

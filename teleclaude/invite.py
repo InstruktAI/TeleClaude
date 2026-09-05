@@ -42,7 +42,7 @@ _EMPTY_CONFIG_DOCUMENT: Mapping[str, object] = {}
 
 async def resolve_telegram_bot_username(token_env: str = "TELEGRAM_BOT_TOKEN") -> str:
     """Resolve Telegram bot username from token via getMe API."""
-    token = os.getenv(token_env)
+    token = os.getenv(token_env)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     if not token:
         raise ValueError(f"Environment variable {token_env} not set")
 
@@ -64,7 +64,7 @@ async def resolve_telegram_bot_username(token_env: str = "TELEGRAM_BOT_TOKEN") -
 
 async def resolve_discord_bot_user_id(token_env: str = "DISCORD_BOT_TOKEN") -> str:
     """Resolve Discord bot user ID from token via GET /users/@me."""
-    token = os.getenv(token_env)
+    token = os.getenv(token_env)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     if not token:
         raise ValueError(f"Environment variable {token_env} not set")
 

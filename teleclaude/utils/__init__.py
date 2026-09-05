@@ -139,7 +139,7 @@ def expand_env_vars(config: object) -> object:
 
         def replace_env_var(match: re.Match[str]) -> str:
             env_var = match.group(1)
-            return os.getenv(env_var, match.group(0))
+            return os.getenv(env_var, match.group(0))  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
 
         return re.sub(r"\$\{([^}]+)\}", replace_env_var, config)
     return config

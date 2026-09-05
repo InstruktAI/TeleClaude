@@ -34,7 +34,7 @@ def setup_logging(level: str | None = None, *, source: str | None = None) -> Non
             files.
     """
     if level:
-        os.environ["TELECLAUDE_LOG_LEVEL"] = level
+        os.environ["TELECLAUDE_LOG_LEVEL"] = level  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 
     if source is not None:
         configure_logging("teleclaude", source=source)

@@ -153,7 +153,7 @@ def sync_bootstrap(project_root: Path) -> None:
 
 def _record_snippet_provenance_from_environment(project_root: Path) -> int:
     """Record first-acquisition provenance for snippet delivered_by slugs."""
-    database_url = os.environ.get("DATABASE_URL")
+    database_url = os.environ.get("DATABASE_URL")  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     if not database_url:
         return 0
 
@@ -266,7 +266,7 @@ def _run_distribute(project_root: Path, capabilities: Capabilities) -> None:
         _DISTRIBUTE_DOCS_ENABLED_FLAG if capabilities.docs else _DISTRIBUTE_DOCS_DISABLED_FLAG,
     ]
 
-    env = os.environ.copy()
+    env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
     subprocess.run(cmd, cwd=project_root, check=True, env=env)
 
 

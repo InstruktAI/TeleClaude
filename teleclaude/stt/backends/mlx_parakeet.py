@@ -49,7 +49,7 @@ class MLXParakeetBackend:
             logger.info("Parakeet STT: using HuggingFace model %s (downloaded on first use)", self._model_ref)
 
     def _resolve_cli_bin(self) -> str | None:
-        cli_from_env = os.getenv(CLI_BIN_ENV_VAR)
+        cli_from_env = os.getenv(CLI_BIN_ENV_VAR)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
         if cli_from_env:
             candidate = str(Path(cli_from_env).expanduser())
             if Path(candidate).exists():
@@ -66,7 +66,7 @@ class MLXParakeetBackend:
         return None
 
     def _resolve_model_ref(self) -> str:
-        model_from_env = os.getenv(MODEL_ENV_VAR)
+        model_from_env = os.getenv(MODEL_ENV_VAR)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
         if model_from_env:
             return resolve_model_ref(model_from_env)
 

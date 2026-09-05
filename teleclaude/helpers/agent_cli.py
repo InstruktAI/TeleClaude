@@ -198,6 +198,7 @@ def _cli_env() -> dict[str, str]:
     """Build a clean environment for CLI agent subprocesses."""
     return {
         k: v
+        # guard: direct-env-read - allowed: child-process environment construction
         for k, v in os.environ.items()
         if k not in _CLI_STRIP_EXACT and not any(k.startswith(p) for p in _CLI_STRIP_PREFIXES)
     }

@@ -48,7 +48,7 @@ def _read_tmux_session_name() -> str | None:
 
     Queries the server only from an active tmux pane.
     """
-    if not os.getenv(_TMUX_ENV):
+    if not os.getenv(_TMUX_ENV):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         return None
     try:
         result = subprocess.run(
@@ -92,7 +92,7 @@ def tool_api_request(
     Raises:
         ToolAPIError: On daemon unavailability, timeout, or HTTP error response.
     """
-    resolved_socket_path = socket_path or os.environ.get(_API_SOCKET_ENV, API_SOCKET_PATH)
+    resolved_socket_path = socket_path or os.environ.get(_API_SOCKET_ENV, API_SOCKET_PATH)  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
     tmux_session = _read_tmux_session_name()
     use_session_identity = tmux_session != _TUI_SESSION_NAME
     session_id = get_session_id() if use_session_identity else None

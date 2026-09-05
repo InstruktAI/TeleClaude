@@ -211,7 +211,7 @@ class SmartWatcher(FileSystemEventHandler):
             "sync",
             "--skip-validation",
         ]
-        env = os.environ.copy()
+        env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
         env["TELEC_INVOCATION_CWD"] = str(self.project_root)
         env["PWD"] = str(self.project_root)
         # Authorize the hidden, watcher-only --skip-validation flag. Live reload must

@@ -144,7 +144,7 @@ def _write_test_output(
     test_request: str | None = None,
     test_csv_path: str | None = None,
 ) -> None:
-    if not os.getenv(_TEST_ENABLED_ENV):
+    if not os.getenv(_TEST_ENABLED_ENV):  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         return
     csv_path = test_csv_path
     agent = test_agent

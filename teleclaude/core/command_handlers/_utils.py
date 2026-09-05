@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Startup gate: bounded wait for session to exit "initializing" before tmux injection.
-STARTUP_GATE_TIMEOUT_S = float(os.getenv("STARTUP_GATE_TIMEOUT_S", "15"))
-STARTUP_GATE_POLL_INTERVAL_S = float(os.getenv("STARTUP_GATE_POLL_INTERVAL_S", "0.25"))
+STARTUP_GATE_TIMEOUT_S = float(os.getenv("STARTUP_GATE_TIMEOUT_S", "15"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+STARTUP_GATE_POLL_INTERVAL_S = float(os.getenv("STARTUP_GATE_POLL_INTERVAL_S", "0.25"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 
 
 # Result from end_session

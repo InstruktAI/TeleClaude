@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 
 
 def _repo_root_from_env() -> Path:
-    configured = os.environ.get("GRAPHIFY_REPO_ROOT")
+    configured = os.environ.get("GRAPHIFY_REPO_ROOT")  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
     return Path(configured).expanduser().resolve() if configured else Path.cwd().resolve()
 
 
@@ -40,7 +40,7 @@ def run_post_merge_regeneration() -> int:
     The hook is best-effort by contract: every failure is logged and returns zero
     so the git operation that triggered it is never blocked.
     """
-    if os.environ.get(INTEGRATOR_GITOP_ENV) == ENV_ENABLE:
+    if os.environ.get(INTEGRATOR_GITOP_ENV) == ENV_ENABLE:  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
         return 0
 
     try:

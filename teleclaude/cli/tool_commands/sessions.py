@@ -569,7 +569,7 @@ def _emit_tmux_feedback(message: str) -> None:
     write back to the tmux UI. Owning this here keeps the keybinding side a
     one-liner and prevents shell logic from accreting in tmux.conf.
     """
-    if not os.environ.get("TMUX"):
+    if not os.environ.get("TMUX"):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         return
     subprocess.run(["tmux", "display-message", message], check=False)
 

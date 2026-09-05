@@ -74,7 +74,7 @@ def _session_root(agent: AgentName) -> Path:
 
 def _legacy_gemini_root() -> Path:
     """Legacy Gemini CLI transcript root, superseded by the Antigravity brain dir."""
-    return Path(os.getenv("TELECLAUDE_LEGACY_GEMINI_ROOT", "~/.gemini/tmp")).expanduser()
+    return Path(os.getenv("TELECLAUDE_LEGACY_GEMINI_ROOT", "~/.gemini/tmp")).expanduser()  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 
 
 def _session_roots(agent: AgentName) -> list[Path]:

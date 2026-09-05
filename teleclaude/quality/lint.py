@@ -82,7 +82,7 @@ def _run_tool(cmd: list[str], project_root: Path, step_name: str) -> None:
     entry points so they can also run from hooks and direct maintainer calls.
     """
     logger.info("Running %s", step_name)
-    env = os.environ.copy()
+    env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
     existing_pythonpath = env.get("PYTHONPATH")
     env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(REPO_ROOT)
     result = subprocess.run(cmd, cwd=str(project_root), env=env, check=False)

@@ -103,7 +103,7 @@ async def send_discord_dm(
     2. Create a DM channel with the target user.
     3. Send the message (or the file, with the message as accompanying text) to that channel.
     """
-    token = os.getenv(token_env)
+    token = os.getenv(token_env)  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
     if not token:
         raise ValueError("Missing Discord bot token")
 

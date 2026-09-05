@@ -33,7 +33,7 @@ class TerminalAuthState:
 
 def in_tmux_context() -> bool:
     """Return True when running inside tmux."""
-    return bool((os.environ.get("TMUX") or "").strip())
+    return bool((os.environ.get("TMUX") or "").strip())  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
 
 
 def _detect_tty() -> str | None:
@@ -43,7 +43,7 @@ def _detect_tty() -> str | None:
             return os.ttyname(fd)
         except OSError:
             continue
-    return os.environ.get("SSH_TTY") or None
+    return os.environ.get("SSH_TTY") or None  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
 
 
 def _tty_key(tty: str) -> str:

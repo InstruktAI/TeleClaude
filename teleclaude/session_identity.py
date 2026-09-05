@@ -20,7 +20,7 @@ _SESSION_ID_FIELD = "session_id"
 
 def _identity_path() -> Path | None:
     """Return the path to the session identity file, or None if no TMPDIR."""
-    tmpdir = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
+    tmpdir = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     if not tmpdir:
         return None
     return Path(tmpdir) / _IDENTITY_FILENAME

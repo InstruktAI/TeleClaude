@@ -124,7 +124,7 @@ def _account_shell() -> str | None:
 
 def resolve_user_shell(env: Mapping[str, str] | None = None) -> str | None:
     """Resolve the user's configured shell without assuming a shell path."""
-    source = env if env is not None else os.environ
+    source = env if env is not None else os.environ  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
 
     shell_value = source.get("SHELL", "").strip()
     if shell_value and not _is_teleclaude_shell(shell_value):
@@ -174,7 +174,7 @@ def _capture_path_from_shell(shell_value: str, env: Mapping[str, str] | None = N
 
 def resolve_runtime_environment(env: Mapping[str, str] | None = None) -> RuntimeEnvironment:
     """Resolve the live session environment from the daemon and configured user shell."""
-    source = env if env is not None else os.environ
+    source = env if env is not None else os.environ  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     user_shell = resolve_user_shell(source)
     captured_path = _capture_path_from_shell(user_shell, source) if user_shell else None
     path_value = captured_path or source.get("PATH", "")

@@ -63,6 +63,25 @@ MODULE_SIZE_EXCEPTIONS = frozenset(
 # File size gate: max lines per module. Exceptions require explicit allowlisting.
 MODULE_MAX_LINES = 1000
 
+DIRECT_ENV_READ_RULE = "direct-env-read"
+DIRECT_ENV_READ_MESSAGE = "runtime configuration must flow through file-backed typed configuration"
+DIRECT_ENV_READ_MARKER_PATTERN = re.compile(r"#\s*guard:\s*direct-env-read\s*-\s*\S")
+DIRECT_ENV_READ_SCAN_PREFIX = "teleclaude/"
+DIRECT_ENV_READ_CONFIG_PREFIX = "teleclaude/config/"
+DIRECT_ENV_READ_RUNTIME_CONFIG_PATH = "teleclaude/runtime/config.py"
+DIRECT_ENV_READ_GUARDRAIL_PATH = "tools/lint/guardrails.py"
+DIRECT_ENV_READ_LINE_TEMPLATE = "- {rel_path}:{line_number}: {source_line}"
+DIRECT_ENV_READ_FAILURE_TEMPLATE = "{rule}: {message}{newline}{formatted}"
+OS_MODULE_NAME = "os"
+GETENV_MEMBER_NAME = "getenv"
+ENVIRON_MEMBER_NAME = "environ"
+AST_LINE_NUMBER_ATTRIBUTE = "lineno"
+PYTHON_SUFFIX = ".py"
+PYTHON_GLOB = "*.py"
+UTF8_ENCODING = "utf-8"
+EMPTY_SOURCE_LINE = ""
+NEWLINE = "\n"
+
 
 class RuntimePathBypass(NamedTuple):
     """Structured runtime path bypass diagnostic before rendering."""
@@ -90,6 +109,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     # Source pattern guardrails (table-driven)
     _check_source_patterns(repo_root, selected_paths)
     _check_runtime_path_bypasses(repo_root, selected_paths)
+    _check_direct_environment_reads(repo_root, selected_paths)
 
     # Loose-dict typing guardrail
     _warn_for_loose_dicts(repo_root, selected_paths)
@@ -362,6 +382,150 @@ def _collect_runtime_path_bypasses(repo_root: Path, selected_paths: set[str] | N
                 line = lines[lineno - 1].strip() if 0 < lineno <= len(lines) else ""
                 matches.append(RuntimePathBypass(rel_path=rel, line_number=lineno, source_line=line))
     return matches
+
+
+def _check_direct_environment_reads(repo_root: Path, selected_paths: set[str] | None = None) -> None:
+    """Reject unclassified runtime reads from the process environment."""
+    matches = _collect_direct_environment_reads(repo_root, selected_paths)
+    if matches:
+        formatted = NEWLINE.join(
+            DIRECT_ENV_READ_LINE_TEMPLATE.format(
+                rel_path=match.rel_path,
+                line_number=match.line_number,
+                source_line=match.source_line,
+            )
+            for match in matches
+        )
+        _fail(
+            DIRECT_ENV_READ_FAILURE_TEMPLATE.format(
+                rule=DIRECT_ENV_READ_RULE,
+                message=DIRECT_ENV_READ_MESSAGE,
+                newline=NEWLINE,
+                formatted=formatted,
+            )
+        )
+
+
+def _collect_direct_environment_reads(
+    repo_root: Path,
+    selected_paths: set[str] | None = None,
+) -> list[RuntimePathBypass]:
+    """Collect unclassified process-environment reads from runtime Python."""
+    matches: list[RuntimePathBypass] = []
+    candidates: Iterable[Path]
+    if selected_paths is None:
+        candidates = (repo_root / DIRECT_ENV_READ_SCAN_PREFIX).rglob(PYTHON_GLOB)
+    else:
+        candidates = _iter_selected_files(
+            repo_root,
+            selected_paths,
+            prefixes=(DIRECT_ENV_READ_SCAN_PREFIX,),
+            suffixes=(PYTHON_SUFFIX,),
+        )
+
+    for path in candidates:
+        if not path.is_file():
+            continue
+        rel = path.relative_to(repo_root).as_posix()
+        if rel.startswith(DIRECT_ENV_READ_CONFIG_PREFIX) or rel in {
+            DIRECT_ENV_READ_RUNTIME_CONFIG_PATH,
+            DIRECT_ENV_READ_GUARDRAIL_PATH,
+        }:
+            continue
+        try:
+            source = path.read_text(encoding=UTF8_ENCODING)
+            tree = ast.parse(source, filename=rel)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        lines = source.splitlines()
+        os_names, getenv_names, environ_names = _collect_direct_environment_imports(tree)
+        line_numbers = _collect_direct_environment_read_lines(tree, os_names, getenv_names, environ_names)
+        for lineno in sorted(line_numbers):
+            if _line_has_direct_environment_read_marker(lines, lineno):
+                continue
+            source_line = lines[lineno - 1].strip() if 0 < lineno <= len(lines) else EMPTY_SOURCE_LINE
+            matches.append(RuntimePathBypass(rel_path=rel, line_number=lineno, source_line=source_line))
+    return matches
+
+
+def _collect_direct_environment_imports(tree: ast.Module) -> tuple[set[str], set[str], set[str]]:
+    """Resolve supported os module and direct-member import names."""
+    os_names: set[str] = set()
+    getenv_names: set[str] = set()
+    environ_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == OS_MODULE_NAME:
+                    os_names.add(alias.asname or OS_MODULE_NAME)
+        elif isinstance(node, ast.ImportFrom) and node.module == OS_MODULE_NAME and node.level == 0:
+            for alias in node.names:
+                imported_name = alias.name
+                resolved_name = alias.asname or imported_name
+                if imported_name == GETENV_MEMBER_NAME:
+                    getenv_names.add(resolved_name)
+                elif imported_name == ENVIRON_MEMBER_NAME:
+                    environ_names.add(resolved_name)
+    return os_names, getenv_names, environ_names
+
+
+def _collect_direct_environment_read_lines(
+    tree: ast.Module,
+    os_names: set[str],
+    getenv_names: set[str],
+    environ_names: set[str],
+) -> set[int]:
+    """Return source lines containing resolved getenv or environ access."""
+    line_numbers: set[int] = set()
+    for node in ast.walk(tree):
+        if _is_os_getenv_call(node, os_names) or _is_direct_getenv_call(node, getenv_names):
+            lineno = getattr(node, AST_LINE_NUMBER_ATTRIBUTE, None)
+            if isinstance(lineno, int):
+                line_numbers.add(lineno)
+        elif _is_os_environ_access(node, os_names) or _is_direct_environ_access(node, environ_names):
+            lineno = getattr(node, AST_LINE_NUMBER_ATTRIBUTE, None)
+            if isinstance(lineno, int):
+                line_numbers.add(lineno)
+    return line_numbers
+
+
+def _is_os_getenv_call(node: ast.AST, os_names: set[str]) -> bool:
+    """Return True when a resolved os module invokes getenv."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in os_names
+        and node.func.attr == GETENV_MEMBER_NAME
+    )
+
+
+def _is_direct_getenv_call(node: ast.AST, getenv_names: set[str]) -> bool:
+    """Return True when a direct getenv import is invoked."""
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in getenv_names
+
+
+def _is_os_environ_access(node: ast.AST, os_names: set[str]) -> bool:
+    """Return True when a resolved os module accesses environ."""
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in os_names
+        and node.attr == ENVIRON_MEMBER_NAME
+    )
+
+
+def _is_direct_environ_access(node: ast.AST, environ_names: set[str]) -> bool:
+    """Return True when a direct environ import is read after import binding."""
+    return isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in environ_names
+
+
+def _line_has_direct_environment_read_marker(lines: list[str], lineno: int) -> bool:
+    """Return True when the current or preceding line has a reasoned marker."""
+    current = lines[lineno - 1]
+    if DIRECT_ENV_READ_MARKER_PATTERN.search(current):
+        return True
+    return lineno > 1 and bool(DIRECT_ENV_READ_MARKER_PATTERN.search(lines[lineno - 2]))
 
 
 def _is_teleclaude_home_bypass(node: ast.AST) -> bool:

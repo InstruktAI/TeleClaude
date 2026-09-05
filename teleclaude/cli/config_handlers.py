@@ -586,7 +586,7 @@ def check_env_vars() -> list[EnvVarStatus]:
     results: list[EnvVarStatus] = []
     for vars_list in all_vars.values():
         for info in vars_list:
-            results.append(EnvVarStatus(info=info, is_set=bool(os.environ.get(info.name))))
+            results.append(EnvVarStatus(info=info, is_set=bool(os.environ.get(info.name))))  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
     return results
 
 
@@ -652,7 +652,7 @@ def set_env_var(name: str, value: str, env_path: Path | None = None) -> Path:
             except OSError:
                 pass
 
-    os.environ[name] = value
+    os.environ[name] = value  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
     logger.info("Updated env var %s in %s", name, target)
     return target
 

@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 AGENT_START_STABILIZE_QUIET_S = 3.0  # How long output must be quiet to be "stable"
-AGENT_PROMPT_READY_TIMEOUT_S = float(os.getenv("AGENT_PROMPT_READY_TIMEOUT_S", "60"))
+AGENT_PROMPT_READY_TIMEOUT_S = float(os.getenv("AGENT_PROMPT_READY_TIMEOUT_S", "60"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 _AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT = "agent_startup_delivery_opportunity"
 _AGENT_STARTUP_DELIVERY_DECIDED_EVENT = "agent_startup_delivery_decided"
 

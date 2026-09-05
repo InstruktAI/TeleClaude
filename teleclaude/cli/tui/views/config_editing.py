@@ -238,6 +238,7 @@ class ConfigContentEditingMixin:
             self._status_message = f"Editing {field_or_status.name}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
         else:
             self._editing_var_name = field_or_status.info.name  # type: ignore[attr-defined]
+            # guard: direct-env-read - allowed: environment-file management
             self._edit_buffer = os.environ.get(field_or_status.info.name, "")  # type: ignore[attr-defined]
             self._status_message = f"Editing {field_or_status.info.name}. Enter saves, Esc cancels."  # type: ignore[attr-defined]
         self._status_is_error = False  # type: ignore[attr-defined]
@@ -656,7 +657,7 @@ class ConfigContentEditingMixin:
             return True
         if step.subtab == Subtab.INFRA:
             # Redis is mandatory infrastructure; the step is not satisfied until it is set.
-            return bool(os.environ.get("REDIS_URL"))
+            return bool(os.environ.get("REDIS_URL"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-credentials-via-config
         if step.subtab == Subtab.PEOPLE:
             # People step is complete with at least one admin-role person.
             return any(p.role == "admin" for p in self._people_data)  # type: ignore[attr-defined]

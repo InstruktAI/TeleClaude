@@ -688,7 +688,7 @@ REDIS_REFRESH_COOLDOWN_SECONDS = 30  # Minimum time between remote refreshes per
 
 # Directories mounted into restricted (sandboxed) agent profiles.
 # Add paths here to make them accessible to all agents in restricted mode.
-_LOG_STATE_ROOT = f"{os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')}/instrukt-ai"
+_LOG_STATE_ROOT = f"{os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')}/instrukt-ai"  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
 RESTRICTED_MOUNT_DIRS: tuple[str, ...] = (
     "~/.teleclaude/docs",
     _LOG_STATE_ROOT,

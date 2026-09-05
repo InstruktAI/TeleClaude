@@ -100,14 +100,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 API_TCP_HOST = "127.0.0.1"
-API_TCP_PORT = int(os.getenv("API_TCP_PORT", "8420"))
+API_TCP_PORT = int(os.getenv("API_TCP_PORT", "8420"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 API_TIMEOUT_KEEP_ALIVE_S = 5
 API_STOP_TIMEOUT_S = 5.0
-API_WATCH_INTERVAL_S = float(os.getenv("API_WATCH_INTERVAL_S", "5"))
-API_WATCH_LAG_THRESHOLD_MS = float(os.getenv("API_WATCH_LAG_THRESHOLD_MS", "250"))
-API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S", "1"))
-API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))
-API_MCP_REAPER_INTERVAL_S = float(os.getenv("API_MCP_REAPER_INTERVAL_S", "30"))
+API_WATCH_INTERVAL_S = float(os.getenv("API_WATCH_INTERVAL_S", "5"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+API_WATCH_LAG_THRESHOLD_MS = float(os.getenv("API_WATCH_LAG_THRESHOLD_MS", "250"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+API_WATCH_INFLIGHT_THRESHOLD_S = float(os.getenv("API_WATCH_INFLIGHT_THRESHOLD_S", "1"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+API_WATCH_DUMP_COOLDOWN_S = float(os.getenv("API_WATCH_DUMP_COOLDOWN_S", "30"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
+API_MCP_REAPER_INTERVAL_S = float(os.getenv("API_MCP_REAPER_INTERVAL_S", "30"))  # fmt: skip  # guard: direct-env-read - temporary migration: config-tunables-via-config
 
 ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
