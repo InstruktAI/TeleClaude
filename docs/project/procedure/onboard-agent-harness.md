@@ -286,11 +286,6 @@ stale contract.
 11. Confirm agent-facing CLI help and validation output renders the canonical
     vocabulary rather than maintaining prose lists.
     <!-- /planned-change:agent-vocabulary-single-registry -->
-    <!-- planned-change:adapters-input-response-only -->
-12. `teleclaude/adapters/telegram/command_handlers.py` — the per-agent command,
-    if the harness should be startable that way.
-    <!-- change:adapters-input-response-only -->
-    <!-- /planned-change:adapters-input-response-only -->
 
 ### 8. Artifacts and distribution
 
