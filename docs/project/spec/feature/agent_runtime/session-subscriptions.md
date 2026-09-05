@@ -16,11 +16,7 @@ visibility: public
 
 The listener mechanism by which one session (the **caller**) registers passive interest in another session (the **target**) and receives a notification when the target's turn finishes. Listeners are durable records in the agent_runtime store, deduped by `(caller_session_id, target_session_id)`, and delivered to the caller's host pane via the shared host-pane delivery path. They are the asymmetric, passive channel — the caller wants to know "tell me when the target is done"; the target neither subscribes back nor sees who is listening.
 
-<!-- planned-change:session-distress-ingestion -->
-This is distinct from — and intentionally separated from — the bidirectional **direct conversation link** mechanism. A direct link is a symmetric, peered conversation channel between two sessions; a listener is a one-way notification subscription. The unsubscribe surface (`telec sessions unsubscribe`) is the umbrella verb that severs BOTH for the caller against a target, but the two state planes are independent. While an active direct link exists between caller and target, listener notifications for that pair are suppressed at delivery time — the active conversation channel supersedes passive notification for the duration of the link, and the listener row is preserved for resumption after the link is severed. The direct-link mechanism gets its own spec.
-<!-- change:session-distress-ingestion -->
 This is distinct from — and intentionally separated from — the bidirectional **direct conversation link** mechanism. A direct link is a symmetric, peered conversation channel between two sessions; a listener is a one-way notification subscription. The unsubscribe surface (`telec sessions unsubscribe`) is the umbrella verb that severs BOTH for the caller against a target, but the two state planes are independent. While an active direct link exists between caller and target, turn-end notifications for that pair are suppressed at delivery time — the active conversation channel supersedes passive notification for the duration of the link, and the listener row is preserved for resumption after the link is severed. Distress notifications are not suppressed. The direct-link mechanism gets its own spec.
-<!-- /planned-change:session-distress-ingestion -->
 
 ## Canonical fields
 
@@ -58,18 +54,10 @@ Given a target session T has registered listeners
 When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
 Then a system message "Notification — Session T [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
 And every active listener for T is iterated and delivered (subject to direct-link suppression below)
-<!-- planned-change:session-distress-ingestion -->
-And per-target notification dedup: a notification-flag record gates duplicate agent-stop notifications within the same turn; it is cleared by the next accepted native user entry that the runtime normalizer classifies as a real turn, including prompt input and complete registered platform or identity envelopes, but not by declared runtime side-channel artifacts
-<!-- change:session-distress-ingestion -->
 And per-turn notification dedup is scoped by (target, notification kind): a per-kind gate record admits at most one notification of each kind within the same turn, and turn-end and turn-failure share one terminal-outcome slot in it; the whole gate is cleared by the next accepted native user entry that the runtime normalizer classifies as a real turn, including prompt input and complete registered platform or identity envelopes, but not by declared runtime side-channel artifacts
-<!-- /planned-change:session-distress-ingestion -->
 
 
-<!-- planned-change:session-distress-ingestion -->
 The fan-out emits exactly the notification kinds this spec's use cases enumerate
-<!-- change:session-distress-ingestion -->
-The fan-out emits exactly the notification kinds this spec's use cases enumerate
-<!-- /planned-change:session-distress-ingestion -->
 ```
 
 #### UC-SS1: Re-poke clears the per-turn dedup flag
@@ -96,31 +84,15 @@ And T's per-target notification dedup flag remains set
 And no duplicate stop notification is delivered for the same turn
 ```
 
-<!-- planned-change:session-distress-ingestion -->
-#### Notification delivery — direct-link suppression
-<!-- change:session-distress-ingestion -->
 #### UC-SS11: A caller in a live conversation with its target is not also sent that target's turn-end notice
-<!-- /planned-change:session-distress-ingestion -->
 
 ```
-<!-- planned-change:session-distress-ingestion -->
-Given a listener L for caller C on target T is about to be notified
-When the notification fan-out iterates and reaches L
-Then the active-link check for (C, T, mode="direct_link") runs
-And if an active direct link exists between C and T, delivery is SKIPPED for L (listener record preserved)
-And otherwise the listener-message delivery is invoked against C's host pane
-And on successful host-pane delivery, the success counter is incremented and an info log is emitted
-And on delivery failure, a warning is logged but no retry is attempted
-And if the listener is one-shot, the record is removed after the delivery attempt (success or failure)
-<!-- change:session-distress-ingestion -->
 Given a subscribed agent session is in a live conversation with the target it subscribed to
 When that target finishes a turn
 Then the subscribing session is not sent a separate turn-end notification for it
 And its subscription survives, so it is notified again once the conversation ends
-<!-- /planned-change:session-distress-ingestion -->
 ```
 
-<!-- planned:session-distress-ingestion -->
 #### UC-SS13: A subscribed agent session with no live conversation is told its target finished
 
 ```gherkin
@@ -129,9 +101,7 @@ When that target finishes a turn
 Then the subscribing session is notified that the turn finished
 And a subscription registered for a single reply is spent by that notification, whether or not it arrived
 ```
-<!-- /planned:session-distress-ingestion -->
 
-<!-- planned:session-distress-ingestion -->
 #### UC-SS12: Distress reaches the agent sessions persistently watching a target, and only counts one that receives it
 
 ```gherkin
@@ -141,7 +111,6 @@ Then that session is a member of the distress audience for the event
 And an agent session subscribed only for a single reply is not a member, and its subscription is left unspent
 And a member counts as having been reached only when the distress notification is accepted by it
 ```
-<!-- /planned:session-distress-ingestion -->
 
 #### Per-pair serialization
 
@@ -212,7 +181,6 @@ Then no cross-machine forward is attempted
 And the omission is recorded as a diagnostic naming the session and its initiator, rather than passing silently
 ```
 
-<!-- planned:session-distress-ingestion -->
 #### UC-SS4: A subscribed caller hears that its session is stuck or broken
 
 ```gherkin
@@ -223,9 +191,7 @@ Then the platform ingests the distress signal as a typed event naming its kind
 And the subscribed caller receives a notification naming the target session and the distress kind
 And the caller is not left to infer distress from silence or transcript polling
 ```
-<!-- /planned:session-distress-ingestion -->
 
-<!-- planned:session-distress-ingestion -->
 #### UC-SS5: Distress kinds vary by agent runtime without changing the caller contract
 
 ```gherkin
@@ -235,9 +201,7 @@ Then every ingested state maps to the platform's typed distress vocabulary
 And a runtime exposing no signal for a distress kind simply never produces that kind
 And the subscribed caller consumes one vocabulary regardless of the target's runtime
 ```
-<!-- /planned:session-distress-ingestion -->
 
-<!-- planned:session-distress-ingestion -->
 #### UC-SS6: A turn that died of a failure is not reported to the caller as a completion
 
 ```gherkin
@@ -246,9 +210,7 @@ When the target session's turn is terminated by a runtime or provider failure
 Then the notification the caller receives for that turn names the failure
 And the caller does not receive a clean turn-end notification as the account of that turn
 ```
-<!-- /planned:session-distress-ingestion -->
 
-<!-- planned:session-distress-ingestion -->
 #### UC-SS7: Distress reaches a caller subscribed across a computer boundary
 
 ```gherkin
@@ -257,9 +219,7 @@ When the target session enters a distress state
 Then the caller receives the same distress notification it would receive for a target on its own computer
 And the notification names the computer the target runs on
 ```
-<!-- /planned:session-distress-ingestion -->
 
-<!-- planned:session-distress-ingestion -->
 #### UC-SS8: An active direct conversation link does not withhold distress
 
 ```gherkin
@@ -269,7 +229,6 @@ When the target session enters a distress state
 Then the caller still receives the distress notification for that target
 And the suppression of turn-end notifications for the pair is unchanged
 ```
-<!-- /planned:session-distress-ingestion -->
 
 #### UC-SS9: A notification names a computer only when the target is elsewhere
 
@@ -282,7 +241,6 @@ Then the notification names that computer and every suggested command carries th
 ```
 
 
-<!-- planned:session-distress-ingestion -->
 #### UC-SS10: A session no distress-recipient is watching reports to its human-facing channel
 
 ```gherkin
@@ -297,33 +255,20 @@ When the target session enters a distress state
 Then the distress notification is delivered to its persistent subscribers only
 And the session's human-facing channel receives nothing from this mechanism
 ```
-<!-- /planned:session-distress-ingestion -->
 
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
 - **workflow** — orchestrator agents that dispatch worker sessions are the dominant producer of listener records: every AI-to-AI session start auto-registers a persistent (non-one-shot) listener so the orchestrator hears its workers' stop events. The orchestrator/worker coordination contract relies on this.
 - **integration** — external messaging adapters are NOT a notification destination in the listener system. Notifications deliver exclusively via the listener-message path, which injects into the caller's host pane. Stop fan-out toward external adapters (Telegram, Discord, frontend) flows through separate agent-coordinator / adapter-client paths, not through listener records. The integration boundary is reached via the direct-link mechanism (out of scope) and the broader event-emission paths, not via listener notification.
-<!-- planned-change:session-distress-ingestion -->
-- **Direct conversation link (separate spec)** — direct-link creation, member roles, per-link delivery cursors, severing semantics — the bidirectional peered-conversation channel between two (or more) sessions. While an active direct link covers a (caller, target) pair, listener notifications for that pair are suppressed at delivery time. The unsubscribe verb tears down both planes for the caller against the target. The direct-link contract is documented in its own snippet and intentionally NOT covered here.
-<!-- change:session-distress-ingestion -->
 - **Direct conversation link (separate spec)** — direct-link creation, member roles, per-link delivery cursors, severing semantics — the bidirectional peered-conversation channel between two (or more) sessions. While an active direct link covers a (caller, target) pair, turn-end notifications for that pair are suppressed at delivery time and distress notifications are not. The unsubscribe verb tears down both planes for the caller against the target. The direct-link contract is documented in its own snippet and intentionally NOT covered here.
-<!-- /planned-change:session-distress-ingestion -->
 
 ## Known caveats
 
 - **Dedup is per (target, caller) pair, not per target.** Multiple callers can listen to the same target; one caller can only listen to one target once. A second register call for the same pair is a no-op reporting "not new".
-<!-- planned-change:session-distress-ingestion -->
-- **Notification dedup within a turn relies on a per-target flag.** The notify-stop path (via the agent-coordinator fan-out) consults a notification-flag record to suppress duplicate agent-stop notifications within the same turn. The next accepted native user entry clears the flag only when the runtime normalizer classifies it as a real turn; declared runtime side-channel artifacts do not. Without this gate, listeners would receive multiple "finished its turn" messages per actual turn.
-<!-- change:session-distress-ingestion -->
 - **Notification dedup within a turn is scoped by (target, kind).** The fan-out consults a per-turn gate record that admits at most one notification of each kind, with turn-end and turn-failure sharing one terminal-outcome slot that the first terminal signal claims. The next accepted native user entry clears the whole gate only when the runtime normalizer classifies it as a real turn; declared runtime side-channel artifacts do not. Without this gate, listeners would receive multiple "finished its turn" messages per actual turn; without the kind scoping, one kind would swallow another's notice for the same turn.
-<!-- /planned-change:session-distress-ingestion -->
 - **One-shot listeners self-remove after delivery, persistent listeners do not.** AI-to-AI message sends register one-shot (single response expected). AI-to-AI session starts register persistent (orchestrator keeps hearing every stop until the worker terminates or the orchestrator unsubscribes/ends).
-<!-- planned-change:session-distress-ingestion -->
-- **Direct-link suppression is delivery-time only — the listener record is preserved.** During an active direct link, listener notifications for the pair are silently skipped. The record stays so that notification resumes the next time the fan-out runs after the link has been severed. This intentionally keeps the two planes independent.
-<!-- change:session-distress-ingestion -->
 - **Direct-link suppression is delivery-time only, applies to turn-end only, and the listener record is preserved.** During an active direct link, turn-end notifications for the pair are silently skipped; distress notifications are delivered regardless, because the live channel carries no output for a stuck or dead target. The record stays so that turn-end notification resumes the next time the fan-out runs after the link has been severed. This intentionally keeps the two planes independent.
-<!-- /planned-change:session-distress-ingestion -->
 - **Delivery has no retry.** A failed listener delivery (the caller's host pane is gone, key injection errors out) is logged as a warning and dropped. The one-shot record is still removed on failure. The persistent record remains and will be retried only on the NEXT notification event.
 - **Stale-target sweep is informational, not corrective.** It surfaces targets whose listeners have been waiting too long and resets timestamps to prevent re-surfacing. The sweep itself does not unregister listeners or terminate stuck targets — callers decide what to do with the list.
 - **Storage is durable and survives service restart.** Listener records are durable across service restarts. A restart does not orphan listeners; they remain and the next stop emits as expected.

@@ -16,14 +16,12 @@ Persist caller-target subscriptions for passive turn-completion notification, an
 
 This design owns the listener axis. It does not own the direct-link axis (see `conversation-delivery`) and is not the place to learn the cross-axis contract — see `session-subscriptions` for that.
 
-<!-- planned:session-distress-ingestion -->
 The fan-out carries more than one notification kind. Turn-end says the target
 finished; the distress kinds say it is stuck or broken. They share the listener
 registry, the delivery path, and the message shape, and differ in three
 decisions the fan-out makes per kind: whether an active direct link suppresses
 delivery, which listener rows form the audience, and what happens when that
 audience is empty.
-<!-- /planned:session-distress-ingestion -->
 
 ## Inputs/Outputs
 
@@ -33,12 +31,10 @@ audience is empty.
   - persistent (`one_shot=false`) at orchestrator dispatch time (`create_session` with `initiator_session_id`)
   - one-shot (`one_shot=true`) at non-direct `send_message` time, so the sender hears back when the target's turn completes
 - Session stop events from `AgentCoordinator`
-<!-- planned:session-distress-ingestion -->
 - Session distress events from `AgentCoordinator` — `agent_blocked` and
   `agent_turn_failed`, normalized per `hook-normalized-events`
 - Forwarded distress from another computer, naming the target, its computer,
   the distress kind, and the initiator session to deliver to
-<!-- /planned:session-distress-ingestion -->
 - Unsubscribe requests via `POST /sessions/{id}/unsubscribe`
 - Cleanup triggers when caller sessions end
 
@@ -47,10 +43,8 @@ audience is empty.
 - Rows in `session_listeners` (SQLite table)
 - Injected notification messages to caller tmux sessions via `deliver_listener_message`
 - Boolean confirmations on register / unregister
-<!-- planned:session-distress-ingestion -->
 - A distress message delivered to the target session's own human-facing
   channel when no persistent listener is watching it
-<!-- /planned:session-distress-ingestion -->
 
 ## Invariants
 
@@ -60,14 +54,9 @@ audience is empty.
 - **Deduplication by `(caller, target)`.** At most one row per pair. Repeat registrations are no-ops; the existing `one_shot` value is preserved.
 - **Multiple callers allowed per target.** Many callers can listen to the same target.
 - **Caller cleanup cascades.** All listeners registered by a caller are removed when the caller session ends.
-<!-- planned-change:session-distress-ingestion -->
-- **Link-aware suppression.** Notification delivery to a caller is skipped while an active direct link exists between that caller and the target. The listener row is never mutated by link create / close — only delivery is gated. Canonical rule lives in `session-subscriptions`.
-<!-- change:session-distress-ingestion -->
 - **Link-aware suppression is per notification kind.** Turn-end delivery to a caller is skipped while an active direct link exists between that caller and the target; distress delivery is not. The listener row is never mutated by link create / close — only delivery is gated. Canonical rule lives in `session-subscriptions`.
-<!-- /planned-change:session-distress-ingestion -->
 - **No destructive coupling.** Creating, reusing, or closing a direct link must not call `register_listener` / `unregister_listener`. Earlier code paths that did so are bugs; the contract forbids them.
 - **Cross-restart correctness.** Because rows are durable, restart preserves both persistent and one-shot listeners. A one-shot listener registered before restart will still fire on the next event after restart.
-<!-- planned:session-distress-ingestion -->
 - **The per-turn notification gate is scoped by `(target, kind)`.** Each
   notification kind is emitted at most once per target turn and is cleared by
   the same next-real-user-entry rule. A distress notification never consumes
@@ -121,7 +110,6 @@ audience is empty.
   daemon holds no listener rows for a target it did not create and makes no
   audience or fallback decision of its own; it reports whether it reached the
   named initiator, and the origin daemon owns the fallback.
-<!-- /planned:session-distress-ingestion -->
 
 ## Primary flows
 
@@ -209,11 +197,6 @@ sequenceDiagram
 
 ### 5. Notification Message Templates
 
-<!-- planned-change:session-distress-ingestion -->
-| Event Type | Message Format                                                                            |
-| ---------- | ----------------------------------------------------------------------------------------- |
-| Stop       | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id}` |
-<!-- change:session-distress-ingestion -->
 | Event Type | Message Format |
 | ---------- | -------------- |
 | Stop | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id}` |
@@ -224,13 +207,11 @@ Every kind names the target session and states which of the three it is, so a
 caller can decide its next move without first tailing the target. The computer
 clause and the command's computer selector appear together and only when the
 target runs elsewhere, per the locality rule the stop template already follows.
-<!-- /planned-change:session-distress-ingestion -->
 
 ### 6. Stale Listener Inspection
 
 The listener module exposes `get_stale_targets(max_age_minutes=10)` as a helper for inspection and diagnostics. No daemon-side automatic stale-listener cleanup loop is wired to it today.
 
-<!-- planned:session-distress-ingestion -->
 ### 7. Distress Notification Fan-out
 
 ```mermaid
@@ -269,26 +250,16 @@ this whole decision and then forwards the resulting notification, addressed to
 that initiator, over the same request channel the turn-end forward uses. The
 forwarded message carries the distress kind so the receiving daemon renders the
 matching template rather than a turn-end one.
-<!-- /planned:session-distress-ingestion -->
 
 ## Failure modes
 
-<!-- planned-change:session-distress-ingestion -->
-- **Caller session crash with no clean shutdown.** Cleanup hook may not fire. Listener rows remain until a later caller cleanup pass or until the operator manually unsubscribes. Rows are inert — at worst they suppress on a target that no one is reading.
-<!-- change:session-distress-ingestion -->
 - **Caller session crash with no clean shutdown.** Cleanup hook may not fire. Listener rows remain until a later caller cleanup pass or until the operator manually unsubscribes. Rows are inert: for turn-end they at worst deliver toward a target nobody is reading, and for distress the refused delivery leaves the row uncounted so the human-facing fallback still fires.
-<!-- /planned-change:session-distress-ingestion -->
 - **Target session never stops.** Listener row remains until caller cleanup, unsubscribe, or target end.
-<!-- planned-change:session-distress-ingestion -->
-- **Notification injection fails (tmux gone).** Logged. A `one_shot=true` row is still removed (one-shot semantics preserved). A persistent row is retained; it becomes silent until tmux is restored or the caller is cleaned up.
-<!-- change:session-distress-ingestion -->
 - **Notification injection fails (tmux gone).** Logged. On a turn-end notification a `one_shot=true` row is still removed (one-shot semantics preserved), and a persistent row is retained and stays silent until tmux is restored or the caller is cleaned up. On a distress notification the refused delivery means that member was not reached, so it does not hold off the human-facing fallback; no row is removed either way.
-<!-- /planned-change:session-distress-ingestion -->
 - **Duplicate registration.** No-op. Returns False to caller; no error.
 - **Concurrent stop events for same target.** Listeners load + deliver under per-row locking; double-fire is prevented by the one-shot DELETE being atomic with the SELECT.
 - **Suppression check race.** A link severed mid-notify still suppresses for the current event (suppression evaluated at notify time); the next event delivers normally. Cost is at most one missed notification at the exact moment of sever, acceptable because the caller was actively conversing through the link until that moment.
 - **Daemon restart with pending one-shot rows.** Rows are durable; the next event after restart fires them.
-<!-- planned:session-distress-ingestion -->
 - **A provider exposes no native signal for a distress kind.** That kind is
   never produced for targets on that runtime, and no adjacent event is
   substituted for it. Those targets stay exactly as silent in that state as
@@ -308,6 +279,5 @@ matching template rather than a turn-end one.
 - **Distress arrives for a target whose caller is mid-turn.** Delivery uses the
   same control-payload handoff as turn-end, so it lands at the caller's next
   work boundary rather than interrupting a running turn.
-<!-- /planned:session-distress-ingestion -->
 
 Direct conversation recovery is owned elsewhere. Restart-safe peer replay is handled by the conversation delivery system, not by this registry.
