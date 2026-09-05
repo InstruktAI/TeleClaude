@@ -80,7 +80,7 @@ And consumers continue to use the value captured through machine-config loading
 
 ### Cross-context references
 
-- `teleclaude/spec/feature/config/yaml-env-var-expansion` owns the generic
+- `project/spec/feature/config/yaml-env-var-expansion` owns the generic
   placeholder-substitution behavior.
 - The `integration` bounded context consumes the typed WhatsApp fields for
   outbound messaging, webhook verification, and invite-link construction.
