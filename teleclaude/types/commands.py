@@ -119,6 +119,7 @@ class CreateSessionCommand(InternalCommand):
     launch_intent: Optional["SessionLaunchIntent"] = None
     system_role: str | None = None
     job: str | None = None
+    command: str | None = None
     working_slug: str | None = None
     entry_point: SessionEntryPoint | None = None
     producer_agent: str | None = None

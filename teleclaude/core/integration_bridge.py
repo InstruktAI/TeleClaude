@@ -13,7 +13,7 @@ from typing import TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import ROLE_INTEGRATOR, JobRole
+from teleclaude.constants import ROLE_INTEGRATOR, JobRole, SlashCommand
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.integration.checkpoint import ParkedCandidate
@@ -337,6 +337,7 @@ async def spawn_integrator_session(
     cmd = CreateSessionCommand(
         project_path=project_path,
         origin=InputOrigin.TERMINAL.value,
+        command=SlashCommand.NEXT_INTEGRATE.value,
         initial_input="/next-integrate",
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,

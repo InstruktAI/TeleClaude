@@ -552,9 +552,10 @@ class CheckpointModel:
 
 CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
 # A post-commit review is satisfied once the commit(s) are dispatched to a
-# reviewer — either a fresh run of /next-review-commits or a remediation sent to
-# an already-open reviewer ("review commits <sha>" via telec sessions send).
-CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = ["/next-review-commits", "review commits"]
+# reviewer — either a fresh run of next-review-commits (with an optional leading
+# slash) or a remediation sent to an already-open reviewer ("review commits <sha>"
+# via telec sessions send).
+CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = ["next-review-commits", "review commits"]
 
 # Universal base actions (the verbs). TeleClaude owns this registry; every
 # onboarded project inherits it and references these ids in its own bindings or

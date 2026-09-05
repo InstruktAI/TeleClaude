@@ -20,14 +20,12 @@ from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.schema import CompanyConfig, ConfigKind
 from teleclaude.git import Repo
 from teleclaude.paths import COMPANIES_ROOT, ConfigFileName
-from teleclaude.project_setup.onboard_flow import _dispatch_session
+from teleclaude.project_setup.onboard_flow import OnboardingCommand, _dispatch_session
 from teleclaude.slug import normalize_slug, validate_slug
 
 # The company doc taxonomies scaffolded under docs/ (the company-scaffolding spec
 # omits adr — companies carry no decision record tree).
 COMPANY_TAXONOMIES = ("principle", "concept", "policy", "procedure", "design", "spec")
-
-_ANALYZE_COMMAND = "/companies-analyze"
 
 
 def _meta_path(company_dir: Path) -> Path:
@@ -164,4 +162,4 @@ def run_company_onboard(name: str, slug: str | None = None) -> None:
     and validates. Operator monitors progress via ``telec sessions list``.
     """
     company_dir = scaffold_company(name, slug)
-    _dispatch_session(company_dir, _ANALYZE_COMMAND, "Company doc-snippet analysis")
+    _dispatch_session(company_dir, OnboardingCommand.COMPANY_ANALYZE, "Company doc-snippet analysis")

@@ -20,21 +20,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _title_projection_signatures: dict[str, tuple[tuple[str, str], ...]] = {}
+_COMMAND_TITLE_TEMPLATE = "/{command} {args}"
 
 
-def initial_session_title(initial_input: str | None) -> str:
-    """Return the birth title for a session from its initial input, if any.
-
-    A title is a single line. Launch input carries trailing blocks (the
-    dispatch brief appended under ``ADDITIONAL CONTEXT:``); only its command
-    line is the title.
-    """
-    if not initial_input:
-        return "Untitled"
-    normalized = initial_input.lstrip()
-    if normalized.startswith("/"):
-        return normalized.splitlines()[0].strip()
-    return "Untitled"
+def compose_command_session_title(command: str, args: str) -> str:
+    """Render a command session title from its stored command and arguments."""
+    return _COMMAND_TITLE_TEMPLATE.format(command=command, args=args).strip()
 
 
 def clear_title_projection_state(session_id: str) -> None:
@@ -50,9 +41,9 @@ async def generate_session_title_from_transcript(session: Session, adapter_clien
     pushed straight to the adapter via the routed update_channel_title call.
     No event broadcast, no projection: this is not a transcript projection.
     """
-    current_title = (session.title or "").strip()
-    if current_title.startswith("/"):
+    if session.command is not None:
         return session
+    current_title = (session.title or "").strip()
 
     transcript_path = session.native_log_file
     active_agent = session.active_agent

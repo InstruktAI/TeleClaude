@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
-from teleclaude.paths import COMMANDS_DIR
+from teleclaude.core.session_startup_message import prepare_startup_message
 
 if TYPE_CHECKING:
     from teleclaude.core.next_machine.git_ops import ArtifactDriftStatus
@@ -149,15 +149,15 @@ def format_blocker_resolution(
 
 
 def _command_text(value: object) -> str:
-    """Return the slash-command literal for enum or string inputs."""
+    """Return the bare canonical command name for enum or string inputs."""
     if hasattr(value, "value"):
         return str(value.value)  # pyright: ignore[reportAttributeAccessIssue]  # guarded by hasattr
     return str(value)
 
 
-def _format_slash_command(value: object) -> str:
-    """Return a slash-prefixed command literal."""
-    return f"/{_command_text(value).lstrip('/')}"
+def _format_canonical_command(value: object) -> str:
+    """Return a bare canonical command name."""
+    return _command_text(value).lstrip("/")
 
 
 def _format_pre_dispatch_block(pre_dispatch: str) -> str:
@@ -250,8 +250,7 @@ def format_tool_call(request: ToolCallRequest) -> str:
     no-op suppression) is emitted on every dispatch. The tailored post_block
     describes what to do when the worker idles. It is appended verbatim.
     """
-    raw_command = _command_text(request["command"]).lstrip("/")
-    formatted_command = _format_slash_command(raw_command)
+    formatted_command = _format_canonical_command(request["command"])
     args = str(request["args"])
     project = str(request["project"])
     subfolder = str(request["subfolder"])
@@ -332,19 +331,8 @@ Trust the process gates (pre-commit hooks, stamp clerical checks)."""
 
 
 def format_command_loader_message(command_name: str, slug: str) -> str:
-    """Format a Codex-style command loader for a dispatched prepare worker.
-
-    Produces the same instruction pattern used by ``_build_codex_loader_message``
-    in sessions_actions_routes so workers load the full command artifact
-    (with Required reads, role, and discipline) for their current phase.
-    """
-    prompt_path = COMMANDS_DIR / f"{command_name}.md"
-    return (
-        f"Read {prompt_path} and follow it exactly as the active instruction set "
-        f"for this session.\n\n"
-        f"Treat the following as provided inputs to that instruction set:\n"
-        f"{slug}"
-    )
+    """Compose a command loader for a dispatched prepare worker."""
+    return prepare_startup_message(f"/{command_name} {slug}")
 
 
 def _format_documented_procedure_loader_message(procedure_id: str, slug: str) -> str:

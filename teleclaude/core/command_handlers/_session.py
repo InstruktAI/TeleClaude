@@ -39,7 +39,7 @@ from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_startup_message import prepare_startup_message
-from teleclaude.core.session_title import initial_session_title
+from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.todos_db import get_todos_db
@@ -199,7 +199,7 @@ async def _resolve_launch_intent(
     intent.decision_basis_digest = basis_digest
     if intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE and intent.message is not None:
         raw_startup_message = intent.message
-        intent.message = prepare_startup_message(intent.message, selected_agent=decision.agent)
+        intent.message = prepare_startup_message(intent.message)
         startup_reason = (
             AgentDispatchReason.CODEX_LOADER
             if intent.message != raw_startup_message
@@ -399,7 +399,9 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             principal = owner_principal
             human_email = owner_principal.removeprefix("human:")
 
-    title = cmd.title or initial_session_title(cmd.initial_input)
+    command_line = next(iter((cmd.initial_input or "").splitlines()), "")
+    _, _, command_args = command_line.partition(" ")
+    title = cmd.title or (compose_command_session_title(cmd.command, command_args) if cmd.command is not None else "")
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.
@@ -411,6 +413,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         project_path=project_path,
         subdir=subfolder,
         session_id=session_id,
+        command=cmd.command,
         working_slug=working_slug,
         initiator_session_id=initiator_session_id,
         initiator_computer=cmd.initiator_computer,

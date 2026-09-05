@@ -457,6 +457,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             last_output_summary=_get_optional_str("last_output_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),
             last_projected_output_digest=_get_optional_str("last_projected_output_digest"),
+            command=_get_optional_str("command"),
             working_slug=_get_optional_str("working_slug"),
             human_email=_get_optional_str("human_email"),
             human_role=_get_optional_str("human_role"),

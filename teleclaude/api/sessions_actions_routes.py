@@ -35,7 +35,11 @@ from teleclaude.api.auth import (
     clearance_sessions_voice,
 )
 from teleclaude.api.run_session_job import normalize_job_run_request
-from teleclaude.api.run_session_refusals import RunSessionRefusal, resolve_run_session_agent
+from teleclaude.api.run_session_refusals import (
+    RunSessionRefusal,
+    normalize_run_session_command,
+    resolve_run_session_agent,
+)
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_remote import is_remote_target
@@ -361,7 +365,7 @@ def _prepare_run_session(
     entry_point: SessionEntryPoint,
 ) -> RunSessionPlan:
     """Normalize run-session inputs into a create-session plan."""
-    normalized_cmd = request.command.lstrip("/")
+    normalized_cmd = normalize_run_session_command(request.command)
     normalized_args = request.args.strip()
     try:
         slash_cmd = SlashCommand(normalized_cmd)
@@ -454,6 +458,7 @@ def _prepare_run_session(
         origin_metadata=origin_metadata,
         system_role=role_info[0] if role_info else None,
         job=job if is_job_command else role_info[1].value if role_info else None,
+        command=normalized_cmd,
         working_slug=working_slug,
         entry_point=entry_point,
     )
@@ -771,10 +776,6 @@ async def _run_session(
         decision_basis_digest=basis_digest,
     )
     try:
-        if not request.command.startswith("/"):
-            raise RunSessionRefusal(
-                status_code=400, detail="command must start with '/'", reason=AgentDispatchReason.COMMAND_INVALID
-            )
         if not request.project:
             raise RunSessionRefusal(
                 status_code=400, detail="project required", reason=AgentDispatchReason.PROJECT_REQUIRED
@@ -826,6 +827,7 @@ async def _run_session(
         computer=request.computer,
     )
     if isinstance(cmd, CreateSessionCommand):
+        cmd.command = plan.command
         cmd.working_slug = plan.working_slug
         cmd.entry_point = plan.entry_point
         cmd.request_id = request_id

@@ -795,13 +795,13 @@ def _print_commit_review_guidance(project_root: Path) -> None:
         review_dispatch = (
             "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
             "   gets its own reviewer (--mode fast for doc-hygiene, --mode med for code review):\n"
-            "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
+            "     telec sessions run --command next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
             + already_open
         )
     else:
         review_dispatch = (
             "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode med for code review):\n"
-            "     telec sessions run --command /next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
+            "     telec sessions run --command next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
         )
     print(
         "COMMIT GATE ACTIVE — CONTINUE NOW\n"

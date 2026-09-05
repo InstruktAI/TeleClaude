@@ -9,6 +9,7 @@ from teleclaude.core.models._adapter import WebOriginMetadata
 _SLUG_COMMANDS = {command.value for command in COMMAND_ROLE_MAP if command not in NON_SLUG_BOUND_COMMANDS}
 _SLUG_COMMANDS.add("analyze-todo-input")
 _WORKING_SLUG_COMMANDS = _SLUG_COMMANDS | {SlashCommand.NEXT_PREPARE.value}
+_COMMAND_PREFIX = "/"
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class RunSessionPlan:
     origin_metadata: WebOriginMetadata | None
     system_role: str | None
     job: str | None
+    command: str
     working_slug: str | None
     entry_point: SessionEntryPoint
 
@@ -30,11 +32,18 @@ def infer_working_slug(command: str, args: str) -> str | None:
     return args.partition(" ")[0].strip() or None
 
 
+def infer_command_from_message(message: str | None) -> str | None:
+    """Return the leading command token when a launch message carries one."""
+    if not message or not message.startswith(_COMMAND_PREFIX):
+        return None
+    return message.split()[0].removeprefix(_COMMAND_PREFIX)
+
+
 def infer_role_and_slug_from_message(message: str | None) -> tuple[str | None, str | None, str | None]:
-    if not message or not message.startswith("/"):
+    command = infer_command_from_message(message)
+    if command is None:
         return None, None, None
-    command, _, args = message.partition(" ")
-    command = command.lstrip("/")
+    _, _, args = message.partition(" ")
     slug = infer_working_slug(command, args.strip())
     try:
         role_info = COMMAND_ROLE_MAP.get(SlashCommand(command))

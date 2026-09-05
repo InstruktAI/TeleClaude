@@ -132,6 +132,7 @@ class DbBase:
             last_projected_output_digest=(
                 row.last_projected_output_digest if hasattr(row, "last_projected_output_digest") else None
             ),
+            command=row.command,
             working_slug=row.working_slug,
             human_email=row.human_email,
             human_role=row.human_role,
