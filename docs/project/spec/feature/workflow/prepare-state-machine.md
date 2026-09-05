@@ -344,6 +344,7 @@ And no reused prepare worker is exempt from caller-scoped prepared-cleanup
 ```
 <!-- /planned-change:terminal-child-session-cleanup -->
 
+<!-- planned-change:terminal-child-session-cleanup -->
 #### UC-WPS2: PREPARED cleanup is unchanged without unblocked children
 
 ```gherkin
@@ -352,6 +353,19 @@ And "parent" carries no in-flight build
 When the machine derives PREPARED
 Then it emits the normal prepared-cleanup (end all live parent sessions, including the orchestrator) with no auto-continue operation
 ```
+<!-- change:terminal-child-session-cleanup -->
+#### UC-WPS2: PREPARED cleanup is caller-scoped without unblocked children
+
+```gherkin
+Given "parent" reaches PREPARED but has no dependent children whose prepare gate it satisfies
+And "parent" carries no in-flight build
+When the machine derives PREPARED
+Then the terminal response closes every live direct child of the calling orchestrator through the caller-scoped bulk session-end operation
+And only after that operation succeeds does the response direct the orchestrator to end itself
+And it contains neither remembered child identifiers nor a manual child-listing loop
+And it emits no auto-continue operation
+```
+<!-- /planned-change:terminal-child-session-cleanup -->
 
 #### UC-WPS5: PREPARED emits a runner wake-up, not a child dispatch
 

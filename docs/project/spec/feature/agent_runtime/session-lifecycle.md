@@ -349,6 +349,7 @@ And the operation succeeds immediately when the caller has no live direct childr
 And otherwise succeeds only after no live direct child remains
 And a child that cannot be closed leaves the operation failed with the residual child identified
 And a caller that cannot be identified is refused before any session is affected
+And a targetless request with a computer override is refused before any session is affected
 ```
 <!-- /planned:terminal-child-session-cleanup -->
 
