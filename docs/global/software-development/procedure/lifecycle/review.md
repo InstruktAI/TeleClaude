@@ -161,16 +161,6 @@ A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
-<!-- planned-change:review-round-cap-all-loops -->
-When a loop reaches its applicable documented cap without closure, no further
-automatic review starts. The orchestrator classifies the cause — ambiguous
-contract, failed remediation, unstable target, or incomplete or noisy review —
-and owns the recovery direction under `general/policy/human-contract`.
-Failed remediation returns to the producer with adversarial-peer coverage;
-an unstable target returns to its producer; incomplete or noisy review goes
-to a different reviewer; an ambiguous contract goes to its decision owner.
-Human escalation follows the closed human lane, never the round count.
-<!-- change:review-round-cap-all-loops -->
 When a loop reaches its applicable documented cap without closure, no further
 automatic review starts. The orchestrator classifies the cause — ambiguous
 contract, failed remediation, unstable target, or incomplete or noisy review —
@@ -181,7 +171,6 @@ to a different reviewer; an ambiguous contract goes to its decision owner.
 Human escalation follows the closed human lane, never the round count.
 The halt classification is recorded to the coordinator log for evidence
 and recurrence, never as a substitute review verdict.
-<!-- /planned-change:review-round-cap-all-loops -->
 
 Before authorizing a bounded continuation, the orchestrator records the
 classification, the evidence or changed approach that makes another attempt

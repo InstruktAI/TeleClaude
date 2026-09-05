@@ -49,7 +49,6 @@ focused procedure and advances through the machine-owned transitions.
    findings artifact and a verdict to its review stamp; the active phase
    procedure reads them on the next state-machine advance.
 
-<!-- planned:review-round-cap-all-loops -->
    Each PRD, architecture, and plan review phase admits reviewer passes through
    `DEFAULT_MAX_REVIEW_ROUNDS`. The machine persists the count before returning each
    reviewer instruction, and neither target nor report rewrites reset it. At
@@ -58,7 +57,6 @@ focused procedure and advances through the machine-owned transitions.
    `software-development/procedure/lifecycle/review`. The orchestrator owns
    that classification and bounded recovery direction; escalation follows
    `general/policy/human-contract` rather than the review count.
-<!-- /planned:review-round-cap-all-loops -->
 
 4. **Human PRD approval belongs to the feature lane only.** A drafted feature
    PRD first passes `prd_review`; the human then judges product intent and
