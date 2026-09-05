@@ -31,9 +31,14 @@ reshape it.
 The scheduling contract is the `when` block alone (see
 `project/spec/feature/config/job-schedule-contract`); a declaration carries no
 legacy schedule or preferred-timing fields, no execution-class discriminator, and
-no agent-prompt override field. A declaration still in possession of a removed
-field surfaces through the standard unknown-key warning rather than driving any
-behavior.
+no agent-prompt override field.
+<!-- planned-change:config-schema-strictness -->
+A declaration still in possession of a removed field surfaces through the
+standard unknown-key warning rather than driving any behavior.
+<!-- change:config-schema-strictness -->
+A declaration still carrying a removed field fails at the project configuration
+load boundary before it can drive behavior.
+<!-- /planned-change:config-schema-strictness -->
 
 The effective job set the runner executes for a workspace is the project's local
 jobs plus every global job the project's overlay enables.
@@ -130,8 +135,13 @@ And it is in the project's effective job set without any global registration
 ```
 Given a job declaration still carrying a removed field (an execution-class discriminator, a legacy schedule or preferred-timing field, or an agent-prompt override)
 When the config is loaded
+<!-- planned-change:config-schema-strictness -->
 Then the removed field is treated as an unknown key and surfaced as a warning
 And the field drives no scheduling or execution decision
+<!-- change:config-schema-strictness -->
+Then configuration loading fails before the job enters the effective job set
+And the failure identifies the removed field's path
+<!-- /planned-change:config-schema-strictness -->
 ```
 
 ## Known caveats

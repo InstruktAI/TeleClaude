@@ -106,6 +106,7 @@ assignments. The write path therefore carries its own point-of-action check
 enforcing the declared human band, while preserving the agent band the surface
 already admits. Reusing a surface is not inheriting the boundary it advertises.
 
+<!-- planned-change:config-schema-strictness -->
 **Removal is a forward migration, not a rejection.** Both configuration models
 accept and preserve unknown keys, so deleting a typed attribute does not stop the
 old key being read, kept, and written back — it converts it into a silent extra.
@@ -117,6 +118,14 @@ undecided, so the migration stops with an explicit blocker naming that decision
 rather than guessing a role. No installation holds such a value today, which
 makes the migration simple; it does not license a breaking parser boundary. Absence of the attribute is not absence of
 the field.
+<!-- change:config-schema-strictness -->
+**Removal follows the owned-data migration boundary.** A stored legacy shape is
+brought forward before domain consumption. Once the migration completes, an
+undeclared key fails at its owning configuration boundary rather than surviving
+as a silent extra. A non-empty legacy value that cannot be mapped to the
+current declared shape remains an explicit blocker; absence of a typed
+attribute is not absence of the field.
+<!-- /planned-change:config-schema-strictness -->
 
 ## Primary flows
 

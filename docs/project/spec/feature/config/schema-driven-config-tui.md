@@ -319,9 +319,15 @@ blacklist is retired as the authority.
 - Some runtime config is still dataclass-backed rather than Pydantic-backed.
   The renderer may support both dataclasses and Pydantic models, but the source
   of truth remains the canonical runtime aggregate, not a TUI-only projection.
+<!-- planned-change:config-schema-strictness -->
 - `PersonConfig` and other overlay models accept unknown extra keys. The TUI
   should preserve unknown keys when writing known fields, but it does not need
   to invent editors for arbitrary unknown subtrees in this delivery.
+<!-- change:config-schema-strictness -->
+- Overlay models reject undeclared keys at their file-backed load boundary. The
+  TUI edits only schema-declared fields and never preserves arbitrary unknown
+  subtrees.
+<!-- /planned-change:config-schema-strictness -->
 - Masking is keyed on value provenance, not on field-name heuristics: a value
   resolved from an environment variable (`${VAR}` reference) is masked unless the
   field is being edited (UC-CFG-TUI-SCHEMA-11). Masking is a rendering rule layered
