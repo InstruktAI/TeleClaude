@@ -18,6 +18,8 @@ from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.config._blueprint import generate_sample_file
 from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.docs_index import build_all_indexes
+from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockAccess, DocsLockOperation, docs_lease
+from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
 from teleclaude.domains import publishes_for_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -28,6 +30,7 @@ from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.capability_markers import project_capabilities
 from teleclaude.project_setup.git_filters import ensure_git_filters
 from teleclaude.resource_validation import (
+    _error,
     clear_errors,
     get_errors,
     validate_all_artifacts,
@@ -73,6 +76,31 @@ def sync(
     if not capabilities.is_target:
         return True
 
+    access = DocsLockAccess.SHARED if skip_deploy else DocsLockAccess.EXCLUSIVE
+    try:
+        with docs_lease(access, DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
+            return _sync_locked(
+                project_root,
+                capabilities,
+                skip_deploy=skip_deploy,
+                skip_validation=skip_validation,
+                lock_descriptor=lock_descriptor,
+            )
+    except DocsLeaseTimeoutError as exc:
+        print(str(exc), file=sys.stderr)
+        return False
+
+
+def _sync_locked(
+    project_root: Path,
+    capabilities: Capabilities,
+    *,
+    skip_deploy: bool,
+    skip_validation: bool,
+    lock_descriptor: int,
+) -> bool:
+    """Run one synchronization pipeline while its documentation lease is held."""
+
     # Phase 1: Validate. The telec sync command always blocks on findings; only the
     # watcher's live-reload passes skip_validation to omit the phase entirely.
     if not skip_validation and _collect_source_findings(project_root, capabilities):
@@ -106,7 +134,7 @@ def sync(
     _regenerate_config_sample(project_root)
 
     # Phase 4: Build and deploy artifacts
-    _run_distribute(project_root, capabilities)
+    _run_distribute(project_root, capabilities, lock_descriptor=lock_descriptor)
 
     return True
 
@@ -147,8 +175,20 @@ def sync_bootstrap(project_root: Path) -> None:
     begins.
     """
     capabilities = resolve_capabilities(project_root)
-    _collect_source_findings(project_root, capabilities)
-    sync(project_root, skip_validation=True)
+    if not capabilities.is_target:
+        return
+    try:
+        with docs_lease(DocsLockAccess.EXCLUSIVE, DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
+            _collect_source_findings(project_root, capabilities)
+            _sync_locked(
+                project_root,
+                capabilities,
+                skip_deploy=False,
+                skip_validation=True,
+                lock_descriptor=lock_descriptor,
+            )
+    except DocsLeaseTimeoutError as exc:
+        print(str(exc), file=sys.stderr)
 
 
 def _record_snippet_provenance_from_environment(project_root: Path) -> int:
@@ -250,7 +290,7 @@ def _collect_snippet_provenance_records(project_root: Path, head_sha: str) -> li
     return records
 
 
-def _run_distribute(project_root: Path, capabilities: Capabilities) -> None:
+def _run_distribute(project_root: Path, capabilities: Capabilities, *, lock_descriptor: int) -> None:
     """Run distribute.py to transpile and deploy artifacts."""
     script_path = REPO_ROOT / "scripts" / "distribute.py"
     if not script_path.exists():
@@ -267,7 +307,7 @@ def _run_distribute(project_root: Path, capabilities: Capabilities) -> None:
     ]
 
     env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
-    subprocess.run(cmd, cwd=project_root, check=True, env=env)
+    subprocess.run(cmd, cwd=project_root, check=True, env=env, pass_fds=(lock_descriptor,))
 
 
 def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[str]]]:
@@ -292,10 +332,14 @@ def _collect_source_findings(project_root: Path, capabilities: Capabilities) -> 
     """
     clear_errors()
     errors: list[str] = []
-    if capabilities.docs:
-        validate_all_snippets(project_root)
-    if capabilities.agents:
-        errors.extend(validate_all_artifacts(project_root))
+    try:
+        with publisher_resolution(project_root):
+            if capabilities.docs:
+                validate_all_snippets(project_root)
+            if capabilities.agents:
+                errors.extend(validate_all_artifacts(project_root))
+    except DocsPublisherResolutionError as exc:
+        _error("snippet_global_source_resolution_failed", path=str(project_root), reason=str(exc))
     errors.extend(validate_jobs_config(project_root))
     findings = get_errors()
     if findings:

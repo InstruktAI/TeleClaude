@@ -13,7 +13,8 @@ from teleclaude.constants import (
     TYPE_SUFFIX,
 )
 from teleclaude.core.todos_db_path import todos_db_path
-from teleclaude.paths import GLOBAL_DOCS_DIR, GLOBAL_SNIPPETS_DIR
+from teleclaude.docs_publishers import DocsPublisherResolutionError, resolve_global_doc_source
+from teleclaude.paths import GLOBAL_DOCS_DIR
 from teleclaude.required_reads import extract_required_reads
 from teleclaude.resource_validation._markers import (
     _RESOLVABLE_TODO_STATUSES,
@@ -84,18 +85,11 @@ def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path |
         else:
             candidate = (current_path.parent / candidate).resolve()
     else:
+        raw_candidate = candidate
         candidate = candidate.resolve()
-        if not candidate.exists():
-            raw = Path(ref).expanduser()
-            try:
-                tail = raw.relative_to(GLOBAL_SNIPPETS_DIR)
-            except ValueError:
-                pass
-            else:
-                source_candidate = (root_path / "docs" / "global" / "snippets" / tail).resolve()
-                if source_candidate.exists():
-                    candidate = source_candidate
-    return candidate
+        mapped_candidate = resolve_global_doc_source(root_path, raw_candidate)
+        return mapped_candidate if mapped_candidate != raw_candidate else candidate
+    return resolve_global_doc_source(root_path, candidate)
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +141,18 @@ def collect_inline_ref_errors(
             )
             continue
         generated_bundle_domain = generated_domain_bundle_domain(ref, domains=domains)
-        resolved = _resolve_snippet_ref(project_root, snippet_path, ref)
+        try:
+            resolved = _resolve_snippet_ref(project_root, snippet_path, ref)
+        except DocsPublisherResolutionError as exc:
+            errors.append(
+                {
+                    "code": "snippet_global_source_resolution_failed",
+                    "path": str(snippet_path),
+                    "ref": ref,
+                    "reason": str(exc),
+                }
+            )
+            continue
         if resolved is None:
             errors.append({"code": "snippet_invalid_inline_ref", "path": str(snippet_path), "ref": ref})
             continue
@@ -176,14 +181,7 @@ def collect_inline_ref_errors(
 
 
 def _resolve_home_doc_source_ref(project_root: Path, candidate: Path) -> Path:
-    try:
-        relative_doc = candidate.expanduser().relative_to(GLOBAL_DOCS_DIR)
-    except ValueError:
-        return candidate
-    source_doc = project_root / "docs" / "global" / relative_doc
-    if source_doc.exists():
-        return source_doc
-    return candidate
+    return resolve_global_doc_source(project_root, candidate)
 
 
 def _resolve_snippet_ref(project_root: Path, snippet_path: Path, ref: str) -> Path | None:  # pylint: disable=unused-argument
@@ -440,13 +438,11 @@ def _resolve_see_also_ref(ref: str, project_root: Path) -> Path | None:
         expanded = str(Path(ref).expanduser())
         home_prefix = str(GLOBAL_DOCS_DIR) + "/"
         if expanded.startswith(home_prefix):
-            tail = expanded[len(home_prefix) :]
-            return (project_root / "docs" / "global" / tail).resolve()
+            return resolve_global_doc_source(project_root, Path(expanded))
         return Path(expanded).resolve()
     _, absolute_prefix = _global_docs_prefixes()
     if ref.startswith(absolute_prefix):
-        tail = ref[len(absolute_prefix) :]
-        return (project_root / "docs" / "global" / tail).resolve()
+        return resolve_global_doc_source(project_root, Path(ref))
     if ref.startswith("docs/"):
         return (project_root / ref).resolve()
     return None
@@ -486,7 +482,11 @@ def _validate_see_also_ref(ref_line: str, path: Path, project_root: Path) -> Non
         _error("snippet_see_also_missing_extension", path=str(path), ref=raw)
         return
 
-    resolved = _resolve_see_also_ref(raw, project_root)
+    try:
+        resolved = _resolve_see_also_ref(raw, project_root)
+    except DocsPublisherResolutionError as exc:
+        _error("snippet_global_source_resolution_failed", path=str(path), ref=raw, reason=str(exc))
+        return
     if resolved is None:
         _error("snippet_see_also_unresolvable", path=str(path), ref=raw)
         return
@@ -757,12 +757,22 @@ def _validate_baseline_dedup(project_root: Path) -> None:
                 domain = generated_domain_bundle_domain(f"{_INLINE_REF_PREFIX}{required_ref}", domains=domains)
                 if domain is None:
                     continue
-                baseline_ids = _domain_baseline_ids(domain, project_root)
-                bundle_path = resolve_ref_path(required_ref, root_path=project_root, current_path=path)
-                seen = {bundle_path} if bundle_path is not None else set()
-                for snippet_id, container in _iter_reachable_refs(path, project_root, seen):
-                    if snippet_id in baseline_ids:
-                        _error("baseline_dedup_violation", path=str(container), snippet_id=snippet_id, domain=domain)
+                try:
+                    baseline_ids = _domain_baseline_ids(domain, project_root)
+                    bundle_path = resolve_ref_path(required_ref, root_path=project_root, current_path=path)
+                    seen = {bundle_path} if bundle_path is not None else set()
+                    for snippet_id, container in _iter_reachable_refs(path, project_root, seen):
+                        if snippet_id in baseline_ids:
+                            _error(
+                                "baseline_dedup_violation", path=str(container), snippet_id=snippet_id, domain=domain
+                            )
+                except DocsPublisherResolutionError as exc:
+                    _error(
+                        "snippet_global_source_resolution_failed",
+                        path=str(path),
+                        ref=required_ref,
+                        reason=str(exc),
+                    )
 
 
 def _resolve_todo_status_map(project_root: Path) -> dict[str, str] | None:
