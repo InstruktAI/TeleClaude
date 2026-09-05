@@ -361,7 +361,6 @@ Scenario: UC-ARD12 A removed command source disappears from ~/.teleclaude/comman
 ```
 
 
-<!-- planned:command-loader-and-title-cutover -->
 
 #### UC-ARD33: The corpus is reached only through the composed loader
 
@@ -374,7 +373,6 @@ Scenario: UC-ARD33 Both entry points read the corpus through the composed loader
   And both are produced by one composition, so the two forms cannot diverge
 ```
 
-<!-- /planned:command-loader-and-title-cutover -->
 
 <!-- planned:retire-native-artifact-deployment -->
 
