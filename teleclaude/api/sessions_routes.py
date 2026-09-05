@@ -39,7 +39,6 @@ from teleclaude.api.session_direct_messages import (
     _build_direct_message_context,
     _create_direct_link,
     _deliver_direct_message,
-    _direct_conversation_intro_body,
     _format_direct_conversation_intro,
     _reject_existing_direct_link,
 )
@@ -70,8 +69,6 @@ from teleclaude.core.conversation_messages import (
 from teleclaude.core.conversation_messages import (
     format_identity_conversation,
     format_identity_header,
-    is_conversation_bridge_message,
-    is_orchestrator_dispatch_message,
     resolve_session_event_author,
 )
 from teleclaude.core.db import db
@@ -106,8 +103,6 @@ logger = get_logger(__name__)
 
 _UNIDENTIFIABLE_CALLER_EVENT = "unidentifiable_caller_refused"
 _SESSION_START_IGNITION_PATH = "session_start"
-_DIRECT_IGNITION_EXISTING_SESSION_PATH = "existing_session"
-_DIRECT_IGNITION_SESSION_CREATE_PATH = "session_create"
 _EMPTY_MESSAGE_TEXT = ""
 
 
@@ -474,7 +469,6 @@ async def _create_session_response(
                 raise UnidentifiableCallerError(caller_session_id=identity.session_id)
             caller_author, caller_job_role = caller_resolution
             occurred_at = datetime.now(UTC)
-            message_body = _direct_conversation_intro_body(request.message or _EMPTY_MESSAGE_TEXT)
             delivered_to = await _deliver_direct_message(
                 client=_STATE.client,
                 link_id=link_id,
@@ -485,12 +479,10 @@ async def _create_session_response(
                     occurred_at=occurred_at,
                     message_text=request.message or _EMPTY_MESSAGE_TEXT,
                 ),
-                message_body=message_body,
                 metadata=metadata,
                 caller_author=caller_author,
                 caller_job_role=caller_job_role,
                 occurred_at=occurred_at,
-                ignition_path=_DIRECT_IGNITION_SESSION_CREATE_PATH,
             )
             if delivered_to == 0:
                 raise HTTPException(status_code=409, detail="No active target sessions available for direct ignition")
@@ -682,8 +674,6 @@ async def _wrap_message_with_origin(
     caller_session_id: str | None,
     event_identity: ResolvedSessionEventIdentity | None = None,
 ) -> tuple[str, int, int]:
-    if is_conversation_bridge_message(message_text) or is_orchestrator_dispatch_message(message_text):
-        return message_text, 0, 0
     identity = event_identity or await _resolve_caller_event_identity(caller_session_id)
     header = identity.header if identity is not None else None
     if not header:
@@ -776,7 +766,6 @@ async def _handle_direct_message_request(
     if caller_resolution is None:
         raise UnidentifiableCallerError(caller_session_id=identity.session_id)
     caller_author, caller_job_role = caller_resolution
-    message_body = _direct_conversation_intro_body(request.message or _EMPTY_MESSAGE_TEXT)
     occurred_at = datetime.now(UTC)
     message_text = _format_direct_conversation_intro(
         author=caller_author,
@@ -789,12 +778,10 @@ async def _handle_direct_message_request(
         caller_session_id=identity.session_id,
         session_id=session_id,
         message_text=message_text,
-        message_body=message_body,
         metadata=metadata,
         caller_author=caller_author,
         caller_job_role=caller_job_role,
         occurred_at=occurred_at,
-        ignition_path=_DIRECT_IGNITION_EXISTING_SESSION_PATH,
     )
 
     if delivered_to == 0:

@@ -67,7 +67,6 @@ from ._types import (
     JsonDict,
     JsonPrimitive,
     JsonValue,
-    PeerBundleSegmentWireDict,
     SessionOriginMetadata,
     asdict_exclude_none,
 )
@@ -108,7 +107,6 @@ __all__ = [
     "MessagePayload",
     "NewSessionContext",
     "OriginRevivalContext",
-    "PeerBundleSegmentWireDict",
     "PeerInfo",
     "ProjectInfo",
     "Recording",

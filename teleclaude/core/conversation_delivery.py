@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -13,8 +12,6 @@ from teleclaude.config import config
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
     LOCAL_COMPUTER,
-    ConversationDeliveryDisposition,
-    ConversationDeliveryRefusalReason,
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
@@ -27,11 +24,7 @@ from teleclaude.core.conversation_delivery_settlement import (
     settle_pending_bundle,
     suppress_bare_noop_segments,
 )
-from teleclaude.core.conversation_messages import (
-    MalformedPeerSegmentError,
-    is_conversation_bridge_message,
-    parse_peer_segments,
-)
+from teleclaude.core.conversation_messages import peer_segments_from_entry
 from teleclaude.core.conversation_segments import (
     CollectedSegment,
     ConversationSegment,
@@ -43,7 +36,7 @@ from teleclaude.core.conversation_segments import (
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.injected_text import TranscriptEntryKind
+from teleclaude.core.injected_text import TranscriptEntryKind, is_peer_opening
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageAuthorKind
 from teleclaude.core.session_listeners import (
     ConversationLink,
@@ -64,8 +57,6 @@ from teleclaude.output_projection.models import (
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
     _parse_timestamp,
-    extract_real_user_text_from_entry,
-    native_entry_id,
 )
 
 if TYPE_CHECKING:
@@ -75,44 +66,13 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MALFORMED_PEER_SEGMENT_EVENT = "conversation_delivery_malformed_peer_segment"
 _MISSING_HUMAN_IDENTITY_EVENT = "conversation_delivery_missing_human_identity"
 _DELIVERY_FAILED_EVENT = "conversation_delivery_failed"
 _PEER_PASS_FAILED_EVENT = "conversation_delivery_peer_pass_failed"
 _CURSOR_BACKFILLED_EVENT = "conversation_delivery_cursor_backfilled"
 _TEXT_PART_SEPARATOR = "\n\n"
 _EMPTY_BLOCK_TEXT = ""
-_ENTRY_TIMESTAMP_FIELD = "timestamp"
-_LEGACY_PRE_CUTOVER_REASON = "legacy_pre_cutover"
-_DELIVERY_DISPOSITION_EVENT = "conversation_delivery_segment_disposition"
 _SEGMENT_ECHO_SUPPRESSED_EVENT = "conversation_segment_echo_suppressed"
-
-
-class _MalformedConversationSegmentError(Exception):
-    """Raised when a bridge entry lacks the structural proof peer replay requires."""
-
-    def __init__(
-        self,
-        *,
-        entry_ref: str,
-        entry_text: str,
-        entry_timestamp: datetime,
-        reason: ConversationDeliveryRefusalReason,
-    ) -> None:
-        self.entry_ref = entry_ref
-        self.entry_text = entry_text
-        self.entry_timestamp = entry_timestamp
-        self.reason = reason
-
-
-@dataclass(frozen=True)
-class _MalformedConversationSegment:
-    """One bridge entry that cannot use the post-cutover structural path."""
-
-    entry_ref: str
-    entry_text: str
-    entry_timestamp: datetime
-    reason: ConversationDeliveryRefusalReason
 
 
 def _target_computer_name(peer_computer_name: str | None) -> str:
@@ -128,12 +88,11 @@ async def _collect_visible_conversation_segments_since(
     since_timestamp: datetime,
     session_id: str,
     policy: VisibilityPolicy = WEB_POLICY,
-) -> list[CollectedSegment] | _MalformedConversationSegment:
+) -> list[CollectedSegment]:
     """Collect visible user and assistant text after the provided cursor.
 
-    Each projected block carries its own source cut. Peer envelopes retain
-    their original author while local spans use the projector's classification.
-    A malformed peer envelope returns its containing entry's replay boundary.
+    Each projected block carries its own source cut. Complete peer envelopes
+    retain their carried source; every other block remains local content.
     """
 
     def _collect() -> list[CollectedSegment]:
@@ -181,7 +140,7 @@ async def _collect_visible_conversation_segments_since(
                 if (
                     source_segment is not None
                     and source_segment.kind is TranscriptEntryKind.IDENTITY_CONTENT
-                    and is_conversation_bridge_message(source_segment.opening or _EMPTY_BLOCK_TEXT)
+                    and is_peer_opening(source_segment.opening or _EMPTY_BLOCK_TEXT)
                 ):
                     _flush()
                     current_role = None
@@ -191,26 +150,13 @@ async def _collect_visible_conversation_segments_since(
                     block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
                     if block_timestamp is None:
                         continue
-                    try:
-                        for peer_segment in parse_peer_segments(source_segment.text):
-                            segments.append(
-                                ForwardedProjectedSegment(
-                                    source_timestamp=block_timestamp,
-                                    peer_segment=peer_segment,
-                                )
+                    for peer_segment in peer_segments_from_entry(source_segment.text, occurred_at=block_timestamp):
+                        segments.append(
+                            ForwardedProjectedSegment(
+                                source_timestamp=block_timestamp,
+                                peer_segment=peer_segment,
                             )
-                    except MalformedPeerSegmentError as exc:
-                        raw_entry = entries[block.entry_index]
-                        entry_text = extract_real_user_text_from_entry(raw_entry, agent_name) or source_segment.text
-                        entry_id = native_entry_id(
-                            raw_entry, agent_name, timestamp=raw_entry.get(_ENTRY_TIMESTAMP_FIELD), text=entry_text
                         )
-                        raise _MalformedConversationSegmentError(
-                            entry_ref=entry_id,
-                            entry_text=entry_text,
-                            entry_timestamp=block_timestamp,
-                            reason=ConversationDeliveryRefusalReason.BUNDLE_AUTHOR_INVALID,
-                        ) from exc
                     continue
             normalized_text = raw_text.strip()
             if not normalized_text:
@@ -229,15 +175,7 @@ async def _collect_visible_conversation_segments_since(
         _flush()
         return segments
 
-    try:
-        return await asyncio.to_thread(_collect)
-    except _MalformedConversationSegmentError as exc:
-        return _MalformedConversationSegment(
-            entry_ref=exc.entry_ref,
-            entry_text=exc.entry_text,
-            entry_timestamp=exc.entry_timestamp,
-            reason=exc.reason,
-        )
+    return await asyncio.to_thread(_collect)
 
 
 def _max_segment_source_timestamp(segments: list[ConversationSegment]) -> datetime | None:
@@ -394,39 +332,6 @@ def _retain_segments_for_target(
     return retained
 
 
-async def _record_delivery_disposition(
-    *,
-    link_id: str,
-    source_session_id: str,
-    target_session_id: str,
-    failure: _MalformedConversationSegment,
-    disposition: ConversationDeliveryDisposition,
-    cursor_advanced: bool,
-) -> bool:
-    """Persist and observe one bounded outcome for an unprocessable entry."""
-    recorded = await db.mark_conversation_delivery_disposition(
-        link_id=link_id,
-        source_session_id=source_session_id,
-        target_session_id=target_session_id,
-        disposition=disposition,
-        entry_ref=failure.entry_ref,
-        reason=failure.reason,
-    )
-    if recorded:
-        logger.info(
-            _DELIVERY_DISPOSITION_EVENT,
-            outcome=disposition.value,
-            reason=failure.reason.value,
-            link_id=link_id,
-            source_session_id=source_session_id,
-            target_session_id=target_session_id,
-            entry_ref=failure.entry_ref,
-            replay_boundary=failure.entry_timestamp.isoformat(),
-            cursor_advanced=cursor_advanced,
-        )
-    return recorded
-
-
 async def _deliver_for_peer(
     *,
     source_session: Session,
@@ -494,34 +399,6 @@ async def _deliver_for_peer(
         recipient_policy,
     )
     target_computer = _target_computer_name(peer_computer)
-
-    if isinstance(all_projected, _MalformedConversationSegment):
-        logger.error(
-            _MALFORMED_PEER_SEGMENT_EVENT,
-            source_session_id=source_session_id,
-            target_session_id=target_session_id,
-            link_id=link_id,
-            replay_boundary=since_timestamp.isoformat(),
-            entry_ref=all_projected.entry_ref,
-            reason=all_projected.reason.value,
-        )
-        recorded = await _record_delivery_disposition(
-            link_id=link_id,
-            source_session_id=source_session_id,
-            target_session_id=target_session_id,
-            failure=all_projected,
-            disposition=ConversationDeliveryDisposition.TERMINAL_MALFORMED,
-            cursor_advanced=True,
-        )
-        if recorded:
-            await db.upsert_conversation_delivery_state(
-                link_id=link_id,
-                source_session_id=source_session_id,
-                target_session_id=target_session_id,
-                delivered_through_ts=all_projected.entry_timestamp.isoformat(),
-                pending_through_ts=None,
-            )
-        return 0
 
     resolved_authors = await _resolve_session_authors(source_session, all_projected)
     if resolved_authors is None:

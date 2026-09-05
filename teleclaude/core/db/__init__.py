@@ -12,12 +12,7 @@ from teleclaude.paths import MAIN_DB_PATH
 
 from ._base import DbBase
 from ._control_delivery import ControlDeliveryRecord, DbControlDeliveryMixin
-from ._conversation_delivery import (
-    DbConversationDeliveryMixin,
-    PeerBundleSegmentInput,
-    PeerBundleSegmentRecord,
-    PeerBundleWithSegments,
-)
+from ._conversation_delivery import DbConversationDeliveryMixin
 from ._hooks import DbHooksMixin
 from ._inbound import DbInboundMixin
 from ._links import DbLinksMixin
@@ -100,9 +95,6 @@ __all__ = [
     "InboundQueueRow",
     "OperationRow",
     "OutputGeneration",
-    "PeerBundleSegmentInput",
-    "PeerBundleSegmentRecord",
-    "PeerBundleWithSegments",
     "SessionIdentityError",
     "db",
     "delete_process_spawn_registry_entry_sync",

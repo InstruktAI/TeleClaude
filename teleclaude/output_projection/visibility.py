@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from teleclaude.core.conversation_messages import is_conversation_bridge_message
 from teleclaude.core.injected_text import (
     TranscriptEntryKind,
     TranscriptTextClassification,
     classify_transcript_text,
+    is_peer_opening,
 )
 
 _PEER_BRIDGE_LABEL = "Peer"
@@ -20,7 +20,7 @@ def resolve_projected_text_author(text: str) -> tuple[TranscriptTextClassificati
         TranscriptEntryKind.PLATFORM_CONTROL,
     }:
         return classification, None
-    if is_conversation_bridge_message(stripped):
+    if is_peer_opening(stripped):
         return TranscriptTextClassification(TranscriptEntryKind.IDENTITY_CONTENT), _PEER_BRIDGE_LABEL
     return classification, None
 

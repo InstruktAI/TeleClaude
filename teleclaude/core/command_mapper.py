@@ -6,7 +6,7 @@ from teleclaude.config import config
 from teleclaude.constants import EVENT_NEW_SESSION
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
-from teleclaude.core.models import MessageMetadata, PeerBundleSegmentWireDict
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -202,9 +202,7 @@ class CommandMapper:
                 if raw_text_kind is not None
                 else metadata.text_kind
                 or (
-                    TranscriptEntryKind.IDENTITY_CONTENT
-                    if metadata.caller_session_id or payload.get("peer_bundle_source_session_id")
-                    else TranscriptEntryKind.ORDINARY
+                    TranscriptEntryKind.IDENTITY_CONTENT if metadata.caller_session_id else TranscriptEntryKind.ORDINARY
                 )
             )
             raw_source_feature = payload.get("source_feature")
@@ -212,9 +210,7 @@ class CommandMapper:
                 InjectedTextSourceFeature(str(raw_source_feature))
                 if raw_source_feature is not None
                 else (
-                    InjectedTextSourceFeature.PEER_BUNDLE
-                    if payload.get("peer_bundle_source_session_id")
-                    else InjectedTextSourceFeature.CALLER_SEND
+                    InjectedTextSourceFeature.CALLER_SEND
                     if metadata.caller_session_id
                     else _source_feature_for_origin(metadata.origin or _require_origin())
                 )
@@ -243,12 +239,6 @@ class CommandMapper:
                     caller_origin_suffix_len=metadata.caller_origin_suffix_len,
                     source_message_id=cast(str | None, payload.get("source_message_id")),
                     source_channel_id=cast(str | None, payload.get("source_channel_id")),
-                    peer_bundle_key=cast(str | None, payload.get("peer_bundle_key")),
-                    peer_bundle_link_id=cast(str | None, payload.get("peer_bundle_link_id")),
-                    peer_bundle_source_session_id=cast(str | None, payload.get("peer_bundle_source_session_id")),
-                    peer_bundle_segments=cast(
-                        list[PeerBundleSegmentWireDict] | None, payload.get("peer_bundle_segments")
-                    ),
                 ),
                 computer,
             )

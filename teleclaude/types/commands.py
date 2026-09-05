@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import SessionEntryPoint, SessionLaunchIntent
-from teleclaude.core.models._types import JsonDict, JsonValue, PeerBundleSegmentWireDict
+from teleclaude.core.models._types import JsonDict, JsonValue
 
 
 class CommandType(str, Enum):
@@ -242,16 +242,6 @@ class ProcessMessageCommand(InternalCommand):
     caller_job_role: str | None = None
     caller_origin_prefix_len: int | None = None
     caller_origin_suffix_len: int | None = None
-    # Structural peer-bundle provenance for a cross-computer peer delivery
-    # (`conversation_delivery.py`'s `_deliver_bundle`, cross-computer branch):
-    # the durable bundle identity plus its ordered segments, carried across
-    # the wire so the receiving computer can persist the SAME structural
-    # record its same-computer counterpart already writes directly into the
-    # shared local DB. Absent for every other ProcessMessageCommand use.
-    peer_bundle_key: str | None = None
-    peer_bundle_link_id: str | None = None
-    peer_bundle_source_session_id: str | None = None
-    peer_bundle_segments: list[PeerBundleSegmentWireDict] | None = None
 
     def __init__(
         self,
@@ -278,10 +268,6 @@ class ProcessMessageCommand(InternalCommand):
         caller_job_role: str | None = None,
         caller_origin_prefix_len: int | None = None,
         caller_origin_suffix_len: int | None = None,
-        peer_bundle_key: str | None = None,
-        peer_bundle_link_id: str | None = None,
-        peer_bundle_source_session_id: str | None = None,
-        peer_bundle_segments: list[PeerBundleSegmentWireDict] | None = None,
     ):
         super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
@@ -305,10 +291,6 @@ class ProcessMessageCommand(InternalCommand):
         self.caller_job_role = caller_job_role
         self.caller_origin_prefix_len = caller_origin_prefix_len
         self.caller_origin_suffix_len = caller_origin_suffix_len
-        self.peer_bundle_key = peer_bundle_key
-        self.peer_bundle_link_id = peer_bundle_link_id
-        self.peer_bundle_source_session_id = peer_bundle_source_session_id
-        self.peer_bundle_segments = peer_bundle_segments
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {

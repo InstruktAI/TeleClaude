@@ -20,7 +20,7 @@ from teleclaude.api.sessions_responses import active_direct_link_response as _ac
 from teleclaude.api_models import SendMessageResponseDTO
 from teleclaude.config import config
 from teleclaude.core.command_dispatch import dispatch_command
-from teleclaude.core.conversation_bundle_delivery import persist_direct_ignition_bundle
+from teleclaude.core.conversation_bundle_delivery import direct_ignition_occurrence_key
 from teleclaude.core.conversation_messages import format_peer_message
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import UnidentifiableCallerError
@@ -44,7 +44,6 @@ logger = get_logger(__name__)
 _DIRECT_LINK_UNRESOLVED_DETAIL = "failed to resolve direct link"
 _EMPTY_MESSAGE_TEXT = ""
 _INTRO_LINE_SEPARATOR = "\n"
-_DIRECT_IGNITION_BUNDLE_PERSISTED_EVENT = "direct_ignition_bundle_persisted"
 
 # The static portion of the ignition intro; the caller's peer introduction
 # text is appended as the final line at render time.
@@ -109,20 +108,15 @@ async def _deliver_direct_message(  # pyright: ignore[reportUnusedFunction]
     caller_session_id: str,
     session_id: str,
     message_text: str,
-    message_body: str,
     metadata: MessageMetadata,
     caller_author: MessageAuthor,
     caller_job_role: str | None,
     occurred_at: datetime,
-    ignition_path: str,
 ) -> int:
-    """Persist and deliver one direct ignition to every active peer."""
+    """Deliver one direct ignition to every active peer."""
     peers = await get_peer_members(link_id=link_id, sender_session_id=caller_session_id)
     delivery_targets = [peer.session_id for peer in peers] or [session_id]
     delivered_to = 0
-    rendered_message = format_peer_message(
-        messages=[HumanFacingMessage(author=caller_author, occurred_at=occurred_at, body=message_body)]
-    )
     for target_id in delivery_targets:
         target_for_delivery = await db.get_session(target_id)
         if not target_for_delivery:
@@ -131,24 +125,11 @@ async def _deliver_direct_message(  # pyright: ignore[reportUnusedFunction]
         if _terminal(lifecycle_status=target_for_delivery.lifecycle_status, closed_at=target_for_delivery.closed_at):
             logger.info("Skipping direct delivery to closed session %s", target_id)
             continue
-        source_message_id = await persist_direct_ignition_bundle(
+        source_message_id = direct_ignition_occurrence_key(
             link_id=link_id,
             source_session_id=caller_session_id,
             target_session_id=target_id,
-            author=caller_author,
-            author_job_role=caller_job_role,
             occurred_at=occurred_at,
-            body=message_body,
-        )
-        logger.info(
-            _DIRECT_IGNITION_BUNDLE_PERSISTED_EVENT,
-            outcome="persisted",
-            ignition_path=ignition_path,
-            link_id=link_id,
-            source_session_id=caller_session_id,
-            target_session_id=target_id,
-            bundle_key=source_message_id,
-            render_equals_persisted=rendered_message == message_text,
         )
         await dispatch_command(
             client,

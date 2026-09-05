@@ -208,21 +208,6 @@ ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
 
 
-class ConversationDeliveryDisposition(StrEnum):
-    """Terminal outcomes recorded for an unprocessable peer-delivery entry."""
-
-    TERMINAL_MALFORMED = "terminal_malformed"
-    LEGACY_RECOVERED = "legacy_recovered"
-
-
-class ConversationDeliveryRefusalReason(StrEnum):
-    """Closed reasons for a directional peer-delivery refusal."""
-
-    MISSING_INJECTED_PEER_PART = "missing_injected_peer_part"
-    BUNDLE_UNRECONCILED = "bundle_unreconciled"
-    BUNDLE_AUTHOR_INVALID = "bundle_author_invalid"
-
-
 # TodoState state-dict keys for artifacts. Separate namespace from ARTIFACT_* names:
 # state keys use underscores ("implementation_plan"), artifact names use hyphens ("implementation-plan").
 # Convert via teleclaude.core.next_machine.artifacts.artifact_name_to_state_key.

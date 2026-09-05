@@ -459,8 +459,14 @@ def resolve_discord_author_alias(
     """
     if author.kind is MessageAuthorKind.AGENT:
         assert author.agent_runtime is not None
-        presentation = AgentName.from_str(author.agent_runtime).discord_presentation
-        identity, avatar = presentation.alias, presentation.avatar_url
+        try:
+            presentation = AgentName.from_str(author.agent_runtime).discord_presentation
+        except ValueError:
+            # A carried peer token can name a runtime absent locally; retain its
+            # display text so a recognized peer span never becomes a refusal.
+            identity, avatar = author.display, None
+        else:
+            identity, avatar = presentation.alias, presentation.avatar_url
     else:
         identity, avatar = author.display, None
 

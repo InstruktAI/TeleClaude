@@ -527,9 +527,6 @@ class ConversationDeliveryStateRow(SQLModel, table=True):
     target_session_id: str = Field(primary_key=True)
     delivered_through_ts: str | None = None
     pending_through_ts: str | None = None
-    disposition: str | None = None
-    disposition_entry_ref: str | None = None
-    disposition_reason: str | None = None
     updated_at: str
 
 
@@ -542,44 +539,6 @@ class MemoryManualSession(SQLModel, table=True):
     memory_session_id: str = Field(primary_key=True)
     project: str
     created_at_epoch: int
-
-
-class PeerBundleRow(SQLModel, table=True):
-    """peer_bundles table — one accepted structured peer delivery."""
-
-    __tablename__ = "peer_bundles"
-    __table_args__ = {"extend_existing": True}
-
-    bundle_key: str = Field(primary_key=True)
-    link_id: str
-    source_session_id: str
-    target_session_id: str
-    created_at: str
-
-
-class PeerBundleSegmentRow(SQLModel, table=True):
-    """peer_bundle_segments table — one authored span within a bundle, in order.
-
-    The author snapshot is immutable at write time: kind, display identity,
-    and the class-specific qualifiers (agent runtime/thinking mode, machine
-    role, raw JobRole) travel with the segment rather than being re-resolved
-    from the source session later.
-    """
-
-    __tablename__ = "peer_bundle_segments"
-    __table_args__ = {"extend_existing": True}
-
-    bundle_key: str = Field(primary_key=True)
-    segment_id: int = Field(primary_key=True)
-    original_source_session_id: str
-    author_kind: str
-    author_display: str
-    author_agent_runtime: str | None = None
-    author_thinking_mode: str | None = None
-    author_machine_role: str | None = None
-    author_job_role: str | None = None
-    occurred_at: str
-    body: str = ""
 
 
 class SessionToken(SQLModel, table=True):
