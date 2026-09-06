@@ -178,6 +178,17 @@ And the legacy mirror identity is reconciled from its transcript and cannot be r
 And a conversation with no TeleClaude association retains its labelled agent-native identifier
 ```
 
+<!-- planned:fix-cli-quoting-dashes -->
+#### UC-HCS-13: Quoted dash-leading search text
+
+```gherkin
+Given a human operator searches historical conversations for '--human-approved'
+When the operator supplies that search text in either single or double shell quotes
+Then the search runs using that text rather than rejecting it as an unknown option
+And the operator receives the matching conversations or the normal no-results response
+```
+<!-- /planned:fix-cli-quoting-dashes -->
+
 ## Known caveats
 
 - The full-text snippet uses a fixed window of 12 tokens with empty
