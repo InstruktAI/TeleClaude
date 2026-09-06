@@ -69,15 +69,30 @@ SubscriptionState = {
 | listener | link   | meaning                                                        | notification delivery                                                                                         |
 | -------- | ------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | none     | none   | caller has no subscription to target                           | none                                                                                                          |
+<!-- planned-change:native-notification-parent-attention -->
 | present  | none   | caller passively watches target                                | active — every notification kind delivers to caller's tmux                                                    |
+<!-- change:native-notification-parent-attention -->
+| present | none | caller passively watches target | turn-end reaches the listener audience; native attention reaches persistent listeners |
+<!-- /planned-change:native-notification-parent-attention -->
 | none     | active | caller is in 2-way conversation with target                    | none (suppressed by absence of listener)                                                                      |
+<!-- planned-change:native-notification-parent-attention -->
 | present  | active | caller dispatched the target AND opened a conversation with it | turn-end **suppressed** — listener row remains; distress still delivers |
+<!-- change:native-notification-parent-attention -->
+| present | active | caller dispatched the target AND opened a conversation with it | turn-end is suppressed; persistent native attention remains eligible; listener row remains |
+<!-- /planned-change:native-notification-parent-attention -->
 
 ### Suppression rule (canonical)
 
 While an active direct link exists for `(caller_session_id, target_session_id)`, turn-end notifications to that caller for events on that target are skipped. Turn-end notifications resume on the next event after the link is severed. The listener row is never mutated by link create / close.
 
+<!-- planned-change:native-notification-parent-attention -->
 Suppression is scoped to the notification kinds the live channel already carries. Distress notifications are delivered to the caller regardless of link state.
+<!-- change:native-notification-parent-attention -->
+Suppression is scoped to turn-end notifications. Native attention observations,
+including known distress and neutral notifications, reach the persistent
+audience regardless of direct-link state. Audience and occurrence semantics
+are defined by the agent-runtime session-subscriptions feature spec.
+<!-- /planned-change:native-notification-parent-attention -->
 
 Other listeners for the same target — registered by other callers — are unaffected by any link state.
 
@@ -95,7 +110,14 @@ This is the precise meaning of "suppression": the listener's interest is preserv
 ## Known caveats
 
 - **Listeners are persistent (DB-backed), not in-memory.** They survive daemon restart. The `session-listeners` design referred to in-memory storage in earlier revisions; the implementation has used SQLite for some time.
+<!-- planned-change:native-notification-parent-attention -->
 - **One-shot vs persistent listeners are distinct rows.** Both share the suppression rule. Both are removed by `unsubscribe`. One-shot listeners additionally self-remove on first notify — a turn-end notification, the only kind they receive. Distress notifications address persistent listeners only: a distress event neither reads, delivers to, nor removes a one-shot row.
+<!-- change:native-notification-parent-attention -->
+- **Single-reply and persistent subscriptions retain separate delivery semantics.**
+  Both are removed by `unsubscribe`. A single-reply listener is spent only by a
+  turn-end delivery attempt. Native attention, including known distress and
+  neutral notifications, neither delivers to nor consumes a single-reply listener.
+<!-- /planned-change:native-notification-parent-attention -->
 - **`--close-link` and `unsubscribe` overlap on the link axis.** `--close-link` is convenient mid-conversation; `unsubscribe` is the umbrella verb that also clears the listener axis. Both severance paths leave the listener row intact except when `unsubscribe` is the verb used.
 - **Idempotence of `unsubscribe`.** Empty state returns success. The response payload reports which (listener / link) was actually removed:
   ```

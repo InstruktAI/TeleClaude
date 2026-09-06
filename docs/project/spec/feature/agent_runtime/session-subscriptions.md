@@ -1,8 +1,6 @@
 ---
-description: Listener-based subscription/notification fan-out — sessions (and external
-  subscribers) register interest in the lifecycle events this spec enumerates
-  and receive notifications via host-pane injection. Excludes the bidirectional direct-conversation-link
-  mechanism.
+description: Passive session subscriptions and parent-attention fan-out through semantic
+  control delivery, separate from direct conversation links.
 visibility: public
 ---
 
@@ -14,7 +12,12 @@ visibility: public
 
 ## What it is
 
-The listener mechanism by which one session (the **caller**) registers passive interest in another session (the **target**) and receives a notification when the target's turn finishes. Listeners are durable records in the agent_runtime store, deduped by `(caller_session_id, target_session_id)`, and delivered to the caller's host pane via the shared host-pane delivery path. They are the asymmetric, passive channel — the caller wants to know "tell me when the target is done"; the target neither subscribes back nor sees who is listening.
+The listener mechanism by which one session (the **caller**) registers passive
+interest in another session (the **target**). Listeners are durable records in
+the agent_runtime store, unique per caller-target pair. Notifications are
+semantic control payloads handed to the control-delivery surface. They are an
+asymmetric, passive channel: the target neither subscribes back nor sees who
+is listening. The use cases below define which observations reach each audience.
 
 This is distinct from — and intentionally separated from — the bidirectional **direct conversation link** mechanism. A direct link is a symmetric, peered conversation channel between two sessions; a listener is a one-way notification subscription. The unsubscribe surface (`telec sessions unsubscribe`) is the umbrella verb that severs BOTH for the caller against a target, but the two state planes are independent. While an active direct link exists between caller and target, turn-end notifications for that pair are suppressed at delivery time — the active conversation channel supersedes passive notification for the duration of the link, and the listener row is preserved for resumption after the link is severed. Distress notifications are not suppressed. The direct-link mechanism gets its own spec.
 

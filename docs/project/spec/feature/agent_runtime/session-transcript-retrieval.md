@@ -21,7 +21,7 @@ This is the _on-demand_ live read. It is NOT the background polling-and-delivery
 
 ### Use cases
 
-#### Happy path
+#### UC-STR3: Default transcript retrieval
 
 ```
 Given an authenticated caller asks the agent_runtime service for the session's transcript
@@ -38,7 +38,7 @@ And each projected block is serialized into a message entry carrying {role, type
 And the service returns the session messages payload including session id, active agent, last activity, last input at, last agent stop at, agent status (computed by the status helper), and the messages list
 ```
 
-#### Filtering knobs
+#### UC-STR4: Transcript filtering knobs
 
 ```
 Given the caller sets query parameters on the request
@@ -50,7 +50,7 @@ And `tail_chars`: bounds the FALLBACK pane/session output character budget only 
 And entry index + file index on each message entry identify the source position (which file in the chain, which entry within it) so downstream callers can dedupe across reads
 ```
 
-#### Transcript files missing or yield nothing
+#### UC-STR5: Transcript files missing or yield nothing
 
 ```
 Given the chain is empty OR every file in the chain is missing on disk OR parsing produces zero structured blocks
@@ -86,7 +86,7 @@ And the resulting message entry's role reflects the projected block's role verba
 
 A slash-command-prefix heuristic exists adjacent to this flow for run-session dispatch — it is NOT used to label transcript reads. Transcript role inference lives inside the conversation projector and the per-agent parsers.
 
-#### Session not found / access denied
+#### UC-STR6: Session not found or access denied
 
 ```
 Given the caller asks for the transcript of a session that does not exist
@@ -111,6 +111,26 @@ And transcript availability or lack of new messages does not hide that observati
 And a child with no available terminal is reported as such without inventing terminal contents
 And inspection writes no input and makes no permission decision for the child
 ```
+<!-- /planned:native-notification-parent-attention -->
+
+<!-- planned:native-notification-parent-attention -->
+### Explicit terminal query
+
+`telec sessions tail <session-id> --pane` requests a terminal observation from
+`GET /sessions/{session-id}/pane`. The optional computer selector routes the
+query to the computer that owns the target session. The query uses the existing
+session-read clearance and access contract.
+
+The response identifies the target, its runtime, the capture time, and terminal
+availability. Available contents are terminal evidence, never transcript
+messages or an authored assistant turn. A missing terminal is reported
+unavailable; a capture failure is surfaced as a failure. An empty available
+terminal is distinct from an unavailable terminal.
+
+The query writes no session input and does not parse the transcript. The default
+tail command and messages endpoint retain their transcript projection and
+fallback behavior. Transcript filtering flags apply to the transcript query;
+they are not accepted with explicit terminal mode.
 <!-- /planned:native-notification-parent-attention -->
 
 ### Cross-context references
