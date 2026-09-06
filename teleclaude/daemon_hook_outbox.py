@@ -594,6 +594,10 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 now_iso = now.isoformat()
                 lock_cutoff = (now - timedelta(seconds=HOOK_OUTBOX_LOCK_TTL_S)).isoformat()
 
+                # Re-evaluate paused sessions before excluding them from the fetch.
+                for session_id in frozenset(self._hook_outbox_claim_paused_sessions):
+                    await self._should_pause_hook_outbox_claims(session_id)
+
                 # Snapshot paused sessions and exclude them at the DB level so their
                 # rows don't consume batch slots (prevents head-of-line blocking).
                 paused_snapshot = frozenset(self._hook_outbox_claim_paused_sessions)
