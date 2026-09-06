@@ -14,15 +14,9 @@ visibility: 'public'
 
 The **sealed commit contract** is the agent-facing channel for landing changes in git. Inside an agent_runtime host pane, agents do not run `git add` or `git commit` directly: the git wrapper intercepts both and redirects to `telec code commit` (and to `telec code add` for the rare cases git's data model genuinely requires staging). The wrapper enforces the seal at the shell level; `telec code commit` enforces the contract internally; the final commit runs with an explicit pathspec so foreign work in the index cannot be swept in.
 
-<!-- planned-change:tier-aware-commit-authority -->
-
-The seal is scoped to telec-registered projects that subscribe `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences. When the working directory is a plain git repo with no `teleclaude.yml`, or is a registered project subscribing neither `code` nor `docs`, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. A project subscribing neither keeps ordinary git.
-
-<!-- change:tier-aware-commit-authority -->
 
 The seal is scoped to invocation context roots, and which of them it covers is read from the project-subscription axis of `project/spec/feature/config/tier-permissions`. A project root is sealed when it subscribes `code` or `docs` (`project/spec/feature/config/project-capability-manifest`) — the same `code ∨ docs` condition as the commit obligation the seal records and evidences — and a project subscribing neither keeps ordinary git. An invocation context root whose tier carries no project subscriptions at all is sealed: it has no subscription to decide with, and the sanctioned path is its commit channel. Passthrough is decided by the repository, not by the location inside it. Where the repository's own root carries no declaration at all, the wrapper enforces nothing and execs the real git binary unmodified — the same transparent passthrough it applies outside tmux. Where the repository's root is itself a declared non-project invocation context, the seal covers the whole repository: an invocation beneath it that resolves to no context root is refused rather than passed through. A project repository is unchanged: its seal follows its subscriptions exactly as above, and every location beneath it resolves to the project's own context root.
 
-<!-- /planned-change:tier-aware-commit-authority -->
 
 The contract resolves four classes of file state at commit time:
 
@@ -31,13 +25,6 @@ The contract resolves four classes of file state at commit time:
 3. **Partial-staged tracked** files (staged hunks + later working-tree delta) in the pathspec are **blocked** by the partial-staging guard. The diagnostic directs the agent at `telec code add <path>` as the recovery: it fully restages the file so the staged version matches the working tree, removing the ambiguity, after which the commit proceeds cleanly.
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
-<!-- planned-change:tier-aware-commit-authority -->
-
-The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
-
-A path is touched by being **read** as well as by being written. So the intersection does not isolate concurrent sessions: when one session reads a file that another is editing, the reader's own commit carries the writer's uncommitted work, under a message that does not describe it. Pin the pathspec with `--only <path>` when other sessions are live in the same repository.
-
-<!-- change:tier-aware-commit-authority -->
 
 The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
 
@@ -51,7 +38,6 @@ Containment bounds every path that reaches inspection, staging, or commit — no
 
 Within a single context root, and outside any nested root, the scope remains transcript-derived and a path is still touched by being read, so two sessions working the same path there are not separated by this contract; that case belongs to dirty-path ownership attribution, not to scoping.
 
-<!-- /planned-change:tier-aware-commit-authority -->
 
 On the repo-root `main` branch, a non-integrator agent invoking `telec code commit` without `--approved` surfaces the **commit-first and review-routing gate** and does not commit. A bare invocation (no message) is discovery and **exits 0** — serving the gate is the successful outcome; an invocation that carries a message but omits `--approved` means the gate was forgotten and **exits non-zero**. `--approved` is the agent-owned sealed-gate acknowledgment that lets the commit proceed; it is not human approval. On a worktree or integrator role, `--approved` is still required but the gate surfacing is bypassed.
 
@@ -79,20 +65,6 @@ And exits non-zero without staging anything
 And inspection commands (`git diff`, `git status`, `git log`) remain available
 ```
 
-<!-- planned-change:tier-aware-commit-authority -->
-
-#### Wrapper passes through transparently outside a telec-registered project
-
-```
-Given an agent session running inside its host pane (identity present)
-And the working directory is a git repo with no `teleclaude.yml` (not a telec-registered project)
-When the agent invokes `git add`, `git commit`, `git rebase`, or `git push` in any form
-Then the wrapper execs the real git binary unmodified
-And no seal or role-guard error is printed
-And the command's exit status and output are git's own
-```
-
-<!-- change:tier-aware-commit-authority -->
 
 #### UC-NCR-13 — Wrapper passes through transparently in an undeclared repository
 
@@ -105,7 +77,6 @@ And no seal or role-guard error is printed
 And the command's exit status and output are git's own
 ```
 
-<!-- /planned-change:tier-aware-commit-authority -->
 
 <!-- planned-change:split-review-routing-from-sync-scope -->
 #### Bare telec code commit on main surfaces the commit-first review-routing gate
@@ -184,22 +155,6 @@ But with no such reviewer open the gate prints only the form that starts one
 ```
 <!-- /planned-change:split-review-routing-from-sync-scope -->
 
-<!-- planned-change:tier-aware-commit-authority -->
-
-#### Approved commit produces a pathspec commit on the resolved scope
-
-```
-Given an agent session whose transcript has touched paths {P1, P2, ..., Pn}
-And another agent session is concurrently live on the same shared checkout
-When the agent invokes `telec code commit --approved "<message>"`
-Then the resolved scope = (touched paths) ∩ (currently dirty paths)
-And new untracked paths in scope are dropped from the pathspec
-And the final commit runs with pathspec = (scope minus untracked-not-staged)
-And anything else in the index (foreign-staged, crash residue) is left untouched
-And the mandated TeleClaude trailer is appended to the message if absent (idempotent)
-```
-
-<!-- change:tier-aware-commit-authority -->
 
 #### Approved commit produces a pathspec commit on the resolved scope
 
@@ -214,7 +169,6 @@ And anything else in the index (foreign-staged, crash residue) is left untouched
 And the mandated TeleClaude trailer is appended to the message if absent (idempotent)
 ```
 
-<!-- /planned-change:tier-aware-commit-authority -->
 
 #### Modified-tracked files ride the pathspec without staging
 
@@ -391,15 +345,6 @@ And this is justified because every change the integrator commits was individual
 
 ### Commit-time gates — in-process, no framework stash
 
-<!-- planned-change:tier-aware-commit-authority -->
-
-`telec code commit` runs format then lint in-process against `quality_paths`
-(the commit pathspec filtered to existing files) before `git commit --no-verify`.
-No framework stash occurs; files outside the pathspec are not touched. The
-installed `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
-partial-staging check as a backstop for raw `git commit` invocations.
-
-<!-- change:tier-aware-commit-authority -->
 
 `telec code commit` runs the gates read from the project-subscription axis of the
 acting invocation context root's declared tier
@@ -412,7 +357,6 @@ touched. The installed `.git/hooks/pre-commit` is a thin telec-owned guard
 performing only a partial-staging check as a backstop for raw `git commit`
 invocations.
 
-<!-- /planned-change:tier-aware-commit-authority -->
 
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
 
@@ -422,18 +366,6 @@ When agent invokes telec code commit --approved "<bad-message>"
 Then SystemExit(1) before format/lint/git-commit invoked
 ```
 
-<!-- planned-change:tier-aware-commit-authority -->
-
-#### UC-CGIP-2 — Gates run format-before-lint against quality_paths
-
-```
-Given pathspec contains existing and deleted files
-When agent invokes telec code commit --approved "<msg>"
-Then quality_paths = pathspec filtered to existing files only
-And handle_format(quality_paths) is called before handle_lint(quality_paths)
-```
-
-<!-- change:tier-aware-commit-authority -->
 
 #### UC-CGIP-2 — Gates run format-before-lint against quality_paths
 
@@ -445,7 +377,6 @@ Then quality_paths = pathspec filtered to existing files only
 And handle_format(quality_paths) is called before handle_lint(quality_paths)
 ```
 
-<!-- /planned-change:tier-aware-commit-authority -->
 
 #### UC-CGIP-3 — Deletion-only commit bypasses format/lint
 
@@ -508,21 +439,6 @@ Then SystemExit(1) and no commit occurs
 And on any other branch SystemExit(2)
 ```
 
-<!-- planned-change:tier-aware-commit-authority -->
-
-#### UC-CGIP-10 — Merge commit degrades to a full-index commit with no pathspec
-
-```
-Given MERGE_HEAD is present (an active merge, resolved via repo.git_dir so it holds inside worktrees)
-And every conflicted path has been resolved and staged (no remaining unmerged-index entries)
-When agent invokes telec code commit --approved "<msg>"
-Then quality_paths is the full merge diff (merge-base..MERGE_HEAD), not the caller's pathspec
-And handle_format(quality_paths) is called before handle_lint(quality_paths)
-And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
-And the resulting commit records origin/main as a merge parent
-```
-
-<!-- change:tier-aware-commit-authority -->
 
 #### UC-CGIP-10 — Merge commit degrades to a full-index commit with no pathspec in a single-owner tree
 
@@ -537,7 +453,6 @@ And repo.git.commit is called with "--no-verify" and no trailing "--" pathspec
 And the resulting commit records origin/main as a merge parent
 ```
 
-<!-- /planned-change:tier-aware-commit-authority -->
 
 #### UC-CGIP-11 — Unresolved conflict during merge commit is rejected
 
@@ -734,7 +649,6 @@ And the message carries Human-Involved: false, since no agent declares involveme
 And the message carries no Co-Authored-By line
 ```
 
-<!-- planned:tier-aware-commit-authority -->
 
 #### UC-NCR-1 — Change inspection from a context root below the repository root
 
@@ -850,7 +764,6 @@ Then the wrapper refuses rather than passing through to the real git binary
 And the repository's history is not mutated by that invocation
 ```
 
-<!-- /planned:tier-aware-commit-authority -->
 
 ### Thin hook backstop
 

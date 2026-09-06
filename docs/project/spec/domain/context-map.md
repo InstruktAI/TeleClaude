@@ -62,7 +62,6 @@ contracts and never creates shared ownership.
   the resolved facts do not state.
 <!-- /planned:docs-tier-layering -->
 
-<!-- planned:tier-aware-commit-authority -->
 - The sealed commit surface (`agent_runtime`) reads tier answers from `config`
   at two coordinates — the repository root's declared tier, and the acting
   invocation context root's invocation-context and project-subscription
@@ -75,7 +74,6 @@ contracts and never creates shared ownership.
   membership — which of the repository's paths are retained; `agent_runtime`
   asks, and neither decides membership nor substitutes an answer where none is
   published.
-<!-- /planned:tier-aware-commit-authority -->
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web
 frontend are `presentation`'s hosting surfaces. Existing placement outside
