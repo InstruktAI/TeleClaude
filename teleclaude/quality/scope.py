@@ -16,8 +16,9 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.core.reconciliation.home_retained_set import HomeMembership, home_membership
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
-from teleclaude.paths import ConfigFileName
+from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
 from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
     NoSessionTouchedFiles,
@@ -79,6 +80,8 @@ class WorkspaceScopeResolution:
     dirty_paths: tuple[DirtyPath, ...]
     scoped_dirty_paths: tuple[str, ...]
     scoped_existing_paths: tuple[str, ...]
+    repository_scoped_dirty_paths: tuple[str, ...] = ()
+    repository_scoped_existing_paths: tuple[str, ...] = ()
 
 
 class RustScopeKind(Enum):
@@ -130,9 +133,15 @@ def is_worktree(project_root: Path) -> bool:
         return False
 
 
-def resolve_workspace_scope_resolution(project_root: Path) -> WorkspaceScopeResolution:
+def resolve_workspace_scope_resolution(
+    project_root: Path,
+    *,
+    context_root: Path | None = None,
+) -> WorkspaceScopeResolution:
     """Resolve dirty workspace metadata and action-ready scoped paths."""
+    context_root = project_root if context_root is None else context_root
     dirty_paths = _resolve_dirty_paths(project_root)
+    eligible_dirty_paths = _eligible_dirty_paths(project_root, dirty_paths, context_root=context_root)
     session_id = get_session_id()
     has_session_identity = bool(session_id)
 
@@ -141,8 +150,14 @@ def resolve_workspace_scope_resolution(project_root: Path) -> WorkspaceScopeReso
             kind=WorkspaceScopeKind.WORKTREE,
             has_session_identity=has_session_identity,
             dirty_paths=dirty_paths,
-            scoped_dirty_paths=tuple(dirty.path for dirty in dirty_paths),
-            scoped_existing_paths=_existing_dirty_paths(project_root, dirty_paths),
+            scoped_dirty_paths=_outward_paths(project_root, eligible_dirty_paths, context_root=context_root),
+            scoped_existing_paths=_outward_paths(
+                project_root,
+                _existing_dirty_paths(project_root, eligible_dirty_paths),
+                context_root=context_root,
+            ),
+            repository_scoped_dirty_paths=tuple(dirty.path for dirty in eligible_dirty_paths),
+            repository_scoped_existing_paths=_existing_dirty_paths(project_root, eligible_dirty_paths),
         )
 
     if not session_id:
@@ -155,8 +170,8 @@ def resolve_workspace_scope_resolution(project_root: Path) -> WorkspaceScopeReso
         )
 
     touched = _resolve_session_touched_paths(project_root)
-    dirty_path_set = {dirty.path for dirty in dirty_paths}
-    dirty_existing = set(_existing_dirty_paths(project_root, dirty_paths))
+    dirty_path_set = {dirty.path for dirty in eligible_dirty_paths}
+    dirty_existing = set(_existing_dirty_paths(project_root, eligible_dirty_paths))
     # Scope is strictly (this session's touched paths) ∩ (currently dirty paths).
     # We do NOT union in ALL deleted-in-working-tree paths: doing so leaks
     # foreign deletions into this session's scope (agent A deletes foo.py;
@@ -168,13 +183,38 @@ def resolve_workspace_scope_resolution(project_root: Path) -> WorkspaceScopeReso
     # transcript didn't capture it."
     scoped_dirty = tuple(sorted(set(touched) & dirty_path_set))
     scoped = tuple(sorted(path for path in touched if path in dirty_existing))
+    repository_scoped_dirty = tuple(sorted(set(touched) & dirty_path_set))
+    repository_scoped_existing = tuple(sorted(path for path in touched if path in dirty_existing))
     return WorkspaceScopeResolution(
         kind=WorkspaceScopeKind.SHARED_BRANCH,
         has_session_identity=True,
         dirty_paths=dirty_paths,
-        scoped_dirty_paths=scoped_dirty,
-        scoped_existing_paths=scoped,
+        scoped_dirty_paths=_outward_paths(project_root, scoped_dirty, context_root=context_root),
+        scoped_existing_paths=_outward_paths(project_root, scoped, context_root=context_root),
+        repository_scoped_dirty_paths=repository_scoped_dirty,
+        repository_scoped_existing_paths=repository_scoped_existing,
     )
+
+
+def validate_context_paths(paths: list[str], project_root: Path, context_root: Path | None) -> list[str]:
+    """Return repository-relative declared paths eligible to the acting context."""
+    if context_root is None:
+        return []
+    safe: list[str] = []
+    for raw_path in paths:
+        if raw_path.startswith("-"):
+            logger.warning("Rejected leading-dash path from invocation context: %s", raw_path)
+            continue
+        candidate = Path(raw_path)
+        absolute_path = candidate.resolve() if candidate.is_absolute() else (context_root / candidate).resolve()
+        try:
+            relative_path = absolute_path.relative_to(project_root.resolve()).as_posix()
+        except ValueError:
+            logger.warning("Rejected path outside repository root: %s", raw_path)
+            continue
+        if _is_eligible_path(project_root, relative_path, context_root=context_root):
+            safe.append(relative_path)
+    return safe
 
 
 def resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
@@ -208,6 +248,62 @@ def _existing_dirty_paths(project_root: Path, dirty_paths: tuple[DirtyPath, ...]
     return tuple(
         dirty.path for dirty in dirty_paths if dirty.op is not DirtyOp.DELETED and (project_root / dirty.path).exists()
     )
+
+
+def _eligible_dirty_paths(
+    project_root: Path,
+    dirty_paths: tuple[DirtyPath, ...],
+    *,
+    context_root: Path | None,
+) -> tuple[DirtyPath, ...]:
+    return tuple(
+        dirty_path
+        for dirty_path in dirty_paths
+        if _is_eligible_path(project_root, dirty_path.path, context_root=context_root)
+    )
+
+
+def _is_eligible_path(project_root: Path, path: str, *, context_root: Path | None) -> bool:
+    if context_root is None:
+        return False
+    repository = project_root.resolve()
+    context = context_root.resolve()
+    candidate = (repository / path).resolve()
+    try:
+        candidate.relative_to(context)
+    except ValueError:
+        return False
+    if _has_foreign_nested_root(context, candidate):
+        return False
+    if repository == TELECLAUDE_HOME.resolve():
+        return home_membership(candidate, home=repository) is HomeMembership.RETAINED
+    return True
+
+
+def _has_foreign_nested_root(context_root: Path, candidate: Path) -> bool:
+    current = candidate if candidate.is_dir() else candidate.parent
+    while current != context_root:
+        if (current / ".git").exists() or (current / ConfigFileName.OVERLAY).is_file():
+            return True
+        if current.parent == current:
+            return True
+        current = current.parent
+    return False
+
+
+def _outward_paths(
+    project_root: Path,
+    paths: tuple[DirtyPath, ...] | tuple[str, ...],
+    *,
+    context_root: Path | None,
+) -> tuple[str, ...]:
+    if context_root is None:
+        return ()
+    result: list[str] = []
+    for item in paths:
+        path = item.path if isinstance(item, DirtyPath) else item
+        result.append((project_root / path).resolve().relative_to(context_root.resolve()).as_posix())
+    return tuple(result)
 
 
 def _resolve_session_touched_paths(project_root: Path) -> tuple[str, ...]:

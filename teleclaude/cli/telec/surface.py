@@ -1462,7 +1462,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "changed": CommandDef(
                 desc="List workspace-scoped changed files",
-                flags=[_H],
+                args="[--include <path> ...] [--only <path> ...]",
+                flags=[
+                    _H,
+                    Flag("--include", desc="Include eligible paths outside the computed scope."),
+                    Flag("--only", desc="Inspect exactly the declared eligible paths."),
+                ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "add": CommandDef(
