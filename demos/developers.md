@@ -788,7 +788,7 @@ telec sessions escalate --message "Need design decision on API shape"
 
 **Where to find files:**
 
-- AI-to-AI operations: [`docs/project/procedure/ai-to-ai-operations.md`](docs/project/procedure/ai-to-ai-operations.md)
+- AI-to-AI operations: [`docs/global/general/procedure/ai-to-ai-operations.md`](../docs/global/general/procedure/ai-to-ai-operations.md)
 - Work orchestrator: [`agents/commands/next-work.md`](agents/commands/next-work.md)
 - Prepare orchestrator: [`agents/commands/next-prepare.md`](agents/commands/next-prepare.md)
 

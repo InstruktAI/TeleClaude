@@ -2,4 +2,3 @@
 @docs/project/policy/single-database.md
 @docs/project/policy/adapter-boundaries.md
 @docs/project/spec/messaging.md
-@docs/project/procedure/ai-to-ai-operations.md
