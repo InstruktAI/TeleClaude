@@ -114,9 +114,9 @@ And the parser maps it into the typed runtime configuration aggregate
 
 ## Known caveats
 
-- Fleet configuration must conform to the closed overlay schemas before strict
-  validation is deployed everywhere. Compatibility is established against the
-  complete registered fleet, not a sample.
+- Configuration migration and strict validation apply to each installation's
+  own files. Loading on one installation does not depend on the version,
+  reachability, or migration state of another installation.
 - Dynamic mappings remain open only where their parser explicitly declares that
   input shape. An open mapping is not a general escape from unknown-key
   validation.
