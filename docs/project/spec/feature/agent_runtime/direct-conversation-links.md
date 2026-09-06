@@ -65,7 +65,7 @@ And NO new link is created, NO duplicate members are written, and the original m
 
 ```
 Given a stale duplicate link row exists for the same pair (e.g., a prior crash mid-creation)
-When the ignition path runs under the canonical per-pair lock
+When the ignition path runs under the locks that serialize link establishment
 Then it selects the first active link as the survivor
 And severs every duplicate
 And re-upserts both members on the survivor (idempotent: caller stays participant 1, target stays participant 2)
@@ -385,7 +385,6 @@ And the sending session's direction continues to deliver its later turns
 Given agent session A is in an active direct conversation with agent session B
 And agent session C is not part of that conversation
 When a direct-link request pairs C with A, whether A is the caller or target
-And whether or not C and A are on the same computer
 Then the request is rejected
 And the response identifies B as A's active conversation peer
 And the A-to-B conversation remains active
@@ -420,7 +419,8 @@ And the peer output retains its peer authorship and human-facing presentation
 - **Closure is associative, not caller-scoped.** Any member calling `--close-link` severs the link for ALL members. There is no "leave but keep the link alive for the others" path in v1.
 - **Reuse short-circuits with an error, not a success.** Calling `--direct` a second time on an already-linked pair returns an error with a rules reminder; the message text is NOT delivered through this path. Members are expected to "just talk" — turn-complete outputs are cross-shared automatically.
 - **Plain-send during an active link is rejected.** A non-direct send toward a peer with whom a direct link is active is refused to prevent obfuscating the exchange from observers.
+- **Exclusivity applies no locality condition, and sees only local link records.** Whether two sessions share a computer is never a reason to accept or refuse a direct link. The refusal in UC-DCL15 is decided against the link records held by the runtime deciding the request; a conversation recorded on another computer is not visible to that decision. Cross-computer direct establishment remains the pre-existing limitation of the ignition paths, not something this rule narrows or repairs.
 - **Multi-member is structurally supported, not exposed.** The aggregate can represent N>=2 members, and the peer-resolution and delivery paths already fan out N-way; v1 only exposes a two-member direct ignition. Gathering-mode links use the same aggregate.
 - **Per-link delivery cursors are anchored at creation, not at first turn.** Pre-link transcript content never appears in the first cross-share. This is the explicit reason the cursors are upserted at ignition rather than lazily at first delivery.
-- **Stale duplicate rows are silently healed on next ignition.** If durable storage contains more than one active link for the same pair (e.g., a prior crash mid-creation), the ignition path keeps the first and severs the rest under the canonical pair lock. No external reconciliation pass is needed.
+- **Stale duplicate rows are silently healed on next ignition.** If durable storage contains more than one active link for the same pair (e.g., a prior crash mid-creation), the ignition path keeps the first and severs the rest under the locks that serialize link establishment. No external reconciliation pass is needed.
 - **Listener rows survive suppression.** Suppression while linked does not remove the listener; once the link severs, the next stop event fires the listener normally. This avoids re-subscription ceremony on every close.
