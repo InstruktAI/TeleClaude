@@ -21,6 +21,7 @@
   "awaySummaryEnabled": false,
   "tui": "fullscreen",
   "teammateMode": "in-process",
+  "promptSuggestionEnabled": false,
   "hooks": {
     "PreToolUse": [
       {
