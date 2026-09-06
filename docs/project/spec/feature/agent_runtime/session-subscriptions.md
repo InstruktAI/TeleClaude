@@ -51,7 +51,7 @@ And C receives a single response notification on T's next stop, then the listene
 ```
 
 <!-- planned-change:native-notification-parent-attention -->
-#### What events trigger a notification
+#### UC-SS18: Notification observation and outcome semantics
 
 ```
 Given a target session T has registered listeners
@@ -64,7 +64,7 @@ And per-turn notification dedup is scoped by (target, notification kind): a per-
 The fan-out emits exactly the notification kinds this spec's use cases enumerate
 ```
 <!-- change:native-notification-parent-attention -->
-#### What events trigger a notification
+#### UC-SS18: Notification observation and outcome semantics
 
 ```
 Given an agent session watches a target session

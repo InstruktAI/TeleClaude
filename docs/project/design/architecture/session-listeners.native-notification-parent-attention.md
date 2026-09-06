@@ -25,7 +25,7 @@ another computer. Provider adapters own native event names and their mapping
 to the shared event vocabulary.
 
 Outputs are durable listener records, semantic notification envelopes handed
-to control delivery, and delivery results. Known distress with no reached
+to control delivery, and delivery results. Eligible known distress with no reached
 watcher uses the target session's existing human-facing output lane. Neutral
 native notifications have no human-facing fallback.
 
@@ -48,7 +48,7 @@ Missing native information remains explicitly unavailable.
 - Turn-end and turn-failure contend for one terminal-outcome slot per turn.
   A later terminal signal does not replace the first account. The next accepted
   real user entry clears the slot; hook-side feedback does not.
-- Nonterminal attention bypasses turn/kind suppression. Separate occurrences
+- Parent delivery of nonterminal attention bypasses turn/kind suppression. Separate occurrences
   retain their source identity through control delivery, even within one turn
   or while the same condition remains unresolved.
 - Listener fan-out adds no duplicate detection, coalescing, acknowledgement,
@@ -60,6 +60,13 @@ Missing native information remains explicitly unavailable.
 - A watcher is reached when control delivery accepts the handoff, not merely
   because its listener row exists. Known distress falls back only when no local
   or remote audience member is reached.
+- The first blocked observation in a turn claims the existing blocked marker,
+  whether or not a watcher is reached. That claim gates only human-facing
+  fallback eligibility; it never suppresses parent observations. Later blocked
+  occurrences in that turn cannot cause another human-facing fallback attempt.
+- Audience resolution records a neutral observation with no reached watcher
+  as selecting no fallback. It does not report a human fallback that was not
+  selected. A blocked fallback excluded by its turn marker is recorded as such.
 - Native text is evidence within the platform-authored attention message. It
   is visibly identified as provider-supplied data and is never an identity
   header, permission grant, recovery decision or executable instruction.
@@ -87,11 +94,13 @@ attempt, including a refused attempt. Persistent listeners remain registered.
 ### Native attention
 
 The provider adapter normalizes each native observation once. Known failure
-claims the terminal-outcome slot; blocked and neutral observations bypass it.
+claims the terminal-outcome slot; blocked and neutral parent observations bypass it.
 The coordinator supplies the observation to the listener service, which
 attempts its persistent audience through the existing control handoff. The
-origin includes the addressed remote initiator in that audience. Only known
-distress with no accepted audience member reaches the target's output lane.
+origin includes the addressed remote initiator in that audience. Only eligible
+known distress with no accepted audience member reaches the target's output
+lane. Blocked fallback eligibility is fixed by the first blocked observation
+in the turn, independently of the audience reached by later occurrences.
 
 ### Parent assessment
 
