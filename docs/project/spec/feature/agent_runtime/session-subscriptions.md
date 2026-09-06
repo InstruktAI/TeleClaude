@@ -50,20 +50,6 @@ Then register-listener(target=T, caller=C, caller_host_pane=C's host pane, one_s
 And C receives a single response notification on T's next stop, then the listener self-removes
 ```
 
-<!-- planned-change:native-notification-parent-attention -->
-#### UC-SS18: Notification observation and outcome semantics
-
-```
-Given a target session T has registered listeners
-When the agent coordinator detects T's agent-stop and calls notify-stop(T, computer, title)
-Then a system message "Notification — Session T [on <computer>] [\"<title>\"] finished its turn. Use telec sessions tail T to inspect." is composed
-And every active listener for T is iterated and delivered (subject to direct-link suppression below)
-And per-turn notification dedup is scoped by (target, notification kind): a per-kind gate record admits at most one notification of each kind within the same turn, and turn-end and turn-failure share one terminal-outcome slot in it; the whole gate is cleared by the next accepted native user entry that the runtime normalizer classifies as a real turn, including prompt input and complete registered platform or identity envelopes, but not by declared runtime side-channel artifacts
-
-
-The fan-out emits exactly the notification kinds this spec's use cases enumerate
-```
-<!-- change:native-notification-parent-attention -->
 #### UC-SS18: Notification observation and outcome semantics
 
 ```
@@ -73,7 +59,6 @@ Then the watching agent receives the corresponding observation under the audienc
 And terminal outcomes retain their shared per-turn outcome slot
 And nonterminal attention preserves distinct source occurrences through the existing delivery boundary
 ```
-<!-- /planned-change:native-notification-parent-attention -->
 
 #### UC-SS1: Re-poke clears the per-turn dedup flag
 
@@ -271,7 +256,6 @@ Then the distress notification is delivered to its persistent subscribers only
 And the session's human-facing channel receives nothing from this mechanism
 ```
 
-<!-- planned:native-notification-parent-attention -->
 #### UC-SS14: Native notifications reach parent intelligence without a distress precondition
 
 ```gherkin
@@ -314,7 +298,6 @@ And it does not consume a single-reply subscription
 And absence of a persistent watcher does not turn it into a direct human alert
 And the existing no-watcher fallback for known distress is unchanged
 ```
-<!-- /planned:native-notification-parent-attention -->
 
 ### Cross-context references
 
@@ -326,16 +309,12 @@ And the existing no-watcher fallback for known distress is unchanged
 ## Known caveats
 
 - **Dedup is per (target, caller) pair, not per target.** Multiple callers can listen to the same target; one caller can only listen to one target once. A second register call for the same pair is a no-op reporting "not new".
-<!-- planned-change:native-notification-parent-attention -->
-- **Notification dedup within a turn is scoped by (target, kind).** The fan-out consults a per-turn gate record that admits at most one notification of each kind, with turn-end and turn-failure sharing one terminal-outcome slot that the first terminal signal claims. The next accepted native user entry clears the whole gate only when the runtime normalizer classifies it as a real turn; declared runtime side-channel artifacts do not. Without this gate, listeners would receive multiple "finished its turn" messages per actual turn; without the kind scoping, one kind would swallow another's notice for the same turn.
-<!-- change:native-notification-parent-attention -->
 - **Terminal outcomes and attention occurrences are distinct.** Turn-end and
   turn-failure retain their shared terminal-outcome slot. Nonterminal attention
   retains source-occurrence identity through the existing delivery boundary;
   the fan-out does not collapse separate observations by kind, turn, or an
   inferred unresolved condition. Consumers rely on control delivery rather
   than adding their own acknowledgement, retry, or duplicate-detection layer.
-<!-- /planned-change:native-notification-parent-attention -->
 - **One-shot listeners self-remove after delivery, persistent listeners do not.** AI-to-AI message sends register one-shot (single response expected). AI-to-AI session starts register persistent (orchestrator keeps hearing every stop until the worker terminates or the orchestrator unsubscribes/ends).
 - **Direct-link suppression is delivery-time only, applies to turn-end only, and the listener record is preserved.** During an active direct link, turn-end notifications for the pair are silently skipped; distress notifications are delivered regardless, because the live channel carries no output for a stuck or dead target. The record stays so that turn-end notification resumes the next time the fan-out runs after the link has been severed. This intentionally keeps the two planes independent.
 - **Delivery has no retry.** A failed listener delivery (the caller's host pane is gone, key injection errors out) is logged as a warning and dropped. The one-shot record is still removed on failure. The persistent record remains and will be retried only on the NEXT notification event.
@@ -343,11 +322,9 @@ And the existing no-watcher fallback for known distress is unchanged
 - **Storage is durable and survives service restart.** Listener records are durable across service restarts. A restart does not orphan listeners; they remain and the next stop emits as expected.
 - **External (non-session) subscribers are not first-class.** The listener model assumes the caller is itself a session with a host pane reachable via the listener-message path. A purely external observer (e.g., a UI adapter wanting "tell me when session T stops") is not represented as a listener record — that fan-out lives in the agent-coordinator emit path, separate from this surface.
 
-<!-- planned:native-notification-parent-attention -->
 ## See Also
 
 - docs/project/spec/feature/agent_runtime/control-delivery.md
 - docs/project/spec/feature/agent_runtime/session-transcript-retrieval.md
 - ~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 - ~/.teleclaude/docs/general/policy/human-contract.md
-<!-- /planned:native-notification-parent-attention -->
