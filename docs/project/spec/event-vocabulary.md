@@ -13,6 +13,7 @@ The Event Vocabulary defines the shared language used between TeleClaude adapter
 
 ### Machine-Readable Surface
 
+<!-- planned-change:native-notification-parent-attention -->
 ```yaml
 standard_events:
   - session_started
@@ -39,6 +40,43 @@ canonical_outbound_activity_events:
   - agent_output_update
   - agent_stop
 ```
+<!-- change:native-notification-parent-attention -->
+```yaml
+standard_events:
+  - session_started
+  - session_closed
+  - session_updated
+  - agent_event
+  - agent_activity
+  - error
+  - system_command
+
+agent_hook_events:
+  - session_start
+  - user_prompt_submit
+  - pre_tool_use
+  - post_tool_use
+  - agent_stop
+  - agent_idle
+  - agent_blocked
+  - agent_turn_failed
+  - agent_notification
+  - error
+
+canonical_outbound_activity_events:
+  - user_prompt_submit
+  - agent_output_update
+  - agent_stop
+```
+<!-- /planned-change:native-notification-parent-attention -->
+
+<!-- planned:native-notification-parent-attention -->
+`agent_notification` is a neutral native notification observation. It preserves
+the source subtype and available details without asserting blocked, failed,
+completed, or active lifecycle state. It adds no canonical outbound activity
+type. Parent attention consumes it through the session-subscription contract;
+the shared control-delivery surface owns its delivery.
+<!-- /planned:native-notification-parent-attention -->
 
 `agent_blocked` and `agent_turn_failed` are the distress kinds: a session
 waiting on an approval or input decision it cannot resolve itself, and a turn
