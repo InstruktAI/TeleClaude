@@ -86,15 +86,6 @@ may use `-p <package>`; cross-crate and full runs use workspace scope). `telec
 code` selects which files are in scope and delegates; it does not invoke Cargo
 itself.
 
-<!-- planned-change:tier-aware-commit-authority -->
-
-`telec code commit` runs format then lint in-process against `quality_paths`
-(the commit pathspec filtered to existing files) before `git commit --no-verify`.
-No framework stash, no working-tree reset outside the pathspec. The installed
-`.git/hooks/pre-commit` is a thin telec-owned guard that performs only a
-partial-staging check as a backstop for raw `git commit` invocations.
-
-<!-- change:tier-aware-commit-authority -->
 
 `telec code commit` runs the gates carried by the acting invocation context's
 declared tier. Where that tier carries project subscriptions, it runs format then
@@ -105,7 +96,6 @@ outside the pathspec. The installed `.git/hooks/pre-commit` is a thin telec-owne
 guard that performs only a partial-staging check as a backstop for raw
 `git commit` invocations.
 
-<!-- /planned-change:tier-aware-commit-authority -->
 <!-- planned-change:freeze-agent-artifacts-in-slug-worktrees -->
 
 In a slug worktree (`trees/<slug>`), `telec code commit` refuses any staged or
