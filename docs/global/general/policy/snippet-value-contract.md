@@ -48,6 +48,13 @@ The default is **skip unless justified**, not "produce when applicable."
   Reference per `general/policy/referencing-doc-snippets`; do not restate.
 - **Genericity.** Asserting things true of every repository in the same
   language or framework. The global language policy already covers it.
+- **Vendor restatement.** Stating how a system we do not own behaves as if it
+  were our contract: a framework's lifecycle rule, a third-party API's
+  side effect, a platform's default. Such behavior is conditional on the
+  vendor's version, configuration, and state, and a copy is wrong exactly when
+  it is relied on. It is cited from vendor source in the one bounded context
+  that depends on it, never restated as a general fact, and one observed case
+  never becomes a universal.
 - **Coverage instinct.** Producing a snippet to fill a taxonomy slot rather
   than to capture intent. The discovery-to-taxonomy table is a list of
   shapes worth considering, not a checklist to complete.
@@ -77,6 +84,23 @@ The default is **skip unless justified**, not "produce when applicable."
   - **Future framing** ("will", "is planned", "the new surface is going to")
     → present-tense description of the intended shape. Forward design is
     written as contract, not as forecast.
+
+### A statement's owner decides its home
+
+Every statement an author wants to add is owned by one party, and the owner
+decides where it lives. A statement that mixes owners is split before it is
+placed.
+
+| Kind of statement              | Owner and home                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| A guarantee of our surface     | The domain's spec for that surface, verified by its feature spec                                             |
+| Behavior of a third party      | The vendor's source or documentation, cited by the procedure that depends on it                              |
+| An operating safeguard         | A procedure: an atom when several scenarios share it, a step when one does                                   |
+| A tenant or company preference | The company's configuration and knowledge, never a global snippet                                            |
+| A deployment fact              | The project that owns the deployment; a procedure names the capability it needs, not the version that has it |
+
+A spec states what our surface delivers now. Intended behavior it does not yet
+deliver is carried only in a pending section under its delivering slug.
 
 ### What creates value
 
