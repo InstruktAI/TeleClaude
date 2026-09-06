@@ -15,7 +15,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.config.context_root import resolve_context_root
 from teleclaude.config.loader import load_app_config
 from teleclaude.config.schema import ConfigKind
-from teleclaude.context_selector import build_context_output
+from teleclaude.context_selector import ActivationClosureError, build_context_output
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.domains import valid_domains
@@ -31,6 +31,8 @@ __all__ = [
 ]
 
 logger = get_logger(__name__)
+
+DOCS_GET_CLOSURE_FLAG = "--closure"
 
 
 class DocsRetrievalEvent(StrEnum):
@@ -298,10 +300,15 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
     target_slug: str | None = None
     scope: SnippetScope | None = None
     projects: list[str] | None = None
+    closure = False
 
     i = 0
     while i < len(args):
         arg = args[i]
+        if arg == DOCS_GET_CLOSURE_FLAG:
+            closure = True
+            i += 1
+            continue
         if arg == "--target" and i + 1 < len(args):
             target_slug = args[i + 1].strip()
             i += 2
@@ -355,22 +362,27 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
     docs_context = _resolve_docs_context()
     effective_role = _current_terminal_role()
     config = load_app_config(docs_context.project_root)
-    output = build_context_output(
-        areas=[],
-        project_root=docs_context.project_root,
-        snippet_ids=snippet_ids,
-        baseline_only=False,
-        include_third_party=False,
-        domains=None,
-        target_slug=target_slug,
-        scope=scope,
-        projects=projects,
-        effective_human_role=effective_role,
-        config=config,
-        include_registered_projects=docs_context.include_registered_projects,
-        retrieval_id=context.retrieval_id,
-        verb=context.verb.value,
-    )
+    try:
+        output = build_context_output(
+            areas=[],
+            project_root=docs_context.project_root,
+            snippet_ids=snippet_ids,
+            baseline_only=False,
+            include_third_party=False,
+            domains=None,
+            target_slug=target_slug,
+            scope=scope,
+            projects=projects,
+            closure=closure,
+            effective_human_role=effective_role,
+            config=config,
+            include_registered_projects=docs_context.include_registered_projects,
+            retrieval_id=context.retrieval_id,
+            verb=context.verb.value,
+        )
+    except ActivationClosureError as error:
+        print(error)
+        raise SystemExit(1) from error
     print(output)
 
 

@@ -11,6 +11,7 @@ from teleclaude.cli.telec.surface_types import strip_hidden_flag_tokens
 # Derived constants for completion (from schema)
 _COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
 _COMMAND_DESCRIPTIONS = {name: cmd.desc for name, cmd in CLI_SURFACE.items() if not cmd.hidden}
+DEFAULT_HELP_NOTE = "Use this command to {}."
 
 
 __all__ = [
@@ -113,7 +114,7 @@ def _usage_node_leaf(path: list[str], node: CommandDef) -> str:
             flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
             lines.append(f"{flag_label:<25s} {f.desc}")
 
-    notes = node.notes or [f"Use this command to {node.desc.lower()}."]
+    notes = node.notes + node.runtime_notes or [DEFAULT_HELP_NOTE.format(node.desc.lower())]
     lines.append("\nNotes:")
     for note in notes:
         lines.append(f"  {note}")
@@ -285,7 +286,7 @@ def _append_leaf_command_usage(lines: list[str], cmd_name: str, cmd: CommandDef)
     lines.append(f"  telec {cmd_name}{args_str}")
     _append_flag_section(lines, "Options", visible)
 
-    notes = cmd.notes or [f"Use this command to {cmd.desc.lower()}."]
+    notes = cmd.notes + cmd.runtime_notes or [DEFAULT_HELP_NOTE.format(cmd.desc.lower())]
     lines.append("\nNotes:")
     for note in notes:
         lines.append(f"  {note}")
@@ -319,10 +320,11 @@ def _group_subcommand_flags(cmd: CommandDef) -> list[tuple[str, list[Flag]]]:
     grouped: dict[str, list[tuple[str, list[Flag]]]] = {}
     visible_subcmds = {name: sub for name, sub in cmd.subcommands.items() if not sub.hidden}
     for sub_name, sub_cmd in visible_subcmds.items():
-        if not sub_cmd.flags:
+        visible_flags = _visible_flags(sub_cmd.flags)
+        if not visible_flags:
             continue
-        key = "|".join(flag.long for flag in sub_cmd.flags)
-        grouped.setdefault(key, []).append((sub_name, sub_cmd.flags))
+        key = "|".join(flag.long for flag in visible_flags)
+        grouped.setdefault(key, []).append((sub_name, visible_flags))
 
     sections = []
     for group in grouped.values():
@@ -351,7 +353,7 @@ def _usage_leaf(cmd_name: str, sub_name: str) -> str:
             flag_label = f"  {f.short}, {f.long}" if f.short else f"  {f.long}"
             lines.append(f"{flag_label:<25s} {f.desc}")
 
-    notes = sub.notes or [f"Use this command to {sub.desc.lower()}."]
+    notes = sub.notes + sub.runtime_notes or [DEFAULT_HELP_NOTE.format(sub.desc.lower())]
     lines.append("\nNotes:")
     for note in notes:
         lines.append(f"  {note}")

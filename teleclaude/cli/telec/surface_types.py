@@ -81,7 +81,7 @@ class Flag:
     long: str
     short: str | None = None
     desc: str = ""
-    hidden: bool = False  # hidden from main help overview, visible in subcommand help
+    hidden: bool = False  # hidden from help output and completion
 
     def as_tuple(self) -> tuple[str | None, str, str]:
         """Backward-compat tuple for completion helpers."""
@@ -93,6 +93,7 @@ class _CommandPresentation:
     """Help-only metadata for a command."""
 
     notes: list[str] = field(default_factory=list)  # extra lines for subcommand help
+    runtime_notes: list[str] = field(default_factory=list)  # leaf-help notes excluded from generated documentation
     examples: list[str] = field(default_factory=list)  # curated examples shown in help output
     hidden: bool = False  # hide from help output and completion
     standalone: bool = False  # bare invocation has behavior (not just help text)
@@ -116,7 +117,7 @@ class CommandDef(_CommandPresentation):
     @property
     def flag_tuples(self) -> list[tuple[str | None, str, str]]:
         """All flags as tuples for completion."""
-        return [f.as_tuple() for f in self.flags]
+        return [f.as_tuple() for f in self.visible_flags]
 
     @property
     def subcmd_tuples(self) -> list[tuple[str, str]]:

@@ -33,6 +33,11 @@ logger = get_logger(__name__)
 
 SCOPE_ORDER = {"global": 0, "project": 1}
 GLOBAL_SOURCE_PROJECT = "global"
+ACTIVATION_CLOSURE_REQUEST_ERROR = (
+    "ERROR: --closure requires exactly one requested snippet ID and no --scope, --project, or --target filter."
+)
+ACTIVATION_CLOSURE_ROOT_ERROR = "ERROR: --closure requires one delivered activatable taxonomy procedure."
+ACTIVATION_CLOSURE_UNREADABLE_ERROR = "ERROR: Unable to read eligible required-read snippet: {}"
 
 
 class DocsSelectionEvent(StrEnum):
@@ -50,6 +55,10 @@ class DocsSelectionSource(StrEnum):
     CURRENT_PROJECT = "current_project"
     REGISTERED_CATALOG_FALLBACK = "registered_catalog_fallback"
     EXPLICIT_PROJECT = "explicit_project"
+
+
+class ActivationClosureError(ValueError):
+    """Raised when a requested activation closure cannot be complete."""
 
 
 @dataclass(frozen=True)
@@ -119,6 +128,7 @@ class SnippetMeta:
     source_project: str = ""
     project_root: Path | None = None
     visibility: str = SNIPPET_VISIBILITY_INTERNAL
+    activation_trigger: str | None = None
     delivered_by: tuple[str, ...] = ()
     superseded_by: tuple[str, ...] = ()
 
@@ -283,6 +293,8 @@ def _load_index(
                 path = (root_path / path).resolve()
             raw_visibility = item.get("visibility")
             visibility = raw_visibility if isinstance(raw_visibility, str) else SNIPPET_VISIBILITY_INTERNAL
+            raw_activation_trigger = item.get("activation_trigger")
+            activation_trigger = raw_activation_trigger if isinstance(raw_activation_trigger, str) else None
             raw_source_project = item.get("source_project")
             raw_delivered_by = item.get("delivered_by")
             delivered_by = (
@@ -307,6 +319,7 @@ def _load_index(
                     source_project=raw_source_project if isinstance(raw_source_project, str) else "",
                     project_root=root_path,
                     visibility=visibility,
+                    activation_trigger=activation_trigger,
                     delivered_by=delivered_by,
                     superseded_by=superseded_by,
                 )
@@ -330,6 +343,7 @@ def _load_index(
                 source_project=source_project or snippet.source_project,
                 project_root=project_root or snippet.project_root,
                 visibility=snippet.visibility or SNIPPET_VISIBILITY_INTERNAL,
+                activation_trigger=snippet.activation_trigger,
                 delivered_by=snippet.delivered_by,
                 superseded_by=snippet.superseded_by,
             )
@@ -739,6 +753,82 @@ def _pending_changes_awareness_lines(snippet: SnippetMeta) -> list[str]:
     ]
 
 
+def _validate_activation_closure_request(
+    *,
+    snippet_ids: list[str] | None,
+    scope: SnippetScope | None,
+    projects: list[str] | None,
+    target_slug: str | None,
+    root: SnippetMeta | None = None,
+    validate_root: bool = False,
+) -> None:
+    """Reject closure requests that cannot truthfully claim a complete activation context."""
+    if len(snippet_ids or []) != 1 or scope is not None or projects or target_slug is not None:
+        raise ActivationClosureError(ACTIVATION_CLOSURE_REQUEST_ERROR)
+    if not validate_root:
+        return
+    if (
+        root is None
+        or root.snippet_type != "procedure"
+        or root.delivered_by
+        or not root.activation_trigger
+        or not root.activation_trigger.strip()
+    ):
+        raise ActivationClosureError(ACTIVATION_CLOSURE_ROOT_ERROR)
+
+
+def _render_phase2_taxonomy_bodies(
+    *,
+    resolved: list[SnippetMeta],
+    requested_set: set[str],
+    closure_root: SnippetMeta | None,
+    project_root: Path,
+    global_root: Path,
+    global_snippets_root: Path,
+    target_slug: str | None,
+) -> tuple[list[str], int, list[str]]:
+    """Render selected snippets, or a validated activation closure, before assembling phase-two headers."""
+    rendered_dependency_ids: list[str] = []
+    body_parts: list[str] = []
+    rendered_count = 0
+    for snippet in resolved:
+        if closure_root is None and snippet.snippet_id not in requested_set:
+            continue
+        if closure_root is not None and snippet.snippet_id != closure_root.snippet_id and snippet.delivered_by:
+            continue
+        body = _read_selected_snippet_body(
+            snippet,
+            project_root=project_root,
+            global_root=global_root,
+            global_snippets_root=global_snippets_root,
+            target_slug=target_slug,
+        )
+        if body is None:
+            if closure_root is not None:
+                raise ActivationClosureError(ACTIVATION_CLOSURE_UNREADABLE_ERROR.format(snippet.snippet_id))
+            continue
+        body_parts.append(
+            "\n".join(
+                [
+                    "---",
+                    f"id: {snippet.snippet_id}",
+                    f"type: {snippet.snippet_type}",
+                    f"domain: {snippet.domain}",
+                    f"scope: {snippet.scope}",
+                    f"description: {snippet.description}",
+                    "---",
+                ]
+            ).strip()
+        )
+        body_parts.append(body.lstrip("\n"))
+        rendered_count += 1
+        if closure_root is not None and snippet.snippet_id != closure_root.snippet_id:
+            rendered_dependency_ids.append(snippet.snippet_id)
+        if snippet.superseded_by and target_slug is None:
+            body_parts.extend(_pending_changes_awareness_lines(snippet))
+    return body_parts, rendered_count, rendered_dependency_ids
+
+
 def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     *,
     areas: list[str],
@@ -757,12 +847,20 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     test_csv_path: str | None = None,
     target_slug: str | None = None,
     scope: SnippetScope | None = None,
+    closure: bool = False,
     include_registered_projects: bool = False,
     retrieval_id: str | None = None,
     verb: str | None = None,
 ) -> str:
     if list_projects:
         return _build_project_catalog_output()
+    if closure:
+        _validate_activation_closure_request(
+            snippet_ids=snippet_ids,
+            scope=scope,
+            projects=projects,
+            target_slug=target_slug,
+        )
 
     project_index = project_root / "docs" / "project" / "index.yaml"
     global_index = GLOBAL_DOCS_DIR / "index.yaml"
@@ -969,6 +1067,21 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         all_loaded_ids,
         third_party_by_id,
     )
+    closure_root: SnippetMeta | None = None
+    if closure:
+        closure_root = (
+            next((snippet for snippet in snippets if snippet.snippet_id == taxonomy_ids[0]), None)
+            if taxonomy_ids
+            else None
+        )
+        _validate_activation_closure_request(
+            snippet_ids=snippet_ids,
+            scope=scope,
+            projects=projects,
+            target_slug=target_slug,
+            root=closure_root,
+            validate_root=True,
+        )
     if unknown_ids:
         _emit_selection_summary(
             retrieval_id=retrieval_id,
@@ -1006,44 +1119,27 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
 
     requested_set = set(selected_ids)
     dep_ids = [s.snippet_id for s in resolved if s.snippet_id not in requested_set]
+    body_parts, rendered_count, rendered_dependency_ids = _render_phase2_taxonomy_bodies(
+        resolved=resolved,
+        requested_set=requested_set,
+        closure_root=closure_root,
+        project_root=project_root,
+        global_root=global_root,
+        global_snippets_root=global_snippets_root,
+        target_slug=target_slug,
+    )
+
     parts: list[str] = [
         "# PHASE 2: Selected snippet content",
         f"# Requested: {', '.join(selected_ids)}",
     ]
-    if dep_ids:
+    if closure:
+        if rendered_dependency_ids:
+            parts.append(f"# Required reads (included): {', '.join(rendered_dependency_ids)}")
+    elif dep_ids:
         parts.append(f"# Required reads (not loaded) that MUST have been read AT LEAST ONCE: {', '.join(dep_ids)}")
     parts.append("")
-
-    rendered_count = 0
-    for snippet in resolved:
-        if snippet.snippet_id not in requested_set:
-            continue
-        body = _read_selected_snippet_body(
-            snippet,
-            project_root=project_root,
-            global_root=global_root,
-            global_snippets_root=global_snippets_root,
-            target_slug=target_slug,
-        )
-        if body is None:
-            continue
-        parts.append(
-            "\n".join(
-                [
-                    "---",
-                    f"id: {snippet.snippet_id}",
-                    f"type: {snippet.snippet_type}",
-                    f"domain: {snippet.domain}",
-                    f"scope: {snippet.scope}",
-                    f"description: {snippet.description}",
-                    "---",
-                ]
-            ).strip()
-        )
-        parts.append(body.lstrip("\n"))
-        rendered_count += 1
-        if snippet.superseded_by and target_slug is None:
-            parts.extend(_pending_changes_awareness_lines(snippet))
+    parts.extend(body_parts)
 
     # Output selected third-party entries (no type, no dependency resolution)
     if third_party_ids:
@@ -1101,6 +1197,6 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         rendered_count=rendered_count,
         target_delivered_count=0,
         target_superseded_count=0,
-        dependency_count=len(dep_ids),
+        dependency_count=len(rendered_dependency_ids) if closure else len(dep_ids),
     )
     return "\n".join(parts)
