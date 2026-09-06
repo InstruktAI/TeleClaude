@@ -13,7 +13,16 @@ visibility: 'public'
 
 The write-side surface that lets operators, orchestrators, and other agents inject input into a running agent session. Two entry shapes share the same host-pane primitive layer:
 
+<!-- planned-change:codex-revival-input-readiness-cycle -->
 - **Structured message** — the agent_runtime service resolves the target session, wraps every session-originated payload with a caller-origin identity header, enqueues a `message` command through the command service, and delivers active-agent text through prompt-state user-turn delivery. This is the path the CLI uses for `telec sessions send`. Sessions without an active agent, and headless adoption paths that must recreate a host pane before delivery, use the lower-level paste-buffer primitive directly.
+<!-- change:codex-revival-input-readiness-cycle -->
+- **Structured message** — the agent_runtime service resolves the target session,
+  preserves caller identity and durable typed acceptance, and delivers agent text
+  through the shared occupancy-aware input surface. This includes first input
+  after launch and the conversational message that triggers headless adoption.
+  Sessions without an agent use the lower-level pane primitive directly;
+  adoption uses that primitive for shell and runtime launch only.
+<!-- /planned-change:codex-revival-input-readiness-cycle -->
 
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
@@ -61,6 +70,7 @@ lifecycle transition. Recovery follows UC-SID6.
 
 ### Use cases
 
+<!-- planned-change:codex-revival-input-readiness-cycle -->
 #### Structured message — happy path
 
 ```
@@ -79,6 +89,23 @@ And an occupied composer receives exactly two newlines followed by the complete 
 And when the target session has no active agent or requires headless adoption, the command path invokes the lower-level host-pane key-injection primitive
 And the service returns a successful work-mode send response
 ```
+<!-- change:codex-revival-input-readiness-cycle -->
+#### Structured message — happy path
+
+```gherkin
+Given an authenticated agent or human caller sends text to an accessible open session
+When the platform accepts the message
+Then it preserves the caller's structural authorship and durable input occurrence
+And a session-originated message identifies its actual sending session
+And a human's direct input remains human-authored
+When the target agent's input-readiness contract is satisfied
+Then its empty composer receives one paste and submission
+And its occupied composer preserves the existing text and appends two newlines followed by the accepted message without submission
+And its non-composer or ambiguous surface receives no input
+And these rules also govern the conversational message that triggered adoption of a headless agent
+And a session running no agent uses its ordinary terminal-input path
+```
+<!-- /planned-change:codex-revival-input-readiness-cycle -->
 
 #### Raw keys — happy path
 
