@@ -26,6 +26,7 @@ from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.db_models import ConversationLinkMode
+from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.inbound_errors import DirectLinkExclusivityError, SessionMessageRejectedError
 from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
@@ -50,6 +51,28 @@ _STOP_NOTIFICATION_COMPUTER_SELECTOR_TEMPLATE = " --computer {computer}"
 _STOP_NOTIFICATION_NO_PART = ""
 _BLOCKED_NOTIFICATION_TEMPLATE = "Session{location_part}{title_part} is waiting for approval or input. Use telec sessions tail {target_session_id}{computer_selector} to inspect."
 _FAILED_NOTIFICATION_TEMPLATE = "Session{location_part}{title_part} failed its turn. Use telec sessions tail {target_session_id}{computer_selector} to inspect."
+_NATIVE_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} emitted a native notification. Native evidence: {evidence}. "
+    "Assess its current state and recover within your mandate. "
+    "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
+)
+_PARENT_BLOCKED_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} is waiting for approval or input. Native evidence: {evidence}. "
+    "Assess its current state and recover within your mandate. "
+    "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
+)
+_PARENT_FAILED_NOTIFICATION_TEMPLATE = (
+    "Session{location_part}{title_part} failed its turn. Native evidence: {evidence}. "
+    "Assess its current state and recover within your mandate. "
+    "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
+)
+_ATTENTION_EVIDENCE_PROVIDER_KEY = "provider"
+_ATTENTION_EVIDENCE_NATIVE_EVENT_KEY = "native_event"
+_ATTENTION_EVIDENCE_DETAILS_KEY = "details"
+_ATTENTION_EVIDENCE_OBSERVED_AT_KEY = "observed_at"
+_ATTENTION_EVIDENCE_INGRESS_ID_KEY = "ingress_id"
+_ATTENTION_EVIDENCE_UNAVAILABLE = "unavailable"
+_NOTIFY_LISTENERS_LOG = "Notify listeners: target=%s callers=%s kind=%s"
 
 
 @dataclass
@@ -76,6 +99,7 @@ class NotificationKind(StrEnum):
 
     TURN_END = "turn_end"
     BLOCKED = "blocked"
+    NATIVE_NOTIFICATION = "native_notification"
     TURN_FAILED = "turn_failed"
 
 
@@ -404,12 +428,11 @@ async def _notify_listeners(
         logger.debug("No listeners for session %s", target_session_id)
         return set()
 
-    preview = message.replace("\n", "\\n")[:160]
     logger.debug(
-        "Notify listeners: target=%s callers=%s message_preview=%r",
+        _NOTIFY_LISTENERS_LOG,
         target_session_id,
         ",".join(listener.caller_session_id for listener in listeners),
-        preview,
+        notification_kind,
     )
     reached: set[str] = set()
     for listener in listeners:
@@ -497,6 +520,49 @@ def _distress_notification_message(
     )
 
 
+def _attention_evidence(observation: AgentAttentionObservation | None) -> str:
+    """Render native provider evidence as labelled data, never as instructions."""
+    if observation is None:
+        return _ATTENTION_EVIDENCE_UNAVAILABLE
+    return json.dumps(
+        {
+            _ATTENTION_EVIDENCE_PROVIDER_KEY: observation.provider,
+            _ATTENTION_EVIDENCE_NATIVE_EVENT_KEY: observation.native_event,
+            _ATTENTION_EVIDENCE_DETAILS_KEY: dict(observation.details),
+            _ATTENTION_EVIDENCE_OBSERVED_AT_KEY: observation.observed_at.isoformat()
+            if observation.observed_at
+            else None,
+            _ATTENTION_EVIDENCE_INGRESS_ID_KEY: observation.ingress_id,
+        },
+        sort_keys=True,
+    )
+
+
+def _parent_attention_message(
+    target_session_id: str,
+    computer: str,
+    title: str | None,
+    notification_kind: NotificationKind,
+    observation: AgentAttentionObservation | None,
+) -> str:
+    """Format parent-only guidance around labelled native evidence."""
+    title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
+    locality = _notification_locality(computer)
+    if notification_kind is NotificationKind.NATIVE_NOTIFICATION:
+        template = _NATIVE_NOTIFICATION_TEMPLATE
+    elif notification_kind is NotificationKind.BLOCKED:
+        template = _PARENT_BLOCKED_NOTIFICATION_TEMPLATE
+    else:
+        template = _PARENT_FAILED_NOTIFICATION_TEMPLATE
+    return template.format(
+        location_part=locality.location_part,
+        title_part=title_part,
+        target_session_id=target_session_id,
+        computer_selector=locality.computer_selector,
+        evidence=_attention_evidence(observation),
+    )
+
+
 async def notify_stop(
     target_session_id: str,
     computer: str,
@@ -523,11 +589,17 @@ async def notify_distress(
     computer: str,
     notification_kind: NotificationKind,
     title: str | None = None,
+    *,
+    observation: AgentAttentionObservation | None = None,
+    occurrence_key: str | None = None,
 ) -> set[str]:
-    """Notify persistent listeners of a blocked or failed target session."""
-    message = _distress_notification_message(target_session_id, computer, title, notification_kind)
+    """Notify persistent listeners of one native attention occurrence."""
+    message = _parent_attention_message(target_session_id, computer, title, notification_kind, observation)
     reached = await _notify_listeners(
-        target_session_id, message, occurrence_key=uuid4().hex, notification_kind=notification_kind
+        target_session_id,
+        message,
+        occurrence_key=occurrence_key or uuid4().hex,
+        notification_kind=notification_kind,
     )
     return reached
 
@@ -604,12 +676,13 @@ async def deliver_remote_distress_notification(
     notification_kind: NotificationKind,
     title: str | None = None,
     occurrence_key: str | None = None,
+    observation: AgentAttentionObservation | None = None,
 ) -> bool:
     """Deliver a forwarded distress notification directly to the remote caller."""
     caller = await db.get_session(caller_session_id)
     if caller is None:
         return False
-    message = _distress_notification_message(target_session_id, computer, title, notification_kind)
+    message = _parent_attention_message(target_session_id, computer, title, notification_kind, observation)
     try:
         await handoff_control_payload(
             session_id=caller_session_id,

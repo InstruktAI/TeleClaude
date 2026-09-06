@@ -171,7 +171,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "tail": CommandDef(
                 desc="Get recent messages from a session's transcript",
-                args="<session_id> [--since <ts>] [--tools] [--thinking] [--full]",
+                args="<session_id> [--since <ts>] [--tools] [--thinking] [--full] [--pane]",
                 flags=[
                     _H,
                     _FLAG_SESSION,
@@ -179,6 +179,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--tools", desc="Include tool use entries"),
                     _FLAG_THINKING,
                     Flag("--full", desc="Show all projected messages instead of the latest user turn"),
+                    Flag("--pane", desc="Show the current terminal pane instead of transcript messages"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),

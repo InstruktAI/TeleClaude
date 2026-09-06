@@ -101,7 +101,7 @@ class ClaudeAdapter(HookAdapter):
                 frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
-            ClaudeHookEvent.NOTIFICATION: NativeHookSpec(AgentHookEvents.AGENT_BLOCKED, frozenset()),
+            ClaudeHookEvent.NOTIFICATION: NativeHookSpec(AgentHookEvents.AGENT_NOTIFICATION, frozenset()),
             ClaudeHookEvent.STOP_FAILURE: NativeHookSpec(AgentHookEvents.AGENT_TURN_FAILED, frozenset()),
         }
     )
@@ -121,7 +121,7 @@ class ClaudeAdapter(HookAdapter):
             notification_type = data.get(_NOTIFICATION_TYPE_FIELD)
             if notification_type in _BLOCKING_NOTIFICATION_TYPES:
                 return HookEventNormalization(AgentHookEvents.AGENT_BLOCKED, HookNormalizationReason.MAPPED_EVENT)
-            return HookEventNormalization(None, HookNormalizationReason.PROVIDER_NOT_IDLE)
+            return HookEventNormalization(AgentHookEvents.AGENT_NOTIFICATION, HookNormalizationReason.MAPPED_EVENT)
         if raw_event_type == ClaudeHookEvent.POST_COMPACT:
             trigger = data.get(_POST_COMPACT_TRIGGER_FIELD)
             if trigger == _POST_COMPACT_MANUAL_TRIGGER:

@@ -43,6 +43,7 @@ class AgentHookEvents(StrEnum):
     AGENT_ERROR = "error"
     AGENT_BLOCKED = "agent_blocked"
     AGENT_IDLE = "agent_idle"
+    AGENT_NOTIFICATION = "agent_notification"
     AGENT_SESSION_START = "session_start"
     AGENT_STOP = "agent_stop"
     AGENT_TURN_FAILED = "agent_turn_failed"
@@ -70,11 +71,17 @@ _DISTRESS_NOTIFICATION_TYPE_FIELD = "notification_type"
 _DISTRESS_ERROR_FIELD = "error"
 _DISTRESS_TERMINATION_REASON_FIELD = "terminationReason"
 _DISTRESS_ERROR_MESSAGE_FIELD = "message"
+_ATTENTION_PROVIDER_FIELD = "agent_name"
+_ATTENTION_NATIVE_EVENT_FIELD = "native_event_type"
+_ATTENTION_DETAILS_FIELD = "native_event_details"
+_ATTENTION_OBSERVED_AT_FIELD = "received_at"
+_ATTENTION_INGRESS_ID_FIELD = "receiver_ingress_id"
 RECEIVER_HANDLED_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_ERROR,
         AgentHookEvents.AGENT_BLOCKED,
         AgentHookEvents.AGENT_IDLE,
+        AgentHookEvents.AGENT_NOTIFICATION,
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_TURN_FAILED,
@@ -164,6 +171,18 @@ class AgentDistressPayload:
     source_computer: str | None = None
     reason: str | None = None
     raw: Mapping[str, object] = field(default_factory=dict)
+    observation: "AgentAttentionObservation | None" = None
+
+
+@dataclass(frozen=True)
+class AgentAttentionObservation:
+    """Provider evidence retained for a native attention occurrence."""
+
+    provider: str | None
+    native_event: str | None
+    details: Mapping[str, object]
+    observed_at: datetime | None
+    ingress_id: str | None
 
 
 AgentEventPayload = Union[
@@ -185,6 +204,7 @@ SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
     AgentHookEvents.AGENT_STOP,
     AgentHookEvents.AGENT_BLOCKED,
     AgentHookEvents.AGENT_TURN_FAILED,
+    AgentHookEvents.AGENT_NOTIFICATION,
     AgentHookEvents.PRE_TOOL_USE,
     AgentHookEvents.POST_TOOL_USE,
 }
@@ -232,13 +252,18 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             raw=frozen_raw,
         )
 
-    if event_type in {AgentHookEvents.AGENT_BLOCKED, AgentHookEvents.AGENT_TURN_FAILED}:
+    if event_type in {
+        AgentHookEvents.AGENT_BLOCKED,
+        AgentHookEvents.AGENT_TURN_FAILED,
+        AgentHookEvents.AGENT_NOTIFICATION,
+    }:
         return AgentDistressPayload(
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
             source_computer=cast(str | None, data.get("source_computer")),
             reason=_distress_reason(data),
             raw=frozen_raw,
+            observation=_build_attention_observation(data),
         )
 
     if event_type in {AgentHookEvents.PRE_TOOL_USE, AgentHookEvents.POST_TOOL_USE}:
@@ -271,6 +296,23 @@ def _distress_reason(data: Mapping[str, object]) -> str | None:
             if isinstance(message, str) and message:
                 return message
     return None
+
+
+def _build_attention_observation(data: Mapping[str, object]) -> AgentAttentionObservation:
+    """Project receiver-owned native observation metadata into a typed payload."""
+    details = data.get(_ATTENTION_DETAILS_FIELD)
+    return AgentAttentionObservation(
+        provider=_optional_string(data.get(_ATTENTION_PROVIDER_FIELD)),
+        native_event=_optional_string(data.get(_ATTENTION_NATIVE_EVENT_FIELD)),
+        details=MappingProxyType(dict(details)) if isinstance(details, Mapping) else MappingProxyType({}),
+        observed_at=parse_iso_datetime(data.get(_ATTENTION_OBSERVED_AT_FIELD)),
+        ingress_id=_optional_string(data.get(_ATTENTION_INGRESS_ID_FIELD)),
+    )
+
+
+def _optional_string(value: object) -> str | None:
+    """Return a non-empty string from dynamic hook data."""
+    return value if isinstance(value, str) and value else None
 
 
 def build_codex_task_recovery_stop_payload(data: Mapping[str, object]) -> AgentStopPayload:

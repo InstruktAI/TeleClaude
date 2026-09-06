@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
@@ -42,6 +41,9 @@ from teleclaude.api.run_session_refusals import (
 )
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug
 from teleclaude.api.session_access import check_session_access
+from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
+from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
+from teleclaude.api.session_pane_routes import router as session_pane_router
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.api.sessions_coordinate_routes import router as sessions_coordinate_router
 from teleclaude.api_models import (
@@ -139,15 +141,16 @@ REMOTE_SESSION_MESSAGES_COMMAND = "get_session_messages"
 NO_REMOTE_COMPUTER = ""
 
 _STATE = SimpleNamespace(client=None)
-
 router = APIRouter()
 router.include_router(sessions_coordinate_router)
+router.include_router(session_pane_router)
 
 
 def configure(client: AdapterClient | None = None) -> None:
     """Wire client; called from APIServer at construction."""
     if client is not None:
         _STATE.client = client
+    configure_session_pane_routes(client)
 
 
 def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
@@ -172,37 +175,6 @@ def _native_session_exists_for_agent(native_session_id: str, agent: str) -> bool
         if extract_session_id(transcript.path, agent_name) == native_session_id:
             return True
     return False
-
-
-@dataclass(frozen=True)
-class SessionMessagesQuery:
-    """Normalized query parameters for message retrieval."""
-
-    computer: str | None = None
-    since: str | None = None
-    include_tools: bool | None = None
-    include_thinking: bool = False
-    tail_chars: int = 10000
-    tail_scope: str = "all"
-
-
-def _parse_session_messages_query(
-    computer: str | None = Query(None, description="Target computer"),
-    since: str | None = Query(None, description="ISO 8601 UTC timestamp; only messages after this time"),
-    include_tools: bool | None = Query(None, description="Include tool invocation entries when policy allows them"),
-    include_thinking: bool = Query(False, description="Include thinking/reasoning blocks"),
-    tail_chars: int = Query(10000, description="Fallback char budget for tmux/session tail output"),
-    tail_scope: str = Query("all", description="Message window: all or latest_turn"),
-) -> SessionMessagesQuery:
-    """Collect session-messages query parameters into one object."""
-    return SessionMessagesQuery(
-        computer=computer,
-        since=since,
-        include_tools=include_tools,
-        include_thinking=include_thinking,
-        tail_chars=tail_chars,
-        tail_scope=tail_scope,
-    )
 
 
 async def _resolve_revive_session_id(
@@ -652,7 +624,7 @@ async def revive_session(
 async def get_session_messages(
     request: Request,
     session_id: str,
-    query: SessionMessagesQuery = Depends(_parse_session_messages_query),
+    query: SessionMessagesQuery = Depends(parse_session_messages_query),
     _identity: CallerIdentity = Depends(clearance_sessions_tail),
 ) -> SessionMessagesDTO:
     """Get structured messages from a session's transcript files."""

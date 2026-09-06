@@ -6,6 +6,7 @@ import asyncio
 import base64
 import binascii
 import json
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import get_logger
@@ -14,9 +15,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from teleclaude.core import command_handlers
 from teleclaude.core.command_dispatch import execute_command_envelope
+from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SystemCommandContext, parse_command_string
+from teleclaude.core.events import AgentAttentionObservation, SystemCommandContext, parse_command_string
 from teleclaude.core.models import JsonDict, RedisInboundMessage
 from teleclaude.core.session_listeners import (
     NotificationKind,
@@ -27,6 +29,7 @@ from teleclaude.core.session_message_projection import (
     SessionMessageProjectionOptions,
     build_session_messages_dto,
 )
+from teleclaude.core.session_pane import get_session_pane
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.history.service import build_history_search_payload, parse_history_agents
 from teleclaude.types.commands import command_from_dict
@@ -51,6 +54,12 @@ _MESSAGE_EXCEPTIONS = (
     json.JSONDecodeError,
 )
 _DECODE_EXCEPTIONS = (binascii.Error, UnicodeError, ValueError)
+_ATTENTION_OBSERVATION_METADATA_KEY = "attention_observation"
+_ATTENTION_PROVIDER_KEY = "provider"
+_ATTENTION_NATIVE_EVENT_KEY = "native_event"
+_ATTENTION_DETAILS_KEY = "details"
+_ATTENTION_OBSERVED_AT_KEY = "observed_at"
+_ATTENTION_INGRESS_ID_KEY = "ingress_id"
 
 
 def _session_message_projection_options(data: JsonDict) -> SessionMessageProjectionOptions:
@@ -67,6 +76,28 @@ def _session_message_projection_options(data: JsonDict) -> SessionMessageProject
 def _decode_redis_text(data: dict[bytes, bytes], key: bytes) -> str | None:
     """Decode an optional UTF-8 text field from a Redis payload."""
     return data.get(key, b"").decode("utf-8") or None
+
+
+def _optional_string(value: object) -> str | None:
+    """Return a non-empty string from decoded wire metadata."""
+    return value if isinstance(value, str) and value else None
+
+
+def _attention_observation_from_metadata(metadata: JsonDict | None) -> AgentAttentionObservation | None:
+    """Decode additive parent-attention evidence at the remote transport boundary."""
+    if metadata is None:
+        return None
+    raw_observation = metadata.get(_ATTENTION_OBSERVATION_METADATA_KEY)
+    if not isinstance(raw_observation, dict):
+        return None
+    details = raw_observation.get(_ATTENTION_DETAILS_KEY)
+    return AgentAttentionObservation(
+        provider=_optional_string(raw_observation.get(_ATTENTION_PROVIDER_KEY)),
+        native_event=_optional_string(raw_observation.get(_ATTENTION_NATIVE_EVENT_KEY)),
+        details=MappingProxyType(dict(details)) if isinstance(details, dict) else MappingProxyType({}),
+        observed_at=parse_iso_datetime(raw_observation.get(_ATTENTION_OBSERVED_AT_KEY)),
+        ingress_id=_optional_string(raw_observation.get(_ATTENTION_INGRESS_ID_KEY)),
+    )
 
 
 class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
@@ -236,7 +267,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
 
             cmd_name, cmd_args = parse_command_string(parsed.command)
             if cmd_name in {"stop_notification", "distress_notification"}:
-                result = await self._handle_agent_notification_command(cmd_name, cmd_args)
+                result = await self._handle_agent_notification_command(cmd_name, cmd_args, parsed.origin_metadata)
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
                 return
@@ -245,6 +276,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 "list_projects",
                 "list_projects_with_todos",
                 "get_session_messages",
+                "get_session_pane",
                 "history_search",
             }:
                 # ``get_computer_info`` round-trip removed — identity now ships in the heartbeat
@@ -262,6 +294,15 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         options=options,
                     )
                     payload = dto.model_dump(mode="json")
+                elif cmd_name == "get_session_pane":
+                    pane = await get_session_pane(parsed.session_id or "")
+                    payload = {
+                        "session_id": pane.session_id,
+                        "runtime": pane.runtime,
+                        "captured_at": pane.captured_at.isoformat(),
+                        "available": pane.available,
+                        "text": pane.text,
+                    }
                 elif cmd_name == "history_search":
                     search_data = parsed.origin_metadata or {}
                     agent_filter = str(search_data.get("agent") or "all")
@@ -304,7 +345,9 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             except (RedisError, OSError, RuntimeError, ValueError, TypeError):
                 logger.debug("Failed to send Redis error response for %s", message_id, exc_info=True)
 
-    async def _handle_agent_notification_command(self, cmd_name: str, args: list[str]) -> JsonDict:
+    async def _handle_agent_notification_command(
+        self, cmd_name: str, args: list[str], origin_metadata: JsonDict | None
+    ) -> JsonDict:
         """Handle direct caller-notification commands delivered across computers.
 
         These arrive on the initiator's own daemon, naming a session that was
@@ -360,7 +403,13 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 except _DECODE_EXCEPTIONS:
                     return {"status": "error", "error": "invalid distress notification title"}
             delivered = await deliver_remote_distress_notification(
-                caller_session_id, target_session_id, source_computer, notification_kind, title, occurrence_key
+                caller_session_id,
+                target_session_id,
+                source_computer,
+                notification_kind,
+                title,
+                occurrence_key,
+                _attention_observation_from_metadata(origin_metadata),
             )
             return {"status": "success", "data": {"delivered": delivered}}
 

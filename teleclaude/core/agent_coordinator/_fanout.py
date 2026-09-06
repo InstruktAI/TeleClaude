@@ -3,7 +3,7 @@
 import base64
 import json
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
@@ -13,7 +13,8 @@ from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.db._sessions import TurnNotificationRecord
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.events import AgentAttentionObservation
+from teleclaude.core.models import MessageMetadata, Session, SessionOriginMetadata
 from teleclaude.core.session_listeners import (
     NotificationKind,
     notify_distress,
@@ -32,6 +33,35 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _DISTRESS_COMMAND = "/distress_notification {session_id} {computer} {caller} {kind} {title} {occurrence}"
+_ATTENTION_METADATA_KEY = "attention_observation"
+_ATTENTION_PROVIDER_KEY = "provider"
+_ATTENTION_NATIVE_EVENT_KEY = "native_event"
+_ATTENTION_DETAILS_KEY = "details"
+_ATTENTION_OBSERVED_AT_KEY = "observed_at"
+_ATTENTION_INGRESS_ID_KEY = "ingress_id"
+_DISTRESS_OUTCOME_SUBSCRIBER_DELIVERY = "subscriber_delivery"
+_DISTRESS_OUTCOME_HUMAN_FALLBACK = "human_fallback"
+_DISTRESS_OUTCOME_NO_FALLBACK = "no_fallback"
+_DISTRESS_NO_FALLBACK_NEUTRAL_NOTIFICATION = "neutral_notification"
+_DISTRESS_NO_FALLBACK_BLOCKED_ALREADY_OBSERVED = "blocked_already_observed_this_turn"
+
+
+def _attention_observation_metadata(observation: AgentAttentionObservation | None) -> SessionOriginMetadata:
+    """Serialize provider evidence once for the addressed remote parent path."""
+    if observation is None:
+        return cast(SessionOriginMetadata, {})
+    return cast(
+        SessionOriginMetadata,
+        {
+            _ATTENTION_METADATA_KEY: {
+                _ATTENTION_PROVIDER_KEY: observation.provider,
+                _ATTENTION_NATIVE_EVENT_KEY: observation.native_event,
+                _ATTENTION_DETAILS_KEY: dict(observation.details),
+                _ATTENTION_OBSERVED_AT_KEY: observation.observed_at.isoformat() if observation.observed_at else None,
+                _ATTENTION_INGRESS_ID_KEY: observation.ingress_id,
+            }
+        },
+    )
 
 
 class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
@@ -128,39 +158,76 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         await notify_stop(target_session_id, computer, title=display_title)
 
     async def _notify_session_distress(
-        self, target_session_id: str, notification_kind: NotificationKind, source_computer: str | None = None
+        self,
+        target_session_id: str,
+        notification_kind: NotificationKind,
+        source_computer: str | None = None,
+        observation: AgentAttentionObservation | None = None,
     ) -> None:
-        """Notify persistent listeners after claiming the matching turn slot."""
-        record = (
-            TurnNotificationRecord.BLOCKED
-            if notification_kind is NotificationKind.BLOCKED
-            else TurnNotificationRecord.TERMINAL_TURN_FAILED
-        )
-        claimed, records = await db.claim_turn_notification(target_session_id, record)
-        if not claimed:
-            logger.info(
-                "turn_notification_slot_claimed",
-                session_id=target_session_id,
-                claimed_member=record,
-                outcome="rejected",
-                recorded_members=sorted(records),
+        """Notify parents while retaining terminal and fallback slot semantics."""
+        blocked_claimed = False
+        if notification_kind is not NotificationKind.NATIVE_NOTIFICATION:
+            record = (
+                TurnNotificationRecord.BLOCKED
+                if notification_kind is NotificationKind.BLOCKED
+                else TurnNotificationRecord.TERMINAL_TURN_FAILED
             )
-            return
-        logger.info(
-            "turn_notification_slot_claimed",
-            session_id=target_session_id,
-            claimed_member=record,
-            outcome="claimed",
-        )
+            blocked_claimed, records = await db.claim_turn_notification(target_session_id, record)
+            if not blocked_claimed:
+                logger.info(
+                    "turn_notification_slot_claimed",
+                    session_id=target_session_id,
+                    claimed_member=record,
+                    outcome="rejected",
+                    recorded_members=sorted(records),
+                )
+                if notification_kind is NotificationKind.TURN_FAILED:
+                    return
+            else:
+                logger.info(
+                    "turn_notification_slot_claimed",
+                    session_id=target_session_id,
+                    claimed_member=record,
+                    outcome="claimed",
+                )
         session = await db.get_session(target_session_id)
         title = session.title if session else None
         computer = source_computer or LOCAL_COMPUTER
-        reached = await notify_distress(target_session_id, computer, notification_kind, title)
-        remote_reached = await self._forward_distress_to_initiator(session, notification_kind, computer, title)
+        occurrence_key = observation.ingress_id if observation and observation.ingress_id else uuid4().hex
+        reached = await notify_distress(
+            target_session_id,
+            computer,
+            notification_kind,
+            title,
+            observation=observation,
+            occurrence_key=occurrence_key,
+        )
+        remote_reached = await self._forward_distress_to_initiator(
+            session,
+            notification_kind,
+            computer,
+            title,
+            observation=observation,
+            occurrence_key=occurrence_key,
+        )
         fallback_delivered = False
-        if not reached and not remote_reached:
+        fallback_eligible = notification_kind is not NotificationKind.NATIVE_NOTIFICATION and (
+            notification_kind is not NotificationKind.BLOCKED or blocked_claimed
+        )
+        if fallback_eligible and not reached and not remote_reached:
             fallback_delivered = await notify_distress_human_fallback(
                 target_session_id, computer, notification_kind, self.client, title
+            )
+        outcome = (
+            _DISTRESS_OUTCOME_SUBSCRIBER_DELIVERY if reached or remote_reached else _DISTRESS_OUTCOME_HUMAN_FALLBACK
+        )
+        no_fallback_reason = None
+        if not reached and not remote_reached and not fallback_eligible:
+            outcome = _DISTRESS_OUTCOME_NO_FALLBACK
+            no_fallback_reason = (
+                _DISTRESS_NO_FALLBACK_NEUTRAL_NOTIFICATION
+                if notification_kind is NotificationKind.NATIVE_NOTIFICATION
+                else _DISTRESS_NO_FALLBACK_BLOCKED_ALREADY_OBSERVED
             )
         logger.info(
             "distress_audience_resolved",
@@ -169,25 +236,35 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             reached=sorted(reached),
             remote_initiator_session_id=(session.initiator_session_id if session else None),
             remote_reached=remote_reached,
-            outcome=("subscriber_delivery" if reached or remote_reached else "human_fallback"),
+            outcome=outcome,
+            reason=no_fallback_reason,
             fallback_delivered=fallback_delivered,
+            occurrence_key=occurrence_key,
         )
 
     async def _forward_distress_to_initiator(
-        self, session: object | None, notification_kind: NotificationKind, computer: str, title: str | None
+        self,
+        session: Session | None,
+        notification_kind: NotificationKind,
+        computer: str,
+        title: str | None,
+        *,
+        observation: AgentAttentionObservation | None,
+        occurrence_key: str,
     ) -> bool:
         """Forward distress and count a remote subscriber only when delivery succeeds."""
         if session is None:
             return False
-        session_id = getattr(session, "session_id", None)
-        caller = getattr(session, "initiator_session_id", None)
-        destination = getattr(session, "initiator_computer", None)
-        if not all(isinstance(value, str) and value for value in (session_id, caller, destination)):
+        session_id = session.session_id
+        caller = session.initiator_session_id
+        destination = session.initiator_computer
+        if not caller or not destination:
             return False
         if destination == config.computer.name:
             return False
         encoded_title = base64.b64encode(title.encode()).decode() if title else "-"
         try:
+            metadata = MessageMetadata(origin_metadata=_attention_observation_metadata(observation))
             request_id = await self.client.send_request(
                 destination,
                 _DISTRESS_COMMAND.format(
@@ -196,9 +273,9 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                     caller=caller,
                     kind=notification_kind,
                     title=encoded_title,
-                    occurrence=uuid4().hex,
+                    occurrence=occurrence_key,
                 ),
-                MessageMetadata(),
+                metadata,
             )
             response = json.loads(await self.client.read_response(request_id, target_computer=destination))
             data = response.get("data") if isinstance(response, dict) else None
