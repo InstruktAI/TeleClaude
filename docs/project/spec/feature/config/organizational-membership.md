@@ -50,7 +50,7 @@ with a valid one.
 : A company or project that exists in the platform's own registries. Every declaration names one; a declaration naming anything else is invalid.
 
 **Company role**
-: The role a person holds in the business, drawn from the platform's closed company-role vocabulary. Every membership declaration carries one.
+: The role a person holds in the business, drawn from the closed set `admin` and `member`. `admin` is the company's own administrator and owner; `member` is every other business relationship. Every membership declaration carries one, and this vocabulary is independent of the platform role a person holds.
 
 **Maintenance surface**
 : The ordinary administrator-facing configuration surface through which declarations are written and withdrawn, so no declaration requires editing a file by hand.
@@ -106,6 +106,19 @@ Examples:
   | project  |
 ```
 
+#### UC-CFG-MEMBER-11: An assignment to a company's project requires membership in that company
+
+```gherkin
+Given a registered company that owns a registered project
+And a person who holds no membership in that company
+And a human administrator operating the maintenance surface
+When the administrator assigns that person to that project
+Then the assignment is refused at the point it is written
+And the refusal names the missing membership in the owning company
+And no assignment is persisted for that person
+And declaring the membership first and repeating the assignment succeeds
+```
+
 ## Known caveats
 
 - Use-case identifiers 4 through 7, 9, and 10 are not in use in this contract
@@ -115,12 +128,15 @@ Examples:
   has a resolver and neither is populated. This contract is the single home for
   the owner relationship; the owner reference is not a second one, and both
   legacy declarations are migrated away rather than left loadable.
-- The company-role vocabulary is closed, and its exact values are an open
-  product decision. Scenarios here name the administrative role by its function
-  rather than by a literal value until that decision lands.
-- Whether an assignment may name a project of a company the person does not
-  belong to is an open product decision. No scenario here decides it; the
-  scenario that would state the refusal is authored once the decision lands.
+- The membership prerequisite is relational: it binds an assignment to the
+  company owning the project it names. It places no requirement on a person who
+  belongs to no company, and imposes nothing on a platform where no company is
+  registered — there, no declaration of either kind has a subject, and the
+  person-to-role mapping such a platform relies on is the platform role, which
+  this contract does not touch.
+- Nothing here introduces a default or implicit company. A person who belongs to
+  no company holds no membership declaration, rather than membership in a
+  standing group.
 
 ## See Also
 

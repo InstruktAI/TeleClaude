@@ -1,5 +1,5 @@
 ---
-description: How the company-tier roster is stored, validated, mutated, and resolved — config declaring the relationship, identity answering what it means, and the constraints on an assignment following from the open product decision about it.
+description: How the company-tier roster is stored, validated, mutated, and resolved — config declaring the relationship, identity answering what it means, and the membership an assignment presupposes.
 delivered_by:
   - company-member-roster
 ---
@@ -51,10 +51,9 @@ identity-owned and read-only; it resolves declarations and writes nothing.
 
 **A roster only ever carries its own company's projects.** The declaration lives
 with the company whose projects it concerns, so an assignment recorded in a
-company's roster names a project that company owns. This holds under either
-answer to the open decision and is not conditional on it: the open question is
-about the person's standing in the business, never about which projects a roster
-may reference.
+company's roster names a project that company owns. This constrains which projects a
+roster may reference, and is a separate rule from the person's standing in the
+business.
 
 **That alignment is dynamic referential integrity, not locality.** Nesting a
 project slug under a company constrains nothing about that project — ownership is
@@ -64,14 +63,21 @@ alignment is read through the project owner's published contract and verified at
 two boundaries: when an assignment is written, and when a roster is loaded for
 domain use.
 
-**What the open decision controls is the entry shape.** Under the recommended
-reading — an assignment requires membership — every entry carries a role, and an
-assignment without a membership has no entry to live in, which that shape does
-enforce. Under the other answer an entry exists without a role, carrying
-assignments alone, because a person assigned to this company's project without
-belonging to it still needs somewhere to be recorded. Both variants stand until
-the decision lands; the storage shape is a consequence of the answer, not an
-input to it.
+**Every roster entry carries a role.** An assignment presupposes membership in
+the company owning the project, so an entry is a person mapped to a company role,
+and the projects that person is assigned to hang off that entry. An
+assignment-only entry is not representable. The refusal is still enforced
+explicitly at the write path, because an entry can be created first and have its
+assignments extended afterwards, and the shape alone does not order those acts.
+
+**The prerequisite is relational, and imposes nothing platform-wide.** It binds
+an assignment to the company owning the project it names. A person belonging to
+no company is not thereby invalid, and a platform on which no company is
+registered carries no roster, refuses nothing, and needs no default or implicit
+company to hold anyone. Such a platform relies on the platform role alone, which
+this design never touches — and the sole-user administrator default is
+unreachable from here for the same reason: it derives from the count of
+registered people and never consults a company.
 
 **A load-time assignment whose project no longer resolves to the enclosing
 company fails loudly** rather than resolving as though it held. Silence there
@@ -113,9 +119,9 @@ old key being read, kept, and written back — it converts it into a silent extr
 The owned-data contract answers that by bringing the stored shape forward before
 domain consumption rather than refusing it: the migration removes an empty legacy
 declaration outright, and domain models then see only the roster shape. A
-non-empty legacy value cannot be converted while the company-role vocabulary is
-undecided, so the migration stops with an explicit blocker naming that decision
-rather than guessing a role. No installation holds such a value today, which
+non-empty per-company owner reference converts to a membership carrying the
+`admin` role for the person it names — the same relationship, stated in the
+roster's vocabulary. No installation holds such a value today, which
 makes the migration simple; it does not license a breaking parser boundary. Absence of the attribute is not absence of
 the field.
 <!-- change:config-schema-strictness -->
@@ -139,8 +145,9 @@ flowchart TD
 
     E[operator assigns person to project] --> F{project registered and<br/>owned by this company?}
     F -- no --> R3[refuse, naming the project or its owner]
-    F -- yes --> G[record the assignment in this company's roster]
-    G -.-> P((whether the person must also<br/>carry a membership role<br/>awaits the open decision))
+    F -- yes --> Q{person holds a membership<br/>in this company?}
+    Q -- no --> R4[refuse, naming the missing membership]
+    Q -- yes --> G[record the assignment on that person's roster entry]
 
     I[agent resolves a person] --> J[read every company roster]
     J --> K[collect memberships and explicit assignments]
@@ -150,10 +157,11 @@ flowchart TD
     N --> O[report them as covered, separately from assignments]
 ```
 
-The assignment path shows what holds under either answer: the project exists and
-this company owns it. What awaits the decision is only whether the person must
-also carry a membership role in that company, or may hold an assignment-only
-entry.
+The assignment path carries two independent checks. The project must exist and
+this company must own it — a constraint on which projects a roster may reference.
+The person must already hold a membership entry in this company — a constraint on
+that person's standing. Neither implies the other, and a refusal names which one
+failed.
 
 **Declaration** is an operator act on the company tier, reached through the
 configuration surface an administrator already uses for people. The surface is
@@ -191,9 +199,17 @@ one later is a change with its own evidence rather than a precaution taken now.
 - **Checking ownership only on write.** A project's owner can change after an
   assignment is recorded, so a write-time check alone leaves a roster that was
   valid once and silently is not.
-- **Conditionalizing the ownership rule on the membership question.** They are
-  separate rules. Treating them as one would, under the permissive answer, let a
-  project owned by another company be written into this roster.
+- **Collapsing the ownership check into the membership check.** They are separate
+  rules answering different questions — which projects this roster may reference,
+  and whether this person has standing in the business. Satisfying one is never
+  evidence for the other, and a single merged check would let a project owned by
+  another company be written into this roster whenever the person happened to be
+  a member of it.
+- **Reading the prerequisite as platform-wide enrollment.** It binds an
+  assignment to the company owning its project. Turning it into a requirement
+  that every person belong to some company would force an operator with no use
+  for a company to register one, and would break a platform that legitimately
+  carries none.
 - **Reading ownership from location.** A project's owner is its own declaration.
   Inferring it from the directory containing the project, or from who is
   assigned to it, produces coverage answers that change when files move.

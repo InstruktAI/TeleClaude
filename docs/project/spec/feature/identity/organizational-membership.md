@@ -59,13 +59,13 @@ assignment. Absence resolves to nothing, never to a default company.
 : A person's belonging to one registered company, carrying the role that person holds in that business.
 
 **Company role**
-: The role a person holds inside one business, drawn from the platform's closed company-role vocabulary. Independent of the platform role, and never a visibility tier.
+: The role a person holds inside one business, drawn from the closed set `admin` and `member`. `admin` is the company administrative role; `member` is every other business relationship. Independent of the platform role, and never a visibility tier.
 
 **Project assignment**
 : A person's assignment to work in one registered project. Never inferred from company membership.
 
 **Company administrative role**
-: The company role whose holder's membership covers every project that company owns, with no per-project entry. The owner of that business. The sole place a company role affects what resolution reports.
+: `admin` — the company role whose holder's membership covers every project that company owns, with no per-project entry. The owner of that business. The sole place a company role affects what resolution reports.
 
 **Undeclared person**
 : A person carrying no company membership and no project assignment. Resolves to no company relationship and an empty assignment set.
@@ -131,17 +131,40 @@ And every decision that reads the platform role behaves exactly as before
 And holding any platform role confers no company membership and no project assignment
 ```
 
+#### UC-ORGID-6: A person assigned to a company's project belongs to that company
+
+```gherkin
+Given a person carrying an assignment to a project owned by a company
+When an agent resolves that person's organizational membership
+Then that company appears among the person's memberships
+And no resolved assignment names a project owned by a company the person does not belong to
+```
+
+#### UC-ORGID-7: Resolution on a platform carrying no companies reports nothing organizational
+
+```gherkin
+Given a platform on which no company is registered
+And a person registered on that platform carrying a platform role
+When an agent resolves that person's organizational membership
+Then their company memberships are empty
+And their project assignments are empty
+And no company is supplied as a default
+And the person's platform role is reported unchanged by this resolution
+```
+
 ## Known caveats
 
 - UC-ORGID-3 is the only place a company role affects what resolution reports.
   Any further derivation from company role is a change to this contract, not an
   implementation detail.
-- Membership does not imply assignment: belonging to a company confers no
-  project. That direction is settled. Whether the reverse holds — whether an
-  assignment requires membership in the company owning the project — is an open
-  product decision, and this contract does not decide it.
-- The exact values of the closed company-role vocabulary are an open product
-  decision; the administrative role is named here by its function.
+- The two directions are not symmetric, and both are settled. Membership confers
+  no project assignment; an assignment to a company-owned project presupposes
+  membership in that company. The prerequisite binds an assignment to the
+  company owning the project it names, so it says nothing about a person who
+  belongs to no company.
+- Resolution reports the same shape on a platform carrying no companies as it
+  does for an undeclared person: empty, never a default. Such a platform relies
+  on the platform role alone, which this contract leaves untouched.
 
 ## See Also
 
