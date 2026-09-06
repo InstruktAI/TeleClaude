@@ -209,6 +209,7 @@ class SessionField(Enum):
     LAST_PROJECTED_AT = "last_projected_at"
     LAST_PROJECTED_OUTPUT_DIGEST = "last_projected_output_digest"
     LAST_OUTPUT_RAW = "last_output_raw"
+    LAST_OUTPUT_SUMMARY = "last_output_summary"
     LAST_OUTPUT_STOP_AT = "last_output_stop_at"
     LAST_OUTPUT_AT = "last_output_at"
     LAST_TOOL_DONE_AT = "last_tool_done_at"
