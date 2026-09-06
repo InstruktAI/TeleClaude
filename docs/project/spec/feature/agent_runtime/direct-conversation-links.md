@@ -379,21 +379,6 @@ And the turn is delivered to the counterpart with its text unaltered
 And the sending session's direction continues to deliver its later turns
 ```
 
-<!-- planned:exclusive-two-peer-direct-links -->
-#### UC-DCL15: A session already in direct conversation rejects a third peer
-
-```gherkin
-Given agent session A is in an active direct conversation with agent session B
-And agent session C is not part of that conversation
-When a direct-link request pairs C with A, whether A is the caller or target
-And whether or not C and A are on the same computer
-Then the request is rejected
-And the response identifies B as A's active conversation peer
-And the A-to-B conversation remains active
-And no direct link between A and C is created
-And no ignition message is delivered to either session
-```
-<!-- /planned:exclusive-two-peer-direct-links -->
 
 #### UC-DCL16: A working peer yields for newly pending peer input
 
