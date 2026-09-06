@@ -21,12 +21,6 @@ retrieval flow:
 2. **Phase 2 — fetch.** `telec docs get <id> [<id>...]` returns full
    content for the chosen IDs, with a `# Required reads (not loaded)`
    header listing dependency IDs the body referenced.
-<!-- planned-change:required-reads-closure-guarantee -->
-3. **Phase 3 — follow up explicitly.** Required reads are NEVER
-   auto-loaded. To pull a dependency, the caller re-runs `telec docs
-get` against the listed dependency IDs. The explicit follow-up keeps
-   the caller in deliberate control of its context budget.
-<!-- change:required-reads-closure-guarantee -->
 3. **Phase 3 — follow up explicitly.** Required reads are never auto-loaded
    by default. To pull a dependency, the caller re-runs `telec docs get`
    against the listed dependency IDs. Separately, the generated Activatable
@@ -35,7 +29,6 @@ get` against the listed dependency IDs. The explicit follow-up keeps
    eligible transitive required-read closure exactly once. Ordinary retrieval
    keeps the caller in deliberate control of its context budget and never
    exposes or activates the hidden form.
-<!-- /planned-change:required-reads-closure-guarantee -->
 
 Role gating runs at phases 1 and 2 against the terminal session's
 resolved identity; the same gate applies to any phase-3 follow-up fetch.
@@ -142,7 +135,6 @@ Then the content body is returned
 And Required reads resolution is NOT applied to that ID
 ```
 
-<!-- planned:required-reads-closure-guarantee -->
 #### UC-3PR7: Catalog activation loads the full eligible required-read closure, deduplicated
 
 ```
@@ -181,7 +173,6 @@ When the fetch resolves the procedure's closure
 Then that dependency is omitted without a hard failure
 And it is absent from the "# Required reads (included)" header
 ```
-<!-- /planned:required-reads-closure-guarantee -->
 
 #### UC-3PR10: Documentation retrieval works outside a project checkout
 
@@ -204,12 +195,6 @@ And the eligible global documentation and documentation published by registered 
 
 ## Known caveats
 
-<!-- planned-change:required-reads-closure-guarantee -->
-- Required reads are NEVER auto-loaded. The caller must re-run `telec docs get`
-  with the listed dependency IDs if they want the content. This is deliberate
-  — the agent controls its context budget — but new agents routinely miss the
-  follow-up step on first contact.
-<!-- change:required-reads-closure-guarantee -->
 - Required reads are never auto-loaded by default. The caller re-runs
   `telec docs get` with the listed dependency IDs. The default is deliberate:
   ordinary retrieval preserves the caller's context budget, while a generated
@@ -220,7 +205,6 @@ And the eligible global documentation and documentation published by registered 
   filters. Third-party IDs stay outside Required-reads resolution; a dependency
   whose visibility excludes the caller's role or whose pending state excludes it
   from the current contract is absent from the included closure.
-<!-- /planned-change:required-reads-closure-guarantee -->
 - Denied IDs are surfaced rather than hidden. An anonymous caller can confirm
   the existence of an `internal` snippet even though they cannot read it. This
   leaks identity information by design (so callers know to request a role

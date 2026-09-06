@@ -20,12 +20,6 @@ visibility: 'public'
   `--areas <type>` and/or `--domains <domain>` and/or `--baseline-only` to scope the listing
   to what you actually need.
 - Use it before any task where missing context could alter decisions.
-<!-- planned-change:required-reads-closure-guarantee -->
-- Use the three‑phase flow: filtered index first, then `telec docs get <id>` for selected IDs,
-  then fetch any IDs listed in the `# Required reads (not loaded)` header of the previous response.
-- Dependencies are NOT auto-expanded inline. The `# Required reads (not loaded)` header lists
-  their IDs — fetch them explicitly with a follow-up `telec docs get` call if needed.
-<!-- change:required-reads-closure-guarantee -->
 - Use the three‑phase flow: filtered index first, then `telec docs get <id>` for selected IDs,
   then fetch any IDs listed in the `# Required reads (not loaded)` header of the previous response.
 - Dependencies are NOT auto-expanded inline by default. The `# Required reads (not loaded)`
@@ -35,7 +29,6 @@ visibility: 'public'
   pass.** Executing the fetch instruction shown by the catalog returns the selected procedure
   and every eligible transitive required read exactly once. Ordinary documentation retrieval
   and its explicit follow-up flow remain unchanged.
-<!-- /planned-change:required-reads-closure-guarantee -->
 - **Third-party library docs: check consolidated docs first.** Before web searching or using
   Context7 for any library, framework, or tool, run `telec docs index --third-party` to check
   for existing coverage. If a consolidated snippet exists, use it. Web search and Context7 are
