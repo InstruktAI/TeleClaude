@@ -343,6 +343,8 @@ class AgentCoordinator(
             await self.handle_agent_stop(context)
         elif context.event_type == AgentHookEvents.AGENT_BLOCKED:
             await self.handle_agent_distress(context, NotificationKind.BLOCKED)
+        elif context.event_type == AgentHookEvents.AGENT_NOTIFICATION:
+            await self.handle_agent_distress(context, NotificationKind.NATIVE_NOTIFICATION)
         elif context.event_type == AgentHookEvents.AGENT_TURN_FAILED:
             await self.handle_agent_distress(context, NotificationKind.TURN_FAILED)
         elif context.event_type == AgentHookEvents.PRE_TOOL_USE:
@@ -374,6 +376,7 @@ class AgentCoordinator(
             context.session_id,
             notification_kind,
             source_computer=payload.source_computer,
+            observation=payload.observation,
         )
 
     async def handle_session_start(self, context: AgentEventContext) -> None:

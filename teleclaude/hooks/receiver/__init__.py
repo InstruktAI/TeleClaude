@@ -119,6 +119,18 @@ HOOK_RECEIVER_EXPORTS = [
 # This prevents noisy intermediate hook traffic from reaching command handlers.
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
 _HANDLED_EVENTS: frozenset[AgentHookEventType] = RECEIVER_HANDLED_HOOK_EVENTS
+_ATTENTION_EVENTS: frozenset[AgentHookEventType] = frozenset(
+    {
+        AgentHookEvents.AGENT_BLOCKED,
+        AgentHookEvents.AGENT_NOTIFICATION,
+        AgentHookEvents.AGENT_TURN_FAILED,
+    }
+)
+_AGENT_NAME_FIELD = "agent_name"
+_RECEIVED_AT_FIELD = "received_at"
+_RECEIVER_INGRESS_ID_FIELD = "receiver_ingress_id"
+_NATIVE_EVENT_TYPE_FIELD = "native_event_type"
+_NATIVE_EVENT_DETAILS_FIELD = "native_event_details"
 _DEFERRED_FORWARD_LOG_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_SESSION_START,
@@ -637,6 +649,21 @@ def enqueue_hook_event(
         )
         session.add(row)
         session.commit()
+
+
+def _attach_attention_observation(
+    data: JsonDict,
+    event_type: AgentHookEventType,
+    raw_event_type: str,
+    raw_data: JsonDict,
+    receiver_ingress_id: str,
+) -> None:
+    """Preserve receiver-owned provenance and unnormalized provider evidence."""
+    if event_type not in _ATTENTION_EVENTS:
+        return
+    data[_RECEIVER_INGRESS_ID_FIELD] = receiver_ingress_id
+    data[_NATIVE_EVENT_TYPE_FIELD] = raw_event_type
+    data[_NATIVE_EVENT_DETAILS_FIELD] = dict(raw_data)
 
 
 def enqueue_checkpoint_seen(
@@ -1563,8 +1590,9 @@ def main() -> None:
     if response_emitted and event_type != AgentHookEvents.AGENT_SESSION_START:
         return
 
-    data["agent_name"] = args.agent
-    data["received_at"] = datetime.now(UTC).isoformat()
+    data[_AGENT_NAME_FIELD] = args.agent
+    data[_RECEIVED_AT_FIELD] = datetime.now(UTC).isoformat()
+    _attach_attention_observation(data, event_type, raw_event_type, raw_data, receiver_ingress_id)
 
     debounce_window_s = _HOOK_COALESCE_WINDOWS_S.get(event_type)
     if args.agent == AgentName.CODEX.value and event_type == AgentHookEvents.AGENT_STOP:

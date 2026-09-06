@@ -315,7 +315,7 @@ def handle_sessions_tail(args: list[str]) -> None:
     """Get recent messages from a session's transcript.
 
     Usage: telec sessions tail <session_id> [--since <timestamp>]
-                               [--tools] [--thinking] [--full]
+                               [--tools] [--thinking] [--full] [--pane]
 
     Retrieves structured messages from the session's transcript files.
     Useful for inspecting what an agent has done or said recently.
@@ -325,11 +325,13 @@ def handle_sessions_tail(args: list[str]) -> None:
       --tools            Include pre_tool_use/tool_result entries
       --thinking         Include thinking/reasoning blocks
       --full             Show all projected messages instead of the latest user turn
+      --pane             Show the current terminal pane instead of transcript messages
 
     Examples:
       telec sessions tail abc123
       telec sessions tail abc123 --since 2024-01-01T00:00:00Z
       telec sessions tail abc123 --full
+      telec sessions tail abc123 --pane
     """
     if "--help" in args or "-h" in args:
         print(handle_sessions_tail.__doc__ or "")
@@ -344,20 +346,29 @@ def handle_sessions_tail(args: list[str]) -> None:
 
     explicit_since = False
     show_full = False
+    show_pane = False
+    transcript_filter_selected = False
     i = 0
     while i < len(args):
         if args[i] == "--since" and i + 1 < len(args):
             params["since"] = args[i + 1]
             explicit_since = True
+            transcript_filter_selected = True
             i += 2
         elif args[i] == "--tools":
             params["include_tools"] = "true"
+            transcript_filter_selected = True
             i += 1
         elif args[i] == "--thinking":
             params["include_thinking"] = "true"
+            transcript_filter_selected = True
             i += 1
         elif args[i] == "--full":
             show_full = True
+            transcript_filter_selected = True
+            i += 1
+        elif args[i] == "--pane":
+            show_pane = True
             i += 1
         elif args[i] == "--computer" and i + 1 < len(args):
             params["computer"] = args[i + 1]
@@ -372,8 +383,15 @@ def handle_sessions_tail(args: list[str]) -> None:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
 
-    params["tail_scope"] = "all" if show_full or explicit_since else "latest_turn"
-    data = tool_api_call("GET", f"/sessions/{session_id}/messages", params=params)
+    if show_pane and transcript_filter_selected:
+        print("Error: --pane cannot be combined with transcript filtering flags", file=sys.stderr)
+        raise SystemExit(1)
+
+    if show_pane:
+        data = tool_api_call("GET", f"/sessions/{session_id}/pane", params=params)
+    else:
+        params["tail_scope"] = "all" if show_full or explicit_since else "latest_turn"
+        data = tool_api_call("GET", f"/sessions/{session_id}/messages", params=params)
     print_json(data)
 
 
