@@ -17,6 +17,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api.sessions_responses import active_direct_link_response as _active_direct_link_response
+from teleclaude.api.sessions_responses import exclusive_direct_link_response as _exclusive_direct_link_response
 from teleclaude.api_models import SendMessageResponseDTO
 from teleclaude.config import config
 from teleclaude.core.command_dispatch import dispatch_command
@@ -28,6 +29,7 @@ from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptE
 from teleclaude.core.models import HumanFacingMessage, MessageAuthor, MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
+    active_direct_peer,
     create_or_reuse_direct_link,
     get_peer_members,
     resolve_link_for_sender_target,
@@ -203,6 +205,19 @@ async def _create_direct_link(  # pyright: ignore[reportUnusedFunction]
     )
     if link_ctx:
         return _active_direct_link_response(link_ctx[0].link_id, already_active=True)
+
+    for endpoint_id, other_id in (
+        (caller_session_id, target_session_id),
+        (target_session_id, caller_session_id),
+    ):
+        blocking_peer = await active_direct_peer(endpoint_id, allowed_peer_session_id=other_id)
+        if blocking_peer is not None:
+            return _exclusive_direct_link_response(
+                link_id=blocking_peer.link_id,
+                endpoint_session_id=endpoint_id,
+                peer_session_id=blocking_peer.session_id,
+                peer_name=blocking_peer.participant_name,
+            )
 
     link, _ = await create_or_reuse_direct_link(
         caller_session_id=caller_session_id,

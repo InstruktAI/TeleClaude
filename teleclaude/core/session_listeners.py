@@ -15,7 +15,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
@@ -23,6 +23,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
+from teleclaude.core.db_models import ConversationLinkMode
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
@@ -401,7 +402,7 @@ async def _notify_listeners(
         active_link = await db.get_active_link_between_sessions(
             listener.caller_session_id,
             target_session_id,
-            mode="direct_link",
+            mode=ConversationLinkMode.DIRECT,
         )
         if notification_kind is NotificationKind.TURN_END and active_link is not None:
             logger.debug(
@@ -642,7 +643,7 @@ async def notify_gate_approved(target_session_id: str, *, slug: str) -> bool:
 
 async def create_link(
     *,
-    mode: Literal["direct_link", "gathering_link"],
+    mode: ConversationLinkMode,
     created_by_session_id: str,
     metadata: dict[str, object] | None = None,  # guard: loose-dict - persisted metadata payload.
 ) -> ConversationLink:
@@ -700,6 +701,30 @@ async def get_active_links_for_session(session_id: str) -> list[ConversationLink
     return [_to_conversation_link(row) for row in rows]
 
 
+async def active_direct_peer(
+    session_id: str,
+    *,
+    allowed_peer_session_id: str | None = None,
+) -> ConversationLinkMember | None:
+    """Return the peer holding this session in a direct conversation, if any.
+
+    Direct conversation is exclusive to two sessions, so an endpoint already
+    talking to someone cannot enter a second link. ``allowed_peer_session_id``
+    exempts the pair the caller is asking about, leaving re-ignition of an
+    existing conversation to its own reuse path.
+    """
+    for link in await get_active_links_for_session(session_id):
+        if link.mode != ConversationLinkMode.DIRECT:
+            continue
+        members = await get_link_members(link.link_id)
+        peers = [member for member in members if member.session_id != session_id]
+        if allowed_peer_session_id is not None and any(peer.session_id == allowed_peer_session_id for peer in peers):
+            continue
+        if peers:
+            return peers[0]
+    return None
+
+
 async def create_or_reuse_direct_link(
     *,
     caller_session_id: str,
@@ -715,7 +740,7 @@ async def create_or_reuse_direct_link(
         existing_links = await db.get_active_links_between_sessions(
             caller_session_id,
             target_session_id,
-            mode="direct_link",
+            mode=ConversationLinkMode.DIRECT,
         )
         if existing_links:
             existing = existing_links[0]
@@ -740,7 +765,7 @@ async def create_or_reuse_direct_link(
             )
             return (_to_conversation_link(existing), False)
 
-        link = await create_link(mode="direct_link", created_by_session_id=caller_session_id)
+        link = await create_link(mode=ConversationLinkMode.DIRECT, created_by_session_id=caller_session_id)
         await add_link_member(
             link_id=link.link_id,
             session_id=caller_session_id,

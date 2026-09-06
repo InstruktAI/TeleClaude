@@ -228,6 +228,13 @@ class InboundQueue(SQLModel, table=True):
     caller_origin_suffix_len: int | None = None
 
 
+class ConversationLinkMode(StrEnum):
+    """Kind of conversation a link aggregate represents."""
+
+    DIRECT = "direct_link"
+    GATHERING = "gathering_link"
+
+
 class ControlDeliveryOutcome(StrEnum):
     """Terminal state owned by the control-delivery outbox."""
 

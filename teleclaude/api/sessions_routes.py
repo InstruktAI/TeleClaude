@@ -85,6 +85,7 @@ from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMet
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
+    active_direct_peer,
     close_link_for_member,
     create_or_reuse_direct_link,
     register_listener,
@@ -103,6 +104,13 @@ logger = get_logger(__name__)
 
 _UNIDENTIFIABLE_CALLER_EVENT = "unidentifiable_caller_refused"
 _SESSION_START_IGNITION_PATH = "session_start"
+# Refusal detail for a session-start ignition whose caller is already in a
+# direct conversation; refused before the session is created so no unlinked
+# session is left behind.
+_EXCLUSIVE_DIRECT_LINK_DETAIL = (
+    "Caller is already in a direct conversation with {peer_label} ({peer_session_id}). "
+    "Direct conversation is exclusive to two peers; close it before starting another."
+)
 _EMPTY_MESSAGE_TEXT = ""
 
 
@@ -451,6 +459,16 @@ async def _create_session_response(
         if cmd.job == "reviewer" and initiator_session_id:
             producer = await db.get_session(initiator_session_id)
             cmd.producer_agent = producer.active_agent if producer is not None else None
+    if request.direct and identity.session_id:
+        blocking_peer = await active_direct_peer(identity.session_id)
+        if blocking_peer is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=_EXCLUSIVE_DIRECT_LINK_DETAIL.format(
+                    peer_label=blocking_peer.participant_name or blocking_peer.session_id,
+                    peer_session_id=blocking_peer.session_id,
+                ),
+            )
     try:
         result = await dispatch_command(_STATE.client, cmd)
         if not isinstance(result, dict):
