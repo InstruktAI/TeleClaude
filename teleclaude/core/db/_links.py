@@ -22,7 +22,7 @@ class DbLinksMixin:
     async def create_conversation_link(
         self,
         *,
-        mode: Literal["direct_link", "gathering_link"],
+        mode: db_models.ConversationLinkMode,
         created_by_session_id: str,
         metadata_json: str | None = None,
     ) -> db_models.ConversationLinkRow:
@@ -82,7 +82,7 @@ class DbLinksMixin:
         session_a: str,
         session_b: str,
         *,
-        mode: Literal["direct_link", "gathering_link"] | None = None,
+        mode: db_models.ConversationLinkMode | None = None,
     ) -> list[db_models.ConversationLinkRow]:
         """Find all active links that contain both session IDs."""
         links = await self.get_active_links_for_session(session_a)
@@ -101,7 +101,7 @@ class DbLinksMixin:
         session_a: str,
         session_b: str,
         *,
-        mode: Literal["direct_link", "gathering_link"] | None = None,
+        mode: db_models.ConversationLinkMode | None = None,
     ) -> db_models.ConversationLinkRow | None:
         """Find the first active link that contains both session IDs."""
         links = await self.get_active_links_between_sessions(session_a, session_b, mode=mode)
