@@ -45,7 +45,7 @@ CODEX_SESSION_START_STATUS_MESSAGE: Final[str] = "Loading session notes"
 CODEX_PRE_TOOL_USE_MATCHER: Final[str] = ".*"
 
 CODEX_MANAGED_EVENT_LABELS: Final[frozenset[str]] = frozenset(
-    {"session_start", "user_prompt_submit", "pre_tool_use", "stop"}
+    {"session_start", "user_prompt_submit", "pre_tool_use", "post_tool_use", "permission_request", "stop"}
 )
 
 
@@ -172,6 +172,16 @@ _MANAGED_HOOK_SPECS: Final[dict[str, _CodexHookSpec]] = {
     ),
     "pre_tool_use": _CodexHookSpec(
         matcher=CODEX_PRE_TOOL_USE_MATCHER,
+        timeout_sec=None,
+        status_message=None,
+    ),
+    "post_tool_use": _CodexHookSpec(
+        matcher=CODEX_PRE_TOOL_USE_MATCHER,
+        timeout_sec=None,
+        status_message=None,
+    ),
+    "permission_request": _CodexHookSpec(
+        matcher=None,
         timeout_sec=None,
         status_message=None,
     ),

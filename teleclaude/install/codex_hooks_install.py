@@ -26,6 +26,8 @@ CODEX_TRUST_LABEL_BY_HOOK_NAME: dict[str, str] = {
     "SessionStart": "session_start",
     "UserPromptSubmit": "user_prompt_submit",
     "PreToolUse": "pre_tool_use",
+    "PostToolUse": "post_tool_use",
+    "PermissionRequest": "permission_request",
     "Stop": "stop",
 }
 
