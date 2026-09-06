@@ -47,6 +47,7 @@ Then register-listener(target=T, caller=C, caller_host_pane=C's host pane, one_s
 And C receives a single response notification on T's next stop, then the listener self-removes
 ```
 
+<!-- planned-change:native-notification-parent-attention -->
 #### What events trigger a notification
 
 ```
@@ -59,6 +60,17 @@ And per-turn notification dedup is scoped by (target, notification kind): a per-
 
 The fan-out emits exactly the notification kinds this spec's use cases enumerate
 ```
+<!-- change:native-notification-parent-attention -->
+#### What events trigger a notification
+
+```
+Given an agent session watches a target session
+When the target finishes its turn, fails its turn, waits for approval or input, or emits a native notification
+Then the watching agent receives the corresponding observation under the audience rules in this spec
+And terminal outcomes retain their shared per-turn outcome slot
+And nonterminal attention preserves distinct source occurrences through the existing delivery boundary
+```
+<!-- /planned-change:native-notification-parent-attention -->
 
 #### UC-SS1: Re-poke clears the per-turn dedup flag
 
@@ -256,6 +268,51 @@ Then the distress notification is delivered to its persistent subscribers only
 And the session's human-facing channel receives nothing from this mechanism
 ```
 
+<!-- planned:native-notification-parent-attention -->
+#### UC-SS14: Native notifications reach parent intelligence without a distress precondition
+
+```gherkin
+Given an agent session persistently watches a child session
+When the child runtime emits a native notification
+Then the watching agent receives that observation without waiting for the child to finish
+And an unfamiliar notification subtype is not discarded
+And a notification alone does not assert that the child is blocked or failed
+And the human's terminal-alert preference does not control this delivery
+```
+
+#### UC-SS15: Attention carries the evidence needed for autonomous assessment
+
+```gherkin
+Given a parent agent receives a notification, approval-wait, or failure observation about its child
+When the platform presents the observation
+Then it identifies the child, the originating runtime, the observation time, and the available native details
+And it provides an actionable way to inspect the child's current terminal state independently of its transcript
+And it directs the parent to assess current evidence and act within its existing mandate
+And the event itself grants no additional permission or authority
+```
+
+#### UC-SS16: Distinct attention occurrences remain observable within one turn
+
+```gherkin
+Given a parent agent has received an attention observation about its child
+When the child produces a distinct notification or approval-wait observation before ending the same turn
+Then the parent receives the distinct observation through the existing control-delivery boundary
+And sharing a kind or unresolved condition does not suppress that observation
+And the consumer adds no separate acknowledgement, retry, or duplicate-detection mechanism
+```
+
+#### UC-SS17: Neutral notifications remain agent-directed
+
+```gherkin
+Given a child runtime emits a notification that does not establish a known distress state
+When the platform routes that observation
+Then it reaches the child's persistent agent watchers, including across a computer boundary or an active conversation link
+And it does not consume a single-reply subscription
+And absence of a persistent watcher does not turn it into a direct human alert
+And the existing no-watcher fallback for known distress is unchanged
+```
+<!-- /planned:native-notification-parent-attention -->
+
 ### Cross-context references
 
 - **identity** — listener registration is gated by caller identity binding (the caller's session id and host-pane reference from the caller identity). A request without a bound caller session (e.g., a TUI/tool client without identity headers) does not auto-register. The unsubscribe entry similarly resolves the caller from its clearance.
@@ -266,10 +323,28 @@ And the session's human-facing channel receives nothing from this mechanism
 ## Known caveats
 
 - **Dedup is per (target, caller) pair, not per target.** Multiple callers can listen to the same target; one caller can only listen to one target once. A second register call for the same pair is a no-op reporting "not new".
+<!-- planned-change:native-notification-parent-attention -->
 - **Notification dedup within a turn is scoped by (target, kind).** The fan-out consults a per-turn gate record that admits at most one notification of each kind, with turn-end and turn-failure sharing one terminal-outcome slot that the first terminal signal claims. The next accepted native user entry clears the whole gate only when the runtime normalizer classifies it as a real turn; declared runtime side-channel artifacts do not. Without this gate, listeners would receive multiple "finished its turn" messages per actual turn; without the kind scoping, one kind would swallow another's notice for the same turn.
+<!-- change:native-notification-parent-attention -->
+- **Terminal outcomes and attention occurrences are distinct.** Turn-end and
+  turn-failure retain their shared terminal-outcome slot. Nonterminal attention
+  retains source-occurrence identity through the existing delivery boundary;
+  the fan-out does not collapse separate observations by kind, turn, or an
+  inferred unresolved condition. Consumers rely on control delivery rather
+  than adding their own acknowledgement, retry, or duplicate-detection layer.
+<!-- /planned-change:native-notification-parent-attention -->
 - **One-shot listeners self-remove after delivery, persistent listeners do not.** AI-to-AI message sends register one-shot (single response expected). AI-to-AI session starts register persistent (orchestrator keeps hearing every stop until the worker terminates or the orchestrator unsubscribes/ends).
 - **Direct-link suppression is delivery-time only, applies to turn-end only, and the listener record is preserved.** During an active direct link, turn-end notifications for the pair are silently skipped; distress notifications are delivered regardless, because the live channel carries no output for a stuck or dead target. The record stays so that turn-end notification resumes the next time the fan-out runs after the link has been severed. This intentionally keeps the two planes independent.
 - **Delivery has no retry.** A failed listener delivery (the caller's host pane is gone, key injection errors out) is logged as a warning and dropped. The one-shot record is still removed on failure. The persistent record remains and will be retried only on the NEXT notification event.
 - **Stale-target sweep is informational, not corrective.** It surfaces targets whose listeners have been waiting too long and resets timestamps to prevent re-surfacing. The sweep itself does not unregister listeners or terminate stuck targets — callers decide what to do with the list.
 - **Storage is durable and survives service restart.** Listener records are durable across service restarts. A restart does not orphan listeners; they remain and the next stop emits as expected.
 - **External (non-session) subscribers are not first-class.** The listener model assumes the caller is itself a session with a host pane reachable via the listener-message path. A purely external observer (e.g., a UI adapter wanting "tell me when session T stops") is not represented as a listener record — that fan-out lives in the agent-coordinator emit path, separate from this surface.
+
+<!-- planned:native-notification-parent-attention -->
+## See Also
+
+- docs/project/spec/feature/agent_runtime/control-delivery.md
+- docs/project/spec/feature/agent_runtime/session-transcript-retrieval.md
+- ~/.teleclaude/docs/general/principle/intelligence-boundaries.md
+- ~/.teleclaude/docs/general/policy/human-contract.md
+<!-- /planned:native-notification-parent-attention -->

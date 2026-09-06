@@ -99,6 +99,20 @@ When the access check raises
 Then the service returns the access-control error from the access check
 ```
 
+<!-- planned:native-notification-parent-attention -->
+#### UC-STR2: An agent can inspect the live terminal independently of transcript progress
+
+```gherkin
+Given an authorized parent agent investigates its child session
+And the child has an existing transcript with no new messages
+When the parent requests the child's current terminal state
+Then it receives the available live terminal contents distinctly identified as terminal observation rather than authored conversation
+And transcript availability or lack of new messages does not hide that observation
+And a child with no available terminal is reported as such without inventing terminal contents
+And inspection writes no input and makes no permission decision for the child
+```
+<!-- /planned:native-notification-parent-attention -->
+
 ### Cross-context references
 
 - **session_mirrors** — explicitly NOT what this entry returns. The mirror layer is an eternal text extract published only at session end and lives in its own bounded context; this entry always reads the live native transcripts.
