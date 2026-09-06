@@ -76,52 +76,44 @@ And if the target returns an error envelope, an upstream error is surfaced
 And if the target does not respond, a timeout error is surfaced
 ```
 
+<!-- planned-change:codex-revival-input-readiness-cycle -->
+#### UC-SL24: Startup message is submitted after the launch gate
+
+```gherkin
+Given an agent caller creates a fresh child with an initial message delivered after launch
+And the startup gate has opened
+When the bootstrap delivers the initial message
+Then it pastes and submits that message without observing composer occupancy
+And it does not wait for post-paste occupancy or a resulting transcript entry to report submission
+```
+<!-- change:codex-revival-input-readiness-cycle -->
 #### UC-SL24: Startup message is accepted by the live prompt
 
+```gherkin
+Given an agent caller creates a fresh child with an initial message delivered after launch
+When the child's startup input-readiness contract is satisfied
+Then the accepted message is delivered through the shared occupancy-aware input surface
+And an empty composer receives one paste and submission
+And an occupied composer preserves existing text and appends the message without submission
+And an ambiguous or non-composer screen receives no input
+And submission does not itself establish lifecycle activation
 ```
-Given the caller passes a message in the create request
-And the launch kind is `agent` (the default)
-When the launch-intent builder runs
-Then the launch kind is upgraded to `agent_then_message`
-And the launch intent is built with agent, thinking mode, and message
-And the message is persisted on the launch intent
-And once the agent CLI is ready, the bootstrap task submits the message through prompt-state startup delivery
-And prompt-state startup delivery captures the live prompt input state before paste
-And prompt-state startup delivery attempts the paste exactly once
-And after paste, it waits until the live prompt input changes from its pre-paste state to effective user input before sending Enter
-And effective user input is any real prompt occupancy, including collapsed paste markers beginning with `[Pasted `
-And generated or styled suggestion text in the prompt counts as empty input
-And prompt-state startup delivery sends Enter as soon as changed effective user input is observed
-And when a post-Enter observation shows the live prompt input is no longer effectively occupied, or a submitted/agent-active pane boundary is visible, the launch result is success and output polling starts
-And if `user_prompt_submit` arrives while prompt-state startup delivery is still observing or retrying, it also stops delivery as success but is not required for success
-And if effective user input is never observed after the single paste attempt, the launch result is an error rather than a re-paste
-And the initiator extraction records the caller's session id so the spawned child can notify the initiator on stop (one-shot listener)
-```
+<!-- /planned-change:codex-revival-input-readiness-cycle -->
 
 #### UC-SL25: Startup message enter retries do not re-paste
 
-```
-Given the caller passes a message in the create request
-And the live prompt input contains changed effective user input after the single paste
-When Enter is sent but the post-Enter pane observation still shows effective user input in the live prompt
-Then prompt-state startup delivery re-captures and re-classifies the live prompt before each retry
-And while effective user input remains in the live prompt, it retries Enter without clearing or re-pasting the message
-And if the live prompt input becomes empty, generated-only, or replaced by a submitted/agent-active pane boundary, it stops retrying and reports success
-And if effective user input remains in the live prompt after the retry budget, the launch result is an error rather than a silent success
-```
+<!-- planned:codex-revival-input-readiness-cycle -->
+#### UC-SL26: Historical prompt text does not establish startup readiness
 
-#### UC-SL26: Historical prompt text does not confirm startup delivery
-
+```gherkin
+Given an agent caller has an accepted startup message waiting for delivery
+And historical terminal output contains an earlier composer
+And the current terminal surface is not a complete editable composer
+When startup input readiness is assessed
+Then the historical composer does not establish readiness
+And no message is pasted or submitted on that evidence
 ```
-Given the caller passes a message in the create request
-And the pane output contains that message only in historical scrollback
-When prompt-state startup delivery observes the pane
-Then the historical copy does not satisfy the live prompt input check
-And an unchanged pre-existing live prompt input does not satisfy the live prompt input check
-And generated or styled suggestion text in the live prompt does not satisfy the live prompt input check
-And Enter is not sent from that observation
-And the launch result is an error rather than a silent success
-```
+<!-- /planned:codex-revival-input-readiness-cycle -->
 
 #### Initiator listener registration
 

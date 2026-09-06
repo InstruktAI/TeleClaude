@@ -21,6 +21,44 @@ Both paths use the host-pane orchestration layer's paste/key primitives. Raw key
 
 ## Canonical fields
 
+<!-- planned:codex-revival-input-readiness-cycle -->
+### Startup readiness and lifecycle authority
+
+Human pane inspection, automated input readiness, and runtime lifecycle
+activation are independent capabilities. An open bound pane remains inspectable
+without either input readiness or runtime activation.
+
+Provider adapters own native startup-event origin, timing, and capabilities.
+The input-readiness owner consumes those facts and observes the complete live
+composer. Lifecycle coordination records the declared runtime-start fact; it
+does not infer composer readiness from the shared normalized event name.
+
+| Runtime | Startup authority for post-launch first-input delivery | Lifecycle-start observation |
+| --- | --- | --- |
+| Claude | Reliable native start signal, followed by ordinary composer protection at delivery | Native `SessionStart` |
+| Codex | Complete live-pane composer readiness; no dependency on the later start hook | Native `SessionStart`, deferred until the submitted prompt starts a turn |
+| Antigravity (agy) | Complete live-pane composer readiness | First native `PreInvocation`, normalized by the adapter to `session_start` |
+| DeepSeek | Complete live-pane composer readiness; Claude-compatible hook names confer no pre-input startup guarantee | Its declared hook adapter's runtime-start observation |
+
+The startup gate applies consistently to fresh sessions, first input accepted
+after an empty launch, and resumed or adopted sessions. An initializing
+lifecycle does not prevent delivery when the runtime's input-readiness contract
+is satisfied. Pane readiness permits input only; it never activates lifecycle.
+
+Headless adoption uses lower-level pane primitives for shell and runtime launch;
+its triggering conversational message uses the shared input-delivery surface.
+Every post-launch text delivery observes composer occupancy, including the
+initial message and an adoption's triggering message. UC-SID10 and UC-SID11
+govern draft preservation and non-composer screens. A startup signal does not
+authorize Enter on an occupied composer or an interaction with a menu. Genuine
+runtime suggestion chrome is not authored input; its styling must not erase
+ordinary colored human text during occupancy observation.
+
+Accepted messages retain their original occurrence and ordering. A readiness
+wait does not authorize a duplicate resend, a new session, or a synthetic
+lifecycle transition. Recovery follows UC-SID6.
+<!-- /planned:codex-revival-input-readiness-cycle -->
+
 ### Use cases
 
 #### Structured message — happy path
@@ -249,6 +287,21 @@ And the target session remains available for inspection or recovery
 And the message is not represented as delivered
 ```
 
+<!-- planned:codex-revival-input-readiness-cycle -->
+#### UC-SID14: First input does not wait for a start signal that requires that input
+
+```gherkin
+Given an agent caller has started or revived a child runtime whose start signal follows initial prompt submission
+And the child's complete live composer is empty and accepts input
+And the child has not yet been marked active
+When the first accepted message reaches delivery
+Then the message is submitted once to that child in accepted order
+And delivery does not wait for lifecycle activation
+And pane readiness and submission do not themselves mark the child active
+And the child becomes active only from its declared runtime-start observation
+```
+<!-- /planned:codex-revival-input-readiness-cycle -->
+
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.
@@ -273,3 +326,10 @@ And the message is not represented as delivered
 
 - **Auto-registered one-shot listener is best-effort.** When a non-self caller with a host pane sends a work-mode message, the agent_runtime service attempts a one-shot listener registration so the caller sees the response. Failures are swallowed at debug and never block delivery.
 - **No payload size cap at this layer.** The buffer-load step reads from stdin so the host-pane argument-length limit does not apply, but very large payloads still pay paste-time cost in the agent's terminal renderer.
+
+## See Also
+
+- docs/project/spec/hook-normalized-events.md
+- docs/project/spec/feature/agent_runtime/session-revival.md
+- ~/.teleclaude/docs/general/principle/intelligence-boundaries.md
+- ~/.teleclaude/docs/software-development/policy/domain-ownership.md

@@ -197,3 +197,7 @@ Ordering model:
   never installed as a TeleClaude receiver hook. Provider-owned or static
   safety hooks remain outside this mapping contract.
 - Delivery is at-least-once; handlers must stay idempotent.
+
+## See Also
+
+- docs/project/spec/feature/agent_runtime/session-input-delivery.md — startup input readiness is separate from normalized lifecycle activation.

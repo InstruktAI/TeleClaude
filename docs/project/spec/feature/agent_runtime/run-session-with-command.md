@@ -529,6 +529,7 @@ When TeleClaude delivers the initial message
 Then the session does not appear active on the strength of host-pane readiness
 And the session appears active only after the launched agent reports that it started
 ```
+<!-- planned-change:codex-revival-input-readiness-cycle -->
 #### UC-RSC-RG3: Fresh post-launch initial input submits without composer observation
 
 ```gherkin
@@ -540,6 +541,19 @@ Then it pastes and submits the message without observing composer occupancy
 And this exclusion applies only to that fresh post-launch initial turn
 And every existing-session delivery retains its occupancy-aware preservation behavior
 ```
+<!-- change:codex-revival-input-readiness-cycle -->
+#### UC-RSC-RG3: Fresh post-launch initial input preserves composer protection
+
+```gherkin
+Given an orchestration agent starts a fresh session whose initial message is delivered after launch
+And the runtime's startup gate has opened
+When the platform delivers the accepted initial message
+Then it applies the same complete-composer observation as existing-session text delivery
+And it submits only when that composer is empty
+And an occupied composer retains its existing text with the platform message appended without submission
+And a menu or ambiguous screen is left unchanged
+```
+<!-- /planned-change:codex-revival-input-readiness-cycle -->
 
 
 ### Cross-context references
@@ -578,4 +592,3 @@ And every existing-session delivery retains its occupancy-aware preservation beh
 - **`subfolder` is not validated for traversal.** The entry trusts the caller; project-path joining and subdir sanitization happen downstream in the metadata-building path.
 
 - **Dispatch privilege depends on role inference succeeding.** If the command isn't canonical (typo, unknown name), no role is inferred and dispatch privilege is skipped — so ACL coverage assumes the command is canonical.
-
