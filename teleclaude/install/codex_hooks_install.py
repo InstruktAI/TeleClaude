@@ -320,12 +320,14 @@ def _capture_enabled_overrides(
     new_keys_by_label: Mapping[str, str],
     old_keys_by_label: Mapping[str, list[str]],
 ) -> tuple[dict[str, bool], dict[str, bool]]:
-    """Pick up ``enabled`` flags persisted at the current new key and at any prior TC key for migration."""
+    """Carry enabled overrides only from positions previously owned by TeleClaude."""
     at_new: dict[str, bool] = {}
     at_old: dict[str, bool] = {}
     if not isinstance(existing_state, dict):
         return at_new, at_old
     for label, new_key in new_keys_by_label.items():
+        if new_key not in old_keys_by_label.get(label, []):
+            continue
         prior = existing_state.get(new_key)
         if isinstance(prior, dict) and "enabled" in prior:
             at_new[label] = bool(prior["enabled"])
@@ -376,7 +378,7 @@ def _carry_over_existing_state(
     for key, value in existing_state.items():
         if not isinstance(value, dict):
             continue
-        if key in stale_keys:
+        if key in stale_keys and key not in foreign_remap_keys:
             continue
         target_key = foreign_remap_keys.get(key, key)
         merged[target_key] = dict(value)
