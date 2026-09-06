@@ -252,6 +252,8 @@ fi
 # projected repositories opt into only the gates owned by present markers.
 _git_common_dir="$("$_real_git_bin" ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 _capability_dir="${_git_common_dir}/teleclaude/capabilities"
+_sealed_invocation_context=0
+[ -f "$_capability_dir/invocation-context" ] && _sealed_invocation_context=1
 if [ ! -f "$_capability_dir/onboarded" ]; then
     _code_enabled=1
     _docs_enabled=1
@@ -268,7 +270,7 @@ fi
 
 # Agents-only and data projects own no git-wrapper behavior. Their git surface
 # is ordinary git even inside a TeleClaude session.
-if [ "$_code_enabled" -eq 0 ] && [ "$_commit_enabled" -eq 0 ]; then
+if [ "$_code_enabled" -eq 0 ] && [ "$_commit_enabled" -eq 0 ] && [ "$_sealed_invocation_context" -eq 0 ]; then
     exec "$_real_git_bin" "$@"
 fi
 
@@ -650,7 +652,7 @@ MSG
 fi
 
 # Block 'git add' for agents — staging is owned by telec.
-if [ "$_commit_enabled" -eq 1 ] && [ "$_subcmd" = "add" ]; then
+if { [ "$_commit_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; } && [ "$_subcmd" = "add" ]; then
     _log_block add_redirect
     cat >&2 <<'MSG'
 ERROR: 'git add' is not used by agents. Staging is owned by telec.
@@ -673,7 +675,7 @@ MSG
     exit 1
 fi
 
-if [ "$_commit_enabled" -eq 1 ] && [ "$_subcmd" = "commit" ]; then
+if { [ "$_commit_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; } && [ "$_subcmd" = "commit" ]; then
     _log_block commit_redirect
     cat >&2 <<'MSG'
 ERROR: Use 'telec code commit' instead of 'git commit'.
@@ -697,7 +699,7 @@ fi
 # is not 'commit', so the gate above doesn't see them. Without this, replays
 # can land on main bypassing telec code commit's main-branch lock and the
 # commit-first review-routing gate.
-if [ "$_code_enabled" -eq 1 ]; then
+if [ "$_code_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; then
 case "$_subcmd" in
     cherry-pick|rebase|merge)
         _produces_commit=1
@@ -728,7 +730,7 @@ MSG
 esac
 fi
 
-if [ "$_code_enabled" -eq 1 ] && [ "$_subcmd" = "push" ]; then
+if { [ "$_code_enabled" -eq 1 ] || [ "$_sealed_invocation_context" -eq 1 ]; } && [ "$_subcmd" = "push" ]; then
     _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
         _log_block push_main_non_integrator

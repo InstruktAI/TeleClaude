@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable
+from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -22,9 +23,18 @@ __all__ = [
     "resolve_git_root",
     "resolve_invocation_cwd",
     "resolve_invocation_project_root",
+    "resolve_invocation_roots",
     "resolve_project_root",
     "resolve_workspace_root",
 ]
+
+
+@dataclass(frozen=True)
+class InvocationRoots:
+    """The acting context and containing repository for one invocation."""
+
+    context_root: Path | None
+    repository_root: Path
 
 
 def resolve_invocation_cwd() -> Path:
@@ -101,6 +111,16 @@ def resolve_git_root(start: str | Path) -> Path:
         current = current.parent
 
     return original
+
+
+def resolve_invocation_roots(start: str | Path | None = None) -> InvocationRoots:
+    """Resolve the invocation context separately from its containing repository."""
+    invocation_path = resolve_invocation_cwd() if start is None else Path(start)
+    context = resolve_context_root(invocation_path)
+    return InvocationRoots(
+        context_root=context.path if context is not None else None,
+        repository_root=resolve_git_root(invocation_path),
+    )
 
 
 def resolve_project_root(start: str | Path) -> Path:

@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import tempfile
+from dataclasses import dataclass
 from enum import StrEnum
 from fnmatch import fnmatch
 from pathlib import Path
@@ -15,7 +16,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import OperationalError
 
-from teleclaude.capabilities import resolve_capabilities
+from teleclaude.capabilities import Capabilities, TierPermissions, resolve_capabilities, resolve_tier_permissions
 from teleclaude.checkpoint_model import main_only_action_ids_for_files
 from teleclaude.cli.telec.handlers._code_git_state import (
     dirty_paths,
@@ -38,19 +39,19 @@ from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, recor
 from teleclaude.project_root import (
     DOC_LAYER_PATTERN,
     forbidden_slug_worktree_doc_paths,
-    resolve_git_root,
-    resolve_invocation_cwd,
+    resolve_invocation_roots,
 )
+from teleclaude.project_setup.capability_markers import project_capabilities
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
     resolve_workspace_scope_resolution,
+    validate_context_paths,
     validate_scoped_paths,
 )
 from teleclaude.session_identity import get_session_id, get_system_role
 
 logger = get_logger(__name__)
-
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
 _STANDALONE_PROSE_PATTERNS = ("*.md", "*.txt", "*.rst")
 _NON_CODE_DOCUMENTATION_PATTERNS = (DOC_LAYER_PATTERN, *_STANDALONE_PROSE_PATTERNS)
@@ -65,6 +66,37 @@ _OWNERS_USAGE = "Usage: telec code owners <path> [<path> ...]"
 _OWNERS_UNKNOWN_FLAG = "ERROR: unknown flag: {flag}"
 _OWNERS_ERROR = "ERROR: {error}"
 _OWNERS_UNDETERMINED_WARNING = "WARNING: {count} captured session(s) had undetermined attribution; do not revert null-owned paths from this result."
+
+
+@dataclass(frozen=True)
+class InvocationState:
+    """Resolved roots and capability declaration for one code invocation."""
+
+    context_root: Path | None
+    repository_root: Path
+    tier_permissions: TierPermissions | None
+
+    @property
+    def project_root(self) -> Path:
+        """Return the repository root retained by existing code paths."""
+        return self.repository_root
+
+    @property
+    def capabilities(self) -> Capabilities:
+        """Return subscriptions from the acting tier, or legacy repository state."""
+        if self.tier_permissions is not None:
+            return self.tier_permissions.project_subscriptions
+        return resolve_capabilities(self.repository_root)
+
+    @property
+    def is_invocation_context(self) -> bool:
+        """Return whether this invocation has a declared acting context."""
+        return self.tier_permissions is not None and self.tier_permissions.invocation_context
+
+    @property
+    def is_non_project_invocation_context(self) -> bool:
+        """Return whether the acting context is a non-project tier root."""
+        return self.is_invocation_context and not self.capabilities.is_target
 
 
 class CodeSubcommand(StrEnum):
@@ -134,14 +166,28 @@ def handle_code(args: list[str]) -> None:
 
 def _require_code_capability(command: CodeSubcommand) -> None:
     """Refuse commands whose owning project capability is unsubscribed."""
-    project_root = resolve_git_root(resolve_invocation_cwd())
-    capabilities = resolve_capabilities(project_root)
-    if command in _CODE_CAPABILITY_SUBCOMMANDS and not capabilities.code:
+    state = _resolve_invocation_state()
+    if command in _CODE_CAPABILITY_SUBCOMMANDS and not state.capabilities.code:
         print(_CODE_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
-    if command in _COMMIT_SUBCOMMANDS and not capabilities.commit_enabled:
+    if command in _COMMIT_SUBCOMMANDS and not (
+        state.is_non_project_invocation_context or state.capabilities.commit_enabled
+    ):
         print(_COMMIT_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
+
+
+def _resolve_invocation_state() -> InvocationState:
+    """Resolve the acting context and containing repository for one command."""
+    roots = resolve_invocation_roots()
+    permissions = resolve_tier_permissions(roots.context_root) if roots.context_root is not None else None
+    if permissions is not None:
+        project_capabilities(roots.repository_root)
+    return InvocationState(
+        context_root=roots.context_root,
+        repository_root=roots.repository_root,
+        tier_permissions=permissions,
+    )
 
 
 def handle_code_owners(args: list[str]) -> None:
@@ -154,7 +200,8 @@ def handle_code_owners(args: list[str]) -> None:
             print(_OWNERS_UNKNOWN_FLAG.format(flag=argument), file=sys.stderr)
             print(_OWNERS_USAGE, file=sys.stderr)
             raise SystemExit(2)
-    project_root = resolve_git_root(resolve_invocation_cwd())
+    state = _resolve_invocation_state()
+    project_root = state.project_root
     try:
         result = asyncio.run(resolve_dirty_path_owners(project_root, args))
     except Exception as exc:
@@ -211,7 +258,13 @@ def handle_code_add(args: list[str]) -> None:
         )
         raise SystemExit(2)
 
-    project_root = resolve_git_root(resolve_invocation_cwd())
+    state = _resolve_invocation_state()
+    project_root = state.project_root
+    validated_positionals = validate_context_paths(positionals, project_root, state.context_root)
+    if len(validated_positionals) != len(positionals):
+        print("ERROR: one or more paths were rejected outside the invocation context", file=sys.stderr)
+        raise SystemExit(1)
+    positionals = validated_positionals
     untracked = set(get_untracked_files(project_root))
     unmerged = set(get_unmerged_files(project_root))
     dirty = dirty_paths(project_root)
@@ -277,10 +330,14 @@ def handle_code_add(args: list[str]) -> None:
 
 def handle_code_changed(args: list[str]) -> None:
     """List workspace-scoped changed files."""
-    _ = args
-    project_root = resolve_git_root(resolve_invocation_cwd())
-    scope_resolution = resolve_workspace_scope_resolution(project_root)
-    files = _changed_paths(scope_resolution)
+    state = _resolve_invocation_state()
+    project_root = state.project_root
+    scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=state.context_root)
+    includes, only = _parse_payload_flags(args, command="changed")
+    includes = _resolve_context_payload_paths(includes, project_root, state.context_root)
+    only = _resolve_context_payload_paths(only, project_root, state.context_root)
+    files = _display_context_paths(only, project_root, state.context_root) if only else _changed_paths(scope_resolution)
+    files = [*files, *_display_context_paths(includes, project_root, state.context_root)]
     if not files:
         print("No uncommitted workspace-scoped changes.")
         return
@@ -419,7 +476,10 @@ def handle_code_commit(args: list[str]) -> None:
 
     message = positionals[0] if positionals else None
     system_role = get_system_role()
-    project_root = resolve_git_root(resolve_invocation_cwd())
+    state = _resolve_invocation_state()
+    project_root = state.project_root
+    includes = _resolve_context_payload_paths(includes, project_root, state.context_root)
+    only = _resolve_context_payload_paths(only, project_root, state.context_root)
 
     # The absence of --approved is the trigger: surface guidance, never commit.
     # On main + non-integrator → commit-first review-routing gate. Off main / integrator → short help.
@@ -455,6 +515,9 @@ def handle_code_commit(args: list[str]) -> None:
             message=message,
             includes=includes,
             project_root=project_root,
+            context_root=state.context_root,
+            run_quality_gates=state.capabilities.commit_enabled,
+            enforce_context_bound=state.is_non_project_invocation_context,
             system_role=system_role,
             only=only or None,
             human_involved=human_involved,
@@ -466,22 +529,15 @@ def _commit_under_lock(
     message: str,
     includes: list[str],
     project_root: Path,
+    context_root: Path | None,
+    run_quality_gates: bool,
+    enforce_context_bound: bool,
     system_role: str | None,
     only: list[str] | None = None,
     human_involved: bool = False,
 ) -> None:
-    """Execute the commit sequence while holding the main-branch lock.
-
-    Pathspec = resolved workspace scope plus declared ``--include`` paths, or
-    exactly declared ``--only`` paths when explicit subset mode is used.
-    Anything else in the index is invisible to the pathspec and stays staged
-    for its owner. Format and lint run in-process before the final
-    ``git commit --no-verify``; the thin hook is only a raw-git backstop.
-    """
-    # Resolve any stale .git/index.lock before any git work. The check is
-    # essentially free when no lock exists; when one does, it surfaces the
-    # waiting state via the daemon log and self-heals orphan locks once
-    # lsof confirms no holder (or the age ceiling is reached).
+    """Commit the resolved pathspec while holding the main-branch lock."""
+    # Clear stale index locks before work, minimizing the flock window.
     wait_for_index_lock_clear(project_root)
     _check_commit_message(message, project_root)
     if only is not None and includes:
@@ -490,31 +546,30 @@ def _commit_under_lock(
 
     repo = Repo(str(project_root))
     if _merge_head_path(repo).exists():
-        _commit_active_merge(repo, message, project_root=project_root, human_involved=human_involved)
+        _commit_active_merge(
+            repo,
+            message,
+            project_root=project_root,
+            context_root=context_root,
+            run_quality_gates=run_quality_gates,
+            enforce_context_bound=enforce_context_bound,
+            human_involved=human_involved,
+        )
         del system_role
         return
 
-    scope_resolution = resolve_workspace_scope_resolution(project_root)
+    scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=context_root)
     scope_paths = _commit_stage_paths(scope_resolution)
 
-    # Single read-only status snapshot replaces five separate gitpython
-    # probes. Shorter window between flock acquisition and the actual
-    # commit means fewer chances for the Python parent to die holding
-    # the index lock.
+    # One snapshot replaces five Git probes and shortens the lock window.
     snapshot = working_tree_snapshot(project_root)
 
-    # Untracked-NEW files in scope are NOT auto-included. The agent must
-    # declare them explicitly via `telec code add` (which stages them) or
-    # `--include` here. This catches the temp/scratch/debug-artifact failure
-    # mode: an agent's tool calls touch incidental files that happen to land
-    # in scope; the autodiscover model would commit them silently. Explicit
-    # declaration is the safety net.
+    # New files need explicit declaration so scratch output is never swept in.
     untracked_unstaged_in_scope = sorted(p for p in scope_paths if p in snapshot.untracked and p not in snapshot.staged)
 
     auto_scope_paths = [p for p in scope_paths if not (p in snapshot.untracked and p not in snapshot.staged)]
 
-    # Compose the pathspec, preserving order, deduped. Default mode is
-    # workspace scope + extras; --only is the explicit split-commit primitive.
+    # Preserve declaration order while deduplicating the final Git pathspec.
     seen: set[str] = set()
     pathspec: list[str] = []
     base_paths = only if only is not None else auto_scope_paths
@@ -534,16 +589,10 @@ def _commit_under_lock(
         raise SystemExit(1)
     pathspec = validated_pathspec
 
-    # Phase separation: the doc layer is authored at prepare on `main` and
-    # folded at integration, so the work phase must execute a frozen contract.
-    # Refuse before any staging/format/lint/commit runs. The integration
-    # worktree is excluded because the integrator's fold step legitimately
-    # commits docs/** there.
+    # Docs are frozen during work; only integration may fold docs/**.
     _refuse_doc_layer_in_slug_worktree(scope_resolution, project_root, pathspec)
 
-    # Surface the auto-skip BEFORE the empty-pathspec exit so an agent whose
-    # only scope is untracked-new sees the actionable reminder, not a
-    # generic "nothing in scope" error.
+    # Explain skipped new files before an empty-scope failure hides recovery.
     if only is None and untracked_unstaged_in_scope:
         print(
             f"Note: {len(untracked_unstaged_in_scope)} new file(s) in scope were not included in this commit:",
@@ -568,11 +617,7 @@ def _commit_under_lock(
         )
         raise SystemExit(1)
 
-    # Stage what git's data model genuinely requires before commit:
-    #  - untracked files in our pathspec (must enter the index for git to know them)
-    #  - unmerged files in our pathspec (must be marked resolved)
-    # Modified-tracked files are committed straight from the working tree by
-    # pathspec and need no staging.
+    # Only untracked/unmerged entries need staging; tracked paths use pathspec.
     to_stage = [
         path
         for path in pathspec
@@ -581,18 +626,8 @@ def _commit_under_lock(
     if to_stage:
         _stage_files(to_stage, project_root)
 
-    # --include is a conscious force-include — the agent's final decision to put
-    # these paths in the commit. We do not pre-reject it: a clean declared path is
-    # a harmless no-op (git records nothing for it) and a non-existent one git
-    # rejects naturally. Second-guessing an explicit include only produces
-    # false-positives that block legitimate commits.
-
-    # Partial-staging guard inside the pathspec. `git commit -- <path>`
-    # records the working-tree version of <path>, not just the staged hunks.
-    # If a file in our pathspec is partially staged (staged version + later
-    # working-tree delta), the commit silently sweeps in the unstaged delta —
-    # changes the agent never declared. Block the commit; the agent must
-    # fully (re)stage the partial-staged file before retrying.
+    # Declared includes are intentional; clean paths are harmless Git no-ops.
+    # Partial staging would sweep undeclared working-tree hunks, so restage first.
     overlap = snapshot.partial_staged & set(pathspec)
     if overlap:
         print("ERROR: partially staged files in commit pathspec:", file=sys.stderr)
@@ -609,15 +644,11 @@ def _commit_under_lock(
         raise SystemExit(1)
 
     quality_paths = [path for path in pathspec if (project_root / path).exists()]
-    if quality_paths:
+    if run_quality_gates and quality_paths:
         handle_format(quality_paths)
         handle_lint(quality_paths)
 
-    # Compose the mandated footer (author identity + branding + session +
-    # involvement, never a message scan) and commit via a message file —
-    # robust against multi-line content, no shell arg-splitting. Commit via
-    # gitpython (uses real binary, bypasses wrapper). Surface git's own
-    # output so callers see the commit summary and any hook output.
+    # Use a message file for the mandated footer without shell argument splitting.
     stdout, stderr = _commit_repo_with_message(
         repo,
         message,
@@ -628,20 +659,67 @@ def _commit_under_lock(
         print(stdout)
     if stderr:
         print(stderr, file=sys.stderr)
-    # Use actual committed file paths from git rather than the requested pathspec
-    # strings, which may contain directory names or unexpanded globs that would
-    # falsely match or miss doc patterns.
+    # Use actual committed paths: pathspecs can be dirs or unexpanded globs.
     try:
         committed_files = [p for p in repo.git.show("--name-only", "--format=", "HEAD").splitlines() if p]
     except GitCommandError:
         committed_files = list(pathspec)
     _record_commit_checkpoint_markers(project_root, committed_files)
-    # system_role is retained on the signature for symmetry with prior gates;
-    # the pathspec boundary makes a separate scope-enforcement step redundant.
     del system_role
 
 
-def _commit_active_merge(repo: Repo, message: str, *, project_root: Path, human_involved: bool = False) -> None:
+def _parse_payload_flags(args: list[str], *, command: str) -> tuple[list[str], list[str]]:
+    includes: list[str] = []
+    only: list[str] = []
+    destination: list[str] | None = None
+    for token in args:
+        if token == "--include":
+            destination = includes
+        elif token == "--only":
+            destination = only
+        elif token.startswith("-"):
+            print(f"ERROR: unknown flag: {token}", file=sys.stderr)
+            raise SystemExit(2)
+        elif destination is None:
+            print(f"ERROR: {command} accepts paths only after --include or --only", file=sys.stderr)
+            raise SystemExit(2)
+        else:
+            destination.append(token)
+    if includes and only:
+        print("ERROR: --only cannot be combined with --include.", file=sys.stderr)
+        raise SystemExit(2)
+    if destination is not None and not destination:
+        print("ERROR: scope flag requires at least one <path> operand.", file=sys.stderr)
+        raise SystemExit(2)
+    return includes, only
+
+
+def _resolve_context_payload_paths(paths: list[str], project_root: Path, context_root: Path | None) -> list[str]:
+    if not paths:
+        return []
+    resolved = validate_context_paths(paths, project_root, context_root)
+    if len(resolved) != len(paths):
+        print("ERROR: one or more paths were rejected outside the invocation context", file=sys.stderr)
+        raise SystemExit(1)
+    return resolved
+
+
+def _display_context_paths(paths: list[str], project_root: Path, context_root: Path | None) -> list[str]:
+    if context_root is None:
+        return []
+    return [(project_root / path).resolve().relative_to(context_root.resolve()).as_posix() for path in paths]
+
+
+def _commit_active_merge(
+    repo: Repo,
+    message: str,
+    *,
+    project_root: Path,
+    context_root: Path | None,
+    run_quality_gates: bool,
+    enforce_context_bound: bool,
+    human_involved: bool = False,
+) -> None:
     """Close an active merge as a full-index commit."""
     snapshot = working_tree_snapshot(project_root)
     if snapshot.unmerged:
@@ -650,8 +728,19 @@ def _commit_active_merge(repo: Repo, message: str, *, project_root: Path, human_
             print(f"  {path}", file=sys.stderr)
         raise SystemExit(1)
 
+    if enforce_context_bound:
+        scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=context_root)
+        eligible_paths = set(scope_resolution.repository_scoped_dirty_paths)
+        index_paths = {path for path in repo.git.diff("--cached", "--name-only", "HEAD").splitlines() if path}
+        disallowed_paths = sorted(index_paths - eligible_paths)
+        if disallowed_paths:
+            print("ERROR: merge index contains paths outside the invocation context:", file=sys.stderr)
+            for path in disallowed_paths:
+                print(f"  {path}", file=sys.stderr)
+            raise SystemExit(1)
+
     quality_paths = _merge_quality_paths(repo, project_root)
-    if quality_paths:
+    if run_quality_gates and quality_paths:
         handle_format(quality_paths)
         handle_lint(quality_paths)
 
@@ -876,14 +965,10 @@ def _refuse_doc_layer_in_slug_worktree(
 
 
 def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
-    if scope_resolution.kind is WorkspaceScopeKind.WORKTREE:
-        return [dirty.path for dirty in scope_resolution.dirty_paths]
-    return list(scope_resolution.scoped_dirty_paths)
+    return list(scope_resolution.repository_scoped_dirty_paths)
 
 
 def _changed_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
-    if scope_resolution.kind is WorkspaceScopeKind.WORKTREE:
-        return [dirty.path for dirty in scope_resolution.dirty_paths]
     return list(scope_resolution.scoped_existing_paths)
 
 
