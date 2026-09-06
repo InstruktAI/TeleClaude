@@ -8,6 +8,7 @@ import os
 import re
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -21,8 +22,9 @@ from teleclaude.core.events import ErrorEventContext, TeleClaudeEvents
 from teleclaude.core.models import JsonDict, JsonValue
 from teleclaude.events.envelope import EventVisibility
 
+from ._checkpoint_anchors import find_last_checkpoint_anchor
 from ._parsers import normalize_transcript_entry_message
-from ._user_turns import is_real_user_turn_entry
+from ._user_turns import find_last_real_user_turn, is_real_user_turn_entry
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _parse_timestamp
 
 logger = get_logger(__name__)
@@ -70,6 +72,7 @@ def _report_transcript_format_mismatch(agent: str, path: Path, exc: json.JSONDec
 
 __all__ = [
     "_entry_role",
+    "_get_checkpoint_entries_for_agent",
     "_get_entries_for_agent",
     "_is_rotation_fallback_candidate",
     "_iter_claude_entries",
@@ -77,8 +80,30 @@ __all__ = [
     "_iter_gemini_entries",
     "_iter_jsonl_entries",
     "_iter_jsonl_entries_tail",
+    "_iter_jsonl_entry_windows",
     "_start_index_after_timestamp_or_rotation",
 ]
+
+
+@dataclass(frozen=True)
+class _JsonlEntryWindow:
+    """A chronological JSONL suffix plus whether it reaches the file start."""
+
+    entries: tuple[JsonDict, ...]
+    at_beginning: bool
+
+
+def _parse_jsonl_lines(lines: Iterable[str]) -> Iterable[JsonDict]:
+    """Yield JSON-object lines while preserving malformed-line tolerance."""
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            entry_value: object = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(entry_value, dict):
+            yield cast(JsonDict, entry_value)
 
 
 def _iter_jsonl_entries(
@@ -87,16 +112,7 @@ def _iter_jsonl_entries(
     """Yield JSON objects for each line in a transcript file."""
 
     with open(path, encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                entry_value: object = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            if isinstance(entry_value, dict):
-                yield cast(JsonDict, entry_value)
+        yield from _parse_jsonl_lines(f)
 
 
 def _iter_jsonl_entries_tail(
@@ -137,18 +153,65 @@ def _iter_jsonl_entries_tail(
             return
         tail_text = tail_text[first_newline + 1 :]
 
-    tail = deque(maxlen=max_entries)  # type: ignore[var-annotated]
-    for line in tail_text.splitlines():
-        if not line.strip():
-            continue
-        try:
-            entry_value: object = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(entry_value, dict):
-            tail.append(cast(JsonDict, entry_value))
+    tail = deque(_parse_jsonl_lines(tail_text.splitlines()), maxlen=max_entries)
 
     yield from tail
+
+
+def _iter_jsonl_entry_windows(
+    path: Path,
+    *,
+    initial_bytes: int = CHECKPOINT_JSONL_TAIL_READ_BYTES,
+) -> Iterable[_JsonlEntryWindow]:
+    """Yield geometrically growing complete-record JSONL suffixes from one fixed EOF."""
+    if initial_bytes <= 0:
+        return
+
+    try:
+        with open(path, "rb") as f:
+            end_offset = os.fstat(f.fileno()).st_size
+            if end_offset <= 0:
+                yield _JsonlEntryWindow(entries=(), at_beginning=True)
+                return
+
+            offset = end_offset
+            window_bytes = min(initial_bytes, end_offset)
+            leading_partial = b""
+            entries: deque[JsonDict] = deque()
+
+            while offset > 0:
+                start_offset = max(0, end_offset - window_bytes)
+                f.seek(start_offset)
+                chunk = f.read(offset - start_offset)
+                if not chunk:
+                    return
+
+                raw_window = chunk + leading_partial
+                starts_at_record_boundary = start_offset == 0
+                if not starts_at_record_boundary:
+                    f.seek(start_offset - 1)
+                    starts_at_record_boundary = f.read(1) == b"\n"
+
+                complete_bytes = raw_window
+                if not starts_at_record_boundary:
+                    first_newline = raw_window.find(b"\n")
+                    if first_newline == -1:
+                        leading_partial = raw_window
+                        complete_bytes = b""
+                    else:
+                        leading_partial = raw_window[: first_newline + 1]
+                        complete_bytes = raw_window[first_newline + 1 :]
+                else:
+                    leading_partial = b""
+
+                parsed = list(_parse_jsonl_lines(complete_bytes.decode("utf-8", errors="ignore").splitlines()))
+                entries.extendleft(reversed(parsed))
+                yield _JsonlEntryWindow(entries=tuple(entries), at_beginning=start_offset == 0)
+
+                offset = start_offset
+                window_bytes = min(end_offset, window_bytes * 2)
+    except OSError:
+        return
 
 
 def _iter_claude_entries(
@@ -202,12 +265,8 @@ def _strip_turn_aborted_text(entry: JsonDict) -> JsonDict | None:
     return cast(JsonDict, {**entry, "payload": {**payload, "content": cleaned_content}})
 
 
-def _iter_codex_entries(
-    path: Path,
-    *,
-    tail_entries: int | None = None,
-) -> Iterable[JsonDict]:
-    """Yield entries from Codex JSONL transcripts, skipping metadata.
+def _normalize_codex_entries(source: Iterable[JsonDict]) -> Iterable[JsonDict]:
+    """Normalize Codex JSONL entries, skipping metadata.
 
     Buffers one entry so that when a turn_aborted event_msg is encountered,
     the preceding Codex-injected user message can be cleaned.
@@ -215,7 +274,6 @@ def _iter_codex_entries(
     guard: allow-string-compare
     """
 
-    source = _iter_jsonl_entries_tail(path, tail_entries) if tail_entries is not None else _iter_jsonl_entries(path)
     pending: JsonDict | None = None
     for entry in source:
         if entry.get("type") == "session_meta":
@@ -237,6 +295,16 @@ def _iter_codex_entries(
 
     if pending is not None:
         yield pending
+
+
+def _iter_codex_entries(
+    path: Path,
+    *,
+    tail_entries: int | None = None,
+) -> Iterable[JsonDict]:
+    """Yield normalized entries from Codex JSONL transcripts."""
+    source = _iter_jsonl_entries_tail(path, tail_entries) if tail_entries is not None else _iter_jsonl_entries(path)
+    yield from _normalize_codex_entries(source)
 
 
 def _coerce_dict_list(raw_items: object) -> list[JsonDict]:
@@ -748,3 +816,24 @@ def _get_entries_for_agent(
     if agent_name == AgentName.DEEPSEEK:
         return list(_iter_deepseek_entries(path))
     return None
+
+
+def _get_checkpoint_entries_for_agent(transcript_path: str, agent_name: AgentName) -> list[JsonDict] | None:
+    """Load the shortest complete JSONL suffix that establishes a checkpoint boundary."""
+    if agent_name not in (AgentName.CLAUDE, AgentName.CODEX):
+        return _get_entries_for_agent(transcript_path, agent_name)
+
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return None
+
+    for window in _iter_jsonl_entry_windows(path):
+        entries = (
+            list(_normalize_codex_entries(window.entries)) if agent_name == AgentName.CODEX else list(window.entries)
+        )
+        if window.at_beginning or (
+            find_last_checkpoint_anchor(entries, agent_name) is not None
+            or find_last_real_user_turn(entries, agent_name) is not None
+        ):
+            return entries
+    return []

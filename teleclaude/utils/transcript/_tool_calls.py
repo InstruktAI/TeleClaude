@@ -32,7 +32,7 @@ from ._codex_custom_exec import (
     extract_nested_custom_exec_calls,
     extract_payload_text,
 )
-from ._iterators import _get_entries_for_agent
+from ._iterators import _get_checkpoint_entries_for_agent, _get_entries_for_agent
 from ._parsers import normalize_transcript_entry_message
 from ._user_turns import find_turn_start_idx as _find_real_user_turn_start_idx
 from ._user_turns import is_user_tool_result_only_message as _is_user_tool_result_only_message
@@ -477,8 +477,11 @@ def _extract_tool_calls_for_scope(
 ) -> TurnTimeline:
     """Extract tool calls and expose the effective turn boundary timestamp."""
     try:
-        tail_entries = _tool_call_tail_entries(agent_name, full_session)
-        entries = _get_entries_for_agent(transcript_path, agent_name, tail_entries=tail_entries)
+        if boundary == "checkpoint" and not full_session:
+            entries = _get_checkpoint_entries_for_agent(transcript_path, agent_name)
+        else:
+            tail_entries = _tool_call_tail_entries(agent_name, full_session)
+            entries = _get_entries_for_agent(transcript_path, agent_name, tail_entries=tail_entries)
         if entries is None:
             return TurnTimeline(tool_calls=[], has_data=False)
 
