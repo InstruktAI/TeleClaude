@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-NON_ATTACHABLE_SESSION_STATUSES = frozenset({"initializing", "closing", "escalated", "closed"})
+from teleclaude.core.session_status import SessionLifecycleStatus
 
 
 def is_attachable_session(*, status: str, tmux_session_name: str | None) -> bool:
-    """Return whether a session may open or focus a tmux pane."""
+    """Expose a bound pane independently of runtime startup and input readiness."""
     return (
-        bool(tmux_session_name) and not status.startswith("headless") and status not in NON_ATTACHABLE_SESSION_STATUSES
+        bool(tmux_session_name)
+        and not status.startswith(SessionLifecycleStatus.HEADLESS)
+        and status != SessionLifecycleStatus.CLOSED
     )

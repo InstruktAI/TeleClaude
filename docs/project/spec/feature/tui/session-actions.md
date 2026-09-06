@@ -37,16 +37,15 @@ Then the view requests exactly one close for that session
 And the view requests no revive for that session
 ```
 
-#### UC-SACT-2: Pending selection waits until a session is attachable
+#### UC-SACT-2: An open session's pane remains inspectable during startup
 
 ```
-Given an initializing session row in the TUI Sessions view
-And the view has a pending selection request for that session with pane focus
-When the view rebuilds while the session is still initializing
-Then the view requests no preview for that session
-When the session becomes active
-Then the view previews that session
-And the view requests pane focus for that session
+Given a human operator selects an open session in the TUI Sessions view
+And the session has a bound host pane
+When the operator requests a preview or pane focus
+Then the view opens that pane regardless of whether the agent has started
+And the operator can inspect startup prompts, errors, and a returned shell
+And opening the pane does not report the agent as active
 ```
 
 #### UC-SACT-3: Plain-clicking a headless session revives it

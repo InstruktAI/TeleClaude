@@ -320,10 +320,10 @@ class SessionsView(
         self._pending_select = _PendingSelect(session_id, request_focus)
 
     def _apply_pending_selection(self) -> None:
-        """Apply pending auto-select if the session is in the tree and ready.
+        """Apply pending auto-select once the session has a bound pane.
 
-        A session is ready when its pane exists and lifecycle state is attachable.
-        If not ready yet, the pending state is kept for the next data update.
+        Runtime startup and composer readiness do not gate human inspection.
+        Missing pane bindings keep the selection pending for the next update.
         """
         if not self._pending_select:
             return
@@ -332,11 +332,8 @@ class SessionsView(
         focus = self._pending_select.request_focus
         for i, widget in enumerate(self._nav_items):
             if isinstance(widget, SessionRow) and widget.session_id == target_id:
-                # Found in tree — wait until it is safe to attach.
                 if not self._is_attachable(widget):
-                    # Not ready yet — keep pending for next update
                     return
-                # Ready — select, preview, and optionally focus
                 self._pending_select = None
                 self.cursor_index = i
                 self._update_cursor_highlight()

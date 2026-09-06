@@ -11,7 +11,7 @@ from teleclaude.core.session_status import SessionLifecycleStatus
 
 # Auto-clear highlights on preview session after this many seconds
 PREVIEW_HIGHLIGHT_DURATION = 3.0
-HIDDEN_SESSION_STATUSES = frozenset({SessionLifecycleStatus.CLOSING, SessionLifecycleStatus.CLOSED})
+HIDDEN_SESSION_STATUSES = frozenset({SessionLifecycleStatus.CLOSED})
 
 
 class SessionsViewHighlightsMixin:
@@ -133,11 +133,8 @@ class SessionsViewHighlightsMixin:
     def update_session(self, session: SessionDTO) -> None:
         """Update a single session row with new data."""
         if session.status in HIDDEN_SESSION_STATUSES:
-            # Only a terminal status releases state: "closing" is in flight and
-            # a failed close restores the session, so releasing there would
-            # strip a live session's layout claims. The row is hidden either
-            # way; the release for the ordinary path rides the confirmed
-            # SessionClosed signal through confirm_session_closed.
+            # A confirmed close releases view state. In-flight closes remain
+            # visible until their terminal outcome is known.
             if session.status == SessionLifecycleStatus.CLOSED:
                 self.drop_session_state(session.session_id)  # type: ignore[attr-defined]
                 self._release_layout_claims(session.session_id)

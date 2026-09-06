@@ -252,7 +252,7 @@ class DaemonLifecycle:
         logger.trace("[PERF] _warm_local_sessions_cache start computer=%s", config.computer.name)
         try:
             list_started_at = time.perf_counter()
-            sessions = await db.list_sessions(computer_name=config.computer.name, include_headless=True)
+            sessions = await db.list_sessions(computer_name=config.computer.name, all_open=True)
             logger.trace(
                 "[PERF] _warm_local_sessions_cache list_sessions dt=%.3f count=%d computer=%s",
                 time.perf_counter() - list_started_at,
