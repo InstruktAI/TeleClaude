@@ -471,6 +471,9 @@ class ConversationLinkRow(SQLModel, table=True):
     __table_args__ = {"extend_existing": True}
 
     link_id: str = Field(primary_key=True)
+    # Persisted as the mode's value, never its member name. Stored rows hold
+    # "direct_link"/"gathering_link"; typing this column as a SQLAlchemy enum
+    # binds member names instead and fails to read every existing row.
     mode: str
     status: str = "active"
     created_by_session_id: str

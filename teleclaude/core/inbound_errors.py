@@ -39,3 +39,31 @@ class UnidentifiableCallerError(RuntimeError):
             f"Caller session {caller_session_id} has no resolvable machine role; "
             "refusing to deliver as unheadered (human-looking) input"
         )
+
+
+class DirectLinkExclusivityError(RuntimeError):
+    """Raised when a direct link would give an endpoint a second concurrent peer.
+
+    Direct conversation is exclusive to two sessions. The endpoint already in a
+    conversation and the peer holding it are carried so the refusing surface can
+    name that peer instead of reporting an anonymous conflict.
+    """
+
+    http_status_code = 409
+
+    def __init__(
+        self,
+        *,
+        endpoint_session_id: str,
+        peer_session_id: str,
+        peer_name: str | None,
+        link_id: str,
+    ) -> None:
+        self.endpoint_session_id = endpoint_session_id
+        self.peer_session_id = peer_session_id
+        self.peer_name = peer_name
+        self.link_id = link_id
+        super().__init__(
+            f"Session {endpoint_session_id} is already in a direct conversation "
+            f"with {peer_name or peer_session_id} ({peer_session_id})"
+        )

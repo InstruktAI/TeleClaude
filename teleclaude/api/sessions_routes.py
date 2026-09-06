@@ -72,7 +72,11 @@ from teleclaude.core.conversation_messages import (
     resolve_session_event_author,
 )
 from teleclaude.core.db import db
-from teleclaude.core.inbound_errors import SessionMessageRejectedError, UnidentifiableCallerError
+from teleclaude.core.inbound_errors import (
+    DirectLinkExclusivityError,
+    SessionMessageRejectedError,
+    UnidentifiableCallerError,
+)
 from teleclaude.core.injected_text import MachineRoleLabel
 from teleclaude.core.models import (
     AgentDispatchMode,
@@ -459,6 +463,9 @@ async def _create_session_response(
         if cmd.job == "reviewer" and initiator_session_id:
             producer = await db.get_session(initiator_session_id)
             cmd.producer_agent = producer.active_agent if producer is not None else None
+    # Fail fast before a session is spawned. The authoritative check runs under
+    # the endpoint locks inside link creation; this only spares the caller a
+    # session it could not have linked.
     if request.direct and identity.session_id:
         blocking_peer = await active_direct_peer(identity.session_id)
         if blocking_peer is not None:
@@ -534,6 +541,10 @@ async def _create_session_response(
         )
     except HTTPException as exc:
         raise exc
+    except DirectLinkExclusivityError as exc:
+        # Lost the race against a concurrent ignition on this caller: the
+        # session exists but stays unlinked rather than becoming a third peer.
+        raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
     except Exception as e:
         refusal = agent_dispatch_http_refusal(e)
         if refusal:

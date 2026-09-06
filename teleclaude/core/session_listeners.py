@@ -12,6 +12,8 @@ Storage is SQLite-backed so listeners survive daemon restarts.
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -24,7 +26,7 @@ from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import db
 from teleclaude.core.db_models import ConversationLinkMode
-from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_errors import DirectLinkExclusivityError, SessionMessageRejectedError
 from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_status import is_session_terminal
@@ -33,8 +35,8 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
-_PAIR_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
-_PAIR_LOCKS_GUARD = asyncio.Lock()
+_ENDPOINT_LOCKS: dict[str, asyncio.Lock] = {}
+_ENDPOINT_LOCKS_GUARD = asyncio.Lock()
 
 # Actor name stamped on daemon-injected runner notifications.
 NOTIFY_ACTOR_NAME = "system"
@@ -82,7 +84,7 @@ class ConversationLink:
     """Conversation link metadata."""
 
     link_id: str
-    mode: str
+    mode: ConversationLinkMode
     status: str
     created_by_session_id: str
     created_at: datetime
@@ -104,15 +106,34 @@ class ConversationLinkMember:
     joined_at: datetime
 
 
-async def _get_pair_lock(session_a: str, session_b: str) -> asyncio.Lock:
-    """Return a shared lock for a canonical direct-link session pair."""
-    key = tuple(sorted((session_a, session_b)))
-    async with _PAIR_LOCKS_GUARD:
-        lock = _PAIR_LOCKS.get(key)  # type: ignore[arg-type]
+async def _get_endpoint_lock(session_id: str) -> asyncio.Lock:
+    """Return the shared lock guarding one session's direct-link membership."""
+    async with _ENDPOINT_LOCKS_GUARD:
+        lock = _ENDPOINT_LOCKS.get(session_id)
         if lock is None:
             lock = asyncio.Lock()
-            _PAIR_LOCKS[key] = lock  # type: ignore[index]
+            _ENDPOINT_LOCKS[session_id] = lock
         return lock
+
+
+@asynccontextmanager
+async def _direct_link_endpoints_locked(session_a: str, session_b: str) -> AsyncIterator[None]:
+    """Hold both endpoints' locks so exclusivity is decided atomically with creation.
+
+    Exclusivity is an endpoint-level invariant: two requests naming different
+    pairs can still collide on a shared endpoint. Locking the pair cannot
+    serialize them, so both endpoints are locked, in sorted order so two
+    overlapping requests can never deadlock against each other.
+    """
+    first, second = sorted((session_a, session_b))
+    first_lock = await _get_endpoint_lock(first)
+    second_lock = await _get_endpoint_lock(second) if second != first else None
+    async with first_lock:
+        if second_lock is None:
+            yield
+            return
+        async with second_lock:
+            yield
 
 
 def _to_conversation_link(row: object) -> ConversationLink:
@@ -131,7 +152,7 @@ def _to_conversation_link(row: object) -> ConversationLink:
 
     return ConversationLink(
         link_id=str(getattr(row, "link_id", "")),
-        mode=str(getattr(row, "mode", "")),
+        mode=ConversationLinkMode(str(getattr(row, "mode", ""))),
         status=str(getattr(row, "status", "")),
         created_by_session_id=str(getattr(row, "created_by_session_id", "")),
         created_at=datetime.fromisoformat(str(getattr(row, "created_at", ""))),
@@ -734,14 +755,32 @@ async def create_or_reuse_direct_link(
     caller_computer: str | None = None,
     target_computer: str | None = None,
 ) -> tuple[ConversationLink, bool]:
-    """Create or reuse an active two-member direct link."""
-    pair_lock = await _get_pair_lock(caller_session_id, target_session_id)
-    async with pair_lock:
+    """Create or reuse an active two-member direct link.
+
+    Raises ``DirectLinkExclusivityError`` when either endpoint is already in a
+    direct conversation with someone else. The check runs under the endpoints'
+    own locks, so it cannot be overtaken by a competing request naming a
+    different pair that shares one of them.
+    """
+    async with _direct_link_endpoints_locked(caller_session_id, target_session_id):
         existing_links = await db.get_active_links_between_sessions(
             caller_session_id,
             target_session_id,
             mode=ConversationLinkMode.DIRECT,
         )
+        if not existing_links:
+            for endpoint_id, other_id in (
+                (caller_session_id, target_session_id),
+                (target_session_id, caller_session_id),
+            ):
+                blocking_peer = await active_direct_peer(endpoint_id, allowed_peer_session_id=other_id)
+                if blocking_peer is not None:
+                    raise DirectLinkExclusivityError(
+                        endpoint_session_id=endpoint_id,
+                        peer_session_id=blocking_peer.session_id,
+                        peer_name=blocking_peer.participant_name,
+                        link_id=blocking_peer.link_id,
+                    )
         if existing_links:
             existing = existing_links[0]
             for duplicate in existing_links[1:]:
