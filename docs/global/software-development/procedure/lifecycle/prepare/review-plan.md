@@ -279,6 +279,15 @@ storage location, todo boundary, or adjacent pattern as ownership evidence.
 Verify every consumer uses the established owner's published contract and does
 not duplicate its validation, defaults, recovery, or state transitions.
 
+Apply the ownership rule to operational prerequisites and the acts that
+establish them, including one-time readiness or migration work. An upstream
+clause or prior approval does not establish ownership. Check each act against
+the owning context's published contract and the receiving role's authority.
+Cross-context coordination may invoke that contract; a task that takes over
+the other owner's decision or reimplements its mechanism is Critical under the
+domain-ownership lane. An unmet prerequisite is routed through the dependency
+or blocker provisions of the preparation artifact quality policy.
+
 ### 5a. Diagnosis validation (only when a `diagnosis` artifact is present)
 
 Applies only when the todo carries a `diagnosis` artifact (a `bug`). **Skip this

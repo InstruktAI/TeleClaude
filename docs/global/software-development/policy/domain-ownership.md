@@ -18,6 +18,10 @@ and reason to change the rule expresses. Entry point, caller, adapter, scheduler
 runtime host, storage technology, todo boundary, file proximity, and existing
 placement do not establish ownership.
 
+Ownership also applies to operational prerequisites and the acts that establish
+them, even when expressed as one-time readiness or migration work rather than
+runtime code.
+
 The owner defines the rule once behind its published contract. Consumers may
 invoke, translate, observe, or cache that contract while preserving its source
 of truth. They never restate, specialize, validate, default, or recover the

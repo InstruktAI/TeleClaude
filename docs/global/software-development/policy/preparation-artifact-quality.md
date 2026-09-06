@@ -268,8 +268,9 @@ deferral with a meaningful trigger.
 
 ### Evidence does not reallocate ownership
 
-A risk, defect, omission, or unknown discovered in an adjacent capability is
-evidence about that capability; it is not authority for the current work to
+A risk, defect, omission, or unknown discovered in an adjacent capability, or a
+prerequisite an upstream clause places on that capability, is evidence about
+that capability; it is not authority for the current work to
 implement, strengthen, validate, or prove the adjacent owner's behavior. At an
 existing boundary, the current artifact states the handoff it owns and
 references the downstream contract for everything after that handoff.
