@@ -30,11 +30,9 @@ visibility: 'public'
 
 - `command`: `start_session`, `send_message`, `end_session`, `get_session_data`, `run_agent_command`, `stop_notifications`, `list_sessions`, `list_projects`.
 - Human-facing CLI mapping: `get_session_data` is surfaced as `telec sessions tail`.
-<!-- planned:native-notification-parent-attention -->
 - Explicit terminal inspection uses `telec sessions tail <session-id> --pane`
   and the session pane read endpoint. The default transcript query is unchanged;
   the session-transcript-retrieval feature spec owns the observation contract.
-<!-- /planned:native-notification-parent-attention -->
 
 - MCP CLI mappings:
   - `telec mcp list [--exclude <slug> ...]` lists configured MCP servers without starting them.

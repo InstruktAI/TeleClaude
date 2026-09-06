@@ -40,11 +40,7 @@ Current raw-to-normalized lifecycle mapping:
 | Claude | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
 | Claude | `PreToolUse` | `pre_tool_use` | forwarded |
 | Claude | `Notification` where `notification_type` is `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, or `elicitation_url_dialog` | `agent_blocked` | forwarded |
-<!-- planned-change:native-notification-parent-attention -->
-| Claude | `Notification` with any other `notification_type` | (none) | dropped |
-<!-- change:native-notification-parent-attention -->
 | Claude | `Notification` with any other `notification_type` | `agent_notification` | forwarded |
-<!-- /planned-change:native-notification-parent-attention -->
 | Claude | `PostToolUse` | `post_tool_use` | forwarded |
 | Claude | `Stop` | `agent_stop` | forwarded |
 | Claude | `StopFailure` | `agent_turn_failed` | forwarded |
@@ -113,7 +109,6 @@ the DeepSeek Harness the error path raises past the turn-stopping dispatch that
 produces `Stop`. Consumers still treat the outcome as a single slot rather than
 relying on that exclusivity.
 
-<!-- planned:native-notification-parent-attention -->
 `agent_notification` records a native notification without asserting a blocked,
 failed, or completed state. Known distress mappings keep their typed meaning;
 each native notification produces one normalized observation, not parallel
@@ -126,7 +121,6 @@ The emitting child's notification hook is an observation source, not a context
 injection or permission-decision boundary. Parent delivery uses the existing
 control-delivery surface and the recipient's own eligible runtime boundaries.
 No provider is assigned a hook it does not expose.
-<!-- /planned:native-notification-parent-attention -->
 
 No provider normalizes to `error`. That event is the platform's internal error
 channel — receiver faults and agent-restart faults — and carries no provider

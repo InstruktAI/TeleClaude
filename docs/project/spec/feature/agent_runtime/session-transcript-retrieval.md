@@ -99,7 +99,6 @@ When the access check raises
 Then the service returns the access-control error from the access check
 ```
 
-<!-- planned:native-notification-parent-attention -->
 #### UC-STR2: An agent can inspect the live terminal independently of transcript progress
 
 ```gherkin
@@ -111,9 +110,7 @@ And transcript availability or lack of new messages does not hide that observati
 And a child with no available terminal is reported as such without inventing terminal contents
 And inspection writes no input and makes no permission decision for the child
 ```
-<!-- /planned:native-notification-parent-attention -->
 
-<!-- planned:native-notification-parent-attention -->
 ### Explicit terminal query
 
 `telec sessions tail <session-id> --pane` requests a terminal observation from
@@ -131,7 +128,6 @@ The query writes no session input and does not parse the transcript. The default
 tail command and messages endpoint retain their transcript projection and
 fallback behavior. Transcript filtering flags apply to the transcript query;
 they are not accepted with explicit terminal mode.
-<!-- /planned:native-notification-parent-attention -->
 
 ### Cross-context references
 
