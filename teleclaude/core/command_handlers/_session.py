@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+_UNBOUND_TMUX_NAME = ""
 
 _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
@@ -407,7 +408,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # event must carry complete data so downstream consumers never see partial state.
     session = await db.create_session(
         computer_name=computer_name,
-        tmux_session_name=tmux_name,
+        tmux_session_name=_UNBOUND_TMUX_NAME,
         last_input_origin=last_input_origin,
         title=title,
         project_path=project_path,

@@ -13,6 +13,7 @@ from teleclaude.api_models import SessionDTO
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToTodo
+from teleclaude.cli.tui.session_attachability import is_headless_session
 from teleclaude.cli.tui.theme import (
     CONNECTOR_COLOR,
     get_selection_fg_hex,
@@ -102,7 +103,7 @@ class SessionRow(TelecMixin, Widget):
 
     @property
     def _is_headless(self) -> bool:
-        return self.status.startswith("headless") or not self.session.tmux_session_name
+        return is_headless_session(status=self.status, tmux_session_name=self.session.tmux_session_name)
 
     @property
     def _content_width(self) -> int:

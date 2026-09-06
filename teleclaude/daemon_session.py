@@ -296,10 +296,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             platform_env=get_voice_env_vars(voice) if voice else {},
         )
         working_dir = resolve_working_dir(session.project_path, session.subdir)
+        tmux_name = session.tmux_session_name or session_cleanup.TMUX_SESSION_PREFIX + session_id
 
         success = await ensure_tmux_with_identity(
             session,
-            session.tmux_session_name,
+            tmux_name,
             working_dir,
             env_vars,
         )
@@ -327,7 +328,9 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             )
             return
 
-        await self._start_polling_for_session(session_id, session.tmux_session_name)
+        session.tmux_session_name = tmux_name
+        await db.update_session(session_id, tmux_session_name=tmux_name)
+        await self._start_polling_for_session(session_id, tmux_name)
 
         # Run launch work BEFORE transitioning to active so that process_message
         # callers waiting on the initializing gate see the transition only after

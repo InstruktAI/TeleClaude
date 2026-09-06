@@ -5,6 +5,13 @@ from __future__ import annotations
 from teleclaude.core.session_status import SessionLifecycleStatus
 
 
+def is_headless_session(*, status: str, tmux_session_name: str | None) -> bool:
+    """Distinguish an adoptable session from one still creating its first pane."""
+    return status.startswith(SessionLifecycleStatus.HEADLESS) or (
+        not tmux_session_name and status != SessionLifecycleStatus.INITIALIZING
+    )
+
+
 def is_attachable_session(*, status: str, tmux_session_name: str | None) -> bool:
     """Expose a bound pane independently of runtime startup and input readiness."""
     return (

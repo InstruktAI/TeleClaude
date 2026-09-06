@@ -31,6 +31,9 @@ from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 logger = get_logger(__name__)
 APP_ACTION_ERRORS = (APIError, AttributeError, OSError, RuntimeError, TypeError, ValueError)
 APP_QUERY_ERRORS = (AttributeError, LookupError, RuntimeError, TypeError, ValueError)
+_MAIN_TABS_SELECTOR = "#main-tabs"
+_SESSIONS_TAB = "sessions"
+_SESSIONS_VIEW_SELECTOR = "#sessions-view"
 
 
 class TelecAppActionsMixin:
@@ -148,6 +151,10 @@ class TelecAppActionsMixin:
                 request_args["agent"] = message.agent
             result = await self.api.create_session(**request_args)  # type: ignore[attr-defined]
             self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
+            tabs = self.query_one(_MAIN_TABS_SELECTOR, TabbedContent)  # type: ignore[attr-defined]
+            if tabs.active == _SESSIONS_TAB:
+                sessions_view = self.query_one(_SESSIONS_VIEW_SELECTOR, SessionsView)  # type: ignore[attr-defined]
+                sessions_view.select_session(result.session_id, request_focus=True)
             if result.routing_explanation:
                 self.notify(escape_markup(result.routing_explanation))  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:

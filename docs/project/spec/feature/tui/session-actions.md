@@ -48,6 +48,10 @@ And the operator can inspect startup prompts, errors, and a returned shell
 And opening the pane does not report the agent as active
 ```
 
+A new session remains listed while its host pane is being created. A pending
+selection is retained until the pane is bound; it does not trigger headless
+revival or wait for the agent's first runtime event.
+
 #### UC-SACT-3: Plain-clicking a headless session revives it
 
 ```

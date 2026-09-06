@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+_PANE_BOOTSTRAP_PENDING = "Session pane creation is still in progress"
 
 
 async def _execute_control_key(
@@ -57,6 +58,8 @@ async def _ensure_tmux_for_headless(
     resume_native: bool,
 ) -> Session | None:
     """Ensure a headless session has a tmux pane before handling input."""
+    if session.lifecycle_status == SessionLifecycleStatus.INITIALIZING and not session.tmux_session_name:
+        raise RuntimeError(_PANE_BOOTSTRAP_PENDING)
     if session.tmux_session_name and session.lifecycle_status != "headless":
         return session
 

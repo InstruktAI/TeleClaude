@@ -15,7 +15,7 @@ from textual.widget import Widget
 from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
 from teleclaude.cli.tui.layout_model import enforce_i1
 from teleclaude.cli.tui.messages import FocusPaneRequest, PreviewChanged, ReviveSessionRequest, StateChanged
-from teleclaude.cli.tui.session_attachability import is_attachable_session
+from teleclaude.cli.tui.session_attachability import is_attachable_session, is_headless_session
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     SessionDisplayInfo,
@@ -613,8 +613,7 @@ class SessionsView(
 
     def _is_headless(self, row: SessionRow) -> bool:
         """Check if a session row is headless (no tmux pane)."""
-        status = row.status
-        return status.startswith("headless") or not row.session.tmux_session_name
+        return is_headless_session(status=row.status, tmux_session_name=row.session.tmux_session_name)
 
     def _is_attachable(self, row: SessionRow) -> bool:
         """Return whether a session row may open or focus a tmux pane."""
