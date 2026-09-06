@@ -651,7 +651,7 @@ def _render_activatable_procedures_section(activatable_entries: list[Activatable
         return ""
     sorted_entries = sorted(activatable_entries, key=lambda entry: entry.snippet_id)
     lines = [f"- `{entry.snippet_id}` — {entry.description} — {entry.trigger}" for entry in sorted_entries]
-    header = "## Activatable Procedures — load via `telec docs get <id>` before acting\n\n"
+    header = "## Activatable Procedures — load via `telec docs get <id> --closure` before acting\n\n"
     return header + "\n".join(lines)
 
 

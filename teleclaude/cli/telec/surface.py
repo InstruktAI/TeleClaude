@@ -512,12 +512,20 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args=f"<id> [id...] [--scope <{_SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
                 flags=[
                     _H,
+                    Flag(
+                        "--closure",
+                        desc="Fetch an activatable procedure's eligible required-read closure in one pass",
+                        hidden=True,
+                    ),
                     Flag("--scope", desc=f"Filter to global or project snippets ({_SCOPE_VALUES})"),
                     Flag("--project", desc="Filter to a registered project's snippets by slug"),
                     Flag(
                         "--target",
                         desc="Include the slug's planned sections and companion replacement body (default: strip all)",
                     ),
+                ],
+                runtime_notes=[
+                    "The generated Activatable Procedures catalog uses `--closure` to load one delivered procedure and its eligible required-read closure in one pass.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
