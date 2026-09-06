@@ -43,7 +43,7 @@ actually did the work recorded there.
 1. Invoke the state machine (`telec todo work {slug}`, `telec todo prepare [slug]`, or `telec todo design [slug]`) with the current target. Work orchestration is slug-scoped; do not call bare `telec todo work` to pick up unrelated work.
 2. Receive the instruction block.
 3. Execute the instructions verbatim. The state machine output is a linear script — follow it top-to-bottom without branching or decision-making.
-4. When a notification arrives OR `orchestration-watch` fires, invoke the state machine again.
+4. When a notification arrives OR `orchestration-watch` fires, assess it under the corresponding section below. Re-enter the state machine when that assessment calls for continuation; attention is not itself a completed worker turn.
 5. Repeat until the state machine emits a terminal cleanup script that includes `telec sessions end self`.
 
 The state machine owns execution: dispatch, session ending, phase transitions,
@@ -78,10 +78,11 @@ cleanup so the sessions needed for continuing work remain live.
 ### Tailing Discipline
 
 The orchestrator maintains a **marker timestamp** per dispatched worker, initialized
-to the dispatch time. All session inspection follows this protocol:
+to the dispatch time. Transcript inspection follows this protocol; event and
+live-pane observations are separate evidence:
 
 - **First tail** (after dispatch): use the default latest-turn window (`telec sessions tail <session_id>`) to establish context. Save the timestamp of the last message as the marker.
-- **All subsequent tails**: use `--since <marker>` to retrieve only new output. This avoids re-reading content already seen and makes progress detection trivial — if `--since` returns no new messages, nothing happened.
+- **All subsequent tails**: use `--since <marker>` to retrieve only new output. No new messages means only that this query returned no new transcript content; a notification or pane-only condition may still require action.
 - After every tail, update the marker to the latest message timestamp from the response.
 - Each `telec sessions tail` response includes `last_input_at`, `last_activity`, `last_agent_stop_at`, and computed `agent_status`.
 
@@ -95,14 +96,20 @@ Status semantics:
 ### When Notification Arrives
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the worker was dispatched, pause and confirm with the user before proceeding. The notification's implicit instruction ("continue the loop") may be stale.
-2. Tail the session (first time: default latest-turn window; subsequent tails: `--since <marker>`).
-3. Update the marker to the latest message timestamp when new messages appear.
-4. If `agent_status` is `active`, keep `orchestration-watch` live and continue waiting.
-5. If `agent_status` is `idle`, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo design` depending on the loop). Execute the returned script verbatim — it contains any durable state transitions, session-end commands, or `sessions send` relays for this exact moment.
-6. If `agent_status` is `unknown`, continue waiting for the next event — unless the tail carries a readiness-investigation pointer, which means the session has not become live within its readiness budget. Then inspect, classify and adapt under Agent Degradation Handling instead of waiting further.
+2. Read the notification's reported event and native evidence. Fetch `general/procedure/ai-to-ai-operations` with `telec docs get` when it is not already loaded, then apply its parent-assessment steps. Inspect the live pane when the observation requires it, even if session metadata and transcript are unchanged.
+3. Tail for conversational context as needed (first time: default latest-turn window; subsequent tails: `--since <marker>`). Update the marker only when new timestamped messages appear.
+4. For a reported permission/input wait, failure, or an obstruction established by current evidence, follow When Worker Needs Help and Agent Degradation Handling as applicable. Neither `active` nor an empty tail is a reason to ignore the observation. An unfamiliar native notification is assessed, not automatically classified as failure.
+5. For a completion, assess the produced result under the existing role contract. If continuation is due, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo design` depending on the loop) and execute its returned script verbatim. A failed or blocked turn is not promoted to successful completion by this step.
+6. If assessment establishes valid waiting, maintain the applicable watch under the reminder policy. An `unknown` status with a readiness-investigation pointer still requires Agent Degradation Handling rather than further waiting.
 7. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`). Only send `telec sessions send` when the state machine output explicitly instructs it.
 
 ### When `orchestration-watch` Fires
+
+Apply the same evidence distinction as notification handling. An unresolved
+attention observation or current pane evidence is not settled by an unchanged
+transcript or an `active` status; assess it under When Worker Needs Help or
+Agent Degradation Handling before the ordinary waiting/continuation branches
+below. This does not change the watch's cadence or the recovery owner's powers.
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the reminder was set, its intent is stale — discard the encoded instructions and re-evaluate from the current state. Do not blindly resume the orchestration loop.
 2. Tail the session (first time: default latest-turn window; subsequent tails: `--since <marker>`).
@@ -296,4 +303,5 @@ The loop terminates when the work state machine returns:
 
 ## See Also
 
+- ~/.teleclaude/docs/general/procedure/ai-to-ai-operations.md — role-independent parent attention and current-evidence assessment.
 - ~/.teleclaude/docs/general/policy/orchestrator-jurisdiction.md — the process-state boundary an orchestrator operates inside.
