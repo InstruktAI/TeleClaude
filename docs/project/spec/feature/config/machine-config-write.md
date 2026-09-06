@@ -172,11 +172,19 @@ And future v1→v2 migration may introduce the filesystem-watcher event without 
   `open(tmp_path, "w")` raises `FileNotFoundError`. Callers that may
   target a fresh `~/.teleclaude/` tree must create the directory tree
   themselves.
+<!-- planned-change:config-schema-strictness -->
 - **No locking against concurrent writers.** Two concurrent
   machine-config writer calls on the same path race in the tmp-file
   step; the atomic-rename contract still guarantees the final on-disk
   file is one complete write, but which writer's content wins depends
   on scheduling.
+<!-- change:config-schema-strictness -->
+- **Writes share a persistent lock.** Writers serialize atomic replacement
+  through the configuration file transaction. Lock acquisition failure aborts
+  the write. Stored-file migrations hold that transaction across their read,
+  decision, and replacement. Raw candidate validation remains the caller's
+  responsibility and does not migrate undeclared keys.
+<!-- /planned-change:config-schema-strictness -->
 - **fsync covers data, not the directory entry.** Same caveat as
   the project-config writer: filesystem-stack durability beyond `fsync` of
   the file is the operator's filesystem choice.

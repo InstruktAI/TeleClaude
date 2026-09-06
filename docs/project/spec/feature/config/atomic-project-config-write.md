@@ -127,11 +127,19 @@ And the responsibility for invariants (e.g., stable-channel pinning) lies with t
   directory of `path` already exists. If it does not, `open(tmp_path, "w")`
   raises `FileNotFoundError`. Callers that may target a fresh project must
   create the directory tree themselves.
+<!-- planned-change:config-schema-strictness -->
 - **No locking against concurrent writers.** Two concurrent
   project-config writer calls on the same path race in the tmp-file step:
   the second writer's `open` truncates the first writer's tmp file. The
   atomic-rename contract still guarantees the FINAL on-disk file is one
   complete write, but which writer's content wins depends on scheduling.
+<!-- change:config-schema-strictness -->
+- **Writes share a persistent lock.** Writers serialize atomic replacement
+  through the configuration file transaction. Lock acquisition failure aborts
+  the write. Migration read/check/write operations hold that same transaction
+  throughout their decision and persistence; a caller that supplies an already
+  constructed replacement remains responsible for the values it supplies.
+<!-- /planned-change:config-schema-strictness -->
 - **fsync covers data, not the directory entry.** v1 fsyncs the tmp file
   descriptor but does not fsync the containing directory. On a crash
   immediately after the atomic rename, some filesystems may lose the rename

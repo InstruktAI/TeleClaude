@@ -26,6 +26,17 @@ Rejection is immediate and actionable. The validation failure identifies the
 configuration file and the dotted path of every offending key so an operator can
 repair the source instead of discovering later that a typo was ignored.
 
+Recognized legacy fields in stored local configuration are migrated to their
+declared destinations before validation. A migration preserves the represented
+value, unrelated content, comments, and identity claims. A conflicting or
+unresolvable destination fails the load without discarding the source value.
+The first successful consuming load sees the migrated values, including values
+whose canonical destination is another local configuration file.
+
+Migration is a stored-file operation. Newly submitted configuration candidates
+are validated against the current accepted vocabulary without legacy-key
+repair. Neither path accepts arbitrary unknown fields.
+
 ## Canonical fields
 
 ### Use cases
@@ -94,6 +105,51 @@ And that key does not mirror a field name on the resulting runtime object
 When the machine configuration is loaded
 Then the input is accepted
 And the parser maps it into the typed runtime configuration aggregate
+```
+
+#### UC-CFG-UNKNOWN-8: Recognized stored configuration migrates before consumption
+
+```gherkin
+Given an agent loads local configuration containing a recognized legacy setting
+And its identity and declaration are valid for that configuration
+And its declared destination is absent or already holds the same value
+When the configuration is loaded for consumption
+Then the setting is persisted in its declared form before the configuration becomes available
+And the first successful consuming load observes the migrated value
+And unrelated values, comments, and identity claims are preserved
+And loading the migrated configuration again makes no migration changes
+```
+
+#### UC-CFG-UNKNOWN-9: Conflicting migration preserves the source and fails explicitly
+
+```gherkin
+Given an agent loads local configuration containing a recognized legacy setting
+And its declared destination cannot be resolved uniquely or contains a conflicting value
+When the configuration load attempts the migration
+Then the load fails with an explicit conflict
+And neither the source value nor the conflicting destination value is discarded or overwritten
+And the failure exposes no secret values
+```
+
+#### UC-CFG-UNKNOWN-10: An interrupted move remains safely retryable
+
+```gherkin
+Given an agent loads local configuration that moves a legacy value to another local store
+And the destination write succeeds but the source cleanup fails
+When the agent retries the configuration load
+Then the retained source value is reconciled with the equal destination value
+And the source is removed only after the destination is confirmed persisted
+And unrelated destination entries are preserved
+```
+
+#### UC-CFG-UNKNOWN-11: Concurrent migrations preserve each other's updates
+
+```gherkin
+Given two agent processes load local configuration requiring migrations into the same destination
+When those migrations overlap
+Then each migration checks the destination state protected from concurrent mutation
+And both non-conflicting updates remain available after the loads complete
+And neither process removes a source whose destination write did not succeed
 ```
 
 ### Cross-context references

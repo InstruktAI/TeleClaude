@@ -167,6 +167,15 @@ And ambient process environment values cannot override the selected value
 
 ## Known caveats
 
+<!-- planned:config-schema-strictness -->
+- **Stored-file migration and candidate validation are distinct.** Recognized
+  legacy file content is migrated and persisted before the file reaches raw
+  input validation, on initial load and reload. Raw configuration candidates
+  submitted for editing receive current-schema validation without that repair.
+  The local migration contract is specified by
+  `project/spec/feature/config/unknown-key-warning`.
+<!-- /planned:config-schema-strictness -->
+
 - **Process-start side effects.** The load runs once at process start with no
   opt-out. The initialisation reads files from disk, may fail with a missing
   or malformed file, and binds the runtime configuration aggregate. There is no
