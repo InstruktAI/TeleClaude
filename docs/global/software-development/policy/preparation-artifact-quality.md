@@ -212,6 +212,12 @@ execute**. The author consuming it owns the HOW.
   human.** Surface to the human only when correcting the HOW forces a change in
   scope or intent — and that is an upstream-layer change, handled by re-entering
   that layer, not by quietly widening the current artifact.
+- **An acceptance-shape statement is never a mechanism hint.** What the input
+  says is delivered, what an observer experiences, or what kind of thing the
+  work produces is WHAT, even when a mechanism word appears in it. A divergence
+  from it is not recorded and proceeded on; the author stops and re-enters the
+  intent layer with one question. Recording such a divergence as HOW, however
+  well argued, is the invention this policy exists to catch.
 - **Inputs are never rejected for carrying HOW.** The lead is kept and tested,
   not gated away — the mechanism hint is signal even when it is wrong.
 

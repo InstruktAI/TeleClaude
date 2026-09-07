@@ -224,6 +224,16 @@ If another reasonable implementation could satisfy everything the human said
 while omitting or varying the detail, it is unspecified; technical prudence
 does not make it authorized scope.
 
+A divergence the plan records from the input's acceptance shape — what is
+delivered, what an observer experiences, what kind of thing the work produces —
+is never weighed on the planner's reasoning, however grounded that reasoning
+reads. It is an intent change, and intent is not the planner's to change: the
+verdict is `needs_work`, and the divergence is returned to the intent path as a
+single question. The reviewer's task is to notice it, not to adjudicate it. Only
+a recorded divergence about mechanism — which function, module, event, or
+sequence realizes an outcome the input already fixed — is the planner's HOW and
+is reviewed as such.
+
 A missing or unjustified shaping outcome is a finding under the preparation
 artifact quality policy. Do not add an intent-formation lane to the delivery
 review catalogue; build and commit review validate delivery against already
