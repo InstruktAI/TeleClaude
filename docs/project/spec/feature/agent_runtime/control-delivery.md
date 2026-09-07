@@ -135,6 +135,19 @@ Then the same registered wake model is rendered by the bracket codec as its auto
 And neither codec declares vocabulary or closure independently of the registry
 ```
 
+<!-- planned:fix-failed-turn-records-no-idle-boundary -->
+#### UC-CDL9: A turn that ends in a provider failure leaves the session idle for the next control payload
+
+```gherkin
+Given a session whose latest turn was terminated by a runtime or provider failure
+And no input has been accepted for that session since that failure
+When a control payload is handed to this surface for that session
+Then the platform treats the session as having no running turn
+And the session is woken by the minimal trigger so a delivery boundary exists
+And the payload is delivered at the boundary that waking produces
+```
+<!-- /planned:fix-failed-turn-records-no-idle-boundary -->
+
 ## Known caveats
 
 - This surface's contract ends at its own boundary: a semantic payload rendered
