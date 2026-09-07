@@ -32,7 +32,6 @@ from teleclaude.hooks.adapters.contracts import (
 _INVOCATION_NUM_FIELD = "invocationNum"
 _FULLY_IDLE_FIELD = "fullyIdle"
 _ERROR_FIELD = "error"
-_TERMINATION_REASON_FIELD = "terminationReason"
 _DECISION_FIELD = "decision"
 _REASON_FIELD = "reason"
 _INJECT_STEPS_FIELD = "injectSteps"
@@ -68,15 +67,6 @@ class AgyInvocationKind(StrEnum):
 
     PROMPT_ACCEPTED = "prompt_accepted"
     MID_TURN = "mid_turn"
-
-
-class AgyTerminationReason(StrEnum):
-    """Antigravity terminal reasons confirmed as normal completion."""
-
-    MODEL_STOP = "model_stop"
-
-
-_NORMAL_TERMINATION_REASONS: frozenset[str] = frozenset(AgyTerminationReason)
 
 
 def _latest_transcript_role(transcript_path: str) -> str | None:
@@ -192,9 +182,6 @@ class AgyAdapter(HookAdapter):
                 raise ValueError(_INVALID_FULLY_IDLE)
             if not fully_idle:
                 return HookEventNormalization(None, HookNormalizationReason.PROVIDER_NOT_IDLE)
-            termination_reason = data.get(_TERMINATION_REASON_FIELD)
-            if termination_reason not in _NORMAL_TERMINATION_REASONS:
-                return HookEventNormalization(AgentHookEvents.AGENT_TURN_FAILED, HookNormalizationReason.MAPPED_EVENT)
         return super().normalize_event(raw_event_type, data)
 
     def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
