@@ -346,6 +346,22 @@ And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the unsynced repo root
 ```
 
+<!-- planned:fix-delivery-produces-two-identical-lifecycl -->
+
+#### UC-WISM32: Delivery reconciles the candidate's pending documentation exactly once
+
+```gherkin
+Given a candidate's delivered-snippet fold has been committed into the delivery and pushed to origin/main
+When the confirmation gate records the delivery
+Then the reconciliation the delivery record rests on is the one already applied in the integration worktree
+And no second reconciliation of that slug is applied against the repo root
+And the delivery leaves repo-root main with no commit the delivery itself authored there
+And the repo root reaches the delivered content by synchronizing with origin/main
+And the recorded delivered commit is the frozen pushed commit
+```
+
+<!-- /planned:fix-delivery-produces-two-identical-lifecycl -->
+
 
 
 #### UC-WISM27: The repo-root sync classifies its state instead of probing with a pull that cannot succeed
