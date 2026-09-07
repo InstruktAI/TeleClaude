@@ -30,9 +30,10 @@ effective and available job set:
   project does not currently subscribe to). The available jobs are what makes a
   published job discoverable before a project opts in.
 - **status** shows each job's runtime status read from the runner's run state — the
-  last run time, the last run's outcome, and the next due time derived from the
-  job's `when` schedule. A job that has never run shows no last run and no last
-  outcome, but still shows a next due derived from its schedule.
+  last run time, the last run's outcome, and the next due time projected from the
+  job's `when` schedule against that run state. A job that has never run shows no
+  last run and no last outcome, but still shows a next due, projected from when the
+  runner first saw the job — the same instant the runner itself anchors a first run on.
 - **enable** / **disable** turn the project's subscription to a published job on
   and off. Enabling adds or activates the project's subscribing entry for that
   job's pointer; disabling deactivates the entry it finds. Because a subscription
