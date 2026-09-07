@@ -1067,7 +1067,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "report": CommandDef(
                 desc="Write a structured recurring job result record",
-                args="<job_name> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]",
+                args="<job_id> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]",
                 flags=[
                     _H,
                     Flag("--success", desc="Whether the job completed successfully"),
@@ -1076,7 +1076,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--error", desc="Error detail; repeat for multiple errors"),
                 ],
                 notes=[
-                    "Validates job_name against configured jobs and writes JSON under ~/.teleclaude/jobs/{job}/runs/.",
+                    "job_id is the job's identity: an agent job's procedure snippet ID, or a script job's declared name. Validated against configured jobs; writes JSON under ~/.teleclaude/jobs/{job_id}/runs/.",
                     "This command writes locally and does not call the daemon.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),

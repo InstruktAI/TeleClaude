@@ -731,12 +731,12 @@ telec
 - Two scheduling formats: new `when:` (with `at:` or `every:`) and legacy `schedule:` (hourly/daily/weekly)
 - Jobs can be agent sessions (dispatched to Claude/Gemini/Codex) or scripts (Python)
 - The daemon's cron runner checks schedules and dispatches sessions
-- Job specs live in `docs/project/spec/jobs/` — they define what each job does
+- An agent job's `job:` pointer names the procedure snippet it executes; that ID is the job's identity
 
 **Where to find files:**
 
 - Project config: [`teleclaude.yml`](teleclaude.yml)
-- Job specs: [`docs/project/spec/jobs/`](docs/project/spec/jobs/)
+- Job procedures: `telec docs index --areas procedure`
 - Cron runner: [`teleclaude/cron/runner.py`](teleclaude/cron/runner.py)
 - Config schema: [`teleclaude/config/schema.py`](teleclaude/config/schema.py)
 
