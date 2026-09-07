@@ -116,10 +116,6 @@ def _handle_history_search(args: list[str]) -> None:
             print("Missing value for --project.")
             print(_usage("history", "search"))
             raise SystemExit(1)
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("history", "search"))
-            raise SystemExit(1)
         else:
             terms.append(arg)
             i += 1
