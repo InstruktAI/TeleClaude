@@ -59,9 +59,18 @@ configuration and availability never travel to a caller for speculative selectio
 
 - `teleclaude/core/agent_dispatch.py` owns the typed resolver, role matrix, eligibility
   filtering, reviewer separation, and decision reasons.
+<!-- planned-change:session-handoff -->
 - `teleclaude/core/command_handlers/_session.py` invokes that resolver once, before it
   writes the session row or starts a runtime. This is the universal target-machine
   boundary shared by API, adapter, workflow, scheduled, integration, and remote starts.
+<!-- change:session-handoff -->
+- `teleclaude/core/command_handlers/_session.py` invokes that resolver once, before it
+  writes the session row or starts a runtime. This is the universal target-machine
+  boundary shared by API, adapter, workflow, scheduled, integration, and remote starts.
+  The restart handler invokes the same resolver for a handoff restart, before it
+  terminates the predecessor; that is the only other invocation point, and it carries
+  the same typed intent the session handler does.
+<!-- /planned-change:session-handoff -->
 - API routes, CLI clients, workflow, generated instructions, scheduled jobs, adapters,
   and integration carry typed dispatch intent; they never carry role orders,
   availability logic, or a pre-resolved automatic default.
@@ -94,8 +103,16 @@ configuration and availability never travel to a caller for speculative selectio
 - An explicitly supplied agent from a system-role caller is an automatic preferred
   candidate. It is selected only when automatically eligible and compatible with
   reviewer independence; otherwise normal automatic ordering selects the fallback.
+<!-- planned-change:session-handoff -->
 - Resume, revive, restart, attach, transcript-bound continuation, and declared
   fixed-agent jobs are fixed. They never cross-agent substitute.
+<!-- change:session-handoff -->
+- Resume, revive, restart, attach, transcript-bound continuation, and declared
+  fixed-agent jobs are fixed. They never cross-agent substitute. A restart that asks
+  for a handoff is not fixed continuation: it enters the fresh-session resolution with
+  the session's recorded command as role context and the caller's authority deciding
+  automatic or manual preference, exactly as a fresh session would.
+<!-- /planned-change:session-handoff -->
 - Agent-specific startup handling runs only after selection and cannot participate in
   the decision.
 
@@ -186,6 +203,30 @@ prepare dispatch carries todo kind. Reviewer dispatch carries the producer when 
 Unknown role context uses the global order and remains observably distinct from a
 missing row for a known role.
 
+<!-- planned:session-handoff -->
+### Handoff restart
+
+```mermaid
+flowchart LR
+    Caller[Restart caller with handoff]
+    Restart[Restart handler]
+    Resolver[Agent dispatch resolver]
+    Stop[Terminate predecessor]
+    Launch[Fresh successor launch, no native resume]
+    Brief[Platform-composed startup brief]
+
+    Caller --> Restart --> Resolver -->|typed decision| Stop --> Launch --> Brief
+```
+
+A handoff restart is the one continuation that re-enters the selection boundary. The
+restart handler supplies the session's recorded command as role context and the
+caller's authority for any explicitly named agent, resolves before it terminates the
+predecessor, launches the successor without a native session id, and hands the
+successor a startup brief composed in core in the ordinary dispatch shape. Transcript
+chaining and active-agent adoption ride the existing native-metadata update path when
+the successor announces its identity.
+
+<!-- /planned:session-handoff -->
 ### Generic and direct spawners
 
 Generic creation infers role context from its initial command or accepts trusted typed
@@ -233,9 +274,16 @@ provider parsing in callers.
   serializing Claude or the configured default.
 - **Core command model:** launch intent distinguishes automatic, manual preference, and
   fixed continuation until the target-machine handler resolves it.
+<!-- planned-change:session-handoff -->
 - **Core:** one resolver owns role order, eligibility, reviewer separation, manual
   preference, fixed continuation, explanation, and no-candidate semantics. The session
   handler is the sole caller that materializes an agent for fresh work.
+<!-- change:session-handoff -->
+- **Core:** one resolver owns role order, eligibility, reviewer separation, manual
+  preference, fixed continuation, explanation, and no-candidate semantics. The session
+  handler materializes an agent for fresh work; the restart handler materializes the
+  successor for a handoff restart. Both consume the resolver's decision unchanged.
+<!-- /planned-change:session-handoff -->
 - **Workflow and generated orchestration:** callers provide job context and do not
   reproduce selection policy.
 - **Direct spawners:** scheduled jobs, adapters, and integration declare automatic or
@@ -258,8 +306,16 @@ provider parsing in callers.
 - **Availability read failure treated as absence.** A storage error makes an agent look
   available because no row was returned. Preserve the typed read failure and refuse
   creation before policy evaluation completes.
+<!-- planned-change:session-handoff -->
 - **Fixed work substituted.** Continuation crosses agents. Return a bound-agent failure
   instead.
+<!-- change:session-handoff -->
+- **Fixed work substituted.** Continuation crosses agents without a handoff request.
+  Return a bound-agent failure instead; only a handoff restart may select another agent.
+- **Handoff terminates before resolving.** The predecessor is stopped and the resolver
+  then refuses, leaving a session with no agent. Resolve first; a refusal leaves the
+  predecessor running.
+<!-- /planned-change:session-handoff -->
 - **Explanation leakage.** Human-facing prose enters spawned-agent context or automated
   responses. Keep prose at the relevant human boundary and machine feedback typed.
 - **Partial creation on refusal.** A session row exists after no-candidate or invalid
