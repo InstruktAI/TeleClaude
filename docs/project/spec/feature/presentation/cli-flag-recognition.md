@@ -1,7 +1,8 @@
 ---
-description: 'Every telec command recognizes exactly the options its published surface declares: each declared short alias behaves as its long form, an undeclared option is rejected with usage, a missing value is rejected, `--` ends option parsing, `--option=value` is accepted, and shell completion offers alias forms as separate candidates.'
-delivered_by:
-  - unify-cli-flag-parsing
+description: 'Every telec command recognizes exactly the options its published surface
+  declares: each declared short alias behaves as its long form, an undeclared option
+  is rejected with usage, a missing value is rejected, `--` ends option parsing, `--option=value`
+  is accepted, and shell completion offers alias forms as separate candidates.'
 ---
 
 # CLI Flag Recognition — Spec
