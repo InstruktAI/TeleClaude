@@ -15,7 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import tmux_bridge
-from teleclaude.core.agents import AgentName, resolve_parser_agent
+from teleclaude.core.agents import AgentName, AgentStartupSignal, resolve_parser_agent
 from teleclaude.utils import strip_ansi_codes
 
 if TYPE_CHECKING:
@@ -314,7 +314,7 @@ def _extract_complete_codex_live_input_block(lines: list[str]) -> str | None:
     previous_was_blank = False
     for idx, line in enumerate(lines):
         normalized = strip_ansi_codes(line).strip()
-        if idx > 0 and _is_codex_composer_chrome_line(line):
+        if idx > 0 and _is_codex_composer_chrome_line(line) and _has_only_blank_trailing_lines(lines[idx + 1 :]):
             input_lines.append(line)
             return "\n".join(input_lines)
         if idx > 0 and previous_was_blank and _is_complete_codex_passive_workspace_footer(line, lines[idx + 1 :]):
@@ -332,8 +332,13 @@ def _is_complete_codex_passive_workspace_footer(line: str, trailing_lines: list[
     return (
         _ANSI_ESCAPE_PREFIX in line
         and strip_ansi_codes(line).startswith(_CODEX_FOOTER_INDENTATION + _CODEX_WORKSPACE_PATH_PREFIX)
-        and all(not strip_ansi_codes(trailing_line).strip() for trailing_line in trailing_lines)
+        and _has_only_blank_trailing_lines(trailing_lines)
     )
+
+
+def _has_only_blank_trailing_lines(lines: list[str]) -> bool:
+    """Return whether no unclassified content follows a terminal chrome row."""
+    return all(not strip_ansi_codes(line).strip() for line in lines)
 
 
 def _extract_complete_deepseek_live_region(lines: list[str]) -> str | None:
@@ -349,11 +354,21 @@ def _extract_complete_deepseek_live_region(lines: list[str]) -> str | None:
         if strip_ansi_codes(lines[idx].strip()).startswith(marker):
             input_lines: list[str] = []
             for line in lines[idx:]:
-                if input_lines and _is_horizontal_rule_line(line):
+                if input_lines and (_is_horizontal_rule_line(line) or _is_deepseek_rounded_border_line(line)):
                     return "\n".join(input_lines)
                 input_lines.append(line)
             return None
     return None
+
+
+def _is_deepseek_rounded_border_line(raw_line: str) -> bool:
+    """Recognize DeepSeek's structural rounded input border without reading prose."""
+    stripped = strip_ansi_codes(raw_line).strip()
+    if len(stripped) < 2:
+        return False
+    return (
+        (stripped.startswith("╭") and stripped.endswith("╮")) or (stripped.startswith("╰") and stripped.endswith("╯"))
+    ) and all(char in {"╭", "╮", "╰", "╯", "─"} for char in stripped)
 
 
 def _extract_complete_gemini_live_region(lines: list[str]) -> str | None:
@@ -455,12 +470,7 @@ def _strip_generated_segments(text: str) -> str:
                 if not params or "0" in params:
                     active_generated_style = False
                 else:
-                    if "22" in params and "2" not in params:
-                        active_generated_style = False
-                    if "23" in params and "3" not in params:
-                        active_generated_style = False
-                    if "2" in params or "3" in params:
-                        active_generated_style = True
+                    active_generated_style = _generated_style_active(params, active_generated_style)
                 idx = match.end()
                 continue
         if not active_generated_style:
@@ -469,18 +479,32 @@ def _strip_generated_segments(text: str) -> str:
     return "".join(out)
 
 
+def _generated_style_active(params: list[str], active_style: bool) -> bool:
+    """Apply SGR emphasis while treating extended-colour operands as colours."""
+    index = 0
+    while index < len(params):
+        param = params[index]
+        if param in {"38", "48", "58"} and index + 1 < len(params):
+            mode = params[index + 1]
+            if mode == "5":
+                index += 3
+                continue
+            if mode == "2":
+                index += 5
+                continue
+        if param in {"22", "23"}:
+            active_style = False
+        elif param in {"2", "3"}:
+            active_style = True
+        index += 1
+    return active_style
+
+
 async def _capture_snapshot(tmux_session_name: str) -> str:
-    output = await tmux_bridge.capture_pane(tmux_session_name)
+    output = await tmux_bridge.capture_pane(tmux_session_name, visible_only=True)
     if not output:
         return ""
     return output[-UI_MESSAGE_MAX_CHARS:]
-
-
-async def pane_shows_ready_prompt(agent_name: str, session: Session) -> bool:
-    """Return whether the current pane has an idle prompt for this agent."""
-    agent = AgentName.from_str(agent_name)
-    output = await _capture_snapshot(session.tmux_session_name)
-    return _get_readiness_profile(agent).locate_prompt(output) is not None
 
 
 def _digest_stability_view(stability_view: str) -> str:
@@ -509,7 +533,11 @@ async def wait_for_agent_ready(
         prompt = profile.locate_prompt(current_tail)
         now = time.monotonic()
 
-        if prompt is None:
+        if (
+            prompt is None
+            or _get_readiness_profile(agent).observe_composer(current_tail).state is PromptDeliveryState.AMBIGUOUS
+            or not await tmux_bridge.is_process_running(session.tmux_session_name)
+        ):
             last_digest = None
             quiet_since = None
             await asyncio.sleep(poll_interval_s)
@@ -561,42 +589,31 @@ async def await_agent_readiness(
     quiet_s: float,
     timeout_s: float,
 ) -> ReadinessSignal:
-    """Open the launch/relaunch gate on whichever readiness signal arrives first.
+    """Open the launch/relaunch gate on its provider-declared readiness authority.
 
-    Uniform across every agent — there is no per-agent branch at the call site.
-    CLIs differ in how (or whether) they announce readiness: Claude emits a
-    reliable native session_start; Codex fires it late or combined with the first
-    prompt; agy never fires one at all. So the pane-quiet detector
-    (`wait_for_agent_ready` with the agent's readiness profile) always races the
-    native-hook ``ready_future``, and the gate opens on the first to complete.
-
-    A pane win authorizes prompt delivery only. Lifecycle state remains the
+    The provider capability selects one detector: native-start providers await
+    ``ready_future``; pane-authority providers await a settled complete composer.
+    Pane admission authorizes prompt delivery only. Lifecycle state remains the
     authority of normalized runtime hooks.
 
-    Returns the signal that opened the gate. Raises ``TimeoutError`` if both
-    detectors fail within ``timeout_s``.
+    Returns the selected signal. Raises ``TimeoutError`` when that provider's
+    selected detector does not open within ``timeout_s``.
     """
-    pane_task = asyncio.create_task(
-        wait_for_agent_ready(agent_name, session, timeout_s, quiet_s),
-        name=f"agent-readiness-pane:{session_id}",
-    )
-    # Shield the shared readiness future from cancellation when the pane task wins.
-    hook_task = asyncio.create_task(
-        asyncio.wait_for(asyncio.shield(ready_future), timeout=timeout_s),
-        name=f"agent-readiness-hook:{session_id}",
-    )
-    try:
-        done, _ = await asyncio.wait(
-            {pane_task, hook_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-    finally:
-        for task in (pane_task, hook_task):
-            if not task.done():
-                task.cancel()
-
-    hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
-    if hook_won:
+    agent = AgentName.from_str(agent_name)
+    if agent.startup_signal is AgentStartupSignal.NATIVE:
+        try:
+            await asyncio.wait_for(asyncio.shield(ready_future), timeout=timeout_s)
+        except TimeoutError:
+            _log_readiness_decision(
+                agent_name=agent_name,
+                session_id=session_id,
+                outcome=_ReadinessDecisionOutcome.TIMED_OUT,
+                reason=_ReadinessTimeoutReason.NO_SIGNAL,
+                quiet_s=quiet_s,
+            )
+            raise TimeoutError(
+                f"agent readiness: native signal unavailable within timeout (agent={agent_name})"
+            ) from None
         _log_readiness_decision(
             agent_name=agent_name,
             session_id=session_id,
@@ -604,15 +621,19 @@ async def await_agent_readiness(
             reason=ReadinessSignal.HOOK,
             quiet_s=quiet_s,
         )
-        logger.info("agent readiness gate opened via hook agent=%s session=%s", agent_name, session_id)
         return ReadinessSignal.HOOK
 
-    pane_won = False
-    if pane_task in done and not pane_task.cancelled() and pane_task.exception() is None:
-        ready, _ = pane_task.result()
-        pane_won = ready
+    pane_task = asyncio.create_task(
+        wait_for_agent_ready(agent_name, session, timeout_s, quiet_s),
+        name=f"agent-readiness-pane:{session_id}",
+    )
+    try:
+        ready, _ = await pane_task
+    finally:
+        if not pane_task.done():
+            pane_task.cancel()
 
-    if not pane_won:
+    if not ready:
         _log_readiness_decision(
             agent_name=agent_name,
             session_id=session_id,
@@ -620,7 +641,7 @@ async def await_agent_readiness(
             reason=_ReadinessTimeoutReason.NO_SIGNAL,
             quiet_s=quiet_s,
         )
-        raise TimeoutError(f"agent readiness: pane and hook both failed within timeout (agent={agent_name})")
+        raise TimeoutError(f"agent readiness: pane signal unavailable within timeout (agent={agent_name})")
 
     _log_readiness_decision(
         agent_name=agent_name,

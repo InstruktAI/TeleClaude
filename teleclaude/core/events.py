@@ -356,7 +356,7 @@ class TeleClaudeEvents:
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
     SESSION_STATUS: Literal["session_status"] = "session_status"  # Canonical lifecycle status transition
     AGENT_AVAILABILITY: Literal["agent_availability"] = "agent_availability"  # Agent availability changed
-    AGENT_READY: Literal["agent_ready"] = "agent_ready"  # Fact: agent TUI is stable at input prompt.
+    AGENT_READY: Literal["agent_ready"] = "agent_ready"  # Fact: normalized runtime start was observed.
     AGENT_READINESS_TIMEOUT: Literal["agent_readiness_timeout"] = (
         "agent_readiness_timeout"  # Fact: agent TUI did not reach ready prompt within timeout.
     )

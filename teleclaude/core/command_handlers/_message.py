@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
+from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.agents import AgentName
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
@@ -464,34 +466,59 @@ async def handle_file(
 
 
 async def _wait_for_session_ready(session_id: str) -> Session | None:
-    """Wait for session lifecycle to exit ``initializing`` with a bounded timeout.
-
-    Returns the refreshed session once ready, or ``None`` on timeout.
-    """
+    """Wait for a current session binding to reach its delivery authority."""
     deadline = time.monotonic() + STARTUP_GATE_TIMEOUT_S
-    logger.debug(
-        "Startup gate: waiting for session %s to exit initializing (timeout=%.1fs)",
-        session_id,
-        STARTUP_GATE_TIMEOUT_S,
-    )
     while time.monotonic() < deadline:
         session = await db.get_session(session_id)
         if not session:
             return None
+        if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
+            return None
         if session.lifecycle_status != "initializing":
-            logger.debug(
-                "Startup gate: session %s ready (status=%s)",
-                session_id,
-                session.lifecycle_status,
-            )
             return session
-        await asyncio.sleep(STARTUP_GATE_POLL_INTERVAL_S)
+        if not session.active_agent or not session.tmux_session_name:
+            await asyncio.sleep(STARTUP_GATE_POLL_INTERVAL_S)
+            continue
+        try:
+            AgentName.from_str(session.active_agent)
+        except ValueError:
+            await asyncio.sleep(STARTUP_GATE_POLL_INTERVAL_S)
+            continue
 
-    logger.warning(
-        "Startup gate: timeout waiting for session %s to exit initializing after %.1fs",
-        session_id,
-        STARTUP_GATE_TIMEOUT_S,
-    )
+        loop = asyncio.get_running_loop()
+        ready_future: asyncio.Future[None] = loop.create_future()
+
+        async def _on_ready(
+            _event_type: str,
+            context: SessionLifecycleContext,
+            ready: asyncio.Future[None] = ready_future,
+        ) -> None:
+            if context.session_id == session_id and not ready.done():
+                ready.set_result(None)
+
+        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+        try:
+            refreshed = await db.get_session(session_id)
+            if refreshed is None:
+                return None
+            if refreshed.lifecycle_status != "initializing" and not ready_future.done():
+                ready_future.set_result(None)
+            remaining_s = deadline - time.monotonic()
+            if remaining_s <= 0:
+                break
+            await await_agent_readiness(
+                agent_name=refreshed.active_agent or session.active_agent,
+                session=refreshed,
+                session_id=session_id,
+                ready_future=ready_future,
+                quiet_s=STARTUP_GATE_POLL_INTERVAL_S,
+                timeout_s=remaining_s,
+            )
+        except TimeoutError:
+            break
+        finally:
+            event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+        return await db.get_session(session_id)
     return None
 
 
@@ -515,7 +542,7 @@ async def deliver_inbound(
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise SessionMessageRejectedError(session_id=session_id, reason="closed")
 
-    # Gate: wait for session to exit "initializing" before injecting into tmux.
+    # Gate: wait for the provider-selected first-input authority before tmux injection.
     if session.lifecycle_status == "initializing":
         session = await _wait_for_session_ready(session_id)
         if not session:
