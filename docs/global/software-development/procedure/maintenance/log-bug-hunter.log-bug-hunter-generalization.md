@@ -22,17 +22,21 @@ investigate or fix inline — the diagnose/fix lifecycle owns each filed bug.
 1. The job runner started this session in a project root with this procedure's
    snippet ID as the job identity; the project's `project_slug` is readable from
    its configuration.
-2. `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper` is
+2. `instrukt-ai-logs {project_slug} --since <window> --exclude git-wrapper` is
    available and returns structured log output.
 3. `telec bugs suppressions`, `telec bugs list`, and `telec bugs report` are
    available in this project.
-4. Previous run reports are available for deduplication under the job's run
-   directory.
+4. Previous run records are available for the window and for deduplication in
+   the job's run directory.
 
 ## Steps
 
-1. Collect logs from the last hour for the current project:
-   - Run `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper`,
+1. Collect the logs this run owns for the current project:
+   - The window starts at the newest previous run record in the job's run
+     directory. With no previous record, the window is one schedule interval
+     as declared in the job's `when` block. Express it as the duration from
+     that start until now.
+   - Run `instrukt-ai-logs {project_slug} --since <window> --exclude git-wrapper`,
      substituting the project slug of the project you are running in.
    - If no output or tool unavailable, write a "nothing to process" report and stop.
 

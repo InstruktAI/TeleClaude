@@ -23,16 +23,21 @@ The log-bug-hunter is one bug _source_ feeding the same pipeline that
 2. The agent is running inside the target project's root directory and knows
    the project's `project_slug` (the session is dispatched by
    `LogBugHunterService` bound to that project).
-3. `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper` is
+3. `instrukt-ai-logs {project_slug} --since <window> --exclude git-wrapper` is
    available and returns structured log output.
 4. The agent has read access to the codebase for diagnosis.
 5. The agent can commit fixes to the current branch (main).
-6. Previous run reports are available for deduplication at `~/.teleclaude/jobs/log-bug-hunter/runs/`.
+6. Previous run records are available for the window and for deduplication in
+   the job's run directory (`~/.teleclaude/jobs/{job_id}/runs/`).
 
 ## Steps
 
-1. Collect logs from the last hour for the current project:
-   - Run `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper`,
+1. Collect the logs this run owns for the current project:
+   - The window starts at the newest previous run record in the job's run
+     directory. With no previous record, the window is one schedule interval
+     as declared in the job's `when` block. Express it as the duration from
+     that start until now.
+   - Run `instrukt-ai-logs {project_slug} --since <window> --exclude git-wrapper`,
      substituting the project slug of the project you are running in.
    - If no output or tool unavailable, write a "nothing to process" report and stop.
 
@@ -82,13 +87,10 @@ The log-bug-hunter is one bug _source_ feeding the same pipeline that
 7. Repeat steps 4–6 until every error from step 3 has been handled (fixed,
    dispatched, or recorded). Do not stop while unprocessed errors remain.
 
-8. When all errors are processed, write the run report to
-   `~/.teleclaude/jobs/log-bug-hunter/runs/{YYMMDD-HHMMSS}.md`.
-   - If the run completed without operational anomalies (all tools and `telec` commands
-     functioned correctly), end the session: `telec sessions end self`.
-   - If the agent encountered anomalies during its own operation (tool errors, `telec`
-     command failures, unexpected CLI output), stay alive as a signal session for
-     human inspection. Do not self-end.
+8. When all errors are processed, write the run report and close the run as the
+   Agent Job Hygiene procedure directs, then go idle. Anomalies in the agent's own
+   operation (tool errors, `telec` command failures, unexpected CLI output) go in
+   the report's Errors section; the report closes the run either way.
 
 ## Outputs
 
