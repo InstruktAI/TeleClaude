@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import TypedDict
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import TODO_LIST
 from teleclaude.core.todo import parse_since_to_cutoff
 from teleclaude.core.todo_tree import TodoNode, build_todo_sections, flatten
 from teleclaude.project_root import resolve_invocation_project_root
@@ -92,55 +95,32 @@ def _handle_todo_list(args: list[str]) -> None:
 
 
 def _parse_todo_list_args(args: list[str]) -> _TodoListArgs:
-    options = {
-        "--include-icebox": "include_icebox",
-        "-i": "include_icebox",
-        "--icebox-only": "icebox_only",
-        "-o": "icebox_only",
-        "--include-delivered": "include_delivered",
-        "-d": "include_delivered",
-        "--delivered-only": "delivered_only",
-        "--include-removed": "include_removed",
-        "-r": "include_removed",
-        "--removed-only": "removed_only",
-        "--json": "json_output",
-    }
-    parsed: _TodoListArgs = {
-        "include_icebox": False,
-        "icebox_only": False,
-        "include_delivered": False,
-        "delivered_only": False,
-        "include_removed": False,
-        "removed_only": False,
-        "json_output": False,
-        "since_cutoff": "",
-    }
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--since":
-            if i + 1 >= len(args):
-                print("--since requires a value (e.g. 7d, 72h, 2w, or 2026-05-01)")
-                print(_usage("todo", "list"))
-                raise SystemExit(1)
-            try:
-                parsed["since_cutoff"] = parse_since_to_cutoff(args[i + 1])
-            except ValueError as exc:
-                print(str(exc))
-                print(_usage("todo", "list"))
-                raise SystemExit(1) from exc
-            i += 2
-            continue
-        option = options.get(arg)
-        if option:
-            parsed[option] = True  # type: ignore[literal-required]
-            i += 1
-            continue
-        error_kind = "option" if arg.startswith("-") else "argument"
-        print(f"Unknown {error_kind}: {arg}")
+    parsed_args = parse_command_args(TODO_LIST, args)
+    if parsed_args.positionals:
+        print(f"Unknown argument: {parsed_args.positionals[0]}")
         print(_usage("todo", "list"))
         raise SystemExit(1)
-    return parsed
+
+    since_cutoff = ""
+    since_raw = parsed_args.value(F.FLAG_TODO_LIST_SINCE)
+    if since_raw is not None:
+        try:
+            since_cutoff = parse_since_to_cutoff(since_raw)
+        except ValueError as exc:
+            print(str(exc))
+            print(_usage("todo", "list"))
+            raise SystemExit(1) from exc
+
+    return {
+        "include_icebox": parsed_args.has(F.FLAG_TODO_LIST_INCLUDE_ICEBOX),
+        "icebox_only": parsed_args.has(F.FLAG_TODO_LIST_ICEBOX_ONLY),
+        "include_delivered": parsed_args.has(F.FLAG_TODO_LIST_INCLUDE_DELIVERED),
+        "delivered_only": parsed_args.has(F.FLAG_TODO_LIST_DELIVERED_ONLY),
+        "include_removed": parsed_args.has(F.FLAG_TODO_LIST_INCLUDE_REMOVED),
+        "removed_only": parsed_args.has(F.FLAG_TODO_LIST_REMOVED_ONLY),
+        "json_output": parsed_args.has(F.FLAG_TODO_LIST_JSON),
+        "since_cutoff": since_cutoff,
+    }
 
 
 def _print_sectioned_todo_list(sections: list[tuple[str, list[TodoNode]]]) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
@@ -74,14 +74,33 @@ class CommandAuth:
         return human_role in self.human if human_role is not None else False
 
 
-@dataclass
+class FlagArity(StrEnum):
+    """How many argv tokens a declared flag consumes when recognized.
+
+    ``SWITCH`` flags carry no value. ``VALUE`` consumes exactly one token;
+    the last occurrence wins when the flag repeats. ``REPEATED`` also
+    consumes one token per occurrence, but every occurrence is retained in
+    order. ``GREEDY`` consumes every following token up to the next
+    dash-leading token or ``--``, at least one, accumulated across
+    occurrences — the shape a fixed-count option (validated by its handler)
+    also uses.
+    """
+
+    SWITCH = "switch"
+    VALUE = "value"
+    REPEATED = "repeated"
+    GREEDY = "greedy"
+
+
+@dataclass(frozen=True)
 class Flag:
-    """Single CLI flag definition used for help and completion."""
+    """Single CLI flag definition used for help, completion, and recognition."""
 
     long: str
     short: str | None = None
     desc: str = ""
     hidden: bool = False  # hidden from help output and completion
+    arity: FlagArity = field(kw_only=True)
 
     def as_tuple(self) -> tuple[str | None, str, str]:
         """Backward-compat tuple for completion helpers."""
@@ -108,6 +127,7 @@ class CommandDef(_CommandPresentation):
     flags: list[Flag] = field(default_factory=list)
     subcommands: dict[str, CommandDef] = field(default_factory=dict)
     auth: CommandAuth | None = None
+    literal_dash_tokens: bool = False  # accept undeclared dash-leading tokens as operands (see history search)
 
     @property
     def visible_flags(self) -> list[Flag]:
@@ -123,28 +143,6 @@ class CommandDef(_CommandPresentation):
     def subcmd_tuples(self) -> list[tuple[str, str]]:
         """Subcommands as (name, desc) tuples for completion. Hidden subcommands excluded."""
         return [(name, sub.desc) for name, sub in self.subcommands.items() if not sub.hidden]
-
-
-_H = Flag("--help", "-h", "Show usage information", hidden=True)
-
-# Shared flag definitions reused across multiple CommandDef entries.
-# When the same `Flag(...)` literal appears in more than one command, define it
-# here and reference the constant — keep the surface single-source-of-truth.
-_FLAG_COMPUTER = Flag("--computer", "-c", "Target computer (optional; defaults to local)")
-_FLAG_AGENT = Flag("--agent", desc="Agent: claude, gemini, codex, deepseek")
-_FLAG_MODE = Flag("--mode", desc="Thinking mode: fast, med, slow")
-_FLAG_DETACH = Flag(
-    "--detach",
-    desc="Fire-and-forget: inherit context but skip listener registration",
-    hidden=True,
-)
-_FLAG_PATH = Flag("--path", desc="Path to the project directory (optional; defaults to cwd)")
-_FLAG_PROJECT_FILTER = Flag("--project", desc="Filter by project name")
-_FLAG_PROJECT_TRUSTED = Flag("--project", desc="Project name (from trusted_dirs)")
-_FLAG_SESSION = Flag("--session", "-s", "Session ID")
-_FLAG_THINKING = Flag("--thinking", desc="Include thinking blocks")
-_FLAG_LIMIT_20 = Flag("--limit", desc="Max results (default: 20)")
-_FLAG_AFTER_DEPS = Flag("--after", desc="Comma-separated dependency slugs")
 
 
 def strip_hidden_flag_tokens(args: str, flags: list[Flag]) -> str:

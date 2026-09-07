@@ -6,6 +6,9 @@ import sys
 from collections.abc import Mapping
 from typing import TypedDict
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.surface import REMINDERS_CANCEL, REMINDERS_SET
 from teleclaude.cli.tool_client import print_json, tool_api_call
 
 _GET = "GET"
@@ -13,12 +16,6 @@ _POST = "POST"
 _DELETE = "DELETE"
 _REMINDERS_PATH = "/reminders"
 _HELP_FLAGS = frozenset({"-h", "--help"})
-_VALUE_FLAGS: dict[str, str] = {
-    "--after": "after",
-    "--at": "at",
-    "--intent": "intent",
-    "--slug": "target_slug",
-}
 _USAGE = "telec reminders set|list|cancel"
 _SET_USAGE = "telec reminders set <slug> [flags]"
 _CANCEL_USAGE = "telec reminders cancel <slug>|--all"
@@ -42,24 +39,31 @@ def _print_presentation(payload: object) -> None:
     print_json(payload)
 
 
-def _parse_set_body(args: list[str]) -> _SetReminderBody:
-    if not args or args[0] in _HELP_FLAGS:
+def _parse_set_body(args: list[str]) -> _SetReminderBody | None:
+    parsed = parse_command_args(REMINDERS_SET, args)
+    positionals = parsed.positionals
+    if len(positionals) == 0:
         print(_SET_USAGE)
-        raise SystemExit(0)
-    body = _SetReminderBody(slug=args[0])
-    index = 1
-    while index < len(args):
-        token = args[index]
-        if token == "--repeat":
-            body["repeat"] = True
-            index += 1
-            continue
-        field = _VALUE_FLAGS.get(token)
-        if field is None or index + 1 >= len(args):
-            print(f"Invalid reminder set argument: {token}", file=sys.stderr)
-            raise SystemExit(1)
-        body[field] = args[index + 1]  # type: ignore[literal-required]
-        index += 2
+        return None
+    if len(positionals) != 1:
+        print(f"Invalid reminder set argument: {positionals[-1]}", file=sys.stderr)
+        raise SystemExit(1)
+
+    body = _SetReminderBody(slug=positionals[0])
+    after = parsed.value(F.FLAG_REMINDER_AFTER)
+    if after is not None:
+        body["after"] = after
+    at = parsed.value(F.FLAG_REMINDER_AT)
+    if at is not None:
+        body["at"] = at
+    intent = parsed.value(F.FLAG_REMINDER_INTENT)
+    if intent is not None:
+        body["intent"] = intent
+    if parsed.has(F.FLAG_REMINDER_REPEAT):
+        body["repeat"] = True
+    target_slug = parsed.value(F.FLAG_REMINDER_SLUG)
+    if target_slug is not None:
+        body["target_slug"] = target_slug
     return body
 
 
@@ -71,7 +75,10 @@ def handle_reminders(args: list[str]) -> None:
     subcommand = args[0]
     rest = args[1:]
     if subcommand == "set":
-        _print_presentation(tool_api_call(_POST, _REMINDERS_PATH, json_body=_parse_set_body(rest)))
+        body = _parse_set_body(rest)
+        if body is None:
+            return
+        _print_presentation(tool_api_call(_POST, _REMINDERS_PATH, json_body=body))
         return
     if subcommand == "list":
         print_json(tool_api_call(_GET, _REMINDERS_PATH))
@@ -84,10 +91,18 @@ def handle_reminders(args: list[str]) -> None:
 
 
 def _handle_cancel(args: list[str]) -> None:
-    if not args or args[0] in _HELP_FLAGS:
+    parsed = parse_command_args(REMINDERS_CANCEL, args)
+    positionals = parsed.positionals
+    cancel_all = parsed.has(F.FLAG_REMINDER_CANCEL_ALL)
+
+    if not positionals and not cancel_all:
         print(_CANCEL_USAGE)
         return
-    if args == ["--all"]:
+    if cancel_all and positionals:
+        print(_CANCEL_USAGE, file=sys.stderr)
+        raise SystemExit(1)
+
+    if cancel_all:
         payload = tool_api_call(_DELETE, _REMINDERS_PATH, params={"all": "true"})
         if isinstance(payload, list):
             for item in payload:
@@ -97,8 +112,9 @@ def _handle_cancel(args: list[str]) -> None:
         else:
             print_json(payload)
         return
-    if len(args) != 1:
+
+    if len(positionals) != 1:
         print(_CANCEL_USAGE, file=sys.stderr)
         raise SystemExit(1)
-    payload = tool_api_call(_DELETE, f"{_REMINDERS_PATH}/{args[0]}")
+    payload = tool_api_call(_DELETE, f"{_REMINDERS_PATH}/{positionals[0]}")
     _print_presentation(payload)

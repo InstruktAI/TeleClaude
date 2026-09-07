@@ -14,6 +14,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.surface import CODE_FORMAT, CODE_INSTALL, CODE_LINT, CODE_TEST
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd
 from teleclaude.quality.lint import LintRunner
 from teleclaude.quality.scope import (
@@ -35,8 +38,9 @@ def handle_lint(args: list[str]) -> None:
     formats: a rewrite CI discards is indistinguishable from a pass and would
     mask drift, so it stays check-only. ``--step`` is retired.
     """
-    run_all = "--all" in args
-    files = _positionals(args, allowed_flags={"--all"}, usage="telec code lint [--all] [<files> ...]")
+    parsed = parse_command_args(CODE_LINT, args)
+    run_all = parsed.has(F.FLAG_CODE_ALL_LINT)
+    files = list(parsed.positionals)
     project_root = resolve_git_root(resolve_invocation_cwd())
 
     scoped_files = _resolve_quality_scope(project_root, files=files, run_all=run_all)
@@ -70,15 +74,11 @@ def handle_test(args: list[str]) -> None:
 
     ``--update-snapshots`` → accept reviewed snapshot diffs.
     """
-    update_snapshots = "--update-snapshots" in args
-    files = _positionals(
-        args,
-        allowed_flags={"--all", "--update-snapshots"},
-        usage="telec code test [--all] [--update-snapshots]",
-    )
-    if files:
+    parsed = parse_command_args(CODE_TEST, args)
+    if parsed.positionals:
         print("ERROR: telec code test does not accept file operands", file=sys.stderr)
         raise SystemExit(2)
+    update_snapshots = parsed.has(F.FLAG_CODE_UPDATE_SNAPSHOTS)
     project_root = resolve_git_root(resolve_invocation_cwd())
     variables = {"SNAPSHOT_UPDATE": "1"} if update_snapshots else None
     exit_code = _run_make("test", project_root, variables=variables)
@@ -92,9 +92,10 @@ def handle_format(args: list[str]) -> None:
     No args → project-native make format.
     Positional args → make format scoped via FILES_FROM.
     """
-    run_all = "--all" in args
+    parsed = parse_command_args(CODE_FORMAT, args)
+    run_all = parsed.has(F.FLAG_CODE_ALL_FORMAT)
     project_root = resolve_git_root(resolve_invocation_cwd())
-    files = _positionals(args, allowed_flags={"--all"}, usage="telec code format [--all] [<files> ...]")
+    files = list(parsed.positionals)
     scoped_files = None
     if files:
         scoped_files = _validate_or_exit(files, project_root)
@@ -110,26 +111,14 @@ def handle_format(args: list[str]) -> None:
 
 def handle_install(args: list[str]) -> None:
     """Handle the ``telec code install`` command."""
-    files = _positionals(args, allowed_flags=set(), usage="telec code install")
-    if files:
+    parsed = parse_command_args(CODE_INSTALL, args)
+    if parsed.positionals:
         print("ERROR: telec code install does not accept operands", file=sys.stderr)
         raise SystemExit(2)
     project_root = resolve_git_root(resolve_invocation_cwd())
     exit_code = _run_make("install", project_root)
     if exit_code != 0:
         raise SystemExit(exit_code)
-
-
-def _positionals(args: list[str], *, allowed_flags: set[str], usage: str) -> list[str]:
-    files: list[str] = []
-    for arg in args:
-        if arg in allowed_flags:
-            continue
-        if arg.startswith("-"):
-            print(f"ERROR: unknown flag or unsafe leading-dash path: {arg}\nUsage: {usage}", file=sys.stderr)
-            raise SystemExit(2)
-        files.append(arg)
-    return files
 
 
 def _resolve_quality_scope(project_root: Path, *, files: list[str], run_all: bool) -> list[str] | None:

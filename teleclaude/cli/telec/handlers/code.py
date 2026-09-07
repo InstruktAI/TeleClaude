@@ -18,6 +18,8 @@ from sqlalchemy.exc import OperationalError
 
 from teleclaude.capabilities import Capabilities, TierPermissions, resolve_capabilities, resolve_tier_permissions
 from teleclaude.checkpoint_model import main_only_action_ids_for_files
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._code_git_state import (
     dirty_paths,
     get_unmerged_files,
@@ -28,6 +30,7 @@ from teleclaude.cli.telec.handlers._code_git_state import (
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import CODE_CHANGED, CODE_COMMIT
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
 from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
 from teleclaude.core.db import get_db
@@ -327,10 +330,19 @@ def handle_code_add(args: list[str]) -> None:
 
 def handle_code_changed(args: list[str]) -> None:
     """List workspace-scoped changed files."""
+    parsed = parse_command_args(CODE_CHANGED, args)
+    if parsed.positionals:
+        print("ERROR: changed accepts paths only after --include or --only", file=sys.stderr)
+        raise SystemExit(2)
+    includes = list(parsed.values(F.FLAG_CODE_CHANGED_INCLUDE))
+    only = list(parsed.values(F.FLAG_CODE_CHANGED_ONLY))
+    if includes and only:
+        print("ERROR: --only cannot be combined with --include.", file=sys.stderr)
+        raise SystemExit(2)
+
     state = _resolve_invocation_state()
     project_root = state.project_root
     scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=state.context_root)
-    includes, only = _parse_payload_flags(args, command="changed")
     includes = _resolve_context_payload_paths(includes, project_root, state.context_root)
     only = _resolve_context_payload_paths(only, project_root, state.context_root)
     files = _display_context_paths(only, project_root, state.context_root) if only else _changed_paths(scope_resolution)
@@ -374,99 +386,37 @@ def handle_code_commit(args: list[str]) -> None:
     5. The pathspec itself bounds the commit — no separate scope-enforcement
        gate is needed.
 
-    Parsing rule: tokens are sorted into buckets left-to-right. ``--approved``
-    is a boolean; ``--include``/``--only`` switch subsequent non-flag tokens
-    into their path bucket until the next flag; everything else is positional.
-    The message must therefore precede path flags (or be separated from them
-    by ``--approved``).
+    Parsing rule: option recognition is declaration-driven (see
+    ``teleclaude.cli.telec.flags.FLAG_COMMIT_INCLUDE``/``FLAG_COMMIT_ONLY``,
+    both GREEDY). A GREEDY flag consumes every following token up to the next
+    dash-leading token, at least one; ``--include``/``--only`` therefore stop
+    collecting paths at the next flag (including ``--approved`` or
+    ``--human-involved``) and the parser itself raises a missing-value error
+    when no path follows. The message must precede any path flag, or be
+    separated from it by ``--approved``, since a GREEDY flag would otherwise
+    swallow it as a path.
     """
-    approved = False
-    human_involved = False
-    includes: list[str] = []
-    only: list[str] = []
-    positionals: list[str] = []
-    path_mode: str | None = None
-    last_path_group_size = 0  # paths collected since the most recent path flag
-    saw_path_flag: str | None = None
-    for token in args:
-        if token == "--approved":
-            # An --approved (or any subsequent flag) closes the current
-            # path group; if that group was empty, error.
-            if path_mode is not None and last_path_group_size == 0:
-                print(
-                    f"ERROR: --{path_mode} requires at least one <path> operand.\n"
-                    f'  telec code commit --approved "<message>" --{path_mode} <path> [<path> ...]',
-                    file=sys.stderr,
-                )
-                raise SystemExit(2)
-            approved = True
-            path_mode = None
-        elif token == "--human-involved":
-            if path_mode is not None and last_path_group_size == 0:
-                print(
-                    f"ERROR: --{path_mode} requires at least one <path> operand.\n"
-                    f'  telec code commit --approved "<message>" --{path_mode} <path> [<path> ...]',
-                    file=sys.stderr,
-                )
-                raise SystemExit(2)
-            human_involved = True
-            path_mode = None
-        elif token in {"--include", "--only"}:
-            if path_mode is not None and last_path_group_size == 0:
-                print(
-                    f"ERROR: --{path_mode} requires at least one <path> operand before the next path flag.\n"
-                    f'  telec code commit --approved "<message>" --{path_mode} <path> [<path> ...]',
-                    file=sys.stderr,
-                )
-                raise SystemExit(2)
-            path_mode = token.removeprefix("--")
-            last_path_group_size = 0
-            saw_path_flag = path_mode
-        elif token.startswith("-"):
-            print(
-                f"ERROR: unknown flag: {token}\n"
-                "Accepted flags: --approved, --human-involved, --include <path> [<path> ...], "
-                "--only <path> [<path> ...].\n"
-                "  telec code commit                                              # show the gate\n"
-                '  telec code commit --approved "<message>"                       # commit scope\n'
-                '  telec code commit --approved "<message>" --include <path> ...  # commit scope + extras\n'
-                '  telec code commit --approved "<message>" --only <path> ...     # commit exactly these paths',
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        elif path_mode == "include":
-            includes.append(token)
-            last_path_group_size += 1
-        elif path_mode == "only":
-            only.append(token)
-            last_path_group_size += 1
-        else:
-            positionals.append(token)
-
-    # End-of-args: if a path flag was the last token (or only followed by no
-    # paths up to end), error too.
-    if saw_path_flag is not None and path_mode is not None and last_path_group_size == 0:
-        print(
-            f"ERROR: --{path_mode} requires at least one <path> operand.\n"
-            f'  telec code commit --approved "<message>" --{path_mode} <path> [<path> ...]',
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-
-    if includes and only:
-        print(
-            "ERROR: --only cannot be combined with --include.\n"
-            '  telec code commit --approved "<message>" --only <path> [<path> ...]',
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-
+    parsed = parse_command_args(CODE_COMMIT, args)
+    positionals = parsed.positionals
     if len(positionals) > 1:
         print(
             "ERROR: telec code commit accepts exactly one quoted message.\n"
             "If a path was consumed as part of the message, place path flags after "
             "the message (or after --approved):\n"
             '  telec code commit --approved "<message>" --only <path> ...',
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    approved = parsed.has(F.FLAG_COMMIT_APPROVED)
+    human_involved = parsed.has(F.FLAG_HUMAN_INVOLVED_COMMIT)
+    includes = list(parsed.values(F.FLAG_COMMIT_INCLUDE))
+    only = list(parsed.values(F.FLAG_COMMIT_ONLY))
+
+    if includes and only:
+        print(
+            "ERROR: --only cannot be combined with --include.\n"
+            '  telec code commit --approved "<message>" --only <path> [<path> ...]',
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -663,32 +613,6 @@ def _commit_under_lock(
         committed_files = list(pathspec)
     _record_commit_checkpoint_markers(project_root, committed_files)
     del system_role
-
-
-def _parse_payload_flags(args: list[str], *, command: str) -> tuple[list[str], list[str]]:
-    includes: list[str] = []
-    only: list[str] = []
-    destination: list[str] | None = None
-    for token in args:
-        if token == "--include":
-            destination = includes
-        elif token == "--only":
-            destination = only
-        elif token.startswith("-"):
-            print(f"ERROR: unknown flag: {token}", file=sys.stderr)
-            raise SystemExit(2)
-        elif destination is None:
-            print(f"ERROR: {command} accepts paths only after --include or --only", file=sys.stderr)
-            raise SystemExit(2)
-        else:
-            destination.append(token)
-    if includes and only:
-        print("ERROR: --only cannot be combined with --include.", file=sys.stderr)
-        raise SystemExit(2)
-    if destination is not None and not destination:
-        print("ERROR: scope flag requires at least one <path> operand.", file=sys.stderr)
-        raise SystemExit(2)
-    return includes, only
 
 
 def _resolve_context_payload_paths(paths: list[str], project_root: Path, context_root: Path | None) -> list[str]:

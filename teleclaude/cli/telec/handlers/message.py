@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from teleclaude.api_models import PersonMessageRequest
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import MESSAGE
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.config.schema import MessagingChannel
 
@@ -16,44 +19,21 @@ def _handle_message(args: list[str]) -> None:
         print(_usage("message"))
         return
 
-    slug: str | None = None
-    text: str | None = None
-    file: str | None = None
-    subject: str | None = None
-    channel_raw: str | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--file" and i + 1 < len(args):
-            file = args[i + 1]
-            i += 2
-        elif arg == "--subject" and i + 1 < len(args):
-            subject = args[i + 1]
-            i += 2
-        elif arg == "--channel" and i + 1 < len(args):
-            channel_raw = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("message"))
-            raise SystemExit(1)
-        elif slug is None:
-            slug = arg
-            i += 1
-        elif text is None:
-            text = arg
-            i += 1
-        else:
-            print("Only one slug and one text argument are allowed.")
-            print(_usage("message"))
-            raise SystemExit(1)
+    parsed = parse_command_args(MESSAGE, args)
+    positionals = parsed.positionals
+    if len(positionals) > 2:
+        print("Only one slug and one text argument are allowed.")
+        print(_usage("message"))
+        raise SystemExit(1)
+    slug = positionals[0] if positionals else None
+    text = positionals[1] if len(positionals) > 1 else None
 
     if not slug or not text:
         print("Missing required <slug> and <text>.")
         print(_usage("message"))
         raise SystemExit(1)
 
+    channel_raw = parsed.value(F.FLAG_MSG_CHANNEL)
     channel: MessagingChannel | None = None
     if channel_raw is not None:
         try:
@@ -62,7 +42,13 @@ def _handle_message(args: list[str]) -> None:
             print(f"Invalid --channel '{channel_raw}': must be one of {', '.join(m.value for m in MessagingChannel)}.")
             raise SystemExit(1) from None
 
-    request = PersonMessageRequest(slug=slug, text=text, file=file, subject=subject, channel=channel)
+    request = PersonMessageRequest(
+        slug=slug,
+        text=text,
+        file=parsed.value(F.FLAG_MSG_FILE),
+        subject=parsed.value(F.FLAG_MSG_SUBJECT),
+        channel=channel,
+    )
     api_result = tool_api_request(
         "POST",
         "/api/people/message",

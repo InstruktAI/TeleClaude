@@ -12,8 +12,11 @@ from typing import cast
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._creation_gate import CREATION_VALIDITY_GATE_ITEM
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import BUGS_LIST, BUGS_REPORT, BUGS_SUPPRESS, BUGS_SUPPRESSIONS, BUGS_UNSUPPRESS
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.config import config
 from teleclaude.constants import TodoStatus
@@ -150,43 +153,19 @@ def _handle_bugs_report(args: list[str]) -> None:
         print(_usage("bugs", "report"))
         return
 
-    description: str | None = None
-    slug: str | None = None
-    body: str | None = None
-    project_name: str | None = None
-    human_involved = False
-    approved = False
+    parsed = parse_command_args(BUGS_REPORT, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Only one description is allowed.")
+        print(_usage("bugs", "report"))
+        raise SystemExit(1)
+    description = positionals[0] if positionals else None
+    slug = parsed.value(F.FLAG_BUG_SLUG)
+    body = parsed.value(F.FLAG_BUG_BODY)
+    project_name = parsed.value(F.FLAG_BUG_PROJECT)
+    human_involved = parsed.has(F.FLAG_HUMAN_INVOLVED)
+    approved = parsed.has(F.FLAG_BUG_APPROVED)
     project_root = resolve_invocation_cwd()
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == _FILING_ACK_FLAG:
-            approved = True
-            i += 1
-        elif arg == "--slug" and i + 1 < len(args):
-            slug = args[i + 1]
-            i += 2
-        elif arg == "--body" and i + 1 < len(args):
-            body = args[i + 1]
-            i += 2
-        elif arg == "--project" and i + 1 < len(args):
-            project_name = args[i + 1]
-            i += 2
-        elif arg == "--human-involved":
-            human_involved = True
-            i += 1
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("bugs", "report"))
-            raise SystemExit(1)
-        else:
-            if description is not None:
-                print("Only one description is allowed.")
-                print(_usage("bugs", "report"))
-                raise SystemExit(1)
-            description = arg
-            i += 1
 
     # The interrogation gate: a description without the acknowledgment flag
     # is the designed discovery moment (mirrors the sealed-commit gate's
@@ -242,17 +221,11 @@ def _handle_bugs_list(args: list[str]) -> None:
     """Handle telec bugs list — queries todos.db for bug-kind todos."""
     project_root = resolve_invocation_cwd()
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("bugs", "list"))
-            raise SystemExit(1)
-        else:
-            print(f"Unexpected argument: {arg}")
-            print(_usage("bugs", "list"))
-            raise SystemExit(1)
+    parsed = parse_command_args(BUGS_LIST, args)
+    if parsed.positionals:
+        print(f"Unexpected argument: {parsed.positionals[0]}")
+        print(_usage("bugs", "list"))
+        raise SystemExit(1)
 
     db = get_todos_db_sync(str(project_root))
     conn = db._sync_conn()
@@ -314,46 +287,19 @@ def _parse_expires(raw: str) -> datetime:
 
 def _handle_bugs_suppress(args: list[str]) -> None:
     """Handle telec bugs suppress "<pattern>" --reason <r> [...]."""
-    pattern: str | None = None
-    reason: str | None = None
-    match_raw = MatchMode.SUBSTRING.value
-    disposition_raw = Disposition.WONTFIX.value
-    project_name: str | None = None
-    source_bug: str | None = None
-    expires_raw: str | None = None
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--reason" and i + 1 < len(args):
-            reason = args[i + 1]
-            i += 2
-        elif arg == "--match" and i + 1 < len(args):
-            match_raw = args[i + 1]
-            i += 2
-        elif arg == "--disposition" and i + 1 < len(args):
-            disposition_raw = args[i + 1]
-            i += 2
-        elif arg == "--project" and i + 1 < len(args):
-            project_name = args[i + 1]
-            i += 2
-        elif arg == "--source-bug" and i + 1 < len(args):
-            source_bug = args[i + 1]
-            i += 2
-        elif arg == "--expires" and i + 1 < len(args):
-            expires_raw = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("bugs", "suppress"))
-            raise SystemExit(1)
-        else:
-            if pattern is not None:
-                print("Only one pattern is allowed.")
-                print(_usage("bugs", "suppress"))
-                raise SystemExit(1)
-            pattern = arg
-            i += 1
+    parsed = parse_command_args(BUGS_SUPPRESS, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Only one pattern is allowed.")
+        print(_usage("bugs", "suppress"))
+        raise SystemExit(1)
+    pattern = positionals[0] if positionals else None
+    reason = parsed.value(F.FLAG_SUPPRESS_REASON)
+    match_raw = parsed.value(F.FLAG_SUPPRESS_MATCH) or MatchMode.SUBSTRING.value
+    disposition_raw = parsed.value(F.FLAG_SUPPRESS_DISPOSITION) or Disposition.WONTFIX.value
+    project_name = parsed.value(F.FLAG_PROJECT_TRUSTED)
+    source_bug = parsed.value(F.FLAG_SUPPRESS_SOURCE_BUG)
+    expires_raw = parsed.value(F.FLAG_SUPPRESS_EXPIRES)
 
     if not pattern:
         print("Missing required pattern.")
@@ -401,17 +347,12 @@ def _handle_bugs_suppress(args: list[str]) -> None:
 
 def _handle_bugs_suppressions(args: list[str]) -> None:
     """Handle telec bugs suppressions [--project <name>] — list the ledger."""
-    project_name: str | None = None
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--project" and i + 1 < len(args):
-            project_name = args[i + 1]
-            i += 2
-        else:
-            print(f"Unknown option: {arg}")
-            print(_usage("bugs", "suppressions"))
-            raise SystemExit(1)
+    parsed = parse_command_args(BUGS_SUPPRESSIONS, args)
+    if parsed.positionals:
+        print(f"Unknown option: {parsed.positionals[0]}")
+        print(_usage("bugs", "suppressions"))
+        raise SystemExit(1)
+    project_name = parsed.value(F.FLAG_PROJECT_TRUSTED)
 
     slug = _resolve_project_slug(project_name)
     ledger = load(suppressions_path_for(slug))
@@ -432,25 +373,14 @@ def _handle_bugs_suppressions(args: list[str]) -> None:
 
 def _handle_bugs_unsuppress(args: list[str]) -> None:
     """Handle telec bugs unsuppress <id> [--project <name>] — remove one entry."""
-    suppression_id: str | None = None
-    project_name: str | None = None
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--project" and i + 1 < len(args):
-            project_name = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("bugs", "unsuppress"))
-            raise SystemExit(1)
-        else:
-            if suppression_id is not None:
-                print("Only one id is allowed.")
-                print(_usage("bugs", "unsuppress"))
-                raise SystemExit(1)
-            suppression_id = arg
-            i += 1
+    parsed = parse_command_args(BUGS_UNSUPPRESS, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Only one id is allowed.")
+        print(_usage("bugs", "unsuppress"))
+        raise SystemExit(1)
+    suppression_id = positionals[0] if positionals else None
+    project_name = parsed.value(F.FLAG_PROJECT_TRUSTED)
 
     if not suppression_id:
         print("Missing required suppression id.")

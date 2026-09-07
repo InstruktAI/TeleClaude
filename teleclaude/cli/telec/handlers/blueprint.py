@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.surface import CODE_BLUEPRINT_AFFECTED
 from teleclaude.core.blueprint import (
     compute_affected,
     dispatch_refresh,
@@ -67,15 +69,8 @@ def _format_result(result: AffectedResult, *, changed_count: int) -> str:
 
 
 def _handle_blueprint_affected(args: list[str]) -> None:
-    if "-h" in args or "--help" in args:
-        print(_AFFECTED_USAGE)
-        return
-    unknown = [a for a in args if a.startswith("-")]
-    if unknown:
-        print(f"Unknown option: {unknown[0]}")
-        print(_AFFECTED_USAGE)
-        raise SystemExit(1)
-    changed_files = [a for a in args if a]
+    parsed = parse_command_args(CODE_BLUEPRINT_AFFECTED, args)
+    changed_files = [a for a in parsed.positionals if a]
     if not changed_files:
         print("At least one changed file is required.")
         print(_AFFECTED_USAGE)

@@ -9,6 +9,9 @@ from __future__ import annotations
 import json
 import sys
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.surface import AGENTS_STATUS, CHANNELS_LIST, CHANNELS_PUBLISH, PROJECTS_LIST
 from teleclaude.cli.tool_client import print_json, tool_api_call
 
 __all__ = [
@@ -64,18 +67,11 @@ def handle_projects(args: list[str]) -> None:
       telec projects list
       telec projects list --computer macbook
     """
-    if "--help" in args or "-h" in args:
-        print(handle_projects.__doc__ or "")
-        return
-
+    parsed = parse_command_args(PROJECTS_LIST, args)
     params: dict[str, str] = {}
-    i = 0
-    while i < len(args):
-        if args[i] == "--computer" and i + 1 < len(args):
-            params["computer"] = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    computer = parsed.value(F.FLAG_COMPUTER)
+    if computer is not None:
+        params["computer"] = computer
 
     data = tool_api_call("GET", "/projects", params=params)
     print_json(data)
@@ -165,40 +161,31 @@ def handle_agents_status(args: list[str]) -> None:
       telec agents status claude --status degraded --reason "slow responses" --until 2024-01-01T12:00:00Z
       telec agents status claude --clear
     """
-    if "--help" in args or "-h" in args:
-        print(handle_agents_status.__doc__ or "")
-        return
-
-    agent: str | None = None
-    body: dict[str, object] = {}  # guard: loose-dict - JSON request body
-
-    if args and not args[0].startswith("-"):
-        agent = args[0]
-        args = args[1:]
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--status" and i + 1 < len(args):
-            body["status"] = args[i + 1]
-            i += 2
-        elif args[i] == "--reason" and i + 1 < len(args):
-            body["reason"] = args[i + 1]
-            i += 2
-        elif args[i] == "--model" and i + 1 < len(args):
-            body["model"] = args[i + 1]
-            i += 2
-        elif args[i] == "--until" and i + 1 < len(args):
-            body["until"] = args[i + 1]
-            i += 2
-        elif args[i] == "--clear":
-            body["clear"] = True
-            i += 1
-        else:
-            i += 1
-
+    parsed = parse_command_args(AGENTS_STATUS, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    agent = positionals[0] if positionals else None
     if not agent:
         print("Error: agent name required (claude, gemini, codex, deepseek)", file=sys.stderr)
         raise SystemExit(1)
+
+    body: dict[str, object] = {}  # guard: loose-dict - JSON request body
+    status = parsed.value(F.FLAG_AGENT_STATUS)
+    if status is not None:
+        body["status"] = status
+    reason = parsed.value(F.FLAG_AGENT_STATUS_REASON)
+    if reason is not None:
+        body["reason"] = reason
+    model = parsed.value(F.FLAG_AGENT_STATUS_MODEL)
+    if model is not None:
+        body["model"] = model
+    until = parsed.value(F.FLAG_AGENT_STATUS_UNTIL)
+    if until is not None:
+        body["until"] = until
+    if parsed.has(F.FLAG_AGENT_STATUS_CLEAR):
+        body["clear"] = True
 
     data = tool_api_call("POST", f"/agents/{agent}/status", json_body=body)
     print_json(data)
@@ -255,18 +242,11 @@ def handle_channels_list(args: list[str]) -> None:
       telec channels list
       telec channels list --project myproject
     """
-    if "--help" in args or "-h" in args:
-        print(handle_channels_list.__doc__ or "")
-        return
-
+    parsed = parse_command_args(CHANNELS_LIST, args)
     params: dict[str, str] = {}
-    i = 0
-    while i < len(args):
-        if args[i] == "--project" and i + 1 < len(args):
-            params["project"] = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    project = parsed.value(F.FLAG_PROJECT_FILTER)
+    if project is not None:
+        params["project"] = project
 
     data = tool_api_call("GET", "/api/channels/", params=params)
     print_json(data)
@@ -290,27 +270,13 @@ def handle_channels_publish(args: list[str]) -> None:
       telec channels publish channel:myproject:events --data '{"type":"update"}'
       telec channels publish channel:ai:notifications --data '{"msg":"done"}'
     """
-    if "--help" in args or "-h" in args:
-        print(handle_channels_publish.__doc__ or "")
-        return
-
-    channel: str | None = None
-    payload_str: str | None = None
-
-    if args and not args[0].startswith("-"):
-        channel = args[0]
-        args = args[1:]
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--data" and i + 1 < len(args):
-            payload_str = args[i + 1]
-            i += 2
-        elif args[i] == "--channel" and i + 1 < len(args):
-            channel = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    parsed = parse_command_args(CHANNELS_PUBLISH, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    channel = positionals[0] if positionals else None
+    payload_str = parsed.value(F.FLAG_CHANNEL_DATA)
 
     if not channel:
         print("Error: channel name required", file=sys.stderr)

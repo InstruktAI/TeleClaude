@@ -10,8 +10,11 @@ from pathlib import Path
 
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import APIError, TelecAPIClient
+from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import SESSIONS_REVIVE, SYNC
 from teleclaude.cli.tui.processes import signal_tui_reload
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -100,24 +103,16 @@ def _handle_reload(_args: list[str]) -> None:
 
 def _handle_sync(args: list[str]) -> None:
     """Handle telec sync command."""
+    parsed = parse_command_args(SYNC, args)
     project_root = resolve_invocation_project_root()
-    skip_deploy = False
+    skip_deploy = parsed.has(F.FLAG_SKIP_DEPLOY)
     skip_validation = False
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--skip-deploy":
-            skip_deploy = True
-            i += 1
-        elif args[i] == "--skip-validation":
-            # Hidden, watcher-only: the live-reload watcher must never block. Reject
-            # for any other caller — agents must not bypass the validation gate.
-            if os.environ.get("TELEC_DOCS_WATCHER") != "1":  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
-                raise SystemExit("--skip-validation is reserved for the docs watcher")
-            skip_validation = True
-            i += 1
-        else:
-            i += 1
+    if parsed.has(F.FLAG_SKIP_VALIDATION):
+        # Hidden, watcher-only: the live-reload watcher must never block. Reject
+        # for any other caller — agents must not bypass the validation gate.
+        if os.environ.get("TELEC_DOCS_WATCHER") != "1":  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
+            raise SystemExit("--skip-validation is reserved for the docs watcher")
+        skip_validation = True
 
     if not skip_deploy:
         workspace_root = resolve_workspace_root(resolve_invocation_cwd())
@@ -140,46 +135,21 @@ def _handle_revive(args: list[str]) -> None:
         print(_usage("sessions", "revive"))
         return
 
-    attach = False
-    agent: str | None = None
-    computer: str | None = None
-    session_id: str | None = None
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--attach":
-            attach = True
-            i += 1
-        elif arg == "--agent":
-            if i + 1 >= len(args):
-                print("--agent requires a value.")
-                print(_usage("sessions", "revive"))
-                raise SystemExit(1)
-            agent = args[i + 1]
-            i += 2
-        elif arg == "--computer":
-            if i + 1 >= len(args):
-                print("--computer requires a value.")
-                print(_usage("sessions", "revive"))
-                raise SystemExit(1)
-            computer = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("sessions", "revive"))
-            raise SystemExit(1)
-        else:
-            if session_id is not None:
-                print("Only one session_id is allowed.")
-                print(_usage("sessions", "revive"))
-                raise SystemExit(1)
-            session_id = arg
-            i += 1
-
+    parsed = parse_command_args(SESSIONS_REVIVE, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Only one session_id is allowed.")
+        print(_usage("sessions", "revive"))
+        raise SystemExit(1)
+    session_id = positionals[0] if positionals else None
     if not session_id:
         print("Missing required session_id.")
         print(_usage("sessions", "revive"))
         raise SystemExit(1)
+
+    attach = parsed.has(F.FLAG_REVIVE_ATTACH)
+    agent = parsed.value(F.FLAG_REVIVE_AGENT)
+    computer = parsed.value(F.FLAG_COMPUTER)
 
     _revive_session(session_id, attach, agent=agent, computer=computer)
 

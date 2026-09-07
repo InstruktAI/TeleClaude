@@ -9,7 +9,10 @@ from typing import TypedDict
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import CONTENT_DUMP
 from teleclaude.config import config
 from teleclaude.content_scaffold import _resolve_author, create_content_inbox_entry
 from teleclaude.events.envelope import EventLevel
@@ -85,41 +88,22 @@ def _handle_content_dump(args: list[str]) -> None:
 
 
 def _parse_content_dump_args(args: list[str]) -> tuple[str, str | None, list[str] | None, str | None]:
-    text: str | None = None
-    slug: str | None = None
-    tags: list[str] | None = None
-    author: str | None = None
-    index = 0
-
-    while index < len(args):
-        arg = args[index]
-        if arg == "--slug" and index + 1 < len(args):
-            slug = args[index + 1]
-            index += 2
-            continue
-        if arg == "--tags" and index + 1 < len(args):
-            tags = [tag.strip() for tag in args[index + 1].split(",") if tag.strip()]
-            index += 2
-            continue
-        if arg == "--author" and index + 1 < len(args):
-            author = args[index + 1]
-            index += 2
-            continue
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("content", "dump"))
-            raise SystemExit(1)
-        if text is not None:
-            print("Only one text argument is allowed.")
-            print(_usage("content", "dump"))
-            raise SystemExit(1)
-        text = arg
-        index += 1
-
+    parsed = parse_command_args(CONTENT_DUMP, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Only one text argument is allowed.")
+        print(_usage("content", "dump"))
+        raise SystemExit(1)
+    text = positionals[0] if positionals else None
     if not text:
         print("Missing required text argument.")
         print(_usage("content", "dump"))
         raise SystemExit(1)
+
+    slug = parsed.value(F.FLAG_CONTENT_SLUG)
+    tags_raw = parsed.value(F.FLAG_CONTENT_TAGS)
+    tags = [tag.strip() for tag in tags_raw.split(",") if tag.strip()] if tags_raw is not None else None
+    author = parsed.value(F.FLAG_CONTENT_AUTHOR)
     return text, slug, tags, author
 
 

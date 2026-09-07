@@ -25,6 +25,7 @@ from teleclaude.cli.telec._shared import (
 
 # Re-export auth helpers
 from teleclaude.cli.telec.auth import _resolve_command_auth, is_command_allowed
+from teleclaude.cli.telec.handlers._arg_parsing import CliUsageError, parse_command_args
 
 # Re-export help functions (light — kept top-level for completion + help fast paths)
 from teleclaude.cli.telec.help import (
@@ -36,15 +37,16 @@ from teleclaude.cli.telec.help import (
     _maybe_show_help,
     _print_completion,
     _print_flag,
+    _resolve_command_path,
     _usage,
     _usage_leaf,
     _usage_main,
+    _usage_resolved,
     _usage_subcmd,
 )
 
 # Re-export surface symbols
-from teleclaude.cli.telec.surface import (  # type: ignore[attr-defined]
-    _H,
+from teleclaude.cli.telec.surface import (
     CLI_SURFACE,
     HELP_SUBCOMMAND_EXPANSIONS,
     CommandAuth,
@@ -73,7 +75,6 @@ __all__ = [
     "TMUX_ENV_KEY",
     "TUI_ENV_KEY",
     "TUI_SESSION_NAME",
-    "_H",
     "CommandAuth",
     "CommandDef",
     "Flag",
@@ -133,6 +134,22 @@ def main() -> None:
     _start_tui(logger)
 
 
+def _resolve_and_enforce(cmd: str, args: list[str]) -> tuple[list[str], CommandDef, list[str]]:
+    """Resolve the leaf ``CommandDef`` for ``cmd``/``args`` and enforce its
+    declared-option policy over the unconsumed remainder — dispatch-free.
+
+    Returns ``(path, node, remainder)``. Raises ``CliUsageError`` on an
+    unknown option, a missing value, or a value given to a switch; the
+    caller renders the message against the returned node's usage. The
+    parsed result itself is not returned — a handler that needs option
+    values calls ``parse_command_args`` again against the same node.
+    """
+    path, node = _resolve_command_path(cmd, args)
+    remainder = args[len(path) - 1 :]
+    parse_command_args(node, remainder)
+    return path, node, remainder
+
+
 def _handle_cli_command(argv: list[str]) -> None:
     """Handle CLI shortcuts like /list, /claude, etc.
 
@@ -161,6 +178,16 @@ def _handle_cli_command(argv: list[str]) -> None:
         print(f"Unknown command: /{cmd}")
         print(_usage())
         return
+
+    if cmd_def is not None:
+        try:
+            _resolve_and_enforce(cmd, args)
+        except CliUsageError as exc:
+            path, node = _resolve_command_path(cmd, args)
+            print(str(exc), file=sys.stderr)
+            print(_usage_resolved(path, node), file=sys.stderr)
+            raise SystemExit(1) from exc
+
     handler()
 
 

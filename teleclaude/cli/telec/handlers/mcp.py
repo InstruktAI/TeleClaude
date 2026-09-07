@@ -6,10 +6,14 @@ import json
 import sys
 from enum import StrEnum
 from pathlib import Path
+from typing import NoReturn
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import MCP_CALL, MCP_LIST, MCP_LIST_TOOLS
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.config.context_root import resolve_context_root
 from teleclaude.mcp.registry import (
@@ -79,20 +83,11 @@ def _handle_mcp(args: list[str]) -> None:
 
 
 def _handle_list(args: list[str]) -> None:
-    excludes: list[str] = []
-    raw_json = False
-    index = 0
-    while index < len(args):
-        token = args[index]
-        if token == "--json":
-            raw_json = True
-            index += 1
-            continue
-        if token == "--exclude" and index + 1 < len(args):
-            excludes.append(args[index + 1])
-            index += 2
-            continue
+    parsed = parse_command_args(MCP_LIST, args)
+    if parsed.positionals:
         _fail_usage("mcp list")
+    excludes = list(parsed.values(F.FLAG_MCP_EXCLUDE))
+    raw_json = parsed.has(F.FLAG_MCP_JSON)
     invocation_project: str | None = None
     project_scope = False
     try:
@@ -140,10 +135,11 @@ def _handle_list(args: list[str]) -> None:
 
 
 def _handle_list_tools(args: list[str]) -> None:
-    raw_json = "--json" in args
-    positionals = [arg for arg in args if arg != "--json"]
+    parsed = parse_command_args(MCP_LIST_TOOLS, args)
+    positionals = parsed.positionals
     if len(positionals) != 1:
         _fail_usage("mcp list-tools")
+    raw_json = parsed.has(F.FLAG_MCP_JSON)
     response = tool_api_call(
         "GET",
         f"/mcp/servers/{positionals[0]}/tools",
@@ -166,11 +162,12 @@ def _handle_list_tools(args: list[str]) -> None:
 
 
 def _handle_call(args: list[str]) -> None:
-    if len(args) < 4 or args[2] != "--json":
+    parsed = parse_command_args(MCP_CALL, args)
+    positionals = parsed.positionals
+    raw_arguments = parsed.value(F.FLAG_MCP_CALL_JSON)
+    if len(positionals) != 2 or raw_arguments is None:
         _fail_usage("mcp call")
-    slug = args[0]
-    tool_name = args[1]
-    raw_arguments = args[3]
+    slug, tool_name = positionals
     try:
         arguments = json.loads(raw_arguments)
     except json.JSONDecodeError as exc:
@@ -189,7 +186,7 @@ def _handle_call(args: list[str]) -> None:
     print_json(response)
 
 
-def _fail_usage(command: str) -> None:
+def _fail_usage(command: str) -> NoReturn:
     print(_usage(command))
     raise SystemExit(1)
 
