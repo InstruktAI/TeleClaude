@@ -185,7 +185,7 @@ And the authored-main-commit marker is consumed
 
 Given the current branch is main
 And the session-scoped authored-main-commit marker is present
-And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run` run whose `--command` value names the commit-review command, written bare or with the tolerated leading slash, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
+And this turn's tool timeline contains a review dispatch for the commit(s) — a `telec sessions run` run whose `--command` value names the commit-review command, or a remediation `telec sessions send <reviewer> "review commits ..."` whose message payload begins with "review commits"
 When the heuristic engine evaluates the turn window
 Then the post-commit review-gate surfacing action is NOT emitted
 And the authored-main-commit marker is consumed
