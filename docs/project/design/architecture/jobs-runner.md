@@ -132,28 +132,47 @@ cannot overwrite a notification that has not yet been delivered.
 
 #### Cross-project iteration
 
+<!-- planned-change:generic-job-declarative-model -->
 Jobs that fan out across all registered projects (e.g., `log_bug_hunter`) do **not**
 re-implement project discovery. They consume `ProjectCatalogService` (a lazy singleton
 over `~/.teleclaude/projects.yaml`) and `ProjectJobOrchestrator` (a generic iterator that
 runs an injected `run_for_project(node)` per subscribing project and isolates per-project
 exceptions). Per-job services (e.g., `LogBugHunterService`) are one-project executors; the
 cross-project loop lives in the orchestrator.
+<!-- change:generic-job-declarative-model -->
+The runner itself walks every registered project (`ProjectCatalogService`, a lazy singleton
+over `~/.teleclaude/projects.yaml`), composes that project's effective job set, and runs what
+is due there. A job never iterates projects. A per-job service that still exists is a
+one-project executor the runner invokes for the project in hand; a failure in one project is
+isolated and the walk continues.
+<!-- /planned-change:generic-job-declarative-model -->
 
 ## Inputs/Outputs
 
 **Inputs:**
 
+<!-- planned-change:generic-job-declarative-model -->
 - `teleclaude.yml` — schedule configuration for each registered job
 - `jobs/*.py` — job modules discovered at runtime, each exposing a module-level `JOB`
 - `~/.teleclaude/state/cron_state.json` — the per-job run lifecycle
+<!-- change:generic-job-declarative-model -->
+- the global `~/.teleclaude/teleclaude.yml` registry and every registered project's `teleclaude.yml` — published jobs, subscriptions, and local declarations
+- `jobs/*.py` — job modules discovered at runtime, each exposing a module-level `JOB`
+- `~/.teleclaude/state/cron_state.json` — the run lifecycle, per project and job
+<!-- /planned-change:generic-job-declarative-model -->
 
 **Outputs:**
 
 - Job execution (side effects defined by each job)
 - A `JobResult` outcome for every run, script and agent alike
 - `job.run.*` events on close/stall, projected to a human when actionable
+<!-- planned-change:generic-job-declarative-model -->
 - Run reports at `~/.teleclaude/jobs/{job_id}/runs/{YYMMDD-HHMMSS}.md` (human-readable audit)
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`
+<!-- change:generic-job-declarative-model -->
+- Run reports at `~/.teleclaude/jobs/{project_slug}/{job_id}/runs/{YYMMDD-HHMMSS}.md` (human-readable audit)
+- Updated run lifecycle in `~/.teleclaude/state/cron_state.json`, per project and job
+<!-- /planned-change:generic-job-declarative-model -->
 
 - Structured logs to `~/.local/state/instrukt-ai/teleclaude/cron.log`
 
@@ -206,25 +225,25 @@ separate discriminator field and no separate name. The remaining execution field
 (an ordered preference list the run boundary hands to automatic dispatch), `thinking_mode`,
 and `timeout` (seconds; default 1800).
 
-A project `jobs` entry that carries the same execution pointer as a global registry job is an
-**enable overlay**: it carries that pointer, `enabled` to turn the global job on or off for the
-project, and optionally its own `agent` preference list; the config load rejects it if it
-carries any other identity-bearing field. An entry whose pointer is not in the global registry
-is a local job declaration (exactly one pointer plus a `when` schedule). A name-keyed `jobs`
-mapping written before this shape is rewritten to the list at the config load boundary.
+A project `jobs` entry that carries the same execution pointer as a published global job is a
+**subscription**: it turns the global job on for this project (`enabled`, default on) and
+overrides whatever else it sets — `when`, `agent`, `thinking_mode`, `timeout`, `category` —
+falling back to the published defaults for the rest. Nothing validates what a project may
+override; the job runs in that project alone. An entry whose pointer is not in the global
+registry is a local job declaration (exactly one pointer plus a `when` schedule). A name-keyed
+`jobs` mapping written before this shape is rewritten to the list at the config load boundary.
 
-The effective job set the runner executes is composed once by the configuration context —
-local declarations plus the global jobs the overlay enables, each carrying any overlay agent
-preference — and every consumer (the runner, the run boundary, the jobs API, the report CLI,
-and cross-project fan-out) reads that composed set rather than the raw overlay.
+A project's effective job set is composed once by the configuration context — local
+declarations plus the published jobs it subscribes to, each overlaid by its subscribing entry
+— and every consumer (the runner, the run boundary, the jobs API, and the report CLI) reads
+that composed set rather than raw entries.
 
 #### Global registry and per-person scope
 
 `~/.teleclaude/teleclaude.yml` carries global scope, including the `jobs:` **registry** of
-globally declared jobs available to every project; a project runs a global job only when its
-overlay enables it. `~/.teleclaude/people/{name}/teleclaude.yml` carries per-subscriber
-configuration. Discovery (`teleclaude/cron/discovery.py`) scans both for subscribers of a
-given service.
+published jobs available to every project; a project runs a published job only by subscribing
+to it. `~/.teleclaude/people/{name}/teleclaude.yml` carries per-subscriber configuration.
+Discovery (`teleclaude/cron/discovery.py`) scans both for subscribers of a given service.
 
 <!-- /planned-change:generic-job-declarative-model -->
 
@@ -323,10 +342,12 @@ File: `~/.teleclaude/state/cron_state.json`
 Entries are keyed by job identity — an agent job's procedure snippet ID, a script job's
 declared name.
 <!-- change:generic-job-declarative-model -->
-Entries are keyed by job identity — an agent job's procedure snippet ID, a script job's
-`script` module stem.
+Entries are keyed by project slug and job identity — an agent job's procedure snippet ID, a
+script job's `script` module stem — so the same published job carries separate lifecycles in
+every project that subscribes to it.
 <!-- /planned-change:generic-job-declarative-model -->
 
+<!-- planned-change:generic-job-declarative-model -->
 ```json
 {
   "jobs": {
@@ -341,6 +362,24 @@ Entries are keyed by job identity — an agent job's procedure snippet ID, a scr
   }
 }
 ```
+<!-- change:generic-job-declarative-model -->
+```json
+{
+  "jobs": {
+    "<project slug>": {
+      "<job identity>": {
+        "first_seen_at": "2026-02-04T08:00:00+00:00",
+        "run_started_at": null,
+        "run_session_id": null,
+        "last_run": "2026-02-04T08:00:35+00:00",
+        "last_status": "success",
+        "last_error": null
+      }
+    }
+  }
+}
+```
+<!-- /planned-change:generic-job-declarative-model -->
 
 - `run_started_at` / `run_session_id`: set while a run is open (agent runs carry the session id).
 - `last_run`: completion timestamp of the most recent closed run.
@@ -373,9 +412,16 @@ survives a transport outage independent of later run state.
 A host periodic trigger runs `scripts/cron_runner.py` every 5 minutes (macOS launchd
 `ai.instrukt.teleclaude.cron`, `StartInterval 300`; systemd
 `teleclaude-cron.service` + `.timer`, `OnUnitActiveSec=5min`). `bin/daemon-control.sh`
+<!-- planned-change:generic-job-declarative-model -->
 installs the trigger alongside the daemon on `start`/`restart`. Working directory: repo
 root. Logs: `~/.local/state/instrukt-ai/teleclaude/cron.log`. Overlap prevention: pidfile at
 `~/.teleclaude/cron_runner.pid`.
+<!-- change:generic-job-declarative-model -->
+installs the trigger alongside the daemon on `start`/`restart`. Working directory: repo
+root; each project's jobs run rooted at that project. Logs:
+`~/.local/state/instrukt-ai/teleclaude/cron.log`. Overlap prevention: pidfile at
+`~/.teleclaude/cron_runner.pid`.
+<!-- /planned-change:generic-job-declarative-model -->
 
 ### CLI
 

@@ -21,7 +21,7 @@ minutes) must be set. The `weekdays` filter is only meaningful for wall-clock
 schedules and is rejected when `at` is absent. `when` is the sole scheduling
 contract: a job declaration carries no legacy schedule or preferred-timing
 fields. The job's execution model — which pointer it carries, global-registry
-declaration, and the per-project enable overlay — is specified in
+declaration, and the per-project subscription — is specified in
 `project/spec/feature/config/job-declaration-model`. The contract is enforced at
 YAML load time by schema validators; an ill-formed entry fails the project
 config load outright rather than producing a silently misscheduled job.
@@ -201,5 +201,5 @@ And the unset execution pointer (script or job) defaults to None
 - **Validation runs on every load.** A `teleclaude.yml` edited out-of-band to violate the XOR rule fails the next project-config load; the runtime refuses to load a project whose `jobs` block is malformed.
 - **Unit floor is one minute, but unit choice is unconstrained.** A literal `"525600m"` is accepted even though `"1y"` would be more readable; the regex permits only m/h/d so a "year" unit is unrepresentable.
 - **Weekday rule is one-directional.** Empty `weekdays` is always accepted (treated as "no day filter"). The rule fires only when `weekdays` is non-empty AND `at` is missing.
-- **`when` is required for a declaration, not for an enable overlay.** A local or global job declaration must carry a `when` block; a per-project enable overlay (a `jobs` entry that only toggles a global job) carries no schedule and inherits the global declaration's cadence.
+- **`when` is required for a declaration, not for a subscription.** A local or global job declaration must carry a `when` block; a project's subscription to a global job may carry its own `when`, which overrides the published cadence in that project, or none, in which case it inherits the published cadence.
 - **Removed legacy fields are migrated away; unknown keys surface as warnings.** A removed legacy field in a job entry is rewritten away by the load-boundary migration (`project/spec/feature/config/job-declaration-model`), so it drives no scheduling or execution decision; a misspelled key is surfaced through the recursive unknown-key warning walk (`project/spec/feature/config/unknown-key-warning`). The `when` block itself still accepts unrecognized sub-keys silently — that narrower gap is unchanged here.

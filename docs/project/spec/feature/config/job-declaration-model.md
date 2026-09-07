@@ -1,5 +1,5 @@
 ---
-description: Declarative job model — a job is declared by config pointing at exactly one execution target (a `script` entrypoint or a `job` procedure), schedulable global jobs live in a global registry, and a project turns a global job on or off through a validated enable overlay that cannot redefine the global job's identity.
+description: Declarative job model — a job is declared by config pointing at exactly one execution target (a `script` entrypoint or a `job` procedure), the mother project publishes global jobs in a global registry, a side project subscribes to one with its own overrides, and the runner runs every subscribed job inside the subscribing project.
 delivered_by:
   - generic-job-declarative-model
 ---
@@ -25,24 +25,20 @@ runner's job filter. A `job` pointer must resolve to a delivered procedure
 snippet at config load; an unknown ID, a non-procedure snippet, or a procedure
 pending for another delivery fails the load naming the job and the pointer.
 
-Jobs are declarable at two tiers. A **global job** is declared once in the global
-config's `jobs` registry and is available to every project. A **project** declares
-its own **local jobs** in the project overlay's `jobs` list, and turns a global
-job on or off through an **enable overlay** — an entry in the project's `jobs`
-list carrying the global job's execution pointer, an `enabled` flag, and
-optionally its own `agent` preference list. A global job is inactive in a
-project until that project enables it; a local job (a pointer not present in the
-global registry) is active wherever it is declared. Which kind an entry is comes
-from its pointer alone: an entry whose pointer matches a global registry
-declaration is an overlay, any other entry is a local declaration. A tier
-carries at most one entry per pointer; a duplicate pointer fails the load
-naming it.
-
-The enable overlay may toggle a global job on or off and may replace its agent
-preference. An overlay entry whose pointer matches a global job but carries any
-identity-bearing field (a schedule, or an execution setting other than `agent`)
-is an attempt to redefine the global job and fails the config load — a project
-can enable or disable a global job and choose who runs it, never reshape it.
+Jobs are declarable at two tiers. A **global job** is published once in the
+global config's `jobs` registry with its default schedule and execution settings
+and is available to every project. A project gets nothing by default. It
+**subscribes** to a global job by adding an entry to its own `jobs` list that
+carries the global job's execution pointer; from then on the job runs in that
+project on that project's terms. The subscribing entry overrides whatever it sets
+— `when`, `agent`, `thinking_mode`, `timeout`, `category` — and falls back to the
+published defaults for what it leaves unset. It unsubscribes by removing the entry
+or setting `enabled: false`. The pointer is the subscription key and the only
+thing a subscriber cannot change; nothing validates what a project may override,
+because the job runs in that project alone. An entry whose pointer the registry
+does not carry is a **local job**, active wherever it is declared. Which kind an
+entry is comes from its pointer alone. A tier carries at most one entry per
+pointer; a duplicate pointer fails the load naming it.
 
 An agent job's `agent` field is an ordered preference list. The run boundary
 launches the job in automatic dispatch mode with that list as the candidate
@@ -66,8 +62,11 @@ A declaration still carrying a removed field fails at the project configuration
 load boundary before it can drive behavior.
 <!-- /planned-change:config-schema-strictness -->
 
-The effective job set the runner executes for a workspace is the project's local
-jobs plus every global job the project's overlay enables.
+A project's effective job set is its local jobs plus every global job it
+subscribes to, each resolved as the published declaration overlaid by the
+subscribing entry. The runner walks every registered project, composes that
+project's effective set, runs what is due inside that project, and keeps run
+state and run records per project and job.
 
 ## Canonical fields
 
@@ -117,33 +116,34 @@ When the effective job set for the project is composed
 Then the global job is NOT in the project's effective job set
 ```
 
-#### UC-JDM-6: Project enables a global job through the overlay
+#### UC-JDM-6: Project subscribes to a global job
 
 ```
-Given a job declared under the global config `jobs` registry
-And the project overlay carries a `jobs` entry with the same execution pointer, enabled = true, and no other field
+Given a job published under the global config `jobs` registry
+And the project's `jobs` list carries an entry with the same execution pointer and enabled = true
 When the effective job set for the project is composed
 Then the global job IS in the project's effective job set
-And it runs with the global declaration's pointer and schedule
+And every setting the subscribing entry leaves unset is the published default
 ```
 
-#### UC-JDM-7: Project disables a global job through the overlay
+#### UC-JDM-7: Project unsubscribes from a global job
 
 ```
-Given a global job that the project would otherwise run
-And the project overlay carries a `jobs` entry with the same execution pointer and enabled = false
+Given a global job the project subscribes to
+And the project's `jobs` list carries an entry with the same execution pointer and enabled = false
 When the effective job set for the project is composed
 Then the global job is NOT in the project's effective job set
 ```
 
-#### UC-JDM-8: Identity-hijack overlay rejected at load
+#### UC-JDM-8: Subscription overrides the published settings
 
 ```
-Given a job declared under the global config `jobs` registry
-And the project overlay carries a `jobs` entry with the same execution pointer that also carries an identity-bearing field (a schedule, or an execution setting other than `agent`)
-When the config is loaded
-Then the load fails with an error naming the job
-And the global job's identity is never overridden by the project entry
+Given a job published in the global registry with when.at = "03:00"
+And the project's `jobs` list carries an entry with the same execution pointer and when.every = "30m"
+When the effective job set for the project is composed
+Then the load succeeds
+And the job runs in that project every 30 minutes
+And the published declaration is unchanged for every other project
 ```
 
 #### UC-JDM-9: Local job declared by a project
@@ -176,11 +176,11 @@ Then the session is created on agent b
 And the dispatch decision records that a was skipped as ineligible
 ```
 
-#### UC-JDM-13: An enable overlay may replace the agent preference
+#### UC-JDM-13: A subscription may replace the agent preference
 
 ```
 Given a global job declaring agent = [a, b]
-And a project overlay carrying the same pointer, enabled = true, and agent = [b]
+And the project's `jobs` list carries an entry with the same pointer, enabled = true, and agent = [b]
 When the config is loaded and the job is dispatched in that project
 Then the load succeeds
 And the session is created on agent b
@@ -238,15 +238,24 @@ Then the load fails with an error naming the pointer
 And neither entry enters the effective job set
 ```
 
+#### UC-JDM-18: A subscribed job runs inside the subscribing project
+
+```
+Given two registered projects that both subscribe to the same global job
+When the runner walks the registered projects
+Then each project's due run is opened, executed, and closed under that project — an agent session rooted at that project, a script job told which project it runs in
+And run state and run records are kept per project and job, so one project's run never closes or blocks the other's
+```
+
 ## Known caveats
 
-- The enable overlay reuses the project overlay's `jobs` list rather than a
-  separate surface, so a cross-project consumer that asks "which projects run
-  job X" consults each project's composed effective job set by identity; a
-  project's raw overlay entries are never read as membership.
+- A subscription is an ordinary entry in the project's `jobs` list rather than a
+  separate surface, so anything that asks "which projects run job X" consults
+  each project's composed effective job set by identity; raw entries are never
+  read as membership.
 - A pre-declarative `jobs` document — a name-keyed mapping, a scalar `agent`, or
   a removed field — is rewritten to the current shape at the config load
   boundary and persisted, so an overlay written before this contract loads to
   the current shape without an operator edit.
-- A global job runs in a project only on explicit opt-in; there is no
-  enabled-everywhere default.
+- A global job runs in a project only on that project's subscription; there is
+  no subscribed-everywhere default.

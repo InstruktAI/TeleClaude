@@ -131,7 +131,7 @@ business:
   publishes: # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
     - slug: string # required: the published domain
       trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
-jobs: list[JobScheduleConfig] # job declarations and enable overlays, identified by execution pointer; no name key (project/spec/feature/config/job-declaration-model)
+jobs: list[JobScheduleConfig] # local job declarations and subscriptions to published global jobs, identified by execution pointer; a subscription overrides any setting it carries; no name key (project/spec/feature/config/job-declaration-model)
 hooks:
   inbound: mapping[string, InboundSourceConfig]
   subscriptions: list[SubscriptionConfig]
@@ -218,7 +218,7 @@ subscriptions: list[SubscriptionEntry]
 interests: list[string]
 event_domains:
   domains: mapping[string, DomainConfig]
-jobs: list[JobScheduleConfig] # the global job registry; a project runs one of these only through its enable overlay
+jobs: list[JobScheduleConfig] # the registry of published jobs with their default settings; a project runs one only by subscribing to it, inside that project
 ```
 <!-- /planned-change:generic-job-declarative-model -->
 

@@ -86,10 +86,11 @@ jobs:
 ```
 
 To publish a job for every project, declare it the same way in the `jobs:` registry list of
-the global `~/.teleclaude/teleclaude.yml`. A project then turns a global job on with an
-**enable overlay** — a `jobs` entry carrying the same execution pointer, `enabled: true` (or
-`false` to turn it off), and optionally its own `agent` list; an overlay that carries any other
-field is rejected at config load.
+the global `~/.teleclaude/teleclaude.yml`. A project gets nothing by default; it
+**subscribes** with a `jobs` entry carrying the same execution pointer, and that entry may
+override any setting for that project — its own `when`, `agent`, `thinking_mode`, `timeout` —
+or set `enabled: false` to unsubscribe. Whatever it leaves unset falls back to the published
+defaults, and the job runs inside the subscribing project.
 
 <!-- /planned-change:generic-job-declarative-model -->
 
