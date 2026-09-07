@@ -318,6 +318,15 @@ Then dispatch is permitted — the integrator may spawn worker sessions
 And dispatching an orchestrator-role command is still rejected, because the integrator's grant is worker-only
 ```
 
+#### UC-DPE4: Orchestrator may dispatch an integrator-role session
+
+```
+Given a caller carrying the orchestrator system role
+When it dispatches the integrator-role command (/next-integrate), for example to clear a blocked repo-root sync
+Then dispatch is permitted — the orchestrator's grant covers worker, orchestrator, and integrator roles
+And the integrator's singleton lease still decides whether the new session drains or yields
+```
+
 #### UC-DPE1: Tasker may dispatch a worker-role session
 
 ```

@@ -121,7 +121,7 @@ def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchCl
 # Callers without a system_role (terminal, TUI, web, daemon lifecycle_router)
 # are on the human_role axis — endpoint-level clearance governs their access.
 DISPATCH_ALLOWED: dict[str, frozenset[str]] = {
-    ROLE_ORCHESTRATOR: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR}),
+    ROLE_ORCHESTRATOR: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}),
     ROLE_INTEGRATOR: frozenset({ROLE_WORKER}),
     ROLE_SYSTEM: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR}),
     ROLE_TASKER: frozenset({ROLE_WORKER}),
