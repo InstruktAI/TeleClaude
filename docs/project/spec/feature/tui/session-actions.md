@@ -16,6 +16,16 @@ plain click, Shift-click, Space, or Enter revives the session instead of
 previewing it. The keyboard `k` binding closes the selected session through a
 confirmation modal.
 
+<!-- planned:session-handoff -->
+Three keyboard gestures hand a session to a different agent. `o` on a session
+row hands that session off with the successor chosen automatically; `o` on a
+project header asks the operator to choose an agent and hands off every live
+session of that project currently running on it; `O` on a session row opens the
+existing start-session modal with the session fixed and the agent selector live,
+so the operator names the successor. The handoff itself is owned by
+`project/spec/feature/agent_runtime/agent-handoff`; the view only requests it.
+<!-- /planned:session-handoff -->
+
 Close and revive are distinct destinations that must not fire from one gesture.
 The fast-close chord routes to the session-close funnel; the headless-revive
 gestures route to revival. Because a single physical chord can reach the row as
@@ -61,3 +71,36 @@ Then the view requests exactly one revive for that session
 And the view requests no preview for that session
 And the view requests no close for that session
 ```
+
+<!-- planned:session-handoff -->
+#### UC-SACT-4: Pressing `o` on a session row hands the session off automatically
+
+```gherkin
+Given a human operator selects a session row in the TUI Sessions view
+When the operator presses `o`
+Then the view requests exactly one handoff for that session with no successor named
+And the view requests no restart, revive, preview, or close for that session
+And the operator is told which successor was selected or why the handoff was refused
+```
+
+#### UC-SACT-5: Pressing `o` on a project header hands off every live session on a chosen agent
+
+```gherkin
+Given a human operator selects a project header in the TUI Sessions view
+When the operator presses `o`
+Then the view asks the operator to choose an agent
+And on confirmation the view requests one handoff with no successor named for every live session of that project running on the chosen agent
+And sessions running on other agents and closed sessions receive no request
+And dismissing the choice sends no request
+```
+
+#### UC-SACT-6: Pressing `O` on a session row opens the start-session modal for an explicit successor
+
+```gherkin
+Given a human operator selects a session row in the TUI Sessions view
+When the operator presses `O`
+Then the existing start-session modal opens with the session fixed and the agent selector live
+And confirming with an agent chosen requests exactly one handoff for that session naming that agent
+And dismissing the modal sends no request
+```
+<!-- /planned:session-handoff -->

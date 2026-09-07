@@ -23,6 +23,7 @@ A special `self` form is dispatched by orchestrators that want to restart themse
 
 #### Eligibility gates
 
+<!-- planned-change:session-handoff -->
 ```
 Given a caller asks the agent_runtime service to restart the agent for a session
 When the service loads the session row
@@ -30,6 +31,16 @@ Then if the row does not exist, the request is refused with a "session not found
 And if no active agent is bound to the session, the request is refused with a "no active agent for this session" error
 And if no native session identifier has been recorded, the request is refused with a "no native session ID — start agent first" error
 ```
+<!-- change:session-handoff -->
+```
+Given a caller asks the agent_runtime service to restart the agent for a session
+When the service loads the session row
+Then if the row does not exist, the request is refused with a "session not found" error
+And if no active agent is bound to the session, the request is refused with a "no active agent for this session" error
+And if no native session identifier has been recorded and the request does not ask for a handoff, the request is refused with a "no native session ID — start agent first" error
+And a request that asks for a handoff is not refused for a missing native session identifier; the agent-handoff feature spec owns that path
+```
+<!-- /planned-change:session-handoff -->
 
 ```
 Given the eligibility gates pass
