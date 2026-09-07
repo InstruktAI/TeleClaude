@@ -282,9 +282,20 @@ failure synchronously.
 
 ### Script job contract
 
+<!-- planned-change:generic-job-declarative-model -->
 1. Create a Python module in `jobs/` exposing a `Job` subclass and a module-level `JOB`
    instance, with a PEP 723 header and a `run_job_cli(JOB)` `__main__` for standalone use.
 2. Register in `teleclaude.yml` with `script` pointing to the module.
+<!-- change:generic-job-declarative-model -->
+1. Create a Python module in `jobs/` exposing a `Job` subclass and a module-level `JOB`
+   instance, with a PEP 723 header and a `run_job_cli(JOB)` `__main__` for standalone use.
+2. Register in `teleclaude.yml` with `script` pointing to the module.
+
+`JOB.run(context)` receives the project it runs in — its root and slug — so one published
+module serves every subscribing project without reading an ambient working directory. A
+module published in the global registry lives in the mother repository; a module declared
+locally lives in the declaring project.
+<!-- /planned-change:generic-job-declarative-model -->
 
 `JobResult` is the structured outcome both classes produce:
 
@@ -303,10 +314,18 @@ class JobResult:
    a required read, and sync it so its ID resolves.
 2. Register in `teleclaude.yml` with `job` carrying the procedure's snippet ID.
 
+<!-- planned-change:generic-job-declarative-model -->
 The runner dispatches `/next-run-job <id>` through the canonical command-session contract
 and opens a run keyed by that ID. The agent loads the procedure with its required-read
 closure, does its work, writes a run report, reports its outcome via
 `telec jobs report <id>`, and stops.
+<!-- change:generic-job-declarative-model -->
+The runner dispatches `/next-run-job <id>` through the canonical command-session contract,
+rooted at the project the run belongs to, and opens a run keyed by that project and ID. The
+agent loads the procedure with its required-read closure, does its work, writes a run report
+under its project's run directory, reports its outcome via `telec jobs report <id>`, and
+stops.
+<!-- /planned-change:generic-job-declarative-model -->
 
 <!-- planned-change:generic-job-declarative-model -->
 

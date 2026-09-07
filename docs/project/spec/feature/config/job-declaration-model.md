@@ -34,8 +34,8 @@ project on that project's terms. The subscribing entry overrides whatever it set
 — `when`, `agent`, `thinking_mode`, `timeout`, `category` — and falls back to the
 published defaults for what it leaves unset. It unsubscribes by removing the entry
 or setting `enabled: false`. The pointer is the subscription key and the only
-thing a subscriber cannot change; nothing validates what a project may override,
-because the job runs in that project alone. An entry whose pointer the registry
+thing a subscriber cannot change; nothing validates what a project may override.
+An entry whose pointer the registry
 does not carry is a **local job**, active wherever it is declared. Which kind an
 entry is comes from its pointer alone. A tier carries at most one entry per
 pointer; a duplicate pointer fails the load naming it.

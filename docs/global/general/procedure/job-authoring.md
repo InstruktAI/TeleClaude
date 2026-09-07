@@ -106,11 +106,21 @@ use its own `project/procedure/...` ID.
 The module's stem is the script job's identity in run state, the run directory, and the runner's job filter.
 <!-- /planned:generic-job-declarative-model -->
 
+<!-- planned-change:generic-job-declarative-model -->
 Place at `jobs/{job_slug}.py`. Define a `Job` subclass (`jobs/base.py`) whose `run()`
 returns a `JobResult`, and expose it as a module-level `JOB` instance. The cron runner
 imports the module and invokes `JOB.run()` in-process. Keep the PEP 723 dependency header
 and a `if __name__ == "__main__": run_job_cli(JOB)` entrypoint so the script stays
 runnable and debuggable standalone.
+<!-- change:generic-job-declarative-model -->
+Place at `jobs/{job_slug}.py`. Define a `Job` subclass (`jobs/base.py`) whose
+`run(context)` returns a `JobResult`, and expose it as a module-level `JOB` instance. The
+cron runner imports the module and invokes `JOB.run(context)` in-process, passing the
+project the run belongs to — its root and slug — so one published module serves every
+subscribing project. Keep the PEP 723 dependency header and a
+`if __name__ == "__main__": run_job_cli(JOB)` entrypoint so the script stays runnable and
+debuggable standalone.
+<!-- /planned-change:generic-job-declarative-model -->
 
 ### 5. Sync and validate
 

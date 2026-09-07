@@ -44,9 +44,16 @@ If a script fails, do not just log and move on. You own the outcome.
 
 ### 4. Write a run report
 
+<!-- planned-change:generic-job-declarative-model -->
 When done, write a report to `~/.teleclaude/jobs/{job_id}/runs/{YYMMDD-HHMMSS}.md`,
 where `{job_id}` is the identity you were started with. Create the directory if it
 doesn't exist.
+<!-- change:generic-job-declarative-model -->
+When done, write a report to
+`~/.teleclaude/jobs/{project_slug}/{job_id}/runs/{YYMMDD-HHMMSS}.md`, where `{job_id}` is the
+identity you were started with and `{project_slug}` is the project you were started in. Create
+the directory if it doesn't exist.
+<!-- /planned-change:generic-job-declarative-model -->
 
 Report format:
 
@@ -102,7 +109,11 @@ Avoid these anti-patterns:
 
 ## Outputs
 
+<!-- planned-change:generic-job-declarative-model -->
 - A run report at `~/.teleclaude/jobs/{job_id}/runs/{YYMMDD-HHMMSS}.md`.
+<!-- change:generic-job-declarative-model -->
+- A run report at `~/.teleclaude/jobs/{project_slug}/{job_id}/runs/{YYMMDD-HHMMSS}.md`.
+<!-- /planned-change:generic-job-declarative-model -->
 
 - A structured run outcome reported via `telec jobs report` that closes the run.
 
