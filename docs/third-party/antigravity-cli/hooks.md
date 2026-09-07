@@ -139,23 +139,28 @@ for the default behavior.
 
 `Stop` fires when an execution loop terminates. Its event-specific input includes `executionNum`, `terminationReason`, `error`, and required `fullyIdle`. `fullyIdle` is true only after the agent and all background or asynchronous work are finished.
 
-`terminationReason` names why the loop ended. The upstream reference documents
-`model_stop`, `max_steps_exceeded`, and `error` as example values and does not
-enumerate the full set. The sibling `error` member is documented as "present if
-stopped due to error"; the documented sample payload carries it as an empty
-string on a `model_stop` stop, so its presence does not distinguish a failed
-termination and `terminationReason` is the discriminator.
+`terminationReason` names why the loop ended. On the hook wire it carries the
+executor's enumeration in uppercase. The upstream reference's example values
+`model_stop` and `max_steps_exceeded` are documentation examples: they are not
+emitted and do not occur as enumeration names in the installed executable.
+Observed on agy 1.1.27 (2026-09-07): a clean completion arrives as
+`terminationReason: "NO_TOOL_CALL"` with `error` empty and `fullyIdle` true; a
+provider failure arrives as `terminationReason: "ERROR"` with a non-empty
+`error` string (a `RESOURCE_EXHAUSTED (code 429)` quota message in the observed
+case). The executable's executor enumerates `early_continue`, `error`,
+`halted_step`, `injected_response`, `max_forced_invocations`,
+`max_invocations`, `max_token_budget_exceeded`, `no_tool_call`,
+`terminal_custom_hook`, `terminal_step_type`, `unspecified`, and
+`user_canceled`. `NO_TOOL_CALL`, `ERROR`, `USER_CANCELED`, and `UNSPECIFIED`
+are confirmed in uppercase on the wire or in the binary; the remaining
+spellings are inferred from that pattern, and no vendor document enumerates
+the wire vocabulary.
 
-**Evidence gap — the termination-reason vocabulary is unsettled.** Two sources
-inside the installed 1.1.25 executable disagree. Its embedded hook contract
-gives `model_stop`, `max_steps_exceeded`, and `error` as example values, while
-its executor enumerates a different set of symbols — `early_continue`, `error`,
-`halted_step`, `injected_response`, `max_forced_invocations`, `max_invocations`,
-`max_token_budget_exceeded`, `no_tool_call`, `terminal_custom_hook`,
-`terminal_step_type`, `unspecified`, `user_canceled` — with no `model_stop` or
-`max_steps_exceeded` among them. Of the documented examples only `error` occurs
-as a literal string in the executable. No authoritative source establishes the
-complete set or its spelling on the hook wire.
+The failure discriminator is the sibling `error` member, documented as "present
+if stopped due to error": it is an empty string on a clean stop and a non-empty
+message on a failed one. `fullyIdle` is the idle discriminator. `terminationReason`
+is informational; deciding completion from it means guessing at a vocabulary the
+vendor neither documents nor stabilizes.
 
 Its stdout object requires a `decision`. `continue` prevents stopping and re-enters the execution loop; any other value permits the stop. When the decision is `continue`, optional `reason` is injected as a system message.
 

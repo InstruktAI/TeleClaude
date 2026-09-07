@@ -202,6 +202,13 @@ every event except `SessionStart` and `SessionEnd`.
 }
 ```
 
+`Stop` is the only terminal event; no failure event exists upstream. A turn
+that dies before reaching `Stop` (a provider error, a killed process) emits
+nothing, so the only signal is the absence of `Stop` while the session is still
+in a turn. TeleClaude derives that as a stall and handles it under the
+orchestration procedure's degradation handling; there is no failure hook to
+install.
+
 `SessionEnd` adds `reason: "other"`. It has no `turn_id`, does not run for
 subagents, and is advisory: its output cannot steer Codex or keep the session
 open.

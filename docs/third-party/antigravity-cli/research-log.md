@@ -59,3 +59,38 @@ tmux kill-session -t teleclaude_agy_quota
 - The local endpoint is available only while `agy` is running.
 - Do not log access tokens or raw auth files. The local endpoint requires no bearer token because it is exposed by the already-authenticated local runtime.
 - If `remainingFraction` is absent or a bucket is disabled, record a probe failure or disabled bucket rather than inventing a fallback percentage.
+
+## Antigravity Stop termination-reason wire vocabulary
+
+### Objective
+
+Establish which `terminationReason` values the Antigravity `Stop` hook emits on
+the wire, so terminal classification keys on a real signal.
+
+### Answer
+
+The wire carries the executor enumeration in uppercase. A clean completion is
+`NO_TOOL_CALL` with an empty `error`; a failure is `ERROR` with a non-empty
+`error`. `model_stop` is never emitted. The failure discriminator is the
+non-empty `error` member and `fullyIdle` is the idle discriminator;
+`terminationReason` is evidence, not a gate.
+
+### Evidence
+
+- 2026-09-07, agy 1.1.27: parent-attention notifications for two dispatched
+  children carried `terminationReason: "NO_TOOL_CALL"`, `error: ""`,
+  `fullyIdle: true` after a completed review, and `terminationReason: "ERROR"`,
+  `error: "calling model: RESOURCE_EXHAUSTED (code 429): …"`, `fullyIdle: true`
+  after a quota failure.
+- Daemon receiver log, seven days to 2026-09-07: 15 Antigravity `Stop` events;
+  14 normalized to `agent_turn_failed`, 1 dropped as not idle, 0 normalized to
+  `agent_stop`, under a rule that recognized only `model_stop` as completion.
+- Installed binary string search: `NO_TOOL_CALL`, `USER_CANCELED`, and
+  `UNSPECIFIED` present in uppercase; `MODEL_STOP` absent; `model_stop` and
+  `max_steps_exceeded` present only as documentation text.
+
+### Gaps
+
+- Four uppercase values are confirmed; the remaining executor symbols are
+  inferred to follow the same spelling.
+- No vendor document enumerates the wire vocabulary.
