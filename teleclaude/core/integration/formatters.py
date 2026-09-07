@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import shlex
 
+from teleclaude.core.integration.candidate_scan import AmbiguityEvidence
 from teleclaude.core.integration.checkpoint import ParkedCandidate
 from teleclaude.core.integration.git_ops import RepoRootSyncOutcome, RepoRootSyncResult
 
@@ -19,6 +20,23 @@ from teleclaude.core.integration.git_ops import RepoRootSyncOutcome, RepoRootSyn
 # a quoted message. Single source of truth — referenced by every integration
 # decision template that ends with a commit step.
 _COMMIT_CMD_INSTRUCTION = "telec code commit --approved '<your message>'"
+_AMBIGUITY_COMMIT_BLOCK_TEMPLATE = """
+
+## Ownership Ambiguity
+
+Commit {commit_sha} in this candidate's span could not be mechanically classified as owned
+by {slug} or another slug (reason: {reason_token}). This is your judgment call:
+
+- To ACCEPT ownership: proceed with the commit steps above.
+- To PARK this candidate as a cleanliness concern: run `git -C {worktree} reset --hard {pre_merge_head}`,
+  then call telec todo integrate again."""
+_AMBIGUITY_CONFLICT_BLOCK_TEMPLATE = """
+
+## Ownership Ambiguity
+
+Commit {commit_sha} in this candidate's span could not be mechanically classified as owned
+by {slug} or another slug (reason: {reason_token}). Resolving and committing above accepts
+ownership; abandoning via the reset above parks this candidate through the conflict-abandonment path."""
 _PARKED_CANDIDATE_LINE = "- {slug}: {reason}"
 _PARKED_CANDIDATE_SEPARATOR = "\n"
 _PARKED_CANDIDATES_SECTION = "\n\nParked candidates:\n{items}"
@@ -106,6 +124,28 @@ def _format_anomalies(warnings: list[str]) -> str:
     return f"\n\n## Action Required\n\nThe following issues need resolution before ending this session:\n{items}"
 
 
+def _format_ambiguity_commit_block(
+    *, slug: str, worktree: str, pre_merge_head: str, ambiguity: AmbiguityEvidence
+) -> str:
+    """Render the accept-or-park ownership decision for a clean, ambiguous squash."""
+    return _AMBIGUITY_COMMIT_BLOCK_TEMPLATE.format(
+        commit_sha=ambiguity.commit_sha,
+        slug=slug,
+        reason_token=ambiguity.reason_token,
+        worktree=worktree,
+        pre_merge_head=pre_merge_head,
+    )
+
+
+def _format_ambiguity_conflict_block(*, slug: str, ambiguity: AmbiguityEvidence) -> str:
+    """Render the informational ownership note for a conflicted, ambiguous squash."""
+    return _AMBIGUITY_CONFLICT_BLOCK_TEMPLATE.format(
+        commit_sha=ambiguity.commit_sha,
+        slug=slug,
+        reason_token=ambiguity.reason_token,
+    )
+
+
 def _format_commit_decision(
     slug: str,
     branch: str,
@@ -114,9 +154,18 @@ def _format_commit_decision(
     requirements: str,
     impl_plan: str,
     *,
+    worktree: str = "",
+    pre_merge_head: str = "",
+    ambiguity: AmbiguityEvidence | None = None,
     warnings: list[str] | None = None,
 ) -> str:
-    return f"""INTEGRATION DECISION: SQUASH COMMIT REQUIRED
+    ambiguity_block = (
+        _format_ambiguity_commit_block(slug=slug, worktree=worktree, pre_merge_head=pre_merge_head, ambiguity=ambiguity)
+        if ambiguity is not None
+        else ""
+    )
+    return (
+        f"""INTEGRATION DECISION: SQUASH COMMIT REQUIRED
 
 Candidate: {slug} (branch: {branch})
 
@@ -143,7 +192,10 @@ Staged changes are ready for commit.
 3. Run: {_COMMIT_CMD_INSTRUCTION}
 4. Then call: telec todo integrate
 
-NEXT: Compose and execute telec code commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
+NEXT: Compose and execute telec code commit, then call telec todo integrate"""
+        + ambiguity_block
+        + _format_anomalies(warnings or [])
+    )
 
 
 def _format_conflict_decision(
@@ -152,10 +204,13 @@ def _format_conflict_decision(
     conflicted_files: list[str],
     worktree: str,
     *,
+    ambiguity: AmbiguityEvidence | None = None,
     warnings: list[str] | None = None,
 ) -> str:
     file_list = "\n".join(f"  - {f}" for f in conflicted_files) if conflicted_files else "  (none detected)"
-    return f"""INTEGRATION DECISION: CONFLICT RESOLUTION REQUIRED
+    ambiguity_block = _format_ambiguity_conflict_block(slug=slug, ambiguity=ambiguity) if ambiguity is not None else ""
+    return (
+        f"""INTEGRATION DECISION: CONFLICT RESOLUTION REQUIRED
 
 Candidate: {slug} (branch: {branch})
 
@@ -185,13 +240,20 @@ If the conflict cannot be grounded confidently, abandon this candidate:
 This parks the candidate and its dependents for the current drain, then continues
 with every independent candidate.
 
-NEXT: Resolve conflicts, stage, commit with telec code commit, then call telec todo integrate""" + _format_anomalies(
-        warnings or []
+NEXT: Resolve conflicts, stage, commit with telec code commit, then call telec todo integrate"""
+        + ambiguity_block
+        + _format_anomalies(warnings or [])
     )
 
 
 def _format_content_gate_conflict(
-    slug: str, branch: str, rejection_reason: str, worktree: str, *, warnings: list[str] | None = None
+    slug: str,
+    branch: str,
+    rejection_reason: str,
+    worktree: str,
+    pre_merge_head: str,
+    *,
+    warnings: list[str] | None = None,
 ) -> str:
     return f"""INTEGRATION DECISION: CONTENT-GATE CONFLICT — INTEGRATOR-OWNED
 
@@ -207,23 +269,21 @@ this conflict.
 Rejection output:
 {rejection_reason}
 
-## Your Task
-1. Reproduce: cd {worktree} && telec code lint --all
-2. If mechanically groundable, resolve it there — for example, for a
-   double-bound scenario, read both tests and drop the redundant binding when
-   they observe the same behavior, or author the distinct scenario and retag.
-   Write into the live contract body only, never inside a pending
-   planned-change region.
-3. Stage and commit: {_COMMIT_CMD_INSTRUCTION}
-4. Call: telec todo integrate to re-push
+## Your Two Actions
 
-If the fix cannot be grounded confidently, do not commit. Call telec todo
-integrate again to re-surface this instruction and escalate to a human — the
-integration line stays stopped on this candidate until the conflict is
-resolved.
+1. **Groundable — fix and re-push.** Reproduce: cd {worktree} && telec code lint --all.
+   Resolve it there — for example, for a double-bound scenario, read both tests
+   and drop the redundant binding when they observe the same behavior, or
+   author the distinct scenario and retag. Write into the live contract body
+   only, never inside a pending planned-change region. Stage and commit:
+   {_COMMIT_CMD_INSTRUCTION}. Call telec todo integrate to re-push.
+2. **Ungroundable — abandon and park.** Run: git -C {worktree} reset --hard {pre_merge_head}.
+   Call telec todo integrate — this parks the candidate as an
+   ungroundable-content-gate concern and continues the drain with every
+   independent candidate.
 
-NEXT: Resolve the content-gate conflict and commit, or escalate to a human,
-then call telec todo integrate""" + _format_anomalies(warnings or [])
+NEXT: Fix and commit, or abandon with the reset above, then call telec todo
+integrate""" + _format_anomalies(warnings or [])
 
 
 def _format_push_rejected(rejection_reason: str, slug: str, worktree: str, *, warnings: list[str] | None = None) -> str:
