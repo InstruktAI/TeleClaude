@@ -351,6 +351,21 @@ When the reminder is atomically replaced and later fires
 Then the occurrence number and elapsed time are measured from the replacement
 ```
 
+<!-- planned:fix-failed-turn-records-no-idle-boundary -->
+
+#### UC-RMS27: A newer firing supersedes an undelivered one
+
+```gherkin
+Given a recurring reminder whose latest firing has not yet been delivered to its session
+When the next occurrence fires
+Then the undelivered firing is superseded and never delivered
+And the slug has at most one undelivered firing at any time
+When the session next drains its control payloads
+Then it receives only the newest occurrence of that slug
+```
+
+<!-- /planned:fix-failed-turn-records-no-idle-boundary -->
+
 ## Known caveats
 
 - A reminder records intent; it is never evidence of current human authorization.
