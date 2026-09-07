@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from teleclaude.core.control_delivery import handoff_control_payload
+from teleclaude.core.control_delivery import SupersessionKey, handoff_control_payload
 from teleclaude.core.injected_text import EnvelopeField, EnvelopeName, semantic_envelope
 
-from .models import ReminderEntry, ReminderSubmissionPath, ReminderSubmissionResult
+from .models import ReminderEntry, ReminderRecurrence, ReminderSubmissionPath, ReminderSubmissionResult
 from .observability import observe_envelope_composed
 from .presentation import compose_agent_reminder
 
@@ -31,7 +31,12 @@ class ReminderInboundPayload(TypedDict):
 
 
 async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResult:
-    """Submit a firing entry through the durable queue's acceptance boundary."""
+    """Submit a firing entry through the durable queue's acceptance boundary.
+
+    A recurring firing declares supersession by slug, so an earlier
+    undelivered firing of the same slug is removed instead of accumulating
+    behind the newest one. A one-shot firing declares nothing.
+    """
     payload = ReminderInboundPayload(
         reminder_entry_id=entry.entry_id,
         slug=entry.slug,
@@ -54,6 +59,11 @@ async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResul
         auto_cancel=composition.auto_cancel,
     )
     del payload
+    supersedes = (
+        SupersessionKey(EnvelopeName.REMINDER, {EnvelopeField.SLUG: entry.slug})
+        if entry.schedule.recurrence is ReminderRecurrence.RECURRING
+        else None
+    )
     control_id = await handoff_control_payload(
         session_id=entry.session_id,
         body=composition.body,
@@ -63,5 +73,6 @@ async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResul
             fields={EnvelopeField.SLUG: entry.slug, EnvelopeField.OCCURRENCE_KEY: entry.occurrence_key},
             body=composition.body,
         ),
+        supersedes=supersedes,
     )
     return ReminderSubmissionResult(ReminderSubmissionPath.FRESH, control_id)
