@@ -161,6 +161,7 @@ A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
+<!-- planned-change:review-cap-bounded-continuation -->
 When a loop reaches its applicable documented cap without closure, no further
 automatic review starts. The orchestrator classifies the cause — ambiguous
 contract, failed remediation, unstable target, or incomplete or noisy review —
@@ -182,6 +183,36 @@ missing evidence with an accountable agent owner. Use supported lifecycle
 operations; a missing recovery route is handled under
 `general/policy/human-contract`, never by fabricating a verdict or resetting
 counts to conceal the halt.
+<!-- change:review-cap-bounded-continuation -->
+When a loop reaches its applicable documented cap without closure, no further
+automatic review starts. The orchestrator classifies the cause — ambiguous
+contract, failed remediation, unstable target, or incomplete or noisy review —
+from the current review evidence, and records the classification, the evidence
+or changed approach that makes another attempt different, the responsible owner
+and the closure condition. Human escalation follows the closed human lane,
+never the round count.
+
+The classification decides what the orchestrator may do on its own authority.
+Failed remediation whose remaining delta is small and grounded, and incomplete
+or noisy review, each earn one continuation: the orchestrator admits exactly
+one further pass through the continuation stamp, which persists the
+classification and reason with the caller, and the machine dispatches a
+reviewer that never reviewed this target before when the cause was the review.
+An ambiguous contract earns no continuation; it goes to its decision owner. An
+unstable target earns no continuation; the producer stops changing the target
+first. The reviewer of a continuation judges the corrected target independently;
+authorization to continue is not approval of the target, and repeating an
+unchanged attempt is not recovery.
+
+A phase that reaches its cap a second time is assessed by a different
+intelligence than the one that produced the work: the live coordinator, or the
+human when none is live. That assessor reads the recorded classification and the
+review evidence and either admits a further pass or routes the halt elsewhere.
+The orchestrator never admits its own second continuation. If no grounded next
+attempt exists, the unresolved result and its missing evidence are preserved
+with an accountable agent owner; no one fabricates a verdict or resets a count
+to conceal the halt.
+<!-- /planned-change:review-cap-bounded-continuation -->
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

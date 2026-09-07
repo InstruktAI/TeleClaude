@@ -284,6 +284,7 @@ And the record of which plan version the build executes against settles only whe
 And a crash-recovered session re-entering the build derives identical instructions from durable state alone
 ```
 
+<!-- planned-change:review-cap-bounded-continuation -->
 #### UC-WSM12: Build review stops at the shared round limit and routes by halt classification
 
 ```gherkin
@@ -298,6 +299,22 @@ And failed remediation or an unstable target returns to the producer with advers
 And incomplete or noisy review dispatches a different reviewer
 And only an ambiguous contract owned by a human or a safety gate reaches the human
 ```
+<!-- change:review-cap-bounded-continuation -->
+#### UC-WSM12: Build review stops at the shared round limit and continues only through a recorded continuation
+
+```gherkin
+Given a Todo has already admitted `DEFAULT_MAX_REVIEW_ROUNDS` build-review passes
+And no approve verdict is current for the worktree HEAD and review-findings digest
+When the orchestrator calls "telec todo work my-feature"
+Then the machine returns REVIEW_ROUND_LIMIT before emitting a reviewer dispatch, reuse, or follow-up beyond that limit
+And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
+And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
+And the limit result names the phase, admitted-pass count, current review evidence, and the continuation stamp that admits one further pass
+And a recorded continuation for build_review lets the next "telec todo work" call emit one reviewer dispatch, counted like any admitted pass
+And a continuation whose reason names incomplete or noisy review dispatches a reviewer that has not reviewed this target
+And only an ambiguous contract owned by a human or a safety gate reaches the human
+```
+<!-- /planned-change:review-cap-bounded-continuation -->
 
 #### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure
 
