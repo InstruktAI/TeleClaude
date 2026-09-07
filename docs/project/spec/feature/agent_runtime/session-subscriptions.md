@@ -240,7 +240,6 @@ When the target runs on a different computer
 Then the notification names that computer and every suggested command carries the matching computer selector
 ```
 
-
 #### UC-SS10: A session no distress-recipient is watching reports to its human-facing channel
 
 ```gherkin
@@ -305,20 +304,6 @@ And the existing no-watcher fallback for known distress is unchanged
 - **workflow** — orchestrator agents that dispatch worker sessions are the dominant producer of listener records: every AI-to-AI session start auto-registers a persistent (non-one-shot) listener so the orchestrator hears its workers' stop events. The orchestrator/worker coordination contract relies on this.
 - **integration** — external messaging adapters are NOT a notification destination in the listener system. Notifications deliver exclusively via the listener-message path, which injects into the caller's host pane. Stop fan-out toward external adapters (Telegram, Discord, frontend) flows through separate agent-coordinator / adapter-client paths, not through listener records. The integration boundary is reached via the direct-link mechanism (out of scope) and the broader event-emission paths, not via listener notification.
 - **Direct conversation link (separate spec)** — direct-link creation, member roles, per-link delivery cursors, severing semantics — the bidirectional peered-conversation channel between two (or more) sessions. While an active direct link covers a (caller, target) pair, turn-end notifications for that pair are suppressed at delivery time and distress notifications are not. The unsubscribe verb tears down both planes for the caller against the target. The direct-link contract is documented in its own snippet and intentionally NOT covered here.
-
-<!-- planned:agy-stop-signature-recovery-pointer -->
-#### UC-SS19: A failure or approval-wait observation names its governing recovery contract
-
-```gherkin
-Given a parent agent receives a failure or approval-wait observation about its child
-When the platform presents the observation
-Then the message names, by snippet id, the section of the orchestration procedure that governs recovery for that kind
-And a failure observation points at the agent-degradation handling and an approval-wait observation points at the worker-help handling
-And classifying the native evidence remains the parent's judgment
-And a neutral notification carries no such pointer
-```
-
-<!-- /planned:agy-stop-signature-recovery-pointer -->
 
 ## Known caveats
 
