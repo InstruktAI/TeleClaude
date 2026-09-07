@@ -1,5 +1,5 @@
 ---
-description: Operator/agent front door to the declarative job model — `telec jobs` lists configured and available jobs distinguishing local, enabled-global, and available-global; shows each job's runtime status (last run, last outcome, next due); toggles a global job's per-project enable overlay; and runs a job on demand. The surface is a read/control layer over the existing jobs HTTP API and runner run-state, never a parallel store.
+description: Operator/agent front door to the declarative job model — `telec jobs` lists every job a project can see, distinguishing local, subscribed, and available-but-unsubscribed published jobs; shows each job's runtime status (last run, last outcome, next due); subscribes to or unsubscribes from a published job; and runs a job on demand. The surface is a read/control layer over the existing jobs HTTP API, runner run-state, and project config, never a parallel store.
 delivered_by:
   - generic-job-operator-surface
 ---
@@ -16,49 +16,55 @@ unanswerable without reading config files and state JSON by hand: what is
 configured and available, how is each job doing at runtime, and let me turn one on
 or off or run it now.
 
+A job's identity is its execution pointer, as the declaration model defines it —
+the procedure snippet ID of an agent job, the module stem of a script job. The
+surface names jobs by that identity everywhere, and never by a separate name.
+
 The surface resolves the invoking project and reports against that project's
 effective and available job set:
 
-- **list** shows every job the project can see, each tagged with its availability:
-  a **local** job (declared in the project overlay, not in the global registry), an
-  **enabled** global job (a registry job the project's enable overlay turns on), or
-  an **available** global job (a registry job the project has not enabled). The
-  available-but-not-enabled jobs are what makes a global job discoverable before a
-  project opts in.
+- **list** shows every job the project can see, each tagged with its relationship
+  to the project: a **local** job (declared in the project's own jobs, with no
+  published counterpart), a **subscribed** job (a published job the project's
+  jobs carry an active entry for), or an **available** job (a published job the
+  project does not currently subscribe to). The available jobs are what makes a
+  published job discoverable before a project opts in.
 - **status** shows each job's runtime status read from the runner's run state — the
   last run time, the last run's outcome, and the next due time derived from the
   job's `when` schedule. A job that has never run shows no last run and no last
   outcome, but still shows a next due derived from its schedule.
-- **enable** / **disable** toggle a global job's per-project enable overlay (the
-  `enabled` flag under the project's `jobs` mapping, per the declaration model).
-  Because the enable overlay only applies to global registry jobs, enabling or
-  disabling a name that is not a global job — a local job or an unknown name —
-  fails without writing anything. The change is observable on the next list.
+- **enable** / **disable** turn the project's subscription to a published job on
+  and off. Enabling adds or activates the project's subscribing entry for that
+  job's pointer; disabling deactivates the entry it finds. Because a subscription
+  exists only against a published job, naming a job that is not published — a
+  local job or an unknown pointer — fails without writing anything, and so does
+  disabling a job the project does not subscribe to. The change is observable on
+  the next list.
 - **run** dispatches a job on demand through the existing run path.
 
 Runtime status the surface displays is read from the runner's run state through the
-jobs HTTP API; enablement is a config write to the project overlay. The surface
+jobs HTTP API; subscription is a config write to the project's own jobs. The surface
 owns no job state of its own — it is a read/control surface over the existing API,
-runner run-state, and config overlay.
+runner run-state, and project config.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-JOS-1: List distinguishes local, enabled-global, and available-global jobs
+#### UC-JOS-1: List distinguishes local, subscribed, and available jobs
 
 ```
-Given a project with a local job, a global job it has enabled through the overlay, and a global job available but not enabled
-When the operator lists jobs
-Then all three jobs appear
-And each is marked with its availability — local, enabled, or available
+Given a project with a local job, a published job it subscribes to, and a published job it does not subscribe to
+When an operator or agent lists jobs at the CLI
+Then all three jobs appear, each named by its execution pointer
+And each is marked with its relationship to the project — local, subscribed, or available
 ```
 
 #### UC-JOS-2: Status shows last run, last outcome, and next due
 
 ```
 Given a job that has run before and carries a schedule
-When the operator requests job status
+When an operator or agent requests job status at the CLI
 Then the job shows the last run time and the last run's outcome read from the runner's run state
 And it shows the next due time derived from the job's schedule
 ```
@@ -67,45 +73,54 @@ And it shows the next due time derived from the job's schedule
 
 ```
 Given a configured job that has never run
-When the operator requests job status
+When an operator or agent requests job status at the CLI
 Then the job shows no last run and no last outcome
-And it still shows a next due time derived from its schedule
+And it still shows a next due time anchored on when the runner first saw the job
 ```
 
-#### UC-JOS-4: Enable a global job through the overlay
+#### UC-JOS-4: Enabling a published job subscribes the project to it
 
 ```
-Given a global job available to the project but not enabled
-When the operator enables the job
-Then the project's enable overlay records the job as enabled
-And the job appears as enabled on the next list
+Given a published job the project does not subscribe to
+When an operator or agent enables the job at the CLI
+Then the project's own jobs carry an active subscribing entry for that job's pointer
+And the job appears as subscribed on the next list
 ```
 
-#### UC-JOS-5: Disable a global job through the overlay
+#### UC-JOS-5: Disabling a published job unsubscribes the project from it
 
 ```
-Given a global job enabled in the project
-When the operator disables the job
-Then the project's enable overlay records the job as disabled
-And the job no longer appears as enabled on the next list
+Given a published job the project subscribes to
+When an operator or agent disables the job at the CLI
+Then the project's subscribing entry for that job's pointer is deactivated
+And the job appears as available rather than subscribed on the next list
 ```
 
-#### UC-JOS-6: Enabling a non-global name is rejected without a write
+#### UC-JOS-6: Subscribing to a job that is not published is rejected without a write
 
 ```
-Given a name that is not a global registry job — a local job or an unknown name
-When the operator tries to enable or disable it
-Then the command fails with an error naming the job
-And no overlay entry is written
+Given a job that is not published — a local job or an unknown pointer
+When an operator or agent tries to enable or disable it at the CLI
+Then the command fails naming the job
+And the project's configuration is left unchanged
 ```
 
 #### UC-JOS-7: Run a job on demand
 
 ```
 Given a configured job
-When the operator runs the job on demand
-Then the job is dispatched through the existing run path
+When an operator or agent runs the job on demand at the CLI
+Then the job is dispatched through the existing run path for the invoking project
 And the operator is told the run was accepted
+```
+
+#### UC-JOS-8: Disabling a job the project never subscribed to writes nothing
+
+```
+Given a published job the project has no subscribing entry for
+When an operator or agent disables the job at the CLI
+Then the command reports that the project does not subscribe to it
+And the project's configuration is left unchanged
 ```
 
 ## Known caveats
@@ -115,7 +130,10 @@ And the operator is told the run was accepted
   so its values track the runner exactly and add no second source of truth.
 - The surface is scoped to the invoking project: list and status reflect that
   project's effective and available set, and enable/disable write that project's
-  overlay. Cross-project operation is out of scope.
-- The next-due time is a projection from the `when` schedule and the last run; it is
+  own jobs. Cross-project operation is out of scope.
+- The next-due time is a projection from the `when` schedule and the run state; it is
   advisory, not a guarantee — the host trigger fires on its own cadence and a job
   with an open run is not re-dispatched until its run closes.
+- A subscribing entry carries the project's own overrides for the published
+  declaration. Enable and disable turn that entry on and off; they never author or
+  remove the overrides an operator has set on it.
