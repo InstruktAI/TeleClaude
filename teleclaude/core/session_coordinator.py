@@ -21,7 +21,8 @@ ADOPTION_REASON_LIVE_HOLDER = "live_holder"
 NOT_BOUND_MESSAGE = "The calling session is not bound to a project instance."
 REFUSED_MESSAGE = (
     "A live coordinator already holds this project. The incumbent is never touched, messaged, or assessed. "
-    "A session started solely to coordinate ends itself now via `telec sessions end self`."
+    "A session started solely to coordinate ends itself now: arm `telec reminders set session-departure` "
+    "as your final tool action, emit only a brief farewell, and yield."
 )
 ADOPTED_MESSAGE = (
     "This session is now the project's coordinator. Fetch "

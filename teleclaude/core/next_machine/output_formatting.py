@@ -421,7 +421,7 @@ def format_prepared(
 
     cleanup_lines = list(f"telec sessions end {sid}" for sid in session_ids_to_end or [])
     if not resume_work:
-        cleanup_lines.extend(("telec sessions end", "telec sessions end self"))
+        cleanup_lines.append("telec sessions end")
     cleanup = "\n".join(cleanup_lines)
     cleanup_block = f"{cleanup}\n\n" if cleanup else ""
 
@@ -432,7 +432,11 @@ def format_prepared(
             "in this same session."
         )
     else:
-        terminal_note = f"{slug} is prepared; any drift is reconciled. Run the cleanup above and self-end."
+        terminal_note = (
+            f"{slug} is prepared; any drift is reconciled. Run the cleanup above, then arm "
+            "`telec reminders set session-departure` as your final tool action, emit only a brief "
+            "farewell, and yield."
+        )
 
     return f"{cleanup_block}PREPARED: {slug} is ready for work.\n\n{terminal_note}"
 
@@ -549,7 +553,11 @@ def format_finalize_handoff_complete(slug: str) -> str:
     )
 
     steps.append("2. End child sessions:\n   telec sessions end")
-    steps.append("3. End this orchestrator session:\n   telec sessions end self")
+    steps.append(
+        "3. Arm the departure reminder as your final tool action:\n"
+        "   telec reminders set session-departure\n"
+        "   Then emit only a brief farewell and yield."
+    )
 
     instructions = "\n".join(steps)
     return f"""FINALIZE HANDOFF COMPLETE: {slug}
