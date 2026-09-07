@@ -183,24 +183,6 @@ And the candidate stays at delivery bookkeeping with a residual-marker error nam
 And a delivered slug never reaches origin/main carrying its own live markers
 ```
 
-<!-- planned-change:integrator-candidate-and-gate-parking -->
-
-#### UC-WISM5: Content-gate rejection is a logical merge conflict — resolved by the integrator, never abandoned
-
-```gherkin
-Given a candidate's squash is pushed and the push is rejected by the pre-push content gate (telec code lint --all failed on the squash content)
-When the state machine classifies the rejection from the content-gate marker
-Then the candidate does not enter rebase recovery
-And the integrator owns the conflict — no upstream owner exists once a candidate is in the integration pipeline
-And the integrator treats the rejection as a logical merge conflict on a repo-wide invariant, in the same class as a textual merge conflict
-And a mechanically groundable conflict is resolved by the integrator in the integration worktree — for a double-bound scenario it reads both tests and drops the redundant binding when they observe the same behavior, or authors the distinct scenario and retags when they are genuinely distinct — writing into live contract body only, never inside a pending planned-change region
-And a conflict the integrator cannot ground confidently leaves it stopped on the candidate, escalated to the human as a beacon
-And integration.candidate.blocked is emitted carrying the slug and the content-gate reason
-And no later candidate is dequeued while the conflict stands unresolved
-And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
-```
-
-<!-- change:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM5: A pre-push gate rejection is resolved or parked; the gate is never bypassed
 
@@ -215,7 +197,6 @@ And no sentinel, flag, or integrator-authored exception permits the failed candi
 And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
 ```
 
-<!-- /planned-change:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM6: Held or kicked-back candidates are excluded from the integration pool
 
@@ -268,19 +249,6 @@ When each PUSH_SUCCEEDED step records its delivered merge range into the session
 Then the marker accumulates the union of the delivered ranges across candidates rather than overwriting the prior range
 ```
 
-<!-- planned-change:integrator-candidate-and-gate-parking -->
-
-#### UC-WISM9: Integration validates with repo-wide gate semantics
-
-```gherkin
-Given a candidate is squash-merged and the integrator commits in the integration worktree
-When the integration commit runs its quality gate
-Then the format-fix step still runs over the squash content before the commit
-And the gating checks carry repo-wide semantics — scope-sensitive checks that are only meaningful over the whole repository (duplication percentage) never gate the integration commit
-And the pre-push telec code lint --all remains the single authoritative content gate
-```
-
-<!-- change:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM9: The pre-push quality gate remains authoritative and blocking
 
@@ -294,7 +262,6 @@ And every failure blocks delivery until the integrator resolves it in the integr
 And the integration path provides no candidate-specific quality override
 ```
 
-<!-- /planned-change:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM10: The integrator resumes only a candidate that belongs to the current project
 
@@ -396,7 +363,6 @@ And no candidate is dequeued for that call until repo-root main is synced
 
 
 
-<!-- planned:integrator-candidate-and-gate-parking -->
 
 #### UC-WISM25: A candidate whose span carries a foreign slug's commit is parked
 
@@ -418,7 +384,6 @@ Then the ambiguous commit is surfaced to the integrator's judgment rather than c
 And the candidate is not parked automatically on the strength of the ambiguous signal alone
 ```
 
-<!-- /planned:integrator-candidate-and-gate-parking -->
 
 
 #### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
@@ -500,15 +465,9 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 
 - The phase enum's AWAITING_COMMIT value is reachable but typically not written; MERGE_CLEAN and MERGE_CONFLICTED are written directly and re-entry handling treats all three equivalently.
 
-<!-- planned-change:integrator-candidate-and-gate-parking -->
-
-- A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. A content-gate rejection is a logical merge conflict handled per UC-WISM5 — resolved by the integrator in the integration worktree when mechanically groundable, escalated to the human otherwise while the integrator stays stopped on the candidate. There is no abandon path and no upstream owner: a candidate is never retracted, skipped, or drained past on a content failure.
-
-<!-- change:integrator-candidate-and-gate-parking -->
 
 - A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. The pre-push gate remains authoritative and blocking. The integrator fixes a finding it can ground and re-pushes; when it cannot ground the finding, it parks the candidate and continues the drain through independent work. No candidate is delivered past the failed gate.
 
-<!-- /planned-change:integrator-candidate-and-gate-parking -->
 
 
 - A textual merge conflict the integrator cannot ground a confident resolution for is parked rather than halted: the candidate is set aside with a recorded reason, its transitive dependents are excluded, and the drain continues through the remaining independent candidates (UC-WISM19–UC-WISM21). Parking is a per-drain, in-checkpoint set-aside — `finalize.status` is not retracted, so a later drain re-attempts the candidate (UC-WISM23). This park path is distinct from the content-gate halt above, which is unchanged.
