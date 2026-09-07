@@ -80,9 +80,6 @@ When the service resolves the successor
 Then the successor is whatever the dispatch contract's explicit-agent rules yield for that caller with the current agent excluded, including that contract's own fallback and refusal behavior
 And no process is terminated before selection settles
 And the caller is told the selected successor
-When the named agent is the session's current agent
-Then the request is refused before any process is terminated
-And the session keeps its native resume, which the plain restart verb continues to honor
 ```
 
 #### UC-AH7: The successor is briefed in the ordinary dispatch shape
