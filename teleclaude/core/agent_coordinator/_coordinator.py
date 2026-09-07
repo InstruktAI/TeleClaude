@@ -82,6 +82,9 @@ _AGENT_IDLE_OBSERVED_EVENT = "agent_idle_observed"
 _AGENT_IDLE_OBSERVED_OUTCOME = "recorded"
 _AGENT_IDLE_MANUAL_NATIVE_COMMAND_REASON = "manual_native_command"
 _AGENT_STOP_RECOVERY_DECIDED_EVENT = "agent_stop_recovery_decided"
+_AGENT_TURN_FAILED_OBSERVED_EVENT = "agent_turn_failed_observed"
+_AGENT_TURN_FAILED_OBSERVED_OUTCOME = "recorded"
+_AGENT_TURN_FAILED_BOUNDARY_REASON = "agent_turn_failed"
 
 
 class AgentCoordinator(
@@ -370,8 +373,27 @@ class AgentCoordinator(
         )
 
     async def handle_agent_distress(self, context: AgentEventContext, notification_kind: NotificationKind) -> None:
-        """Notify watchers when a provider reports a blocked or failed turn."""
+        """Notify watchers when a provider reports a blocked or failed turn.
+
+        A failed turn also ends the turn: unlike a block (still running),
+        it records an idle boundary before fan-out, mirroring
+        ``handle_agent_idle``, so the session reads idle for the next
+        control payload once no later input has arrived.
+        """
         payload = cast(AgentDistressPayload, context.data)
+        if notification_kind is NotificationKind.TURN_FAILED:
+            idle_at = datetime.now(UTC)
+            await db.update_session(
+                context.session_id,
+                last_agent_idle_at=idle_at.isoformat(),
+                last_activity=idle_at.isoformat(),
+            )
+            logger.info(
+                _AGENT_TURN_FAILED_OBSERVED_EVENT,
+                session_id=context.session_id,
+                outcome=_AGENT_TURN_FAILED_OBSERVED_OUTCOME,
+                reason=_AGENT_TURN_FAILED_BOUNDARY_REASON,
+            )
         await self._notify_session_distress(
             context.session_id,
             notification_kind,

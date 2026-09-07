@@ -82,9 +82,10 @@ def compute_agent_status(
     """Derive session activity status from lifecycle and observed timestamps.
 
     Terminal lifecycle markers are authoritative over activity timestamps.
-    An agent stop or completed native command is authoritative: once either
-    fires, the agent is idle unless new input arrived after that boundary.
-    Poller flushes that bump last_activity after the stop are not signal.
+    An agent stop, a failed turn, or a completed native command is
+    authoritative: once any fires, the agent is idle unless new input
+    arrived after that boundary. Poller flushes that bump last_activity
+    after the stop are not signal.
     """
     if is_session_terminal(lifecycle_status=lifecycle_status, closed_at=closed_at):
         return AgentStatusValue.IDLE

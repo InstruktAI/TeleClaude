@@ -47,6 +47,14 @@ def _record(row: db_models.ControlDelivery) -> ControlDeliveryRecord:
     )
 
 
+def _envelope_fields_match(envelope_fields_json: str | None, key_fields: dict[str, str]) -> bool:
+    """Return whether a stored envelope carries every declared key field."""
+    if envelope_fields_json is None:
+        return False
+    decoded = json.loads(envelope_fields_json)
+    return all(decoded.get(field) == value for field, value in key_fields.items())
+
+
 class DbControlDeliveryMixin:
     """Public persistence seam for producer handoff, drain, and close cleanup."""
 
@@ -144,3 +152,51 @@ class DbControlDeliveryMixin:
             result = await db_session.exec(statement)
             await db_session.commit()
         return result.rowcount or 0
+
+    async def discard_superseded_control_payloads(
+        self,
+        *,
+        session_id: str,
+        envelope_name: str,
+        key_fields: dict[str, str],
+        before_row_id: int,
+    ) -> list[int]:
+        """Delete this session's older pending payloads a newer one declares superseded.
+
+        A candidate is pending, shares ``envelope_name``, precedes
+        ``before_row_id``, and carries every ``key_fields`` pair in its own
+        stored ``envelope_fields_json`` — decoded here so callers never
+        interpret outbox storage directly. The read only narrows candidates;
+        the deleting statement re-asserts ``outcome IS NULL`` itself, matching
+        ``discard_pending_control_payloads`` and ``terminalize_control_payloads``,
+        so a candidate a concurrent drain delivers between the read and the
+        delete is excluded rather than removed. Returns the ids actually
+        removed, in ascending order.
+        """
+        statement = (
+            select(db_models.ControlDelivery)
+            .where(db_models.ControlDelivery.session_id == session_id)
+            .where(db_models.ControlDelivery.outcome.is_(None))
+            .where(db_models.ControlDelivery.envelope_name == envelope_name)
+            .where(db_models.ControlDelivery.id < before_row_id)
+            .order_by(db_models.ControlDelivery.id.asc())
+        )
+        async with self._session() as db_session:
+            rows = (await db_session.exec(statement)).all()
+            candidate_ids = [
+                row.id
+                for row in rows
+                if row.id is not None and _envelope_fields_match(row.envelope_fields_json, key_fields)
+            ]
+            if not candidate_ids:
+                return []
+            delete_statement = (
+                delete(db_models.ControlDelivery)
+                .where(db_models.ControlDelivery.id.in_(candidate_ids))
+                .where(db_models.ControlDelivery.outcome.is_(None))
+                .returning(db_models.ControlDelivery.id)
+            )
+            result = await db_session.exec(delete_statement)
+            removed_ids = sorted(result.scalars().all())
+            await db_session.commit()
+        return removed_ids
