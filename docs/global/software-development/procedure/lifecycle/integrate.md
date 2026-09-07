@@ -23,11 +23,11 @@ each decision point until the queue is drained.
   `origin/main` before each merge. Repo root cleanliness is irrelevant — dirty files, hot
   patches, and operational edits on `main` do not affect integration.
 - Worker worktrees branch from `origin/main` (not local HEAD), and `origin/main` is the
-  only baseline a slug worktree ever references: inside `trees/<slug>` no git invocation
-  names the local `main` branch — `main`, `heads/main`, `refs/heads/main`, or a range with
-  one of those as an endpoint — for any subcommand, read-only ones included. A candidate's
-  ancestry and working tree therefore never carry work that sits on local `main` but not
-  yet on `origin/main`.
+  only baseline a slug worktree references: an agent inside `trees/<slug>` does not name
+  the local `main` branch in any git invocation — `main`, `heads/main`, `refs/heads/main`,
+  or a range with one of those as an endpoint — for any subcommand, read-only ones
+  included. The rule keeps a candidate's ancestry and working tree free of work that sits
+  on local `main` but not yet on `origin/main`.
 <!-- planned:worktree-never-references-local-main -->
 - The git wrapper refuses a local-`main` reference inside a slug worktree with no
   override; the wrapper matrix in `docs/project/design/code-commit.md` carries the rule.
