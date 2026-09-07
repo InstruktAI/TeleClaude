@@ -77,7 +77,6 @@ ROLE_TASKER = "tasker"
 # generic cron agent job) is the only role band permitted a no-human lineage
 # root at todo/bug creation — see project/spec/domain/workflow.
 ROLE_JOB_RUNNER = "job_runner"
-JOB_SPEC_ID_PREFIX = "project/spec/jobs/"
 
 
 class DriverLaunchClass(StrEnum):

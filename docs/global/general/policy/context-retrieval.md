@@ -29,6 +29,9 @@ visibility: 'public'
   pass.** Executing the fetch instruction shown by the catalog returns the selected procedure
   and every eligible transitive required read exactly once. Ordinary documentation retrieval
   and its explicit follow-up flow remain unchanged.
+- **A scheduled agent job receives its procedure the same way.** The job runner's startup
+  instruction names the procedure snippet ID the job's declaration carries; executing that
+  instruction returns the procedure and every eligible required read in one pass.
 - **Third-party library docs: check consolidated docs first.** Before web searching or using
   Context7 for any library, framework, or tool, run `telec docs index --third-party` to check
   for existing coverage. If a consolidated snippet exists, use it. Web search and Context7 are

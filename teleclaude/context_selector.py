@@ -36,7 +36,7 @@ GLOBAL_SOURCE_PROJECT = "global"
 ACTIVATION_CLOSURE_REQUEST_ERROR = (
     "ERROR: --closure requires exactly one requested snippet ID and no --scope, --project, or --target filter."
 )
-ACTIVATION_CLOSURE_ROOT_ERROR = "ERROR: --closure requires one delivered activatable taxonomy procedure."
+ACTIVATION_CLOSURE_ROOT_ERROR = "ERROR: --closure requires one delivered taxonomy procedure."
 ACTIVATION_CLOSURE_UNREADABLE_ERROR = "ERROR: Unable to read eligible required-read snippet: {}"
 
 
@@ -767,14 +767,39 @@ def _validate_activation_closure_request(
         raise ActivationClosureError(ACTIVATION_CLOSURE_REQUEST_ERROR)
     if not validate_root:
         return
-    if (
-        root is None
-        or root.snippet_type != "procedure"
-        or root.delivered_by
-        or not root.activation_trigger
-        or not root.activation_trigger.strip()
-    ):
+    if root is None or root.snippet_type != "procedure" or root.delivered_by:
         raise ActivationClosureError(ACTIVATION_CLOSURE_ROOT_ERROR)
+
+
+def resolve_snippet_meta(snippet_id: str, *, project_root: Path) -> SnippetMeta | None:
+    """Resolve one taxonomy snippet ID the way `telec docs get` does from this project root.
+
+    Global, current-project, and slug-prefixed cross-project IDs all resolve;
+    third-party IDs are outside the taxonomy and never resolve here.
+    """
+    requested = snippet_id.strip()
+    if not requested:
+        return None
+    manifest_projects = _load_manifest_by_name()
+    snippets = _load_selected_snippets(
+        project_root=project_root,
+        projects=None,
+        project_index=project_root / "docs" / "project" / "index.yaml",
+        global_index=GLOBAL_DOCS_DIR / "index.yaml",
+        global_root=GLOBAL_DOCS_DIR.parent.parent,
+        current_project_slug=get_project_slug(project_root),
+        manifest_projects=manifest_projects,
+        include_registered_projects=False,
+    )
+    snippets_by_path = {str(snippet.path): snippet for snippet in snippets}
+    _load_cross_project_snippets(
+        snippets=snippets,
+        snippet_ids=[requested],
+        domain_prefixes={domain.lower() for domain in valid_domains()},
+        manifest_projects=manifest_projects,
+        snippets_by_path=snippets_by_path,
+    )
+    return next((snippet for snippet in snippets if snippet.snippet_id == requested), None)
 
 
 def _render_phase2_taxonomy_bodies(

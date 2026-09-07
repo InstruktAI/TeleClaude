@@ -132,7 +132,7 @@ jobs:
     when:
       at: '03:00'
     type: agent
-    job: log-bug-hunter
+    job: software-development/procedure/maintenance/log-bug-hunter
     agent: codex
     thinking_mode: fast
 # git:

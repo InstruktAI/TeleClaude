@@ -13,19 +13,21 @@ across all projects.
 
 ## Preconditions
 
-- The agent was spawned by the cron runner with full tool access.
-- The agent has loaded its job spec doc (the only source of task instructions).
+- The agent was started by the job runner with full tool access and one value: the
+  job's identity, which is the snippet ID of the procedure its declaration points at.
+- The agent has loaded that procedure with its required-read closure
+  (`telec docs get <id> --closure`) — the only source of task instructions.
 
 ## Steps
 
-### 1. Read your spec, nothing else
+### 1. Read your procedure, nothing else
 
-Your job spec doc is your complete scope. Do not invent work beyond what it describes.
-If the spec references other docs, read those too. Otherwise, stay in lane.
+Your job procedure is your complete scope. Do not invent work beyond what it describes.
+The closure has already delivered every document it depends on. Otherwise, stay in lane.
 
 ### 2. Do the work
 
-Execute the task described in your spec. Run the scripts and tools your spec tells you
+Execute the task the procedure describes. Run the scripts and tools it tells you
 to use. You are the supervisor — the scripts are the workers.
 
 ### 3. Fix forward
@@ -34,7 +36,7 @@ If a script fails, do not just log and move on. You own the outcome.
 
 - **Diagnose**: read the error, understand what went wrong.
 - **Fix if in scope**: if the issue is in your job's own scripts or data, fix it and
-  re-run. Your scope is the files listed in your spec — nothing beyond.
+  re-run. Your scope is the files the procedure names — nothing beyond.
 - **Record if out of scope**: if the issue is in unrelated code or infrastructure,
   record it in the run report and move on. Do not chase it.
 - **Limit**: one fix attempt per failure. If the fix doesn't resolve it, record
@@ -42,13 +44,14 @@ If a script fails, do not just log and move on. You own the outcome.
 
 ### 4. Write a run report
 
-When done, write a report to `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md`.
-Create the directory if it doesn't exist.
+When done, write a report to `~/.teleclaude/jobs/{job_id}/runs/{YYMMDD-HHMMSS}.md`,
+where `{job_id}` is the identity you were started with. Create the directory if it
+doesn't exist.
 
 Report format:
 
 ```markdown
-# {job_name} — {YYYY-MM-DD}
+# {job_id} — {YYYY-MM-DD}
 
 ## Summary
 
@@ -68,19 +71,19 @@ Report format:
 - Unresolved error description, or "None"
 ```
 
-If the job spec defines additional output fields (metrics, counts, links), include
+If the procedure defines additional output fields (metrics, counts, links), include
 them after Errors.
 
 The markdown report above is the human-readable audit. Additionally, close the run by
 reporting a structured outcome to the runner:
 
-`telec jobs report {job_name} --success|--failed --message "<1-line summary>" [--items <n>]`
+`telec jobs report {job_id} --success true|false --message "<1-line summary>" [--items-processed <n>] [--error <text> ...]`
 
 This structured call is the single channel through which the runner learns the run's real
 outcome and closes it; a run that is never reported is detected as a stall. Report
-`--success` only when the work actually completed, `--failed` with the error summary
-otherwise. Do not emit events or publish to channels directly — `telec jobs report` is the
-only outcome channel.
+`--success true` only when the work actually completed, `--success false` with the error
+summary otherwise. Do not emit events or publish to channels directly — `telec jobs report`
+is the only outcome channel.
 
 ### 5. Stop
 
@@ -89,7 +92,7 @@ not relational). Do not start bonus work. Go idle immediately.
 
 Avoid these anti-patterns:
 
-- **Scope creep**: touching code outside the files listed in your spec.
+- **Scope creep**: touching code outside the files the procedure names.
 - **Memory saves**: job agents must not call the Memory API to save observations.
   Jobs produce reports, not relationship context.
 - **Infinite retry**: one fix attempt per failure. If it doesn't work, record and continue.
@@ -99,15 +102,15 @@ Avoid these anti-patterns:
 
 ## Outputs
 
-- A run report at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md`.
+- A run report at `~/.teleclaude/jobs/{job_id}/runs/{YYMMDD-HHMMSS}.md`.
 
 - A structured run outcome reported via `telec jobs report` that closes the run.
 
-- Whatever artifacts the job spec defines (ideas files, CSV updates, etc.).
-- Any fixes committed to the job's own scripts (within spec scope only).
+- Whatever artifacts the procedure defines (ideas files, CSV updates, etc.).
+- Any fixes committed to the job's own scripts (within the procedure's scope only).
 
 ## Recovery
 
 - If the run report directory does not exist, create it before writing. Never skip the report.
-- If the job spec cannot be found or is malformed, write an error report and stop — do not invent scope.
+- If the procedure cannot be loaded, write an error report and stop — do not invent scope.
 - If a tool call produces an unexpected error outside the job's scope, record it in the Errors section and continue. Do not chase unrelated failures.

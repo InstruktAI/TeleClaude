@@ -19,50 +19,60 @@ investigate or fix inline — the diagnose/fix lifecycle owns each filed bug.
 
 ## Preconditions
 
-1. The generic runner is executing the `log_bug_hunter` job (`jobs/log_bug_hunter.py`),
-   in-process, with no per-project service and no runner special-case branch.
-2. The job consumes the shared `ProjectJobOrchestrator` to run one scan per
-   project subscribed to `log_bug_hunter` under that project's `teleclaude.yml`.
-3. `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper` is
-   available and returns structured log output from each project root.
-4. Each project's suppression ledger
-   (`~/.teleclaude/state/log-bug-hunter/{project_slug}.suppressions.json`) is
-   readable; `telec bugs suppress` / `unsuppress` is its sole writer.
+1. The job runner started this session in a project root with this procedure's
+   snippet ID as the job identity; the project's `project_slug` is readable from
+   its configuration.
+2. `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper` is
+   available and returns structured log output.
+3. `telec bugs suppressions`, `telec bugs list`, and `telec bugs report` are
+   available in this project.
+4. Previous run reports are available for deduplication under the job's run
+   directory.
 
 ## Steps
 
-For each subscribed project the orchestrator yields:
+1. Collect logs from the last hour for the current project:
+   - Run `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper`,
+     substituting the project slug of the project you are running in.
+   - If no output or tool unavailable, write a "nothing to process" report and stop.
 
-1. Collect the last hour of logs:
-   `instrukt-ai-logs {project_slug} --since 1h --exclude git-wrapper`, run from
-   the project root. On no output or tool failure, record the per-project outcome
-   and move to the next project.
-2. Extract candidate error signals — lines containing errors, exceptions,
-   tracebacks (ERROR / CRITICAL / FATAL / EXCEPTION / Traceback). Ignore
-   informational and debug output.
-3. Subtract every candidate line that matches an active entry in the project's
-   suppression ledger. A window whose every candidate line is suppressed is
-   recorded as seen-and-skipped and files nothing.
-4. For each remaining distinct error, file a minimal bug report through the
-   shared bug-report filing path (the same front door `telec bugs report` uses),
-   scoped to the project — unless an active bug for the derived slug already
-   exists, in which case skip it to avoid duplicates. The report carries the
-   error summary; the diagnose/fix lifecycle handles everything downstream.
-5. Record the per-project outcome (`clean` / `suppressed` / `filed` / `failed`)
-   in `~/.teleclaude/state/log-bug-hunter/{project_slug}.json`.
+2. Extract error signals:
+   - Identify lines containing errors, exceptions, tracebacks, and repeated warnings.
+   - Group related log lines into distinct error instances.
+   - Ignore informational and debug-level output.
+   - If no error signals are found, write a "clean run" report and stop.
+
+3. Drop what is already handled:
+   - Skip (record only) errors whose signal matches an active entry in the
+     project's suppression ledger (`telec bugs suppressions`). A suppressed signal
+     is noted in the run report, never filed.
+   - Skip errors already tracked by an existing bug (`telec bugs list`) or todo.
+   - Read the most recent run reports (up to 3) and skip errors already reported
+     unless they have new context (different traceback, increased frequency, new
+     trigger).
+
+4. File every remaining error:
+   - Run `telec bugs report "<description>" --slug fix-{slug}` where the
+     description carries the error summary and a log excerpt. Do not diagnose,
+     do not fix, do not commit — the bug pipeline handles everything downstream.
+
+5. Repeat steps 3–4 until every error from step 2 has been filed or recorded.
+   Do not stop while unprocessed errors remain.
+
+6. Write the run report and close the run as the Agent Job Hygiene procedure
+   directs.
 
 ## Outputs
 
-- A minimal bug report filed for each unsuppressed, not-already-tracked error,
-  scoped to the project it was found in.
-- Per-project scan state updated with the latest outcome.
+- A minimal bug report filed via `telec bugs report` for each unsuppressed,
+  not-already-tracked error, scoped to the project the session runs in.
+- Run report documenting all findings, filings, and skips.
 
 ## Recovery
 
-1. If `instrukt-ai-logs` fails for a project, record the failure for that project
-   and continue with the rest — per-project failures are isolated by the
-   orchestrator and never stop the sweep.
-2. If a suppression ledger is corrupt, the ledger module fails loud rather than
-   silently emptying it; surface the error for that project and continue.
-3. If a filing call fails, surface it as a job error for that project rather than
-   dropping the signal silently.
+1. If `instrukt-ai-logs` fails, write a report noting tool unavailability and stop.
+2. If `telec bugs suppressions` fails, treat the ledger as empty for this run and
+   note it in the report; never let a ledger failure silence a signal.
+3. If a `telec bugs report` call fails, record the failure with the error summary
+   in the report and continue with the remaining errors.
+4. If deduplication data is unavailable (no previous reports), treat all errors as new.

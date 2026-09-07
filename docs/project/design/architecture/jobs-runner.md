@@ -71,7 +71,7 @@ teleclaude/cron/runner.py       Engine: config → discover → schedule check �
 teleclaude.yml                  Schedule configuration (frequency, timing, execution mode)
   │
   ├── script: jobs/foo.py       → In-process JOB.run() (no agent)
-  └── job: foo                  → Agent session opened at dispatch, closed on report
+  └── job: <procedure id>       → Agent session opened at dispatch, closed on report
   │
   ▼
 ~/.teleclaude/state/cron_state.json   Per-job run lifecycle (run_started_at, status, outcome)
@@ -95,11 +95,12 @@ process exits at end of pass, releasing the pidlock for the next trigger. No sub
 spawned and no stdout is parsed.
 
 **Agent jobs** (`script` absent, `job` required) — The runner opens a run and creates an
-agent session (fire-and-forget) tagged with the job name. The agent reads its spec doc
-(`docs/project/spec/jobs/<job>.md`), does its work, fixes forward within scope, writes a
-run report, and reports a structured outcome via `telec jobs report`. The runner's sweep
-on a later tick reads that outcome and closes the run; a run never reported within its
-window is stalled.
+agent session (fire-and-forget) identified by the procedure snippet ID in `job`. That ID
+is the job's identity everywhere: the dispatch argument, the run state key, the run
+directory, and the report key. The agent loads the procedure with its required-read
+closure, does its work, fixes forward within scope, writes a run report, and reports a
+structured outcome via `telec jobs report <id>`. The runner's sweep on a later tick reads
+that outcome and closes the run; a run never reported within its window is stalled.
 
 Agent jobs are daemon-independent for outcome reporting: the structured outcome is written
 to the job's run directory on the local filesystem, so a run still closes when the daemon
@@ -131,27 +132,12 @@ cannot overwrite a notification that has not yet been delivered.
 
 #### Cross-project iteration
 
-<!-- planned-change:log-bug-hunter-generalization -->
-
 Jobs that fan out across all registered projects (e.g., `log_bug_hunter`) do **not**
 re-implement project discovery. They consume `ProjectCatalogService` (a lazy singleton
 over `~/.teleclaude/projects.yaml`) and `ProjectJobOrchestrator` (a generic iterator that
 runs an injected `run_for_project(node)` per subscribing project and isolates per-project
 exceptions). Per-job services (e.g., `LogBugHunterService`) are one-project executors; the
 cross-project loop lives in the orchestrator.
-
-<!-- change:log-bug-hunter-generalization -->
-
-Jobs that fan out across all registered projects (e.g., `log_bug_hunter`) do **not**
-re-implement project discovery. They consume `ProjectCatalogService` (a lazy singleton
-over `~/.teleclaude/projects.yaml`) and `ProjectJobOrchestrator` (a generic iterator that
-runs an injected `run_for_project(node)` per subscribing project and isolates per-project
-exceptions). The orchestrator is consumed from inside the job module itself — the job's
-own `run()` builds the `ProjectJobOrchestrator` and supplies the per-project executor that
-scans, suppression-filters, and files. The cross-project loop lives in the shared
-orchestrator with no per-job service and no runner special-case branch.
-
-<!-- /planned-change:log-bug-hunter-generalization -->
 
 ## Inputs/Outputs
 
@@ -166,7 +152,7 @@ orchestrator with no per-job service and no runner special-case branch.
 - Job execution (side effects defined by each job)
 - A `JobResult` outcome for every run, script and agent alike
 - `job.run.*` events on close/stall, projected to a human when actionable
-- Run reports at `~/.teleclaude/jobs/{job_name}/runs/{YYMMDD-HHMMSS}.md` (human-readable audit)
+- Run reports at `~/.teleclaude/jobs/{job_id}/runs/{YYMMDD-HHMMSS}.md` (human-readable audit)
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`
 
 - Structured logs to `~/.local/state/instrukt-ai/teleclaude/cron.log`
@@ -181,6 +167,7 @@ orchestrator with no per-job service and no runner special-case branch.
 - Both job classes produce the same `JobResult` outcome and `job.run.*` event shape.
 - A clean run is silent; an actionable outcome (failure or stall) notifies a human.
 - Agent jobs produce a run report and a structured outcome every run, even with nothing to process.
+- An agent job has one identity, the procedure snippet ID its `job` pointer carries; a script job's identity is its declared name. Dispatch, run state, the run directory, and the report key all use that identity and nothing else names the job.
 
 ### Configuration surface
 
@@ -192,7 +179,7 @@ The project-root `teleclaude.yml` is the single source of truth for job scheduli
 job is registered under the `jobs:` key. Schedule fields: `schedule`
 (`hourly`/`daily`/`weekly`/`monthly`), `preferred_hour` (0–23), `preferred_weekday` (0–6),
 `preferred_day` (1–31). Execution-mode fields: `script` (path, in-process job), `job`
-(spec doc name, agent job), `agent`, `thinking_mode`, `timeout` (seconds; default 1800).
+(procedure snippet ID, agent job), `agent`, `thinking_mode`, `timeout` (seconds; default 1800).
 `script` and `job` are mutually exclusive; `script` leads.
 
 #### Per-person and global
@@ -208,15 +195,16 @@ job is registered under the `jobs:` key. Schedule fields: `schedule`
 The project-root `teleclaude.yml` registers a project's jobs under the `jobs:` key. A job
 declares WHEN it runs through the `when` block (see
 `project/spec/feature/config/job-schedule-contract`) and WHAT it runs through exactly one
-execution pointer — `script` (path, in-process job) or `job` (spec doc name, agent job). The
-pointer present IS the execution class; there is no separate discriminator field. The
-remaining execution fields are `agent`, `thinking_mode`, and `timeout` (seconds; default
-1800).
+execution pointer — `script` (path, in-process job) or `job` (procedure snippet ID, agent
+job). The pointer present IS the execution class and the job's identity; there is no separate
+discriminator field and no separate name. The remaining execution fields are `agent`,
+`thinking_mode`, and `timeout` (seconds; default 1800).
 
-A project `jobs` entry whose name matches a global registry job is an **enable overlay**: it
-carries only `enabled` to turn that global job on or off for the project, and the config load
-rejects it if it carries any identity-bearing field. An entry whose name is not in the global
-registry is a local job declaration (exactly one pointer plus a `when` schedule).
+A project `jobs` entry that carries the same execution pointer as a global registry job is an
+**enable overlay**: it carries only that pointer and `enabled` to turn the global job on or off
+for the project, and the config load rejects it if it carries any other identity-bearing field.
+An entry whose pointer is not in the global registry is a local job declaration (exactly one
+pointer plus a `when` schedule).
 
 #### Global registry and per-person scope
 
@@ -280,12 +268,14 @@ class JobResult:
 
 ### Agent job contract
 
-1. Create a spec doc at `docs/project/spec/jobs/<name>.md`.
-2. Register in `teleclaude.yml` with `job` pointing to the spec name.
+1. Write the job's procedure (see the Job Authoring procedure) with agent-job-hygiene as
+   a required read, and sync it so its ID resolves.
+2. Register in `teleclaude.yml` with `job` carrying the procedure's snippet ID.
 
-The runner constructs the agent prompt from the `job` field and opens a session. The agent
-loads its spec, does its work, writes a run report, reports its outcome via
-`telec jobs report`, and stops. Follows the Agent Job Hygiene procedure.
+The runner dispatches `/next-run-job <id>` through the canonical command-session contract
+and opens a run keyed by that ID. The agent loads the procedure with its required-read
+closure, does its work, writes a run report, reports its outcome via
+`telec jobs report <id>`, and stops.
 
 <!-- planned-change:generic-job-declarative-model -->
 
@@ -317,10 +307,13 @@ first scheduled occurrence after discovery.
 
 File: `~/.teleclaude/state/cron_state.json`
 
+Entries are keyed by job identity — an agent job's procedure snippet ID, a script job's
+declared name.
+
 ```json
 {
   "jobs": {
-    "job_name": {
+    "<job identity>": {
       "first_seen_at": "2026-02-04T08:00:00+00:00",
       "run_started_at": null,
       "run_session_id": null,
@@ -373,7 +366,8 @@ cron_runner.py --dry-run    Check what would run without executing
 cron_runner.py --list       List available jobs and their status
 ```
 
-### Job specs
+### Job procedures
 
-Each agent job has a spec document in `docs/project/spec/jobs/` describing what it does,
-its files, configuration, and known issues. The spec is the agent's complete mandate.
+An agent job's complete mandate is the procedure its `job` pointer names. There is no
+separate job document: the procedure carries the workflow, and its required-read closure
+carries the run discipline.

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from jobs.base import JobResult
 from teleclaude.config.loader import load_project_config
+from teleclaude.config.schema import job_identity
 from teleclaude.paths import JOBS_DIR, REPO_ROOT, ConfigFileName
 
 
@@ -32,8 +33,11 @@ def handle_jobs(args: list[str]) -> None:
 def handle_jobs_report(args: list[str]) -> None:
     """Write a structured JobResult record for a configured recurring job.
 
-    Usage: telec jobs report <job_name> --success true|false --message <text>
+    Usage: telec jobs report <job_id> --success true|false --message <text>
                              [--items-processed <n>] [--error <text> ...]
+
+    <job_id> is the job's identity: an agent job's procedure snippet ID (the
+    value of its `job:` declaration), or a script job's declared name.
     """
     if "--help" in args or "-h" in args:
         print(handle_jobs_report.__doc__ or "")
@@ -100,7 +104,7 @@ Run 'telec jobs <subcommand> --help' for subcommand-specific help."""
 
 def _parse_job_name(args: list[str]) -> tuple[str, list[str]]:
     if not args or args[0].startswith("-"):
-        print("Error: job_name required", file=sys.stderr)
+        print("Error: job_id required", file=sys.stderr)
         raise SystemExit(1)
     return args[0], args[1:]
 
@@ -135,7 +139,7 @@ def _validate_known_job(job_name: str) -> None:
 
 def _load_known_job_names() -> set[str]:
     config = load_project_config(REPO_ROOT / ConfigFileName.OVERLAY)
-    return set(config.jobs)
+    return {job_identity(name, schedule) for name, schedule in config.jobs.items()}
 
 
 def _contained_runs_dir(job_name: str) -> Path:
@@ -144,7 +148,7 @@ def _contained_runs_dir(job_name: str) -> Path:
     try:
         runs_dir.relative_to(root)
     except ValueError as exc:
-        print("Error: job_name resolves outside the jobs directory", file=sys.stderr)
+        print("Error: job_id resolves outside the jobs directory", file=sys.stderr)
         raise SystemExit(1) from exc
     return runs_dir
 

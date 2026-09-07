@@ -7,9 +7,9 @@ description: Scheduled agent jobs enter the canonical command-session dispatch c
 
 ## What it is
 
-A scheduled agent job starts through the same command-session dispatch contract as every other dispatched command. The scheduler supplies the configured job identity and authoritative job-spec identity to the daemon-owned run boundary; that boundary validates the job declaration, derives the job session, prepares the runtime-specific command input, and creates the session with the job-runner role. Session bootstrap then issues the job session's system-principal credential through the standard identity lifecycle.
+A scheduled agent job starts through the same command-session dispatch contract as every other dispatched command. The scheduler supplies the job's identity — the procedure snippet ID its declaration points at — to the daemon-owned run boundary; that boundary finds the declaration carrying that pointer, derives the job session, prepares the runtime-specific command input, and creates the session with the job-runner role. Session bootstrap then issues the job session's system-principal credential through the standard identity lifecycle.
 
-Job configuration remains owned by the configuration context. A scheduler cannot redefine the configured agent, thinking mode, job specification, or role through an alternate creation contract.
+Job configuration remains owned by the configuration context. A scheduler cannot redefine the configured agent, thinking mode, job procedure, or role through an alternate creation contract.
 
 ## Canonical fields
 
@@ -31,7 +31,7 @@ And session bootstrap issues the session's system-principal credential
 Given a configured agent job is dispatched to any enabled agent runtime
 When the new session receives its first instruction
 Then the instruction is prepared through the shared command-loading mechanism
-And it identifies both the job run and the authoritative job specification
+And it identifies the job by its procedure snippet ID, the value its declaration carries
 And the runtime does not receive an unrecognized native command
 ```
 

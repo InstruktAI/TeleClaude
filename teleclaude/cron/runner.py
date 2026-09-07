@@ -40,8 +40,7 @@ from jobs.base import Job, JobResult
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config as global_config
 from teleclaude.config.loader import load_person_config, load_project_config
-from teleclaude.config.schema import JobScheduleConfig, JobSubscription
-from teleclaude.constants import JOB_SPEC_ID_PREFIX
+from teleclaude.config.schema import JobScheduleConfig, JobSubscription, is_agent_job, job_identity
 from teleclaude.core.models import HumanActionIntent, Session
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -316,10 +315,9 @@ def _release_pidlock() -> None:
         pass
 
 
-def _job_command_args(job_name: str, schedule: JobScheduleConfig | None) -> str:
-    """Build the two config identities the run boundary validates for an agent job."""
-    job_spec = str(schedule.job or "").strip() if schedule else ""
-    return f"{job_name} {JOB_SPEC_ID_PREFIX}{job_spec}"
+def _job_command_args(schedule: JobScheduleConfig) -> str:
+    """The one argument the run boundary validates for an agent job: its procedure snippet ID."""
+    return str(schedule.job or "").strip()
 
 
 def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
@@ -341,7 +339,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
                 computer=computer,
                 project_path=project_path,
                 command=_NEXT_RUN_JOB_COMMAND,
-                args=_job_command_args(job_name, config),
+                args=_job_command_args(config),
             )
             return response.session_id
         except Exception as e:
@@ -388,13 +386,14 @@ def _run_log_bug_hunter_orchestrated() -> bool:
                 return cast(list[Session], dtos)
 
             async def _run_for_project(node: ProjectNode) -> bool:
+                declaration = node.config.jobs[LOG_BUG_HUNTER_JOB]
+
                 async def _create_session(cmd: CreateSessionCommand) -> dict[str, str]:
-                    job_name = cmd.job or LOG_BUG_HUNTER_JOB
                     response = await client.run_session(
                         computer=computer,
                         project_path=cmd.project_path,
                         command=_NEXT_RUN_JOB_COMMAND,
-                        args=_job_command_args(job_name, node.config.jobs.get(job_name)),
+                        args=_job_command_args(declaration),
                     )
                     return {"session_id": response.session_id}
 
@@ -404,6 +403,7 @@ def _run_log_bug_hunter_orchestrated() -> bool:
                     project_root=node.root,
                     project_slug=node.slug,
                     state_path=LOG_BUG_HUNTER_STATE_DIR / f"{node.slug}.json",
+                    job_identity=job_identity(LOG_BUG_HUNTER_JOB, declaration),
                 )
                 return await service.maybe_dispatch()
 
@@ -716,7 +716,7 @@ def _close_reported_agent_runs(
 ) -> None:
     for job_name, job_state in state.iter_open_runs():
         schedule_config = schedules.get(job_name)
-        if not schedule_config or schedule_config.type != "agent" or job_state.run_started_at is None:
+        if not schedule_config or not is_agent_job(schedule_config) or job_state.run_started_at is None:
             continue
         result = _find_reported_result(job_name, job_state.run_started_at, jobs_dir)
         if result is None:
@@ -770,9 +770,11 @@ def _run_due_agent_job(
     state: CronState,
     job_name: str,
     schedule_config: JobScheduleConfig,
+    *,
+    declared_name: str,
 ) -> bool:
     run_started_at = datetime.now(UTC)
-    if job_name == LOG_BUG_HUNTER_JOB:
+    if declared_name == LOG_BUG_HUNTER_JOB:
         state.open_run(job_name, started_at=run_started_at)
         success = _run_log_bug_hunter_orchestrated()
         result = JobResult(success=success, message=f"{job_name} completed" if success else f"{job_name} failed")
@@ -853,7 +855,11 @@ def run_due_jobs(
 
     state = CronState.load()
     script_jobs = discover_jobs()
-    schedules = _load_job_schedules()
+    declared_schedules = _load_job_schedules()
+    # Every job is keyed by its identity from here on: an agent job by its
+    # procedure snippet ID, a script job by its declared name.
+    schedules = {job_identity(name, config): config for name, config in declared_schedules.items()}
+    declared_names = {job_identity(name, config): name for name, config in declared_schedules.items()}
     now = datetime.now(UTC)
     results: dict[str, bool] = {}
 
@@ -868,7 +874,7 @@ def run_due_jobs(
 
     all_job_names: list[str] = [job.name for job in script_jobs]
     for name, config in schedules.items():
-        if config.type == "agent" and name not in script_job_names:
+        if is_agent_job(config) and name not in script_job_names:
             all_job_names.append(name)
 
     logger.info("checking jobs", count=len(all_job_names), force=force, dry_run=dry_run)
@@ -878,7 +884,7 @@ def run_due_jobs(
             continue
 
         schedule_config = schedules.get(job_name)
-        is_agent_job = schedule_config and schedule_config.type == "agent"
+        agent_job = schedule_config is not None and is_agent_job(schedule_config)
 
         if not schedule_config and not force:
             logger.debug("job has no schedule config, skipping", name=job_name)
@@ -908,14 +914,19 @@ def run_due_jobs(
             continue
 
         schedule_name = (schedule_config.schedule or "?") if schedule_config else "forced"
-        logger.info("job due", name=job_name, schedule=schedule_name, type="agent" if is_agent_job else "python")
+        logger.info("job due", name=job_name, schedule=schedule_name, type="agent" if agent_job else "python")
 
         if dry_run:
             results[job_name] = True
             continue
 
-        if is_agent_job and schedule_config is not None:
-            results[job_name] = _run_due_agent_job(state, job_name, schedule_config)
+        if agent_job and schedule_config is not None:
+            results[job_name] = _run_due_agent_job(
+                state,
+                job_name,
+                schedule_config,
+                declared_name=declared_names.get(job_name, job_name),
+            )
             continue
 
         script_job = next((j for j in script_jobs if j.name == job_name), None)

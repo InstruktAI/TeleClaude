@@ -25,10 +25,11 @@ retrieval flow:
    by default. To pull a dependency, the caller re-runs `telec docs get`
    against the listed dependency IDs. Separately, the generated Activatable
    Procedures catalog supplies a hidden one-pass fetch instruction for a
-   delivered activatable procedure; that instruction returns the procedure's
-   eligible transitive required-read closure exactly once. Ordinary retrieval
-   keeps the caller in deliberate control of its context budget and never
-   exposes or activates the hidden form.
+   delivered procedure; that instruction returns the procedure's eligible
+   transitive required-read closure exactly once. A scheduled agent job's
+   startup instruction uses the same one-pass fetch for the procedure its
+   declaration names. Ordinary retrieval keeps the caller in deliberate control
+   of its context budget and never exposes or activates the hidden form.
 
 Role gating runs at phases 1 and 2 against the terminal session's
 resolved identity; the same gate applies to any phase-3 follow-up fetch.
@@ -148,15 +149,16 @@ And a "# Required reads (included)" header names the dependency IDs loaded beyon
 And no "# Required reads (not loaded)" header is emitted
 ```
 
-#### UC-3PR8: The hidden activation option appears only on its two authorized surfaces
+#### UC-3PR8: The hidden activation option appears only on its authorized surfaces
 
 ```
-Given the CLI help, generated CLI documentation, baseline index instructions, default retrieval output, and generated Activatable Procedures catalogs
+Given the CLI help, generated CLI documentation, baseline index instructions, default retrieval output, generated Activatable Procedures catalogs, and the job-runner startup instruction
 When those surfaces are rendered
 Then the hidden activation option appears in the telec docs get leaf-help Notes
 And it appears in the generated Activatable Procedures catalog instruction
+And it appears in the startup instruction a scheduled agent job receives for its procedure
 But it is absent from CLI usage and option listings, generated CLI documentation, baseline index instructions, and default retrieval output
-And using it with multiple requested IDs, a non-activatable snippet, a pending procedure, a third-party document, or a scope, project, or target filter fails before retrieval
+And using it with multiple requested IDs, a snippet that is not a procedure, a pending procedure, a third-party document, or a scope, project, or target filter fails before retrieval
 ```
 
 #### UC-3PR9: Catalog activation distinguishes unreadable from ineligible closure members
@@ -184,7 +186,6 @@ Then documentation retrieval succeeds without requiring a current project
 And the eligible global documentation and documentation published by registered projects are available
 ```
 
-
 ### Cross-context references
 
 - **identity** — the terminal-session role is resolved against the active
@@ -200,9 +201,10 @@ And the eligible global documentation and documentation published by registered 
   ordinary retrieval preserves the caller's context budget, while a generated
   Activatable Procedures catalog supplies the one-pass instruction only at the
   procedure-activation boundary where complete context is required.
-- The catalog activation form accepts exactly one delivered activatable
-  taxonomy procedure and does not compose with scope, project, or target
-  filters. Third-party IDs stay outside Required-reads resolution; a dependency
+- The one-pass activation form accepts exactly one delivered taxonomy
+  procedure and does not compose with scope, project, or target filters. An
+  activation trigger is not required: triggers mark procedures an agent may
+  invoke on its own judgment, while a job procedure is executed by the runner. Third-party IDs stay outside Required-reads resolution; a dependency
   whose visibility excludes the caller's role or whose pending state excludes it
   from the current contract is absent from the included closure.
 - Denied IDs are surfaced rather than hidden. An anonymous caller can confirm

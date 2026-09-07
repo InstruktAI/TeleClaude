@@ -130,6 +130,28 @@ class JobScheduleConfig(BaseModel):
     timeout: int | None = None
 
 
+AGENT_JOB_TYPE: Final = "agent"
+
+
+def is_agent_job(schedule: JobScheduleConfig) -> bool:
+    """An agent job carries a `job` procedure pointer (or the explicit agent type) and no script pointer."""
+    if schedule.script:
+        return False
+    return schedule.type == AGENT_JOB_TYPE or bool(schedule.job)
+
+
+def job_identity(declared_name: str, schedule: JobScheduleConfig) -> str:
+    """The one identity a job carries everywhere it is named.
+
+    An agent job is identified by its `job` procedure snippet ID: dispatch,
+    run state, the run directory, and the structured report all use it. A
+    script job is identified by its declared name.
+    """
+    if is_agent_job(schedule) and schedule.job:
+        return schedule.job.strip()
+    return declared_name
+
+
 PUBLISHES_TRIGGER_MAX_LENGTH: Final = 200
 
 

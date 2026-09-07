@@ -14,17 +14,26 @@ or `job` (a procedure handed to an agent) — with no separate execution-class
 discriminator field. A declaration carries exactly one of the two pointers; a
 declaration carrying both, or neither, fails the config load.
 
+The pointer is the job's identity. A `job` pointer is a procedure snippet ID —
+global-scope, current-project, or slug-prefixed — and it is what dispatch, run
+state, the run directory, and the structured report all use to name an agent
+job; a declaration carries no separate name. A `job` pointer must resolve to a
+delivered procedure snippet at config load; an unknown ID, a non-procedure
+snippet, or a procedure pending for another delivery fails the load naming the
+job and the pointer.
+
 Jobs are declarable at two tiers. A **global job** is declared once in the global
 config's `jobs` registry and is available to every project. A **project** declares
 its own **local jobs** under the project overlay's `jobs` mapping, and turns a
 global job on or off through an **enable overlay** — an entry under the project's
-`jobs` mapping keyed by the global job's name that carries only an `enabled` flag.
-A global job is inactive in a project until that project enables it; a local job
-(a name not present in the global registry) is active wherever it is declared.
+`jobs` mapping carrying the global job's execution pointer and only an `enabled`
+flag. A global job is inactive in a project until that project enables it; a local
+job (a pointer not present in the global registry) is active wherever it is
+declared.
 
 The enable overlay may only toggle a global job on or off. An overlay entry whose
-name collides with a global job but carries any identity-bearing field (a pointer,
-a schedule, or an execution setting) is an attempt to redefine the global job and
+pointer matches a global job but carries any other identity-bearing field (a
+schedule or an execution setting) is an attempt to redefine the global job and
 fails the config load — a project can enable or disable a global job, never
 reshape it.
 
@@ -95,7 +104,7 @@ Then the global job is NOT in the project's effective job set
 
 ```
 Given a job declared under the global config `jobs` registry
-And the project overlay carries a `jobs` entry of the same name with enabled = true and no other field
+And the project overlay carries a `jobs` entry with the same execution pointer, enabled = true, and no other field
 When the effective job set for the project is composed
 Then the global job IS in the project's effective job set
 And it runs with the global declaration's pointer and schedule
@@ -105,7 +114,7 @@ And it runs with the global declaration's pointer and schedule
 
 ```
 Given a global job that the project would otherwise run
-And the project overlay carries a `jobs` entry of the same name with enabled = false
+And the project overlay carries a `jobs` entry with the same execution pointer and enabled = false
 When the effective job set for the project is composed
 Then the global job is NOT in the project's effective job set
 ```
@@ -114,7 +123,7 @@ Then the global job is NOT in the project's effective job set
 
 ```
 Given a job declared under the global config `jobs` registry
-And the project overlay carries a `jobs` entry of the same name that also carries an identity-bearing field (a pointer, a schedule, or an execution setting)
+And the project overlay carries a `jobs` entry with the same execution pointer that also carries another identity-bearing field (a schedule or an execution setting)
 When the config is loaded
 Then the load fails with an error naming the job
 And the global job's identity is never overridden by the project entry
@@ -123,11 +132,20 @@ And the global job's identity is never overridden by the project entry
 #### UC-JDM-9: Local job declared by a project
 
 ```
-Given a project overlay `jobs` entry whose name is NOT present in the global registry
+Given a project overlay `jobs` entry whose execution pointer is NOT declared in the global registry
 And the entry carries exactly one pointer and a `when` schedule
 When the config is loaded
 Then the declaration is accepted as a local job
 And it is in the project's effective job set without any global registration
+```
+
+#### UC-JDM-11: Job pointer must resolve to a delivered procedure
+
+```
+Given a job declaration whose `job` pointer names an unknown snippet ID, a snippet that is not a procedure, or a procedure pending for another delivery
+When the config is loaded
+Then the load fails with an error naming the job and the pointer
+And no agent session can be dispatched for it
 ```
 
 #### UC-JDM-10: Removed field does not drive behavior
@@ -148,7 +166,7 @@ And the failure identifies the removed field's path
 
 - The enable overlay reuses the project overlay's `jobs` mapping rather than a
   separate surface, so cross-project consumers that ask "which projects carry job
-  X" continue to find an enabled global job by its presence under the project's
+  X" find an enabled global job by its execution pointer under the project's
   `jobs` mapping.
 - A global job runs in a project only on explicit opt-in; there is no
   enabled-everywhere default.

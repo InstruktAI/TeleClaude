@@ -36,6 +36,10 @@ LOG_BUG_HUNTER_JOB = "log_bug_hunter"
 LOG_BUG_HUNTER_LOG_WINDOW = "1h"
 LOG_BUG_HUNTER_AGENT = "codex"
 LOG_BUG_HUNTER_THINKING_MODE = "fast"
+_JOB_STARTUP_MESSAGE_TEMPLATE = (
+    "You are the job runner for `{job_identity}`. Candidate daemon error signals were detected in the "
+    "last hour. Run `telec docs get {job_identity} --closure` and follow it as your complete instruction set."
+)
 
 _CANDIDATE_ERROR_SIGNAL_RE = re.compile(
     r"(?:\bERROR\b|\bCRITICAL\b|\bFATAL\b|\bEXCEPTION\b|Traceback \(most recent call last\):|\bcrashed\b)",
@@ -106,12 +110,16 @@ class LogBugHunterService:
         project_root: Path,
         project_slug: str,
         state_path: Path,
+        job_identity: str,
     ) -> None:
         self._create_session = create_session
         self._list_active_sessions = list_active_sessions
         self._project_root = project_root
         self._project_slug = project_slug
         self._state_path = state_path
+        # The procedure snippet ID the project's declaration points at: the
+        # identity a dispatched session carries and the report key it uses.
+        self._job_identity = job_identity
         self._state = self._load_state()
         # The ledger path is derived from the project slug, never injected, so the
         # daemon reader and the ``telec bugs`` CLI writer resolve the identical file
@@ -228,7 +236,7 @@ class LogBugHunterService:
         sessions = await self._list_active_sessions()
         project_root_str = str(self._project_root)
         return any(
-            (session.job or "").strip() == LOG_BUG_HUNTER_JOB and (session.project_path or "") == project_root_str
+            (session.job or "").strip() == self._job_identity and (session.project_path or "") == project_root_str
             for session in sessions
         )
 
@@ -241,14 +249,11 @@ class LogBugHunterService:
                     kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                     agent=LOG_BUG_HUNTER_AGENT,
                     thinking_mode=LOG_BUG_HUNTER_THINKING_MODE,
-                    message=(
-                        "You are running the log_bug_hunter job. Candidate daemon error signals were detected "
-                        "in the last hour. Read @docs/project/spec/jobs/log-bug-hunter.md for your full instructions."
-                    ),
+                    message=_JOB_STARTUP_MESSAGE_TEMPLATE.format(job_identity=self._job_identity),
                     dispatch_mode=AgentDispatchMode.FIXED,
                 ),
                 system_role=ROLE_JOB_RUNNER,
-                job=LOG_BUG_HUNTER_JOB,
+                job=self._job_identity,
                 entry_point=SessionEntryPoint.CRON,
             )
         )

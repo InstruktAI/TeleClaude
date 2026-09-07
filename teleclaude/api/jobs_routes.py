@@ -9,6 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import JobDTO
+from teleclaude.config.schema import is_agent_job, job_identity
 from teleclaude.cron import runner as cron_runner_module
 from teleclaude.cron import state as cron_state_module
 from teleclaude.paths import REPO_ROOT
@@ -30,9 +31,11 @@ async def list_jobs() -> list[JobDTO]:
 
             results: list[JobDTO] = []
             python_job_names = {job.name for job in python_jobs}
-            agent_job_names = [
-                name for name, cfg in schedules.items() if cfg.type == "agent" and name not in python_job_names
-            ]
+            agent_jobs = {
+                job_identity(name, cfg): cfg
+                for name, cfg in schedules.items()
+                if is_agent_job(cfg) and name not in python_job_names
+            }
 
             # Process Python (script) jobs
             for job in python_jobs:
@@ -51,9 +54,8 @@ async def list_jobs() -> list[JobDTO]:
                 )
 
             # Process Agent jobs
-            for name in agent_job_names:
+            for name, sched in agent_jobs.items():
                 job_state = state.get_job(name)
-                sched = schedules[name]
                 schedule_str = sched.schedule if sched.schedule else None
                 last_run_ts = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else None
                 results.append(
@@ -91,7 +93,7 @@ def _spawn_cron_runner(name: str) -> None:
     )
 
 
-@router.post("/{name}/run", status_code=202)
+@router.post("/{name:path}/run", status_code=202)
 async def run_job(name: str) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Run a scheduled job immediately (fire-and-forget)."""
     try:

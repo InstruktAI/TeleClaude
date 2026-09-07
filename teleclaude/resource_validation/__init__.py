@@ -18,7 +18,8 @@ import frontmatter
 import yaml
 from pydantic import ValidationError
 
-from teleclaude.config.schema import JobWhenConfig
+from teleclaude.config.schema import AGENT_JOB_TYPE, JobWhenConfig
+from teleclaude.context_selector import resolve_snippet_meta
 from teleclaude.global_skills import collect_global_skills
 from teleclaude.paths import ConfigFileName
 from teleclaude.resource_validation._models import (
@@ -500,8 +501,7 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
     return errors
 
 
-def _job_slug_to_spec_filename(job_slug: str) -> str:
-    return f"{job_slug.replace('_', '-')}.md"
+_PROCEDURE_TAXONOMY = "procedure"
 
 
 def _validate_job_when_or_schedule(
@@ -557,7 +557,9 @@ def _validate_job_execution_target(
     project_root: Path,
 ) -> list[str]:
     errors: list[str] = []
-    is_agent = str(job_cfg.get("type", "")) == "agent"
+    script_ref = job_cfg.get("script")
+    has_script = isinstance(script_ref, str) and bool(script_ref.strip())
+    is_agent = not has_script and (str(job_cfg.get("type", "")) == AGENT_JOB_TYPE or "job" in job_cfg)
     if is_agent:
         if "message" in job_cfg:
             errors.append(f"{config_path}: jobs.{name}.message is not allowed for agent jobs")
@@ -565,13 +567,16 @@ def _validate_job_execution_target(
         if not isinstance(job_ref, str) or not job_ref.strip():
             errors.append(f"{config_path}: jobs.{name}.job is required for agent jobs")
             return errors
-        spec_file = project_root / "docs" / "project" / "spec" / "jobs" / _job_slug_to_spec_filename(job_ref)
-        if not spec_file.exists():
-            errors.append(f"{config_path}: jobs.{name}.job references missing spec {spec_file}")
+        procedure = resolve_snippet_meta(job_ref, project_root=project_root)
+        if procedure is None:
+            errors.append(f"{config_path}: jobs.{name}.job names unknown snippet {job_ref}")
+        elif procedure.snippet_type != _PROCEDURE_TAXONOMY:
+            errors.append(f"{config_path}: jobs.{name}.job must name a procedure snippet, not {procedure.snippet_type}")
+        elif procedure.delivered_by:
+            errors.append(f"{config_path}: jobs.{name}.job names a pending procedure {job_ref}")
         return errors
 
-    script_ref = job_cfg.get("script")
-    if isinstance(script_ref, str) and script_ref.strip():
+    if has_script:
         return errors
     python_module_path = project_root / "jobs" / f"{name}.py"
     if not python_module_path.exists():
