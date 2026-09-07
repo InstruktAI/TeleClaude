@@ -143,11 +143,9 @@ traces are never surfaced as control flow.
 - Changing argument order or required flags is a breaking change.
 - Adding a subcommand is a feature addition.
 - Description-only changes are patches.
-<!-- planned:unify-cli-flag-parsing -->
 - Every command recognizes exactly the options its usage line and option list
   declare, including every declared short alias. An undeclared option is
   rejected with that command's usage and a non-zero exit status; `--` ends
   option parsing; `--option=value` is accepted for value-taking options.
   Historical conversation search is the one command that accepts undeclared
   dash-leading tokens, as search text.
-<!-- /planned:unify-cli-flag-parsing -->
