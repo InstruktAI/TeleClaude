@@ -200,6 +200,36 @@ _log_block() {
     fi
 }
 
+# Shared knowledge: which git global options consume the following argument
+# and which are fully self-contained. Both the subcommand-detection parser
+# below (which needs -C's value as a directory) and the local-`main` ref
+# scanner further down (which must not mistake a global option's value for a
+# ref) consult this single definition, so the two lists cannot diverge.
+# Sets _global_opt_result to:
+#   capture-C — the token is -C; the caller consumes the next argument as the
+#               effective directory.
+#   skip      — the token is -c/--git-dir/--work-tree/--namespace; the caller
+#               consumes the next argument with no other action.
+#   self      — the token is a =-joined or attached-form global option; no
+#               following argument is consumed.
+#   (empty)   — the token is not one of these global options.
+_classify_global_opt() {
+    case "$1" in
+        -C)
+            _global_opt_result="capture-C"
+            ;;
+        -c|--git-dir|--work-tree|--namespace)
+            _global_opt_result="skip"
+            ;;
+        --git-dir=*|--work-tree=*|--namespace=*|-c*)
+            _global_opt_result="self"
+            ;;
+        *)
+            _global_opt_result=""
+            ;;
+    esac
+}
+
 # ── Parse git subcommand and -C args ─────────────────────────────────────────
 _subcmd=""
 _skip_next=0
@@ -216,16 +246,18 @@ for _arg in "$@"; do
         _skip_next=0
         continue
     fi
+    _classify_global_opt "$_arg"
+    if [ "$_global_opt_result" = "capture-C" ]; then
+        _capture_C=1
+        _skip_next=1
+        continue
+    elif [ "$_global_opt_result" = "skip" ]; then
+        _skip_next=1
+        continue
+    elif [ "$_global_opt_result" = "self" ]; then
+        continue
+    fi
     case "$_arg" in
-        -C)
-            _capture_C=1
-            _skip_next=1
-            ;;
-        -c|--git-dir|--work-tree|--namespace)
-            _skip_next=1
-            ;;
-        --git-dir=*|--work-tree=*|--namespace=*|-c*)
-            ;;
         --bare|--no-pager|--paginate|--no-replace-objects|--literal-pathspecs|--glob-pathspecs|--no-optional-locks)
             ;;
         -*)
@@ -342,6 +374,153 @@ done
 if [ -n "$_human_role" ] && [ "$_role" = "" ]; then
     _real_git "$@"
     exit $?
+fi
+
+# ── Detect effective working tree: integration vs. slug vs. neither ─────────
+# Hoisted ahead of every code-gated subcommand handler (destructive ops,
+# reset, revert, checkout/restore --confirmed, replay, push) so no early-exit
+# path below can reach `_real_git` without first passing the local-`main`
+# ref gate that follows. Resolve from any `-C <dir>` args first so
+# `git -C trees/<slug> ...` invoked from outside cannot bypass either gate.
+# Fall back to $PWD only if git can't resolve a tree. Reuse the toplevel
+# already resolved by the registration gate above (we only reach here when it
+# was non-empty and carried a teleclaude.yml).
+_effective_wt="${_toplevel:-}"
+[ -z "$_effective_wt" ] && _effective_wt="$PWD"
+case "$_effective_wt" in
+    */trees/_integration|*/trees/_integration/*)
+        _in_integration_wt=1
+        _in_slug_wt=0
+        ;;
+    */trees/*)
+        _in_integration_wt=0
+        _in_slug_wt=1
+        ;;
+    *)
+        _in_integration_wt=0
+        _in_slug_wt=0
+        ;;
+esac
+
+# A single token's exact-string check against the bare local-`main` forms.
+# Kept apart from the scan below so the two-/three-dot range check can apply
+# it to each endpoint without duplicating the form list.
+_is_local_main_form() {
+    case "$1" in
+        main|heads/main|refs/heads/main|^main)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Ref-position argument scan: does any argument before a literal `--` name
+# local `main`? Declared once so the token forms live in one place and the
+# diagnostic can echo back what matched. Consults the same
+# `_classify_global_opt` the subcommand parser above uses, so a global
+# option's value is never mistaken for a ref by one scanner and not the other.
+_names_local_main() {
+    local _arg
+    local _skip_next=0
+    local _capture_C=0
+    local _val
+    local _left
+    local _right
+    for _arg in "$@"; do
+        if [ "$_capture_C" -eq 1 ]; then
+            _capture_C=0
+            _skip_next=0
+            continue
+        fi
+        if [ "$_skip_next" -eq 1 ]; then
+            _skip_next=0
+            continue
+        fi
+        if [ "$_arg" = "--" ]; then
+            return 1
+        fi
+        _classify_global_opt "$_arg"
+        if [ "$_global_opt_result" = "capture-C" ]; then
+            _capture_C=1
+            _skip_next=1
+            continue
+        elif [ "$_global_opt_result" = "skip" ]; then
+            _skip_next=1
+            continue
+        elif [ "$_global_opt_result" = "self" ]; then
+            continue
+        fi
+        case "$_arg" in
+            --source=*)
+                _val="${_arg#--source=}"
+                if _is_local_main_form "$_val"; then
+                    _names_local_main_match="$_arg"
+                    return 0
+                fi
+                continue
+                ;;
+            --onto=*)
+                _val="${_arg#--onto=}"
+                if _is_local_main_form "$_val"; then
+                    _names_local_main_match="$_arg"
+                    return 0
+                fi
+                continue
+                ;;
+        esac
+        if _is_local_main_form "$_arg"; then
+            _names_local_main_match="$_arg"
+            return 0
+        fi
+        case "$_arg" in
+            *..*)
+                _left="${_arg%%..*}"
+                _right="${_arg##*..}"
+                if _is_local_main_form "$_left" || _is_local_main_form "$_right"; then
+                    _names_local_main_match="$_arg"
+                    return 0
+                fi
+                ;;
+        esac
+    done
+    return 1
+}
+
+# ── Slug worktree: origin/main is the only baseline ──────────────────────────
+# A slug worktree (trees/<slug>, never trees/_integration) never has a
+# legitimate reason to name local main, read-only inspection included. The
+# replay gate below keys on the branch stood on, not the ref named, so a
+# manual `git merge main` from inside a slug worktree passes it silently and
+# can carry unpushed local-main ancestry into a candidate's branch — the gap
+# this gate closes. No --confirmed form, no override variable: placed ahead
+# of every code-gated subcommand handler (including their own --confirmed
+# early exits) so nothing below can reach git without passing this scan
+# first. A pathspec after `--` is never inspected.
+#
+# `fetch` is exempt from the scan itself, not from the invariant: every
+# positional argument after the remote name is a refspec whose source side
+# resolves against that named remote, never against a local ref, so a bare
+# `main` in `git fetch origin main` (the sanctioned pre-dispatch/pre-review
+# sync's first half) already names origin's main, not local main.
+if [ "$_code_enabled" -eq 1 ] && [ "$_in_slug_wt" -eq 1 ] && [ "$_subcmd" != "fetch" ] && _names_local_main "$@"; then
+    _log_block local_main_ref_in_slug_worktree
+    cat >&2 <<MSG
+ERROR: '$_names_local_main_match' names local main from inside a slug worktree.
+
+A slug worktree's only baseline is origin/main. Local main can carry commits
+from other sessions that have not reached origin/main yet; reading or
+merging it here produces answers wrong relative to the baseline this branch
+is squashed onto at integration.
+
+Rerun against the baseline instead, e.g.:
+  git $_subcmd ... origin/main ...
+
+To pass "main" as a literal option value rather than a ref, use the =-joined
+form (e.g. --grep=main) instead of a separate argument.
+MSG
+    exit 1
 fi
 
 # ── CODE: destructive operations blocked for all roles, no override ─────────
@@ -465,28 +644,6 @@ MSG
         exit 1
     fi
 fi
-
-# ── Detect integration worktree by effective git working tree ───────────────
-# The integration worktree's index and working tree are owned by the
-# integration state machine. Its DELIVERY_BOOKKEEPING step commits whatever
-# is staged with no path filter, so any mutation introduced from outside the
-# state machine can produce a delivery-reverting commit on origin/main.
-#
-# Resolve the effective working tree from any `-C <dir>` args first so
-# `git -C trees/_integration restore ...` invoked from outside cannot bypass
-# the integration gate. Fall back to $PWD only if git can't resolve a tree.
-# Reuse the toplevel already resolved by the registration gate above (we only
-# reach here when it was non-empty and carried a teleclaude.yml).
-_effective_wt="${_toplevel:-}"
-[ -z "$_effective_wt" ] && _effective_wt="$PWD"
-case "$_effective_wt" in
-    */trees/_integration|*/trees/_integration/*)
-        _in_integration_wt=1
-        ;;
-    *)
-        _in_integration_wt=0
-        ;;
-esac
 
 # ── DESTRUCTIVE: stash blocked unconditionally ───────────────────────────────
 # Stash captures every dirty file in the worktree it runs in — there is no
