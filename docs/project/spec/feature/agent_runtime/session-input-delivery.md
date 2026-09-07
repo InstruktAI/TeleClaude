@@ -13,16 +13,12 @@ visibility: 'public'
 
 The write-side surface that lets operators, orchestrators, and other agents inject input into a running agent session. Two entry shapes share the same host-pane primitive layer:
 
-<!-- planned-change:codex-revival-input-readiness-cycle -->
-- **Structured message** — the agent_runtime service resolves the target session, wraps every session-originated payload with a caller-origin identity header, enqueues a `message` command through the command service, and delivers active-agent text through prompt-state user-turn delivery. This is the path the CLI uses for `telec sessions send`. Sessions without an active agent, and headless adoption paths that must recreate a host pane before delivery, use the lower-level paste-buffer primitive directly.
-<!-- change:codex-revival-input-readiness-cycle -->
 - **Structured message** — the agent_runtime service resolves the target session,
   preserves caller identity and durable typed acceptance, and delivers agent text
   through the shared occupancy-aware input surface. This includes first input
   after launch and the conversational message that triggers headless adoption.
   Sessions without an agent use the lower-level pane primitive directly;
   adoption uses that primitive for shell and runtime launch only.
-<!-- /planned-change:codex-revival-input-readiness-cycle -->
 
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
@@ -30,7 +26,6 @@ Both paths use the host-pane orchestration layer's paste/key primitives. Raw key
 
 ## Canonical fields
 
-<!-- planned:codex-revival-input-readiness-cycle -->
 ### Startup readiness and lifecycle authority
 
 Human pane inspection, automated input readiness, and runtime lifecycle
@@ -66,30 +61,9 @@ ordinary colored human text during occupancy observation.
 Accepted messages retain their original occurrence and ordering. A readiness
 wait does not authorize a duplicate resend, a new session, or a synthetic
 lifecycle transition. Recovery follows UC-SID6.
-<!-- /planned:codex-revival-input-readiness-cycle -->
 
 ### Use cases
 
-<!-- planned-change:codex-revival-input-readiness-cycle -->
-#### Structured message — happy path
-
-```
-Given an authenticated caller sends a message to a session with text payload
-And the target session exists, is not closed or closing, and has a host pane attached
-When the agent_runtime service handles the request
-Then the target session is loaded from durable storage
-And base message metadata is built
-And an origin-wrapping step prepends a caller-origin identity header whenever the send is session-originated (the caller carries a session id) — the caller's real machine role when its session resolves one, otherwise an agent header naming the caller's active agent and session
-And a send with no caller session id is genuine human direct input and is delivered unwrapped
-And the request is dispatched as a "message" command through the command mapper and command service
-And when the target session has an active agent, the command path invokes prompt-state user-turn delivery
-And prompt-state user-turn delivery inspects only whether the composer contains any input
-And an empty composer receives the text through the ordinary paste-and-submit primitive
-And an occupied composer receives exactly two newlines followed by the complete text without Enter
-And when the target session has no active agent or requires headless adoption, the command path invokes the lower-level host-pane key-injection primitive
-And the service returns a successful work-mode send response
-```
-<!-- change:codex-revival-input-readiness-cycle -->
 #### Structured message — happy path
 
 ```gherkin
@@ -105,7 +79,6 @@ And its non-composer or ambiguous surface receives no input
 And these rules also govern the conversational message that triggered adoption of a headless agent
 And a session running no agent uses its ordinary terminal-input path
 ```
-<!-- /planned-change:codex-revival-input-readiness-cycle -->
 
 #### Raw keys — happy path
 
@@ -314,7 +287,6 @@ And the target session remains available for inspection or recovery
 And the message is not represented as delivered
 ```
 
-<!-- planned:codex-revival-input-readiness-cycle -->
 #### UC-SID14: First input does not wait for a start signal that requires that input
 
 ```gherkin
@@ -327,7 +299,6 @@ And delivery does not wait for lifecycle activation
 And pane readiness and submission do not themselves mark the child active
 And the child becomes active only from its declared runtime-start observation
 ```
-<!-- /planned:codex-revival-input-readiness-cycle -->
 
 ### Cross-context references
 
