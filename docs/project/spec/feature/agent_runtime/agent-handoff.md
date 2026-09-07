@@ -72,15 +72,14 @@ Then the request is refused before any process is terminated
 And the session's agent, lifecycle state, and host pane are exactly as they were
 ```
 
-#### UC-AH6: An explicit successor is honored or refused, never substituted
+#### UC-AH6: An explicit successor follows the dispatch contract
 
 ```gherkin
-Given an agent caller asks for a restart with a handoff and names a successor
-When the named agent is known, enabled, and not operator-unavailable
-Then that agent is the successor
-When the named agent is unknown, disabled, or operator-unavailable
-Then the request is refused before any process is terminated
-And no other agent is substituted
+Given a caller asks for a restart with a handoff and names a successor
+When the service resolves the successor
+Then the named agent is subject to the same explicit-agent rules the dispatch contract applies to a fresh session for that caller, with the current agent excluded
+And the outcome is that agent or a refusal before any process is terminated
+And the caller is told the result
 When the named agent is the session's current agent
 Then the request is refused before any process is terminated
 And the session keeps its native resume, which the plain restart verb continues to honor
