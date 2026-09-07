@@ -108,6 +108,8 @@ Derivation rules:
 
 <!-- /planned-change:capability-state-read-from-declaration -->
 
+<!-- planned-change:capability-state-read-from-declaration -->
+
 - A capability toggle never edits, removes from, or truncates a file the project
   tracks. The only capability plumbing in the project's tracked tree is the
   `.gitattributes` docs-filter line, written once — additively, at onboard, with
@@ -125,6 +127,30 @@ Derivation rules:
   rather than overwriting it. After onboard, a toggle rewrites only
   TeleClaude-owned git-directory state — a marker, the filter driver — never the
   project's files.
+
+<!-- change:capability-state-read-from-declaration -->
+
+- A capability toggle never edits, removes from, or truncates a file the project
+  tracks. The only capability plumbing in the project's tracked tree is the
+  `.gitattributes` docs-filter line, written once — additively, at onboard, with
+  the human in the loop — and never touched again. Enabling or disabling `docs`
+  toggles the filter driver in `.git/config` (TeleClaude's own, untracked); with
+  the driver absent the `.gitattributes` line is inert, because git treats a
+  filter attribute whose driver is undefined as a no-op. The driver is reconciled
+  from the declaration (present iff `docs`) on the same mutating `telec sync` path
+  that refreshes the TeleClaude-owned hooks of a `code`-subscribing project;
+  `--skip-deploy` leaves both untouched. The safety guarantee — TeleClaude never
+  rewrites a project-owned file on a toggle — holds by construction, not by a
+  runtime guard.
+- Onboard is the one-time additive install: it writes the `.gitattributes` line,
+  installs the git hooks under the git directory, and configures the filter
+  driver. It preserves any hook the project already authored rather than
+  overwriting it. After onboard, a toggle takes effect on the plumbing's next
+  invocation because the plumbing reads the declaration itself; a mutating
+  `telec sync` separately refreshes the TeleClaude-owned hooks and reconciles the
+  filter driver. Neither path ever rewrites a project-tracked file.
+
+<!-- /planned-change:capability-state-read-from-declaration -->
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
   non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
   or reads anything for it, and it is left byte-for-byte untouched. The sole
