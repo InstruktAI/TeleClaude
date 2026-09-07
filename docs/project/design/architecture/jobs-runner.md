@@ -113,10 +113,17 @@ event on close or stall through `EventProducer`; the notification cartridge proj
 actionable event (failure or stall) to admins and stays silent for a clean run. The agent
 never emits events — it reports only through `telec jobs report`, and the runner owns the
 translation to events. When event emission cannot be delivered, the runner persists a
+<!-- planned-change:generic-job-declarative-model -->
 durable pending-emission record — the full payload keyed by `job_name` + `run_started_at` —
 and the next sweep drains the queue, re-emitting each outcome exactly once until it
 succeeds. A job with an unnotified actionable outcome is not re-dispatched, so a later run
 cannot overwrite a notification that has not yet been delivered.
+<!-- change:generic-job-declarative-model -->
+durable pending-emission record — the full payload keyed by the run's project, job identity,
+and `run_started_at` — and the next sweep drains the queue, re-emitting each outcome exactly
+once until it succeeds. A job with an unnotified actionable outcome is not re-dispatched in
+that project, so a later run cannot overwrite a notification that has not yet been delivered.
+<!-- /planned-change:generic-job-declarative-model -->
 
 #### Components
 
@@ -405,9 +412,18 @@ every project that subscribes to it.
 - `last_status`: `"running"` | `"success"` | `"failed"` | `"stalled"` | `"never"`.
 - `last_error`: error or stall message, or null.
 
+<!-- planned-change:generic-job-declarative-model -->
 A separate `pending_emissions` collection holds undelivered actionable outcomes, each keyed
 by `job_name` + `run_started_at` and carrying its full event payload, so a notification
 survives a transport outage independent of later run state.
+<!-- change:generic-job-declarative-model -->
+A separate `pending_emissions` collection holds undelivered actionable outcomes, each keyed
+by the run's project, job identity, and `run_started_at`, and carrying its full event
+payload, so a notification survives a transport outage independent of later run state. The
+payload carries `job_key` — the project and identity joined — which is the field the
+notification lifecycle groups an outcome under, so two projects running one published job
+keep separate notification lifecycles.
+<!-- /planned-change:generic-job-declarative-model -->
 
 ## Failure modes
 
