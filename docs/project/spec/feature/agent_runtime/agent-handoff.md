@@ -77,9 +77,9 @@ And the session's agent, lifecycle state, and host pane are exactly as they were
 ```gherkin
 Given a caller asks for a restart with a handoff and names a successor
 When the service resolves the successor
-Then the named agent is subject to the same explicit-agent rules the dispatch contract applies to a fresh session for that caller, with the current agent excluded
-And the outcome is that agent or a refusal before any process is terminated
-And the caller is told the result
+Then the successor is whatever the dispatch contract's explicit-agent rules yield for that caller with the current agent excluded, including that contract's own fallback and refusal behavior
+And no process is terminated before selection settles
+And the caller is told the selected successor
 When the named agent is the session's current agent
 Then the request is refused before any process is terminated
 And the session keeps its native resume, which the plain restart verb continues to honor
