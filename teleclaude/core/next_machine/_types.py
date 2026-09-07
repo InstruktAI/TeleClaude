@@ -176,8 +176,8 @@ def upstream_keys_for(kind: str | None, state_key: str) -> tuple[str, ...]:
 
 
 REVIEW_DIFF_NOTE = (
-    "Review guard: if `git log --oneline HEAD..main` shows commits, "
-    "diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`."
+    "Review guard: if `git log --oneline HEAD..origin/main` shows commits, "
+    "diff must use merge-base: `git diff $(git merge-base HEAD origin/main)..HEAD`."
 )
 
 
