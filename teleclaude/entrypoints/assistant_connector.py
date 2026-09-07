@@ -32,6 +32,7 @@ _ACCOUNT_FLAG = "--account"
 _SHORT_ACCOUNT_FLAG = "-a"
 _ACCOUNT_ASSIGNMENT_PREFIX = "--account="
 _HELP_FLAGS = frozenset({"--help", "-h"})
+_VERSION_ARGUMENTS = ("--version",)
 _USAGE = "usage: gog --account <declared-address> <command> [arguments]"
 _REFUSAL_PREFIX = "assistant connector refused: "
 _GOOGLE_BINARY_NAME = "gog"
@@ -65,10 +66,21 @@ _BINDING_REFUSAL_REASONS = {
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Resolve managed person ingress and replace this process with an admitted connector."""
+    """Serve help, resolve version metadata without person ingress, or replace this process with an admitted connector."""
     arguments = tuple(sys.argv[1:] if argv is None else argv)
     if _HELP_FLAGS.intersection(arguments):
         print(_USAGE)
+        return 0
+    if arguments == _VERSION_ARGUMENTS:
+        launch_context = _resolve_google_launch_context()
+        if isinstance(launch_context, AssistantConnectorDecision):
+            return _report_refusal(launch_context)
+        # gog is an external binary with no Python binding; process replacement preserves its version output and exit code.
+        os.execve(
+            str(launch_context.binary),
+            (str(launch_context.binary), *_VERSION_ARGUMENTS),
+            launch_context.environment,
+        )
         return 0
     account_address, connector_arguments = _extract_account(arguments)
     binding = _resolve_person_binding(resolve_invocation_cwd())
