@@ -68,6 +68,18 @@ And if no session record is found the processor logs at debug level and returns 
 And the effective transcript_path is taken from the event, falling back to the context's transcript_path
 ```
 
+<!-- planned:mirrors-no-subagents-record-roles -->
+#### Guard: subagent transcripts
+
+```
+Given the resolved transcript_path is one the per-runtime subagent rule recognizes
+When the default processor runs
+Then the processor logs that it skipped a subagent transcript at debug level
+And mirror generation is NOT invoked
+```
+
+<!-- /planned:mirrors-no-subagents-record-roles -->
+
 #### Guard: canonical transcript paths only
 
 ```
@@ -133,10 +145,16 @@ Then it is a no-op (the processor is not added a second time)
 - Older agent-stop payloads may not carry a `transcript_path`. The
   default processor tolerates the absence and falls back to the upstream
   session-record lookup.
+<!-- planned-change:mirrors-no-subagents-record-roles -->
 - Subagent contexts are not filtered here. Whether a context corresponds
   to a subagent (and whether the resulting mirror should be excluded from
   search) is determined by the upstream pipeline that decides what
   arrives at this fanout, not by the mirror processor itself.
+<!-- change:mirrors-no-subagents-record-roles -->
+- The default processor applies the same per-runtime subagent rule that
+  transcript discovery applies, so a subagent transcript that reaches this
+  fanout is skipped before mirror generation rather than mirrored.
+<!-- /planned-change:mirrors-no-subagents-record-roles -->
 - The default processor invokes mirror generation against the canonical
   mirror store and cannot be pointed at an alternate store without
   re-registering.

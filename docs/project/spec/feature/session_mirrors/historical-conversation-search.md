@@ -20,6 +20,7 @@ capability is exposed both through `telec history search` on the command
 line and through the session_mirrors service's search capability that the
 cross-computer federation layer calls.
 
+<!-- planned-change:mirrors-no-subagents-record-roles -->
 The search composes free-text terms (AND-combined), an agent filter
 (`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
 computer filter, and a default exclusion of dispatched-worker mirrors
@@ -28,6 +29,16 @@ too. Which
 commands are workers is read from the lifecycle command-role map, so
 orchestrators, taskers and the integrator stay searchable — they drive
 the work and carry the reasoning a later search is looking for.
+<!-- change:mirrors-no-subagents-record-roles -->
+The search composes free-text terms (AND-combined), an agent filter
+(`claude`, `codex`, `gemini`, comma-separated, or `all`), an optional
+computer filter, and a default exclusion of dispatched-worker mirrors
+(`is_worker = 0`) that a caller opts out of to search worker sessions
+too. Whether a mirror is a worker is the system role its session record
+carries, so orchestrators, taskers and the integrator stay searchable —
+they drive the work and carry the reasoning a later search is looking
+for. Subagent transcripts are never mirrored, so they cannot appear.
+<!-- /planned-change:mirrors-no-subagents-record-roles -->
 Role-scoped access (see
 `role-scoped-history-access`) further constrains visibility before the
 store query runs. Results sort by `timestamp_start` falling back to
@@ -74,6 +85,7 @@ And an unknown agent value is rejected with a validation error referencing the u
 And limit is clamped to the inclusive range [1, 100]
 ```
 
+<!-- planned-change:mirrors-no-subagents-record-roles -->
 #### UC-HCS-4: Dispatched-worker sessions are excluded, driving sessions are not
 
 ```
@@ -95,6 +107,29 @@ When the search is dispatched
 Then the opt-in travels with the relay command like any other filter
 And each peer applies its own role band before returning worker rows
 ```
+<!-- change:mirrors-no-subagents-record-roles -->
+#### UC-HCS-4: Dispatched-worker sessions are excluded, driving sessions are not
+
+```
+Given the mirror store holds human sessions, dispatched-worker mirrors (is_worker = 1), and orchestrator, tasker and integrator mirrors
+When a search executes without the worker opt-in
+Then only mirrors with is_worker = 0 are eligible for results
+And a session whose record carries the worker system role never appears
+And orchestrator, tasker and integrator sessions are eligible like any human session
+And a session with no record, or a record carrying any other role, is eligible rather than excluded
+And the exclusion applies identically to the CLI path and the service search wire path
+
+Given the caller opts in to worker sessions on the local path
+When a search executes
+Then the is_worker predicate is not applied and worker mirrors are eligible alongside every other mirror
+And every other filter — agent, role band, limit — applies unchanged
+
+Given the caller combines the worker opt-in with a remote computer filter
+When the search is dispatched
+Then the opt-in travels with the relay command like any other filter
+And each peer applies its own role band before returning worker rows
+```
+<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
 #### Recency ordering and missing-store tolerance
 
@@ -110,6 +145,7 @@ Then the missing-store condition is swallowed
 And the call returns an empty result set
 ```
 
+<!-- planned-change:mirrors-no-subagents-record-roles -->
 #### UC-HCS-8: A result line states the namespace of the id it prints
 
 ```
@@ -122,6 +158,18 @@ Then the row prints no identifier and is marked as belonging to no addressable s
 And every row carries the full project path, an agent name, and a UTC timestamp to the second
 And a matched snippet is rendered on one line, with newlines replaced by spaces
 ```
+<!-- change:mirrors-no-subagents-record-roles -->
+#### UC-HCS-8: A result line states the namespace of the id it prints
+
+```
+Given a search result for a mirror that has a session record
+Then the row prints that session's TeleClaude id, labelled as such
+Given a search result for a mirror with a session id but no session record
+Then the row prints the agent-native id, labelled as such
+And every row carries the full project path, an agent name, and a UTC timestamp to the second
+And a matched snippet is rendered on one line, with newlines replaced by spaces
+```
+<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
 #### UC-HCS-11: Identity and project filters, inherited from the retired listing verb
 

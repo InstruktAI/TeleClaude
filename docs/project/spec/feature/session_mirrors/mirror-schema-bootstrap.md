@@ -26,6 +26,7 @@ existed get those fields added via best-effort compatibility migrations
 that swallow "field already exists" errors. The `human_email` and
 `is_worker` indexes are also created idempotently.
 
+<!-- planned-change:mirrors-no-subagents-record-roles -->
 Bootstrap also converges an existing store's derived columns, because those
 carry values the current rules compute rather than values anyone authored.
 A store still holding the legacy `is_agent_spawn` column has it renamed to
@@ -37,6 +38,17 @@ rather than re-reading transcripts. Title repair is bounded to commands that
 name a deployed artifact or a mapped lifecycle role, since detection also
 matches pasted paths and prose, and those rows hold a real first-message title
 that rendering would destroy.
+<!-- change:mirrors-no-subagents-record-roles -->
+Bootstrap also converges an existing store's derived columns, because those
+carry values the current rules compute rather than values anyone authored.
+A store still holding the legacy `is_agent_spawn` column has it renamed to
+`is_worker` and the legacy index dropped. Every mirror whose transcript the
+per-runtime subagent rule recognizes, and every mirror whose session id is
+null, is deleted together with its tombstone and unreprojectable entries.
+Every remaining row that has a session record has its `is_worker` set from
+that record's system role; a row with no session record keeps the value it
+was written with, because nothing re-derives it.
+<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
 Convergence is recorded in the store's own schema revision rather than repeated
 per process. Bootstrap reads that revision first and skips the work once it
@@ -88,6 +100,7 @@ And any other migration failure is re-raised
 And a human-email index and an is_worker index are created idempotently
 ```
 
+<!-- planned-change:mirrors-no-subagents-record-roles -->
 #### UC-MSB-3: Existing rows converge on the current derivation rules
 
 ```
@@ -100,6 +113,21 @@ And a row whose recorded command names a deployed artifact or a mapped lifecycle
 And a row whose recorded command names neither keeps its stored title, so a spurious detection never overwrites the human's own words
 And re-running the migration against a converged store performs no further writes
 ```
+<!-- change:mirrors-no-subagents-record-roles -->
+#### UC-MSB-3: Existing rows converge on the session record and shed subagents
+
+```
+Given a store whose rows were written by an older version
+When the compatibility migration runs
+Then a surviving `is_agent_spawn` column is renamed to `is_worker` and the legacy index is dropped
+And a rename attempt against a store that has no such column is swallowed, while any other failure is re-raised
+And every mirror whose transcript the per-runtime subagent rule recognizes is deleted, with its tombstone and unreprojectable entries
+And every mirror whose session id is null is deleted the same way
+And every remaining row with a session record has `is_worker` set to whether that record's system role is worker
+And a row without a session record keeps its stored `is_worker`, command, slug, and title
+And re-running the migration against a converged store performs no further writes
+```
+<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
 #### UC-MSB-4: The revision gate bounds convergence to once per store
 
