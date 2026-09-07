@@ -102,9 +102,10 @@ canonical command name is a bare command token or one domain segment followed
 by a command token; the loader resolves both forms.
 
 Global skills compose to `~/.teleclaude/skills/` and are discovered through the
-catalog the master points at; they reach no runtime home. Tier-local skills
-(`.agents/skills/**`) materialize into the native CLI skill directories at
-their root, because being preloaded is their purpose. Subagent definitions are
+catalog the master points at; they reach no runtime home. Tier-local skills — the
+skill packages a repository authors for its own sessions — materialize into the
+native CLI skill directories at their root, because being preloaded is their
+purpose. Subagent definitions are
 not an artifact class. Beyond tier-local skills, the entrypoint master is the
 only per-agent output, written where each CLI reads it unprompted — for the Antigravity CLI (`agy`) that is the configured
 `context.fileName` (`AGENTS.md`) under `~/.gemini/antigravity-cli/`. The
@@ -199,9 +200,9 @@ Scenario: UC-ARD1 Mother project full sync with deploy
   And local sources from .agents/ deploy to the project root
   And Codex commands deploy to ~/.teleclaude/commands/
 <!-- change:retire-native-artifact-deployment -->
-  Then the entrypoint master from agents/ deploys to each enabled runtime's home
-  And TeleClaude command artifacts from agents/ deploy to ~/.teleclaude/commands/
-  And skill packages compose to ~/.teleclaude/skills/
+  Then the entrypoint master deploys to each enabled runtime's home
+  And the repository's global command artifacts deploy to the global command corpus
+  And global skill packages compose to ~/.teleclaude/skills/
   And no command, global skill, or subagent artifact is written into any runtime home
 <!-- /planned-change:retire-native-artifact-deployment -->
   And AGENTS.override.md is written to the project root for Codex override detection
@@ -219,7 +220,7 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   And Codex commands still route to ~/.teleclaude/commands/
 <!-- change:retire-native-artifact-deployment -->
   Then the global phase produces no agent-home artifact writes
-  And the local phase materializes tier-local skills from .agents/skills/ into the project-root CLI skill directories
+  And the local phase materializes the repository's own skill packages into the project-root CLI skill directories
   And the local phase writes no command artifact and no subagent definition into any runtime home
 <!-- /planned-change:retire-native-artifact-deployment -->
   And each domain the project owns in business.publishes is materialized into the deployed documentation snapshot
@@ -380,10 +381,11 @@ Scenario: UC-ARD33 Both entry points read the corpus through the composed loader
 
 ```
 Scenario: UC-ARD10 Command deployment separates the corpus from runtime artifacts
-  Given TeleClaude command artifacts are present under agents/commands/
+  Given a repository carries global command artifacts for a domain it publishes
   When sync runs in deploy mode
-  Then the command documents are deployed to ~/.teleclaude/commands/
+  Then the command documents are reachable in the global command corpus
   And no per-agent runtime receives any command artifact for them
+  And the corpus receives them once, independent of which runtimes are installed
 ```
 
 #### UC-ARD14: Legacy Gemini runtime locations receive nothing
@@ -394,6 +396,19 @@ Scenario: UC-ARD14 Antigravity is served at its documented layout only
   When sync runs in deploy mode
   Then Antigravity runtime artifacts deploy under ~/.gemini/antigravity-cli/
   And no artifact is written to ~/.gemini/commands/, ~/.gemini/skills/, or ~/.gemini/agents/
+```
+
+#### UC-ARD34: A retired native destination is retracted under the ownership record
+
+```gherkin
+Scenario: UC-ARD34 Retraction removes what the pipeline deployed and keeps what it did not
+  Given a runtime command directory holds the copies this pipeline deployed for a source scope
+  And that directory also holds a file the pipeline never deployed
+  When sync runs in deploy mode
+  Then every copy the scope's ownership record names is removed from that directory
+  And the file carrying no ownership record is left in place
+  And the command corpus is unaffected
+  And a second deploy-mode sync removes nothing further
 ```
 
 <!-- /planned:retire-native-artifact-deployment -->

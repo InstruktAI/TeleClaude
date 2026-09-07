@@ -30,9 +30,9 @@ escape to work around an upstream parser bug.
 Per-agent artifact transpilation is the Sync step that renders validated
 Sources into their deployed form. Two outputs remain per-agent: the
 entrypoint master each CLI reads unprompted, emitted per target in that
-target's expected shape, and tier-local skill packages from `.agents/skills/`,
-rendered per target into the native skill directories because preloading is
-their purpose. Command artifacts normalize into the shared corpus under
+target's expected shape, and the tier-local skill packages a repository authors
+for its own sessions, rendered per target into the native skill directories
+because preloading is their purpose. Command artifacts normalize into the shared corpus under
 `~/.teleclaude/commands/` and global skill packages compose into
 `~/.teleclaude/skills/`; neither produces per-agent runtime output, and
 subagent definitions are not an artifact class at all. Sessions
@@ -59,7 +59,7 @@ Scenario: Claude target receives YAML frontmatter with parameter preamble inject
   And the body's {AGENT_PREFIX} and {{agent}} tokens are substituted with Claude's prefix
   And the transpiled artifact is written under the Claude per-agent output directory
 <!-- change:retire-native-artifact-deployment -->
-Scenario: TeleClaude command source is written to the shared command corpus
+Scenario: UC-PAT3 TeleClaude command source is written to the shared command corpus
   Given a source command artifact with a "parameters" field in its frontmatter
   When the transpiler processes command artifacts for any target set
   Then the frontmatter emitter renders a normalized Markdown command document without the "parameters" field
@@ -112,7 +112,7 @@ Scenario: Gemini command/agent is transpiled to TOML
   And the TOML output is written under Gemini's per-agent output directory
   And skills continue to use the Markdown/YAML path on the same sync invocation
 <!-- change:retire-native-artifact-deployment -->
-Scenario: No target receives a subagent definition; the Gemini target keeps its master and skills only
+Scenario: UC-PAT4 No target receives a subagent definition; the Gemini target keeps its master and skills only
   Given the source tree carries no subagent definitions, because they are not an artifact class
   When the transpiler processes artifacts for the Gemini target
   Then no agent definition is transpiled to TOML or written under any Gemini output directory
@@ -161,10 +161,11 @@ Scenario: An agent synchronizes a skill package with upstream-authored structure
 
 ```gherkin
 Scenario: Per-target skill emission is limited to tier-local packages
-  Given a global skill package under agents/skills/<name>/ and a tier-local skill package under .agents/skills/<name>/
+  Given a repository publishes one global skill package and authors one tier-local skill package for its own sessions
   When sync renders skills for the enabled runtimes
-  Then the tier-local package is emitted under its folder name into each enabled runtime's native skill directory
+  Then the tier-local package is emitted under its folder name into each enabled runtime's native skill directory at that repository's root
   And the global package is composed into the TeleClaude skills home only and is emitted into no runtime's skill directory
+  And neither package is emitted into a runtime's user-global skill directory
   And every other skill-rendering rule applies identically to both packages
 ```
 
