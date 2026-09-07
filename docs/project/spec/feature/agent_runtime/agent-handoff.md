@@ -81,6 +81,9 @@ Then that agent is the successor
 When the named agent is unknown, disabled, or operator-unavailable
 Then the request is refused before any process is terminated
 And no other agent is substituted
+When the named agent is the session's current agent
+Then the request is refused before any process is terminated
+And the session keeps its native resume, which the plain restart verb continues to honor
 ```
 
 #### UC-AH7: The successor is briefed in the ordinary dispatch shape
