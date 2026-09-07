@@ -84,17 +84,27 @@ Derivation rules:
 <!-- change:capability-state-read-from-declaration -->
 
 - The declaration is the only home of capability state. The installed plumbing —
-  the git hooks and the git wrapper — reads the three toggles directly from the
+  the git hooks and the git wrapper — reads the toggles directly from the
   project's `teleclaude.yml`, the same file the runtime resolves, so the shell
-  side holds no copy that can go stale or go missing. There is no projection, no sentinel, and no marker directory, and
-  therefore no legacy state to disambiguate: a declaration that omits a
-  capability block resolves to subscribed, which is the same default the typed
-  overlay applies, so a project onboarded before the manifest keeps today's
-  behavior with no migration. A declaration the shell cannot resolve leaves every
-  capability subscribed — the same fail-open direction the runtime takes — so a
-  read failure can over-enforce but never silently disable enforcement. Because
-  the declaration is a file the project tracks, a clone carries the project's
-  real capability state before any TeleClaude command has run against it.
+  side holds no copy that can go stale or go missing. There is no projection, no
+  sentinel, and no marker directory, and therefore no legacy state to
+  disambiguate. The plumbing reads only what it decides on: the declaration's
+  tier and, for a project declaration, the capability blocks. A capability block
+  that is absent, or present without an `enabled` value, resolves to subscribed,
+  which is the same default the typed overlay applies, so a project onboarded
+  before the manifest keeps today's behavior with no migration. A block whose
+  `enabled` value is an unquoted boolean in a spelling the runtime's YAML parser
+  accepts is honoured as written, in block form or inline form alike. A block
+  whose value the plumbing cannot read as a boolean is refused: the git
+  invocation aborts with a message naming `teleclaude.yml` and the block, and no
+  capability state is substituted for it — the direction the runtime takes for a
+  declaration it cannot read (UC-CFG-CAP-3). The plumbing never falls open and
+  never falls closed on such a block, and it claims nothing about the rest of
+  the file: overlay validation belongs to the runtime. A global or person
+  declaration carries no capability blocks; what the plumbing decides at such a
+  repository root is the seal, per `project/design/code-commit`. Because the
+  declaration is a file the project tracks, a clone carries the project's real
+  capability state before any TeleClaude command has run against it.
 
 <!-- /planned-change:capability-state-read-from-declaration -->
 
@@ -391,6 +401,24 @@ Then its TeleClaude-owned hooks are refreshed to read the declaration
 And a hook the project authored itself is left in place
 ```
 
+#### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
+
+```
+Given a project whose teleclaude.yml carries a code capability block whose enabled value is not a boolean
+When an agent session invokes git inside that project and the installed plumbing resolves its capabilities
+Then the invocation aborts with a message naming teleclaude.yml and the code block
+And no capability state is substituted for the unreadable block
+And no interpreter is spawned to reach that decision
+```
+
+#### UC-CFG-CAP-25: A capability block without an enabled value resolves to subscribed
+
+```
+Given a project whose teleclaude.yml carries a code capability block that declares no enabled value
+When the capabilities are resolved by the runtime or by the installed plumbing
+Then the code capability resolves to subscribed on both readers
+```
+
 <!-- /planned:capability-state-read-from-declaration -->
 
 ## Known caveats
@@ -409,15 +437,14 @@ And a hook the project authored itself is left in place
 
 <!-- planned:capability-state-read-from-declaration -->
 
-- The runtime and the shell plumbing agree on every declaration either can
-  resolve, including one whose capability block carries a non-boolean value —
-  both fall open to all three subscribed there. They part on one input: a
-  declaration that parses, and whose capability blocks are well-formed, but
-  which fails validation elsewhere in the overlay. The runtime discards the
-  whole overlay and resolves all three subscribed; the shell reads only the
-  capability blocks and honours what they declare. The runtime's breadth here
-  exceeds what UC-CFG-CAP-3 describes, and narrowing it is tracked separately
-  from the readers.
+- The runtime and the installed plumbing agree on every declaration whose
+  capability blocks carry unquoted boolean values. They part on two inputs, in
+  opposite directions. A block whose `enabled` value the runtime coerces from a
+  quoted string or a number is refused by the plumbing, which reads only
+  unquoted booleans. A declaration whose capability blocks are well-formed but
+  which fails validation elsewhere in the overlay is refused by the runtime and
+  honoured by the plumbing, which reads only the tier and the capability blocks
+  and claims nothing about the rest of the file.
 
 <!-- /planned:capability-state-read-from-declaration -->
 

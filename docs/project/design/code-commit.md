@@ -106,24 +106,32 @@ keeps its pre-manifest behavior.
 
 <!-- change:capability-state-read-from-declaration -->
 
-The wrapper reads capability state from the project's `teleclaude.yml` — the
-same declaration the runtime resolves — deriving `code ∨ docs` for commit
+The wrapper reads capability state from the repository root's `teleclaude.yml`
+— the same declaration the runtime resolves — deriving `code ∨ docs` for commit
 interception and `code` for worktree and branch discipline. It reads the file
 directly in shell, spawning no interpreter, so the read costs less than
-locating a projected copy would. A declaration whose capability blocks are
-absent leaves every capability subscribed, which is the typed overlay's own
-default, so a project onboarded before the manifest keeps its pre-manifest
-behavior; a declaration the wrapper cannot resolve leaves them subscribed too,
-so a read failure over-enforces rather than silently standing down.
+locating a projected copy would. It reads the declaration's tier first. A
+project declaration carries the capability blocks: a block that is absent, or
+present without an `enabled` value, leaves that capability subscribed, which is
+the typed overlay's own default, so a project onboarded before the manifest
+keeps its pre-manifest behavior; a block carrying an unquoted boolean is
+honoured as written. A global or person declaration carries no subscriptions:
+the repository is sealed on the declaration alone, so the commit-interception
+rows and the main-branch replay and push rows apply there, while the worktree
+and destructive-operation rows follow `code`, which no non-project tier
+carries. A company declaration anchors no context and seals nothing: the
+wrapper execs the real git binary unmodified.
 
-For every declaration the wrapper can resolve — parseable YAML whose capability
-blocks carry boolean values, and equally one whose capability block carries a
-value that is not boolean at all — the wrapper and the runtime answer alike,
-because both fall open to all three on exactly those inputs. The one input they
-read differently is a declaration that parses and whose capability blocks are
-well-formed but which fails validation elsewhere in the overlay: the runtime
-discards the whole overlay and resolves all three subscribed, while the wrapper,
-which reads only the capability blocks, honours what they declare.
+A declaration the wrapper cannot resolve — no readable tier, or a capability
+block whose value is not a boolean — refuses the git invocation with a message
+naming `teleclaude.yml` and the field, and substitutes no capability state. The
+wrapper and the runtime answer alike for every declared tier and for every
+capability block carrying an unquoted boolean. They part on two inputs: a block
+whose value the runtime coerces from a quoted string or a number is refused by
+the wrapper, and a declaration whose capability blocks are well-formed but which
+fails validation elsewhere in the overlay is refused by the runtime and honoured
+by the wrapper, which reads only the tier and the capability blocks
+(`project/spec/feature/config/project-capability-manifest`).
 
 <!-- /planned-change:capability-state-read-from-declaration -->
 
@@ -308,6 +316,8 @@ The pathspec commit is built internally from `workspace scope plus
     owner publishes none carries no such term, and this surface neither
     decides membership nor substitutes an answer in either case.
 
+<!-- planned-change:capability-state-read-from-declaration -->
+
 12. **Config publishes facts at two coordinates; this contract owns both
     decisions.** The tier answers config publishes grant no operation. Seal
     coverage — whether raw git is intercepted anywhere in a checkout — is this
@@ -322,6 +332,25 @@ The pathspec commit is built internally from `workspace scope plus
     parsing: the resolver projects it into the git metadata the wrapper
     already reads through the same mechanism as project capabilities, so the
     shell side cannot disagree with the resolver.
+
+<!-- change:capability-state-read-from-declaration -->
+
+12. **Config publishes facts at two coordinates; this contract owns both
+    decisions.** The tier answers config publishes grant no operation. Seal
+    coverage — whether raw git is intercepted anywhere in a checkout — is this
+    contract's rule, decided from the **repository root's** declared tier,
+    because the seal is a property of the repository and must hold at
+    locations resolving to no context root. Commit availability and gate
+    selection are likewise this contract's rules, decided from the **acting
+    invocation context root's** invocation-context and project-subscription
+    answers; the authority for a non-project context committing at all is the
+    approved product contract, never a permission read off an axis. The
+    wrapper learns the repository root's tier by reading the tier declaration
+    in that root's `teleclaude.yml` — the same field the resolver reads — so
+    the two answer alike for every declared tier, and a root whose declaration
+    carries no readable tier is refused rather than resolved to any tier.
+
+<!-- /planned-change:capability-state-read-from-declaration -->
 
 13. **Inspection and commit consume one payload resolution, with the same
     inputs.** The eligible payload — computed scope bounded per invariant 11,
