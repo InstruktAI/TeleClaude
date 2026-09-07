@@ -76,17 +76,6 @@ And if the target returns an error envelope, an upstream error is surfaced
 And if the target does not respond, a timeout error is surfaced
 ```
 
-<!-- planned-change:codex-revival-input-readiness-cycle -->
-#### UC-SL24: Startup message is submitted after the launch gate
-
-```gherkin
-Given an agent caller creates a fresh child with an initial message delivered after launch
-And the startup gate has opened
-When the bootstrap delivers the initial message
-Then it pastes and submits that message without observing composer occupancy
-And it does not wait for post-paste occupancy or a resulting transcript entry to report submission
-```
-<!-- change:codex-revival-input-readiness-cycle -->
 #### UC-SL24: Startup message is accepted by the live prompt
 
 ```gherkin
@@ -98,11 +87,9 @@ And an occupied composer preserves existing text and appends the message without
 And an ambiguous or non-composer screen receives no input
 And submission does not itself establish lifecycle activation
 ```
-<!-- /planned-change:codex-revival-input-readiness-cycle -->
 
 #### UC-SL25: Startup message enter retries do not re-paste
 
-<!-- planned:codex-revival-input-readiness-cycle -->
 #### UC-SL26: Historical prompt text does not establish startup readiness
 
 ```gherkin
@@ -113,7 +100,6 @@ When startup input readiness is assessed
 Then the historical composer does not establish readiness
 And no message is pasted or submitted on that evidence
 ```
-<!-- /planned:codex-revival-input-readiness-cycle -->
 
 #### Initiator listener registration
 

@@ -198,7 +198,6 @@ And prior output generations remain sealed against new-turn edits
 And pending delivery resumes idempotently from durable state rather than from adapter memory or positional transcript indices
 ```
 
-<!-- planned:codex-revival-input-readiness-cycle -->
 #### UC-SR8: A revived conversation receives its first continuation
 
 ```gherkin
@@ -208,7 +207,6 @@ When the caller sends the first continuation through the platform
 Then the continuation is submitted exactly once to the resumed agent
 And the resumed agent receives the resulting turn in the restored conversation
 ```
-<!-- /planned:codex-revival-input-readiness-cycle -->
 
 ### Cross-context references
 
