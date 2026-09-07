@@ -306,7 +306,6 @@ And the existing no-watcher fallback for known distress is unchanged
 - **integration** — external messaging adapters are NOT a notification destination in the listener system. Notifications deliver exclusively via the listener-message path, which injects into the caller's host pane. Stop fan-out toward external adapters (Telegram, Discord, frontend) flows through separate agent-coordinator / adapter-client paths, not through listener records. The integration boundary is reached via the direct-link mechanism (out of scope) and the broader event-emission paths, not via listener notification.
 - **Direct conversation link (separate spec)** — direct-link creation, member roles, per-link delivery cursors, severing semantics — the bidirectional peered-conversation channel between two (or more) sessions. While an active direct link covers a (caller, target) pair, turn-end notifications for that pair are suppressed at delivery time and distress notifications are not. The unsubscribe verb tears down both planes for the caller against the target. The direct-link contract is documented in its own snippet and intentionally NOT covered here.
 
-<!-- planned:agy-stop-signature-recovery-pointer -->
 #### UC-SS19: A failure or approval-wait observation names its governing recovery contract
 
 ```gherkin
@@ -318,7 +317,6 @@ And classifying the native evidence remains the parent's judgment
 And a neutral notification carries no such pointer
 ```
 
-<!-- /planned:agy-stop-signature-recovery-pointer -->
 
 ## Known caveats
 
