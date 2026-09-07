@@ -74,11 +74,13 @@ Assessment writes the toggles, and that write is the whole of the change: the
 installed plumbing (git hooks, git wrapper) reads the toggles from the
 declaration itself, so a new value takes effect on the next invocation with no
 projection pass to run and nothing that can drift from it. `telec sync`'s
-mutating path still reconciles the docs filter driver (present iff `docs`),
-which is a git mechanism rather than a copy of capability state; disabling a
-capability edits no project-tracked file other than the declaration carrying the
-toggle. The one-time additive install (the `.gitattributes` docs line and the
-hooks) happens at onboard.
+mutating path also reconciles the docs filter driver (present iff `docs`) and
+refreshes the TeleClaude-owned git hooks of a project subscribing `code`, so an
+already-onboarded repository's hooks converge on the declaration-reading source
+on the next sync with no separate pass; a hook the project authored itself is
+left in place. The `.gitattributes` docs line stays a one-time additive install
+at onboard — disabling a capability edits no project-tracked file other than
+the declaration carrying the toggle.
 
 <!-- /planned-change:capability-state-read-from-declaration -->
 
