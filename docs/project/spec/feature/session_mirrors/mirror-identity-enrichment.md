@@ -51,7 +51,7 @@ Then a single session record is looked up where session_id = S OR transcript_pat
 And ties prefer the record whose session_id matches S
 And the returned context exposes
   session_id, computer, agent, project, transcript_path, human_email, visibility,
-  last_input_origin, adapter_metadata, system_role, command, title
+  last_input_origin, adapter_metadata, system_role, command, working_slug, title
 And missing fields map to None or the empty string
 ```
 <!-- /planned-change:mirrors-no-subagents-record-roles -->

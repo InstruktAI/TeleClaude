@@ -95,16 +95,17 @@ And on "no conversation extracted"
   And the candidate is counted as processed
 ```
 
-#### UC-MRL-5: Orphan re-derivation sweep
+#### UC-MRL-5: Orphan sweep marks stale mirrors unreprojectable
 
 ```
-Given mirror rows whose transcript file no longer exists on disk
-And whose derivation_version is older than the current derivation version
+Given mirror rows whose derivation_version is older than the current derivation version
+And whose transcript file no longer exists on disk
 When a reconciliation pass runs the orphan sweep
-Then each such row is re-derived in place from its stored title and conversation_text
-And its title, command, slug, and is_worker are recomputed by the same detection used at extraction
-And the row is never deleted and its transcript is never required
-And its derivation_version is advanced to the current version so the sweep is idempotent
+Then each such row is marked unreprojectable by its source identity
+And the row is never deleted and keeps its stored title, classification, and conversation_text
+And no field of the row is recomputed from its stored text
+And a stale row whose transcript still exists is left to the candidate pass, which re-derives it from the transcript
+And a row already marked is not visited again, so the sweep is idempotent
 ```
 
 #### Failure isolation and counters
@@ -198,8 +199,7 @@ And it is not taken from the final segment of the transcript directory name
 - A failing summary or generator step is counted as `failed` and logged
   with traceback. The corresponding mirror is left in its previous state —
   there is no retry queue.
-- The orphan sweep re-derives from the row's stored rendered
-  `conversation_text`, which is lossier than a live transcript: detection and
-  title derivation parse the rendered "[<ts>] Role: …" blocks rather than the
-  original structured turns. A row whose transcript still exists is re-derived
-  through the full extraction path instead, which is exact.
+- A stale row whose transcript is gone is marked unreprojectable rather than
+  re-derived: the rendered `conversation_text` is lossier than the transcript,
+  so nothing recomputes the row's fields from it. A row whose transcript still
+  exists is re-derived through the full extraction path, which is exact.
