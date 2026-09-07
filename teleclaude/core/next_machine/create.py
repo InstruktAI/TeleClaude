@@ -94,11 +94,11 @@ def _creative_complete(slug: str, live_sessions: list[str]) -> str:
         f"  - design-spec.md: confirmed\n"
         f"  - art/: approved\n"
         f"  - html/: approved\n\n"
+        f"The todo is ready for the prepare phase (`telec todo prepare {slug}`), for whoever "
+        f"claims it next.\n\n"
         f"Execute in order:\n\n"
         f"{cleanup}"
-        f"Arming the reminder above is your final tool action — emit only a brief farewell and yield.\n\n"
-        f"The todo is ready for the prepare phase:\n"
-        f"  telec todo prepare {slug}"
+        f"Arming the reminder above is your final tool action — emit only a brief farewell and yield."
     )
 
 
