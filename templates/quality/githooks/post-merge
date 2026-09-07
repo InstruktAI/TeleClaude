@@ -2,11 +2,20 @@
 # teleclaude: run the post-merge blueprint reconciliation for code projects.
 set -euo pipefail
 
-_git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-_capability_dir="${_git_common_dir}/teleclaude/capabilities"
-if [ -f "$_capability_dir/onboarded" ] && [ ! -f "$_capability_dir/code" ]; then
-    exit 0
+_tc_lib="${TELECLAUDE_HOME:-$HOME/.teleclaude}/bin/teleclaude-capabilities.sh"
+if [ ! -f "$_tc_lib" ]; then
+    echo "ERROR: teleclaude-capabilities.sh not found at $_tc_lib" >&2
+    exit 1
 fi
+# shellcheck disable=SC1090
+source "$_tc_lib"
+
+_tc_toplevel="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+if ! teleclaude_read_declaration "$_tc_toplevel/teleclaude.yml"; then
+    echo "ERROR: $TC_DECL_ERROR" >&2
+    exit 1
+fi
+[ "$TC_DECL_CODE" = "1" ] || exit 0
 
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
@@ -15,7 +24,7 @@ if [ "${TELECLAUDE_INTEGRATOR_GITOP:-}" = "1" ]; then
     exit 0
 fi
 
-REPO_ROOT="${GRAPHIFY_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+REPO_ROOT="${GRAPHIFY_REPO_ROOT:-$_tc_toplevel}"
 export GRAPHIFY_REPO_ROOT="$REPO_ROOT"
 
 if command -v uv >/dev/null 2>&1; then

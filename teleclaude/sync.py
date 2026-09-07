@@ -28,8 +28,8 @@ from teleclaude.global_skills import has_global_skill_contribution
 from teleclaude.paths import REPO_ROOT, ConfigFileName
 from teleclaude.project_manifest import register_root
 from teleclaude.project_root import resolve_project_root
-from teleclaude.project_setup.capability_markers import project_capabilities
 from teleclaude.project_setup.git_filters import ensure_git_filters
+from teleclaude.project_setup.hooks import install_code_hooks
 from teleclaude.resource_validation import (
     _error,
     clear_errors,
@@ -110,7 +110,8 @@ def _sync_locked(
     if skip_deploy:
         return True
 
-    capabilities = project_capabilities(project_root)
+    if capabilities.code:
+        install_code_hooks(project_root)
     ensure_git_filters(project_root, enabled=capabilities.docs)
 
     # Phase 1.5: Register structurally declared publishers into the durable

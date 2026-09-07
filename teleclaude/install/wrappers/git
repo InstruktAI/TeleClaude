@@ -43,11 +43,13 @@
 #   Inside tmux, agent session (system_role set): role-based restrictions.
 #   TELECLAUDE_SYSTEM_ROLE env override: honored only when human_role is present.
 #
-# Installed via `make install` as a symlink at ~/.teleclaude/bin/git.
+# Installed via `make install` as a symlink at ~/.teleclaude/bin/git, beside
+# the teleclaude-capabilities.sh declaration reader it sources.
 #
 # Capability ownership: code gates worktree and replay discipline; code or
-# docs gates sealed staging and commit interception. Projected data-only and
-# agents-only repositories pass through to ordinary git.
+# docs gates sealed staging and commit interception. Capability state is read
+# directly from the repository's own teleclaude.yml (no projection); data-only
+# and agents-only repositories pass through to ordinary git.
 
 set -euo pipefail
 
@@ -246,23 +248,24 @@ if [ -z "$_toplevel" ] || [ ! -f "$_toplevel/teleclaude.yml" ]; then
     exec "$_real_git_bin" "$@"
 fi
 
-# ── Resolve projected capabilities from TeleClaude-owned git metadata ────────
-# The onboarded sentinel distinguishes projected declarations from legacy
-# repositories. Legacy repositories retain the wrapper's pre-manifest behavior;
-# projected repositories opt into only the gates owned by present markers.
-_git_common_dir="$("$_real_git_bin" ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-_capability_dir="${_git_common_dir}/teleclaude/capabilities"
-_sealed_invocation_context=0
-[ -f "$_capability_dir/invocation-context" ] && _sealed_invocation_context=1
-if [ ! -f "$_capability_dir/onboarded" ]; then
-    _code_enabled=1
-    _docs_enabled=1
-else
-    _code_enabled=0
-    _docs_enabled=0
-    [ -f "$_capability_dir/code" ] && _code_enabled=1
-    [ -f "$_capability_dir/docs" ] && _docs_enabled=1
+# ── Resolve capabilities by reading the declaration directly ────────────────
+# teleclaude.yml is the only home of capability state — no projection, no
+# marker directory. A declaration the reader cannot resolve refuses the git
+# invocation rather than falling open or closed on it.
+# shellcheck source=teleclaude-capabilities.sh
+source "$SCRIPT_DIR/teleclaude-capabilities.sh"
+if ! teleclaude_read_declaration "$_toplevel/teleclaude.yml"; then
+    _log_block declaration_unreadable
+    echo "ERROR: $TC_DECL_ERROR" >&2
+    echo "       Repair the declaration before git can proceed in this session." >&2
+    exit 1
 fi
+_code_enabled=$TC_DECL_CODE
+_docs_enabled=$TC_DECL_DOCS
+case "$TC_DECL_KIND" in
+    global | person) _sealed_invocation_context=1 ;;
+    *) _sealed_invocation_context=0 ;;
+esac
 _commit_enabled=0
 if [ "$_code_enabled" -eq 1 ] || [ "$_docs_enabled" -eq 1 ]; then
     _commit_enabled=1

@@ -41,7 +41,6 @@ from teleclaude.project_root import (
     forbidden_slug_worktree_doc_paths,
     resolve_invocation_roots,
 )
-from teleclaude.project_setup.capability_markers import project_capabilities
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -181,8 +180,6 @@ def _resolve_invocation_state() -> InvocationState:
     """Resolve the acting context and containing repository for one command."""
     roots = resolve_invocation_roots()
     permissions = resolve_tier_permissions(roots.context_root) if roots.context_root is not None else None
-    if permissions is not None:
-        project_capabilities(roots.repository_root)
     return InvocationState(
         context_root=roots.context_root,
         repository_root=roots.repository_root,
