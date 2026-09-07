@@ -2,27 +2,13 @@
 
 from __future__ import annotations
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import COMPANIES_ONBOARD
 from teleclaude.company_setup import run_company_onboard
 
 __all__ = ["_handle_companies"]
-
-
-def _parse_onboard_args(args: list[str]) -> tuple[str | None, str | None]:
-    """Parse ``<name> [--slug <slug>]`` into ``(name, slug)``."""
-    name: str | None = None
-    slug: str | None = None
-    index = 0
-    while index < len(args):
-        token = args[index]
-        if token == "--slug":
-            slug = args[index + 1] if index + 1 < len(args) else None
-            index += 2
-            continue
-        if name is None:
-            name = token
-        index += 1
-    return name, slug
 
 
 def _handle_companies(args: list[str]) -> None:
@@ -36,11 +22,16 @@ def _handle_companies(args: list[str]) -> None:
         if len(args) > 1 and args[1] in ("-h", "--help"):
             print(_usage("companies", "onboard"))
             return
-        name, slug = _parse_onboard_args(args[1:])
+        parsed = parse_command_args(COMPANIES_ONBOARD, args[1:])
+        positionals = parsed.positionals
+        if len(positionals) > 1:
+            print("Usage: telec companies onboard <name> [--slug <value>]")
+            raise SystemExit(1)
+        name = positionals[0] if positionals else None
         if not name:
             print("Usage: telec companies onboard <name> [--slug <value>]")
             raise SystemExit(1)
-        run_company_onboard(name, slug)
+        run_company_onboard(name, parsed.value(F.FLAG_COMPANY_SLUG))
         return
 
     print(f"Unknown companies subcommand: {subcommand}")

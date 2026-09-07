@@ -5,7 +5,10 @@ from __future__ import annotations
 import importlib
 
 from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import HISTORY_SEARCH, HISTORY_SHOW
 from teleclaude.history.search import display_combined_history, parse_agents, show_transcript
 from teleclaude.utils.transcript_discovery import SessionId
 
@@ -54,143 +57,47 @@ def _handle_history(args: list[str]) -> None:
 
 def _handle_history_search(args: list[str]) -> None:
     """Handle telec history search."""
-    agent_arg = "all"
+    parsed = parse_command_args(HISTORY_SEARCH, args)
+
+    limit_raw = parsed.value(F.FLAG_HISTORY_LIMIT)
     limit = 20
-    computers: list[str] = []
-    terms: list[str] = []
-    include_workers = False
-    identity: str | None = None
-    project: str | None = None
-    json_output = False
+    if limit_raw is not None:
+        try:
+            limit = int(limit_raw)
+        except ValueError as exc:
+            print(f"Invalid value for --limit: {limit_raw}")
+            raise SystemExit(1) from exc
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("-h", "--help"):
-            print(_usage("history", "search"))
-            return
-        if arg in ("--agent", "-a") and i + 1 < len(args):
-            agent_arg = args[i + 1]
-            i += 2
-        elif arg in ("--agent", "-a"):
-            print("Missing value for --agent.")
-            print(_usage("history", "search"))
-            raise SystemExit(1)
-        elif arg in ("--limit", "-l") and i + 1 < len(args):
-            try:
-                limit = int(args[i + 1])
-            except ValueError as exc:
-                print(f"Invalid value for --limit: {args[i + 1]}")
-                raise SystemExit(1) from exc
-            i += 2
-        elif arg in ("--limit", "-l"):
-            print("Missing value for --limit.")
-            print(_usage("history", "search"))
-            raise SystemExit(1)
-        elif arg == "--computer":
-            i += 1
-            while i < len(args) and not args[i].startswith("-"):
-                computers.append(args[i])
-                i += 1
-            if not computers:
-                print("Missing value for --computer.")
-                print(_usage("history", "search"))
-                raise SystemExit(1)
-        elif arg == "--include-workers":
-            include_workers = True
-            i += 1
-        elif arg == "--json":
-            json_output = True
-            i += 1
-        elif arg == "--identity" and i + 1 < len(args):
-            identity = args[i + 1]
-            i += 2
-        elif arg == "--identity":
-            print("Missing value for --identity.")
-            print(_usage("history", "search"))
-            raise SystemExit(1)
-        elif arg == "--project" and i + 1 < len(args):
-            project = args[i + 1]
-            i += 2
-        elif arg == "--project":
-            print("Missing value for --project.")
-            print(_usage("history", "search"))
-            raise SystemExit(1)
-        else:
-            terms.append(arg)
-            i += 1
-
+    terms = list(parsed.positionals)
+    identity = parsed.value(F.FLAG_HISTORY_IDENTITY)
+    project = parsed.value(F.FLAG_PROJECT_FILTER)
     if not terms and not identity and not project:
         print("Search terms or an identity/project selector are required.")
         print(_usage("history", "search"))
         raise SystemExit(1)
 
-    agents = parse_agents(agent_arg)
+    agents = parse_agents(parsed.value(F.FLAG_HISTORY_AGENT) or "all")
     display_combined_history(
         agents,
         search_term=" ".join(terms),
         limit=limit,
-        computers=computers or None,
-        include_workers=include_workers,
+        computers=list(parsed.values(F.FLAG_COMPUTER_MANY)) or None,
+        include_workers=parsed.has(F.FLAG_HISTORY_INCLUDE_WORKERS),
         identity=identity,
         project=project,
-        json_output=json_output,
+        json_output=parsed.has(F.FLAG_HISTORY_JSON),
     )
 
 
 def _handle_history_show(args: list[str]) -> None:
     """Handle telec history show."""
-    agent_arg = "all"
-    thinking = False
-    raw = False
-    json_output = False
-    computers: list[str] = []
-    session_id: str | None = None
+    parsed = parse_command_args(HISTORY_SHOW, args)
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("-h", "--help"):
-            print(_usage("history", "show"))
-            return
-        if arg in ("--agent", "-a") and i + 1 < len(args):
-            agent_arg = args[i + 1]
-            i += 2
-        elif arg in ("--agent", "-a"):
-            print("Missing value for --agent.")
-            print(_usage("history", "show"))
-            raise SystemExit(1)
-        elif arg == "--thinking":
-            thinking = True
-            i += 1
-        elif arg == "--raw":
-            raw = True
-            i += 1
-        elif arg == "--json":
-            json_output = True
-            i += 1
-        elif arg == "--computer":
-            i += 1
-            while i < len(args) and not args[i].startswith("-"):
-                computers.append(args[i])
-                i += 1
-            if not computers:
-                print("Missing value for --computer.")
-                print(_usage("history", "show"))
-                raise SystemExit(1)
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("history", "show"))
-            raise SystemExit(1)
-        else:
-            if session_id is None:
-                session_id = arg
-            else:
-                print(f"Unexpected positional argument: {arg}")
-                print(_usage("history", "show"))
-                raise SystemExit(1)
-            i += 1
-
+    if len(parsed.positionals) > 1:
+        print(f"Unexpected positional argument: {parsed.positionals[1]}")
+        print(_usage("history", "show"))
+        raise SystemExit(1)
+    session_id = parsed.positionals[0] if parsed.positionals else None
     if not session_id:
         print("Session ID is required.")
         print(_usage("history", "show"))
@@ -204,14 +111,14 @@ def _handle_history_show(args: list[str]) -> None:
 
     caller_email = read_current_session_email()
     caller_role = resolve_cli_caller_role()
-    agents = parse_agents(agent_arg)
+    agents = parse_agents(parsed.value(F.FLAG_HISTORY_SHOW_AGENT) or "all")
     show_transcript(
         agents,
         session_id,
-        include_thinking=thinking,
-        raw=raw,
-        computers=computers,
+        include_thinking=parsed.has(F.FLAG_THINKING),
+        raw=parsed.has(F.FLAG_HISTORY_RAW),
+        computers=list(parsed.values(F.FLAG_COMPUTER_MANY)),
         caller_email=caller_email,
         caller_role=caller_role,
-        json_output=json_output,
+        json_output=parsed.has(F.FLAG_HISTORY_JSON),
     )

@@ -10,6 +10,8 @@ import json
 import sys
 import uuid
 
+from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
+from teleclaude.cli.telec.surface import TODO_DESIGN, TODO_INTEGRATE, TODO_PREPARE, TODO_WORK
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.project_root import resolve_invocation_cwd
@@ -23,6 +25,15 @@ __all__ = [
     "handle_todo_prepare",
     "handle_todo_work",
 ]
+
+
+def _parse_single_slug(parsed: ParsedArgs) -> str | None:
+    """Extract at most one positional slug, rejecting a second one loudly."""
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    return positionals[0] if positionals else None
 
 
 def handle_todo_design(args: list[str]) -> None:
@@ -44,20 +55,11 @@ def handle_todo_design(args: list[str]) -> None:
       telec todo design
       telec todo design my-feature
     """
-    if "--help" in args or "-h" in args:
-        print(handle_todo_design.__doc__ or "")
-        return
-
-    cwd = str(resolve_invocation_cwd())
-    body: dict[str, object] = {"cwd": cwd}  # guard: loose-dict - JSON request body
-
-    i = 0
-    while i < len(args):
-        if not args[i].startswith("-"):
-            body["slug"] = args[i]
-            i += 1
-        else:
-            i += 1
+    parsed = parse_command_args(TODO_DESIGN, args)
+    slug = _parse_single_slug(parsed)
+    body: dict[str, object] = {"cwd": str(resolve_invocation_cwd())}  # guard: loose-dict - JSON request body
+    if slug is not None:
+        body["slug"] = slug
 
     data = tool_api_call("POST", "/todos/create", json_body=body)
     print_json(data)
@@ -86,21 +88,11 @@ def handle_todo_prepare(args: list[str]) -> None:
     Examples:
       telec todo prepare my-feature
     """
-    if "--help" in args or "-h" in args:
-        print(handle_todo_prepare.__doc__ or "")
-        return
-
-    cwd = str(resolve_invocation_cwd())
-
-    body: dict[str, object] = {"cwd": cwd}  # guard: loose-dict - JSON request body
-
-    i = 0
-    while i < len(args):
-        if not args[i].startswith("-"):
-            body["slug"] = args[i]
-            i += 1
-        else:
-            i += 1
+    parsed = parse_command_args(TODO_PREPARE, args)
+    slug = _parse_single_slug(parsed)
+    body: dict[str, object] = {"cwd": str(resolve_invocation_cwd())}  # guard: loose-dict - JSON request body
+    if slug is not None:
+        body["slug"] = slug
 
     receipt = tool_api_call("POST", "/todos/prepare", json_body=body)
     if not isinstance(receipt, dict):
@@ -137,26 +129,14 @@ def handle_todo_work(args: list[str]) -> None:
     Examples:
       telec todo work my-feature
     """
-    if "--help" in args or "-h" in args:
-        print(handle_todo_work.__doc__ or "")
-        return
-
+    parsed = parse_command_args(TODO_WORK, args)
+    slug = _parse_single_slug(parsed)
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
         "cwd": str(resolve_invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--cwd":
-            # Deprecated: todo work now always uses the shell cwd.
-            # Keep parsing for backwards-compatible invocations.
-            i += 2 if i + 1 < len(args) else 1
-        elif not args[i].startswith("-"):
-            body["slug"] = args[i]
-            i += 1
-        else:
-            i += 1
+    if slug is not None:
+        body["slug"] = slug
 
     receipt = tool_api_call("POST", "/todos/work", json_body=body)
     if not isinstance(receipt, dict):
@@ -187,22 +167,14 @@ def handle_todo_integrate(args: list[str]) -> None:
       telec todo integrate
       telec todo integrate my-feature
     """
-    if "--help" in args or "-h" in args:
-        print(handle_todo_integrate.__doc__ or "")
-        return
-
+    parsed = parse_command_args(TODO_INTEGRATE, args)
+    slug = _parse_single_slug(parsed)
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
         "cwd": str(resolve_invocation_cwd()),
         "client_request_id": str(uuid.uuid4()),
     }
-
-    i = 0
-    while i < len(args):
-        if not args[i].startswith("-"):
-            body["slug"] = args[i]
-            i += 1
-        else:
-            i += 1
+    if slug is not None:
+        body["slug"] = slug
 
     receipt = tool_api_call("POST", "/todos/integrate", json_body=body)
     if not isinstance(receipt, dict):

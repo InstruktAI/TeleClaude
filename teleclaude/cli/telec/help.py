@@ -23,20 +23,31 @@ __all__ = [
     "_maybe_show_help",
     "_print_completion",
     "_print_flag",
+    "_resolve_command_path",
     "_usage",
     "_usage_leaf",
     "_usage_main",
+    "_usage_resolved",
     "_usage_subcmd",
 ]
 
 
-def _resolve_command_path(cmd: str, positionals: list[str]) -> tuple[list[str], CommandDef]:
-    """Walk the CommandDef tree and return the full path and deepest matching node."""
+def _resolve_command_path(cmd: str, args: list[str]) -> tuple[list[str], CommandDef]:
+    """Walk the leading tokens of ``args`` through ``CommandDef.subcommands``
+    keys and return the full path and the deepest matching node.
+
+    The walk consumes a leading token whenever it is a key of the current
+    node — dash-leading or not — and stops at the first token that isn't.
+    This surface's grammar always places subcommand names before options and
+    operands, so a value token that happens to equal a subcommand name can
+    never be mistaken for one: it only ever appears after the walk has
+    already stopped at a real option or operand.
+    """
     node = CLI_SURFACE.get(cmd)
     if node is None:
         return [cmd], CLI_SURFACE[cmd]  # let KeyError propagate naturally
     path = [cmd]
-    for token in positionals:
+    for token in args:
         child = node.subcommands.get(token) if node.subcommands else None
         if child is None:
             break
@@ -131,13 +142,12 @@ def _maybe_show_help(cmd: str, args: list[str]) -> bool:
     """If -h/--help appears anywhere in args, show contextual help and return True."""
     if "-h" not in args and "--help" not in args:
         return False
-    positionals = []
+    leading: list[str] = []
     for a in args:
         if a in ("-h", "--help"):
             break
-        if not a.startswith("-"):
-            positionals.append(a)
-    path, node = _resolve_command_path(cmd, positionals)
+        leading.append(a)
+    path, node = _resolve_command_path(cmd, leading)
     if len(path) > 1 and not node.subcommands:
         # Resolved to a leaf deeper than top-level — use resolved renderer.
         print(_usage_resolved(path, node))
@@ -146,7 +156,7 @@ def _maybe_show_help(cmd: str, args: list[str]) -> bool:
         print(_usage_resolved(path, node))
     else:
         # Top-level command — use existing renderers.
-        print(_usage(cmd, positionals[0] if positionals else None))
+        print(_usage(cmd, leading[0] if leading else None))
     return True
 
 
@@ -425,12 +435,11 @@ def _flag_matches(flag_tuple: tuple[str | None, str, str], prefix: str) -> bool:
 
 
 def _print_flag(flag_tuple: tuple[str | None, str, str]) -> None:
-    """Print a flag completion with optional short form."""
+    """Print a flag completion: one candidate per form (short and long)."""
     short, long, desc = flag_tuple
     if short:
-        _print_completion(f"{short}, {long}", desc)
-    else:
-        _print_completion(long, desc)
+        _print_completion(short, desc)
+    _print_completion(long, desc)
 
 
 def _complete_flags(

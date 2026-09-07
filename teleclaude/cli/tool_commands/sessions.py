@@ -14,7 +14,22 @@ import time
 from pydantic import TypeAdapter, ValidationError
 
 from teleclaude.api_models import SessionDTO
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers.misc import _handle_revive
+from teleclaude.cli.telec.surface import (
+    SESSIONS_END,
+    SESSIONS_ESCALATE,
+    SESSIONS_FILE,
+    SESSIONS_LIST,
+    SESSIONS_RESTART,
+    SESSIONS_RESULT,
+    SESSIONS_RUN,
+    SESSIONS_SEND,
+    SESSIONS_START,
+    SESSIONS_TAIL,
+    SESSIONS_UNSUBSCRIBE,
+)
 from teleclaude.cli.tool_client import ToolAPIError, print_json, tool_api_call, tool_api_request
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
@@ -26,13 +41,7 @@ _POST_METHOD = "POST"
 _BULK_END_TIMEOUT_S = 30.0
 _BULK_END_POLL_INTERVAL_S = 0.25
 _SESSION_LIST_ADAPTER = TypeAdapter(list[SessionDTO])
-_OPTION_PREFIX = "-"
-_SESSION_END_TARGET_FLAGS = ("--session", "-s")
-_SESSION_END_COMPUTER_FLAG = "--computer"
-_SESSION_END_MISSING_TARGET_ERROR = "Error: --session requires a session_id"
 _SESSION_END_DUPLICATE_TARGET_ERROR = "Error: do not specify more than one session_id"
-_SESSION_END_MISSING_COMPUTER_ERROR = "Error: --computer requires a computer name"
-_SESSION_END_UNRECOGNIZED_ARGUMENT_ERROR = "Error: unrecognized sessions end argument: {}"
 
 
 def handle_sessions(args: list[str]) -> None:
@@ -135,25 +144,16 @@ def handle_sessions_list(args: list[str]) -> None:
       telec sessions list --all --job integrator
       telec sessions list --computer remote-macbook
     """
-    show_all = "--all" in args
-    closed = "--closed" in args
+    parsed = parse_command_args(SESSIONS_LIST, args)
     params: dict[str, str] = {}
-    if show_all:
+    if parsed.has(F.FLAG_SESSIONS_LIST_ALL):
         params["all"] = "true"
-    if closed:
+    if parsed.has(F.FLAG_SESSIONS_LIST_CLOSED):
         params["closed"] = "true"
-    job_filter = None
-    for i, arg in enumerate(args):
-        if arg == "--job" and i + 1 < len(args):
-            job_filter = args[i + 1]
-            break
+    job_filter = parsed.value(F.FLAG_SESSIONS_LIST_JOB)
     if job_filter:
         params["job"] = job_filter
-    computer = None
-    for i, arg in enumerate(args):
-        if arg == "--computer" and i + 1 < len(args):
-            computer = args[i + 1]
-            break
+    computer = parsed.value(F.FLAG_COMPUTER)
     if computer:
         params["computer"] = computer
     data = tool_api_call("GET", "/sessions", params=params)
@@ -181,43 +181,28 @@ def handle_sessions_start(args: list[str]) -> None:
       telec sessions start --path /p/to/p --message "Implement feature X"
       telec sessions start --path /path/to/project --computer remote-macbook
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_start.__doc__ or "")
-        return
-
+    parsed = parse_command_args(SESSIONS_START, args)
     body: dict[str, object] = {"computer": "local", "launch_kind": "agent"}  # guard: loose-dict - JSON request body
-    i = 0
-    while i < len(args):
-        if args[i] == "--computer" and i + 1 < len(args):
-            body["computer"] = args[i + 1]
-            i += 2
-        elif args[i] == "--path" and i + 1 < len(args):
-            body["project_path"] = args[i + 1]
-            i += 2
-        elif args[i].startswith("--path="):
-            body["project_path"] = args[i].split("=", 1)[1]
-            i += 1
-        elif args[i] == "--project" or args[i].startswith("--project="):
-            print("Error: unknown flag --project; the project path flag is now --path", file=sys.stderr)
-            raise SystemExit(1)
-        elif args[i] == "--agent" and i + 1 < len(args):
-            body["agent"] = args[i + 1]
-            i += 2
-        elif args[i] == "--mode" and i + 1 < len(args):
-            body["thinking_mode"] = args[i + 1]
-            i += 2
-        elif args[i] == "--message" and i + 1 < len(args):
-            body["message"] = args[i + 1]
-            body["launch_kind"] = "agent_then_message"
-            i += 2
-        elif args[i] == "--direct":
-            body["direct"] = True
-            i += 1
-        elif args[i] == "--detach":
-            body["skip_listener_registration"] = True
-            i += 1
-        else:
-            i += 1
+    computer = parsed.value(F.FLAG_COMPUTER)
+    if computer is not None:
+        body["computer"] = computer
+    path = parsed.value(F.FLAG_PATH)
+    if path is not None:
+        body["project_path"] = path
+    agent = parsed.value(F.FLAG_AGENT)
+    if agent is not None:
+        body["agent"] = agent
+    mode = parsed.value(F.FLAG_MODE)
+    if mode is not None:
+        body["thinking_mode"] = mode
+    message = parsed.value(F.FLAG_MESSAGE)
+    if message is not None:
+        body["message"] = message
+        body["launch_kind"] = "agent_then_message"
+    if parsed.has(F.FLAG_DIRECT_START):
+        body["direct"] = True
+    if parsed.has(F.FLAG_DETACH):
+        body["skip_listener_registration"] = True
 
     if not body.get("project_path"):
         body["project_path"] = str(resolve_invocation_cwd())
@@ -244,60 +229,37 @@ def handle_sessions_send(args: list[str]) -> None:
       telec sessions send abc123 --close-link
       telec sessions send abc123 "Please implement feature X" --computer <computer>
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_send.__doc__ or "")
-        return
+    parsed = parse_command_args(SESSIONS_SEND, args)
+    positionals = parsed.positionals
+    positional_session_id = positionals[0] if positionals else None
+    positional_message = " ".join(positionals[1:]) if len(positionals) > 1 else None
 
-    session_id: str | None = None
-    message: str | None = None
-    computer = "local"
-    direct = False
-    close_link = False
-    positional_message_parts: list[str] = []
+    session_id = positional_session_id
+    if parsed.has(F.FLAG_SESSION):
+        if positional_session_id is not None:
+            print("Error: do not combine positional session_id with --session", file=sys.stderr)
+            raise SystemExit(1)
+        session_id = parsed.value(F.FLAG_SESSION)
 
-    positional_mode = bool(args and not args[0].startswith("-"))
-    if positional_mode:
-        session_id = args[0]
-        args = args[1:]
-
-    i = 0
-    while i < len(args):
-        if args[i] in ("--session", "-s") and i + 1 < len(args):
-            if positional_mode:
-                print("Error: do not combine positional session_id with --session", file=sys.stderr)
-                raise SystemExit(1)
-            session_id = args[i + 1]
-            i += 2
-        elif args[i] in ("--message", "-m") and i + 1 < len(args):
-            message = args[i + 1]
-            i += 2
-        elif args[i] == "--computer" and i + 1 < len(args):
-            computer = args[i + 1]
-            i += 2
-        elif args[i] == "--direct":
-            direct = True
-            i += 1
-        elif args[i] in ("--close-link", "--close_link"):
-            close_link = True
-            i += 1
-        elif positional_mode:
-            positional_message_parts.append(args[i])
-            i += 1
-        else:
-            i += 1
-
-    if positional_message_parts:
-        if message is not None:
+    message = positional_message
+    has_message_alias = parsed.has(F.FLAG_MESSAGE_ALIAS)
+    if has_message_alias:
+        if positional_message is not None:
             print("Error: do not combine positional message with --message", file=sys.stderr)
             raise SystemExit(1)
-        message = " ".join(positional_message_parts)
+        message = parsed.value(F.FLAG_MESSAGE_ALIAS)
 
     if not session_id:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
+
+    close_link = parsed.has(F.FLAG_CLOSE_LINK) or parsed.has(F.FLAG_CLOSE_LINK_ALIAS)
     if not close_link and not message:
         print("Error: message required", file=sys.stderr)
         raise SystemExit(1)
+
+    computer = parsed.value(F.FLAG_COMPUTER) or "local"
+    direct = parsed.has(F.FLAG_DIRECT_SEND)
 
     body: dict[str, str | bool] = {}
     if message:
@@ -333,55 +295,33 @@ def handle_sessions_tail(args: list[str]) -> None:
       telec sessions tail abc123 --full
       telec sessions tail abc123 --pane
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_tail.__doc__ or "")
-        return
-
-    session_id: str | None = None
-    params: dict[str, str] = {}
-
-    if args and not args[0].startswith("-"):
-        session_id = args[0]
-        args = args[1:]
-
-    explicit_since = False
-    show_full = False
-    show_pane = False
-    transcript_filter_selected = False
-    i = 0
-    while i < len(args):
-        if args[i] == "--since" and i + 1 < len(args):
-            params["since"] = args[i + 1]
-            explicit_since = True
-            transcript_filter_selected = True
-            i += 2
-        elif args[i] == "--tools":
-            params["include_tools"] = "true"
-            transcript_filter_selected = True
-            i += 1
-        elif args[i] == "--thinking":
-            params["include_thinking"] = "true"
-            transcript_filter_selected = True
-            i += 1
-        elif args[i] == "--full":
-            show_full = True
-            transcript_filter_selected = True
-            i += 1
-        elif args[i] == "--pane":
-            show_pane = True
-            i += 1
-        elif args[i] == "--computer" and i + 1 < len(args):
-            params["computer"] = args[i + 1]
-            i += 2
-        elif args[i] in ("--session", "-s") and i + 1 < len(args):
-            session_id = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
+    parsed = parse_command_args(SESSIONS_TAIL, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    session_id = parsed.value(F.FLAG_SESSION) or (positionals[0] if positionals else None)
     if not session_id:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
+
+    params: dict[str, str] = {}
+    since = parsed.value(F.FLAG_TAIL_SINCE)
+    explicit_since = since is not None
+    if since is not None:
+        params["since"] = since
+    include_tools = parsed.has(F.FLAG_TAIL_TOOLS)
+    if include_tools:
+        params["include_tools"] = "true"
+    include_thinking = parsed.has(F.FLAG_THINKING)
+    if include_thinking:
+        params["include_thinking"] = "true"
+    show_full = parsed.has(F.FLAG_TAIL_FULL)
+    show_pane = parsed.has(F.FLAG_TAIL_PANE)
+    transcript_filter_selected = explicit_since or include_tools or include_thinking or show_full
+    computer = parsed.value(F.FLAG_COMPUTER)
+    if computer is not None:
+        params["computer"] = computer
 
     if show_pane and transcript_filter_selected:
         print("Error: --pane cannot be combined with transcript filtering flags", file=sys.stderr)
@@ -422,51 +362,37 @@ def handle_sessions_run(args: list[str]) -> None:
       telec sessions run --command next-build --args my-slug
       telec sessions run --command next-review-build --args my-slug --agent gemini
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_run.__doc__ or "")
-        return
-
+    parsed = parse_command_args(SESSIONS_RUN, args)
     body: dict[str, object] = {  # guard: loose-dict - JSON request body
         "computer": "local",
         "args": "",
     }
-    i = 0
-    while i < len(args):
-        if args[i] == "--command" and i + 1 < len(args):
-            body["command"] = args[i + 1]
-            i += 2
-        elif args[i] == "--path" and i + 1 < len(args):
-            body["project"] = args[i + 1]
-            i += 2
-        elif args[i].startswith("--path="):
-            body["project"] = args[i].split("=", 1)[1]
-            i += 1
-        elif args[i] == "--project" or args[i].startswith("--project="):
-            print("Error: unknown flag --project; the project path flag is now --path", file=sys.stderr)
-            raise SystemExit(1)
-        elif args[i] == "--args" and i + 1 < len(args):
-            body["args"] = args[i + 1]
-            i += 2
-        elif args[i] == "--agent" and i + 1 < len(args):
-            body["agent"] = args[i + 1]
-            i += 2
-        elif args[i] == "--mode" and i + 1 < len(args):
-            body["thinking_mode"] = args[i + 1]
-            i += 2
-        elif args[i] == "--computer" and i + 1 < len(args):
-            body["computer"] = args[i + 1]
-            i += 2
-        elif args[i] == "--subfolder" and i + 1 < len(args):
-            body["subfolder"] = args[i + 1]
-            i += 2
-        elif args[i] == "--detach":
-            body["detach"] = True
-            i += 1
-        elif args[i] == "--additional-context" and i + 1 < len(args):
-            body["additional_context"] = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    command = parsed.value(F.FLAG_RUN_COMMAND)
+    if command is not None:
+        body["command"] = command
+    path = parsed.value(F.FLAG_PATH)
+    if path is not None:
+        body["project"] = path
+    run_args = parsed.value(F.FLAG_RUN_ARGS)
+    if run_args is not None:
+        body["args"] = run_args
+    agent = parsed.value(F.FLAG_AGENT)
+    if agent is not None:
+        body["agent"] = agent
+    mode = parsed.value(F.FLAG_MODE)
+    if mode is not None:
+        body["thinking_mode"] = mode
+    computer = parsed.value(F.FLAG_COMPUTER)
+    if computer is not None:
+        body["computer"] = computer
+    subfolder = parsed.value(F.FLAG_RUN_SUBFOLDER)
+    if subfolder is not None:
+        body["subfolder"] = subfolder
+    if parsed.has(F.FLAG_DETACH):
+        body["detach"] = True
+    additional_context = parsed.value(F.FLAG_RUN_ADDITIONAL_CONTEXT)
+    if additional_context is not None:
+        body["additional_context"] = additional_context
 
     if not body.get("command"):
         print("Error: --command is required", file=sys.stderr)
@@ -497,50 +423,22 @@ def handle_sessions_end(args: list[str]) -> None:
       telec sessions end self
       telec sessions end abc123 --computer remote-macbook
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_end.__doc__ or "")
-        return
-
-    session_id: str | None = None
-    computer = "local"
-    target_specified = False
-    computer_specified = False
-
-    if args and not args[0].startswith("-"):
-        session_id = args[0]
-        target_specified = True
-        args = args[1:]
-
-    i = 0
-    while i < len(args):
-        argument = args[i]
-        if argument in _SESSION_END_TARGET_FLAGS:
-            if i + 1 >= len(args) or args[i + 1].startswith(_OPTION_PREFIX):
-                print(_SESSION_END_MISSING_TARGET_ERROR, file=sys.stderr)
-                raise SystemExit(1)
-            if target_specified:
-                print(_SESSION_END_DUPLICATE_TARGET_ERROR, file=sys.stderr)
-                raise SystemExit(1)
-            session_id = args[i + 1]
-            target_specified = True
-            i += 2
-        elif argument == _SESSION_END_COMPUTER_FLAG:
-            if i + 1 >= len(args) or args[i + 1].startswith(_OPTION_PREFIX):
-                print(_SESSION_END_MISSING_COMPUTER_ERROR, file=sys.stderr)
-                raise SystemExit(1)
-            computer = args[i + 1]
-            computer_specified = True
-            i += 2
-        else:
-            print(_SESSION_END_UNRECOGNIZED_ARGUMENT_ERROR.format(argument), file=sys.stderr)
-            raise SystemExit(1)
-
-    if target_specified and not session_id:
-        print(_SESSION_END_MISSING_TARGET_ERROR, file=sys.stderr)
+    parsed = parse_command_args(SESSIONS_END, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(_SESSION_END_DUPLICATE_TARGET_ERROR, file=sys.stderr)
         raise SystemExit(1)
-    if computer_specified and not computer:
-        print(_SESSION_END_MISSING_COMPUTER_ERROR, file=sys.stderr)
+
+    positional_session_id = positionals[0] if positionals else None
+    if positional_session_id is not None and parsed.has(F.FLAG_SESSION):
+        print(_SESSION_END_DUPLICATE_TARGET_ERROR, file=sys.stderr)
         raise SystemExit(1)
+
+    target_specified = positional_session_id is not None or parsed.has(F.FLAG_SESSION)
+    session_id = positional_session_id if positional_session_id is not None else parsed.value(F.FLAG_SESSION)
+
+    computer_specified = parsed.has(F.FLAG_COMPUTER)
+    computer = parsed.value(F.FLAG_COMPUTER) if computer_specified else "local"
 
     if not target_specified:
         if computer_specified:
@@ -637,30 +535,17 @@ def handle_sessions_restart(args: list[str]) -> None:
       telec sessions restart self
       telec sessions restart abc123
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_restart.__doc__ or "")
-        return
-
-    session_id: str | None = None
-    computer = "local"
-    self_restart = False
-
-    if args and not args[0].startswith("-"):
-        session_id = args[0]
-        self_restart = session_id == "self"
-        args = args[1:]
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--computer" and i + 1 < len(args):
-            computer = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
+    parsed = parse_command_args(SESSIONS_RESTART, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    session_id = positionals[0] if positionals else None
     if not session_id:
         print("Error: session_id required (use 'self' for own session)", file=sys.stderr)
         raise SystemExit(1)
+    self_restart = session_id == "self"
+    computer = parsed.value(F.FLAG_COMPUTER) or "local"
 
     if session_id == "self":
         session_id = get_session_id()
@@ -719,27 +604,16 @@ def handle_sessions_unsubscribe(args: list[str]) -> None:
     Examples:
       telec sessions unsubscribe abc123def456
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_unsubscribe.__doc__ or "")
-        return
-
-    session_id: str | None = None
-    computer = "local"
-    if args and not args[0].startswith("-"):
-        session_id = args[0]
-        args = args[1:]
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--computer" and i + 1 < len(args):
-            computer = args[i + 1]
-            i += 2
-        else:
-            i += 1
-
+    parsed = parse_command_args(SESSIONS_UNSUBSCRIBE, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    session_id = positionals[0] if positionals else None
     if not session_id:
         print("Error: session_id required", file=sys.stderr)
         raise SystemExit(1)
+    computer = parsed.value(F.FLAG_COMPUTER) or "local"
 
     data = tool_api_call("POST", f"/sessions/{session_id}/unsubscribe", params={"computer": computer})
     print_json(data)
@@ -763,27 +637,13 @@ def handle_sessions_result(args: list[str]) -> None:
       telec sessions result "## Summary\n\nAll 5 tasks completed."
       telec sessions result "<h2>Done</h2>" --format html
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_result.__doc__ or "")
-        return
-
-    content: str | None = None
-    output_format = "markdown"
-
-    if args and not args[0].startswith("-"):
-        content = args[0]
-        args = args[1:]
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--content" and i + 1 < len(args):
-            content = args[i + 1]
-            i += 2
-        elif args[i] == "--format" and i + 1 < len(args):
-            output_format = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    parsed = parse_command_args(SESSIONS_RESULT, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    content = positionals[0] if positionals else parsed.value(F.FLAG_RESULT_CONTENT_ALIAS)
+    output_format = parsed.value(F.FLAG_RESULT_FORMAT) or "markdown"
 
     if not content:
         print("Error: content required", file=sys.stderr)
@@ -825,25 +685,17 @@ def handle_sessions_file(args: list[str]) -> None:
       telec sessions file --path /tmp/report.pdf --filename report.pdf
       telec sessions file --path /data/img.png --filename img.png --caption "See this"
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_file.__doc__ or "")
-        return
-
+    parsed = parse_command_args(SESSIONS_FILE, args)
     body: dict[str, object] = {"file_size": 0}  # guard: loose-dict - JSON request body
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--path" and i + 1 < len(args):
-            body["file_path"] = args[i + 1]
-            i += 2
-        elif args[i] == "--filename" and i + 1 < len(args):
-            body["filename"] = args[i + 1]
-            i += 2
-        elif args[i] == "--caption" and i + 1 < len(args):
-            body["caption"] = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    file_path = parsed.value(F.FLAG_FILE_PATH)
+    if file_path is not None:
+        body["file_path"] = file_path
+    filename = parsed.value(F.FLAG_FILE_FILENAME)
+    if filename is not None:
+        body["filename"] = filename
+    caption = parsed.value(F.FLAG_FILE_CAPTION)
+    if caption is not None:
+        body["caption"] = caption
 
     if not body.get("file_path"):
         print("Error: --path is required", file=sys.stderr)
@@ -876,25 +728,17 @@ def handle_sessions_escalate(args: list[str]) -> None:
       telec sessions escalate --customer "John Doe" --reason "billing dispute"
       telec sessions escalate --customer "Jane" --reason "urgent bug" --summary "App crashes on login"
     """
-    if "--help" in args or "-h" in args:
-        print(handle_sessions_escalate.__doc__ or "")
-        return
-
+    parsed = parse_command_args(SESSIONS_ESCALATE, args)
     body: dict[str, object] = {}  # guard: loose-dict - JSON request body
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--customer" and i + 1 < len(args):
-            body["customer_name"] = args[i + 1]
-            i += 2
-        elif args[i] == "--reason" and i + 1 < len(args):
-            body["reason"] = args[i + 1]
-            i += 2
-        elif args[i] == "--summary" and i + 1 < len(args):
-            body["context_summary"] = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    customer = parsed.value(F.FLAG_ESCALATE_CUSTOMER)
+    if customer is not None:
+        body["customer_name"] = customer
+    reason = parsed.value(F.FLAG_ESCALATE_REASON)
+    if reason is not None:
+        body["reason"] = reason
+    summary = parsed.value(F.FLAG_ESCALATE_SUMMARY)
+    if summary is not None:
+        body["context_summary"] = summary
 
     if not body.get("customer_name"):
         print("Error: --customer is required", file=sys.stderr)

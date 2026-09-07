@@ -11,12 +11,15 @@ from pathlib import Path
 from typing import NotRequired, TypedDict, cast
 
 from teleclaude.api_models import TodoDumpRequest
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
 from teleclaude.cli.telec.handlers._creation_gate import render_todo_creation_gate
 from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
 from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list, _resolve_project_root_or_exit
 from teleclaude.cli.telec.handlers.todo_remove import render_remove_refusal
 from teleclaude.cli.telec.handlers.todo_update_args import _parse_todo_update_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import TODO_CREATE, TODO_DELIVER, TODO_REACTIVATE, TODO_REMOVE, TODO_STAMP, Flag
 from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
 from teleclaude.cli.tool_commands import (
     handle_todo_design,
@@ -70,7 +73,6 @@ class _TodoStampBody(TypedDict):
 _CREATION_ACK_FLAG = "--approved"
 _REASON_REQUIRED_WITH_HOLD = "Error: --reason is required with --hold"
 _REASON_REQUIRES_HOLD = "Error: --reason is valid only with --hold"
-_REASON_REQUIRES_VALUE = "Error: --reason requires a value"
 
 _TODO_CREATION_GATE = render_todo_creation_gate(_CREATION_ACK_FLAG)
 
@@ -244,24 +246,13 @@ def _handle_todo_deliver(args: list[str]) -> None:
         print(_usage("todo", "deliver"))
         return
 
-    slug: str | None = None
-    commit: str | None = None
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--commit" and i + 1 < len(args):
-            commit = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "deliver"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                raise SystemExit(1)
-            slug = arg
-            i += 1
+    parsed = parse_command_args(TODO_DELIVER, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Only one slug is allowed.")
+        raise SystemExit(1)
+    slug = positionals[0] if positionals else None
+    commit = parsed.value(F.FLAG_TODO_DELIVER_COMMIT)
 
     if not slug:
         print("Missing required slug.")
@@ -289,108 +280,33 @@ def _handle_todo_deliver(args: list[str]) -> None:
     print(f"Delivered {slug} (cleanup complete)")
 
 
-def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:  # noqa: C901 - preserves the established CLI parser contract
-    slug: str | None = None
-    content: str | None = None
-    after: list[str] | None = None
-    icebox = False
-    group: str | None = None
-    project_root: str | None = None
-    plan = False
-    hold = False
-    reason: str | None = None
-    human_involved = False
-    approved = False
-    schedule: str | None = None
-    kind_value: str | None = None
+def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
+    parsed = parse_command_args(TODO_CREATE, args)
+    positionals = parsed.positionals
+    if len(positionals) > 2:
+        print("Too many positional arguments.")
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
+    slug = positionals[0] if positionals else None
+    content = positionals[1] if len(positionals) > 1 else None
 
-    _VALID_KINDS_STR = TODO_KIND_USAGE
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--after" and i + 1 < len(args):
-            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
-            i += 2
-        elif arg == "--icebox":
-            icebox = True
-            i += 1
-        elif arg in ("--project-root", "-p") and i + 1 < len(args):
-            project_root = args[i + 1]
-            i += 2
-        elif arg in ("--project-root", "-p"):
-            print("Error: --project-root requires a value")
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        elif arg == "--group" and i + 1 < len(args):
-            group = args[i + 1]
-            i += 2
-        elif arg == "--group":
-            print("Error: --group requires a value")
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        elif arg == "--schedule" and i + 1 < len(args):
-            schedule = args[i + 1]
-            i += 2
-        elif arg == "--schedule":
-            print("Error: --schedule requires a value")
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        elif arg == "--plan":
-            plan = True
-            i += 1
-        elif arg == "--hold":
-            hold = True
-            i += 1
-        elif arg == "--reason" and i + 1 < len(args):
-            reason = args[i + 1]
-            i += 2
-        elif arg == "--reason":
-            print(_REASON_REQUIRES_VALUE)
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        elif arg == "--human-involved":
-            human_involved = True
-            i += 1
-        elif arg == _CREATION_ACK_FLAG:
-            approved = True
-            i += 1
-        elif arg == "--kind" and i + 1 < len(args):
-            kind_value = args[i + 1]
-            i += 2
-        elif arg == "--kind":
-            print(f"Error: --kind requires a value ({_VALID_KINDS_STR})")
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        else:
-            if slug is None:
-                slug = arg
-            elif content is None:
-                content = arg
-            else:
-                print("Too many positional arguments.")
-                print(_usage("todo", "create"))
-                raise SystemExit(1)
-            i += 1
+    after_raw = parsed.values(F.FLAG_AFTER_DEPS)
+    after = [part.strip() for raw in after_raw for part in raw.split(",") if part.strip()] if after_raw else None
 
     return _ParsedTodoCreate(
         slug=slug,
         content=content,
         after=after,
-        schedule=schedule,
-        icebox=icebox,
-        group=group,
-        project_root=project_root,
-        plan=plan,
-        hold=hold,
-        reason=reason,
-        human_involved=human_involved,
-        kind_value=kind_value,
-        approved=approved,
+        schedule=parsed.value(F.FLAG_TODO_SCHEDULE),
+        icebox=parsed.has(F.FLAG_TODO_ICEBOX),
+        group=parsed.value(F.FLAG_TODO_GROUP),
+        project_root=parsed.value(F.FLAG_TODO_PROJECT_ROOT),
+        plan=parsed.has(F.FLAG_TODO_PLAN),
+        hold=parsed.has(F.FLAG_TODO_CREATE_HOLD),
+        reason=parsed.value(F.FLAG_TODO_CREATE_REASON),
+        human_involved=parsed.has(F.FLAG_HUMAN_INVOLVED),
+        kind_value=parsed.value(F.FLAG_TODO_KIND),
+        approved=parsed.has(F.FLAG_TODO_CREATE_APPROVED),
     )
 
 
@@ -477,27 +393,14 @@ def _handle_todo_remove(args: list[str]) -> None:
         print(_usage("todo", "remove"))
         raise SystemExit(1)
 
-    slug: str | None = None
-    force = False
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--force":
-            force = True
-            i += 1
-            continue
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "remove"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "remove"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
+    parsed = parse_command_args(TODO_REMOVE, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Only one slug is allowed.")
+        print(_usage("todo", "remove"))
+        raise SystemExit(1)
+    slug = positionals[0] if positionals else None
+    force = parsed.has(F.FLAG_TODO_REMOVE_FORCE)
 
     if not slug:
         print("Missing required slug.")
@@ -557,10 +460,6 @@ def _normalize_after_values(raw_values: list[str]) -> list[str]:
 
 
 def _handle_todo_update(args: list[str]) -> None:
-    if "--help" in args or "-h" in args:
-        print(_usage("todo", "update"))
-        return
-
     parsed = _parse_todo_update_args(args)
     slug = parsed["slug"]
     new_slug = parsed["new_slug"]
@@ -839,12 +738,12 @@ def _handle_artifacts_write(args: list[str]) -> None:
 
 def _handle_todo_stamp(args: list[str]) -> None:
     """Handle telec todo stamp."""
-    for arg in args:
-        if arg == "--build-started":
-            print("--build-started is machine-owned; run telec todo work <slug> to enter build.")
-            raise SystemExit(1)
+    parsed = parse_command_args(TODO_STAMP, args)
+    if parsed.has(F.FLAG_STAMP_BUILD_STARTED):
+        print("--build-started is machine-owned; run telec todo work <slug> to enter build.")
+        raise SystemExit(1)
 
-    slug, stamp_type, value, phase = _parse_todo_stamp_args(args)
+    slug, stamp_type, value, phase = _parse_todo_stamp_args(parsed)
 
     if not slug:
         print("Usage: telec todo stamp <slug> --verdict approve --phase <phase>")
@@ -894,81 +793,78 @@ def _handle_todo_stamp(args: list[str]) -> None:
     print_json(response)
 
 
-def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str | None, str | None]:
-    """Parse ``telec todo stamp`` argv into slug, stamp type, value, and phase."""
-    slug: str | None = None
+def _parse_todo_stamp_args(parsed: ParsedArgs) -> tuple[str | None, str | None, str | None, str | None]:
+    """Derive (slug, stamp_type, value, phase) from a parsed ``telec todo stamp`` invocation."""
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Only one slug is allowed: unexpected {positionals[1]!r}")
+        raise SystemExit(1)
+    slug = positionals[0] if positionals else None
+
     stamp_type: str | None = None
     value: str | None = None
-    phase: str | None = None
+    phase = parsed.value(F.FLAG_STAMP_PHASE)
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--verdict" and i + 1 < len(args):
-            stamp_type = "verdict"
-            value = args[i + 1]
-            i += 2
-        elif arg == "--phase" and i + 1 < len(args):
-            phase = args[i + 1]
-            i += 2
-        elif arg in _STAMP_BOOLEAN_FLAGS:
-            stamp_type = _STAMP_BOOLEAN_FLAGS[arg]
+    if parsed.has(F.FLAG_STAMP_VERDICT):
+        stamp_type = "verdict"
+        value = parsed.value(F.FLAG_STAMP_VERDICT)
+    for flag, mapped_type in _STAMP_BOOLEAN_FLAGS.items():
+        if parsed.has(flag):
+            stamp_type = mapped_type
             value = "true"
-            i += 1
-        elif arg in _STAMP_REASON_FLAGS and i + 1 < len(args):
-            stamp_type = _STAMP_REASON_FLAGS[arg]
-            value = args[i + 1]
-            i += 2
-        elif arg == "--drift-reviewed" and i + 3 < len(args):
-            stamp_type = "drift_reviewed"
-            value = _json.dumps({"artifact": args[i + 1], "verdict": args[i + 2], "reason": args[i + 3]})
-            i += 4
-        elif arg == "--kind-assign" and i + 1 < len(args):
-            stamp_type = "kind_assign"
-            phase = args[i + 1]
-            value = args[i + 2] if i + 2 < len(args) and not args[i + 2].startswith("-") else ""
-            i += 3 if value else 2
-        elif arg == "--finalize-ready":
-            stamp_type = "finalize_ready"
-            value = ""
-            i += 1
-        elif arg == "--kickback":
-            stamp_type = "kickback"
-            i += 1
-        elif arg == "--diagnosis-unresolved":
-            stamp_type = "diagnosis_unresolved"
-            i += 1
-        elif arg == "--task-outcome" and i + 1 < len(args):
-            stamp_type = "task_outcome"
-            phase = args[i + 1]
-            i += 2
-        elif arg == "--reason" and i + 1 < len(args):
-            value = args[i + 1]
-            i += 2
-        elif not arg.startswith("-"):
-            slug = arg
-            i += 1
-        else:
-            i += 1
+    for flag, mapped_type in _STAMP_REASON_FLAGS.items():
+        if parsed.has(flag):
+            stamp_type = mapped_type
+            value = parsed.value(flag)
+    if parsed.has(F.FLAG_STAMP_DRIFT_REVIEWED):
+        drift_values = parsed.values(F.FLAG_STAMP_DRIFT_REVIEWED)
+        if len(drift_values) != 3:
+            print(
+                f"--drift-reviewed requires exactly 3 values: <artifact> <verdict> <reason> (got {len(drift_values)})"
+            )
+            raise SystemExit(1)
+        stamp_type = "drift_reviewed"
+        value = _json.dumps({"artifact": drift_values[0], "verdict": drift_values[1], "reason": drift_values[2]})
+    if parsed.has(F.FLAG_STAMP_KIND_ASSIGN):
+        kind_values = parsed.values(F.FLAG_STAMP_KIND_ASSIGN)
+        if len(kind_values) not in (1, 2):
+            print(f"--kind-assign requires 1 or 2 values: <kind> [content] (got {len(kind_values)})")
+            raise SystemExit(1)
+        stamp_type = "kind_assign"
+        phase = kind_values[0]
+        value = kind_values[1] if len(kind_values) == 2 else ""
+    if parsed.has(F.FLAG_STAMP_FINALIZE_READY):
+        stamp_type = "finalize_ready"
+        value = ""
+    if parsed.has(F.FLAG_STAMP_KICKBACK):
+        stamp_type = "kickback"
+    if parsed.has(F.FLAG_STAMP_DIAGNOSIS_UNRESOLVED):
+        stamp_type = "diagnosis_unresolved"
+    if parsed.has(F.FLAG_STAMP_TASK_OUTCOME):
+        stamp_type = "task_outcome"
+        phase = parsed.value(F.FLAG_STAMP_TASK_OUTCOME)
+    reason_value = parsed.value(F.FLAG_STAMP_REASON)
+    if reason_value is not None:
+        value = reason_value
 
     return slug, stamp_type, value, phase
 
 
-_STAMP_BOOLEAN_FLAGS = {
-    "--prd-approved": "prd_approved",
-    "--task-approved": "task_approved",
-    "--diagnosis-settled": "diagnosis_settled",
-    "--requirements-ready": "requirements_ready",
-    "--plan-ready": "plan_ready",
-    "--deferrals-processed": "deferrals_processed",
-    "--design-spec-confirmed": "creative_design_spec_confirmed",
-    "--art-approved": "creative_art_approved",
-    "--visuals-approved": "creative_visuals_approved",
-    "--build-complete": "build_complete",
+_STAMP_BOOLEAN_FLAGS: dict[Flag, str] = {
+    F.FLAG_STAMP_PRD_APPROVED: "prd_approved",
+    F.FLAG_STAMP_TASK_APPROVED: "task_approved",
+    F.FLAG_STAMP_DIAGNOSIS_SETTLED: "diagnosis_settled",
+    F.FLAG_STAMP_REQUIREMENTS_READY: "requirements_ready",
+    F.FLAG_STAMP_PLAN_READY: "plan_ready",
+    F.FLAG_STAMP_DEFERRALS_PROCESSED: "deferrals_processed",
+    F.FLAG_STAMP_DESIGN_SPEC_CONFIRMED: "creative_design_spec_confirmed",
+    F.FLAG_STAMP_ART_APPROVED: "creative_art_approved",
+    F.FLAG_STAMP_VISUALS_APPROVED: "creative_visuals_approved",
+    F.FLAG_STAMP_BUILD_COMPLETE: "build_complete",
 }
 
-_STAMP_REASON_FLAGS = {
-    "--architecture-skipped": "architecture_skipped",
+_STAMP_REASON_FLAGS: dict[Flag, str] = {
+    F.FLAG_STAMP_ARCHITECTURE_SKIPPED: "architecture_skipped",
 }
 
 
@@ -979,10 +875,13 @@ _STAMP_REASON_FLAGS = {
 
 def _handle_todo_reactivate(args: list[str]) -> None:
     """Handle slug or durable-id reactivation of a soft-removed todo."""
-    if len(args) == 2 and args[0] == "--id":
-        target_path = f"/todos/by-id/{args[1]}/reactivate"
-    elif len(args) == 1 and not args[0].startswith("-"):
-        target_path = f"/todos/{args[0]}/reactivate"
+    parsed = parse_command_args(TODO_REACTIVATE, args)
+    positionals = parsed.positionals
+    row_id = parsed.value(F.FLAG_TODO_REACTIVATE_ID)
+    if row_id is not None and not positionals:
+        target_path = f"/todos/by-id/{row_id}/reactivate"
+    elif len(positionals) == 1 and row_id is None:
+        target_path = f"/todos/{positionals[0]}/reactivate"
     else:
         print("Usage: telec todo reactivate <slug> | --id <row-id>")
         raise SystemExit(1)

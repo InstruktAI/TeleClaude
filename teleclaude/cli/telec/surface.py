@@ -3,24 +3,10 @@
 from __future__ import annotations
 
 from teleclaude.constants import TAXONOMY_TYPES
-from teleclaude.snippet_validation import SnippetScope
 from teleclaude.types.todo_kind import TODO_KIND_USAGE
 
-_SCOPE_VALUES = "|".join(member.value for member in SnippetScope)
-
+from . import flags as F
 from .surface_types import (
-    _FLAG_AFTER_DEPS,
-    _FLAG_AGENT,
-    _FLAG_COMPUTER,
-    _FLAG_DETACH,
-    _FLAG_LIMIT_20,
-    _FLAG_MODE,
-    _FLAG_PATH,
-    _FLAG_PROJECT_FILTER,
-    _FLAG_PROJECT_TRUSTED,
-    _FLAG_SESSION,
-    _FLAG_THINKING,
-    _H,
     _HR_ADMIN,
     _HR_ALL,
     _HR_ALL_NON_ADMIN,
@@ -97,17 +83,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List sessions (default: spawned by current, --all for all)",
                 args="[--all] [--closed] [--job <value>] [--computer <host>]",
                 flags=[
-                    _H,
-                    Flag("--all", desc="Show all sessions"),
-                    Flag("--closed", desc="Include closed sessions"),
-                    Flag("--job", desc="Filter by job value"),
-                    Flag("--computer", desc="Filter to a specific computer"),
+                    F.FLAG_HELP,
+                    F.FLAG_SESSIONS_LIST_ALL,
+                    F.FLAG_SESSIONS_LIST_CLOSED,
+                    F.FLAG_SESSIONS_LIST_JOB,
+                    F.FLAG_COMPUTER,
                 ],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "coordinate": CommandDef(
                 desc="Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
             "start": CommandDef(
@@ -117,14 +103,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--message <msg>] [--direct] [--detach]"
                 ),
                 flags=[
-                    _H,
-                    _FLAG_COMPUTER,
-                    _FLAG_PATH,
-                    _FLAG_AGENT,
-                    _FLAG_MODE,
-                    Flag("--message", desc="Initial message to send"),
-                    Flag("--direct", desc="Conversation mode: create direct link with caller and bypass listeners"),
-                    _FLAG_DETACH,
+                    F.FLAG_HELP,
+                    F.FLAG_COMPUTER,
+                    F.FLAG_PATH,
+                    F.FLAG_AGENT,
+                    F.FLAG_MODE,
+                    F.FLAG_MESSAGE,
+                    F.FLAG_DIRECT_START,
+                    F.FLAG_DETACH,
                 ],
                 notes=[
                     (
@@ -150,10 +136,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Send a message to a running session",
                 args="<session_id> [<message>] [--computer <host>] [--direct] [--close-link]",
                 flags=[
-                    _H,
-                    _FLAG_COMPUTER,
-                    Flag("--direct", desc="Conversation mode: create shared direct link"),
-                    Flag("--close-link", desc="Close direct link with target session (alias: --close_link)"),
+                    F.FLAG_HELP,
+                    F.FLAG_COMPUTER,
+                    F.FLAG_DIRECT_SEND,
+                    F.FLAG_CLOSE_LINK,
+                    F.FLAG_CLOSE_LINK_ALIAS,
+                    F.FLAG_MESSAGE_ALIAS,
+                    F.FLAG_SESSION,
                 ],
                 notes=[
                     "Positional form is canonical: telec sessions send <session_id> <message>.",
@@ -173,13 +162,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Get recent messages from a session's transcript",
                 args="<session_id> [--since <ts>] [--tools] [--thinking] [--full] [--pane]",
                 flags=[
-                    _H,
-                    _FLAG_SESSION,
-                    Flag("--since", desc="ISO8601 timestamp filter"),
-                    Flag("--tools", desc="Include tool use entries"),
-                    _FLAG_THINKING,
-                    Flag("--full", desc="Show all projected messages instead of the latest user turn"),
-                    Flag("--pane", desc="Show the current terminal pane instead of transcript messages"),
+                    F.FLAG_HELP,
+                    F.FLAG_SESSION,
+                    F.FLAG_TAIL_SINCE,
+                    F.FLAG_TAIL_TOOLS,
+                    F.FLAG_THINKING,
+                    F.FLAG_TAIL_FULL,
+                    F.FLAG_TAIL_PANE,
+                    F.FLAG_COMPUTER,
                 ],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -191,16 +181,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--additional-context <ctx>]"
                 ),
                 flags=[
-                    _H,
-                    Flag("--command", desc="Bare canonical command (e.g. next-build)"),
-                    _FLAG_PATH,
-                    Flag("--args", desc="Command arguments"),
-                    _FLAG_AGENT,
-                    _FLAG_MODE,
-                    _FLAG_COMPUTER,
-                    Flag("--subfolder", desc="Subdirectory within the project"),
-                    _FLAG_DETACH,
-                    Flag("--additional-context", desc="Additional context for the worker, appended to startup message"),
+                    F.FLAG_HELP,
+                    F.FLAG_RUN_COMMAND,
+                    F.FLAG_PATH,
+                    F.FLAG_RUN_ARGS,
+                    F.FLAG_AGENT,
+                    F.FLAG_MODE,
+                    F.FLAG_COMPUTER,
+                    F.FLAG_RUN_SUBFOLDER,
+                    F.FLAG_DETACH,
+                    F.FLAG_RUN_ADDITIONAL_CONTEXT,
                 ],
                 notes=[
                     "Creates a fresh session and runs the bare canonical command as the first agent message.",
@@ -221,10 +211,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Revive session by TeleClaude session ID",
                 args="<session_id>",
                 flags=[
-                    _H,
-                    Flag("--agent", desc="Treat session_id as native agent session ID for the given agent"),
-                    Flag("--attach", desc="Attach to tmux session after revive"),
-                    Flag("--computer", desc="Target computer"),
+                    F.FLAG_HELP,
+                    F.FLAG_REVIVE_AGENT,
+                    F.FLAG_REVIVE_ATTACH,
+                    F.FLAG_COMPUTER,
                 ],
                 notes=[
                     (
@@ -240,9 +230,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="End a session, or every direct child of the calling session when targetless",
                 args="[<session_id>] [--computer <host>]",
                 flags=[
-                    _H,
-                    _FLAG_SESSION,
-                    _FLAG_COMPUTER,
+                    F.FLAG_HELP,
+                    F.FLAG_SESSION,
+                    F.FLAG_COMPUTER,
                 ],
                 notes=[
                     "With no target, closes every live direct child of the calling session across computers.",
@@ -253,29 +243,29 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "unsubscribe": CommandDef(
                 desc="Stop receiving notifications from a session",
                 args="<session_id>",
-                flags=[_H],
+                flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
             "restart": CommandDef(
                 desc="Restart an agent session ('self' to restart own session)",
                 args="<session_id>",
-                flags=[_H],
+                flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ADMIN),
             ),
             "result": CommandDef(
                 desc="Send a formatted result to the session's user",
                 args="<content> [--format <fmt>]",
-                flags=[_H, Flag("--format", desc="Output format: markdown, html")],
+                flags=[F.FLAG_HELP, F.FLAG_RESULT_FORMAT, F.FLAG_RESULT_CONTENT_ALIAS],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB),
             ),
             "file": CommandDef(
                 desc="Send a file to the session's user",
                 args="[--path <path>] [--filename <name>] [--caption <text>]",
                 flags=[
-                    _H,
-                    Flag("--path", desc="File path on the daemon host"),
-                    Flag("--filename", desc="Display filename"),
-                    Flag("--caption", desc="Optional caption"),
+                    F.FLAG_HELP,
+                    F.FLAG_FILE_PATH,
+                    F.FLAG_FILE_FILENAME,
+                    F.FLAG_FILE_CAPTION,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
@@ -283,10 +273,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Escalate to an admin via Discord",
                 args="[--customer <name>] [--reason <text>] [--summary <text>]",
                 flags=[
-                    _H,
-                    Flag("--customer", desc="Customer name"),
-                    Flag("--reason", desc="Reason for escalation"),
-                    Flag("--summary", desc="Context summary for the admin"),
+                    F.FLAG_HELP,
+                    F.FLAG_ESCALATE_CUSTOMER,
+                    F.FLAG_ESCALATE_REASON,
+                    F.FLAG_ESCALATE_SUMMARY,
                 ],
                 auth=CommandAuth(
                     system=_SYS_ALL | _SYS_INTG,
@@ -302,24 +292,24 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Arm or atomically replace a session-local reminder",
                 args=("<slug> [--after <duration> | --at <RFC3339>] [--intent <text>] [--repeat] [--slug <target>]"),
                 flags=[
-                    _H,
-                    Flag("--after", desc="Relative duration such as 30s, 5m, 2h, or 1d"),
-                    Flag("--at", desc="Absolute RFC3339 instant"),
-                    Flag("--intent", desc="Agent-authored generic reminder intent"),
-                    Flag("--repeat", desc="Repeat a relative generic reminder"),
-                    Flag("--slug", desc="Target work slug for orchestration-watch"),
+                    F.FLAG_HELP,
+                    F.FLAG_REMINDER_AFTER,
+                    F.FLAG_REMINDER_AT,
+                    F.FLAG_REMINDER_INTENT,
+                    F.FLAG_REMINDER_REPEAT,
+                    F.FLAG_REMINDER_SLUG,
                 ],
                 auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_ALL),
             ),
             "list": CommandDef(
                 desc="List every live reminder owned by the calling session",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_ALL),
             ),
             "cancel": CommandDef(
                 desc="Idempotently cancel one or all caller-owned reminders",
                 args="[<slug>] [--all]",
-                flags=[_H, Flag("--all", desc="Cancel all reminders owned by the calling session")],
+                flags=[F.FLAG_HELP, F.FLAG_REMINDER_CANCEL_ALL],
                 auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_ALL),
             ),
         },
@@ -329,7 +319,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List available computers (local + cached remote)",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
         },
@@ -340,12 +330,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List projects on local and remote computers",
                 args="[--computer <host>]",
-                flags=[_H, Flag("--computer", "-c", "Filter to a specific computer")],
+                flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "init": CommandDef(
                 desc="Initialize project plumbing and sync artifacts",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 notes=[
                     "Sets up git hooks, syncs artifacts, and registers the project root.",
                     "AI-driven analysis lives in `telec projects {onboard,analyze,assess}`.",
@@ -354,7 +344,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "onboard": CommandDef(
                 desc="Full project bootstrap: init plumbing, then dispatch config assessment and doc-snippet analysis",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 notes=[
                     "Runs `telec projects init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.",
                     "AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list` according to heartbeat policy.",
@@ -363,12 +353,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "analyze": CommandDef(
                 desc="Generate project doc snippets via AI analysis",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "assess": CommandDef(
                 desc="Assess project quality tool configuration against blessed templates",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
         },
@@ -379,7 +369,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "onboard": CommandDef(
                 desc="Scaffold a company under ~/.teleclaude/companies, or dispatch doc-snippet analysis",
                 args="<name> [--slug <value>]",
-                flags=[_H, Flag("--slug", desc="Company slug (optional; derived from the name when omitted)")],
+                flags=[F.FLAG_HELP, F.FLAG_COMPANY_SLUG],
                 notes=[
                     "Scaffolds companies/<slug>/{inbox (git), docs/<taxonomy>, teleclaude.yml, meta.yaml, .env} synchronously.",
                     "Re-running reprocesses only changed inbox material (SHA-tracked in meta.yaml).",
@@ -394,18 +384,19 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "availability": CommandDef(
                 desc="Get current availability for all agents",
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "status": CommandDef(
                 desc="Set dispatch status for a specific agent",
                 args="<agent> [--status <val>] [--reason <text>] [--model <model>] [--until <ts>] [--clear]",
                 flags=[
-                    _H,
-                    Flag("--status", desc="Status: available, unavailable, degraded"),
-                    Flag("--reason", desc="Reason for status change"),
-                    Flag("--model", desc="Restrict an unavailable status to one declared model"),
-                    Flag("--until", desc="ISO8601 UTC expiry for unavailable or degraded"),
-                    Flag("--clear", desc="Reset to available immediately"),
+                    F.FLAG_HELP,
+                    F.FLAG_AGENT_STATUS,
+                    F.FLAG_AGENT_STATUS_REASON,
+                    F.FLAG_AGENT_STATUS_MODEL,
+                    F.FLAG_AGENT_STATUS_UNTIL,
+                    F.FLAG_AGENT_STATUS_CLEAR,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ADMIN),
             ),
@@ -417,13 +408,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List active channels",
                 args="[--project <name>]",
-                flags=[_H, _FLAG_PROJECT_FILTER],
+                flags=[F.FLAG_HELP, F.FLAG_PROJECT_FILTER],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
             "publish": CommandDef(
                 desc="Publish a message to a channel",
                 args="<channel> [--data <json>]",
-                flags=[_H, Flag("--data", desc="JSON payload to publish")],
+                flags=[F.FLAG_HELP, F.FLAG_CHANNEL_DATA],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
         },
@@ -434,17 +425,19 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "get": CommandDef(
                 desc="Fetch durable operation status by operation_id",
                 args="<operation_id>",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER),
             ),
         },
     ),
     "version": CommandDef(
         desc="Print version, channel, and commit",
+        flags=[F.FLAG_HELP],
         auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
     ),
     "reload": CommandDef(
         desc="Reload every running telec TUI so it picks up changed TUI code",
+        flags=[F.FLAG_HELP],
         notes=[
             "Each running TUI records itself on start; this addresses those records.",
             "A TUI restarts in place, keeping its pid, its tmux panes, and its view state.",
@@ -456,8 +449,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Validate doc/snippet/artifact sources (blocks on findings) and apply your edits",
         args="[--skip-deploy]",
         flags=[
-            _H,
-            Flag("--skip-deploy", desc="Validate only; do not build or deploy (read-only gate)"),
+            F.FLAG_HELP,
+            F.FLAG_SKIP_DEPLOY,
+            F.FLAG_SKIP_VALIDATION,
         ],
         notes=[
             "Validation always blocks — there is no warn-and-pass mode.",
@@ -469,10 +463,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Send a message to a person by slug",
         args="<slug> <text> [--file <path>] [--subject <text>] [--channel <name>]",
         flags=[
-            _H,
-            Flag("--file", desc="Path to a single file to attach (Telegram, Discord, email only)"),
-            Flag("--subject", desc="Email subject line; ignored on channels without a subject concept"),
-            Flag("--channel", desc="Override channel: telegram, discord, whatsapp, email"),
+            F.FLAG_HELP,
+            F.FLAG_MSG_FILE,
+            F.FLAG_MSG_SUBJECT,
+            F.FLAG_MSG_CHANNEL,
         ],
         notes=[
             "Recipient-owned routing: defaults to the person's configured preferred_channel (email when unset).",
@@ -492,16 +486,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
-                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <domain>] [--scope <{_SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
+                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <domain>] [--scope <{F.SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
                 flags=[
-                    _H,
-                    Flag("--baseline-only", "-b", "Show only baseline snippets"),
-                    Flag("--third-party", "-t", "Include third-party docs"),
-                    Flag("--areas", "-a", f"Filter by taxonomy type ({'|'.join(TAXONOMY_TYPES)}); omit for all"),
-                    Flag("--domains", "-d", "Filter by published domain; omit for all"),
-                    Flag("--scope", desc=f"Filter to global or project snippets ({_SCOPE_VALUES})"),
-                    Flag("--project", desc="Filter to a registered project's snippets by slug"),
-                    Flag("--target", desc="Filter to snippets delivered by slug"),
+                    F.FLAG_HELP,
+                    F.FLAG_DOCS_BASELINE_ONLY,
+                    F.FLAG_DOCS_THIRD_PARTY,
+                    F.FLAG_DOCS_AREAS,
+                    F.FLAG_DOCS_DOMAINS,
+                    F.FLAG_DOCS_SCOPE,
+                    F.FLAG_DOCS_PROJECT,
+                    F.FLAG_DOCS_TARGET,
                 ],
                 notes=[
                     "Pending snippets (those with delivered_by) append ` (delivered by: slug1,slug2)` at the end of the phase-1 line.",
@@ -510,20 +504,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "get": CommandDef(
                 desc="Fetch full snippet content by ID (phase 2)",
-                args=f"<id> [id...] [--scope <{_SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
+                args=f"<id> [id...] [--scope <{F.SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
                 flags=[
-                    _H,
-                    Flag(
-                        "--closure",
-                        desc="Fetch an activatable procedure's eligible required-read closure in one pass",
-                        hidden=True,
-                    ),
-                    Flag("--scope", desc=f"Filter to global or project snippets ({_SCOPE_VALUES})"),
-                    Flag("--project", desc="Filter to a registered project's snippets by slug"),
-                    Flag(
-                        "--target",
-                        desc="Include the slug's planned sections and companion replacement body (default: strip all)",
-                    ),
+                    F.FLAG_HELP,
+                    F.FLAG_DOCS_GET_CLOSURE,
+                    F.FLAG_DOCS_SCOPE,
+                    F.FLAG_DOCS_PROJECT,
+                    F.FLAG_DOCS_GET_TARGET,
                 ],
                 runtime_notes=[
                     "The generated Activatable Procedures catalog uses `--closure` to load one delivered procedure and its eligible required-read closure in one pass.",
@@ -545,56 +532,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Create a todo with substantive content",
                 args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved]",
                 flags=[
-                    _H,
-                    _FLAG_AFTER_DEPS,
-                    Flag(
-                        "--schedule",
-                        desc="Task-only schedule: ISO-8601 instant or cron:<minute hour day month weekday> (0/7=Sunday)",
-                    ),
-                    Flag(
-                        "--kind",
-                        desc=(
-                            f"The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}. Always set it "
-                            "when creating via the CLI — agents classify their own todos; omitting it is the "
-                            "TUI dump path only. --kind task is side-effect-only and never touches the repo "
-                            "(software-development/spec/todo-kind-task) — code work is change/feature/bug."
-                        ),
-                    ),
-                    Flag(
-                        "--approved",
-                        desc=(
-                            "Declares the pre-creation decisions were faced. Without it a complete creation "
-                            "request creates nothing and points to "
-                            "software-development/policy/todo-creation-discipline."
-                        ),
-                    ),
-                    Flag("--icebox", desc="Create future todo parked in the icebox; does not auto-spawn"),
-                    Flag("--project-root", "-p", desc="Target an explicit project root instead of the invocation cwd"),
-                    Flag("--group", desc="Attach the new todo as a child of <parent-slug>, making the parent a holder"),
-                    Flag(
-                        "--plan",
-                        desc="For --kind change, content seeds implementation-plan as a draft basis; for --kind task, content is the pre-authorized task-plan.",
-                    ),
-                    Flag(
-                        "--hold",
-                        desc="Exceptional create-time brake for valid work awaiting an external gate; suppresses future dispatch until release.",
-                        hidden=True,
-                    ),
-                    Flag(
-                        "--reason",
-                        desc="State why the hold exists or name the gate or owner it awaits; valid only with --hold.",
-                        hidden=True,
-                    ),
-                    Flag(
-                        "--human-involved",
-                        desc=(
-                            "Declares a human was in the conversation that produced this filing — saw it, asked "
-                            "for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives "
-                            "this automatically and ignores the flag. Omitting it for an agent filing records "
-                            "false — a forgotten flag lands the todo in the started-without-me audit bucket, "
-                            "never a hidden autonomous filing."
-                        ),
-                    ),
+                    F.FLAG_HELP,
+                    F.FLAG_AFTER_DEPS,
+                    F.FLAG_TODO_SCHEDULE,
+                    F.FLAG_TODO_KIND,
+                    F.FLAG_TODO_CREATE_APPROVED,
+                    F.FLAG_TODO_ICEBOX,
+                    F.FLAG_TODO_PROJECT_ROOT,
+                    F.FLAG_TODO_GROUP,
+                    F.FLAG_TODO_PLAN,
+                    F.FLAG_TODO_CREATE_HOLD,
+                    F.FLAG_TODO_CREATE_REASON,
+                    F.FLAG_HUMAN_INVOLVED,
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
@@ -638,17 +587,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List todo entries (source of truth for todo status)",
                 args="[--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--include-removed] [--removed-only] [--since <when>] [--json]",
                 flags=[
-                    Flag("--include-icebox", "-i", "Include icebox items"),
-                    Flag("--icebox-only", "-o", "Show only icebox items"),
-                    Flag("--include-delivered", "-d", "Include delivered items"),
-                    Flag("--delivered-only", desc="Show only delivered items"),
-                    Flag("--include-removed", "-r", "Include soft-removed items"),
-                    Flag("--removed-only", desc="Show only soft-removed items"),
-                    Flag(
-                        "--since",
-                        desc="Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.",
-                    ),
-                    Flag("--json", desc="Output as a sectioned JSON object (active/delivered/icebox/removed trees)"),
+                    F.FLAG_HELP,
+                    F.FLAG_TODO_LIST_INCLUDE_ICEBOX,
+                    F.FLAG_TODO_LIST_ICEBOX_ONLY,
+                    F.FLAG_TODO_LIST_INCLUDE_DELIVERED,
+                    F.FLAG_TODO_LIST_DELIVERED_ONLY,
+                    F.FLAG_TODO_LIST_INCLUDE_REMOVED,
+                    F.FLAG_TODO_LIST_REMOVED_ONLY,
+                    F.FLAG_TODO_LIST_SINCE,
+                    F.FLAG_TODO_LIST_JSON,
                 ],
                 notes=[
                     "Output is sectioned into active/delivered/icebox/removed dependency trees.",
@@ -670,13 +617,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "design": CommandDef(
                 desc="Run the creative state machine",
                 args="[<slug>]",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "co-create": CommandDef(
                 desc="Deprecated alias for `telec todo design`",
                 args="[<slug>]",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
                 hidden=True,
             ),
@@ -690,64 +637,41 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "downstream recovery surface) and fail-closed on a live same-slug twin."
                 ),
                 args="<slug> [--force]",
-                flags=[Flag("--force", desc="Override live-work removal refusal")],
+                flags=[F.FLAG_HELP, F.FLAG_TODO_REMOVE_FORCE],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "freeze": CommandDef(
                 desc="Move todo to icebox",
                 args="<slug>",
-                flags=[],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "unfreeze": CommandDef(
                 desc="Promote todo from icebox",
                 args="<slug>",
-                flags=[],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "deliver": CommandDef(
                 desc="Move todo to delivered",
                 args="<slug> [--commit <hash>]",
-                flags=[
-                    Flag(
-                        "--commit",
-                        desc=(
-                            "The commit that delivered the slug. The integrator always supplies its own pushed "
-                            "commit and withholds delivery until that commit is confirmed on origin/main. Never "
-                            "inferred from HEAD, which is routinely an unrelated commit; omitting it therefore "
-                            "records a delivery with no provenance."
-                        ),
-                    ),
-                ],
+                flags=[F.FLAG_HELP, F.FLAG_TODO_DELIVER_COMMIT],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "update": CommandDef(
                 desc="Update a todo slug, dependencies, or kind",
                 args=f"<slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <{TODO_KIND_USAGE}>] [--hold --reason <text>] [--release] [--unclaim] [--force]",
                 flags=[
-                    _H,
-                    Flag("--slug", desc="New todo slug; delegates to the durable rename engine"),
-                    Flag(
-                        "--after",
-                        desc=(
-                            "Dependency slug(s); replaces the full set. "
-                            "CSV accepted: --after parent-a,parent-b. "
-                            "Repeated flags accepted for compatibility: --after parent-a --after parent-b. "
-                            'Use --after "" to clear all dependencies.'
-                        ),
-                    ),
-                    Flag(
-                        "--schedule", desc="Task-only schedule; pass an empty value to clear (cron weekday 0/7=Sunday)"
-                    ),
-                    Flag("--kind", desc=f"New todo kind: {TODO_KIND_USAGE}"),
-                    Flag("--hold", desc="Set the per-todo automatic dispatch brake"),
-                    Flag(
-                        "--reason",
-                        desc="State why a --hold waits, or the gate or owner it awaits; required with --hold",
-                    ),
-                    Flag("--release", desc="Release the per-todo automatic dispatch brake"),
-                    Flag("--unclaim", desc="Release the caller-owned runner claim without ending the session"),
-                    Flag("--force", desc="Allow permanent orphan-artifact handling for kind migrations"),
+                    F.FLAG_HELP,
+                    F.FLAG_TODO_UPDATE_SLUG,
+                    F.FLAG_TODO_UPDATE_AFTER,
+                    F.FLAG_TODO_UPDATE_SCHEDULE,
+                    F.FLAG_TODO_UPDATE_KIND,
+                    F.FLAG_TODO_UPDATE_HOLD,
+                    F.FLAG_TODO_UPDATE_REASON,
+                    F.FLAG_TODO_UPDATE_RELEASE,
+                    F.FLAG_TODO_UPDATE_UNCLAIM,
+                    F.FLAG_TODO_UPDATE_FORCE,
                 ],
                 notes=[
                     "Mutates slug, deps, kind, or hold; --after replaces the full dependency set.",
@@ -762,19 +686,19 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "prepare": CommandDef(
                 desc="Run the Phase A (prepare) state machine",
                 args="<slug>",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "work": CommandDef(
                 desc="Run the Phase B (work) state machine",
                 args="[<slug>]",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "integrate": CommandDef(
                 desc="Run the Phase C (integrate) state machine",
                 args="[<slug>]",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
             ),
             "artifacts": CommandDef(
@@ -783,21 +707,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "list": CommandDef(
                         desc="List artifacts for a todo",
                         args="<slug>",
-                        flags=[_H],
+                        flags=[F.FLAG_HELP],
                         examples=["telec todo artifacts list my-slug"],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
                         args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
-                        flags=[_H],
+                        flags=[F.FLAG_HELP],
                         examples=["telec todo artifacts read my-slug requirements"],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
                         args="<slug> <name: input|prd|architecture|diagnosis|investigation|implementation-plan|task-plan|quality-checklist|design-spec|deferrals|log|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
-                        flags=[_H],
+                        flags=[F.FLAG_HELP],
                         notes=["Legacy bug artifacts are read-only; write bug todo content to input."],
                         examples=['telec todo artifacts write my-slug prd "# PRD content"'],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
@@ -805,7 +729,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
                         args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
-                        flags=[_H],
+                        flags=[F.FLAG_HELP],
                         notes=[
                             "Looks up both versions by digest in the artifact version history "
                             "and prints a unified diff between them.",
@@ -819,7 +743,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "remove": CommandDef(
                         desc="Remove a todo artifact and its version history",
                         args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
-                        flags=[_H],
+                        flags=[F.FLAG_HELP],
                         notes=[
                             "Refuses input because it is the seed artifact for a todo.",
                             "Missing artifacts are treated as a successful no-op.",
@@ -833,12 +757,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Show diagnostic state payload for a todo; artifact bodies are omitted by default",
                 args="<slug> [--include-removed] [--include-artifact-content]",
                 flags=[
-                    _H,
-                    Flag("--include-removed", desc="Also search soft-removed entries"),
-                    Flag(
-                        "--include-artifact-content",
-                        desc="Include artifact body content under artifact_content in the payload",
-                    ),
+                    F.FLAG_HELP,
+                    F.FLAG_TODO_SHOW_INCLUDE_REMOVED,
+                    F.FLAG_TODO_SHOW_INCLUDE_ARTIFACT_CONTENT,
                 ],
                 examples=[
                     "telec todo show my-slug",
@@ -850,7 +771,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "reactivate": CommandDef(
                 desc="Restore a soft-removed todo",
                 args="<slug> | --id <row-id>",
-                flags=[_H, Flag("--id", desc="Restore a specific retained row by durable id")],
+                flags=[F.FLAG_HELP, F.FLAG_TODO_REACTIVATE_ID],
                 notes=[
                     "Resolves the slug against soft-removed rows and restores the uniquely matching entry.",
                     "Use --id after a removed-slug response identifies multiple retained rows.",
@@ -873,60 +794,28 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>]"
                 ),
                 flags=[
-                    _H,
-                    Flag("--verdict", desc="approve | changes_requested | needs_work | needs_decision"),
-                    Flag(
-                        "--phase",
-                        desc=(
-                            "Review phase the verdict belongs to "
-                            "(prd_review, architecture_review, plan_review, build_review)"
-                        ),
-                    ),
-                    Flag("--prd-approved", desc="Mark PRD as approved by the human"),
-                    Flag("--task-approved", desc="Authorize the current task-plan for a task"),
-                    Flag("--architecture-skipped", desc="Skip architecture phase with a reason"),
-                    Flag("--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>"),
-                    Flag(
-                        "--kind-assign",
-                        desc=(
-                            f"Assign kind and enter that kind's lifecycle entry phase: <{TODO_KIND_USAGE}> [content]. "
-                            "task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task)."
-                        ),
-                    ),
-                    Flag(
-                        "--build-complete",
-                        desc="Record the worker's build-complete claim; gates run on the next telec todo work dispatch",
-                    ),
-                    Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
-                    Flag(
-                        "--kickback",
-                        desc="Work-orchestrator-only: send an unbuildable todo back to plan drafting",
-                    ),
-                    Flag(
-                        "--reason",
-                        desc=(
-                            "Reason recorded to input (required with --kickback / --task-outcome error / "
-                            "--diagnosis-unresolved)"
-                        ),
-                    ),
-                    Flag(
-                        "--task-outcome",
-                        desc="Durable task firing outcome: success delivers/clears, error holds with --reason",
-                    ),
-                    Flag(
-                        "--diagnosis-settled",
-                        desc=(
-                            "Bug lane: record the diagnosis artifact's current digest as the settled "
-                            "cause; a later revision invalidates the stamp"
-                        ),
-                    ),
-                    Flag(
-                        "--diagnosis-unresolved",
-                        desc=(
-                            "Bug lane: hold the todo when the dispatched peer's diagnosis could not "
-                            "be settled; requires --reason"
-                        ),
-                    ),
+                    F.FLAG_HELP,
+                    F.FLAG_STAMP_VERDICT,
+                    F.FLAG_STAMP_PHASE,
+                    F.FLAG_STAMP_PRD_APPROVED,
+                    F.FLAG_STAMP_TASK_APPROVED,
+                    F.FLAG_STAMP_ARCHITECTURE_SKIPPED,
+                    F.FLAG_STAMP_DRIFT_REVIEWED,
+                    F.FLAG_STAMP_KIND_ASSIGN,
+                    F.FLAG_STAMP_BUILD_COMPLETE,
+                    F.FLAG_STAMP_FINALIZE_READY,
+                    F.FLAG_STAMP_KICKBACK,
+                    F.FLAG_STAMP_REASON,
+                    F.FLAG_STAMP_TASK_OUTCOME,
+                    F.FLAG_STAMP_DIAGNOSIS_SETTLED,
+                    F.FLAG_STAMP_DIAGNOSIS_UNRESOLVED,
+                    F.FLAG_STAMP_REQUIREMENTS_READY,
+                    F.FLAG_STAMP_PLAN_READY,
+                    F.FLAG_STAMP_DEFERRALS_PROCESSED,
+                    F.FLAG_STAMP_DESIGN_SPEC_CONFIRMED,
+                    F.FLAG_STAMP_ART_APPROVED,
+                    F.FLAG_STAMP_VISUALS_APPROVED,
+                    F.FLAG_STAMP_BUILD_STARTED,
                 ],
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
@@ -954,26 +843,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ),
                 args="<description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved]",
                 flags=[
-                    Flag("--slug", desc="Custom slug (default: auto-generated)"),
-                    Flag("--body", desc="Detailed description body for bug.md"),
-                    Flag(
-                        "--project",
-                        desc=(
-                            "Project that owns the defective code (from trusted_dirs). Defaults to the "
-                            "invoking cwd — where the symptom was OBSERVED, which is often not where the "
-                            "code lives. Set it whenever the two differ."
-                        ),
-                    ),
-                    Flag(
-                        "--human-involved",
-                        desc=(
-                            "Declares a human was in the conversation that produced this filing — saw it, asked "
-                            "for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives "
-                            "this automatically and ignores the flag. Omitting it for an agent filing records "
-                            "false — a forgotten flag lands the todo in the started-without-me audit bucket, "
-                            "never a hidden autonomous filing."
-                        ),
-                    ),
+                    F.FLAG_HELP,
+                    F.FLAG_BUG_APPROVED,
+                    F.FLAG_BUG_SLUG,
+                    F.FLAG_BUG_BODY,
+                    F.FLAG_BUG_PROJECT,
+                    F.FLAG_HUMAN_INVOLVED,
                 ],
                 notes=[
                     "An invocation carrying only the report payload does not file: it presents the required "
@@ -1001,19 +876,20 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
-                flags=[],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "suppress": CommandDef(
                 desc="Register a known-issue suppression so the log bug hunter stops re-filing a triaged signal",
                 args='"<pattern>" --reason <r> [--match substring|regex] [--disposition expected|wontfix] [--project <name>] [--source-bug <slug>] [--expires <when>]',
                 flags=[
-                    Flag("--reason", desc="Human-readable justification (required)"),
-                    Flag("--match", desc="Match mode: substring (default, literal) or regex"),
-                    Flag("--disposition", desc="expected or wontfix (default: wontfix); record-only"),
-                    _FLAG_PROJECT_TRUSTED,
-                    Flag("--source-bug", desc="Slug of the originating bug whose triage produced this suppression"),
-                    Flag("--expires", desc="Optional ISO-8601 expiry after which the suppression lapses"),
+                    F.FLAG_HELP,
+                    F.FLAG_SUPPRESS_REASON,
+                    F.FLAG_SUPPRESS_MATCH,
+                    F.FLAG_SUPPRESS_DISPOSITION,
+                    F.FLAG_PROJECT_TRUSTED,
+                    F.FLAG_SUPPRESS_SOURCE_BUG,
+                    F.FLAG_SUPPRESS_EXPIRES,
                 ],
                 notes=[
                     "The ledger is the log bug hunter's allowlist: a matched candidate error line is treated as already triaged and does not dispatch a session.",
@@ -1025,13 +901,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "suppressions": CommandDef(
                 desc="List the active known-issue suppressions for a project",
                 args="[--project <name>]",
-                flags=[_FLAG_PROJECT_TRUSTED],
+                flags=[F.FLAG_HELP, F.FLAG_PROJECT_TRUSTED],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "unsuppress": CommandDef(
                 desc="Remove a known-issue suppression by id so its signal is eligible for filing again",
                 args="<id> [--project <name>]",
-                flags=[_FLAG_PROJECT_TRUSTED],
+                flags=[F.FLAG_HELP, F.FLAG_PROJECT_TRUSTED],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
         },
@@ -1043,9 +919,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Fire-and-forget content dump to publications inbox",
                 args="<description-or-text> [--slug <slug>] [--tags <tags>] [--author <name>]",
                 flags=[
-                    Flag("--slug", desc="Custom slug (default: auto-generated from text)"),
-                    Flag("--tags", desc="Comma-separated tags"),
-                    Flag("--author", desc="Author identity (default: terminal auth)"),
+                    F.FLAG_HELP,
+                    F.FLAG_CONTENT_SLUG,
+                    F.FLAG_CONTENT_TAGS,
+                    F.FLAG_CONTENT_AUTHOR,
                 ],
                 notes=[
                     "Creates publications/inbox/YYYYMMDD-<slug>/ with content.md and meta.yaml.",
@@ -1069,11 +946,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Write a structured recurring job result record",
                 args="<job_id> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]",
                 flags=[
-                    _H,
-                    Flag("--success", desc="Whether the job completed successfully"),
-                    Flag("--message", desc="Human-readable outcome summary"),
-                    Flag("--items-processed", desc="Count of processed items (default: 0)"),
-                    Flag("--error", desc="Error detail; repeat for multiple errors"),
+                    F.FLAG_HELP,
+                    F.FLAG_JOB_SUCCESS,
+                    F.FLAG_JOB_MESSAGE,
+                    F.FLAG_JOB_ITEMS_PROCESSED,
+                    F.FLAG_JOB_ERROR,
                 ],
                 notes=[
                     "job_id is the job's identity: an agent job's procedure snippet ID, or a script job's declared name. Validated against configured jobs; writes JSON under ~/.teleclaude/jobs/{job_id}/runs/.",
@@ -1089,9 +966,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List event schemas: type, level, domain, visibility, description, actionable",
                 args="[--domain <name>]",
-                flags=[
-                    Flag("--domain", desc="Filter by domain"),
-                ],
+                flags=[F.FLAG_HELP, F.FLAG_EVENTS_DOMAIN],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
@@ -1101,6 +976,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "status": CommandDef(
                 desc="Show signal pipeline counts and last ingest time",
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
@@ -1112,9 +988,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List configured MCP servers without starting them",
                 args="[--exclude <slug>] [--json]",
                 flags=[
-                    _H,
-                    Flag("--exclude", desc="Server slug to omit; repeat for specialized procedures"),
-                    Flag("--json", desc="Print raw JSON response"),
+                    F.FLAG_HELP,
+                    F.FLAG_MCP_EXCLUDE,
+                    F.FLAG_MCP_JSON,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -1122,8 +998,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Initialize one MCP server and list its tools",
                 args="<slug> [--json]",
                 flags=[
-                    _H,
-                    Flag("--json", desc="Print raw JSON response"),
+                    F.FLAG_HELP,
+                    F.FLAG_MCP_JSON,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -1131,8 +1007,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Call one MCP tool through the lazy runtime",
                 args="<slug> <tool> --json <arguments-json>",
                 flags=[
-                    _H,
-                    Flag("--json", desc="JSON object arguments for the selected tool"),
+                    F.FLAG_HELP,
+                    F.FLAG_MCP_CALL_JSON,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -1145,6 +1021,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "login": CommandDef(
                 desc="Set terminal login identity for this TTY",
                 args="<email>",
+                flags=[F.FLAG_HELP],
                 notes=[
                     "Stores auth state in a TTY-scoped file.",
                     "Running login again on the same TTY overwrites the existing file.",
@@ -1153,10 +1030,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "whoami": CommandDef(
                 desc="Show terminal login identity for this TTY",
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "logout": CommandDef(
                 desc="Clear terminal login identity for this TTY",
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
         },
@@ -1166,21 +1045,24 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "wizard": CommandDef(
                 desc="Open the interactive configuration wizard",
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
             "get": CommandDef(
                 desc="Get config values",
-                args="[paths...]",
+                args="[paths...] [--format <fmt>]",
+                flags=[F.FLAG_HELP, F.FLAG_CONFIG_FORMAT],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "patch": CommandDef(
                 desc="Patch config values",
-                args="[--yaml '...']",
-                flags=[_H, Flag("--yaml", "-y", "Inline YAML patch")],
+                args="[--yaml '...'] [--from-file <path>] [--format <fmt>]",
+                flags=[F.FLAG_HELP, F.FLAG_CONFIG_YAML, F.FLAG_CONFIG_FROM_FILE, F.FLAG_CONFIG_FORMAT],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
             "validate": CommandDef(
                 desc="Full validation",
+                flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "people": CommandDef(
@@ -1188,6 +1070,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 subcommands={
                     "list": CommandDef(
                         desc="List people",
+                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                     "add": CommandDef(
@@ -1196,7 +1079,20 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "<name> --email <email> --role <role>"
                             " [--expertise '<json>']"
                             " [--telegram-user <user>] [--telegram-id <id>]"
+                            " [--no-invite] [--json]"
                         ),
+                        flags=[
+                            F.FLAG_HELP,
+                            F.FLAG_PEOPLE_EMAIL,
+                            F.FLAG_PEOPLE_ROLE,
+                            F.FLAG_PEOPLE_USERNAME,
+                            F.FLAG_PEOPLE_EXPERTISE,
+                            F.FLAG_PEOPLE_TELEGRAM_USER,
+                            F.FLAG_PEOPLE_TELEGRAM_ID,
+                            F.FLAG_PEOPLE_NO_INVITE,
+                            F.FLAG_PEOPLE_NAME_ALIAS,
+                            F.FLAG_JSON_MACHINE_READABLE,
+                        ],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                     "edit": CommandDef(
@@ -1204,19 +1100,30 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args=(
                             "<name> [--email <email>] [--role <role>]"
                             " [--expertise '<json>']"
-                            " [--telegram-user <user>] [--telegram-id <id>]"
+                            " [--telegram-user <user>] [--telegram-id <id>] [--json]"
                         ),
+                        flags=[
+                            F.FLAG_HELP,
+                            F.FLAG_PEOPLE_EMAIL,
+                            F.FLAG_PEOPLE_ROLE,
+                            F.FLAG_PEOPLE_USERNAME,
+                            F.FLAG_PEOPLE_EXPERTISE,
+                            F.FLAG_PEOPLE_TELEGRAM_USER,
+                            F.FLAG_PEOPLE_TELEGRAM_ID,
+                            F.FLAG_JSON_MACHINE_READABLE,
+                        ],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                     "remove": CommandDef(
                         desc="Remove a person",
-                        args="<name>",
+                        args="<name> [--delete-dir] [--json]",
+                        flags=[F.FLAG_HELP, F.FLAG_PEOPLE_DELETE_DIR, F.FLAG_JSON_MACHINE_READABLE],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                     "invite": CommandDef(
                         desc="Generate invite links for a person",
                         args="<name> [--json]",
-                        flags=[_H, Flag("--json", desc="Emit machine-readable JSON output")],
+                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                 },
@@ -1239,16 +1146,20 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 subcommands={
                     "list": CommandDef(
                         desc="List environment variables",
+                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                     "set": CommandDef(
                         desc="Set environment variables",
+                        args="<KEY=VALUE> ... [--json]",
+                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
                 },
             ),
             "notify": CommandDef(
                 desc="Toggle notification settings",
+                flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "tts": CommandDef(
@@ -1257,7 +1168,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "deprovision": CommandDef(
                         desc="Disable TTS and remove the TTS-exclusive optional dependencies",
                         args="[--yes]",
-                        flags=[_H, Flag("--yes", desc="Confirm the destructive dependency removal")],
+                        flags=[F.FLAG_HELP, F.FLAG_TTS_YES],
                         notes=[
                             "Disables TTS, removes the TTS-exclusive deps (elevenlabs, the mlx text "
                             "pipeline), and leaves deps shared with STT/summarization installed.",
@@ -1277,32 +1188,33 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Search agent session transcripts",
                 args="[terms...] [--agent <name>] [--computer <host>] [--identity <value>] [--project <path>] [--limit <n>] [--include-workers] [--json]",
                 flags=[
-                    _H,
-                    Flag("--agent", "-a", "Agent name(s) or 'all' (default: all)"),
-                    Flag("--computer", "-c", "Query one or more remote computers via daemon API"),
-                    Flag("--limit", "-l", "Max results to show (default: 20)"),
-                    Flag("--include-workers", desc="Also search dispatched-worker sessions (reviewers, builders)"),
-                    Flag("--identity", desc="Filter by human identity or transcript source identity"),
-                    _FLAG_PROJECT_FILTER,
-                    Flag("--json", desc="Emit machine-readable JSON"),
+                    F.FLAG_HELP,
+                    F.FLAG_HISTORY_AGENT,
+                    F.FLAG_COMPUTER_MANY,
+                    F.FLAG_HISTORY_LIMIT,
+                    F.FLAG_HISTORY_INCLUDE_WORKERS,
+                    F.FLAG_HISTORY_IDENTITY,
+                    F.FLAG_PROJECT_FILTER,
+                    F.FLAG_HISTORY_JSON,
                 ],
                 examples=[
                     "telec history search config wizard",
                     "telec history search --agent claude,codex bug fix",
                     "telec history search --include-workers tui",
                 ],
+                literal_dash_tokens=True,
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "show": CommandDef(
                 desc="Show full transcript for a session",
                 args="<session-id> [--agent <name>] [--computer <host>] [--thinking] [--raw] [--json]",
                 flags=[
-                    _H,
-                    Flag("--agent", "-a", "Agent name or 'all' (default: all)"),
-                    Flag("--computer", "-c", "Fetch from a remote computer"),
-                    _FLAG_THINKING,
-                    Flag("--raw", desc="Show raw transcript instead of mirror text"),
-                    Flag("--json", desc="Emit machine-readable JSON"),
+                    F.FLAG_HELP,
+                    F.FLAG_HISTORY_SHOW_AGENT,
+                    F.FLAG_COMPUTER_MANY,
+                    F.FLAG_THINKING,
+                    F.FLAG_HISTORY_RAW,
+                    F.FLAG_HISTORY_JSON,
                 ],
                 examples=[
                     "telec history show 00000000-0000-4000-8000-000000000000",
@@ -1327,13 +1239,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List personal-preference observations about the human.",
                 args="[--limit <n>] [--type <type>] [--project <name>]",
                 flags=[
-                    _H,
-                    Flag("--limit", desc="Max results (default: 50)"),
-                    Flag(
-                        "--type",
-                        desc="Filter by observation type stored in the schema",
-                    ),
-                    _FLAG_PROJECT_FILTER,
+                    F.FLAG_HELP,
+                    F.FLAG_MEMORIES_LIMIT,
+                    F.FLAG_MEMORIES_TYPE,
+                    F.FLAG_PROJECT_FILTER,
                 ],
                 examples=[
                     "telec memories list",
@@ -1345,13 +1254,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Search personal-preference observations about the human.",
                 args="<query> [--limit <n>] [--type <type>] [--project <name>]",
                 flags=[
-                    _H,
-                    _FLAG_LIMIT_20,
-                    Flag(
-                        "--type",
-                        desc="Filter by observation type stored in the schema",
-                    ),
-                    _FLAG_PROJECT_FILTER,
+                    F.FLAG_HELP,
+                    F.FLAG_LIMIT_20,
+                    F.FLAG_MEMORIES_TYPE,
+                    F.FLAG_PROJECT_FILTER,
                 ],
                 examples=[
                     'telec memories search "communication style"',
@@ -1367,10 +1273,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ),
                 args="<text> [--title <title>] [--type <type>] [--project <name>]",
                 flags=[
-                    _H,
-                    Flag("--title", desc="Observation title"),
-                    Flag("--type", desc="Observation type"),
-                    Flag("--project", desc="Project name"),
+                    F.FLAG_HELP,
+                    F.FLAG_MEMORIES_SAVE_TITLE,
+                    F.FLAG_MEMORIES_SAVE_TYPE,
+                    F.FLAG_MEMORIES_SAVE_PROJECT,
                 ],
                 examples=[],
                 hidden=True,
@@ -1379,7 +1285,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "delete": CommandDef(
                 desc="Delete a personal-preference observation by ID (typically run by the human while pruning).",
                 args="<id>",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 examples=["telec memories delete 42"],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
@@ -1387,10 +1293,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Show personal-preference observations around an anchor ID.",
                 args="<id> [--before <n>] [--after <n>] [--project <name>]",
                 flags=[
-                    _H,
-                    Flag("--before", desc="Observations before anchor (default: 3)"),
-                    Flag("--after", desc="Observations after anchor (default: 3)"),
-                    _FLAG_PROJECT_FILTER,
+                    F.FLAG_HELP,
+                    F.FLAG_MEMORIES_BEFORE,
+                    F.FLAG_MEMORIES_AFTER,
+                    F.FLAG_PROJECT_FILTER,
                 ],
                 examples=["telec memories timeline 42 --before 3 --after 3"],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
@@ -1410,7 +1316,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "affected": CommandDef(
                         desc="Print the blast-radius dependents of changed files",
                         args="<changed-files>",
-                        flags=[_H],
+                        flags=[F.FLAG_HELP],
                         notes=[
                             "Maps each changed file to its symbols, runs a transitive reverse "
                             "dependency traversal over the Blueprint, and prints the union of "
@@ -1429,40 +1335,34 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "lint": CommandDef(
                 desc="Run native make lint plus TeleClaude guardrails",
                 flags=[
-                    _H,
-                    Flag("--all", desc="Run against all configured sources, skip workspace scoping"),
+                    F.FLAG_HELP,
+                    F.FLAG_CODE_ALL_LINT,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "test": CommandDef(
                 desc="Run native make test",
                 flags=[
-                    _H,
-                    Flag("--all", desc="Run all tests, skip workspace scoping"),
-                    Flag(
-                        "--update-snapshots",
-                        desc=(
-                            "Update snapshot files after reading diffs. Use only when test failures show "
-                            "snapshot deltas that match your intended change."
-                        ),
-                    ),
+                    F.FLAG_HELP,
+                    F.FLAG_CODE_ALL_TEST,
+                    F.FLAG_CODE_UPDATE_SNAPSHOTS,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "format": CommandDef(
                 desc="Run native make format",
-                flags=[_H, Flag("--all", desc="Format all configured sources, skip workspace scoping")],
+                flags=[F.FLAG_HELP, F.FLAG_CODE_ALL_FORMAT],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "install": CommandDef(
                 desc="Run native make install",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "owners": CommandDef(
                 desc="Resolve live-session ownership for supplied dirty paths",
                 args="<path> [<path> ...]",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 notes=[
                     "Accepts the complete already-aged dirty blocking set; the command performs no age logic.",
                     "Prints one path-keyed JSON object with each owner or null and emits an identity-free warning when attribution is undetermined.",
@@ -1473,16 +1373,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List workspace-scoped changed files",
                 args="[--include <path> ...] [--only <path> ...]",
                 flags=[
-                    _H,
-                    Flag("--include", desc="Include eligible paths outside the computed scope."),
-                    Flag("--only", desc="Inspect exactly the declared eligible paths."),
+                    F.FLAG_HELP,
+                    F.FLAG_CODE_CHANGED_INCLUDE,
+                    F.FLAG_CODE_CHANGED_ONLY,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "add": CommandDef(
                 desc="Stage files for the next commit (NEW, unmerged, or partial-staged tracked)",
                 args="<path> [<path> ...]",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 notes=[
                     "Sealed equivalent of 'git add' for the three cases git's data model genuinely requires staging:",
                     "  (1) NEW (untracked) files — must enter the index before commit pathspec can match.",
@@ -1504,23 +1404,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)",
                 args='"<message>" [--approved] [--human-involved] [--include <path> ...] [--only <path> ...]',
                 flags=[
-                    _H,
-                    Flag(
-                        "--approved",
-                        desc="Agent-owned sealed commit gate. Required to commit; bare main invocation prints commit-first and review-routing guidance.",
-                    ),
-                    Flag(
-                        "--include",
-                        desc="Declare files outside workspace scope to add to this commit (space-separated paths).",
-                    ),
-                    Flag(
-                        "--only",
-                        desc="Commit exactly these paths instead of the resolved workspace scope; intended for splitting a dirty scope into multiple commits.",
-                    ),
-                    Flag(
-                        "--human-involved",
-                        desc="Declare that a human was genuinely present in this session. Carried as Human-Involved: true in the commit footer; absent when not passed (defaults to false). Never derived from the todo record.",
-                    ),
+                    F.FLAG_HELP,
+                    F.FLAG_COMMIT_APPROVED,
+                    F.FLAG_COMMIT_INCLUDE,
+                    F.FLAG_COMMIT_ONLY,
+                    F.FLAG_HUMAN_INVOLVED_COMMIT,
                 ],
                 notes=[
                     "Accepts only: one quoted message, --approved, --human-involved, --include <path> ..., and --only <path> ... .",
@@ -1536,10 +1424,107 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "pre-commit": CommandDef(
                 desc="Run the thin pre-commit backstop",
-                flags=[_H],
+                flags=[F.FLAG_HELP],
                 hidden=True,
             ),
         },
     ),
 }
 HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {}
+
+# =============================================================================
+# Leaf-node constants — the object a handler parses, resolved by lookup so a
+# renamed or removed CLI_SURFACE key fails at import instead of a path
+# literal silently resolving to nothing.
+# =============================================================================
+
+HISTORY_SEARCH = CLI_SURFACE["history"].subcommands["search"]
+HISTORY_SHOW = CLI_SURFACE["history"].subcommands["show"]
+
+SESSIONS_LIST = CLI_SURFACE["sessions"].subcommands["list"]
+SESSIONS_START = CLI_SURFACE["sessions"].subcommands["start"]
+SESSIONS_SEND = CLI_SURFACE["sessions"].subcommands["send"]
+SESSIONS_TAIL = CLI_SURFACE["sessions"].subcommands["tail"]
+SESSIONS_RUN = CLI_SURFACE["sessions"].subcommands["run"]
+SESSIONS_REVIVE = CLI_SURFACE["sessions"].subcommands["revive"]
+SESSIONS_END = CLI_SURFACE["sessions"].subcommands["end"]
+SESSIONS_UNSUBSCRIBE = CLI_SURFACE["sessions"].subcommands["unsubscribe"]
+SESSIONS_RESTART = CLI_SURFACE["sessions"].subcommands["restart"]
+SESSIONS_RESULT = CLI_SURFACE["sessions"].subcommands["result"]
+SESSIONS_FILE = CLI_SURFACE["sessions"].subcommands["file"]
+SESSIONS_ESCALATE = CLI_SURFACE["sessions"].subcommands["escalate"]
+
+PROJECTS_LIST = CLI_SURFACE["projects"].subcommands["list"]
+AGENTS_STATUS = CLI_SURFACE["agents"].subcommands["status"]
+CHANNELS_LIST = CLI_SURFACE["channels"].subcommands["list"]
+CHANNELS_PUBLISH = CLI_SURFACE["channels"].subcommands["publish"]
+
+JOBS_REPORT = CLI_SURFACE["jobs"].subcommands["report"]
+
+REMINDERS_SET = CLI_SURFACE["reminders"].subcommands["set"]
+REMINDERS_CANCEL = CLI_SURFACE["reminders"].subcommands["cancel"]
+
+TODO_WORK = CLI_SURFACE["todo"].subcommands["work"]
+TODO_PREPARE = CLI_SURFACE["todo"].subcommands["prepare"]
+TODO_INTEGRATE = CLI_SURFACE["todo"].subcommands["integrate"]
+TODO_DESIGN = CLI_SURFACE["todo"].subcommands["design"]
+TODO_CREATE = CLI_SURFACE["todo"].subcommands["create"]
+TODO_DELIVER = CLI_SURFACE["todo"].subcommands["deliver"]
+TODO_REMOVE = CLI_SURFACE["todo"].subcommands["remove"]
+TODO_STAMP = CLI_SURFACE["todo"].subcommands["stamp"]
+TODO_REACTIVATE = CLI_SURFACE["todo"].subcommands["reactivate"]
+TODO_LIST = CLI_SURFACE["todo"].subcommands["list"]
+TODO_UPDATE = CLI_SURFACE["todo"].subcommands["update"]
+TODO_SHOW = CLI_SURFACE["todo"].subcommands["show"]
+
+BUGS_REPORT = CLI_SURFACE["bugs"].subcommands["report"]
+BUGS_LIST = CLI_SURFACE["bugs"].subcommands["list"]
+BUGS_SUPPRESS = CLI_SURFACE["bugs"].subcommands["suppress"]
+BUGS_SUPPRESSIONS = CLI_SURFACE["bugs"].subcommands["suppressions"]
+BUGS_UNSUPPRESS = CLI_SURFACE["bugs"].subcommands["unsuppress"]
+
+SYNC = CLI_SURFACE["sync"]
+
+DOCS_INDEX = CLI_SURFACE["docs"].subcommands["index"]
+DOCS_GET = CLI_SURFACE["docs"].subcommands["get"]
+
+MEMORIES_LIST = CLI_SURFACE["memories"].subcommands["list"]
+MEMORIES_SEARCH = CLI_SURFACE["memories"].subcommands["search"]
+MEMORIES_SAVE = CLI_SURFACE["memories"].subcommands["save"]
+MEMORIES_DELETE = CLI_SURFACE["memories"].subcommands["delete"]
+MEMORIES_TIMELINE = CLI_SURFACE["memories"].subcommands["timeline"]
+
+MESSAGE = CLI_SURFACE["message"]
+
+CONTENT_DUMP = CLI_SURFACE["content"].subcommands["dump"]
+
+EVENTS_LIST = CLI_SURFACE["events"].subcommands["list"]
+
+MCP_LIST = CLI_SURFACE["mcp"].subcommands["list"]
+MCP_LIST_TOOLS = CLI_SURFACE["mcp"].subcommands["list-tools"]
+MCP_CALL = CLI_SURFACE["mcp"].subcommands["call"]
+
+COMPANIES_ONBOARD = CLI_SURFACE["companies"].subcommands["onboard"]
+
+CODE_BLUEPRINT_AFFECTED = CLI_SURFACE["code"].subcommands["blueprint"].subcommands["affected"]
+CODE_LINT = CLI_SURFACE["code"].subcommands["lint"]
+CODE_TEST = CLI_SURFACE["code"].subcommands["test"]
+CODE_FORMAT = CLI_SURFACE["code"].subcommands["format"]
+CODE_INSTALL = CLI_SURFACE["code"].subcommands["install"]
+CODE_OWNERS = CLI_SURFACE["code"].subcommands["owners"]
+CODE_CHANGED = CLI_SURFACE["code"].subcommands["changed"]
+CODE_ADD = CLI_SURFACE["code"].subcommands["add"]
+CODE_COMMIT = CLI_SURFACE["code"].subcommands["commit"]
+
+CONFIG_TTS_DEPROVISION = CLI_SURFACE["config"].subcommands["tts"].subcommands["deprovision"]
+CONFIG_GET = CLI_SURFACE["config"].subcommands["get"]
+CONFIG_PATCH = CLI_SURFACE["config"].subcommands["patch"]
+CONFIG_VALIDATE = CLI_SURFACE["config"].subcommands["validate"]
+CONFIG_NOTIFY = CLI_SURFACE["config"].subcommands["notify"]
+CONFIG_PEOPLE_LIST = CLI_SURFACE["config"].subcommands["people"].subcommands["list"]
+CONFIG_PEOPLE_ADD = CLI_SURFACE["config"].subcommands["people"].subcommands["add"]
+CONFIG_PEOPLE_EDIT = CLI_SURFACE["config"].subcommands["people"].subcommands["edit"]
+CONFIG_PEOPLE_REMOVE = CLI_SURFACE["config"].subcommands["people"].subcommands["remove"]
+CONFIG_PEOPLE_INVITE = CLI_SURFACE["config"].subcommands["people"].subcommands["invite"]
+CONFIG_ENV_LIST = CLI_SURFACE["config"].subcommands["env"].subcommands["list"]
+CONFIG_ENV_SET = CLI_SURFACE["config"].subcommands["env"].subcommands["set"]

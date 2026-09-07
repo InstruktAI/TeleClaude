@@ -8,6 +8,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from jobs.base import JobResult
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.surface import JOBS_REPORT
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import job_identity
 from teleclaude.paths import JOBS_DIR, REPO_ROOT, ConfigFileName
@@ -39,41 +42,29 @@ def handle_jobs_report(args: list[str]) -> None:
     <job_id> is the job's identity: an agent job's procedure snippet ID (the
     value of its `job:` declaration), or a script job's declared name.
     """
-    if "--help" in args or "-h" in args:
-        print(handle_jobs_report.__doc__ or "")
-        return
+    parsed = parse_command_args(JOBS_REPORT, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print(f"Error: unexpected argument: {positionals[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    job_name = positionals[0] if positionals else None
+    if not job_name:
+        print("Error: job_id required", file=sys.stderr)
+        raise SystemExit(1)
 
-    job_name, remaining = _parse_job_name(args)
-    success: bool | None = None
-    message: str | None = None
-    items_processed = 0
-    errors: list[str] = []
+    success_raw = parsed.value(F.FLAG_JOB_SUCCESS)
+    message = parsed.value(F.FLAG_JOB_MESSAGE)
+    items_processed_raw = parsed.value(F.FLAG_JOB_ITEMS_PROCESSED)
+    errors = list(parsed.values(F.FLAG_JOB_ERROR))
 
-    index = 0
-    while index < len(remaining):
-        token = remaining[index]
-        if token == "--success" and index + 1 < len(remaining):
-            success = _parse_bool(remaining[index + 1])
-            index += 2
-        elif token == "--message" and index + 1 < len(remaining):
-            message = remaining[index + 1]
-            index += 2
-        elif token == "--items-processed" and index + 1 < len(remaining):
-            items_processed = _parse_non_negative_int(remaining[index + 1])
-            index += 2
-        elif token == "--error" and index + 1 < len(remaining):
-            errors.append(remaining[index + 1])
-            index += 2
-        else:
-            print(f"Error: unknown or incomplete argument: {token}", file=sys.stderr)
-            raise SystemExit(1)
-
-    if success is None:
+    if success_raw is None:
         print("Error: --success is required", file=sys.stderr)
         raise SystemExit(1)
+    success = _parse_bool(success_raw)
     if message is None:
         print("Error: --message is required", file=sys.stderr)
         raise SystemExit(1)
+    items_processed = _parse_non_negative_int(items_processed_raw) if items_processed_raw is not None else 0
 
     _validate_known_job(job_name)
     runs_dir = _contained_runs_dir(job_name)
@@ -100,13 +91,6 @@ Subcommands:
 
 Run 'telec jobs <subcommand> --help' for subcommand-specific help."""
     )
-
-
-def _parse_job_name(args: list[str]) -> tuple[str, list[str]]:
-    if not args or args[0].startswith("-"):
-        print("Error: job_id required", file=sys.stderr)
-        raise SystemExit(1)
-    return args[0], args[1:]
 
 
 def _parse_bool(raw: str) -> bool:

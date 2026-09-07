@@ -11,6 +11,9 @@ import yaml
 
 from teleclaude.cli.config_handlers import save_raw_machine_config
 from teleclaude.cli.telec import _maybe_show_help
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.surface import CONFIG_GET, CONFIG_PATCH
 from teleclaude.config import build_config_from_raw, config_path
 
 CONFIG_PATH_PROVENANCE = "Config file: {path}"
@@ -97,24 +100,13 @@ def _extract_subtree(
 
 def handle_get(args: list[str]) -> None:
     """Handle 'telec config get'."""
-    output_format = "yaml"
-    paths: list[str] = []
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("--format", "-f") and i + 1 < len(args):
-            output_format = args[i + 1].lower()
-            if output_format not in ("yaml", "json"):
-                print(f"Error: Invalid output format: {output_format} (must be yaml or json)")
-                sys.exit(1)
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Error: Unknown option: {arg}")
-            sys.exit(1)
-        else:
-            paths.append(arg)
-            i += 1
+    parsed = parse_command_args(CONFIG_GET, args)
+    paths = list(parsed.positionals)
+    format_raw = parsed.value(F.FLAG_CONFIG_FORMAT)
+    output_format = format_raw.lower() if format_raw is not None else "yaml"
+    if output_format not in ("yaml", "json"):
+        print(f"Error: Invalid output format: {output_format} (must be yaml or json)")
+        sys.exit(1)
 
     config_path = _resolve_config_path()
     if not config_path.exists():
@@ -150,31 +142,19 @@ def handle_get(args: list[str]) -> None:
 
 def handle_patch(args: list[str]) -> None:
     """Handle 'telec config patch'."""
-    output_format = "yaml"
-    patch_yaml: str | None = None
-    from_file: Path | None = None
+    parsed = parse_command_args(CONFIG_PATCH, args)
+    if parsed.positionals:
+        print(f"Error: Unexpected argument: {parsed.positionals[0]}")
+        sys.exit(1)
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("--format", "-f") and i + 1 < len(args):
-            output_format = args[i + 1].lower()
-            if output_format not in ("yaml", "json"):
-                print(f"Error: Invalid output format: {output_format} (must be yaml or json)")
-                sys.exit(1)
-            i += 2
-        elif arg == "--from-file" and i + 1 < len(args):
-            from_file = Path(args[i + 1]).expanduser().resolve()
-            i += 2
-        elif arg == "--yaml" and i + 1 < len(args):
-            patch_yaml = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Error: Unknown option: {arg}")
-            sys.exit(1)
-        else:
-            print(f"Error: Unexpected argument: {arg}")
-            sys.exit(1)
+    format_raw = parsed.value(F.FLAG_CONFIG_FORMAT)
+    output_format = format_raw.lower() if format_raw is not None else "yaml"
+    if output_format not in ("yaml", "json"):
+        print(f"Error: Invalid output format: {output_format} (must be yaml or json)")
+        sys.exit(1)
+    from_file_raw = parsed.value(F.FLAG_CONFIG_FROM_FILE)
+    from_file = Path(from_file_raw).expanduser().resolve() if from_file_raw is not None else None
+    patch_yaml = parsed.value(F.FLAG_CONFIG_YAML)
 
     # Read patch data
     if from_file:

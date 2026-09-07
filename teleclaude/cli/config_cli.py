@@ -33,7 +33,20 @@ from teleclaude.cli.config_handlers import (
     validate_all,
 )
 from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _maybe_show_help, _usage
+from teleclaude.cli.telec.surface import (
+    CONFIG_ENV_LIST,
+    CONFIG_ENV_SET,
+    CONFIG_NOTIFY,
+    CONFIG_PEOPLE_ADD,
+    CONFIG_PEOPLE_EDIT,
+    CONFIG_PEOPLE_INVITE,
+    CONFIG_PEOPLE_LIST,
+    CONFIG_PEOPLE_REMOVE,
+    CONFIG_VALIDATE,
+)
 from teleclaude.config import config
 from teleclaude.config.migrations import migrate_person_slugs_if_needed
 from teleclaude.config.schema import PersonEntry, TelegramCreds
@@ -124,28 +137,29 @@ def _handle_people(args: list[str]) -> None:
 
     action = args[0]
     rest = args[1:]
-    use_json = "--json" in rest
-    rest = [a for a in rest if a != "--json"]
 
     # Ensure every person has a slug before any folder-keyed access in non-daemon CLI usage.
     migrate_person_slugs_if_needed()
 
     if action == "list":
-        _people_list(use_json)
+        _people_list(rest)
     elif action == "add":
-        _people_add(rest, use_json)
+        _people_add(rest)
     elif action == "edit":
-        _people_edit(rest, use_json)
+        _people_edit(rest)
     elif action == "remove":
-        _people_remove(rest, use_json)
+        _people_remove(rest)
     elif action == "invite":
-        _handle_invite([*rest, "--json"] if use_json else rest)
+        _handle_invite(rest)
     else:
         print(f"Unknown people action: {action}")
         raise SystemExit(1)
 
 
-def _people_list(use_json: bool) -> None:
+def _people_list(args: list[str]) -> None:
+    parsed = parse_command_args(CONFIG_PEOPLE_LIST, args)
+    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
+
     people = list_people()
     if use_json:
         data = []
@@ -176,42 +190,34 @@ def _people_list(use_json: bool) -> None:
             print(f"  {p.name}{slug_part} ({p.role}){f' <{p.email}>' if p.email else ''}")
 
 
-def _parse_kv_args(args: list[str]) -> dict[str, str]:
-    """Parse --key value pairs from args list."""
-    result: dict[str, str] = {}
-    i = 0
-    while i < len(args):
-        if args[i].startswith("--") and i + 1 < len(args):
-            key = args[i][2:].replace("-", "_")
-            result[key] = args[i + 1]
-            i += 2
-        else:
-            i += 1
-    return result
-
-
-def _people_add(args: list[str], use_json: bool) -> None:
+def _people_add(args: list[str]) -> None:
     _check_customer_guard()
-    no_invite = "--no-invite" in args or use_json
-    opts = _parse_kv_args([arg for arg in args if arg != "--no-invite"])
-    name = opts.get("name")
+    parsed = parse_command_args(CONFIG_PEOPLE_ADD, args)
+    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Error: unexpected argument")
+        raise SystemExit(1)
+    name = positionals[0] if positionals else parsed.value(F.FLAG_PEOPLE_NAME_ALIAS)
     if not name:
         print("Error: --name required")
         raise SystemExit(1)
 
-    email = opts.get("email")
+    email = parsed.value(F.FLAG_PEOPLE_EMAIL)
     if not email:
         print("Error: --email required")
         raise SystemExit(1)
 
-    expertise_raw = opts.get("expertise")
+    no_invite = parsed.has(F.FLAG_PEOPLE_NO_INVITE) or use_json
+
+    expertise_raw = parsed.value(F.FLAG_PEOPLE_EXPERTISE)
     expertise = None
     if expertise_raw:
         try:
             expertise = json.loads(expertise_raw)
         except json.JSONDecodeError as e:
             print(f"Error: --expertise must be valid JSON: {e}")
-            raise SystemExit(1)
+            raise SystemExit(1) from e
     existing_slugs = {p.slug for p in list_people() if p.slug}
     base = normalize_slug(name) or "person"
     slug = ensure_unique_slug(PEOPLE_DIR, base, reserved=existing_slugs)
@@ -220,8 +226,8 @@ def _people_add(args: list[str], use_json: bool) -> None:
         name=name,
         email=email,
         slug=slug,
-        username=opts.get("username"),
-        role=opts.get("role", "member"),  # type: ignore[arg-type]
+        username=parsed.value(F.FLAG_PEOPLE_USERNAME),
+        role=parsed.value(F.FLAG_PEOPLE_ROLE) or "member",  # type: ignore[arg-type]
         expertise=expertise,
     )
 
@@ -232,11 +238,13 @@ def _people_add(args: list[str], use_json: bool) -> None:
             print(json.dumps({"error": str(e)}))
         else:
             print(f"Error: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
     # Set telegram creds if provided
-    if opts.get("telegram_user") or opts.get("telegram_id"):
-        _set_telegram_creds(name, opts.get("telegram_user"), opts.get("telegram_id"))
+    telegram_user = parsed.value(F.FLAG_PEOPLE_TELEGRAM_USER)
+    telegram_id = parsed.value(F.FLAG_PEOPLE_TELEGRAM_ID)
+    if telegram_user or telegram_id:
+        _set_telegram_creds(name, telegram_user, telegram_id)
 
     # Auto-invite unless --no-invite is passed
     invite_sent = False
@@ -287,15 +295,15 @@ def _people_add(args: list[str], use_json: bool) -> None:
             print(f"Added {name} as {entry.role}.")
 
 
-def _people_edit(args: list[str], use_json: bool) -> None:
+def _people_edit(args: list[str]) -> None:
     _check_customer_guard()
-    if not args:
+    parsed = parse_command_args(CONFIG_PEOPLE_EDIT, args)
+    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
+    positionals = parsed.positionals
+    if len(positionals) != 1:
         print("Error: person name required")
         raise SystemExit(1)
-
-    # First positional arg is the name
-    name = args[0]
-    opts = _parse_kv_args(args[1:])
+    name = positionals[0]
 
     # Find person in global config
     people = list_people()
@@ -308,33 +316,49 @@ def _people_edit(args: list[str], use_json: bool) -> None:
             print(f"Error: {msg}")
         raise SystemExit(1)
 
+    role = parsed.value(F.FLAG_PEOPLE_ROLE)
+    email = parsed.value(F.FLAG_PEOPLE_EMAIL)
+    username = parsed.value(F.FLAG_PEOPLE_USERNAME)
+    expertise_raw = parsed.value(F.FLAG_PEOPLE_EXPERTISE)
+    telegram_user = parsed.value(F.FLAG_PEOPLE_TELEGRAM_USER)
+    telegram_id = parsed.value(F.FLAG_PEOPLE_TELEGRAM_ID)
+
     changed = False
+    updated_fields: list[str] = []
 
     # Edit global entry fields (role, email, username, expertise)
-    if any(k in opts for k in ("role", "email", "username", "expertise")):
-        config = get_global_config()
-        for p in config.people:
+    if role is not None or email is not None or username is not None or expertise_raw is not None:
+        global_config = get_global_config()
+        for p in global_config.people:
             if p.name == name:
-                if "role" in opts:
-                    p.role = opts["role"]  # type: ignore[assignment]
-                if "email" in opts:
-                    p.email = opts["email"]
-                if "username" in opts:
-                    p.username = opts["username"]
-                if "expertise" in opts:
+                if role is not None:
+                    p.role = role  # type: ignore[assignment]
+                    updated_fields.append("role")
+                if email is not None:
+                    p.email = email
+                    updated_fields.append("email")
+                if username is not None:
+                    p.username = username
+                    updated_fields.append("username")
+                if expertise_raw is not None:
                     try:
-                        p.expertise = json.loads(opts["expertise"])
+                        p.expertise = json.loads(expertise_raw)
                     except json.JSONDecodeError as e:
                         print(f"Error: --expertise must be valid JSON: {e}")
-                        raise SystemExit(1)
+                        raise SystemExit(1) from e
+                    updated_fields.append("expertise")
                 changed = True
                 break
         if changed:
-            save_global_config(config)
+            save_global_config(global_config)
 
     # Edit telegram creds
-    if opts.get("telegram_user") or opts.get("telegram_id"):
-        _set_telegram_creds(person.slug or normalize_slug(name), opts.get("telegram_user"), opts.get("telegram_id"))
+    if telegram_user:
+        updated_fields.append("telegram_user")
+    if telegram_id:
+        updated_fields.append("telegram_id")
+    if telegram_user or telegram_id:
+        _set_telegram_creds(person.slug or normalize_slug(name), telegram_user, telegram_id)
         changed = True
 
     if not changed:
@@ -346,19 +370,21 @@ def _people_edit(args: list[str], use_json: bool) -> None:
         raise SystemExit(1)
 
     if use_json:
-        print(json.dumps({"ok": True, "name": name, "updated": list(opts.keys())}))
+        print(json.dumps({"ok": True, "name": name, "updated": updated_fields}))
     else:
-        print(f"Updated {name}: {', '.join(opts.keys())}.")
+        print(f"Updated {name}: {', '.join(updated_fields)}.")
 
 
-def _people_remove(args: list[str], use_json: bool) -> None:
+def _people_remove(args: list[str]) -> None:
     _check_customer_guard()
-    if not args:
+    parsed = parse_command_args(CONFIG_PEOPLE_REMOVE, args)
+    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
+    positionals = parsed.positionals
+    if len(positionals) != 1:
         print("Error: person name required")
         raise SystemExit(1)
-
-    name = args[0]
-    delete_dir = "--delete-dir" in args
+    name = positionals[0]
+    delete_dir = parsed.has(F.FLAG_PEOPLE_DELETE_DIR)
 
     person = next((p for p in list_people() if p.name == name), None)
     slug = (person.slug if person else None) or normalize_slug(name)
@@ -370,7 +396,7 @@ def _people_remove(args: list[str], use_json: bool) -> None:
             print(json.dumps({"error": str(e)}))
         else:
             print(f"Error: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
     if use_json:
         print(json.dumps({"ok": True, "name": name, "directory_deleted": delete_dir}))
@@ -403,12 +429,12 @@ def _handle_env(args: list[str]) -> None:
     rest = args[1:]
 
     if action == "list":
-        use_json = "--json" in rest
-        _env_list(use_json)
+        parsed = parse_command_args(CONFIG_ENV_LIST, rest)
+        _env_list(parsed.has(F.FLAG_JSON_MACHINE_READABLE))
     elif action == "set":
-        use_json = "--json" in rest
-        pairs = [a for a in rest if a != "--json" and "=" in a]
-        _env_set(pairs, use_json)
+        parsed = parse_command_args(CONFIG_ENV_SET, rest)
+        pairs = [token for token in parsed.positionals if "=" in token]
+        _env_set(pairs, parsed.has(F.FLAG_JSON_MACHINE_READABLE))
     else:
         print(f"Unknown env action: {action}")
         raise SystemExit(1)
@@ -485,7 +511,8 @@ def _write_env_var(env_file: Path, name: str, value: str) -> None:
 
 def _handle_notify(args: list[str]) -> None:
     _check_customer_guard()
-    use_json = "--json" in args
+    parsed = parse_command_args(CONFIG_NOTIFY, args)
+    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
     msg = (
         "Notification toggling has been replaced by per-subscription settings. "
         "Edit subscriptions in person config instead."
@@ -501,7 +528,8 @@ def _handle_notify(args: list[str]) -> None:
 
 
 def _handle_validate(args: list[str]) -> None:
-    use_json = "--json" in args
+    parsed = parse_command_args(CONFIG_VALIDATE, args)
+    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
 
     results = validate_all()
 
@@ -536,14 +564,13 @@ def _handle_validate(args: list[str]) -> None:
 
 def _handle_invite(args: list[str]) -> None:
     _check_customer_guard()
-    use_json = "--json" in args
-    args_clean = [a for a in args if a != "--json"]
-
-    if not args_clean:
+    parsed = parse_command_args(CONFIG_PEOPLE_INVITE, args)
+    use_json = parsed.has(F.FLAG_JSON_MACHINE_READABLE)
+    positionals = parsed.positionals
+    if len(positionals) != 1:
         print("Usage: telec config people invite NAME [--json]")
         raise SystemExit(1)
-
-    name = args_clean[0]
+    name = positionals[0]
 
     # Verify person exists
     migrate_person_slugs_if_needed()
@@ -568,6 +595,7 @@ def _handle_invite(args: list[str]) -> None:
 
     # Run async invite flow
     person_slug = person.slug or normalize_slug(name)
+    person_email = person.email
 
     async def _run_invite() -> InviteResult:
         # Generate/rotate token
@@ -594,7 +622,7 @@ def _handle_invite(args: list[str]) -> None:
 
         # Send email
         try:
-            await send_invite_email(name, person.email, links)
+            await send_invite_email(name, person_email, links)
             email_sent = True
         except Exception as e:
             logger.warning("Failed to send invite email: %s", e)
@@ -603,7 +631,7 @@ def _handle_invite(args: list[str]) -> None:
         return {
             "ok": True,
             "name": name,
-            "email": person.email,
+            "email": person_email,
             "links": links,
             "email_sent": email_sent,
         }
@@ -614,7 +642,7 @@ def _handle_invite(args: list[str]) -> None:
         print(json.dumps(result))
     else:
         if result["email_sent"]:
-            print(f"Invite sent to {person.email} for {name}")
+            print(f"Invite sent to {person_email} for {name}")
         else:
             available = {platform: url for platform, url in result["links"].items() if url}
             if available:

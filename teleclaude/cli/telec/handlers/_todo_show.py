@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json as _json
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.surface import TODO_SHOW
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.project_root import resolve_invocation_cwd
 
@@ -14,21 +17,14 @@ _USAGE = "Usage: telec todo show <slug> [--include-removed] [--include-artifact-
 
 def _handle_todo_show(args: list[str]) -> None:
     """Display the diagnostic todo state payload as JSON."""
-    if not args or args[0].startswith("-"):
+    parsed = parse_command_args(TODO_SHOW, args)
+    positionals = parsed.positionals
+    if len(positionals) != 1:
         print(_USAGE)
         raise SystemExit(1)
-
-    slug = args[0]
-    include_artifact_content = False
-    include_removed = False
-    for arg in args[1:]:
-        if arg == "--include-artifact-content":
-            include_artifact_content = True
-        elif arg == "--include-removed":
-            include_removed = True
-        else:
-            print(_USAGE)
-            raise SystemExit(1)
+    slug = positionals[0]
+    include_artifact_content = parsed.has(F.FLAG_TODO_SHOW_INCLUDE_ARTIFACT_CONTENT)
+    include_removed = parsed.has(F.FLAG_TODO_SHOW_INCLUDE_REMOVED)
 
     params: dict[str, str] = {"cwd": str(resolve_invocation_cwd())}
     if include_artifact_content:

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
-
-_REASON_REQUIRES_VALUE = "Error: --reason requires a value"
+from teleclaude.cli.telec.surface import TODO_UPDATE
 
 
 class ParsedTodoUpdate(TypedDict):
@@ -24,80 +25,28 @@ class ParsedTodoUpdate(TypedDict):
 
 
 def _parse_todo_update_args(args: list[str]) -> ParsedTodoUpdate:
-    slug: str | None = None
-    new_slug: str | None = None
-    raw_after: list[str] = []
-    after_present = False
-    schedule: str | None = None
-    kind: str | None = None
-    force = False
-    hold = False
-    reason: str | None = None
-    release = False
-    unclaim = False
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--slug" and i + 1 < len(args):
-            new_slug = args[i + 1]
-            i += 2
-        elif arg == "--after" and i + 1 < len(args):
-            raw_after.append(args[i + 1])
-            after_present = True
-            i += 2
-        elif arg == "--schedule" and i + 1 < len(args):
-            schedule = args[i + 1]
-            i += 2
-        elif arg == "--kind" and i + 1 < len(args):
-            kind = args[i + 1]
-            i += 2
-        elif arg == "--force":
-            force = True
-            i += 1
-        elif arg == "--hold":
-            hold = True
-            i += 1
-        elif arg == "--reason" and i + 1 < len(args):
-            reason = args[i + 1]
-            i += 2
-        elif arg == "--reason":
-            print(_REASON_REQUIRES_VALUE)
-            print(_usage("todo", "update"))
-            raise SystemExit(1)
-        elif arg == "--release":
-            release = True
-            i += 1
-        elif arg == "--unclaim":
-            unclaim = True
-            i += 1
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "update"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if slug is None:
+    parsed = parse_command_args(TODO_UPDATE, args)
+    positionals = parsed.positionals
+    if len(positionals) > 1:
+        print("Only one slug is allowed.")
+        raise SystemExit(1)
+    if not positionals:
         print("Missing required slug.")
         print(_usage("todo", "update"))
         raise SystemExit(1)
+
     return {
-        "slug": slug,
-        "new_slug": new_slug,
-        "raw_after": raw_after,
-        "after_present": after_present,
-        "schedule": schedule,
-        "kind": kind,
-        "force": force,
-        "hold": hold,
-        "reason": reason,
-        "release": release,
-        "unclaim": unclaim,
+        "slug": positionals[0],
+        "new_slug": parsed.value(F.FLAG_TODO_UPDATE_SLUG),
+        "raw_after": list(parsed.values(F.FLAG_TODO_UPDATE_AFTER)),
+        "after_present": parsed.has(F.FLAG_TODO_UPDATE_AFTER),
+        "schedule": parsed.value(F.FLAG_TODO_UPDATE_SCHEDULE),
+        "kind": parsed.value(F.FLAG_TODO_UPDATE_KIND),
+        "force": parsed.has(F.FLAG_TODO_UPDATE_FORCE),
+        "hold": parsed.has(F.FLAG_TODO_UPDATE_HOLD),
+        "reason": parsed.value(F.FLAG_TODO_UPDATE_REASON),
+        "release": parsed.has(F.FLAG_TODO_UPDATE_RELEASE),
+        "unclaim": parsed.has(F.FLAG_TODO_UPDATE_UNCLAIM),
     }
 
 

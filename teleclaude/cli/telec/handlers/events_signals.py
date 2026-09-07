@@ -6,7 +6,10 @@ import asyncio
 import importlib
 from typing import Any
 
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import EVENTS_LIST
 from teleclaude.paths import EVENTS_DB_PATH
 
 __all__ = [
@@ -44,14 +47,12 @@ def _handle_events(args: list[str]) -> None:
 
 def _handle_events_list(args: list[str]) -> None:
     """List all registered event schemas."""
-    domain_filter: str | None = None
-    i = 0
-    while i < len(args):
-        if args[i] == "--domain" and i + 1 < len(args):
-            domain_filter = args[i + 1]
-            i += 2
-        else:
-            i += 1
+    parsed = parse_command_args(EVENTS_LIST, args)
+    if parsed.positionals:
+        print(f"Unexpected argument: {parsed.positionals[0]}")
+        print(_usage("events", "list"))
+        raise SystemExit(1)
+    domain_filter = parsed.value(F.FLAG_EVENTS_DOMAIN)
 
     catalog = _build_default_catalog()
     schemas = catalog.list_all()

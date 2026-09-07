@@ -11,7 +11,10 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import DOCS_GET, DOCS_INDEX
 from teleclaude.config.context_root import resolve_context_root
 from teleclaude.config.loader import load_app_config
 from teleclaude.config.schema import ConfigKind
@@ -31,8 +34,6 @@ __all__ = [
 ]
 
 logger = get_logger(__name__)
-
-DOCS_GET_CLOSURE_FLAG = "--closure"
 
 
 class DocsRetrievalEvent(StrEnum):
@@ -200,66 +201,24 @@ def _handle_docs(args: list[str]) -> None:
 
 def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
     """Handle telec docs index."""
-    baseline_only = False
-    third_party = False
-    areas: list[str] = []
-    domains: list[str] | None = None
-    target_slug: str | None = None
-    scope: SnippetScope | None = None
-    projects: list[str] | None = None
+    parsed = parse_command_args(DOCS_INDEX, args)
+    if parsed.positionals:
+        print(f"Unexpected positional argument for docs index: {parsed.positionals[0]}")
+        print(_usage("docs", "index"))
+        raise SystemExit(1)
 
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("--baseline-only", "-b"):
-            baseline_only = True
-            i += 1
-        elif arg in ("--third-party", "-t"):
-            third_party = True
-            i += 1
-        elif arg in ("--areas", "-a") and i + 1 < len(args):
-            areas = [a.strip() for a in args[i + 1].split(",") if a.strip()]
-            i += 2
-        elif arg in ("--areas", "-a"):
-            print("Missing value for --areas.")
-            print(_usage("docs", "index"))
-            raise SystemExit(1)
-        elif arg in ("--domains", "-d") and i + 1 < len(args):
-            domains = _parse_domains(args[i + 1], "index")
-            i += 2
-        elif arg in ("--domains", "-d"):
-            print("Missing value for --domains.")
-            print(_usage("docs", "index"))
-            raise SystemExit(1)
-        elif arg == "--scope" and i + 1 < len(args):
-            scope = _parse_scope(args[i + 1].strip(), "index")
-            i += 2
-        elif arg == "--scope":
-            print("Missing value for --scope.")
-            print(_usage("docs", "index"))
-            raise SystemExit(1)
-        elif arg == "--project" and i + 1 < len(args):
-            projects = [args[i + 1].strip().lower()]
-            i += 2
-        elif arg == "--project":
-            print("Missing value for --project.")
-            print(_usage("docs", "index"))
-            raise SystemExit(1)
-        elif arg == "--target" and i + 1 < len(args):
-            target_slug = args[i + 1].strip()
-            i += 2
-        elif arg == "--target":
-            print("Missing value for --target.")
-            print(_usage("docs", "index"))
-            raise SystemExit(1)
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("docs", "index"))
-            raise SystemExit(1)
-        else:
-            print(f"Unexpected positional argument for docs index: {arg}")
-            print(_usage("docs", "index"))
-            raise SystemExit(1)
+    baseline_only = parsed.has(F.FLAG_DOCS_BASELINE_ONLY)
+    third_party = parsed.has(F.FLAG_DOCS_THIRD_PARTY)
+    areas_raw = parsed.value(F.FLAG_DOCS_AREAS)
+    areas = [a.strip() for a in areas_raw.split(",") if a.strip()] if areas_raw is not None else []
+    domains_raw = parsed.value(F.FLAG_DOCS_DOMAINS)
+    domains = _parse_domains(domains_raw, "index") if domains_raw is not None else None
+    scope_raw = parsed.value(F.FLAG_DOCS_SCOPE)
+    scope = _parse_scope(scope_raw.strip(), "index") if scope_raw is not None else None
+    project_raw = parsed.value(F.FLAG_DOCS_PROJECT)
+    projects = [project_raw.strip().lower()] if project_raw is not None else None
+    target_raw = parsed.value(F.FLAG_DOCS_TARGET)
+    target_slug = target_raw.strip() if target_raw is not None else None
 
     _emit_retrieval_accepted(
         context,
@@ -296,57 +255,26 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
 
 def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
     """Handle telec docs get."""
+    parsed = parse_command_args(DOCS_GET, args)
     snippet_ids: list[str] = []
-    target_slug: str | None = None
-    scope: SnippetScope | None = None
-    projects: list[str] | None = None
-    closure = False
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == DOCS_GET_CLOSURE_FLAG:
-            closure = True
-            i += 1
-            continue
-        if arg == "--target" and i + 1 < len(args):
-            target_slug = args[i + 1].strip()
-            i += 2
-            continue
-        if arg == "--target":
-            print("Missing value for --target.")
-            print(_usage("docs", "get"))
-            raise SystemExit(1)
-        if arg == "--scope" and i + 1 < len(args):
-            scope = _parse_scope(args[i + 1].strip(), "get")
-            i += 2
-            continue
-        if arg == "--scope":
-            print("Missing value for --scope.")
-            print(_usage("docs", "get"))
-            raise SystemExit(1)
-        if arg == "--project" and i + 1 < len(args):
-            projects = [args[i + 1].strip().lower()]
-            i += 2
-            continue
-        if arg == "--project":
-            print("Missing value for --project.")
-            print(_usage("docs", "get"))
-            raise SystemExit(1)
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("docs", "get"))
-            raise SystemExit(1)
-        for part in arg.split(","):
+    for token in parsed.positionals:
+        for part in token.split(","):
             part = part.strip()
             if part:
                 snippet_ids.append(part)
-        i += 1
 
     if not snippet_ids:
         print("At least one snippet ID is required.")
         print(_usage("docs", "get"))
         raise SystemExit(1)
+
+    closure = parsed.has(F.FLAG_DOCS_GET_CLOSURE)
+    target_raw = parsed.value(F.FLAG_DOCS_GET_TARGET)
+    target_slug = target_raw.strip() if target_raw is not None else None
+    scope_raw = parsed.value(F.FLAG_DOCS_SCOPE)
+    scope = _parse_scope(scope_raw.strip(), "get") if scope_raw is not None else None
+    project_raw = parsed.value(F.FLAG_DOCS_PROJECT)
+    projects = [project_raw.strip().lower()] if project_raw is not None else None
 
     _emit_retrieval_accepted(
         context,

@@ -7,7 +7,10 @@ import importlib
 import sys
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
+from teleclaude.cli.telec import flags as F
+from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.telec.surface import CONFIG_TTS_DEPROVISION
 
 __all__ = [
     "_handle_config",
@@ -45,8 +48,8 @@ def _handle_config_tts(args: list[str]) -> None:
         print(_usage("config", "tts"))
         raise SystemExit(1)
 
-    tts_args = args[1:]
-    if "--yes" not in tts_args:
+    parsed = parse_command_args(CONFIG_TTS_DEPROVISION, args[1:])
+    if not parsed.has(F.FLAG_TTS_YES):
         print(
             "This disables TTS, removes the TTS-exclusive optional dependencies "
             "(elevenlabs, the mlx text pipeline), and leaves dependencies shared "
