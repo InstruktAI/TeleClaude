@@ -64,24 +64,6 @@ Derivation rules:
   today; extending it to non-tmux agent sessions is separate work and does not
   change this contract.)
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-- Capability state lives in TeleClaude's own git territory, not the project's
-  tracked files. Under the repository's git directory TeleClaude keeps an
-  `onboarded` sentinel plus one marker per **enabled** capability; the installed
-  plumbing — the git hooks and the git wrapper — reads them by plain existence
-  check, never by parsing `teleclaude.yml`. The sentinel is the three-state key:
-  **sentinel absent → the repository is legacy/unprojected and the plumbing keeps
-  its pre-manifest behavior (all-enabled, today's behavior)**; sentinel present →
-  authoritative, so a capability marker present means enabled and absent means
-  explicitly unsubscribed. The markers are projected from the declaration by the
-  mutating `telec sync` path (and at onboard) as a single idempotent writer, so
-  they cannot drift; `--skip-deploy` is read-only and writes no marker state. An
-  existing project is initialized — sentinel plus markers — on its first mutating
-  sync after upgrade: additive, never a destructive migration. There is no
-  recurring reconciler, no drift sweep, and no cross-process coordination.
-
-<!-- change:capability-state-read-from-declaration -->
 
 - The declaration is the only home of capability state. The installed plumbing —
   the git hooks and the git wrapper — reads the toggles directly from the
@@ -106,29 +88,7 @@ Derivation rules:
   declaration is a file the project tracks, a clone carries the project's real
   capability state before any TeleClaude command has run against it.
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-- A capability toggle never edits, removes from, or truncates a file the project
-  tracks. The only capability plumbing in the project's tracked tree is the
-  `.gitattributes` docs-filter line, written once — additively, at onboard, with
-  the human in the loop — and never touched again. Enabling or disabling `docs`
-  toggles the filter driver in `.git/config` (TeleClaude's own, untracked); with
-  the driver absent the `.gitattributes` line is inert, because git treats a
-  filter attribute whose driver is undefined as a no-op. The driver is reconciled
-  from the declaration (present iff `docs`) on the same mutating `telec sync` path
-  as the markers; `--skip-deploy` leaves it untouched. The safety guarantee —
-  TeleClaude never rewrites a project-owned file on a toggle — holds by
-  construction, not by a runtime guard.
-- Onboard is the one-time additive install: it writes the `.gitattributes` line,
-  installs the git hooks under the git directory, configures the filter driver,
-  and writes the markers. It preserves any hook the project already authored
-  rather than overwriting it. After onboard, a toggle rewrites only
-  TeleClaude-owned git-directory state — a marker, the filter driver — never the
-  project's files.
-
-<!-- change:capability-state-read-from-declaration -->
 
 - A capability toggle never edits, removes from, or truncates a file the project
   tracks. The only capability plumbing in the project's tracked tree is the
@@ -150,7 +110,6 @@ Derivation rules:
   `telec sync` separately refreshes the TeleClaude-owned hooks and reconciles the
   filter driver. Neither path ever rewrites a project-tracked file.
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
   non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
   or reads anything for it, and it is left byte-for-byte untouched. The sole
@@ -253,17 +212,6 @@ And telec code commit and telec code add remain available because docs is subscr
 
 #### UC-CFG-CAP-10: Onboard installs plumbing for a subscribed capability
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-```
-Given a project subscribing docs and code being onboarded
-When onboarding installs its capability plumbing
-Then the git hooks TeleClaude owns are installed under the git directory
-And the capability markers TeleClaude owns are written under the git directory
-And the docs filter driver is configured
-```
-
-<!-- change:capability-state-read-from-declaration -->
 
 ```
 Given a project subscribing docs and code being onboarded
@@ -273,7 +221,6 @@ And the docs filter driver is configured
 And no capability state is written outside the project's declaration
 ```
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 
 #### UC-CFG-CAP-11: Disabling docs never edits the tracked .gitattributes file
 
@@ -287,16 +234,6 @@ And the inert filter line is left in place
 
 #### UC-CFG-CAP-12: A capability toggle never edits a project-tracked file
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-```
-Given a project with git-tracked files
-When any capability toggle is changed
-Then no file the project tracks is edited, removed from, or truncated
-And capability state is written only under the git directory TeleClaude owns
-```
-
-<!-- change:capability-state-read-from-declaration -->
 
 ```
 Given a project with git-tracked files
@@ -305,7 +242,6 @@ Then no file the project tracks is edited, removed from, or truncated apart from
 And no capability state is written anywhere outside that declaration
 ```
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 
 #### UC-CFG-CAP-13: Onboard does not clobber a hook the project already authored
 
@@ -324,27 +260,6 @@ Then no hook, marker, or filter is written or read for it
 And the repository is left byte-for-byte unchanged
 ```
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-#### UC-CFG-CAP-15: Assessment writes the capability markers when the declaration changes
-
-```
-Given a project whose assessment changes a capability from subscribed to unsubscribed
-When that assessment writes the new toggle
-Then the capability marker under the git directory reflects the new value
-And no separate pass is required to make the change take effect
-```
-
-#### UC-CFG-CAP-16: The installed plumbing reads capability state by existence check
-
-```
-Given a project whose code capability is unsubscribed
-When the git wrapper runs on a git invocation
-Then it decides by testing for the capability marker
-And it does not parse teleclaude.yml
-```
-
-<!-- change:capability-state-read-from-declaration -->
 
 #### UC-CFG-CAP-15: A changed declaration takes effect with no projection pass
 
@@ -364,7 +279,6 @@ Then it decides by reading the capability toggles from the project's teleclaude.
 And it spawns no interpreter to read them
 ```
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 
 #### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
 
@@ -396,7 +310,6 @@ And no git hook, docs filter driver, or .gitattributes docs line is installed fo
 And the declaration is written before any capability-gated plumbing would run
 ```
 
-<!-- planned:capability-state-read-from-declaration -->
 
 #### UC-CFG-CAP-20: A fresh clone honors the declaration before any TeleClaude command runs
 
@@ -445,7 +358,6 @@ When the capabilities are resolved by the runtime or by the installed plumbing
 Then the code capability resolves to subscribed on both readers
 ```
 
-<!-- /planned:capability-state-read-from-declaration -->
 
 ## Known caveats
 
@@ -461,7 +373,6 @@ Then the code capability resolves to subscribed on both readers
   repo that still contains snippet frontmatter leaves those files unsynced and
   is surfaced as drift by `telec projects assess`.
 
-<!-- planned:capability-state-read-from-declaration -->
 
 - The runtime and the installed plumbing agree on every declaration whose
   capability blocks carry unquoted boolean values. They part on two inputs, in
@@ -472,7 +383,6 @@ Then the code capability resolves to subscribed on both readers
   honoured by the plumbing, which reads only the tier and the capability blocks
   and claims nothing about the rest of the file.
 
-<!-- /planned:capability-state-read-from-declaration -->
 
 ## See Also
 

@@ -78,16 +78,6 @@ is structural (file existence), never a runtime code path and never a semantic
 judgment; the runtime reads only the written declaration.
 
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-After writing the toggles, run `telec sync`: its mutating path (after the read-only `--skip-deploy` early return) projects the declaration
-into the git-directory capability markers and sets the docs filter driver present
-iff `docs` is subscribed. That is the single durable projection boundary — you do
-not hand-write markers. Never edit a project-tracked file to reflect a toggle:
-capability state lives in TeleClaude's own git territory, and the `.gitattributes`
-docs line is written once at onboard and left alone thereafter.
-
-<!-- change:capability-state-read-from-declaration -->
 
 After writing the toggles, run `telec sync`: its mutating path (after the
 read-only `--skip-deploy` early return) sets the docs filter driver present iff
@@ -98,7 +88,6 @@ capability state is written anywhere else. Never edit a project-tracked file to
 reflect a toggle beyond the declaration that carries it: the `.gitattributes`
 docs line is written once at onboard and left alone thereafter.
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 
 ### 2. Makefile contract gate (ordered prerequisite)
 
