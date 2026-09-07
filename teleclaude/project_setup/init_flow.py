@@ -21,7 +21,6 @@ from teleclaude.docs_index import ensure_project_config
 from teleclaude.git import Repo
 from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
 from teleclaude.project_manifest import register_root
-from teleclaude.project_setup.capability_markers import project_capabilities
 from teleclaude.project_setup.domain_seeds import seed_event_domains
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo
@@ -307,7 +306,6 @@ def init_project(project_root: Path) -> None:
     # sync, before the project is registered with the catalog.
     ensure_project_config(project_root)
     capabilities = _declare_inferred_capabilities(project_root)
-    project_capabilities(project_root)
     if capabilities.docs:
         setup_git_filters(project_root)
         update_gitattributes(project_root)

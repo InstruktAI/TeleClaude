@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 
 
 class CapabilityName(StrEnum):
-    """Closed vocabulary for project capability declarations and markers."""
+    """Closed vocabulary for project capability declarations."""
 
     CODE = "code"
     DOCS = "docs"

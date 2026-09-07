@@ -2,11 +2,20 @@
 # teleclaude: protect the integration content gate for code projects.
 set -euo pipefail
 
-_git_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-_capability_dir="${_git_common_dir}/teleclaude/capabilities"
-if [ -f "$_capability_dir/onboarded" ] && [ ! -f "$_capability_dir/code" ]; then
-    exit 0
+_tc_lib="${TELECLAUDE_HOME:-$HOME/.teleclaude}/bin/teleclaude-capabilities.sh"
+if [ ! -f "$_tc_lib" ]; then
+    echo "ERROR: teleclaude-capabilities.sh not found at $_tc_lib" >&2
+    exit 1
 fi
+# shellcheck disable=SC1090
+source "$_tc_lib"
+
+_tc_toplevel="$(git rev-parse --show-toplevel)"
+if ! teleclaude_read_declaration "$_tc_toplevel/teleclaude.yml"; then
+    echo "ERROR: $TC_DECL_ERROR" >&2
+    exit 1
+fi
+[ "$TC_DECL_CODE" = "1" ] || exit 0
 
 # Put cargo on PATH for the Rust lint step. The daemon that dispatches
 # integration pushes runs under a hardcoded launchd PATH that omits
@@ -39,7 +48,7 @@ log_block() {
 }
 
 REMOTE_NAME="${1:-origin}"
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_ROOT="$_tc_toplevel"
 CANONICAL_ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)"
 GIT_DIR="$(git rev-parse --git-dir)"
 GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"

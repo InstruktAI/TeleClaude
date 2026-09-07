@@ -848,6 +848,7 @@ def main() -> None:
     repo_root = resolve_project_root(Path(__file__).resolve().parents[2])
     print(f"Configuring agent CLIs from repo: {repo_root}")
 
+    install_agent_wrapper(repo_root, "teleclaude-capabilities.sh")
     install_agent_wrapper(repo_root, "git")
     install_agent_wrapper(repo_root, "gog")
     install_agent_wrapper(repo_root, "teleclaude-shell")

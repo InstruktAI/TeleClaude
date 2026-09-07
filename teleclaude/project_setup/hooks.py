@@ -14,9 +14,9 @@ _PREPUSH_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _PREPUSH_NAME
 _TELECLAUDE_SENTINEL = b"# teleclaude:"
 _GIT_PATH_ARGUMENT = "--git-path"
 _HOOK_PATH_TEMPLATE = "hooks/{hook_name}"
-_HOOK_MISSING_MESSAGE = "telec projects init: {hook_name} hook source not found at {source}."
-_HOOK_PRESERVED_MESSAGE = "telec projects init: existing {hook_name} hook preserved."
-_HOOK_INSTALLED_MESSAGE = "telec projects init: thin {hook_name} hook installed."
+_HOOK_MISSING_MESSAGE = "teleclaude hooks: {hook_name} hook source not found at {source}."
+_HOOK_PRESERVED_MESSAGE = "teleclaude hooks: existing {hook_name} hook preserved."
+_HOOK_INSTALLED_MESSAGE = "teleclaude hooks: thin {hook_name} hook installed."
 
 
 def _hook_destination(project_root: Path, hook_name: str) -> Path:
@@ -38,11 +38,16 @@ def _install_hook(project_root: Path, *, hook_name: str, source_path: Path) -> N
         print(_HOOK_MISSING_MESSAGE.format(hook_name=hook_name, source=source))
         return
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
     source_content = source.read_bytes()
-    if destination.exists() and _TELECLAUDE_SENTINEL not in destination.read_bytes():
-        print(_HOOK_PRESERVED_MESSAGE.format(hook_name=hook_name))
-        return
+    if destination.exists():
+        destination_content = destination.read_bytes()
+        if _TELECLAUDE_SENTINEL not in destination_content:
+            print(_HOOK_PRESERVED_MESSAGE.format(hook_name=hook_name))
+            return
+        if destination_content == source_content:
+            return
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(source_content)
     destination.chmod(destination.stat().st_mode | 0o111)
     print(_HOOK_INSTALLED_MESSAGE.format(hook_name=hook_name))
