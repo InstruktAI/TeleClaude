@@ -156,6 +156,16 @@ deliberate friction: the wrapper requires the agent to re-run the
 exact command with `--confirmed` appended after reading the printed
 inspection checklist.
 
+<!-- planned:worktree-never-references-local-main -->
+**The slug-worktree extras.** Inside `trees/<slug>` — any worktree other than
+`trees/_integration/` — an invocation whose ref-position arguments (those before
+`--`) name the local `main` branch (`main`, `heads/main`, `refs/heads/main`, or a
+range with one of those as an endpoint) is blocked for every subcommand, read-only
+inspection included. There is no `--confirmed` form and no override variable.
+`origin/main` is the only main-shaped ref a slug worktree may name; a pathspec
+after `--` is never read as a ref.
+<!-- /planned:worktree-never-references-local-main -->
+
 **The integration-worktree extras** matter because the worktree's index
 and working tree are owned by the state machine's
 `DELIVERY_BOOKKEEPING` step, which commits whatever is staged with no
@@ -469,3 +479,4 @@ stages the remaining conflicts, then reruns `telec code commit`.
 - docs/project/adr/0047-commit-gates-in-process-no-stash.md
 - docs/global/software-development/design/workspace-scoping.md
 - docs/global/software-development/policy/version-control-safety.md
+- docs/project/adr/0065-integrator-parks-and-drains-with-integrity-only-gating.md — why a slug worktree's only baseline is `origin/main`: the integrator inspects and squashes against it.

@@ -74,8 +74,8 @@ are defined in `software-development/spec/obligation-inventory`.
 Use merge-base to focus the implementation diff:
 
 ```bash
-git diff $(git merge-base HEAD main)..HEAD --name-only
-git diff $(git merge-base HEAD main)..HEAD
+git diff $(git merge-base HEAD origin/main)..HEAD --name-only
+git diff $(git merge-base HEAD origin/main)..HEAD
 ```
 
 Orchestrator-managed state files are task context. Do not raise findings for

@@ -77,6 +77,21 @@ And no seal or role-guard error is printed
 And the command's exit status and output are git's own
 ```
 
+<!-- planned:worktree-never-references-local-main -->
+#### UC-LMR-1 — A slug worktree cannot reference local main
+
+```
+Given an agent session running inside its host pane in a sealed repository
+And the working directory is a slug worktree under trees/<slug> (not trees/_integration/)
+When the agent invokes any git subcommand whose ref-position arguments (those before `--`) name the local main branch — `main`, `heads/main`, `refs/heads/main`, or a range with one of those as an endpoint
+Then the wrapper prints an error naming `origin/main` as the worktree's only baseline
+And exits non-zero without running the command, for read-only subcommands as well as commit-producing ones
+And no `--confirmed` form and no environment variable lifts the refusal
+And the same invocation with `origin/main` in place of the local ref passes through unchanged
+And a pathspec after `--` that happens to be named main is not a ref and is unaffected
+```
+<!-- /planned:worktree-never-references-local-main -->
+
 
 <!-- planned-change:split-review-routing-from-sync-scope -->
 #### Bare telec code commit on main surfaces the commit-first review-routing gate
