@@ -72,23 +72,24 @@ jobs:
 
 <!-- change:generic-job-declarative-model -->
 
-Declare a job under `jobs:` with a `when` schedule and exactly one execution pointer — the
-pointer present is the execution class, and there is no `type` field:
+Declare a job as an entry of the `jobs:` list with a `when` schedule and exactly one execution
+pointer — the pointer present is the execution class and the job's identity; there is no name
+key and no `type` field:
 
 ```yaml
 jobs:
-  { job_key }:
-    when:
+  - when:
       at: '06:00' # or: every: 60m
-    job: <procedure snippet id> # agent job — OR `script: jobs/{job_key}.py` for a script job
-    agent: claude | gemini | codex # agent jobs only
+    job: <procedure snippet id> # agent job — OR `script: jobs/{job_slug}.py` for a script job
+    agent: [claude, codex, gemini] # agent jobs only: ordered preference, resolved through availability
     thinking_mode: fast | med | slow # agent jobs only
 ```
 
-To publish a job for every project, declare it the same way under the `jobs:` registry in the
-global `~/.teleclaude/teleclaude.yml`. A project then turns a global job on with an **enable
-overlay** — a `jobs` entry carrying the same execution pointer and only `enabled: true` (or
-`false` to turn it off); an overlay that carries any other field is rejected at config load.
+To publish a job for every project, declare it the same way in the `jobs:` registry list of
+the global `~/.teleclaude/teleclaude.yml`. A project then turns a global job on with an
+**enable overlay** — a `jobs` entry carrying the same execution pointer, `enabled: true` (or
+`false` to turn it off), and optionally its own `agent` list; an overlay that carries any other
+field is rejected at config load.
 
 <!-- /planned-change:generic-job-declarative-model -->
 
@@ -99,6 +100,10 @@ every project (global-scope or slug-prefixed); a project-local declaration may
 use its own `project/procedure/...` ID.
 
 ### 4. For script jobs: write the script
+
+<!-- planned:generic-job-declarative-model -->
+The module's stem is the script job's identity in run state, the run directory, and the runner's job filter.
+<!-- /planned:generic-job-declarative-model -->
 
 Place at `jobs/{job_slug}.py`. Define a `Job` subclass (`jobs/base.py`) whose `run()`
 returns a `JobResult`, and expose it as a module-level `JOB` instance. The cron runner

@@ -25,11 +25,21 @@ same way regardless of which supported entry point creates them.
 
 ### Dispatch modes
 
+<!-- planned-change:generic-job-declarative-model -->
 **Automatic preference**
 : Fresh work whose caller omits an agent, or whose system-role caller supplies a preferred
 agent. A system-role preference is considered first but remains subject to automatic
 eligibility and reviewer independence. The canonical command and, for prepare orchestration,
 todo kind establish the remaining ordered candidates.
+<!-- change:generic-job-declarative-model -->
+**Automatic preference**
+: Fresh work whose caller omits an agent, or whose system-role caller supplies a preferred
+agent. A system-role preference is considered first but remains subject to automatic
+eligibility and reviewer independence. The canonical command and, for prepare orchestration,
+todo kind establish the remaining ordered candidates. A scheduled job supplies its own ordered
+candidates — its declaration's `agent` preference list — in place of the command row; an empty
+list falls back to the job command's row.
+<!-- /planned-change:generic-job-declarative-model -->
 
 **Manual preference**
 : Fresh work where a caller without a system role explicitly selects an agent. The
@@ -37,9 +47,16 @@ selected agent must be known and enabled, and must not be operator-unavailable. 
 degraded selected agent is honored because degradation gates automatic dispatch only.
 An invalid manual selection is rejected; it never substitutes another agent.
 
+<!-- planned-change:generic-job-declarative-model -->
 **Fixed agent**
 : Continuation work bound to an existing runtime, transcript, or declared fixed-agent
 job. Fixed work never substitutes another agent.
+<!-- change:generic-job-declarative-model -->
+**Fixed agent**
+: Continuation work bound to an existing runtime or transcript. Fixed work never
+substitutes another agent. A scheduled job is never fixed work: its declaration carries a
+preference list, not a binding.
+<!-- /planned-change:generic-job-declarative-model -->
 
 ### Command dispatch policy
 
@@ -335,6 +352,20 @@ Then it selects an independent eligible agent without changing command-row relat
 And the automated caller receives a typed reviewer-independence fallback reason
 And the dispatch decision reports that fallback is present
 ```
+
+<!-- planned:generic-job-declarative-model -->
+#### UC-RAAD-19: A scheduled job's preference list is its automatic candidate order
+
+```gherkin
+Given a scheduled agent job is dispatched through the run boundary
+And its declaration carries an ordered agent preference list
+When TeleClaude selects the session agent
+Then the candidate order is that list, evaluated in automatic mode under this contract's eligibility
+And an empty list uses the job command's matrix row instead
+And when no candidate is eligible the request fails before session creation with the typed no-eligible-candidate reason
+```
+
+<!-- /planned:generic-job-declarative-model -->
 
 ## Known caveats
 

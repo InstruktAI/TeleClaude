@@ -167,7 +167,11 @@ cross-project loop lives in the orchestrator.
 - Both job classes produce the same `JobResult` outcome and `job.run.*` event shape.
 - A clean run is silent; an actionable outcome (failure or stall) notifies a human.
 - Agent jobs produce a run report and a structured outcome every run, even with nothing to process.
+<!-- planned-change:generic-job-declarative-model -->
 - An agent job has one identity, the procedure snippet ID its `job` pointer carries; a script job's identity is its declared name. Dispatch, run state, the run directory, and the report key all use that identity and nothing else names the job.
+<!-- change:generic-job-declarative-model -->
+- An agent job has one identity, the procedure snippet ID its `job` pointer carries; a script job's identity is its `script` module's stem. Dispatch, run state, the run directory, and the report key all use that identity and nothing else names the job.
+<!-- /planned-change:generic-job-declarative-model -->
 
 ### Configuration surface
 
@@ -192,19 +196,27 @@ job is registered under the `jobs:` key. Schedule fields: `schedule`
 
 #### Project-level: `teleclaude.yml`
 
-The project-root `teleclaude.yml` registers a project's jobs under the `jobs:` key. A job
-declares WHEN it runs through the `when` block (see
+The project-root `teleclaude.yml` registers a project's jobs as a list under the `jobs:` key;
+an entry has no name key. A job declares WHEN it runs through the `when` block (see
 `project/spec/feature/config/job-schedule-contract`) and WHAT it runs through exactly one
 execution pointer — `script` (path, in-process job) or `job` (procedure snippet ID, agent
-job). The pointer present IS the execution class and the job's identity; there is no separate
-discriminator field and no separate name. The remaining execution fields are `agent`,
-`thinking_mode`, and `timeout` (seconds; default 1800).
+job). The pointer present IS the execution class and the job's identity — an agent job is
+named by its procedure snippet ID, a script job by its module's stem — and there is no
+separate discriminator field and no separate name. The remaining execution fields are `agent`
+(an ordered preference list the run boundary hands to automatic dispatch), `thinking_mode`,
+and `timeout` (seconds; default 1800).
 
 A project `jobs` entry that carries the same execution pointer as a global registry job is an
-**enable overlay**: it carries only that pointer and `enabled` to turn the global job on or off
-for the project, and the config load rejects it if it carries any other identity-bearing field.
-An entry whose pointer is not in the global registry is a local job declaration (exactly one
-pointer plus a `when` schedule).
+**enable overlay**: it carries that pointer, `enabled` to turn the global job on or off for the
+project, and optionally its own `agent` preference list; the config load rejects it if it
+carries any other identity-bearing field. An entry whose pointer is not in the global registry
+is a local job declaration (exactly one pointer plus a `when` schedule). A name-keyed `jobs`
+mapping written before this shape is rewritten to the list at the config load boundary.
+
+The effective job set the runner executes is composed once by the configuration context —
+local declarations plus the global jobs the overlay enables, each carrying any overlay agent
+preference — and every consumer (the runner, the run boundary, the jobs API, the report CLI,
+and cross-project fan-out) reads that composed set rather than the raw overlay.
 
 #### Global registry and per-person scope
 
@@ -307,8 +319,13 @@ first scheduled occurrence after discovery.
 
 File: `~/.teleclaude/state/cron_state.json`
 
+<!-- planned-change:generic-job-declarative-model -->
 Entries are keyed by job identity — an agent job's procedure snippet ID, a script job's
 declared name.
+<!-- change:generic-job-declarative-model -->
+Entries are keyed by job identity — an agent job's procedure snippet ID, a script job's
+`script` module stem.
+<!-- /planned-change:generic-job-declarative-model -->
 
 ```json
 {
@@ -341,7 +358,11 @@ survives a transport outage independent of later run state.
 - **Job module fails to import**: Logged as error, run closed as failed, other jobs still run.
 - **Script job raises during `run()`**: Caught, run closed as failed, other jobs still run.
 - **Script job exceeds `timeout`**: The daemon-thread join records a failed `JobResult` and the runner aborts the rest of the pass so no later job runs concurrently; the hung job is hard-reaped when the runner process exits, freeing the pidlock, and the deferred jobs run on the next trigger.
+<!-- planned-change:generic-job-declarative-model -->
 - **A job cannot start**: An agent session-creation failure records a failed outcome and emits `job.run.failed`; an API runner-process spawn failure returns an explicit API error. A start failure is never a silent skip.
+<!-- change:generic-job-declarative-model -->
+- **A job cannot start**: An agent session-creation failure — including an agent preference list with no eligible candidate — records a failed outcome carrying the dispatch refusal reason and emits `job.run.failed`; an API runner-process spawn failure returns an explicit API error. A start failure is never a silent skip.
+<!-- /planned-change:generic-job-declarative-model -->
 - **Agent run never reported within its window**: Marked `stalled`, emits `job.run.stalled`, notifies a human.
 - **Event emission unavailable**: The outcome is persisted as a durable pending-emission record and re-emitted exactly once on a later sweep; the job is not re-dispatched until its actionable outcome is delivered, so it is never dropped or overwritten.
 - **Overlap (concurrent runner instances)**: Second instance detects the pidfile and exits cleanly; stale pidfiles are detected and overwritten.

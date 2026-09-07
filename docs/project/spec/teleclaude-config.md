@@ -103,6 +103,7 @@ symlink. Replacing it with a symlink to the global config breaks validation beca
 
 Valid in both project and global configs.
 
+<!-- planned-change:generic-job-declarative-model -->
 ```yaml
 project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
@@ -119,6 +120,24 @@ hooks:
   subscriptions: list[SubscriptionConfig]
 channel_subscriptions: list[ChannelSubscription]
 ```
+<!-- change:generic-job-declarative-model -->
+```yaml
+project_slug: string # canonical machine identity; required in project configs
+project_name: string # human-readable display name
+env_allow_list: list[string] # ambient env vars explicitly allowed into agent tmux sessions for this project
+frontend_root: string # optional layout override: directory containing TypeScript/frontend project, relative to project root (e.g. frontend)
+description: string
+business:
+  publishes: # domains this project owns and contributes global docs for; the union across all registered projects is the set of valid domains, and each domain has exactly one owning publisher — a second project publishing the same domain is a sync-blocking split
+    - slug: string # required: the published domain
+      trigger: string # required: the domain's activation trigger, rendered enriched on its Published Domains line in agent outputs; nonblank, single-line, bounded length, validated at config load — a publishes entry without a nonblank trigger fails config load, so a domain cannot be delivered undiscoverable
+jobs: list[JobScheduleConfig] # job declarations and enable overlays, identified by execution pointer; no name key (project/spec/feature/config/job-declaration-model)
+hooks:
+  inbound: mapping[string, InboundSourceConfig]
+  subscriptions: list[SubscriptionConfig]
+channel_subscriptions: list[ChannelSubscription]
+```
+<!-- /planned-change:generic-job-declarative-model -->
 
 The project also declares which platform capabilities it subscribes to. Each block
 is optional and defaults to subscribed, so a project config written before the
@@ -182,6 +201,7 @@ present in the daemon environment.
 
 Valid **only** in `~/.teleclaude/teleclaude.yml`. Rejected by `ProjectConfig`.
 
+<!-- planned-change:generic-job-declarative-model -->
 ```yaml
 people: list[PersonEntry] # REJECTED at project level
 env_allow_list: list[string] # ambient env vars explicitly allowed into all local agent tmux sessions
@@ -190,6 +210,17 @@ interests: list[string]
 event_domains:
   domains: mapping[string, DomainConfig]
 ```
+<!-- change:generic-job-declarative-model -->
+```yaml
+people: list[PersonEntry] # REJECTED at project level
+env_allow_list: list[string] # ambient env vars explicitly allowed into all local agent tmux sessions
+subscriptions: list[SubscriptionEntry]
+interests: list[string]
+event_domains:
+  domains: mapping[string, DomainConfig]
+jobs: list[JobScheduleConfig] # the global job registry; a project runs one of these only through its enable overlay
+```
+<!-- /planned-change:generic-job-declarative-model -->
 
 There is no `company_profile` key on the global overlay. Company configuration is
 its own folder-discovered tier (`~/.teleclaude/companies/<slug>/teleclaude.yml`;
