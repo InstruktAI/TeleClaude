@@ -414,8 +414,8 @@ And no named agent is selected as a fallback
 - Quota collection and ranking extend this eligibility contract separately. They never
   make an agent eligible when this contract excludes it.
 <!-- planned:session-handoff -->
-- A restart that asks for a handoff is the one continuation that selects a different
-  agent. It walks the session command's automatic order with the current agent
-  excluded, under this contract's eligibility, and is owned by
-  `project/spec/feature/agent_runtime/agent-handoff`.
+- A restart that asks for a handoff is the one continuation that may select a
+  different agent. It runs this contract's fresh-session resolution for the
+  session's command as it is, owns no eligibility or exclusion logic of its own,
+  and is specified by `project/spec/feature/agent_runtime/agent-handoff`.
 <!-- /planned:session-handoff -->
