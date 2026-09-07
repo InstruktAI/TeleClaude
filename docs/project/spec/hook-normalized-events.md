@@ -51,16 +51,9 @@ Current raw-to-normalized lifecycle mapping:
 | Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present | (none) | dropped |
 | Antigravity | `PreToolUse` | `pre_tool_use` | forwarded |
 | Antigravity | `PostInvocation` | `post_tool_use` | forwarded |
-<!-- planned-change:agy-stop-signature-recovery-pointer -->
-| Antigravity | `Stop` where `error` is a non-empty string | `agent_turn_failed` | forwarded |
-| Antigravity | `Stop` where `error` is empty and `fullyIdle == false` | (none) | dropped |
-| Antigravity | `Stop` where `error` is empty, `fullyIdle == true`, and `terminationReason` is a recognized normal-completion reason | `agent_stop` | forwarded |
-| Antigravity | `Stop` where `error` is empty, `fullyIdle == true`, and `terminationReason` is any other value | `agent_turn_failed` | forwarded |
-<!-- change:agy-stop-signature-recovery-pointer -->
 | Antigravity | `Stop` where `error` is a non-empty string | `agent_turn_failed` | forwarded |
 | Antigravity | `Stop` where `error` is empty and `fullyIdle == false` | (none) | dropped |
 | Antigravity | `Stop` where `error` is empty and `fullyIdle == true` | `agent_stop` | forwarded |
-<!-- /planned-change:agy-stop-signature-recovery-pointer -->
 | Codex | `SessionStart` | `session_start` | forwarded |
 | Codex | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
 | Codex | `PreToolUse` | `pre_tool_use` | forwarded |
@@ -90,25 +83,6 @@ hook, and its `PermissionRequest` fires only for calls that actually require
 approval; TeleClaude installs no decision on it, so an observed occurrence is
 an approval the session cannot resolve itself.
 
-<!-- planned-change:agy-stop-signature-recovery-pointer -->
-Antigravity carries both terminal outcomes on the already-installed `Stop`
-event rather than a dedicated one, and its conditions above are mutually
-exclusive and exhaustive. A non-empty `error` member is the established failure
-signal and is tested first. Otherwise the turn is announced as complete only
-when `terminationReason` is one the platform recognizes as a normal completion;
-that recognized set is platform-owned and currently holds `model_stop`, the one
-value the provider documents as an ordinary stop.
-
-Any other `terminationReason` normalizes to `agent_turn_failed` rather than to
-`agent_stop`. The provider's reason vocabulary is not established — its
-documented examples and its executor's own enumeration do not agree, and the
-Antigravity hook document records that gap — so the platform cannot assert that
-an unrecognized reason ended a turn cleanly. Between the two ways of being
-wrong, announcing a terminated turn as complete is the one the caller contract
-forbids, and it fails silently; announcing an ordinary stop as a failure is
-visible in the first log check and correctable by extending the recognized set.
-
-<!-- change:agy-stop-signature-recovery-pointer -->
 Antigravity carries both terminal outcomes on the already-installed `Stop`
 event rather than a dedicated one, and its conditions above are mutually
 exclusive and exhaustive. A non-empty `error` member is the failure signal the
@@ -124,7 +98,6 @@ clean stop as a failure whenever a value is unrecognized, so the platform
 reads the two members the provider designates and leaves the reason to the
 recipient intelligence.
 
-<!-- /planned-change:agy-stop-signature-recovery-pointer -->
 
 **One terminal outcome per turn.** Every provider emits at most one of
 turn-end and turn-failure for a given turn, so the two never both account for
