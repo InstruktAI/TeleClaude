@@ -28,10 +28,8 @@ each decision point until the queue is drained.
   or a range with one of those as an endpoint — for any subcommand, read-only ones
   included. The rule keeps a candidate's ancestry and working tree free of work that sits
   on local `main` but not yet on `origin/main`.
-<!-- planned:worktree-never-references-local-main -->
 - The git wrapper refuses a local-`main` reference inside a slug worktree with no
   override; the wrapper matrix in `docs/project/design/code-commit.md` carries the rule.
-<!-- /planned:worktree-never-references-local-main -->
 - **The agent's cwd is the integration worktree.** All git and make commands run from
   there without `-C` prefixes. Commands targeting project root (repo sync) are emitted
   by the engine with explicit `-C <project_root>` paths. **The worktree's index and
