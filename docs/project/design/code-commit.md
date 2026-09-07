@@ -156,7 +156,6 @@ deliberate friction: the wrapper requires the agent to re-run the
 exact command with `--confirmed` appended after reading the printed
 inspection checklist.
 
-<!-- planned:worktree-never-references-local-main -->
 **The slug-worktree extras.** Inside `trees/<slug>` — any worktree other than
 `trees/_integration/` — an invocation whose ref-position arguments (those before
 `--`) name the local `main` branch (`main`, `heads/main`, `refs/heads/main`, or a
@@ -164,7 +163,6 @@ range with one of those as an endpoint) is blocked for every subcommand, read-on
 inspection included. There is no `--confirmed` form and no override variable.
 `origin/main` is the only main-shaped ref a slug worktree may name; a pathspec
 after `--` is never read as a ref.
-<!-- /planned:worktree-never-references-local-main -->
 
 **The integration-worktree extras** matter because the worktree's index
 and working tree are owned by the state machine's

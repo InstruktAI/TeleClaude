@@ -77,7 +77,6 @@ And no seal or role-guard error is printed
 And the command's exit status and output are git's own
 ```
 
-<!-- planned:worktree-never-references-local-main -->
 #### UC-LMR-1 — A slug worktree cannot reference local main
 
 ```
@@ -90,7 +89,6 @@ And no `--confirmed` form and no environment variable lifts the refusal
 And the same invocation with `origin/main` in place of the local ref passes through unchanged
 And a pathspec after `--` that happens to be named main is not a ref and is unaffected
 ```
-<!-- /planned:worktree-never-references-local-main -->
 
 
 <!-- planned-change:split-review-routing-from-sync-scope -->
