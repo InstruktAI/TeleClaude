@@ -7,12 +7,21 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:log-bug-hunter-generalization -->
 A project's suppression ledger is an allowlist of error signatures that have
 already been triaged, so an automated log scan does not file them again. It
 lives beside the project's log-bug-hunter run state as a typed, versioned JSON
 document with one entry per suppression. The ledger has exactly one writer, the
 `telec bugs` front door, and its readers only ever read it. Run state, written
 by the scan, is a separate file, so neither writer clobbers the other.
+<!-- change:log-bug-hunter-generalization -->
+A project's suppression ledger is an allowlist of error signatures that have
+already been triaged, so an automated log scan does not file them again. It is a
+typed, versioned JSON document with one entry per suppression, resolved per
+project under the log-bug-hunter state directory. The ledger has exactly one
+writer, the `telec bugs` front door; every other participant only reads it, so
+nothing the scan does can clobber it.
+<!-- /planned-change:log-bug-hunter-generalization -->
 
 Each suppression carries the authored `pattern` and how to match it (`match` is
 `substring` by default, `regex` on opt-in), a record-only `disposition`
@@ -73,6 +82,7 @@ Then that entry is skipped
 And the scan continues with the remaining suppressions
 ```
 
+<!-- planned-change:log-bug-hunter-generalization -->
 #### UC-KIS5: The front door is the only writer
 
 ```
@@ -81,6 +91,16 @@ When the log bug hunter next reads the project's ledger
 Then the new suppression is honored
 And the scan's own run-state write leaves the ledger file untouched
 ```
+<!-- change:log-bug-hunter-generalization -->
+#### UC-KIS5: The front door is the only writer
+
+```
+Given an operator registers a suppression with telec bugs suppress
+When the log bug hunter next reads the project's ledger
+Then the new suppression is honored
+And no participant other than the front door has written to the ledger file
+```
+<!-- /planned-change:log-bug-hunter-generalization -->
 
 ### Cross-context references
 

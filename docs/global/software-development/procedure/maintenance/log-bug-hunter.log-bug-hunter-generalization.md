@@ -56,9 +56,15 @@ investigate or fix inline — the diagnose/fix lifecycle owns each filed bug.
      trigger).
 
 4. File every remaining error:
-   - Run `telec bugs report "<description>" --slug fix-{slug}` where the
-     description carries the error summary and a log excerpt. Do not diagnose,
-     do not fix, do not commit — the bug pipeline handles everything downstream.
+   - Step 3 is where this run faces the pre-filing decisions the bug front door
+     interrogates. Having faced them, file with the acknowledgment flag:
+     `telec bugs report --approved "<description>"`, where the description
+     carries the error summary and a log excerpt. Without the flag the front
+     door files nothing and prints those decisions instead.
+   - Let the front door derive the slug. Pass `--slug` only to file against a
+     slug step 3 already resolved.
+   - Do not diagnose, do not fix, do not commit — the bug pipeline handles
+     everything downstream.
 
 5. Repeat steps 3–4 until every error from step 2 has been filed or recorded.
    Do not stop while unprocessed errors remain.
