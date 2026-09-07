@@ -57,12 +57,12 @@ _CLAUDE_COMMAND_NAME_RE = re.compile(r"<command-name>\s*/?([\w-]+)\s*</command-n
 _CLAUDE_COMMAND_ARGS_RE = re.compile(r"<command-args>([\s\S]*?)</command-args>")
 _COMMAND_MARKER_RE = re.compile(r"^TELECLAUDE COMMAND:\s*([\w-]+)(?:\s+(\S+))?", re.MULTILINE)
 _LOADER_RE = re.compile(
-    r"Read\s+\S*?commands/([\w-]+)\.md\s+and follow it exactly as the active instruction set",
+    r"Read\s+\S*?commands/([\w-]+)\.md\s+verbatim and follow it exactly as the active instruction set",
 )
 _LOADER_SLUG_RE = re.compile(r"provided inputs to that instruction set:\s*\n+\s*(\S+)")
 _LEADING_SLASH_RE = re.compile(r"^/([\w-]+)(?:\s+(\S+))?")
 _LOADER_ENVELOPE_RE = re.compile(
-    r"\ARead\s+\S*?commands/[\w-]+\.md\s+and follow it exactly as the active instruction set for this session\.\s*"
+    r"\ARead\s+\S*?commands/[\w-]+\.md\s+verbatim and follow it exactly as the active instruction set for this session\.\s*"
     r"Treat the following as provided inputs to that instruction set:\s*\n+\s*\S+(?:\s*\n+ADDITIONAL CONTEXT:\s*\n[\s\S]*)?\s*\Z"
 )
 

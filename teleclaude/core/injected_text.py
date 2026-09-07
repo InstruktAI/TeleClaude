@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from html import escape as _xml_escape
 from types import MappingProxyType
 
 
@@ -385,13 +384,15 @@ def render_bracket_envelope(envelope: SemanticEnvelope) -> str:
 def render_xml_envelope(envelope: SemanticEnvelope) -> str:
     """Render the hook-boundary XML codec for one semantic envelope."""
     attributes = _XML_ATTRIBUTE_SEPARATOR.join(
-        _XML_ATTRIBUTE_TEMPLATE.format(name=field.value, value=_xml_escape(value, quote=True))
+        _XML_ATTRIBUTE_TEMPLATE.format(name=field.value, value=value)  # value=_xml_escape(value, quote=True))
         for field, value in envelope.fields.items()
     )
     tag = envelope.definition.xml_tag
     if envelope.definition.closure is EnvelopeClosure.AUTO_CLOSED:
         return _XML_AUTO_CLOSED_TEMPLATE.format(tag=tag, attributes=attributes)
-    return _XML_PAIRED_TEMPLATE.format(tag=tag, attributes=attributes, body=_xml_escape(envelope.body))
+    return _XML_PAIRED_TEMPLATE.format(
+        tag=tag, attributes=attributes, body=envelope.body.strip()
+    )  # body=_xml_escape(envelope.body))
 
 
 def _platform_semantic_envelope(label: PlatformTextLabel, body: str) -> SemanticEnvelope:

@@ -15,7 +15,7 @@ _COMMAND_MARKER_TEMPLATE = "TELECLAUDE COMMAND: {command}{args}"
 _MARKER_ARGUMENT_PREFIX = " "
 _LOADER_SECTION_SEPARATOR = "\n\n"
 _LOADER_MESSAGE_TEMPLATE = (
-    "Read {prompt_path} and follow it exactly as the active instruction set for this session.\n\n"
+    "Read {prompt_path} verbatim and follow it exactly as the active instruction set for this session.\n\n"
     "Treat the following as provided inputs to that instruction set:\n"
     "{args}"
 )
