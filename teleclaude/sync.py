@@ -77,13 +77,16 @@ def sync(
     if not capabilities.is_target:
         return True
 
-    access = DocsLockAccess.SHARED if skip_deploy else DocsLockAccess.EXCLUSIVE
+    if skip_deploy:
+        # Validation resolves every reference from publisher sources and never reads
+        # the deployed tree, so it holds no lease and never waits behind a deploy.
+        return skip_validation or not _collect_source_findings(project_root, capabilities)
     try:
-        with docs_lease(access, DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
+        with docs_lease(DocsLockAccess.EXCLUSIVE, DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
             return _sync_locked(
                 project_root,
                 capabilities,
-                skip_deploy=skip_deploy,
+                skip_deploy=False,
                 skip_validation=skip_validation,
                 lock_descriptor=lock_descriptor,
             )

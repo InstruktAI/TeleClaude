@@ -571,7 +571,7 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
     ),
     "sync": CheckpointAction(
         id="sync",
-        run="Run `telec sync`",
+        run="Run `telec sync --skip-deploy`",
         evidence=("telec sync",),
         main_only=True,
         precedence=55,

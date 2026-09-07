@@ -62,11 +62,12 @@ tooling.
 7.  Organize content inside those valid sections. Use subordinate headings such as `###` when they improve readability; do not flatten useful structure just to avoid internal headings.
 8.  If validation rejects a heading, first ask whether it should be downgraded under an existing schema section rather than deleted or flattened.
 
-9.  After the authorized documentation batch is stable, run `telec sync` to
-    deploy all artifacts. Keep the regenerated index files with the eventual
-    commit — they are build outputs of the sync step and reflect the current
-    truth of the docs directory. This step supplies neither authoring nor commit
-    authority.
+9.  After the authorized documentation batch is stable, validate it with
+    `telec sync --skip-deploy`. Deployment is the docs watcher's job: it
+    publishes the whole tree on every save, so an agent never runs a deploying
+    sync of its own. Keep the regenerated index files with the eventual commit —
+    they are build outputs and reflect the current truth of the docs directory.
+    This step supplies neither authoring nor commit authority.
 10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
 
 11. Avoid creating index.md files; only baseline.md manifests are allowed.
