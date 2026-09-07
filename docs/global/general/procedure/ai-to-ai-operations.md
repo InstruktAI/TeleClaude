@@ -54,18 +54,17 @@ or lifecycle contract.
      live-pane inspection even when both transcript and session metadata are
      unchanged. Read the event's native evidence alongside that current view;
      neither a status label nor an absent transcript change settles the event.
-   - Use the platform's delivered inspection surface where available. For a
-     local child, the existing pane-capture operation is:
+   - Inspect the live pane through the platform's inspection surface:
 
      ```sh
-     tmux capture-pane -p -J -S - -t '<tmux_session_name>'
+     telec sessions tail <session_id> --pane [--computer <computer>]
      ```
 
-     Use the actual pane binding from the session. For a remote child, execute
-     inspection on its owning computer through established authorized access;
-     running the same capture on the caller's computer does not inspect it.
-     If no usable route is available, leave the pane observation unresolved.
-     Transcript evidence is not a substitute for the missing pane observation.
+     The same capture runs on the child's owning computer whether it is local
+     or remote; the computer selector only routes the request. The result
+     states whether a terminal was available, so an unavailable terminal is
+     an explicit outcome rather than empty text. The pane query and the
+     transcript query are separate reads; neither substitutes for the other.
 
    - Use surrounding logs and work artifacts where they bear on the condition.
      Keep event-time evidence distinct from what a later inspection shows.
