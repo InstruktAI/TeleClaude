@@ -19,7 +19,7 @@ from teleclaude.config import config
 from teleclaude.config._blueprint import generate_sample_file
 from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.docs_index import build_all_indexes
-from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockAccess, DocsLockOperation, docs_lease
+from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
 from teleclaude.domains import publishes_for_root
@@ -82,11 +82,10 @@ def sync(
         # the deployed tree, so it holds no lease and never waits behind a deploy.
         return skip_validation or not _collect_source_findings(project_root, capabilities)
     try:
-        with docs_lease(DocsLockAccess.EXCLUSIVE, DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
+        with docs_lease(DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
             return _sync_locked(
                 project_root,
                 capabilities,
-                skip_deploy=False,
                 skip_validation=skip_validation,
                 lock_descriptor=lock_descriptor,
             )
@@ -99,19 +98,15 @@ def _sync_locked(
     project_root: Path,
     capabilities: Capabilities,
     *,
-    skip_deploy: bool,
     skip_validation: bool,
     lock_descriptor: int,
 ) -> bool:
-    """Run one synchronization pipeline while its documentation lease is held."""
+    """Run one deploying synchronization pipeline while its documentation lease is held."""
 
     # Phase 1: Validate. The telec sync command always blocks on findings; only the
     # watcher's live-reload passes skip_validation to omit the phase entirely.
     if not skip_validation and _collect_source_findings(project_root, capabilities):
         return False
-
-    if skip_deploy:
-        return True
 
     if capabilities.code:
         install_code_hooks(project_root)
@@ -183,12 +178,11 @@ def sync_bootstrap(project_root: Path) -> None:
     if not capabilities.is_target:
         return
     try:
-        with docs_lease(DocsLockAccess.EXCLUSIVE, DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
+        with docs_lease(DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
             _collect_source_findings(project_root, capabilities)
             _sync_locked(
                 project_root,
                 capabilities,
-                skip_deploy=False,
                 skip_validation=True,
                 lock_descriptor=lock_descriptor,
             )

@@ -21,17 +21,9 @@ _RETRY_INTERVAL_SECONDS = 0.1
 _CONTENTION_ERRNOS = frozenset({errno.EACCES, errno.EAGAIN})
 
 
-class DocsLockAccess(StrEnum):
-    """The reader or writer access requested for deployed documentation."""
-
-    SHARED = "shared"
-    EXCLUSIVE = "exclusive"
-
-
 class DocsLockOperation(StrEnum):
     """The pipeline operation represented by one lease record."""
 
-    VALIDATION = "validation"
     SYNCHRONIZATION = "synchronization"
 
 
@@ -41,21 +33,23 @@ class DocsLeaseTimeoutError(TimeoutError):
 
 @contextmanager
 def docs_lease(
-    access: DocsLockAccess,
     operation: DocsLockOperation,
     *,
     timeout_seconds: float = DOCS_LOCK_TIMEOUT_SECONDS,
 ) -> Generator[int, None, None]:
-    """Yield a held documentation-lock descriptor for one bounded operation."""
+    """Yield an exclusively held documentation-lock descriptor for one bounded deploy.
+
+    Validation reads publisher sources and takes no lease; only a deploy that
+    replaces the published tree holds this lock.
+    """
     DOCS_DEPLOYMENT_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(DOCS_DEPLOYMENT_LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o600)
     requested_at = time.monotonic()
-    logger.info("docs_lease_requested", access=access, operation=operation)
-    lock_kind = fcntl.LOCK_SH if access is DocsLockAccess.SHARED else fcntl.LOCK_EX
+    logger.info("docs_lease_requested", operation=operation)
     try:
         while True:
             try:
-                fcntl.flock(descriptor, lock_kind | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except OSError as exc:
                 if exc.errno not in _CONTENTION_ERRNOS:
@@ -64,7 +58,6 @@ def docs_lease(
                 if waited_seconds >= timeout_seconds:
                     logger.warning(
                         "docs_lease_timeout",
-                        access=access,
                         operation=operation,
                         waited_seconds=waited_seconds,
                     )
@@ -74,11 +67,10 @@ def docs_lease(
                 time.sleep(min(_RETRY_INTERVAL_SECONDS, timeout_seconds - waited_seconds))
         logger.info(
             "docs_lease_acquired",
-            access=access,
             operation=operation,
             waited_seconds=time.monotonic() - requested_at,
         )
         yield descriptor
     finally:
         os.close(descriptor)
-        logger.info("docs_lease_released", access=access, operation=operation)
+        logger.info("docs_lease_released", operation=operation)
