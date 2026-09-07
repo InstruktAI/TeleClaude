@@ -51,35 +51,32 @@ And the predecessor's native transcript is part of the session's transcript chai
 And a chain-aware transcript read presents the predecessor's history followed by the successor's
 ```
 
-#### UC-AH4: Automatic selection excludes the current agent and honors eligibility
+#### UC-AH4: Automatic selection is the existing dispatch resolution
 
 ```gherkin
-Given an agent caller asks for a restart with a handoff and names no successor
+Given a caller asks for a restart with a handoff and names no successor
 When the service selects the successor
-Then it walks the ordered candidates for the session's recorded command, or the global order when the command has no row
-And the current agent is excluded from selection
-And only a configured, enabled, operator-available agent may be selected
+Then the successor is whatever the existing fresh-session dispatch resolution returns for the session's recorded command
 And the caller is told which successor was selected
 ```
 
-#### UC-AH5: No eligible successor refuses the handoff and leaves the session untouched
+#### UC-AH5: A dispatch refusal leaves the session untouched
 
 ```gherkin
-Given an agent caller asks for a restart with a handoff and names no successor
-And no eligible agent other than the current one remains
-When the service resolves the request
-Then the request is refused before any process is terminated
+Given a caller asks for a restart with a handoff
+And the existing dispatch resolution returns a refusal
+When the service handles that result
+Then the refusal reaches the caller before any process is terminated
 And the session's agent, lifecycle state, and host pane are exactly as they were
 ```
 
-#### UC-AH6: An explicit successor follows the dispatch contract
+#### UC-AH6: Explicit selection is the existing dispatch resolution
 
 ```gherkin
 Given a caller asks for a restart with a handoff and names a successor
 When the service resolves the successor
-Then the successor is whatever the dispatch contract's explicit-agent rules yield for that caller with the current agent excluded, including that contract's own fallback and refusal behavior
-And no process is terminated before selection settles
-And the caller is told the selected successor
+Then the outcome is whatever the existing dispatch resolution returns for an explicitly named agent, including its existing not-available response
+And nothing is terminated before that resolution settles
 ```
 
 #### UC-AH7: The successor is briefed in the ordinary dispatch shape
@@ -150,6 +147,6 @@ And no todo, slug-holder, or hold record is read or changed by the operation
 
 - docs/project/spec/feature/agent_runtime/agent-restart.md — the same-agent restart this operation extends.
 - docs/project/spec/feature/agent_runtime/session-revival.md — the revive path a closed-session handoff reuses.
-- docs/project/spec/feature/agent_runtime/role-aware-agent-dispatch.md — the selection contract automatic handoff walks, with the current agent excluded.
+- docs/project/spec/feature/agent_runtime/role-aware-agent-dispatch.md — the dispatch resolution handoff reuses as it is for both the automatic and the explicit form.
 - docs/project/spec/feature/agent_runtime/model-quota-recovery.md — same-agent model fallback, which handoff complements rather than replaces.
 - docs/project/spec/feature/tui/session-actions.md — the TUI gestures that invoke handoff.
