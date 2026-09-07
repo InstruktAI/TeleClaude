@@ -5,8 +5,11 @@ No imports from state_machine.py or step_functions.py (circular-import guard).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
+from typing import NamedTuple
 
 from instrukt_ai_logging import get_logger
 
@@ -19,6 +22,13 @@ from teleclaude.types.state_value import StateValue
 logger = get_logger(__name__)
 
 _DOWNSTREAM_DEPENDENCIES_SQL = "SELECT slug FROM todo_deps WHERE depends_on = ?"
+_ACTIVE_TODO_SLUGS_SQL = "SELECT slug FROM todo WHERE status = 'active'"
+_GIT_LOG_SPAN_ARGS = ("log", "--no-merges", "-z", "--format=%H\x1f%s")
+_GIT_DIFF_TREE_NAME_ONLY_ARGS = ("diff-tree", "--no-commit-id", "--name-only", "-r", "-z")
+_GIT_RANGE_SEPARATOR = ".."
+_SPAN_RECORD_SEPARATOR = "\0"
+_SPAN_FIELD_SEPARATOR = "\x1f"
+_CONVENTIONAL_COMMIT_HEADER_RE = re.compile(r"^\w+(?:\(([^)]+)\))?!?:\s")
 
 
 @dataclass(frozen=True, order=True)
@@ -42,6 +52,184 @@ class CandidateStateReadError(RuntimeError):
     def __init__(self, slug: str, cause: Exception) -> None:
         super().__init__(f"Failed to read persisted state for {slug!r}: {cause}")
         self.slug = slug
+
+
+class CandidateCleanlinessInspectionError(RuntimeError):
+    """Raised when a candidate span's ownership cannot be mechanically inspected.
+
+    Distinct from a foreign or ambiguous verdict — this signals that the
+    inspection itself could not be performed (missing or invalid plan
+    metadata, an unreadable Git range) so integration stops visibly rather
+    than defaulting to a clean, foreign, or ambiguous outcome.
+    """
+
+
+class CandidateCleanlinessOutcome(StrEnum):
+    """Closed outcome vocabulary for a candidate span-ownership inspection."""
+
+    CLEAN = "clean"
+    FOREIGN = "foreign"
+    AMBIGUOUS = "ambiguous"
+
+
+class CandidateSpanReasonToken(StrEnum):
+    """Closed vocabulary for why a span commit resolved foreign or ambiguous."""
+
+    FOREIGN_SCOPE = "foreign_scope"
+    FOREIGN_PATH = "foreign_path"
+    AMBIGUOUS_HEADER = "ambiguous_header"
+
+
+class AmbiguityEvidence(NamedTuple):
+    """Mechanical evidence for the span commit that decided a foreign or ambiguous outcome."""
+
+    commit_sha: str
+    reason_token: str
+
+
+@dataclass(frozen=True)
+class CandidateCleanlinessResult:
+    """Mechanical span-ownership verdict for one candidate, ready to park or continue."""
+
+    outcome: CandidateCleanlinessOutcome
+    evidence: AmbiguityEvidence | None  # None only when outcome is CLEAN
+
+
+@dataclass(frozen=True)
+class _SpanCommit:
+    """One non-merge commit in a candidate's span, with its parsed header and touched paths."""
+
+    sha: str
+    scope: str | None
+    touched_paths: frozenset[str]
+
+
+def _parse_conventional_scope(subject: str) -> str | None:
+    """Return the parenthesized scope of a conventional-commit header, or None."""
+    match = _CONVENTIONAL_COMMIT_HEADER_RE.match(subject)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _active_todo_slugs(cwd: str) -> frozenset[str]:
+    """Return every slug currently registered with status='active'."""
+    conn = get_todos_db_sync(cwd)._sync_conn()
+    try:
+        rows = conn.execute(_ACTIVE_TODO_SLUGS_SQL).fetchall()  # guard: raw-sql
+        return frozenset(row[0] for row in rows if isinstance(row[0], str))
+    finally:
+        conn.close()
+
+
+def _referenced_paths_or_raise(cwd: str, slug: str) -> frozenset[str]:
+    """Return the candidate's frozen implementation-plan referenced-paths contract.
+
+    Missing or invalid metadata is an explicit inspection failure — never an
+    empty-path fallback that would silently make every touched path look foreign.
+    """
+    try:
+        state = get_todos_db_sync(cwd).read_state_sync(slug)
+    except Exception as exc:
+        raise CandidateStateReadError(slug, exc) from exc
+    if state is None:
+        raise CandidateCleanlinessInspectionError(f"No persisted state for candidate {slug!r}")
+    artifacts = state.get("artifacts")
+    if not isinstance(artifacts, dict):
+        raise CandidateCleanlinessInspectionError(f"Candidate {slug!r} state has no artifacts metadata")
+    plan = artifacts.get("implementation_plan")
+    if not isinstance(plan, dict):
+        raise CandidateCleanlinessInspectionError(f"Candidate {slug!r} has no implementation_plan artifact metadata")
+    referenced_paths = plan.get("referenced_paths")
+    if not isinstance(referenced_paths, list) or not all(isinstance(p, str) for p in referenced_paths):
+        raise CandidateCleanlinessInspectionError(
+            f"Candidate {slug!r} implementation_plan.referenced_paths is missing or invalid"
+        )
+    str_paths: list[str] = [path for path in referenced_paths if isinstance(path, str)]
+    return frozenset(str_paths)
+
+
+def _enumerate_span_commits(cwd: str, sha: str) -> list[_SpanCommit]:
+    """Return every non-merge commit in ``origin/main..sha``, with its scope and touched paths."""
+    log_rc, log_stdout, log_stderr = _run_git([*_GIT_LOG_SPAN_ARGS, f"origin/main{_GIT_RANGE_SEPARATOR}{sha}"], cwd=cwd)
+    if log_rc != 0:
+        raise CandidateCleanlinessInspectionError(f"git log span read failed for {sha}: {log_stderr.strip()}")
+
+    commits: list[_SpanCommit] = []
+    for record in log_stdout.split(_SPAN_RECORD_SEPARATOR):
+        if not record:
+            continue
+        try:
+            commit_sha, subject = record.split(_SPAN_FIELD_SEPARATOR, 1)
+        except ValueError as exc:
+            raise CandidateCleanlinessInspectionError(
+                f"Malformed git log record in span for {sha}: {record!r}"
+            ) from exc
+
+        paths_rc, paths_stdout, paths_stderr = _run_git([*_GIT_DIFF_TREE_NAME_ONLY_ARGS, commit_sha], cwd=cwd)
+        if paths_rc != 0:
+            raise CandidateCleanlinessInspectionError(
+                f"git diff-tree path read failed for {commit_sha}: {paths_stderr.strip()}"
+            )
+        touched_paths = frozenset(p for p in paths_stdout.split(_SPAN_RECORD_SEPARATOR) if p)
+        commits.append(
+            _SpanCommit(sha=commit_sha, scope=_parse_conventional_scope(subject), touched_paths=touched_paths)
+        )
+    return commits
+
+
+def _classify_span_commit(
+    commit: _SpanCommit,
+    *,
+    candidate_slug: str,
+    active_slugs: frozenset[str],
+    referenced_paths: frozenset[str],
+) -> tuple[CandidateCleanlinessOutcome, CandidateSpanReasonToken | None]:
+    """Classify one span commit against the exact ownership predicates.
+
+    A scope naming another active slug, or any touched path outside the
+    referenced-paths contract, is exact foreign evidence — independently of
+    each other. A scope equal to the candidate's own slug with every path
+    inside the contract is exact clean evidence. Anything else is ambiguous.
+    """
+    if commit.scope is not None and commit.scope != candidate_slug and commit.scope in active_slugs:
+        return CandidateCleanlinessOutcome.FOREIGN, CandidateSpanReasonToken.FOREIGN_SCOPE
+    if any(path not in referenced_paths for path in commit.touched_paths):
+        return CandidateCleanlinessOutcome.FOREIGN, CandidateSpanReasonToken.FOREIGN_PATH
+    if commit.scope == candidate_slug:
+        return CandidateCleanlinessOutcome.CLEAN, None
+    return CandidateCleanlinessOutcome.AMBIGUOUS, CandidateSpanReasonToken.AMBIGUOUS_HEADER
+
+
+def _inspect_candidate_cleanliness(cwd: str, key: CandidateKey) -> CandidateCleanlinessResult:
+    """Mechanically inspect a candidate's span for exact foreign or ambiguous ownership.
+
+    Foreign outranks ambiguous when both appear in one span: the first foreign
+    commit encountered decides the result. Absent any foreign commit, the
+    first ambiguous commit decides. A span with neither is clean.
+    """
+    referenced_paths = _referenced_paths_or_raise(cwd, key.slug)
+    active_slugs = _active_todo_slugs(cwd)
+    commits = _enumerate_span_commits(cwd, key.sha)
+
+    ambiguous_evidence: AmbiguityEvidence | None = None
+    for commit in commits:
+        outcome, reason_token = _classify_span_commit(
+            commit, candidate_slug=key.slug, active_slugs=active_slugs, referenced_paths=referenced_paths
+        )
+        if outcome is CandidateCleanlinessOutcome.FOREIGN:
+            assert reason_token is not None
+            return CandidateCleanlinessResult(
+                outcome=CandidateCleanlinessOutcome.FOREIGN,
+                evidence=AmbiguityEvidence(commit_sha=commit.sha, reason_token=reason_token.value),
+            )
+        if outcome is CandidateCleanlinessOutcome.AMBIGUOUS and ambiguous_evidence is None:
+            assert reason_token is not None
+            ambiguous_evidence = AmbiguityEvidence(commit_sha=commit.sha, reason_token=reason_token.value)
+
+    if ambiguous_evidence is not None:
+        return CandidateCleanlinessResult(outcome=CandidateCleanlinessOutcome.AMBIGUOUS, evidence=ambiguous_evidence)
+    return CandidateCleanlinessResult(outcome=CandidateCleanlinessOutcome.CLEAN, evidence=None)
 
 
 @dataclass(frozen=True)
@@ -284,8 +472,13 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
 
 
 __all__ = [
+    "AmbiguityEvidence",
+    "CandidateCleanlinessInspectionError",
+    "CandidateCleanlinessOutcome",
+    "CandidateCleanlinessResult",
     "CandidateStateReadError",
     "ScannedCandidate",
+    "_inspect_candidate_cleanliness",
     "_scan_finalize_ready_candidates",
     "_stamp_integration_started",
     "_sweep_stale_artifacts",

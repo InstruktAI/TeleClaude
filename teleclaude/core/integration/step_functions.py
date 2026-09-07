@@ -6,11 +6,8 @@ Instruction formatters live in formatters.py.
 
 from __future__ import annotations
 
-import asyncio
-import threading
 from pathlib import Path
 from time import perf_counter
-from typing import Any, NamedTuple, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -19,11 +16,13 @@ from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
 )
-from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
 from teleclaude.core.integration.candidate_scan import (
+    CandidateCleanlinessInspectionError,
+    CandidateCleanlinessOutcome,
     CandidateKey,
     CandidateStateReadError,
+    _inspect_candidate_cleanliness,
     _scan_finalize_ready_candidates,
     _stamp_integration_started,
     _sweep_stale_artifacts,
@@ -32,16 +31,14 @@ from teleclaude.core.integration.candidate_scan import (
 from teleclaude.core.integration.checkpoint import (
     IntegrationCheckpoint,
     IntegrationPhase,
-    ParkedCandidate,
+    _get_candidate_key,
     _now_iso,
-    _reset_candidate,
     _write_checkpoint,
 )
 from teleclaude.core.integration.delivery_fold import assert_clean_before_push, reassert_delivered_fold
 from teleclaude.core.integration.formatters import (
     _format_commit_decision,
     _format_conflict_decision,
-    _format_content_gate_conflict,
     _format_error,
     _format_lease_busy,
     _format_push_rejected,
@@ -56,7 +53,6 @@ from teleclaude.core.integration.git_ops import (
     _get_conflicted_files,
     _get_diff_stats,
     _get_head_sha,
-    _get_remote_main_sha,
     _git_dir,
     _integration_worktree_path,
     _mark_repo_root_sync_failure,
@@ -65,6 +61,20 @@ from teleclaude.core.integration.git_ops import (
     _synchronize_repo_root,
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
+from teleclaude.core.integration.lifecycle_events import (
+    _EVENT_INTEGRATION_DRAIN_COMPLETED,
+    _emit_lifecycle_event,
+)
+from teleclaude.core.integration.park import (
+    _CANDIDATE_CLEANLINESS_PARK_REASON,
+    _TEXTUAL_CONFLICT_PARK_REASON,
+    _ambiguity_from_error_context,
+    _error_context_with_ambiguity,
+    _format_content_gate_conflict_or_invariant_error,
+    _log_candidate_cleanliness_decision,
+    _park_candidate,
+)
+from teleclaude.core.integration.push_recovery import _is_content_gate_rejection
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
 from teleclaude.core.next_machine.marker_reconciliation import (
     MarkerMoment,
@@ -79,9 +89,6 @@ from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_mark
 
 logger = get_logger(__name__)
 
-# Thread-local storage for event loop reference (used in fire-and-forget async emission)
-_tls = threading.local()
-
 _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
@@ -90,9 +97,6 @@ _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
 _INTEGRATOR_MAINTENANCE_RECORDING_FAILED = "Failed to {operation} integrator maintenance {target} for range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
 _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG = "integration.maintenance_marker.recorded"
-_TEXTUAL_CONFLICT_PARK_REASON = "unresolvable textual merge conflict"
-_EVENT_INTEGRATION_CANDIDATE_PARKED = "integration.candidate.parked"
-_EVENT_INTEGRATION_DRAIN_COMPLETED = "integration.drain.completed"
 _GIT_PUSH_ORIGIN_MAIN_ARGS = ("push", "origin", "main")
 _REPO_ROOT_SYNC_SOURCE, _INTEGRATION_WORKTREE_SYNC_SOURCE = "repo_root", "integration_worktree"
 _BLUEPRINT_REGENERATED_LOG = "integration.blueprint.regenerated"
@@ -118,101 +122,10 @@ def _read_artifact_safe(cwd: str, slug: str, name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-_CONTENT_GATE_MARKER = "Integration push blocked"
-
 _CLEANUP_COMMIT_SUBJECT_TEMPLATE = "chore({slug}): integration worktree cleanup"
 _GIT_ARG_COMMIT = "commit"
 _GIT_ARG_AUTHOR = "--author"
 _GIT_ARG_MESSAGE = "-m"
-
-
-def _is_content_gate_rejection(rejection_reason: str) -> bool:
-    """Classify a push rejection as content-gate (vs. fast-forward race).
-
-    The pre-push hook (``.githooks/pre-push``, ``trees/_integration`` branch)
-    prints this stable marker when ``telec code lint --all`` fails on the
-    squash content. That failure is invariant under rebase — a fast-forward
-    race is the only other rejection cause and is rebase-recoverable.
-    """
-    return _CONTENT_GATE_MARKER in rejection_reason
-
-
-def _get_candidate_key(checkpoint: IntegrationCheckpoint) -> CandidateKey | None:
-    if checkpoint.candidate_slug and checkpoint.candidate_branch and checkpoint.candidate_sha:
-        return CandidateKey(
-            slug=checkpoint.candidate_slug,
-            branch=checkpoint.candidate_branch,
-            sha=checkpoint.candidate_sha,
-        )
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Event emission
-# ---------------------------------------------------------------------------
-
-
-# guard: loose-dict-func - lifecycle event payload shape varies per event type
-async def _bridge_emit(
-    event_type: str,
-    payload: dict[str, Any],
-) -> None:
-    """Dispatch lifecycle event to the appropriate integration_bridge helper."""
-    # Lazy import to avoid circular dependency at module load time
-    try:
-        if event_type == "integration.started":
-            await bridge.emit_integration_started(
-                slug=payload.get("slug", ""),
-                session_id=payload.get("session_id", ""),
-                queue_depth=int(payload.get("queue_depth", 0)),
-            )
-        elif event_type == "integration.candidate.delivered":
-            await bridge.emit_integration_candidate_delivered(
-                slug=payload.get("slug", ""),
-                branch=payload.get("branch", ""),
-                merge_commit_sha=payload.get("merge_commit_sha", ""),
-            )
-        elif event_type == "integration.candidate.blocked":
-            await bridge.emit_integration_candidate_blocked(
-                slug=payload.get("slug", ""),
-                branch=payload.get("branch", ""),
-                sha=payload.get("sha", ""),
-                reason=payload.get("reason", ""),
-            )
-        elif event_type == _EVENT_INTEGRATION_CANDIDATE_PARKED:
-            await bridge.emit_integration_candidate_parked(
-                slug=payload.get("slug", ""),
-                branch=payload.get("branch", ""),
-                sha=payload.get("sha", ""),
-                reason=payload.get("reason", ""),
-                parked_at=payload.get("parked_at") or None,
-            )
-        elif event_type == _EVENT_INTEGRATION_DRAIN_COMPLETED:
-            await bridge.emit_integration_drain_completed(
-                session_id=payload.get("session_id", ""),
-                delivered_count=int(payload.get("delivered_count", 0)),
-                parked=cast(list[ParkedCandidate], payload.get("parked", [])),
-                completed_at=payload.get("completed_at") or None,
-            )
-        # Other event types are observability-only; logged below, not wired to bridge
-    except Exception:
-        logger.debug("_bridge_emit failed for %s", event_type, exc_info=True)
-
-
-# guard: loose-dict-func - lifecycle event payload shape varies per event type
-def _emit_lifecycle_event(
-    event_type: str,
-    payload: dict[str, Any],
-) -> None:
-    """Fire-and-forget lifecycle event emission via bridge (threadsafe)."""
-    logger.info("INTEGRATION_LIFECYCLE_EVENT type=%s payload=%s", event_type, payload)
-    loop: asyncio.AbstractEventLoop | None = getattr(_tls, "loop", None)
-    if loop is None or not loop.is_running():
-        return
-    try:
-        asyncio.run_coroutine_threadsafe(_bridge_emit(event_type, payload), loop)
-    except Exception:
-        logger.debug("_emit_lifecycle_event scheduling failed for %s", event_type, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +250,23 @@ def _do_merge(
         _write_checkpoint(checkpoint_path, checkpoint)
         return True, ""
 
+    try:
+        cleanliness = _inspect_candidate_cleanliness(cwd, key)
+    except CandidateStateReadError as exc:
+        return False, _format_error("CANDIDATE_STATE_READ_FAILED", str(exc))
+    except CandidateCleanlinessInspectionError as exc:
+        return False, _format_error("CANDIDATE_CLEANLINESS_INSPECTION_FAILED", str(exc))
+    _log_candidate_cleanliness_decision(key, cleanliness)
+
+    if cleanliness.outcome is CandidateCleanlinessOutcome.FOREIGN:
+        return _park_candidate(
+            checkpoint=checkpoint,
+            checkpoint_path=checkpoint_path,
+            key=key,
+            reason=_CANDIDATE_CLEANLINESS_PARK_REASON,
+        )
+    ambiguity = cleanliness.evidence if cleanliness.outcome is CandidateCleanlinessOutcome.AMBIGUOUS else None
+
     rc, _, _stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
 
     # Guard: squash merge produced no content changes — candidate already integrated.
@@ -373,18 +303,30 @@ def _do_merge(
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
 
         checkpoint.phase = IntegrationPhase.MERGE_CLEAN.value
-        checkpoint.error_context = {"merge_type": "clean"}
+        checkpoint.error_context = _error_context_with_ambiguity({"merge_type": "clean"}, ambiguity)
         _write_checkpoint(checkpoint_path, checkpoint)
 
         _emit_lifecycle_event("integration.merge.succeeded", {"slug": key.slug, "branch": key.branch})
         logger.info("%s slug=%s phase=MERGE_CLEAN", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
-        return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
+        return False, _format_commit_decision(
+            key.slug,
+            key.branch,
+            diff_stats,
+            branch_log,
+            requirements,
+            impl_plan,
+            worktree=wt,
+            pre_merge_head=pre_merge_head or "",
+            ambiguity=ambiguity,
+        )
     else:
         # Conflict
         conflicted_files = _get_conflicted_files(wt)
         checkpoint.phase = IntegrationPhase.MERGE_CONFLICTED.value
-        checkpoint.error_context = {"merge_type": "conflicted", "conflicted_files": conflicted_files}
+        checkpoint.error_context = _error_context_with_ambiguity(
+            {"merge_type": "conflicted", "conflicted_files": conflicted_files}, ambiguity
+        )
         _write_checkpoint(checkpoint_path, checkpoint)
 
         _emit_lifecycle_event(
@@ -395,7 +337,7 @@ def _do_merge(
             "%s slug=%s phase=MERGE_CONFLICTED files=%d", _NEXT_INTEGRATE_PHASE_LOG, key.slug, len(conflicted_files)
         )
 
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt, ambiguity=ambiguity)
 
 
 def _step_awaiting_commit(
@@ -410,6 +352,7 @@ def _step_awaiting_commit(
         return False, _format_error("INVALID_STATE", "Awaiting-commit phase has no candidate key")
 
     wt = str(_integration_worktree_path(cwd))
+    ambiguity = _ambiguity_from_error_context(checkpoint.error_context)
 
     # Check for unresolved merge conflicts first (in integration worktree)
     if _merge_head_exists(wt):
@@ -417,7 +360,7 @@ def _step_awaiting_commit(
         checkpoint.error_context = {**(checkpoint.error_context or {}), "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
 
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt, ambiguity=ambiguity)
 
     # Check if HEAD advanced in integration worktree (commit happened)
     head_sha = _get_head_sha(wt)
@@ -434,11 +377,31 @@ def _step_awaiting_commit(
     # No commit yet — re-prompt
     merge_type = (checkpoint.error_context or {}).get("merge_type", "conflicted")
     if merge_type == "clean":
+        if ambiguity is not None and head_sha is not None and pre_merge is not None and head_sha == pre_merge:
+            unmerged_rc, unmerged_stdout, _ = _run_git(list(_GIT_DIFF_UNMERGED_ARGS), cwd=wt)
+            staged_rc, _, _ = _run_git(list(_GIT_DIFF_STAGED_QUIET_ARGS), cwd=wt)
+            if unmerged_rc == 0 and not unmerged_stdout.strip() and staged_rc == 0:
+                return _park_candidate(
+                    checkpoint=checkpoint,
+                    checkpoint_path=checkpoint_path,
+                    key=key,
+                    reason=_CANDIDATE_CLEANLINESS_PARK_REASON,
+                )
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
-        return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
+        return False, _format_commit_decision(
+            key.slug,
+            key.branch,
+            diff_stats,
+            branch_log,
+            requirements,
+            impl_plan,
+            worktree=wt,
+            pre_merge_head=pre_merge or "",
+            ambiguity=ambiguity,
+        )
     else:
         conflicted_files = _get_conflicted_files(wt)
         if not conflicted_files:
@@ -453,20 +416,13 @@ def _step_awaiting_commit(
                 and head_sha == pre_merge
             )
             if abandoned:
-                parked = ParkedCandidate(
-                    slug=key.slug,
-                    branch=key.branch,
-                    sha=key.sha,
+                return _park_candidate(
+                    checkpoint=checkpoint,
+                    checkpoint_path=checkpoint_path,
+                    key=key,
                     reason=_TEXTUAL_CONFLICT_PARK_REASON,
-                    parked_at=_now_iso(),
                 )
-                checkpoint.parked.append(parked)
-                checkpoint.items_blocked += 1
-                _emit_lifecycle_event(_EVENT_INTEGRATION_CANDIDATE_PARKED, dict(parked))
-                _reset_candidate(checkpoint)
-                _write_checkpoint(checkpoint_path, checkpoint)
-                return True, ""
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt, ambiguity=ambiguity)
 
 
 def _step_committed(
@@ -572,8 +528,9 @@ def _step_delivery_bookkeeping(
         if _is_content_gate_rejection(rejection):
             # Content-gate rejection: the squash content itself violates a
             # repo-wide invariant, invariant under rebase. This is a logical
-            # merge conflict the integrator owns — never abandon; stay stopped
-            # on the candidate until it is resolved or escalated.
+            # merge conflict the integrator owns — fixed and re-pushed when
+            # groundable, or abandoned and parked on CONTENT_GATE_BLOCKED
+            # re-entry when it is not.
             checkpoint.phase = IntegrationPhase.CONTENT_GATE_BLOCKED.value
             checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
             _write_checkpoint(checkpoint_path, checkpoint)
@@ -582,7 +539,13 @@ def _step_delivery_bookkeeping(
                 {"slug": key.slug, "branch": key.branch, "sha": key.sha, "reason": rejection},
             )
             logger.info("%s slug=%s phase=CONTENT_GATE_BLOCKED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
-            return False, _format_content_gate_conflict(key.slug, key.branch, rejection, wt)
+            return False, _format_content_gate_conflict_or_invariant_error(
+                slug=key.slug,
+                branch=key.branch,
+                rejection_reason=rejection,
+                worktree=wt,
+                pre_merge_head=checkpoint.pre_merge_head,
+            )
 
         checkpoint.phase = IntegrationPhase.PUSH_REJECTED.value
         checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
@@ -590,142 +553,6 @@ def _step_delivery_bookkeeping(
 
         logger.info("%s slug=%s phase=PUSH_REJECTED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(rejection, key.slug, wt)
-
-
-class _RepushOutcome(NamedTuple):
-    """Result of a shared re-push-and-reclassify attempt.
-
-    ``resolved`` holds the ``(keep_going, instruction)`` tuple to return
-    verbatim when the push landed (``PUSH_SUCCEEDED``) or the rejection was a
-    content-gate block (``CONTENT_GATE_BLOCKED``). It is ``None`` when the
-    rejection was a non-content-gate (fast-forward race) cause the caller must
-    classify itself; ``rejection`` then carries the reason text and ``wt`` the
-    resolved worktree path for the caller's fallback instruction.
-    """
-
-    resolved: tuple[bool, str] | None
-    rejection: str
-    wt: str
-
-
-def _repush_and_reclassify(
-    *,
-    checkpoint: IntegrationCheckpoint,
-    checkpoint_path: Path,
-    cwd: str,
-    key: CandidateKey,
-) -> _RepushOutcome:
-    """Re-attempt the push and reclassify the fresh rejection cause.
-
-    Shared re-entry body for ``PUSH_REJECTED`` and ``CONTENT_GATE_BLOCKED``. If
-    local HEAD already matches remote main, or the fresh push now lands,
-    transitions to ``PUSH_SUCCEEDED`` and returns a keep-going result. On a
-    content-gate rejection, transitions to ``CONTENT_GATE_BLOCKED``, emits the
-    blocked beacon event, and returns the conflict instruction. On a
-    non-content-gate rejection, stamps the reason into ``error_context`` and
-    returns it unresolved so the caller classifies the phase itself.
-    """
-    wt = str(_integration_worktree_path(cwd))
-    local_head = _get_head_sha(wt)
-    remote_head = _get_remote_main_sha(wt)
-    if local_head and remote_head and local_head == remote_head:
-        checkpoint.pushed_sha = local_head
-        checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
-        _write_checkpoint(checkpoint_path, checkpoint)
-
-        _emit_lifecycle_event("integration.push.succeeded", {"slug": key.slug, "commit_sha": local_head})
-        logger.info("%s slug=%s phase=PUSH_SUCCEEDED (recovered)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
-        return _RepushOutcome((True, ""), "", wt)  # loop into PUSH_SUCCEEDED
-
-    with main_branch_lock():
-        rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
-    if rc == 0:
-        checkpoint.pushed_sha = local_head
-        checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
-        _write_checkpoint(checkpoint_path, checkpoint)
-
-        _emit_lifecycle_event("integration.push.succeeded", {"slug": key.slug, "commit_sha": local_head or "unknown"})
-        logger.info("%s slug=%s phase=PUSH_SUCCEEDED (recovered)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
-        return _RepushOutcome((True, ""), "", wt)  # loop into PUSH_SUCCEEDED
-
-    rejection = (stderr or stdout).strip()
-    _emit_lifecycle_event("integration.push.rejected", {"slug": key.slug, "rejection_reason": rejection})
-
-    if _is_content_gate_rejection(rejection):
-        checkpoint.phase = IntegrationPhase.CONTENT_GATE_BLOCKED.value
-        checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
-        _write_checkpoint(checkpoint_path, checkpoint)
-        _emit_lifecycle_event(
-            "integration.candidate.blocked",
-            {"slug": key.slug, "branch": key.branch, "sha": key.sha, "reason": rejection},
-        )
-        logger.info("%s slug=%s phase=CONTENT_GATE_BLOCKED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
-        return _RepushOutcome(
-            (False, _format_content_gate_conflict(key.slug, key.branch, rejection, wt)), rejection, wt
-        )
-
-    checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
-    return _RepushOutcome(None, rejection, wt)
-
-
-def _step_push_rejected(
-    *,
-    checkpoint: IntegrationCheckpoint,
-    checkpoint_path: Path,
-    cwd: str,
-) -> tuple[bool, str]:
-    """PUSH_REJECTED: re-attempt the push and reclassify the fresh rejection cause.
-
-    Pushing (once the agent's out-of-band fetch/rebase is done) is mechanical, so
-    the state machine performs it itself on every re-entry rather than trusting
-    the checkpoint's stale ``rejection_reason``. This is what lets a
-    rebase-then-re-push that now fails the content gate be observed and routed
-    to ``CONTENT_GATE_BLOCKED`` — without it, that case would silently keep
-    reissuing the stale race-recovery message forever (the freeze the diagnosis
-    names). If local HEAD already matches remote main (the agent's own push
-    already landed), no redundant push is attempted.
-    """
-    key = _get_candidate_key(checkpoint)
-    if not key:
-        return False, _format_error("INVALID_STATE", "PUSH_REJECTED phase has no candidate key")
-
-    outcome = _repush_and_reclassify(checkpoint=checkpoint, checkpoint_path=checkpoint_path, cwd=cwd, key=key)
-    if outcome.resolved is not None:
-        return outcome.resolved
-
-    _write_checkpoint(checkpoint_path, checkpoint)
-    return False, _format_push_rejected(outcome.rejection or "unknown rejection", key.slug, outcome.wt)
-
-
-def _step_content_gate_blocked(
-    *,
-    checkpoint: IntegrationCheckpoint,
-    checkpoint_path: Path,
-    cwd: str,
-) -> tuple[bool, str]:
-    """CONTENT_GATE_BLOCKED: integrator-owned logical merge conflict, re-entered.
-
-    Mirrors ``_step_push_rejected``'s re-push-and-reclassify shape, minus
-    abandonment: the candidate's ``finalize.status`` is never retracted, the
-    worktree is never reset, and the checkpoint never returns to IDLE while the
-    conflict stands — no later candidate is dequeued. If a fresh push attempt
-    still fails the content gate, the candidate stays blocked and the
-    conflict instruction is re-issued as a beacon; if it now fails as a
-    fast-forward race instead, recovery hands off to the ordinary
-    PUSH_REJECTED rebase loop.
-    """
-    key = _get_candidate_key(checkpoint)
-    if not key:
-        return False, _format_error("INVALID_STATE", "CONTENT_GATE_BLOCKED phase has no candidate key")
-
-    outcome = _repush_and_reclassify(checkpoint=checkpoint, checkpoint_path=checkpoint_path, cwd=cwd, key=key)
-    if outcome.resolved is not None:
-        return outcome.resolved
-
-    checkpoint.phase = IntegrationPhase.PUSH_REJECTED.value
-    _write_checkpoint(checkpoint_path, checkpoint)
-    logger.info("%s slug=%s phase=PUSH_REJECTED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
-    return False, _format_push_rejected(outcome.rejection or "unknown rejection", key.slug, outcome.wt)
 
 
 def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str, source: str) -> str | None:
@@ -989,9 +816,7 @@ __all__ = [
     "_step_awaiting_commit",
     "_step_cleanup",
     "_step_committed",
-    "_step_content_gate_blocked",
     "_step_delivery_bookkeeping",
     "_step_idle",
-    "_step_push_rejected",
     "_step_push_succeeded",
 ]

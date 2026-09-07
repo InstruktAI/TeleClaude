@@ -23,6 +23,7 @@ from teleclaude.core.integration.checkpoint import (
     IntegrationCheckpoint,
     IntegrationPhase,
     _default_state_dir,
+    _get_candidate_key,
     _read_checkpoint,
     _reset_candidate,
     _write_checkpoint,
@@ -34,19 +35,17 @@ from teleclaude.core.integration.formatters import (
 )
 from teleclaude.core.integration.git_ops import RepoRootSyncStage, _run_git, _synchronize_repo_root
 from teleclaude.core.integration.lease import IntegrationLeaseStore
+from teleclaude.core.integration.lifecycle_events import _tls
+from teleclaude.core.integration.push_recovery import _step_content_gate_blocked, _step_push_rejected
 from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
     _do_merge,
-    _get_candidate_key,
     _step_awaiting_commit,
     _step_cleanup,
     _step_committed,
-    _step_content_gate_blocked,
     _step_delivery_bookkeeping,
     _step_idle,
-    _step_push_rejected,
     _step_push_succeeded,
-    _tls,
 )
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
