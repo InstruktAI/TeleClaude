@@ -135,7 +135,6 @@ Then the same registered wake model is rendered by the bracket codec as its auto
 And neither codec declares vocabulary or closure independently of the registry
 ```
 
-<!-- planned:fix-failed-turn-records-no-idle-boundary -->
 #### UC-CDL9: A turn that ends in a provider failure leaves the session idle for the next control payload
 
 ```gherkin
@@ -157,7 +156,6 @@ And no later boundary delivers or retries it
 And the newer payload remains pending in its own enqueue position
 And a producer that declares no supersession keeps every payload pending
 ```
-<!-- /planned:fix-failed-turn-records-no-idle-boundary -->
 
 ## Known caveats
 

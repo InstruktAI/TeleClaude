@@ -351,7 +351,6 @@ When the reminder is atomically replaced and later fires
 Then the occurrence number and elapsed time are measured from the replacement
 ```
 
-<!-- planned:fix-failed-turn-records-no-idle-boundary -->
 
 #### UC-RMS27: A newer firing supersedes an undelivered one
 
@@ -364,7 +363,6 @@ When the session next drains its control payloads
 Then it receives only the newest occurrence of that slug
 ```
 
-<!-- /planned:fix-failed-turn-records-no-idle-boundary -->
 
 ## Known caveats
 
