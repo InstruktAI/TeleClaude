@@ -117,10 +117,22 @@ job-policy-facing thinking-mode resolution.
 
 ### Eligibility and ordering
 
+<!-- planned-change:review-cap-bounded-continuation -->
 Automatic selection removes unconfigured, disabled, degraded, and unavailable
 agents. Only operator status `available` is eligible. Reviewer selection then prefers
 an eligible agent different from the producer while preserving the applicable row's
 relative order. The producer remains eligible when no independent candidate survives.
+<!-- change:review-cap-bounded-continuation -->
+Automatic selection removes unconfigured, disabled, degraded, and unavailable
+agents. Only operator status `available` is eligible. Reviewer selection then prefers
+an eligible agent different from the producer while preserving the applicable row's
+relative order. The producer remains eligible when no independent candidate survives.
+A reviewer request may additionally name agents that have already reviewed its
+target. Those agents are removed from the candidates before independence is applied
+and never return as a fallback; when no eligible candidate remains once they are
+removed, dispatch fails with a typed no-unreviewed-candidate reason and creates no
+session.
+<!-- /planned-change:review-cap-bounded-continuation -->
 
 Manual selection uses a distinct boundary for callers without a system role. A known,
 enabled agent is manually selectable while available or degraded. Operator status
@@ -366,6 +378,30 @@ And when no candidate is eligible the request fails before session creation with
 ```
 
 <!-- /planned:generic-job-declarative-model -->
+
+<!-- planned:review-cap-bounded-continuation -->
+#### UC-RAAD-20: A reviewer request excludes agents that already reviewed its target
+
+```gherkin
+Given an agent caller creates a fresh reviewer-command session
+And the request names agents that have already reviewed the same target
+When TeleClaude selects the reviewer
+Then every named agent is removed from the candidates before reviewer independence is applied
+And selection proceeds over the remaining candidates exactly as for a reviewer request that names none
+And the dispatch decision reports the named agents
+```
+
+#### UC-RAAD-21: No unreviewed candidate creates no session
+
+```gherkin
+Given an agent caller creates a fresh reviewer-command session
+And the request names agents that have already reviewed the same target
+And no eligible candidate remains once the named agents are removed
+When TeleClaude resolves the request
+Then the request fails before session creation with a typed no-unreviewed-candidate reason
+And no named agent is selected as a fallback
+```
+<!-- /planned:review-cap-bounded-continuation -->
 
 ## Known caveats
 
