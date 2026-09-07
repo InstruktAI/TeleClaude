@@ -67,9 +67,16 @@ configuration and availability never travel to a caller for speculative selectio
 - `teleclaude/core/command_handlers/_session.py` invokes that resolver once, before it
   writes the session row or starts a runtime. This is the universal target-machine
   boundary shared by API, adapter, workflow, scheduled, integration, and remote starts.
-  The restart handler invokes the same resolver for a handoff restart, before it
-  terminates the predecessor; that is the only other invocation point, and it carries
-  the same typed intent the session handler does.
+  The restart handler invokes the same resolver for a handoff restart, before the
+  first durable session write of that handoff — ahead of the closed-session revive and
+  headless adoption a restart otherwise performs first, and ahead of terminating the
+  predecessor. That is the only other invocation point. It supplies the session's
+  recorded command as command context and derives the role from the canonical
+  command-to-role registry. It supplies no todo kind, because a handoff reads no
+  workflow state; a prepare-orchestrator handoff therefore resolves through the
+  resolver's own command-only path for that command, which surfaces the missing kind
+  in its reason token. For a reviewer role it derives the producer as the initiating
+  session's active agent, the same derivation fresh reviewer dispatch uses.
 <!-- /planned-change:session-handoff -->
 - API routes, CLI clients, workflow, generated instructions, scheduled jobs, adapters,
   and integration carry typed dispatch intent; they never carry role orders,
@@ -110,7 +117,7 @@ configuration and availability never travel to a caller for speculative selectio
 - Resume, revive, restart, attach, transcript-bound continuation, and declared
   fixed-agent jobs are fixed. They never cross-agent substitute. A restart that asks
   for a handoff is not fixed continuation: it enters the fresh-session resolution with
-  the session's recorded command as role context and the caller's authority deciding
+  the context named under One policy owner and the caller's authority deciding
   automatic or manual preference, exactly as a fresh session would.
 <!-- /planned-change:session-handoff -->
 - Agent-specific startup handling runs only after selection and cannot participate in
@@ -145,9 +152,15 @@ configuration and availability never travel to a caller for speculative selectio
 
 ### Structured decision evidence
 
+<!-- planned-change:session-handoff -->
 - The core decision boundary emits the stable structured token
   `agent_runtime.agent_dispatch.decision` for every selected, fallback, refused, and
   policy-defect outcome.
+<!-- change:session-handoff -->
+- Every invocation point of the resolver, the session handler and the restart handler,
+  emits the stable structured token `agent_runtime.agent_dispatch.decision` for every
+  selected, fallback, refused, and policy-defect outcome.
+<!-- /planned-change:session-handoff -->
 - Fields are `outcome`, dispatch mode, job role, todo kind when applicable, preferred or
   fixed agent when supplied, selected agent when one exists, and a stable reason token
   covering eligibility, fallback, no-candidate, availability-state failure, or a
@@ -219,9 +232,10 @@ flowchart LR
 ```
 
 A handoff restart is the one continuation that re-enters the selection boundary. The
-restart handler supplies the session's recorded command as role context and the
-caller's authority for any explicitly named agent, resolves before it terminates the
-predecessor, launches the successor without a native session id, and hands the
+restart handler supplies the session's recorded command and registry-derived role, no
+todo kind, the initiating session's agent as producer for a reviewer role, and the
+caller's authority for any explicitly named agent. It resolves before the first durable
+session write, launches the successor without a native session id, and hands the
 successor a startup brief composed in core in the ordinary dispatch shape. Transcript
 chaining and active-agent adoption ride the existing native-metadata update path when
 the successor announces its identity.
@@ -284,6 +298,17 @@ provider parsing in callers.
   handler materializes an agent for fresh work; the restart handler materializes the
   successor for a handoff restart. Both consume the resolver's decision unchanged.
 <!-- /planned-change:session-handoff -->
+<!-- planned:session-handoff -->
+- **Restart request contract:** the restart request carries typed handoff intent, a
+  handoff flag and an optional named agent, beside the existing self-restart flag.
+  Caller authority comes from the verified caller identity, never from the body.
+- **Restart command model:** the restart command carries the handoff intent, the
+  optional preferred agent, the caller's system role, and the request id. It carries no
+  role order, availability logic, or pre-resolved agent.
+- **Decision evidence for handoff:** the restart handler emits the same structured
+  decision token for a handoff decision, and the closed fresh-session producer
+  vocabulary gains one member naming the handoff restart.
+<!-- /planned:session-handoff -->
 - **Workflow and generated orchestration:** callers provide job context and do not
   reproduce selection policy.
 - **Direct spawners:** scheduled jobs, adapters, and integration declare automatic or
@@ -312,9 +337,9 @@ provider parsing in callers.
 <!-- change:session-handoff -->
 - **Fixed work substituted.** Continuation crosses agents without a handoff request.
   Return a bound-agent failure instead; only a handoff restart may select another agent.
-- **Handoff terminates before resolving.** The predecessor is stopped and the resolver
-  then refuses, leaving a session with no agent. Resolve first; a refusal leaves the
-  predecessor running.
+- **Handoff writes before resolving.** The session is revived, adopted, or its agent
+  stopped, and the resolver then refuses, leaving a mutated session. Resolve before the
+  first durable write of the handoff; a refusal leaves the session exactly as it was.
 <!-- /planned-change:session-handoff -->
 - **Explanation leakage.** Human-facing prose enters spawned-agent context or automated
   responses. Keep prose at the relevant human boundary and machine feedback typed.
