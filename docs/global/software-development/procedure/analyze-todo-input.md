@@ -79,12 +79,13 @@ executes the work itself and never mutates the `input`.
    - Do not edit todo state directly. The stamp command is the validated
      state-write boundary and the only place kind is assigned.
 
-4. **End the session.** On a successful stamp, run `telec sessions end self` as
-   the final action. This is not optional cleanup — it is the dispatch trigger.
-   The analyzer holds the todo's `active_runner` lease for as long as it lives,
-   and the lifecycle runner skips the slug as already-driven while that lease is
-   held; ending the session releases the lease and emits the session-ended event
-   that wakes the runner to dispatch the kind's lane. A worker that stops without
+4. **End the session.** On a successful stamp, arm `telec reminders set session-departure`
+   as the final action, then emit only a brief farewell and yield. This is not optional
+   cleanup — it is the dispatch trigger. The analyzer holds the todo's `active_runner`
+   lease for as long as it lives, and the lifecycle runner skips the slug as
+   already-driven while that lease is held; ending the session releases the lease
+   and emits the session-ended event that wakes the runner to dispatch the kind's
+   lane. A worker that stops without
    ending idles forever holding the lease and blocks the very dispatch it just
    set up. End only on success: if the stamp failed or the kind is undecidable
    (see Recovery), do not end — leave the session for the human.

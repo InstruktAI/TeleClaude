@@ -176,7 +176,7 @@ And when the finalizer Stamps finalize_ready with a sha matching worktree HEAD, 
 Then the machine advances to lifecycle_phase=finalize_ready through the state-write boundary
 And the phase-transition chokepoint emits the workflow.todo.phase_advanced event (with phase=finalize_ready in payload)
 And worker-session cleanup happens inside the finalize_ready step
-And the machine emits "telec sessions end self" for the work orchestrator
+And the machine emits "telec reminders set session-departure" for the work orchestrator
 And the machine does NOT instruct the orchestrator to call "telec todo work my-feature" again
 And the machine does NOT instruct the orchestrator to continue to unrelated work
 And on any triple-ref mismatch (uncommitted, branch≠HEAD, remote≠local, stamped sha≠HEAD) refuses to advance and instructs the operator to re-stamp
@@ -222,7 +222,7 @@ And no roadmap row is created for "unknown-work"
 Given a work orchestrator has no current slug
 When the orchestrator runs "telec todo work"
 Then the work machine returns NO_CURRENT_WORK_SLUG
-And the machine emits "telec sessions end self"
+And the machine emits "telec reminders set session-departure"
 And the machine does NOT select a ready todo from the roadmap
 ```
 
@@ -234,7 +234,6 @@ When the machine advances lifecycle_phase from prepared to build_started
 Then the quality-checklist artifact exists with the standard checklist template including "## Build Gates (Builder)"
 And a prepared Todo whose quality-checklist already has substantive content keeps it unchanged
 ```
-
 
 #### UC-WSM8: Build review consumes only a current report and worktree binding
 
@@ -322,9 +321,9 @@ And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and p
 
 - `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector
   for ready work. It evaluates the project todo set, starts `/next-work --args
-  <slug>` for each selected item, and records the spawned session as that Todo's
+<slug>` for each selected item, and records the spawned session as that Todo's
   `active_runner`. The work state machine remains per-slug: a bare `telec todo
-  work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and
+work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and
   never scans the roadmap opportunistically.
 
 ## Known caveats

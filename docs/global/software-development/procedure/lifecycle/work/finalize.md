@@ -65,8 +65,10 @@ orchestrator must never dispatch `/next-integrate` or call `telec todo integrate
 
    ```bash
    telec sessions end <child-session-id>
-   telec sessions end self
+   telec reminders set session-departure
    ```
+
+   Arming the reminder is the final tool action — emit only a brief farewell and yield.
 
 4. If the state machine does not advance past finalize, report the blocker and stop.
    Do not escalate scope into integration.

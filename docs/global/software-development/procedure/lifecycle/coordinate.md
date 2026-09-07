@@ -135,8 +135,9 @@ evidence and interpretation, kept distinguishable.
 
 ### 0. Yield to a coordinator already on watch
 
-Run `telec sessions coordinate`. On refusal, end this session silently via
-`telec sessions end self`.
+Run `telec sessions coordinate`. On refusal, end this session without touching
+the incumbent: arm `telec reminders set session-departure` as your final tool
+action, emit only a brief farewell, and yield.
 
 ### 1. Frame the fleet
 
@@ -302,7 +303,7 @@ alternatives for anything they cover:
 - `telec sessions list --all` — the fleet surface and the step-0 scan.
 - `telec sessions tail <id>` — a session's record; read before judging it.
 - `telec sessions send <id> <pointer>` — the intervention surface.
-- `telec sessions end self` — the step-0 yield only; never used at sweep end.
+- `telec reminders set session-departure` — the step-0 yield only; never used at sweep end.
 - `telec sessions end <id>` — only the evidence-complete true-orphan exception
   under No lifecycle execution.
 - `telec sessions start` — establish the standing peer lazily, at most one live.

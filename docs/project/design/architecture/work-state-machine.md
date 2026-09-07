@@ -294,7 +294,7 @@ sequenceDiagram
 
 ## Failure modes
 
-- **No current work slug**: returns `NO_CURRENT_WORK_SLUG` with `telec sessions end self`; daemon-runner pickup owns selecting future work.
+- **No current work slug**: returns `NO_CURRENT_WORK_SLUG` with `telec reminders set session-departure`; daemon-runner pickup owns selecting future work.
 - **Dependency not satisfied**: returns `BLOCKED` with dependency information.
 - **Stash debt detected**: hard error — git stash is forbidden in agent workflows.
 - **Missing preparation artifacts**: returns a prepare-directed error for the current slug — run `telec todo prepare {slug}` first.

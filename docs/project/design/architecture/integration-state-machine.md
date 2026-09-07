@@ -300,7 +300,7 @@ sequenceDiagram
     SM->>SM: Mark candidate integrated - IDLE
     SM->>SM: Check queue - empty - COMPLETED
     SM-->>Agent: COMPLETED - self-end
-    Agent->>Agent: telec sessions end self
+    Agent->>Agent: telec reminders set session-departure
 ```
 
 ### Conflict resolution (sequence diagram)
