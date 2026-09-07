@@ -133,7 +133,7 @@ jobs:
       at: '03:00'
     type: agent
     job: software-development/procedure/maintenance/log-bug-hunter
-    agent: codex
+    agent: claude
     thinking_mode: fast
 # git:
 #   checkout_root: ~/Workspace/public-repos

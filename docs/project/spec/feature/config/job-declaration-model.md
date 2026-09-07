@@ -26,16 +26,26 @@ Jobs are declarable at two tiers. A **global job** is declared once in the globa
 config's `jobs` registry and is available to every project. A **project** declares
 its own **local jobs** under the project overlay's `jobs` mapping, and turns a
 global job on or off through an **enable overlay** — an entry under the project's
-`jobs` mapping carrying the global job's execution pointer and only an `enabled`
-flag. A global job is inactive in a project until that project enables it; a local
-job (a pointer not present in the global registry) is active wherever it is
-declared.
+`jobs` mapping carrying the global job's execution pointer, an `enabled` flag,
+and optionally its own `agent` preference list. A global job is inactive in a
+project until that project enables it; a local job (a pointer not present in the
+global registry) is active wherever it is declared.
 
-The enable overlay may only toggle a global job on or off. An overlay entry whose
-pointer matches a global job but carries any other identity-bearing field (a
-schedule or an execution setting) is an attempt to redefine the global job and
-fails the config load — a project can enable or disable a global job, never
-reshape it.
+The enable overlay may toggle a global job on or off and may replace its agent
+preference. An overlay entry whose pointer matches a global job but carries any
+identity-bearing field (a schedule, or an execution setting other than `agent`)
+is an attempt to redefine the global job and fails the config load — a project
+can enable or disable a global job and choose who runs it, never reshape it.
+
+An agent job's `agent` field is an ordered preference list. The run boundary
+launches the job in automatic dispatch mode with that list as the candidate
+order, so the agent-runtime resolver applies its own eligibility rules: an
+agent that is unconfigured, disabled, degraded, or operator-unavailable is
+skipped and the next candidate is tried. Agent preference is execution
+preference, not identity. When every candidate is ineligible the run closes as
+failed, carrying the resolver's refusal reason, through the runner's normal
+failed-run notification. Job configuration carries no availability data of its
+own.
 
 The scheduling contract is the `when` block alone (see
 `project/spec/feature/config/job-schedule-contract`); a declaration carries no
@@ -123,7 +133,7 @@ Then the global job is NOT in the project's effective job set
 
 ```
 Given a job declared under the global config `jobs` registry
-And the project overlay carries a `jobs` entry with the same execution pointer that also carries another identity-bearing field (a schedule or an execution setting)
+And the project overlay carries a `jobs` entry with the same execution pointer that also carries an identity-bearing field (a schedule, or an execution setting other than `agent`)
 When the config is loaded
 Then the load fails with an error naming the job
 And the global job's identity is never overridden by the project entry
@@ -146,6 +156,37 @@ Given a job declaration whose `job` pointer names an unknown snippet ID, a snipp
 When the config is loaded
 Then the load fails with an error naming the job and the pointer
 And no agent session can be dispatched for it
+```
+
+#### UC-JDM-12: Agent preference list resolves through availability
+
+```
+Given an agent job declaring agent = [a, b, c]
+And agent a is disabled in the machine configuration or marked unavailable
+And agent b is enabled and available
+When the job is dispatched
+Then the session is created on agent b
+And the dispatch decision records that a was skipped as ineligible
+```
+
+#### UC-JDM-13: An enable overlay may replace the agent preference
+
+```
+Given a global job declaring agent = [a, b]
+And a project overlay carrying the same pointer, enabled = true, and agent = [b]
+When the config is loaded and the job is dispatched in that project
+Then the load succeeds
+And the session is created on agent b
+```
+
+#### UC-JDM-14: An exhausted preference list fails the run loud
+
+```
+Given an agent job whose every declared agent is unconfigured, disabled, degraded, or unavailable
+When the job is due and dispatch is attempted
+Then no session is created
+And the run is closed as failed with the resolver's refusal reason
+And the failed-run event notifies a human
 ```
 
 #### UC-JDM-10: Removed field does not drive behavior
