@@ -93,18 +93,6 @@ from this matrix: it execs the real git binary unmodified, the same transparent
 passthrough it applies outside tmux.
 
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-The
-wrapper reads capability state from small telec-owned markers under the
-repository's common git directory — one existence check for `code ∨ docs`
-(commit interception) and one for `code` (worktree and branch discipline) —
-never by parsing `teleclaude.yml`, so the shell side cannot disagree with the
-runtime's resolution. Those markers are written by onboard and by config
-assessment when the declaration changes; with no markers present the wrapper
-keeps its pre-manifest behavior.
-
-<!-- change:capability-state-read-from-declaration -->
 
 The wrapper reads capability state from the repository root's `teleclaude.yml`
 — the same declaration the runtime resolves — deriving `code ∨ docs` for commit
@@ -133,7 +121,6 @@ fails validation elsewhere in the overlay is refused by the runtime and honoured
 by the wrapper, which reads only the tier and the capability blocks
 (`project/spec/feature/config/project-capability-manifest`).
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 
 The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the
@@ -316,24 +303,6 @@ The pathspec commit is built internally from `workspace scope plus
     owner publishes none carries no such term, and this surface neither
     decides membership nor substitutes an answer in either case.
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-12. **Config publishes facts at two coordinates; this contract owns both
-    decisions.** The tier answers config publishes grant no operation. Seal
-    coverage — whether raw git is intercepted anywhere in a checkout — is this
-    contract's rule, decided from the **repository root's** declared tier,
-    because the seal is a property of the repository and must hold at
-    locations resolving to no context root. Commit availability and gate
-    selection are likewise this contract's rules, decided from the **acting
-    invocation context root's** invocation-context and project-subscription
-    answers; the authority for a non-project context committing at all is the
-    approved product contract, never a permission read off an axis. The
-    wrapper learns the repository root's tier from projected state, never by
-    parsing: the resolver projects it into the git metadata the wrapper
-    already reads through the same mechanism as project capabilities, so the
-    shell side cannot disagree with the resolver.
-
-<!-- change:capability-state-read-from-declaration -->
 
 12. **Config publishes facts at two coordinates; this contract owns both
     decisions.** The tier answers config publishes grant no operation. Seal
@@ -350,7 +319,6 @@ The pathspec commit is built internally from `workspace scope plus
     the two answer alike for every declared tier, and a root whose declaration
     carries no readable tier is refused rather than resolved to any tier.
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 
 13. **Inspection and commit consume one payload resolution, with the same
     inputs.** The eligible payload — computed scope bounded per invariant 11,

@@ -61,15 +61,6 @@ subscribed `docs`; agent-artifact transpilation and deployment run only under a
 subscribed `agents`. A project subscribing neither still registers and still
 converges its derived plumbing.
 
-<!-- planned-change:capability-state-read-from-declaration -->
-
-Capability projection runs on the mutating sync path only: it writes the
-`.git` capability markers (the `onboarded` sentinel plus one per enabled
-capability) and reconciles the docs filter driver (present iff `docs`) from the
-declaration. `--skip-deploy` is read-only — it writes no marker state, installs
-or withdraws no hooks or `.gitattributes` lines, and does not touch the driver.
-
-<!-- change:capability-state-read-from-declaration -->
 
 Plumbing reconciliation runs on the mutating sync path only: it reconciles the
 docs filter driver (present iff `docs`) from the declaration and refreshes the
@@ -80,7 +71,6 @@ installed plumbing reads the declaration on each invocation
 read-only — it installs or withdraws no hooks or `.gitattributes` lines and does
 not touch the driver.
 
-<!-- /planned-change:capability-state-read-from-declaration -->
 
 The behavioral contract for this gating lives in
 `project/spec/feature/config/project-capability-manifest` — `UC-CFG-CAP-17` (an unsubscribed
