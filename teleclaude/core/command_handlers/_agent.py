@@ -672,8 +672,8 @@ async def agent_restart(
         async def _inject_after_restart() -> None:
             try:
                 try:
-                    # Shared start/restart readiness combiner races pane quiet against
-                    # the native hook. A pane win authorizes continuation delivery only.
+                    # Shared start/restart readiness follows the provider-declared
+                    # native signal or complete-pane authority.
                     gate_winner = await await_agent_readiness(
                         agent_name=target_agent,
                         session=session,

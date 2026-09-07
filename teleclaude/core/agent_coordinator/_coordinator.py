@@ -427,11 +427,8 @@ class AgentCoordinator(
             str(native_session_id),
         )
 
-        # Authoritative readiness signal: the agent process fired session_start,
-        # so its stdin loop is live. Launchers awaiting AGENT_READY for this
-        # session unblock here. LOCAL visibility — the launcher coroutine lives
-        # in this same process; no Redis round-trip needed and the pool stays
-        # free of high-volume readiness traffic.
+        # Normalized runtime start is an observed lifecycle fact. Consumers with
+        # native startup authority subscribe to AGENT_READY here.
         event_bus.emit(
             TeleClaudeEvents.AGENT_READY,
             SessionLifecycleContext(session_id=context.session_id),

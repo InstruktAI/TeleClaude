@@ -21,6 +21,7 @@ from teleclaude.constants import REMOVED_TODO_RETENTION_WINDOW, RESTART_CONTINUA
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_dispatch import resolve_launch_model
+from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
@@ -44,7 +45,7 @@ from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.tmux_io import TMUX_SESSION_NAME_UNBOUND
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
-from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
+from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S, AGENT_START_STABILIZE_QUIET_S
 from teleclaude.docs_reconcile import SnippetWriteResult, find_marker_divergence, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
 from teleclaude.hooks.receiver._session import prune_session_map
@@ -794,7 +795,14 @@ class MaintenanceService:
                     )
 
                     try:
-                        await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+                        await await_agent_readiness(
+                            agent_name=session.active_agent,
+                            session=session,
+                            session_id=session.session_id,
+                            ready_future=ready_future,
+                            quiet_s=AGENT_START_STABILIZE_QUIET_S,
+                            timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
+                        )
                     except TimeoutError:
                         await _finish_failed_restore(_RestoreTmuxFailureReason.READY_TIMEOUT)
                         return

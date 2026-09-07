@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_io
-from teleclaude.core.agent_readiness import await_agent_readiness, pane_shows_ready_prompt
+from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import _get_agent_config
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
@@ -421,7 +421,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
             logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
             t1 = time.time()
-            readiness_timed_out = False
             try:
                 if starts_with_prompt:
                     await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
@@ -438,16 +437,11 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     SessionLifecycleContext(session_id=session_id),
                     visibility=EventVisibility.LOCAL,
                 )
-                # The readiness poll can lose a race with a composer present at its deadline;
-                # recheck the same idle-prompt predicate once before attempting any paste.
-                readiness_timed_out = True
-                if starts_with_prompt or not await pane_shows_ready_prompt(agent_name, session):
-                    return {
-                        "status": "error",
-                        "message": "Agent readiness timed out — session kept alive for inspection",
-                    }
-            if not readiness_timed_out:
-                logger.debug("agent_then_message: AGENT_READY arrived in %.3fs", time.time() - t1)
+                return {
+                    "status": "error",
+                    "message": "Agent readiness timed out — session kept alive for inspection",
+                }
+            logger.debug("agent_then_message: readiness opened in %.3fs", time.time() - t1)
         finally:
             event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
@@ -462,11 +456,9 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.error("agent_then_message: process not running after readiness (session=%s)", session_id)
             return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
 
-        # Step 2: Submit the initial turn without observing a composer that does
-        # not yet belong to a human-editable session.
-        logger.debug("agent_then_message: submitting fresh-start message to session=%s", session_id)
+        logger.debug("agent_then_message: delivering startup message to session=%s", session_id)
 
-        delivery_result = await tmux_io.submit_fresh_start_turn(
+        delivery_result = await tmux_io.inject_user_turn(
             session,
             message,
             active_agent=session.active_agent,
@@ -476,7 +468,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             session_id=session_id,
             agent_name=agent_name,
             delivery_mode=_AgentStartupDeliveryMode.FRESH_START.value,
-            composer_observed=False,
+            composer_observed=True,
             outcome=delivery_result.outcome.value,
             reason=delivery_result.reason.value,
             stage=delivery_result.stage.value,
@@ -484,7 +476,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             platform_enter_sent=delivery_result.platform_enter_sent,
             existing_input_preserved=delivery_result.existing_input_preserved,
         )
-        if delivery_result.outcome is not tmux_io.UserTurnDeliveryOutcome.SUBMITTED:
+        if not delivery_result.succeeded:
             return {"status": "error", "message": "Failed to submit message into agent prompt"}
 
         await db.update_last_activity(session_id)
@@ -500,17 +492,17 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         agent_name: str,
         ready_future: asyncio.Future[None],
     ) -> None:
-        """Open the prompt-injection gate on whichever readiness signal arrives first.
+        """Open the prompt-injection gate on the provider's declared authority.
 
         This is used only for agents without an interactive launch-prompt flag.
-        Their startup message is injected after launch, so the pane-quiet detector
-        (`wait_for_agent_ready` with the agent's readiness profile) races the
-        native-hook `ready_future`, and injection proceeds on the first signal.
+        Their startup message is injected after launch through the shared
+        provider-selected readiness and occupancy path.
 
-        A pane win authorizes prompt delivery only. Lifecycle state remains the
-        authority of normalized runtime hooks.
+        Pane admission authorizes prompt delivery only. Lifecycle state remains
+        the authority of normalized runtime hooks.
 
-        Raises TimeoutError if both detectors fail within `AGENT_PROMPT_READY_TIMEOUT_S`.
+        Raises TimeoutError when the provider-selected detector does not open within
+        `AGENT_PROMPT_READY_TIMEOUT_S`.
         """
         await await_agent_readiness(
             agent_name=agent_name,

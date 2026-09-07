@@ -80,7 +80,6 @@ class UserTurnDeliveryReason(StrEnum):
     OBSERVATION_AMBIGUOUS = "observation_ambiguous"
     HOST_OPERATION_FAILED = "host_operation_failed"
     EXECUTION_ERROR = "execution_error"
-    FRESH_START = "fresh_start"
 
 
 @dataclass(frozen=True)
@@ -204,11 +203,10 @@ async def _revive_headless_and_send(
         finally:
             event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
-    return await tmux_bridge.send_keys_existing_tmux(
-        session_name=tmux_name,
-        text=text,
-        active_agent=active_agent,
-    )
+    if active_agent:
+        delivery_result = await inject_user_turn(session, text, active_agent=active_agent)
+        return delivery_result.succeeded
+    return await tmux_bridge.send_keys_existing_tmux(session_name=tmux_name, text=text, active_agent=active_agent)
 
 
 async def _teardown_failed_adoption(
@@ -362,30 +360,6 @@ async def inject_user_turn(
     )
 
 
-async def submit_fresh_start_turn(
-    session: Session,
-    text: str,
-    *,
-    active_agent: str | None = None,
-) -> UserTurnDeliveryResult:
-    """Submit a newly created session's initial platform turn without observation."""
-    submitted = await tmux_bridge.send_keys_existing_tmux(
-        session_name=session.tmux_session_name or TMUX_SESSION_NAME_UNBOUND,
-        text=text,
-        active_agent=active_agent,
-    )
-    if not submitted:
-        return _failed_delivery(UserTurnDeliveryReason.HOST_OPERATION_FAILED, stage=UserTurnDeliveryStage.SUBMIT)
-    return UserTurnDeliveryResult(
-        UserTurnDeliveryOutcome.SUBMITTED,
-        UserTurnDeliveryStage.SUBMIT,
-        UserTurnDeliveryReason.FRESH_START,
-        paste_performed=True,
-        platform_enter_sent=True,
-        existing_input_preserved=False,
-    )
-
-
 def _failed_delivery(
     reason: UserTurnDeliveryReason,
     *,
@@ -409,7 +383,7 @@ async def _observe_prompt_delivery(
     *,
     active_agent: str | None,
 ) -> PromptDeliveryObservation:
-    output = await tmux_bridge.capture_pane(session.tmux_session_name)
+    output = await tmux_bridge.capture_pane(session.tmux_session_name, visible_only=True)
     return classify_prompt_delivery(output, active_agent)
 
 

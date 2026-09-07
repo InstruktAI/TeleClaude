@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 
 from instrukt_ai_logging import get_logger
 
@@ -20,6 +20,13 @@ class DiscordAuthorPresentation:
     avatar_url: str
 
 
+class AgentStartupSignal(StrEnum):
+    """Authority that can open an agent's first-input readiness gate."""
+
+    NATIVE = "native"
+    PANE = "pane"
+
+
 class AgentName(str, Enum):
     """Known AI agent names."""
 
@@ -32,6 +39,11 @@ class AgentName(str, Enum):
     def prompt_marker(self) -> str:
         """Return the TUI prompt marker used for readiness detection."""
         return _PROMPT_MARKERS_BY_AGENT[self.value]
+
+    @property
+    def startup_signal(self) -> AgentStartupSignal:
+        """Return the provider-declared authority for first-input admission."""
+        return _STARTUP_SIGNALS_BY_AGENT[self]
 
     @property
     def git_identity(self) -> str | None:
@@ -83,6 +95,13 @@ _PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
     # Claude) when idle; the daemon's tmux readiness detection watches for it
     # before typing the prompt.
     AgentName.DEEPSEEK.value: "\u276f",
+}
+
+_STARTUP_SIGNALS_BY_AGENT: dict[AgentName, AgentStartupSignal] = {
+    AgentName.CLAUDE: AgentStartupSignal.NATIVE,
+    AgentName.CODEX: AgentStartupSignal.PANE,
+    AgentName.GEMINI: AgentStartupSignal.PANE,
+    AgentName.DEEPSEEK: AgentStartupSignal.PANE,
 }
 
 _DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {

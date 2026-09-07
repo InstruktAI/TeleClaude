@@ -143,7 +143,12 @@ async def wait_for_processes_exit(procs: list[psutil.Process], timeout: float) -
     return await asyncio.to_thread(_wait)
 
 
-async def capture_pane(session_name: str, *, capture_lines: int | None = None) -> str:
+async def capture_pane(
+    session_name: str,
+    *,
+    capture_lines: int | None = None,
+    visible_only: bool = False,
+) -> str:
     """Capture pane output from tmux session.
 
     Args:
@@ -166,9 +171,9 @@ async def capture_pane(session_name: str, *, capture_lines: int | None = None) -
             "-p",
             "-J",
             "-e",
-            "-S",
-            f"-{window_lines}",
         ]
+        if not visible_only:
+            cmd.extend(["-S", f"-{window_lines}"])
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
