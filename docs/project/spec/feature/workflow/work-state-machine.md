@@ -319,12 +319,7 @@ And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and p
   work orchestrator session. The Phase B orchestrator remains per-slug and
   terminal after finalize-ready cleanup.
 
-- `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector
-  for ready work. It evaluates the project todo set, starts `/next-work --args
-<slug>` for each selected item, and records the spawned session as that Todo's
-  `active_runner`. The work state machine remains per-slug: a bare `telec todo
-work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and
-  never scans the roadmap opportunistically.
+- `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector for ready work. It evaluates the project todo set, starts `/next-work --args <slug>` for each selected item, and records the spawned session as that Todo's `active_runner`. The work state machine remains per-slug: a bare `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and never scans the roadmap opportunistically.
 
 ## Known caveats
 
