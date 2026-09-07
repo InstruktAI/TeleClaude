@@ -248,8 +248,7 @@ The lane's question is positive: list every decision the change makes about
 free text and name where each executes. A judgment moved from an agent into
 code is the finding. That a change removes an agent, invokes fewer agents, or
 makes work "mechanical" is never a compliance argument; it is the exact shape
-the principle warns against, because the judgment did not disappear, it moved
-into code that grades prose.
+the principle warns against.
 
 #### Security review
 
