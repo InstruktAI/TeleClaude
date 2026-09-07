@@ -146,6 +146,17 @@ Then the platform treats the session as having no running turn
 And the session is woken by the minimal trigger so a delivery boundary exists
 And the payload is delivered at the boundary that waking produces
 ```
+
+#### UC-CDL10: A producer supersedes its own undelivered payload
+
+```gherkin
+Given a payload is pending for a session and carries a producer's envelope kind and key fields
+When the same producer hands off a newer payload for that session under the same kind and key fields and declares that it supersedes the earlier one
+Then the earlier payload is removed without delivery
+And no later boundary delivers or retries it
+And the newer payload remains pending in its own enqueue position
+And a producer that declares no supersession keeps every payload pending
+```
 <!-- /planned:fix-failed-turn-records-no-idle-boundary -->
 
 ## Known caveats
