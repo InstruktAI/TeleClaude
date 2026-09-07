@@ -74,7 +74,7 @@ And the effective transcript_path is taken from the event, falling back to the c
 ```
 Given the resolved transcript_path is one the per-runtime subagent rule recognizes
 When the default processor runs
-Then the processor logs that it skipped a subagent transcript at debug level
+Then the processor records the skip as a production-level decision record naming the transcript path
 And mirror generation is NOT invoked
 ```
 
