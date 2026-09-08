@@ -102,11 +102,6 @@ And rewriting the reviewed artifact or findings report while remediating that un
 And each admitted pass remains counted and persisted in the phase's cumulative history before its reviewer instruction is returned
 But an earlier review loop that closed before substantive drift forced a stabilized replacement target does not exhaust the replacement's allowance
 And the replacement receives its first complete discovery pass without removing the earlier loop's counters, continuations, report, or verdict evidence
-And when legacy state no longer carries structured evidence of that closure, the machine returns REVIEW_CYCLE_RECONCILIATION_REQUIRED and dispatches no reviewer
-When the claiming prepare orchestrator runs "telec todo stamp my-change --review-cycle-reconciled <closed-target-digest> <closed-report-digest> --phase plan_review --reason '<evidence>'"
-Then the stamp verifies that both historical artifact versions exist, that the report followed the closed target, and that the replacement target followed the report
-And it records the evidence-bound loop boundary without approving any target or changing continuation authority
-And the next prepare call admits the replacement's first discovery pass through the ordinary reviewer-dispatch path
 ```
 <!-- /planned-change:fix-plan-review-admission-after-closed-target -->
 
