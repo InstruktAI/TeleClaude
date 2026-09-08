@@ -113,7 +113,6 @@ _CLEAR_MIRROR_SHRINK_REFUSAL_SQL = (
 _schema_initialized: set[str] = set()
 _rw_engines: dict[str, Engine] = {}
 _ro_engines: dict[str, Engine] = {}
-_main_ro_engines: dict[str, Engine] = {}
 
 
 @dataclass(frozen=True)
@@ -195,21 +194,6 @@ class MirrorTombstoneRecord:
     created_at: str
 
 
-@dataclass(frozen=True)
-class SessionMirrorContext:
-    """Lightweight session context looked up for mirror reconciliation."""
-
-    session_id: str
-    computer: str
-    agent: str | None
-    project: str
-    transcript_path: str | None
-    human_email: str | None = None
-    visibility: str | None = None
-    last_input_origin: str | None = None
-    adapter_metadata_json: str | None = None
-
-
 def _ensure_schema(conn: sqlite3.Connection, path: str) -> None:
     """Create mirrors tables and FTS index if they don't exist."""
     if path in _schema_initialized:
@@ -289,16 +273,6 @@ def _get_ro_engine(db: str | Path | None = None) -> Engine:
     if engine is None:
         engine = create_sync_db_engine(target)
         _ro_engines[target] = engine
-    return engine
-
-
-def _get_main_ro_engine() -> Engine:
-    """Return the cached read-only main teleclaude.db engine for session lookups."""
-    target = _read_only_sqlite_uri(str(tc_paths.MAIN_DB_PATH.resolve()))
-    engine = _main_ro_engines.get(target)
-    if engine is None:
-        engine = create_sync_db_engine(target)
-        _main_ro_engines[target] = engine
     return engine
 
 
@@ -761,58 +735,6 @@ def _apply_role_filter(
     else:
         clauses.append("mirrors.human_email = :caller_email")
         params["caller_email"] = caller_email
-
-
-def get_session_context(
-    *,
-    session_id: str | None = None,
-    transcript_path: str | None = None,
-) -> SessionMirrorContext | None:
-    """Look up a session row from the main DB by session id or transcript path."""
-    if not session_id and not transcript_path:
-        return None
-
-    clauses: list[str] = []
-    params: dict[str, object] = {  # guard: loose-dict - session lookup binds depend on provided selectors.
-        "order_session_id": session_id or ""
-    }
-    if session_id:
-        clauses.append("session_id = :session_id")
-        params["session_id"] = session_id
-    if transcript_path:
-        clauses.append("native_log_file = :transcript_path")
-        params["transcript_path"] = transcript_path
-    sql = f"""
-        SELECT session_id, computer_name, active_agent, project_path, native_log_file,
-               human_email, visibility, last_input_origin, adapter_metadata
-        FROM sessions
-        WHERE {" OR ".join(clauses)}
-        ORDER BY CASE WHEN session_id = :order_session_id THEN 0 ELSE 1 END, created_at DESC
-        LIMIT 1
-    """
-
-    try:
-        with _get_main_ro_engine().connect() as conn:
-            row = conn.execute(text(sql), params).mappings().first()
-    except SqlAlchemyOperationalError as exc:
-        if _is_missing_table_error(exc):
-            return None
-        raise
-
-    if row is None:
-        return None
-
-    return SessionMirrorContext(
-        session_id=str(row["session_id"]),
-        computer=str(row["computer_name"] or ""),
-        agent=_optional_str(row.get("active_agent")),
-        project=str(row["project_path"] or ""),
-        transcript_path=_optional_str(row.get("native_log_file")),
-        human_email=_optional_str(row.get("human_email")),
-        visibility=_optional_str(row.get("visibility")),
-        last_input_origin=_optional_str(row.get("last_input_origin")),
-        adapter_metadata_json=_optional_str(row.get("adapter_metadata")),
-    )
 
 
 @dataclass(frozen=True)

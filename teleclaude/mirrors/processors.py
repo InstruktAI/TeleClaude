@@ -11,10 +11,15 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models._adapter import SessionAdapterMetadata
-from teleclaude.utils.transcript_discovery import build_source_identity, extract_session_id, in_session_root
+from teleclaude.utils.transcript_discovery import (
+    build_source_identity,
+    extract_session_id,
+    in_session_root,
+    is_subagent_transcript,
+)
 
 from .generator import generate_mirror
-from .store import get_session_context
+from .session_context import get_session_context
 
 logger = get_logger(__name__)
 
@@ -95,6 +100,14 @@ async def process_mirror_event(event: MirrorEvent) -> None:
     if not in_session_root(transcript_path, agent_name):
         logger.debug("Mirror processor skipped non-canonical transcript", transcript_path=transcript_path)
         return
+    if is_subagent_transcript(Path(transcript_path), agent_name):
+        logger.info(
+            "mirror.fanout.skipped",
+            reason="subagent_transcript",
+            transcript_path=transcript_path,
+            session_id=context.session_id,
+        )
+        return
 
     transcript_session_id = extract_session_id(Path(transcript_path), agent_name)
 
@@ -112,6 +125,11 @@ async def process_mirror_event(event: MirrorEvent) -> None:
         visibility=context.visibility or "private",
         last_input_origin=context.last_input_origin,
         channel_identifiers=channel_identifiers,
+        system_role=context.system_role,
+        command=context.command,
+        slug=context.working_slug,
+        title=context.title,
+        has_record=True,
     )
 
 

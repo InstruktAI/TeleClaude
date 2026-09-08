@@ -395,14 +395,6 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_RUN_JOB: (ROLE_JOB_RUNNER, JobRole.JOB_RUNNER),
 }
 
-# The launch commands whose session is a dispatched worker — one derivation of the role
-# map, shared by everything that has to tell worker noise from the sessions that drive
-# the work. A command absent here is not a worker, so an unmapped or retired command
-# stays visible rather than disappearing on a naming accident.
-WORKER_COMMANDS: frozenset[str] = frozenset(
-    command.value for command, role_info in COMMAND_ROLE_MAP.items() if role_info[0] == ROLE_WORKER
-)
-
 # The job roles the prepare lifecycle confers on a session that derives a prepare
 # artifact (input, prd, architecture, diagnosis, implementation-plan). Read by
 # `refuse_non_prepare_writer` in place of a single-job equality check, because

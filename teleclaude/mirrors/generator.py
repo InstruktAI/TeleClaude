@@ -10,6 +10,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.summarizer import SUMMARY_SCHEMA, _call_summarizer, _parse_summary_response
 
@@ -19,15 +20,7 @@ from teleclaude.output_projection.conversation_projector import project_conversa
 from teleclaude.output_projection.models import VisibilityPolicy
 from teleclaude.output_projection.serializers import to_structured_message
 
-from .derivation import (
-    DERIVATION_VERSION,
-    derive_human_title,
-    detect_launch,
-    is_exact_loader_envelope,
-    is_known_launch_command,
-    is_worker_command,
-    render_title,
-)
+from .derivation import DERIVATION_VERSION, derive_human_title, is_exact_loader_envelope
 from .store import JsonValue, MirrorRecord, delete_mirror, get_mirror, record_mirror_shrink_refusal, upsert_mirror
 
 _MIRROR_VISIBILITY_POLICY = VisibilityPolicy(
@@ -117,7 +110,7 @@ def _drop_exact_loader_envelope(messages: list[StructuredMessage]) -> list[Struc
 
 
 def generate_mirror_sync(
-    session_id: str | None,
+    session_id: str,
     source_identity: str,
     transcript_path: str,
     agent_name: AgentName,
@@ -129,8 +122,19 @@ def generate_mirror_sync(
     visibility: str = "private",
     last_input_origin: str | None = None,
     channel_identifiers: dict[str, str] | None = None,
+    system_role: str | None = None,
+    command: str | None = None,
+    slug: str | None = None,
+    title: str | None = None,
+    has_record: bool = False,
 ) -> MirrorGenerationOutcome:
-    """Extract conversation-only text from a transcript and upsert a mirror."""
+    """Extract conversation-only text from a transcript and upsert a mirror.
+
+    Classification (``is_worker``), ``command``, ``slug``, and ``title`` come from
+    the caller's session-record lookup, never from the transcript text. ``has_record``
+    distinguishes a record whose title is genuinely empty from no record at all: only
+    the latter falls back to a first-message title derived from the conversation.
+    """
     projected_blocks = project_conversation_chain(
         [transcript_path],
         agent_name,
@@ -138,8 +142,7 @@ def generate_mirror_sync(
         cleanup_runtime_user_spans=True,
     )
     structured = [to_structured_message(block) for block in projected_blocks]
-    launch = detect_launch(structured)
-    is_worker = is_worker_command(launch.command)
+    is_worker = system_role == ROLE_WORKER
     conversation_messages = _drop_exact_loader_envelope(_normalize_conversation_messages(structured))
     existing = get_mirror(source_identity=source_identity, db=db)
 
@@ -181,11 +184,7 @@ def generate_mirror_sync(
     timestamp_start = conversation_messages[0].timestamp
     timestamp_end = conversation_messages[-1].timestamp
     conversation_text = _render_conversation(conversation_messages)
-    title = (
-        render_title(launch.command, launch.slug)
-        if is_known_launch_command(launch.command)
-        else derive_human_title(conversation_messages)
-    )
+    resolved_title = (title or "") if has_record else derive_human_title(conversation_messages)
 
     metadata: dict[str, JsonValue] = {"transcript_path": transcript_path, "agent": agent_name.value}
     if last_input_origin:
@@ -200,7 +199,7 @@ def generate_mirror_sync(
         computer=computer,
         agent=agent_name.value,
         project=project,
-        title=title,
+        title=resolved_title,
         timestamp_start=timestamp_start,
         timestamp_end=timestamp_end,
         conversation_text=conversation_text,
@@ -212,8 +211,8 @@ def generate_mirror_sync(
         summary=summary,
         human_email=human_email,
         visibility=visibility,
-        command=launch.command,
-        slug=launch.slug,
+        command=command,
+        slug=slug,
         is_worker=is_worker,
         derivation_version=DERIVATION_VERSION,
     )
@@ -232,7 +231,7 @@ def generate_mirror_sync(
 
 
 async def generate_mirror(
-    session_id: str | None,
+    session_id: str,
     source_identity: str,
     transcript_path: str,
     agent_name: AgentName,
@@ -244,6 +243,11 @@ async def generate_mirror(
     visibility: str = "private",
     last_input_origin: str | None = None,
     channel_identifiers: dict[str, str] | None = None,
+    system_role: str | None = None,
+    command: str | None = None,
+    slug: str | None = None,
+    title: str | None = None,
+    has_record: bool = False,
 ) -> MirrorGenerationOutcome:
     """Async entry point that offloads blocking mirror generation work."""
     return await asyncio.to_thread(
@@ -259,4 +263,9 @@ async def generate_mirror(
         visibility=visibility,
         last_input_origin=last_input_origin,
         channel_identifiers=channel_identifiers,
+        system_role=system_role,
+        command=command,
+        slug=slug,
+        title=title,
+        has_record=has_record,
     )

@@ -15,7 +15,11 @@ import zstandard
 from teleclaude.config import config
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
-from teleclaude.core.codex_transcript import discover_codex_transcript_path, read_codex_transcript_meta
+from teleclaude.core.codex_transcript import (
+    discover_codex_transcript_path,
+    is_codex_subagent_transcript,
+    read_codex_transcript_meta,
+)
 from teleclaude.core.models import JsonDict
 
 __all__ = [
@@ -26,6 +30,7 @@ __all__ = [
     "extract_project",
     "extract_session_id",
     "in_session_root",
+    "is_subagent_transcript",
     "recover_native_project",
 ]
 
@@ -103,6 +108,27 @@ def in_session_root(path: Path | str, agent: AgentName) -> bool:
     return False
 
 
+_CLAUDE_SUBAGENT_DIR = "subagents"
+
+
+def is_subagent_transcript(path: Path, agent: AgentName) -> bool:
+    """Return whether a transcript belongs to a dispatched subagent, not a session.
+
+    A subagent transcript carries no session identity of its own and is never a
+    worker or orchestrator session: it is a delegated thread spawned inside
+    another session's turn. One rule per runtime, applied identically at
+    discovery and at the fanout, so a subagent transcript can never surface as
+    an ordinary conversation from either door.
+    """
+    if agent == AgentName.CLAUDE:
+        return path.stem.startswith(_CLAUDE_SUBAGENT_PREFIX) or _CLAUDE_SUBAGENT_DIR in path.parts
+    if agent == AgentName.CODEX:
+        return is_codex_subagent_transcript(str(path))
+    if agent == AgentName.DEEPSEEK:
+        return _is_deepseek_delegated_session(_read_deepseek_first_entry(path))
+    return False
+
+
 def build_source_identity(path: Path | str, agent: AgentName) -> str:
     """Build a deterministic identity from the transcript's path relative to its root.
 
@@ -129,7 +155,7 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
         if root.exists():
             pattern = str(AGENT_PROTOCOL[agent.value]["session_pattern"])
             for path in root.glob(pattern):
-                if path.is_file():
+                if path.is_file() and not is_subagent_transcript(path, agent):
                     candidates.append(TranscriptCandidate(path=path, agent=agent, mtime=path.stat().st_mtime))
 
         # If agent is GEMINI, also search legacy fallback paths
@@ -146,11 +172,9 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
     return candidates
 
 
-def extract_session_id(path: Path, agent: AgentName) -> SessionId | None:
+def extract_session_id(path: Path, agent: AgentName) -> SessionId:
     """Read a transcript's native session identifier from its authoritative source."""
     if agent == AgentName.CLAUDE:
-        if path.stem.startswith(_CLAUDE_SUBAGENT_PREFIX):
-            return None
         return SessionId(path.stem)
     if agent == AgentName.GEMINI:
         if path.suffix == _JSONL_SUFFIX and not path.name.startswith(_GEMINI_LEGACY_SESSION_PREFIX):
@@ -166,8 +190,6 @@ def extract_session_id(path: Path, agent: AgentName) -> SessionId | None:
         return SessionId(metadata.thread_id)
     if agent == AgentName.DEEPSEEK:
         first_entry = _read_deepseek_first_entry(path)
-        if _is_deepseek_delegated_session(first_entry):
-            return None
         session_id = _read_deepseek_session_id(path, first_entry)
         if session_id is None:
             raise ValueError(_MISSING_TRANSCRIPT_SESSION_ID.format(path=path))
