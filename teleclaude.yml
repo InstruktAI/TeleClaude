@@ -6,7 +6,6 @@ project_slug: teleclaude
 # never inferred from where the checkout sits.
 company: instrukt-ai
 env_allow_list: []
-frontend_root: frontend
 
 business:
   publishes:
