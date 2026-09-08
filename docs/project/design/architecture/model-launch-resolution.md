@@ -79,9 +79,10 @@ record can never be read as agent-wide unavailability:
   round-trip. An event without the model payload keeps today's agent-wide
   meaning exactly.
 - **Consumers.** Dispatch candidate eligibility continues to read agent-wide
-  state only. Operator surfaces (CLI availability listing, TUI) render model
-  records beneath their agent entry; the launch-model resolver reads model
-  records directly from the store, not from the projection.
+  state only. The CLI availability listing renders model records beneath their
+  agent entry and the TUI carries them in its availability projection; the
+  launch-model resolver reads model records directly from the store, not from
+  the projection.
 <!-- change:scoped-agent-model-availability -->
 The agent-runtime availability surface carries model scope explicitly so a model
 record can never be read as agent-wide unavailability, and both scopes speak one
@@ -105,10 +106,11 @@ status vocabulary:
   record live from the event alone, with no refresh round-trip. An event without
   the model payload keeps today's agent-wide meaning exactly.
 - **Consumers.** Agent-candidate eligibility continues to read agent-wide state
-  only. Operator surfaces (CLI availability listing, TUI) render model records
-  beneath their agent entry; the launch-model resolver reads model records
-  directly from the store, not from the projection. Every consumer reads the
-  status field; none re-derives a state from a reason string or from a boolean.
+  only. The CLI availability listing renders model records beneath their agent
+  entry and the TUI carries them in its availability projection; the
+  launch-model resolver reads model records directly from the store, not from
+  the projection. Every consumer reads the status field; none re-derives a state
+  from a reason string or from a boolean.
 <!-- /planned-change:scoped-agent-model-availability -->
 
 ## Invariants
