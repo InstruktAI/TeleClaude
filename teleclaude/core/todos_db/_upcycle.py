@@ -7,7 +7,7 @@ from typing import cast
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, canonical_kind
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import TodoState
+from teleclaude.types.todos import ReviewContinuationCallerRole, TodoState
 
 LATEST_TODO_STATE_SCHEMA_VERSION = 10
 _V0_SCHEMA_VERSION = 0
@@ -21,7 +21,10 @@ _V7_SCHEMA_VERSION = 7
 _V8_SCHEMA_VERSION = 8
 _V9_SCHEMA_VERSION = 9
 _V10_SCHEMA_VERSION = 10
-_SELF_ASSESSING_CALLER_ROLES = ("coordinator", "human")
+_SELF_ASSESSING_CALLER_ROLES = (
+    ReviewContinuationCallerRole.COORDINATOR.value,
+    ReviewContinuationCallerRole.HUMAN.value,
+)
 _BUILD_PLAN_DIGEST_KEY = "build_plan_digest"
 _CONTINUATION_REVIEW_KEYS = (
     "prd_review",
