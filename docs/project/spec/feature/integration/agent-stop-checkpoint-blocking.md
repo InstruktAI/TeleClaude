@@ -460,12 +460,7 @@ When the heuristic engine evaluates the turn window
 Then no path is attributed to the turn from the command text
 And the pre-existing dirty file is not attributed to this turn
 And no checkpoint is produced
-(Whether command text expresses mutating intent is a semantic judgment over agent-authored free text, so code does not make it; the agent runtime's own structured file records are the attribution source.)
-
-Given a turn's shell command writes a repository file in place (e.g. `sed -i`)
-When the heuristic engine evaluates the turn window
-Then the written path is not attributed to the turn from the command text
-(A repository file written from a shell command is outside the runtime's own structured records, so the engine attributes nothing for it.)
+(Whether command text expresses mutating intent is a semantic judgment over agent-authored free text, so code does not make it.)
 ```
 <!-- /planned-change:checkpoint-attributes-foreign-dirty-paths -->
 
