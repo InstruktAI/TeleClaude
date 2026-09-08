@@ -54,6 +54,8 @@ from teleclaude.services.project_jobs import ProjectJobOrchestrator
 logger = get_logger(__name__)
 
 _NEXT_RUN_JOB_COMMAND = "/next-run-job"
+_LOG_HUNTER_SESSION_ACTIVE = "log bug hunter session already active for project"
+_LOG_HUNTER_DISPATCHED = "log bug hunter dispatched"
 
 # Ensure repo root is in path for job imports
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -398,10 +400,10 @@ def _run_log_bug_hunter_orchestrated() -> bool:
                 # closes when the fan-out returns, while its sessions are still working.
                 sessions = await _list_active_sessions()
                 if any(
-                    (session.job or "").strip() == identity and (session.project_path or "") == project_path
+                    session.job is not None and session.job.strip() == identity and session.project_path == project_path
                     for session in sessions
                 ):
-                    logger.info("log bug hunter session already active for project", project=node.slug)
+                    logger.info(_LOG_HUNTER_SESSION_ACTIVE, project=node.slug)
                     return False
 
                 response = await client.run_session(
@@ -411,7 +413,7 @@ def _run_log_bug_hunter_orchestrated() -> bool:
                     args=_job_command_args(declaration),
                 )
                 logger.info(
-                    "log bug hunter dispatched",
+                    _LOG_HUNTER_DISPATCHED,
                     project=node.slug,
                     session_id=response.session_id,
                 )
