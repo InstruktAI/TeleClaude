@@ -5,10 +5,9 @@ Exposes read/write/delete operations for managing invitation tokens.
 
 from __future__ import annotations
 
-import fcntl
 import json
-import os
 
+from teleclaude.config._file_io import file_transaction
 from teleclaude.paths import INVITATIONS_PATH
 
 
@@ -28,31 +27,8 @@ def load_invitations() -> dict[str, str]:
 
 def save_invitations(invitations: dict[str, str]) -> None:
     """Save the token-keyed invitations to invitations.json atomically."""
-    INVITATIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = INVITATIONS_PATH.with_suffix(".lock")
-    tmp_path = INVITATIONS_PATH.with_suffix(".tmp")
-
-    with open(lock_path, "w", encoding="utf-8") as lock_file:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        except OSError:
-            pass
-
-        try:
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(invitations, f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_path, INVITATIONS_PATH)
-        except Exception:
-            if tmp_path.exists():
-                tmp_path.unlink()
-            raise
-        finally:
-            try:
-                lock_path.unlink()
-            except OSError:
-                pass
+    with file_transaction(INVITATIONS_PATH) as transaction:
+        transaction.replace_text(json.dumps(invitations, indent=2) + "\n")
 
 
 def delete_invitation(token: str) -> None:

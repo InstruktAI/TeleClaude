@@ -9,7 +9,8 @@ from typing import NotRequired, TypedDict, cast
 
 import yaml
 
-from teleclaude.config.declaration import write_declared_config
+from teleclaude.config._file_io import file_transaction
+from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.schema import ConfigKind
 from teleclaude.paths import COMPANIES_ROOT, CONFIG_ADVANCEMENT_STATE_PATH, GLOBAL_CONFIG_PATH, PEOPLE_DIR
 from teleclaude.project_manifest import load_registered_roots
@@ -65,8 +66,9 @@ def advance_config(
         return AdvanceResult(eligible=True, completed=True, advanced=False)
     if not path.exists():
         return AdvanceResult(eligible=True, completed=False, advanced=False, reason=_DOCUMENT_MISSING)
-    document = _load_document(path)
-    write_declared_config(path, kind, document, schema_root=_schema_root(kind, root))
+    with file_transaction(path) as transaction:
+        document = _load_document_content(transaction.read_text(), path)
+        transaction.replace_text(render_declared_config(path, kind, document, schema_root=_schema_root(kind, root)))
     state["completed_roots"].append(root_key)
     _write_state(state_path, state)
     return AdvanceResult(eligible=True, completed=True, advanced=True)
@@ -121,8 +123,8 @@ def _schema_root(kind: ConfigKind, root: Path) -> Path:
     return root.parent.parent
 
 
-def _load_document(path: Path) -> Mapping[str, object]:
-    loaded = yaml.safe_load(path.read_text(encoding=_UTF8)) or {}
+def _load_document_content(content: str, path: Path) -> Mapping[str, object]:
+    loaded = yaml.safe_load(content) or {}
     if not isinstance(loaded, dict):
         raise ValueError(_DOCUMENT_ERROR.format(path=path))
     return cast(Mapping[str, object], loaded)

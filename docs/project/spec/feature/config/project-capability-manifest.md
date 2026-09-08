@@ -361,14 +361,9 @@ Then the code capability resolves to subscribed on both readers
 
 ## Known caveats
 
-<!-- planned-change:config-schema-strictness -->
-- `ProjectConfig` parses unknown keys (`extra="allow"`): a manifest authored
-  ahead of delivery parses harmlessly and becomes load-bearing at delivery.
-<!-- change:config-schema-strictness -->
 - A project manifest key must be declared by the project overlay schema before
   it is written. An undeclared key fails configuration loading and does not
   become load-bearing later.
-<!-- /planned-change:config-schema-strictness -->
 - Capability toggles gate _mechanisms_, not content: disabling `docs` in a
   repo that still contains snippet frontmatter leaves those files unsynced and
   is surfaced as drift by `telec projects assess`.

@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from teleclaude.config._strictness import SCALAR, ClosedMapping, NamedMapping
+
+REMOTE_COMPUTERS_INPUT = NamedMapping(
+    ClosedMapping({"user": SCALAR, "host": SCALAR, "ip": SCALAR, "teleclaude_path": SCALAR})
+)
+
 
 @dataclass
 class RemoteComputerConfig:

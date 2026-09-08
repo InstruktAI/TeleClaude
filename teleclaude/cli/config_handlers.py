@@ -21,10 +21,10 @@ from typing import Any, Literal
 
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ValidationError
-from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 import teleclaude.config as _tc_config_module
+from teleclaude.config._file_migrations import move_person_invite_token
 from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
 from teleclaude.config.invitations import load_invitations, save_invitations
 from teleclaude.config.loader import (
@@ -36,11 +36,13 @@ from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
 from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
-from teleclaude.paths import GLOBAL_CONFIG_PATH, INVITATIONS_PATH, PROJECT_ENV_PATH, TELECLAUDE_HOME, ConfigFileName
+from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, TELECLAUDE_HOME, ConfigFileName
 
 logger = get_logger(__name__)
 
 _PEOPLE_DIR = TELECLAUDE_HOME / "people"
+_COMPUTER = "computer"
+_TMUX_BINARY = "tmux_binary"
 
 
 # --- Data classes ---
@@ -268,6 +270,9 @@ def save_machine_config(config: _tc_config_module.TeleclaudeConfig, path: Path |
     """Atomic write of machine configuration (config.yml)."""
     target = path or _tc_config_module.config_path
     data = dataclasses.asdict(config)
+    computer = data.get(_COMPUTER)
+    if isinstance(computer, dict):
+        computer.pop(_TMUX_BINARY, None)
     if "default_agent" in data:
         default_agent = data.pop("default_agent")
         if "agents" not in data or not isinstance(data["agents"], dict):
@@ -344,30 +349,14 @@ def _migrate_invitations_if_needed() -> None:
     if _migration_done:
         return
 
-    if not INVITATIONS_PATH.exists():
-        logger.info("Invitations store does not exist. Migrating tokens from person configs.")
-        invitations: dict[str, str] = {}
-        person_dirs = list_person_dirs()
-        yaml_loader = YAML()
-        for name in person_dirs:
-            person_path = _PEOPLE_DIR / name / ConfigFileName.OVERLAY
-            if not person_path.exists():
-                continue
-            try:
-                with open(person_path, encoding="utf-8") as f:
-                    raw_data = yaml_loader.load(f) or {}
-                if isinstance(raw_data, dict) and "invite_token" in raw_data:
-                    token = raw_data["invite_token"]
-                    if token and isinstance(token, str):
-                        invitations[token] = name
-
-                    person_config = get_person_config(name)
-                    if person_config.model_extra is not None and "invite_token" in person_config.model_extra:
-                        person_config.model_extra.pop("invite_token")
-                    save_person_config(name, person_config)
-            except (OSError, ValueError, YAMLError) as e:
-                logger.warning("Failed to migrate invite_token for person '%s': %s", name, e)
-        save_invitations(invitations)
+    for name in list_person_dirs():
+        person_path = _PEOPLE_DIR / name / ConfigFileName.OVERLAY
+        if not person_path.exists():
+            continue
+        try:
+            move_person_invite_token(person_path, name)
+        except (OSError, ValueError, YAMLError) as e:
+            logger.warning("Failed to migrate invite_token for person '%s': %s", name, e)
     _migration_done = True
 
 
@@ -389,15 +378,6 @@ def set_invite_token(slug: str) -> str:
 
     invitations[token] = slug
     save_invitations(invitations)
-
-    # Also clean up any lingering invite_token from per-person config model_extra
-    try:
-        person_config = get_person_config(slug)
-        if person_config.model_extra is not None and "invite_token" in person_config.model_extra:
-            person_config.model_extra.pop("invite_token")
-            save_person_config(slug, person_config)
-    except (OSError, ValueError) as e:
-        logger.warning("Failed to clean up invite_token in per-person config for '%s': %s", slug, e)
 
     logger.info("Set invite token for slug '%s'", slug)
     return token

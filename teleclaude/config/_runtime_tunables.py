@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from teleclaude.config._coerce import as_bool
 from teleclaude.config._models import ApiConfig, DaemonConfig, HookOutboxConfig
+from teleclaude.config._strictness import SCALAR, ClosedMapping
 
 HOOK_OUTBOX_SECTION = "hook_outbox"
 API_SECTION = "api"
@@ -46,6 +47,55 @@ AGENT_PROMPT_READY_TIMEOUT_S = "agent_prompt_ready_timeout_s"
 LOG_LEVEL = "log_level"
 LEGACY_GEMINI_ROOT = "legacy_gemini_root"
 CLAIM_RESERVE = 8
+
+HOOK_OUTBOX_INPUT = ClosedMapping(
+    {
+        POLL_INTERVAL_S: SCALAR,
+        BATCH_SIZE: SCALAR,
+        LOCK_TTL_S: SCALAR,
+        BASE_BACKOFF_S: SCALAR,
+        MAX_BACKOFF_S: SCALAR,
+        SESSION_IDLE_TIMEOUT_S: SCALAR,
+        SESSION_MAX_PENDING: SCALAR,
+        SESSION_CRITICAL_RESERVE: SCALAR,
+        SESSION_CLAIM_HIGH_WATERMARK: SCALAR,
+        SESSION_CLAIM_LOW_WATERMARK: SCALAR,
+        SUMMARY_INTERVAL_S: SCALAR,
+        BACKLOG_WARN_THRESHOLD: SCALAR,
+        LAG_WARN_THRESHOLD_S: SCALAR,
+        WARN_LOG_INTERVAL_S: SCALAR,
+        MAX_LAG_SAMPLES: SCALAR,
+        STALENESS_TTL_S: SCALAR,
+    }
+)
+API_INPUT = ClosedMapping(
+    {
+        TCP_PORT: SCALAR,
+        WATCH_INTERVAL_S: SCALAR,
+        WATCH_LAG_THRESHOLD_MS: SCALAR,
+        WATCH_INFLIGHT_THRESHOLD_S: SCALAR,
+        WATCH_DUMP_COOLDOWN_S: SCALAR,
+        MCP_REAPER_INTERVAL_S: SCALAR,
+        WS_CONTROL_SEND_TIMEOUT_S: SCALAR,
+        WS_DEFAULT_SEND_TIMEOUT_S: SCALAR,
+        WS_REPLACEABLE_SEND_TIMEOUT_S: SCALAR,
+    }
+)
+DAEMON_INPUT = ClosedMapping(
+    {
+        API_RESTART_MAX: SCALAR,
+        API_RESTART_WINDOW_S: SCALAR,
+        API_RESTART_BACKOFF_S: SCALAR,
+        RESOURCE_SNAPSHOT_INTERVAL_S: SCALAR,
+        LAUNCHD_WATCH_INTERVAL_S: SCALAR,
+        LAUNCHD_WATCH_ENABLED: SCALAR,
+        STARTUP_GATE_TIMEOUT_S: SCALAR,
+        STARTUP_GATE_POLL_INTERVAL_S: SCALAR,
+        AGENT_PROMPT_READY_TIMEOUT_S: SCALAR,
+        LOG_LEVEL: SCALAR,
+        LEGACY_GEMINI_ROOT: SCALAR,
+    }
+)
 
 
 def _section(raw: object, path: str) -> dict[str, object]:  # guard: loose-dict - merged YAML config section

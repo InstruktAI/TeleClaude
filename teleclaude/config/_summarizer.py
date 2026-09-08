@@ -4,7 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from teleclaude.config._strictness import SCALAR, ClosedMapping, InputList
+
 KNOWN_CLOUD_PROVIDERS = ("openai", "anthropic", "google")
+
+_CLOUD_PROVIDER_INPUT = ClosedMapping({"model": SCALAR, "api_key": SCALAR})
+SUMMARIZER_INPUT = ClosedMapping(
+    {
+        "local": ClosedMapping({"enabled": SCALAR, "base_url": SCALAR, "model": SCALAR, "api_key": SCALAR}),
+        "provider_priority": InputList(SCALAR),
+        "openai": _CLOUD_PROVIDER_INPUT,
+        "anthropic": _CLOUD_PROVIDER_INPUT,
+        "google": _CLOUD_PROVIDER_INPUT,
+    }
+)
 
 
 @dataclass
