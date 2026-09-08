@@ -140,6 +140,8 @@ Then no agent is excluded and the request resolves as if it had not asked
 ```
 
 <!-- change:remove-prior-reviewer-agent-exclusion -->
+#### UC-ARS1: An earlier reviewer session's agent constrains no later dispatch for the same target
+
 ```
 Given a run-session request for a reviewer command whose target an earlier reviewer session already reviewed
 When the agent_runtime service resolves the dispatch
@@ -456,6 +458,8 @@ And later reuse for C on X addresses the newest live reviewer
 ```
 
 <!-- change:remove-prior-reviewer-agent-exclusion -->
+#### UC-DSD4: Every create request for a held review subject is refused, with no admitting field
+
 ```
 Given a todo slug X with a live reviewer session for review command C — one of "next-review-build", "next-review-plan", "next-review-architecture"
 And a create request launching that same command C for X
