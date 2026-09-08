@@ -663,7 +663,6 @@ And the message carries no Co-Authored-By line
 ```
 
 
-<!-- planned:fix-doc-sync-commit-joins-figures-pathspec-into-one-arg -->
 
 #### UC-CGIP-32 — A declared path the repository cannot match is refused before git runs
 
@@ -677,7 +676,6 @@ And the refusal is attributed to the declaration rather than reported as a raw g
 And no commit is created
 ```
 
-<!-- /planned:fix-doc-sync-commit-joins-figures-pathspec-into-one-arg -->
 
 #### UC-NCR-1 — Change inspection from a context root below the repository root
 
