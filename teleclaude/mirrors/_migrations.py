@@ -13,11 +13,10 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKER_COMMANDS
+from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
-from teleclaude.mirrors.derivation import is_known_launch_command, render_title
 from teleclaude.paths import MAIN_DB_PATH
-from teleclaude.utils.transcript_discovery import SessionId, extract_project, extract_session_id
+from teleclaude.utils.transcript_discovery import SessionId, extract_project, extract_session_id, is_subagent_transcript
 
 logger = get_logger(__name__)
 
@@ -39,29 +38,16 @@ _INDEX_STATEMENTS: tuple[str, ...] = (
 
 _RENAME_AGENT_SPAWN_SQL = "ALTER TABLE mirrors RENAME COLUMN is_agent_spawn TO is_worker"
 
-_SELECT_COMMAND_ROWS_SQL = "SELECT id, command, slug, title FROM mirrors WHERE command IS NOT NULL AND command <> ''"
-
-_UPDATE_TITLE_SQL = "UPDATE mirrors SET title = ? WHERE id = ?"
-
-_CLEAR_WORKER_SQL_TEMPLATE = (
-    "UPDATE mirrors SET is_worker = 0 WHERE is_worker = 1 AND (command IS NULL OR command NOT IN ({placeholders}))"
-)
-
-_SET_WORKER_SQL_TEMPLATE = "UPDATE mirrors SET is_worker = 1 WHERE is_worker = 0 AND command IN ({placeholders})"
-
 # SQLite reports an already-applied column migration through the message text alone,
 # so these tokens are what distinguish "already migrated" from a real schema fault.
 _DUPLICATE_COLUMN_ERROR = "duplicate column"
 _MISSING_COLUMN_ERROR = "no such column"
 
-_PLACEHOLDER = "?"
-_PLACEHOLDER_SEPARATOR = ", "
-
 # Bump when a rule below changes what a converged row should hold. Convergence is
 # recorded in the database rather than re-derived per process: schema init runs on every
 # process that opens the store, including read-only CLI calls, so an ungated scan would
 # both re-read the table on every invocation and take a write lock a reader never needed.
-_DATA_REVISION = 4
+_DATA_REVISION = 5
 
 _READ_DATA_REVISION_SQL = "PRAGMA user_version"
 _WRITE_DATA_REVISION_SQL = f"PRAGMA user_version = {_DATA_REVISION}"
@@ -70,6 +56,7 @@ _DATABASE_LOCKED_ERROR = "database is locked"
 _SESSION_ID_REKEY_FAILED_EVENT = "mirror.session_id_rekey_failed"
 _SESSION_ID_REKEY_COMPLETE_EVENT = "mirror.session_id_rekey_complete"
 _PROJECT_RECONCILE_COMPLETE_EVENT = "mirror.project_reconcile_complete"
+_RECORD_CONVERGENCE_COMPLETE_EVENT = "mirror.record_convergence_complete"
 _TRANSCRIPT_PATH_FIELD = "transcript_path"
 
 _CREATE_NULLABLE_MIRRORS_SQL = """\
@@ -160,6 +147,19 @@ FROM sessions
 WHERE project_path IS NOT NULL AND project_path <> ''
 ORDER BY created_at DESC
 """
+_SELECT_CONVERGENCE_ROWS_SQL = "SELECT id, session_id, source_identity, agent, metadata FROM mirrors"
+_DELETE_MIRROR_ROW_SQL = "DELETE FROM mirrors WHERE id = ?"
+_DELETE_TOMBSTONE_BY_SOURCE_SQL = "DELETE FROM mirror_tombstones WHERE source_identity = ?"
+_DELETE_UNREPROJECTABLE_BY_SOURCE_SQL = "DELETE FROM mirror_unreprojectable_sources WHERE source_identity = ?"
+_DELETE_SHRINK_REFUSAL_BY_SOURCE_SQL = "DELETE FROM mirror_shrink_refusals WHERE source_identity = ?"
+_SELECT_SESSION_ROLES_SQL = """\
+SELECT native_log_file, system_role
+FROM sessions
+WHERE native_log_file IS NOT NULL AND native_log_file <> ''
+ORDER BY created_at DESC
+"""
+_SELECT_SURVIVING_WORKER_ROWS_SQL = "SELECT id, is_worker, metadata FROM mirrors"
+_UPDATE_IS_WORKER_SQL = "UPDATE mirrors SET is_worker = ? WHERE id = ?"
 _MIRRORS_TABLE_INFO_SQL = "PRAGMA table_info(mirrors)"
 _SESSION_ID_COLUMN = "session_id"
 _DROP_MIRRORS_SQL = "DROP TABLE mirrors"
@@ -234,10 +234,9 @@ def _converge_derived_data(conn: sqlite3.Connection) -> None:
         return
     try:
         migrate_nullable_session_id(conn)
+        reconcile_mirror_records(conn)
         reconcile_transcript_session_ids(conn)
         reconcile_mirror_projects(conn)
-        reconcile_worker_classification(conn)
-        reconcile_derived_titles(conn)
         conn.executescript(_CREATE_SESSION_ID_GUARDS_SQL)
         conn.execute(_WRITE_DATA_REVISION_SQL)
     except sqlite3.OperationalError as exc:
@@ -259,13 +258,91 @@ def migrate_nullable_session_id(conn: sqlite3.Connection) -> None:
     conn.executescript(_RECREATE_MIRROR_AUXILIARY_SQL)
 
 
+def _session_role_map() -> dict[str, str]:
+    """Load system_role attribution keyed by transcript path."""
+    main_db_uri = f"file:{MAIN_DB_PATH.resolve()}?mode=ro"
+    with sqlite3.connect(main_db_uri, uri=True) as main_conn:
+        rows = main_conn.execute(_SELECT_SESSION_ROLES_SQL).fetchall()
+    by_transcript_path: dict[str, str] = {}
+    for native_log_file, system_role in rows:
+        if native_log_file and system_role:
+            by_transcript_path.setdefault(str(native_log_file), str(system_role))
+    return by_transcript_path
+
+
+def reconcile_mirror_records(conn: sqlite3.Connection) -> None:
+    """Delete mirrors discovery no longer produces; realign `is_worker` from the record.
+
+    A subagent transcript or a null-session row is exactly what discovery now refuses
+    to recognize, so the archive must not keep holding it (UC-MSB-3). `is_worker` is
+    realigned from the joined record's `system_role` for every surviving row whose
+    transcript path resolves to one; every other stored column — title, command,
+    slug — is left as written, by decision. The file-existence and subagent scan runs
+    to completion before any write, so it never holds the write lock.
+    """
+    rows = conn.execute(_SELECT_CONVERGENCE_ROWS_SQL).fetchall()
+    to_delete: list[tuple[int, str | None]] = []
+    deleted_null_session = 0
+    deleted_subagent = 0
+    for row_id, session_id, source_identity, raw_agent, raw_metadata in rows:
+        if session_id is None:
+            to_delete.append((row_id, source_identity))
+            deleted_null_session += 1
+            continue
+        try:
+            metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) else {}
+            transcript_path = metadata.get(_TRANSCRIPT_PATH_FIELD) if isinstance(metadata, dict) else None
+            if not isinstance(transcript_path, str) or not transcript_path:
+                raise ValueError(_TRANSCRIPT_PATH_FIELD)
+            agent = AgentName(raw_agent)
+        except (OSError, TypeError, ValueError):
+            continue
+        path = Path(transcript_path).expanduser()
+        if path.exists() and is_subagent_transcript(path, agent):
+            to_delete.append((row_id, source_identity))
+            deleted_subagent += 1
+
+    if to_delete:
+        conn.executemany(_DELETE_MIRROR_ROW_SQL, [(row_id,) for row_id, _ in to_delete])
+        source_identities = [(source_identity,) for _, source_identity in to_delete if source_identity]
+        if source_identities:
+            conn.executemany(_DELETE_TOMBSTONE_BY_SOURCE_SQL, source_identities)
+            conn.executemany(_DELETE_UNREPROJECTABLE_BY_SOURCE_SQL, source_identities)
+            conn.executemany(_DELETE_SHRINK_REFUSAL_BY_SOURCE_SQL, source_identities)
+
+    role_by_path = _session_role_map()
+    surviving = conn.execute(_SELECT_SURVIVING_WORKER_ROWS_SQL).fetchall()
+    worker_updates: list[tuple[int, int]] = []
+    for row_id, current_is_worker, raw_metadata in surviving:
+        metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) else {}
+        transcript_path = metadata.get(_TRANSCRIPT_PATH_FIELD) if isinstance(metadata, dict) else None
+        if not isinstance(transcript_path, str) or not transcript_path:
+            continue
+        system_role = role_by_path.get(transcript_path)
+        if system_role is None:
+            continue
+        target_is_worker = 1 if system_role == ROLE_WORKER else 0
+        if int(current_is_worker) != target_is_worker:
+            worker_updates.append((target_is_worker, row_id))
+    if worker_updates:
+        conn.executemany(_UPDATE_IS_WORKER_SQL, worker_updates)
+
+    logger.info(
+        _RECORD_CONVERGENCE_COMPLETE_EVENT,
+        data_revision=_DATA_REVISION,
+        total=len(rows),
+        deleted_subagent=deleted_subagent,
+        deleted_null_session=deleted_null_session,
+        realigned=len(worker_updates),
+    )
+
+
 def reconcile_transcript_session_ids(conn: sqlite3.Connection) -> None:
     """Re-key non-UUID mirror rows from the identity carried by their transcript."""
     rows = conn.execute(_SELECT_SESSION_ID_ROWS_SQL).fetchall()
-    updates: list[tuple[str | None, int]] = []
+    updates: list[tuple[str, int]] = []
     codex_count = 0
     gemini_count = 0
-    subagent_count = 0
     failed_count = 0
     for row_id, current_session_id, raw_agent, raw_metadata in rows:
         if current_session_id is None:
@@ -293,9 +370,7 @@ def reconcile_transcript_session_ids(conn: sqlite3.Connection) -> None:
             failed_count += 1
             continue
         updates.append((session_id, row_id))
-        if session_id is None:
-            subagent_count += 1
-        elif agent is AgentName.CODEX:
+        if agent is AgentName.CODEX:
             codex_count += 1
         elif agent is AgentName.GEMINI:
             gemini_count += 1
@@ -310,7 +385,6 @@ def reconcile_transcript_session_ids(conn: sqlite3.Connection) -> None:
         total=len(rows),
         rekeyed_codex=codex_count,
         rekeyed_gemini=gemini_count,
-        cleared_subagent=subagent_count,
     )
 
 
@@ -386,47 +460,3 @@ def _rename_agent_spawn_column(conn: sqlite3.Connection) -> None:
     except sqlite3.OperationalError as exc:
         if _MISSING_COLUMN_ERROR not in str(exc).lower():
             raise
-
-
-def reconcile_worker_classification(conn: sqlite3.Connection) -> None:
-    """Realign stored `is_worker` with the current worker-command set.
-
-    The flag is derived from the row's launch command, never authored, so a row whose
-    stored value disagrees with today's rule is stale rather than intentional. Rows are
-    reclassified in place from the persisted `command`, which costs one narrow update
-    and leaves `conversation_text` untouched — a `DERIVATION_VERSION` bump would instead
-    push every transcript back through full generation, summarizer call included, to
-    settle a question the stored column already answers.
-
-    Idempotent: once aligned the predicate matches nothing, so later calls do no work.
-    """
-    placeholders = _PLACEHOLDER_SEPARATOR.join(_PLACEHOLDER * len(WORKER_COMMANDS))
-    workers = sorted(WORKER_COMMANDS)
-    conn.execute(_CLEAR_WORKER_SQL_TEMPLATE.format(placeholders=placeholders), workers)
-    conn.execute(_SET_WORKER_SQL_TEMPLATE.format(placeholders=placeholders), workers)
-
-
-def reconcile_derived_titles(conn: sqlite3.Connection) -> None:
-    """Realign stored titles with the command each row records having been launched by.
-
-    A row carrying a launch command owes that command's rendered title, so a stored row
-    still holding text from an older derivation — a leaked doc heading, the raw command
-    line — is stale and is rebuilt from the persisted `command` and `slug`.
-
-    Only a command that names a real deployed artifact is trusted. Detection also fires
-    on path fragments and prose, and those rows hold a genuine first-message title that
-    rendering would replace with a humanized fragment; leaving them is the conservative
-    side of an irreversible overwrite.
-
-    Idempotent: a row already carrying its rendered title yields no update.
-    """
-    rows = conn.execute(_SELECT_COMMAND_ROWS_SQL).fetchall()
-    updates: list[tuple[str, int]] = []
-    for row_id, command, slug, title in rows:
-        if not is_known_launch_command(command):
-            continue
-        rendered = render_title(command, slug)
-        if rendered and rendered != title:
-            updates.append((rendered, row_id))
-    if updates:
-        conn.executemany(_UPDATE_TITLE_SQL, updates)

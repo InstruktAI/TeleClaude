@@ -141,12 +141,9 @@ def _print_results(
         if tc_id is not None:
             identifier_label = "tc_id:"
             identifier = tc_id
-        elif native_id is not None:
-            identifier_label = "native_id:"
-            identifier = native_id
         else:
-            identifier_label = "no_session"
-            identifier = ""
+            identifier_label = "native_id:"
+            identifier = native_id or ""
         computer = f"  {entry['computer']:<12}" if show_computer else ""
         print(
             f"{entry['timestamp']}  {entry['agent']:<7}{computer}  "

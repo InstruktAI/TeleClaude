@@ -27,12 +27,12 @@ from ..utils.transcript_discovery import (
 from ..utils.transcript_discovery import discover_transcripts as _discover_transcripts
 from .derivation import DERIVATION_VERSION
 from .generator import MirrorGenerationOutcome, generate_mirror_sync
+from .session_context import get_session_context
 from .store import (
     MirrorTombstoneRecord,
     delete_mirror_tombstone,
     get_mirror_state_by_transcript,
     get_mirror_tombstone,
-    get_session_context,
     get_stale_mirrors,
     mark_mirror_unreprojectable,
     upsert_mirror_tombstone,
@@ -209,6 +209,11 @@ class MirrorWorker:
                     computer=computer,
                     project=project,
                     db=self.db_path,
+                    system_role=context.system_role if context is not None else None,
+                    command=context.command if context is not None else None,
+                    slug=context.working_slug if context is not None else None,
+                    title=context.title if context is not None else None,
+                    has_record=context is not None,
                 )
                 if outcome in {MirrorGenerationOutcome.GENERATED, MirrorGenerationOutcome.SHRINK_ACCEPTED}:
                     delete_mirror_tombstone(source_identity, db=self.db_path)
