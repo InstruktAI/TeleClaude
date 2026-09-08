@@ -67,7 +67,7 @@
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
-    "drizzle-kit": "^0.30",
+    "drizzle-kit": "^0.31.0",
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.1.6",
     "happy-dom": "^20.8.8",
