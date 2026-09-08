@@ -112,26 +112,12 @@ assignments. The write path therefore carries its own point-of-action check
 enforcing the declared human band, while preserving the agent band the surface
 already admits. Reusing a surface is not inheriting the boundary it advertises.
 
-<!-- planned-change:config-schema-strictness -->
-**Removal is a forward migration, not a rejection.** Both configuration models
-accept and preserve unknown keys, so deleting a typed attribute does not stop the
-old key being read, kept, and written back — it converts it into a silent extra.
-The owned-data contract answers that by bringing the stored shape forward before
-domain consumption rather than refusing it: the migration removes an empty legacy
-declaration outright, and domain models then see only the roster shape. A
-non-empty per-company owner reference converts to a membership carrying the
-`admin` role for the person it names — the same relationship, stated in the
-roster's vocabulary. No installation holds such a value today, which
-makes the migration simple; it does not license a breaking parser boundary. Absence of the attribute is not absence of
-the field.
-<!-- change:config-schema-strictness -->
 **Removal follows the owned-data migration boundary.** A stored legacy shape is
 brought forward before domain consumption. Once the migration completes, an
 undeclared key fails at its owning configuration boundary rather than surviving
 as a silent extra. A non-empty legacy value that cannot be mapped to the
 current declared shape remains an explicit blocker; absence of a typed
 attribute is not absence of the field.
-<!-- /planned-change:config-schema-strictness -->
 
 ## Primary flows
 

@@ -235,12 +235,8 @@ And re-running the migration leaves the already-slugged entry and its folder unc
 - **`slug` is the stable reference key; `name` is display only.** `slug` is the canonical, immutable key the workspace folder and every folder-keyed lookup resolve through. `name` may change freely and is unique only by convention; renaming a person updates `name` without touching `slug` or the workspace folder. Uniqueness of `slug` is enforced at creation (`ensure_unique_slug`), not by the schema — two on-disk entries with the same `slug` each load, and the collision matters only at folder resolution.
 - **`proficiency` and `expertise` are not jointly validated.** A `PersonEntry` may carry both fields at once; the schema accepts the combination without warning. Consumers choosing to honor `expertise` over `proficiency` must implement that preference themselves.
 - **Expertise nesting depth is fixed at two.** The type `dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]]` permits a domain to map either directly to a level or to a sub-dict; the sub-dict cannot itself nest further. Three-level taxonomies are unrepresentable.
-<!-- planned-change:config-schema-strictness -->
-- **`extra="allow"` admits unknown keys.** Additional YAML keys on a `PersonEntry` land on the model silently; typos in field names will not fail validation.
-<!-- change:config-schema-strictness -->
 - **Person entries are closed at the global overlay boundary.** An undeclared
   key on a `PersonEntry` fails global configuration loading and identifies its
   nested path.
-<!-- /planned-change:config-schema-strictness -->
 - **Identity vs. preferences are split across files.** A person entry in the global overlay's people list declares who the person is; their `creds`, `notifications`, and `timezone` live in a separate per-person YAML. The global overlay's key-restriction check enforces the split at the global level.
 - **`role` enum membership is binding.** Changing the platform's role vocabulary requires a schema migration; operator-defined roles are not representable.
