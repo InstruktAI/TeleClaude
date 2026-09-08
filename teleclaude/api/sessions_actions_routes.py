@@ -40,7 +40,12 @@ from teleclaude.api.run_session_refusals import (
     normalize_run_session_command,
     resolve_run_session_agent,
 )
-from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug
+from teleclaude.api.run_session_shapes import (
+    REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS,
+    RunSessionPlan,
+    infer_working_slug,
+    leading_command_args,
+)
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
@@ -136,7 +141,6 @@ SLUG_INFERABLE_LIFECYCLE_COMMANDS.add("analyze-todo-input")
 SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
     command.value for command in NON_SLUG_BOUND_COMMANDS
 }
-WORKING_SLUG_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS | {SlashCommand.NEXT_PREPARE.value}
 
 REMOTE_SESSION_MESSAGES_COMMAND = "get_session_messages"
 NO_REMOTE_COMPUTER = ""
@@ -253,6 +257,15 @@ def _leading_command(message: str | None) -> str | None:
     return message.split()[0] if message and message.startswith("/") else None
 
 
+def _refuse_missing_argument(command: str) -> RunSessionRefusal:
+    """Build the shared 400 refusal for a command dispatched without its required argument."""
+    return RunSessionRefusal(
+        status_code=400,
+        detail=f"/{command} requires a slug argument",
+        reason=AgentDispatchReason.SLUG_REQUIRED,
+    )
+
+
 def _normalize_command(command: str | None) -> SlashCommand | None:
     """Parse a door-supplied launch command into its canonical `SlashCommand` value.
 
@@ -318,19 +331,26 @@ async def guard_generic_create_session(
     cmd: object,
     identity: CallerIdentity,
 ) -> DriverStartGuardResult:
-    """Guard generic session creation against forbidden job commands and duplicate drivers."""
+    """Guard generic session creation against forbidden job commands, missing required slugs, and duplicate drivers."""
     if not isinstance(cmd, CreateSessionCommand):
         return DriverStartGuardResult()
-    if _normalize_command(_leading_command(request.message)) is SlashCommand.NEXT_RUN_JOB:
+    leading_command = _leading_command(request.message)
+    if _normalize_command(leading_command) is SlashCommand.NEXT_RUN_JOB:
         raise RunSessionRefusal(
             status_code=400,
             detail=_JOB_COMMAND_GENERIC_CREATE_DETAIL,
             reason=AgentDispatchReason.JOB_COMMAND_GENERIC_CREATE,
         )
+    working_slug = resolve_working_slug_from_subdir(request.subdir) or cmd.working_slug
+    command_name = leading_command.removeprefix("/") if leading_command else None
+    if command_name in SLUG_REQUIRED_LIFECYCLE_COMMANDS and not working_slug:
+        raise _refuse_missing_argument(command_name)
+    if command_name in REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS and not leading_command_args(request.message):
+        raise _refuse_missing_argument(command_name)
     return await enforce_driver_start_guard(
         project_path=request.project_path,
-        working_slug=resolve_working_slug_from_subdir(request.subdir) or cmd.working_slug,
-        command=_leading_command(request.message),
+        working_slug=working_slug,
+        command=leading_command,
         caller_session_id=identity.session_id,
         thinking_mode=cmd.launch_intent.thinking_mode if cmd.launch_intent else "",
     )
@@ -374,20 +394,13 @@ def _prepare_run_session(
     initiator_session_id: str | None = None
     if identity.session_id and not identity.session_id.startswith("web:"):
         initiator_session_id = identity.session_id
-    if normalized_cmd in WORKER_LIFECYCLE_COMMANDS:
-        if not normalized_args:
-            raise RunSessionRefusal(
-                status_code=400,
-                detail=f"/{normalized_cmd} requires a slug argument",
-                reason=AgentDispatchReason.SLUG_REQUIRED,
-            )
+    if normalized_cmd in WORKER_LIFECYCLE_COMMANDS and not normalized_args:
+        raise _refuse_missing_argument(normalized_cmd)
+    if normalized_cmd in REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS and not normalized_args:
+        raise _refuse_missing_argument(normalized_cmd)
     working_slug = infer_working_slug(normalized_cmd, normalized_args)
     if normalized_cmd in SLUG_REQUIRED_LIFECYCLE_COMMANDS and not working_slug:
-        raise RunSessionRefusal(
-            status_code=400,
-            detail=f"/{normalized_cmd} requires a slug argument",
-            reason=AgentDispatchReason.SLUG_REQUIRED,
-        )
+        raise _refuse_missing_argument(normalized_cmd)
     if normalized_cmd in WORKTREE_BOUND_WORKER_COMMANDS:
         expected_subfolder = f"{WORKTREE_DIR}/{working_slug}"
         if request.subfolder != expected_subfolder:

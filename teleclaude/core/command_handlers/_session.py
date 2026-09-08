@@ -207,7 +207,7 @@ async def _resolve_launch_intent(
     intent.decision_basis_digest = basis_digest
     if intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE and intent.message is not None:
         raw_startup_message = intent.message
-        intent.message = prepare_startup_message(intent.message)
+        intent.message = prepare_startup_message(intent.message, cmd.command)
         startup_reason = (
             AgentDispatchReason.CODEX_LOADER
             if intent.message != raw_startup_message

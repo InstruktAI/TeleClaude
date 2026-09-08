@@ -67,6 +67,8 @@ def run_dispatch_refusal_reason(error: Exception) -> AgentDispatchReason | None:
         if error.reason is RemoteDispatchReason.TARGET_DISPATCH_CAPABILITY_REQUIRED:
             return AgentDispatchReason.TARGET_CAPABILITY_MISSING
         return AgentDispatchReason.RUN_REQUEST_REJECTED
+    if isinstance(error, StartupMessageError):
+        return AgentDispatchReason.COMMAND_INVALID
     return None
 
 
