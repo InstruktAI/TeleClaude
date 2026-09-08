@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from teleclaude.config._coerce import as_bool
+from teleclaude.config._strictness import SCALAR, ClosedMapping
+
+CHIPTUNES_INPUT = ClosedMapping({"enabled": SCALAR, "music_dir": SCALAR, "volume": SCALAR})
 
 
 @dataclass

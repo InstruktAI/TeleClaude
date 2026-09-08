@@ -14,7 +14,8 @@ from uuid import uuid4
 
 import yaml
 
-from teleclaude.config.declaration import write_declared_config
+from teleclaude.config._file_io import file_transaction
+from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.schema import ConfigKind, PersonEntry
 from teleclaude.paths import (
     PEOPLE_DIR,
@@ -124,24 +125,31 @@ def _capture_state(people: Iterable[PersonEntry]) -> PersonClaimMigrationState:
 
 
 def _complete_target(path: Path, slug: str) -> bool:
-    document = _load_document(path)
-    if document is None or document.get(_KIND_FIELD) != ConfigKind.PERSON.value:
-        return False
-    if _PERSON_SLUG_FIELD in document:
-        return True
-    updated_document = {**document, _PERSON_SLUG_FIELD: slug}
     try:
-        write_declared_config(path, ConfigKind.PERSON, updated_document, schema_root=path.parent.parent.parent)
+        with file_transaction(path) as transaction:
+            document = _load_document_content(transaction.read_text())
+            if document is None or document.get(_KIND_FIELD) != ConfigKind.PERSON.value:
+                return False
+            if _PERSON_SLUG_FIELD in document:
+                return True
+            updated_document = {**document, _PERSON_SLUG_FIELD: slug}
+            transaction.replace_text(
+                render_declared_config(path, ConfigKind.PERSON, updated_document, schema_root=path.parent.parent.parent)
+            )
+            return True
     except OSError:
         return False
-    return True
 
 
 def _load_document(path: Path) -> Mapping[str, object] | None:
     try:
-        document: object = yaml.safe_load(path.read_text(encoding=_UTF8)) or {}
+        return _load_document_content(path.read_text(encoding=_UTF8))
     except (OSError, yaml.YAMLError):
         return None
+
+
+def _load_document_content(content: str) -> Mapping[str, object] | None:
+    document: object = yaml.safe_load(content) or {}
     return cast(Mapping[str, object], document) if isinstance(document, dict) else None
 
 

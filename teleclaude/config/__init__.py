@@ -22,6 +22,8 @@ from teleclaude.config._chiptunes import ChiptunesConfig as ChiptunesConfig
 from teleclaude.config._chiptunes import parse_chiptunes_config as _parse_chiptunes_config
 from teleclaude.config._coerce import as_bool as _as_bool
 from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
+from teleclaude.config._file_migrations import remove_matching_tmux_binary
+from teleclaude.config._machine_input import EXPERIMENTS_FILE_INPUT, MACHINE_CONFIG_INPUT
 from teleclaude.config._models import AgentConfig as AgentConfig
 from teleclaude.config._models import ComputerConfig as ComputerConfig
 from teleclaude.config._models import CredsConfig as CredsConfig
@@ -60,6 +62,7 @@ from teleclaude.config._remote_computers import parse_remote_computers as _parse
 from teleclaude.config._runtime_tunables import parse_api_config as _parse_api_config
 from teleclaude.config._runtime_tunables import parse_daemon_config as parse_daemon_config
 from teleclaude.config._runtime_tunables import parse_hook_outbox_config as _parse_hook_outbox_config
+from teleclaude.config._strictness import validate_machine_input
 from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
 from teleclaude.config._summarizer import SummarizerLocalConfig as SummarizerLocalConfig
 from teleclaude.config._summarizer import parse_summarizer_config as _parse_summarizer_config
@@ -691,8 +694,15 @@ def restart_required_sections(changed: list[str]) -> list[str]:
     return [section for section in changed if section not in HOT_RELOADABLE_SECTIONS]
 
 
-def build_config_from_raw(raw_user_config: object, sibling_dir: Path) -> TeleclaudeConfig:
+def build_config_from_raw(
+    raw_user_config: object,
+    sibling_dir: Path,
+    *,
+    config_source: Path | None = None,
+) -> TeleclaudeConfig:
     """Build the typed config from raw YAML and adjacent machine-config files."""
+    source = config_source or sibling_dir / ConfigFileName.MACHINE
+    validate_machine_input(raw_user_config, MACHINE_CONFIG_INPUT, source)
     load_id = str(uuid4())
     field_sources = credential_field_sources(raw_user_config)
     logger.info(
@@ -706,7 +716,8 @@ def build_config_from_raw(raw_user_config: object, sibling_dir: Path) -> Telecla
     experiments_path = sibling_dir / "experiments.yml"
     if experiments_path.exists():
         with open(experiments_path, encoding="utf-8") as f:
-            raw_experiments_config = yaml.safe_load(f)
+            raw_experiments_config = yaml.safe_load(f) or {}
+        validate_machine_input(raw_experiments_config, EXPERIMENTS_FILE_INPUT, experiments_path)
         if isinstance(raw_experiments_config, dict) and isinstance(user_config, dict):
             experiments_config: Any = strip_unset_placeholders(expand_env_vars(raw_experiments_config))
             if "experiments" in experiments_config:
@@ -746,9 +757,10 @@ def build_config_from_raw(raw_user_config: object, sibling_dir: Path) -> Telecla
 def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
     """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
     _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
+    remove_matching_tmux_binary(path, resolve_tmux_binary())
     with open(path, encoding="utf-8") as f:
         raw_user_config = yaml.safe_load(f)
-    return build_config_from_raw(raw_user_config, path.parent)
+    return build_config_from_raw(raw_user_config, path.parent, config_source=path)
 
 
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.

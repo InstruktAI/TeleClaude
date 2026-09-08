@@ -14,10 +14,16 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 from ruamel.yaml import YAML
 
+from teleclaude.config._file_io import file_transaction
+from teleclaude.config._file_migrations import (
+    migrate_global_file,
+    move_person_invite_token,
+    remove_person_notifications,
+)
 from teleclaude.config.advancement import advance_config
 from teleclaude.config.context_root import resolve_context_root
-from teleclaude.config.declaration import write_declared_config
-from teleclaude.config.person_claim import capture_required, migrate_person_claim_for_target
+from teleclaude.config.declaration import render_declared_config, write_declared_config
+from teleclaude.config.person_claim import migrate_person_claim_for_target
 from teleclaude.config.schema import (
     AppConfig,
     CompanyConfig,
@@ -68,27 +74,6 @@ class RefusedDeclaredMailAccount:
 DeclaredMailAccountResolution = ResolvedDeclaredMailAccount | RefusedDeclaredMailAccount
 
 
-def _warn_unknown_keys(model: BaseModel, path: str, config_path: Path) -> None:
-    """Recursively warn about unknown keys in a model and its nested models."""
-    if hasattr(model, "model_extra") and model.model_extra:
-        logger.warning("Unknown keys in %s at %s: %s", path, config_path, list(model.model_extra.keys()))
-
-    # Check nested BaseModel instances
-    for field_name, field_value in model.__dict__.items():
-        if isinstance(field_value, BaseModel):
-            _warn_unknown_keys(field_value, f"{path}.{field_name}", config_path)
-        elif isinstance(field_value, dict):
-            # Check dict values for nested BaseModels
-            for key, value in field_value.items():
-                if isinstance(value, BaseModel):
-                    _warn_unknown_keys(value, f"{path}.{field_name}.{key}", config_path)
-        elif isinstance(field_value, list):
-            # Check list items for nested BaseModels
-            for idx, item in enumerate(field_value):
-                if isinstance(item, BaseModel):
-                    _warn_unknown_keys(item, f"{path}.{field_name}[{idx}]", config_path)
-
-
 def load_config[T: BaseModel](
     path: Path,
     model_class: type[T],
@@ -131,13 +116,27 @@ def load_config[T: BaseModel](
         logger.error("Failed to read config file %s: %s", path, e)
         raise ValueError(f"Failed to read config file {path}: {e}") from e
 
+    if kind is ConfigKind.GLOBAL:
+        canonical_people_dir = (
+            PEOPLE_DIR if path.expanduser().resolve() == GLOBAL_CONFIG_PATH.expanduser().resolve() else None
+        )
+        migrate_global_file(path, canonical_people_dir)
+        raw = _read_config_mapping(path)
     expanded = expand_env_vars(raw)
     try:
-        model = model_class.model_validate(expanded)
+        model = model_class.model_validate(expanded, extra="forbid")
     except Exception as exc:
         raise ValueError(f"Failed to validate config file {path}: {exc}") from exc
-    _warn_unknown_keys(model, "root", path)
     return model
+
+
+def _read_config_mapping(path: Path) -> object:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.error("Failed to read config file %s: %s", path, e)
+        raise ValueError(f"Failed to read config file {path}: {e}") from e
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -177,14 +176,15 @@ def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
     keys that are not part of the GlobalConfig schema (e.g. jobs, deployment).
     """
     target = path or GLOBAL_CONFIG_PATH
-    existing: dict[str, Any] = {}  # guard: loose-dict - raw YAML config
-    if target.exists():
-        yaml_rt = YAML()
-        with open(target, encoding="utf-8") as f:
-            existing = yaml_rt.load(f) or {}
-    overlay = _model_to_dict(config)
-    merged = _deep_merge(existing, overlay)
-    write_declared_config(target, ConfigKind.GLOBAL, merged, schema_root=target.parent)
+    with file_transaction(target) as transaction:
+        existing: dict[str, Any] = {}  # guard: loose-dict - raw YAML config
+        content = transaction.read_text()
+        if content:
+            yaml_rt = YAML()
+            existing = yaml_rt.load(content) or {}
+        overlay = _model_to_dict(config)
+        merged = _deep_merge(existing, overlay)
+        transaction.replace_text(render_declared_config(target, ConfigKind.GLOBAL, merged, schema_root=target.parent))
     logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(existing))
 
 
@@ -217,16 +217,27 @@ def load_person_config(path: Path, *, registered_slug: str | None = None) -> Per
         ConfigKind.PERSON,
         path.parent,
         default_fields=default_fields,
-        pre_validation=_person_claim_pre_validation(path),
+        pre_validation=_person_claim_pre_validation(path, registered_slug),
     )
 
 
-def _person_claim_pre_validation(path: Path) -> Callable[[], None]:
+def _person_claim_pre_validation(path: Path, registered_slug: str | None) -> Callable[[], None]:
     """Build the person-only transition that runs after generic tier advancement."""
 
     def migrate_person_claim() -> None:
-        people: Iterable[PersonEntry] = load_global_config().people if capture_required() else ()
+        people: Iterable[PersonEntry] = load_global_config().people
         migrate_person_claim_for_target(path, people)
+        remove_person_notifications(path)
+        slug = registered_slug or next(
+            (
+                person.slug
+                for person in people
+                if person.slug and PEOPLE_DIR / person.slug / ConfigFileName.OVERLAY == path
+            ),
+            None,
+        )
+        if slug is not None:
+            move_person_invite_token(path, slug)
 
     return migrate_person_claim
 

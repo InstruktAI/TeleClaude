@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.config._file_io import file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH
 
 DeepMerge = Callable[[dict[str, object], dict[str, object]], dict[str, object]]  # guard: loose-dict - YAML config merge
@@ -25,14 +26,11 @@ def resolve_runtime_config_path(blueprint_path: Path, deep_merge: DeepMerge) -> 
     if not blueprint_path.exists():
         return runtime
 
-    runtime.parent.mkdir(parents=True, exist_ok=True)
     blueprint_raw = yaml.safe_load(blueprint_path.read_text(encoding="utf-8")) or {}
-    runtime_raw: object = {}
-    if runtime.exists():
-        runtime_raw = yaml.safe_load(runtime.read_text(encoding="utf-8")) or {}
-
-    if isinstance(blueprint_raw, dict) and isinstance(runtime_raw, dict):
-        seeded = deep_merge(blueprint_raw, runtime_raw)  # runtime wins; blueprint fills gaps
-        if seeded != runtime_raw:
-            runtime.write_text(yaml.safe_dump(seeded, sort_keys=False), encoding="utf-8")
+    with file_transaction(runtime) as transaction:
+        runtime_raw: object = yaml.safe_load(transaction.read_text()) or {}
+        if isinstance(blueprint_raw, dict) and isinstance(runtime_raw, dict):
+            seeded = deep_merge(blueprint_raw, runtime_raw)  # runtime wins; blueprint fills gaps
+            if seeded != runtime_raw:
+                transaction.replace_text(yaml.safe_dump(seeded, sort_keys=False))
     return runtime

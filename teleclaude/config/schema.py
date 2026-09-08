@@ -610,7 +610,7 @@ class ProjectConfig(BaseModel):
         """Block keys that belong at other config levels."""
         if not isinstance(data, dict):
             return data
-        disallowed = {"people", "ops", "creds", "notifications", "timezone", "workflow"}
+        disallowed = {"people", "ops", "creds", "timezone", "workflow"}
         present = disallowed.intersection(data.keys())
         if present:
             raise ValueError(f"Keys not allowed at project level: {', '.join(present)}")
@@ -652,23 +652,11 @@ class GlobalConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def migrate_git_checkout_root(cls, data: Any) -> Any:
-        """Migrate git.checkout_root from legacy YAML path to top-level checkout_root."""
-        if not isinstance(data, dict):
-            return data
-        git = data.get("git")
-        if isinstance(git, dict) and "checkout_root" in git and "checkout_root" not in data:
-            data = dict(data)
-            data["checkout_root"] = git["checkout_root"]
-        return data
-
-    @model_validator(mode="before")
-    @classmethod
     def reject_disallowed_keys(cls, data: Any) -> Any:
         """Block keys that belong at per-person config level."""
         if not isinstance(data, dict):
             return data
-        disallowed = {"creds", "notifications", "timezone"}
+        disallowed = {"creds", "timezone"}
         present = disallowed.intersection(data.keys())
         if present:
             raise ValueError(f"Keys not allowed at global level: {', '.join(present)}")
@@ -746,8 +734,8 @@ class CompanyConfig(BaseModel):
     Composed into the effective config alongside ``project`` (not workspace-type
     keyed): resolved from the active project's ``company`` membership. ERP is the
     system of record; every real company detail resolves through ``erp_id`` and is
-    never duplicated here — the profile is thin context-scaffolding. ``extra=allow``
-    for additive growth.
+    never duplicated here — the profile is thin context-scaffolding. File-backed
+    overlays reject undeclared fields at their load boundary.
     """
 
     model_config = ConfigDict(extra="allow")
