@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from teleclaude import api_models
+from teleclaude.agent_registry import AgentName
 
 _HEADER_LINES: tuple[str, ...] = (
     "/**",
@@ -42,7 +43,7 @@ _RESOURCE_DTO_NAMES: frozenset[str] = frozenset(
     }
 )
 _LITERAL_ALIAS_VALUES: dict[str, tuple[str, ...]] = {
-    "AgentName": ("claude", "gemini", "codex"),
+    "AgentName": tuple(AgentName),
     "ThinkingMode": ("fast", "med", "slow"),
     "HumanRole": ("admin", "member", "contributor", "newcomer"),
     "LaunchKind": ("empty", "agent", "agent_then_message", "agent_resume"),
@@ -311,13 +312,24 @@ def _map_model_annotation(annotation: object) -> str | None:
     return _typescript_name(candidate.__name__)
 
 
-def _map_enum_annotation(annotation: object) -> str | None:
-    """Map an Enum class to the TypeScript union of its member values."""
+def _map_enum_annotation(
+    annotation: object,
+    *,
+    model_name: str,
+    field_name: str,
+    used_literal_aliases: set[str],
+) -> str | None:
+    """Map an Enum class to a named alias when one matches its member values, else an inline union."""
     if not inspect.isclass(annotation):
         return None
     candidate = cast(type[object], annotation)
     if not issubclass(candidate, Enum):
         return None
+    values = tuple(str(member.value) for member in candidate)
+    alias_name = _select_literal_alias(model_name, field_name, values)
+    if alias_name is not None:
+        used_literal_aliases.add(alias_name)
+        return alias_name
     return " | ".join(_render_literal_value(member.value) for member in candidate)
 
 
@@ -371,7 +383,12 @@ def _map_annotation(
         if mapped_type is None:
             mapped_type = _map_model_annotation(annotation)
         if mapped_type is None:
-            mapped_type = _map_enum_annotation(annotation)
+            mapped_type = _map_enum_annotation(
+                annotation,
+                model_name=model_name,
+                field_name=field_name,
+                used_literal_aliases=used_literal_aliases,
+            )
     if mapped_type is None:
         raise ValueError(f"No TypeScript mapping for annotation {annotation!r} on {model_name}.{field_name}")
     return mapped_type

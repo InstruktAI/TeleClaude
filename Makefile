@@ -51,3 +51,4 @@ cron-smoke:
 
 generate-types:
 	@uv run -m teleclaude.codegen.pydantic_to_typescript
+	@uv run -m teleclaude.codegen.agent_registry

@@ -16,6 +16,7 @@ import yaml
 from dotenv import dotenv_values
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config._agents import build_agents_registry
 from teleclaude.config._bootstrap import resolve_runtime_config_path
 from teleclaude.config._chiptunes import ChiptunesConfig as ChiptunesConfig
 from teleclaude.config._chiptunes import parse_chiptunes_config as _parse_chiptunes_config
@@ -63,11 +64,8 @@ from teleclaude.config._summarizer import SummarizerConfig as SummarizerConfig
 from teleclaude.config._summarizer import SummarizerLocalConfig as SummarizerLocalConfig
 from teleclaude.config._summarizer import parse_summarizer_config as _parse_summarizer_config
 from teleclaude.config.observation import credential_field_sources, credential_section_availability
-from teleclaude.config.tiers import Tier, dataclass_field_tier, effective_tier, in_public_sample
 from teleclaude.constants import (
-    AGENT_PROTOCOL,
     DIRECTORY_CHECK_INTERVAL,
-    GIT_AUTHOR_IDENTITIES,
     HELP_DESK_SUBDIR,
     OUTPUT_CADENCE_S,
     REDIS_MAX_CONNECTIONS,
@@ -76,10 +74,9 @@ from teleclaude.constants import (
     REDIS_OUTPUT_STREAM_TTL,
     REDIS_SOCKET_TIMEOUT,
     WHATSAPP_API_VERSION,
-    AgentProtocolDict,
 )
 from teleclaude.paths import PROJECT_ENV_PATH, ConfigFileName
-from teleclaude.runtime.binaries import resolve_agent_binary, resolve_tmux_binary
+from teleclaude.runtime.binaries import resolve_tmux_binary
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -94,6 +91,7 @@ CONFIG_LOAD_ID = "load_id"
 CONFIG_LOAD_OUTCOME = "outcome"
 CONFIG_LOAD_FIELD_SOURCES = "field_sources"
 CONFIG_LOAD_SECTION_AVAILABILITY = "section_availability"
+
 
 # Project root (relative to this file)
 _project_root = Path(__file__).parent.parent.parent
@@ -209,123 +207,6 @@ def prune_defaults(
         elif value != default:
             pruned[key] = value
     return pruned
-
-
-def _require_agents_section(raw_config: dict[str, object]) -> dict[str, object]:  # guard: loose-dict
-    """Require an explicit top-level `agents` mapping in config.yml."""
-    agents_raw = raw_config.get("agents")
-    if agents_raw is None:
-        raise ValueError(
-            "Missing required config key `config.yml:agents`. Add `agents:` with at least one configured agent entry."
-        )
-    if not isinstance(agents_raw, dict):
-        raise ValueError("Invalid config key `config.yml:agents`: expected a mapping of agent names to settings.")
-    return agents_raw
-
-
-def _validate_known_agent_keys(
-    agents_raw: dict[str, object],  # guard: loose-dict
-    known_agents: tuple[str, ...],
-) -> None:
-    """Reject unknown agent keys under config.yml:agents."""
-    unknown = sorted(str(name) for name in agents_raw.keys() if str(name) not in known_agents)
-    if unknown:
-        raise ValueError(
-            f"Unknown key(s) under `config.yml:agents`: {', '.join(unknown)}. Allowed keys: {', '.join(known_agents)}."
-        )
-
-
-def _agent_editable_keys() -> frozenset[str]:
-    """Return the agent settings an operator may declare, read from the field tiers.
-
-    The tier markers on ``AgentConfig`` are the single authority: a leaf marked
-    ``public`` or ``tui`` is an operator surface, everything else is runtime
-    policy. Adding a marker is therefore the whole change needed to expose a new
-    setting — this loader never carries its own list.
-    """
-    return frozenset(
-        f.name for f in fields(AgentConfig) if in_public_sample(effective_tier(dataclass_field_tier(f), Tier.INTERNAL))
-    )
-
-
-def _validate_agent_setting_keys(
-    agent: str,
-    user_agent_config: dict[str, object],  # guard: loose-dict - YAML deserialization input
-) -> None:
-    """Reject agent settings the loader cannot honor rather than discarding them."""
-    editable = _agent_editable_keys()
-    unknown = sorted(str(key) for key in user_agent_config if str(key) not in editable)
-    if unknown:
-        raise ValueError(
-            f"Unknown key(s) under `config.yml:agents.{agent}`: {', '.join(unknown)}. "
-            f"Allowed keys: {', '.join(sorted(editable))}."
-        )
-
-
-def _parse_profiles(agent: str, raw: object, protocol: AgentProtocolDict) -> dict[str, str]:
-    """Overlay operator-declared launch profiles onto the protocol defaults.
-
-    A declared profile replaces that profile's flags outright; profiles the
-    operator does not name keep the protocol value.
-    """
-    merged = dict(protocol["profiles"])
-    if raw is None:
-        return merged
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid config key `config.yml:agents.{agent}.profiles`: expected a mapping.")
-    for profile_name, flags in raw.items():
-        name = str(profile_name)
-        if name not in merged:
-            allowed = ", ".join(sorted(merged))
-            raise ValueError(
-                f"Unknown profile `config.yml:agents.{agent}.profiles.{name}`. Allowed profiles: {allowed}."
-            )
-        if not isinstance(flags, str):
-            raise ValueError(f"Invalid config key `config.yml:agents.{agent}.profiles.{name}`: expected a string.")
-        merged[name] = flags
-    return merged
-
-
-def _parse_model_chains(agent: str, raw: object, protocol: AgentProtocolDict) -> dict[str, list[ModelChainEntry]]:
-    """Validate the operator-owned per-mode fallback chains for one agent.
-
-    Each chain entry is a mapping carrying the model identity and its complete,
-    opaque launch flags; the platform never derives flags from a template.
-    """
-    if raw is None:
-        return {}
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid config key `config.yml:agents.{agent}.model_chains`: expected a mapping.")
-    mode_chains = protocol["mode_chains"]
-    chains: dict[str, list[ModelChainEntry]] = {}
-    for mode, entries_raw in raw.items():
-        path = f"config.yml:agents.{agent}.model_chains.{mode}"
-        if mode not in mode_chains:
-            raise ValueError(f"Invalid config key `{path}`: unknown thinking mode.")
-        if mode == "default":
-            raise ValueError(f"Invalid config key `{path}`: default mode does not accept a model chain.")
-        if not isinstance(entries_raw, list) or not entries_raw:
-            raise ValueError(f"Invalid config key `{path}`: expected a non-empty list of {{model, flags}} entries.")
-        entries: list[ModelChainEntry] = []
-        for index, entry_raw in enumerate(entries_raw):
-            entry_path = f"{path}[{index}]"
-            if not isinstance(entry_raw, dict):
-                raise ValueError(f"Invalid config key `{entry_path}`: expected a {{model, flags}} mapping.")
-            unknown_keys = sorted(set(entry_raw) - {"model", "flags", "patch"})
-            if unknown_keys:
-                raise ValueError(f"Invalid config key `{entry_path}`: unknown key(s): {', '.join(unknown_keys)}.")
-            model = entry_raw.get("model")
-            flags = entry_raw.get("flags")
-            patch = entry_raw.get("patch")
-            if not isinstance(model, str) or not model.strip():
-                raise ValueError(f"Invalid config key `{entry_path}.model`: expected a non-empty model identifier.")
-            if not isinstance(flags, str) or not flags.strip():
-                raise ValueError(f"Invalid config key `{entry_path}.flags`: expected a non-empty launch-flag string.")
-            if patch is not None and (not isinstance(patch, str) or not patch.strip()):
-                raise ValueError(f"Invalid config key `{entry_path}.patch`: expected a JSON parameter-map string.")
-            entries.append(ModelChainEntry(model=model, flags=flags, patch=patch or ""))
-        chains[str(mode)] = entries
-    return chains
 
 
 def _parse_categories(raw: object) -> dict[str, int] | None:
@@ -616,77 +497,7 @@ def _build_config(
     deployment_raw = raw.get("deployment", None)
     summarizer_raw = raw.get("summarizer", None)
     experiments_raw = raw.get("experiments", [])
-    agents_raw = dict(_require_agents_section(raw))
-
-    known_agents = tuple(AGENT_PROTOCOL.keys())
-
-    default_agent_raw = agents_raw.pop("default", None)
-    if default_agent_raw is None:
-        raise ValueError(
-            f"Missing required config key `config.yml:agents.default`. Set it to one of: {', '.join(known_agents)}."
-        )
-    if not isinstance(default_agent_raw, str):
-        raise ValueError(
-            f"Invalid config key `config.yml:agents.default`: expected a string ({', '.join(known_agents)})."
-        )
-    default_agent = default_agent_raw.strip().lower()
-    if default_agent not in known_agents:
-        raise ValueError(
-            f"Invalid config key `config.yml:agents.default`: unknown agent '{default_agent_raw}'. "
-            f"Allowed values: {', '.join(known_agents)}."
-        )
-
-    _validate_known_agent_keys(agents_raw, known_agents)
-
-    agents_registry: dict[str, AgentConfig] = {}
-    for name, protocol in AGENT_PROTOCOL.items():
-        # Get user overrides for this agent if any
-        val = agents_raw.get(name)
-        if val is not None and not isinstance(val, dict):
-            raise ValueError(f"Invalid config key `config.yml:agents.{name}`: expected a mapping of agent settings.")
-        user_agent_config = val if isinstance(val, dict) else {}
-        _validate_agent_setting_keys(name, user_agent_config)
-        model_chains = _parse_model_chains(name, user_agent_config.get("model_chains"), protocol)
-
-        agents_registry[name] = AgentConfig(
-            binary=resolve_agent_binary(name),
-            profiles=_parse_profiles(name, user_agent_config.get("profiles"), protocol),
-            session_dir=str(protocol["session_dir"]),
-            log_pattern=str(protocol["log_pattern"]),
-            mode_chains={
-                mode: [
-                    ModelChainEntry(
-                        model=str(entry["model"]),
-                        flags=str(entry.get("flags", "")),
-                        patch=str(entry.get("patch", "")),
-                    )
-                    for entry in entries
-                ]
-                for mode, entries in protocol["mode_chains"].items()
-            },
-            model_chains=model_chains,
-            exec_subcommand=str(protocol["exec_subcommand"]),
-            interactive_flag=str(protocol["interactive_flag"]),
-            non_interactive_flag=str(protocol["non_interactive_flag"]),
-            resume_template=str(protocol["resume_template"]),
-            continue_template=str(protocol.get("continue_template", "")),  # Optional field
-            prompt_at_launch=bool(protocol.get("prompt_at_launch", False)),
-            model_via_launch_patch=bool(protocol.get("model_via_launch_patch", False)),
-            restricted_sandbox_mode=str(protocol.get("restricted_sandbox_mode", "")),
-            enabled=_as_bool(user_agent_config.get("enabled", True)),
-            git_identity=GIT_AUTHOR_IDENTITIES.get(name),
-        )
-
-    if not any(agent_cfg.enabled for agent_cfg in agents_registry.values()):
-        raise ValueError(
-            "Invalid config at `config.yml:agents`: all known agents are disabled. "
-            "Set `config.yml:agents.<agent>.enabled: true` for at least one configured agent."
-        )
-    if not agents_registry[default_agent].enabled:
-        raise ValueError(
-            f"Invalid config key `config.yml:agents.default`: '{default_agent}' is disabled. "
-            f"Enable `config.yml:agents.{default_agent}.enabled: true` or choose an enabled agent."
-        )
+    agents_registry, default_agent = build_agents_registry(raw, load_id=load_id)
 
     experiments = []
     if isinstance(experiments_raw, list):

@@ -531,7 +531,7 @@ def parse_agents(agent_arg: str) -> list[AgentName]:
     """Parse agent argument into list of AgentName."""
     agent_arg = agent_arg.strip().lower()
     if agent_arg == "all":
-        return [AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI, AgentName.DEEPSEEK]
+        return list(AgentName)
 
     agents: list[AgentName] = []
     for part in agent_arg.split(","):

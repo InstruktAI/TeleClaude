@@ -29,6 +29,7 @@ import tempfile
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.agent_registry import AGENT_REGISTRY, OneShotSupport
 from teleclaude.config import config as app_config
 from teleclaude.core.agents import get_enabled_agents, is_agent_enabled, render_mode_flags
 from teleclaude.core.db import read_agent_availability_sync
@@ -146,7 +147,7 @@ def _load_schema(
     return json.loads(_extract_json_object(text))  # type: ignore[no-any-return]
 
 
-def _pick_agent(preferred: AgentName | None) -> AgentName:
+def _pick_agent(preferred: AgentName | None, *, requires_structured_one_shot: bool = False) -> AgentName:
     def binary_available(agent: AgentName) -> bool:
         binary = resolve_agent_binary(agent.value)
         if "/" in binary:
@@ -157,8 +158,15 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
     def db_available(agent: AgentName) -> bool:
         return read_agent_availability_sync(str(MAIN_DB_PATH), agent.value)
 
+    def capability_ok(agent: AgentName) -> bool:
+        if not requires_structured_one_shot:
+            return True
+        return AGENT_REGISTRY[agent].one_shot is OneShotSupport.SUPPORTED
+
     def agent_usable(agent: AgentName) -> bool:
-        return is_agent_enabled(agent.value) and binary_available(agent) and db_available(agent)
+        return (
+            is_agent_enabled(agent.value) and binary_available(agent) and db_available(agent) and capability_ok(agent)
+        )
 
     if preferred:
         if not is_agent_enabled(preferred.value):
@@ -167,6 +175,8 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
             raise SystemExit(f"ERROR: configured binary for {preferred.value} is not available")
         if not db_available(preferred):
             raise SystemExit(f"ERROR: configured agent {preferred.value} is marked unavailable or degraded")
+        if not capability_ok(preferred):
+            raise SystemExit(f"ERROR: {preferred.value} does not support schema-constrained structured one-shot calls")
         return preferred
     for candidate_name in get_enabled_agents():
         candidate = AgentName.from_str(candidate_name)
@@ -397,7 +407,7 @@ def run_once(
     timeout_s: int | None = None,
 ) -> dict[str, object]:  # guard: loose-dict - Agent response with embedded result
     """Run a single agent invocation and return the structured response."""
-    agent_enum = _pick_agent(AgentName.from_str(agent) if agent else None)
+    agent_enum = _pick_agent(AgentName.from_str(agent) if agent else None, requires_structured_one_shot=True)
     mode_enum = ThinkingMode.from_str(thinking_mode or ThinkingMode.FAST.value)
 
     schema_blob = json.dumps(schema)

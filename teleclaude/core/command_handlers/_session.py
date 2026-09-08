@@ -236,6 +236,8 @@ async def _resolve_launch_intent(
         excluded_agents=excluded_agents_logged,
         command_kind=command_kind,
         thinking_mode=intent.thinking_mode,
+        candidate_order=decision.candidate_order,
+        order_branch=decision.order_branch,
     )
     emit_agent_dispatch_decision(
         stage=AgentDispatchStage.STARTUP_PREPARED,

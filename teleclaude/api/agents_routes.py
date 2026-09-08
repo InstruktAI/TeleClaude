@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
+from teleclaude.agent_registry import registry_digest
 from teleclaude.api.auth import (
     CallerIdentity,
     clearance_agents_availability,
@@ -71,8 +72,14 @@ async def get_agent_availability(
 ) -> dict[str, AgentAvailabilityDTO]:
     """Get agent availability."""
     result: dict[str, AgentAvailabilityDTO] = {}
+    known_agents = get_known_agents()
+    logger.info(
+        "agent_runtime.agent_inventory.projected registry_digest=%s agent_count=%s",
+        registry_digest(),
+        len(known_agents),
+    )
 
-    for agent in get_known_agents():
+    for agent in known_agents:
         cfg = config.agents.get(agent)
         if cfg and not cfg.enabled:
             result[agent] = AgentAvailabilityDTO(

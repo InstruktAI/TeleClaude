@@ -8,23 +8,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-_MACOS_TMUX_BINARY = Path.home() / "Applications" / "TmuxLauncher.app" / "Contents" / "MacOS" / "tmux-launcher"
-_MACOS_AGENT_BINARIES: dict[str, Path | str] = {
-    "claude": Path.home() / "Applications" / "ClaudeLauncher.app" / "Contents" / "MacOS" / "claude-launcher",
-    "gemini": "agy",
-    "codex": Path.home() / "Applications" / "CodexLauncher.app" / "Contents" / "MacOS" / "codex-launcher",
-    # Signed launcher bundle so macOS TCC permissions attach to a stable
-    # identity (npm-global CLI paths move between installs).
-    "deepseek": Path.home() / "Applications" / "DeepSeekLauncher.app" / "Contents" / "MacOS" / "deepseek-launcher",
-}
+from teleclaude.agent_registry import AGENT_REGISTRY, AgentName
 
+_MACOS_TMUX_BINARY = Path.home() / "Applications" / "TmuxLauncher.app" / "Contents" / "MacOS" / "tmux-launcher"
 _UNIX_TMUX_BINARY = "tmux"
-_UNIX_AGENT_BINARIES: dict[str, str] = {
-    "claude": "claude",
-    "gemini": "agy",
-    "codex": "codex",
-    "deepseek": "dsh",
-}
 
 
 def _is_macos() -> bool:
@@ -42,12 +29,21 @@ def resolve_agent_binary(agent: str) -> str:
     """Resolve agent binary by platform.
 
     Args:
-        agent: Canonical agent key (claude, gemini, codex)
+        agent: Canonical agent key (claude, gemini, codex, deepseek)
     """
     key = agent.strip().lower()
-    if key not in _UNIX_AGENT_BINARIES:
-        raise ValueError(f"Unknown agent '{agent}'")
-    if _is_macos():
-        val = _MACOS_AGENT_BINARIES[key]
-        return str(val) if isinstance(val, Path) else val
-    return _UNIX_AGENT_BINARIES[key]
+    try:
+        name = AgentName(key)
+    except ValueError:
+        raise ValueError(f"Unknown agent '{agent}'") from None
+    executable = AGENT_REGISTRY[name].executable
+    if _is_macos() and executable.macos_launch_binary is not None:
+        return str(
+            Path.home()
+            / "Applications"
+            / executable.macos_launcher_app
+            / "Contents"
+            / "MacOS"
+            / executable.macos_launch_binary
+        )
+    return executable.unix_binary

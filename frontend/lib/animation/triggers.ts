@@ -40,7 +40,7 @@ export class PeriodicTrigger {
   private _setInterval: typeof setInterval;
   private _clearInterval: typeof clearInterval;
 
-  constructor (
+  constructor(
     intervalSeconds: number = 60,
     opts?: {
       setInterval?: typeof setInterval;
@@ -118,7 +118,7 @@ export class ActivityTrigger {
   private _lastFireTime: number = 0;
   private _active: boolean = false;
 
-  constructor (cooldownMs: number = 500) {
+  constructor(cooldownMs: number = 500) {
     this._cooldownMs = cooldownMs;
   }
 

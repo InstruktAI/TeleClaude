@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from rich.style import Style
 from textual.theme import Theme
 
+from teleclaude.agent_registry import AGENT_REGISTRY, AgentName, PaletteTiers
 from teleclaude.cli.tui.color_utils import (
     blend,
     deepen_for_light_mode,
@@ -156,19 +157,14 @@ def refresh_mode() -> None:
 # THE PALETTE — every color consumer derives from this.
 # =============================================================================
 
+
+def _tier_dict(tiers: PaletteTiers) -> dict[str, str]:
+    return {"subtle": tiers.subtle, "muted": tiers.muted, "normal": tiers.normal, "highlight": tiers.highlight}
+
+
 AGENT_PALETTE: dict[str, dict[str, dict[str, str]]] = {
-    "dark": {
-        "claude": {"subtle": "#875f00", "muted": "#af875f", "normal": "#d7af87", "highlight": "#ffffff"},
-        "gemini": {"subtle": "#8787af", "muted": "#af87ff", "normal": "#d7afff", "highlight": "#ffffff"},
-        "codex": {"subtle": "#5f87af", "muted": "#87afd7", "normal": "#afd7ff", "highlight": "#ffffff"},
-        "deepseek": {"subtle": "#3b4a8a", "muted": "#7582cf", "normal": "#9babfb", "highlight": "#ffffff"},
-    },
-    "light": {
-        "claude": {"subtle": "#d7af87", "muted": "#af875f", "normal": "#875f00", "highlight": "#000000"},
-        "gemini": {"subtle": "#d787ff", "muted": "#af5fff", "normal": "#870087", "highlight": "#000000"},
-        "codex": {"subtle": "#87afd7", "muted": "#5f87af", "normal": "#005f87", "highlight": "#000000"},
-        "deepseek": {"subtle": "#6d7fe0", "muted": "#4d6bfe", "normal": "#2f4ad0", "highlight": "#000000"},
-    },
+    "dark": {name.value: _tier_dict(AGENT_REGISTRY[name].palette.dark) for name in AgentName},
+    "light": {name.value: _tier_dict(AGENT_REGISTRY[name].palette.light) for name in AgentName},
 }
 
 STRUCTURAL_PALETTE: dict[str, dict[str, str]] = {
@@ -201,7 +197,7 @@ PEACEFUL_PALETTE: dict[str, dict[str, str]] = {
 
 # --- Palette accessors ---
 
-_KNOWN_AGENTS = frozenset(("claude", "gemini", "codex", "deepseek"))
+_KNOWN_AGENTS = frozenset(AgentName.choices())
 
 
 def _safe_agent(agent: str) -> str:

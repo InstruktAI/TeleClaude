@@ -1,31 +1,14 @@
-"""Helper-only agent types (standalone, no external deps)."""
+"""Helper-only agent types.
+
+``AgentName`` is re-exported from ``teleclaude.agent_registry``, a leaf module
+with no internal dependencies — importing it here stays standalone. Only
+``ThinkingMode`` is declared in this module, since it has no canonical
+registry of its own.
+"""
 
 from enum import Enum
 
-
-class AgentName(str, Enum):
-    """Supported agent names."""
-
-    CLAUDE = "claude"
-    GEMINI = "gemini"
-    CODEX = "codex"
-    DEEPSEEK = "deepseek"
-
-    @classmethod
-    def from_str(cls, value: str) -> "AgentName":
-        """Parse a case-insensitive agent name into an enum member."""
-        normalized = value.strip().lower()
-        if normalized == "agy":
-            return cls.GEMINI
-        for member in cls:
-            if member.value == normalized:
-                return member
-        raise ValueError(f"Unknown agent '{value}'")
-
-    @classmethod
-    def choices(cls) -> tuple[str, ...]:
-        """Return the CLI choice values for supported agents."""
-        return tuple(member.value for member in cls)
+from teleclaude.agent_registry import AgentName as AgentName
 
 
 class ThinkingMode(str, Enum):

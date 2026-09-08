@@ -1,8 +1,15 @@
+@import './generated-agent-tokens.css';
+
 /* ---------------------------------------------------------------------------
  * TeleClaude Design Tokens
  * ---------------------------------------------------------------------------
  * This file is the absolute source of truth for all colors in the frontend.
  * Editing this file gives you full IDE support (color pickers, auto-completion).
+ *
+ * Agent color tiers (subtle/muted/normal/highlight) are generated from
+ * teleclaude/agent_registry.py into generated-agent-tokens.css — edit the
+ * registry, not the generated file. Haze is a frontend-only presentation
+ * value and stays hand-maintained here.
  * --------------------------------------------------------------------------- */
 
 :root {
@@ -35,26 +42,11 @@
   --tc-status-ready: #008700;
   --tc-status-warning: #af8700;
 
-  /* -- Agents (Claude) -- */
-  --tc-agent-claude-subtle: #d7af87;
-  --tc-agent-claude-muted: #af875f;
-  --tc-agent-claude-normal: #875f00;
-  --tc-agent-claude-highlight: #000000;
+  /* -- Agent haze (frontend-only; tiers generated into generated-agent-tokens.css) -- */
   --tc-agent-claude-haze: #af875f;
-
-  /* -- Agents (Gemini) -- */
-  --tc-agent-gemini-subtle: #d787ff;
-  --tc-agent-gemini-muted: #af5fff;
-  --tc-agent-gemini-normal: #870087;
-  --tc-agent-gemini-highlight: #000000;
   --tc-agent-gemini-haze: #af5fff;
-
-  /* -- Agents (Codex) -- */
-  --tc-agent-codex-subtle: #87afd7;
-  --tc-agent-codex-muted: #5f87af;
-  --tc-agent-codex-normal: #005f87;
-  --tc-agent-codex-highlight: #000000;
   --tc-agent-codex-haze: #5f8787;
+  --tc-agent-deepseek-haze: #4d6bfe;
 
   /* -- User -- */
   --tc-user-bubble-bg: #e07030;
@@ -103,26 +95,11 @@
   --tc-status-ready: #5faf5f;
   --tc-status-warning: #d7af00;
 
-  /* -- Agents (Claude) -- */
-  --tc-agent-claude-subtle: #875f00;
-  --tc-agent-claude-muted: #af875f;
-  --tc-agent-claude-normal: #d7af87;
-  --tc-agent-claude-highlight: #ffffff;
+  /* -- Agent haze (frontend-only; tiers generated into generated-agent-tokens.css) -- */
   --tc-agent-claude-haze: #af875f;
-
-  /* -- Agents (Gemini) -- */
-  --tc-agent-gemini-subtle: #8866d1;
-  --tc-agent-gemini-muted: #af87ff;
-  --tc-agent-gemini-normal: #d7afff;
-  --tc-agent-gemini-highlight: #ffffff;
   --tc-agent-gemini-haze: #af87ff;
-
-  /* -- Agents (Codex) -- */
-  --tc-agent-codex-subtle: #5f87af;
-  --tc-agent-codex-muted: #87afd7;
-  --tc-agent-codex-normal: #afd7ff;
-  --tc-agent-codex-highlight: #ffffff;
   --tc-agent-codex-haze: #87afaf;
+  --tc-agent-deepseek-haze: #7582cf;
 
   /* -- Misc -- */
   --tc-banner: #585858;

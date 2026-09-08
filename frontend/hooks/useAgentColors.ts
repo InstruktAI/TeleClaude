@@ -30,13 +30,13 @@ export interface AgentColors {
  * The returned values are CSS var() references, not actual hex values.
  * This ensures colors respond to theme changes and theme.local.css overrides.
  *
- * @param agent - Agent type (claude, gemini, codex)
+ * @param agent - Canonical agent type, or `undefined` for a session with no known agent
  * @returns Object with CSS var references for different UI elements
  */
-export function useAgentColors(agent: AgentType): AgentColors {
+export function useAgentColors(agent: AgentType | undefined): AgentColors {
   const { isThemed } = useAgentTheming();
 
-  if (isThemed) {
+  if (isThemed && agent) {
     // Themed mode: agent-colored assistant bubbles, orange user bubbles, agent sidebar
     return {
       assistantBubbleBg: `var(--tc-agent-${agent}-subtle)`,

@@ -247,9 +247,32 @@ update_agent_cli() {
     fi
 }
 
+# This script's install/enable handling below knows exactly these agents.
+# Adding a canonical agent to teleclaude/agent_registry.py without adding its
+# install/enable branch here is a packaging omission — fail loudly instead of
+# silently offering an incomplete agent list.
+_KNOWN_INSTALL_AGENTS="claude codex gemini deepseek"
+
+assert_agent_install_coverage() {
+    local canonical
+    canonical=$(PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.codegen.agent_registry --list)
+    local agent
+    for agent in $canonical; do
+        case " $_KNOWN_INSTALL_AGENTS " in
+            *" $agent "*) ;;
+            *)
+                print_error "bin/install.sh has no install/enable handling for canonical agent '$agent'"
+                print_error "Add its branch to setup_agents_interactive() before re-running install."
+                exit 1
+                ;;
+        esac
+    done
+}
+
 setup_agents_interactive() {
     print_header "Interactive Agent Configuration"
 
+    assert_agent_install_coverage
     ensure_config_yml
 
     local current_default_agent

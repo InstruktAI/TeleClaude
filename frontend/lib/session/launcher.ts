@@ -87,6 +87,7 @@ export async function launchSession(params: LaunchSessionParams): Promise<Launch
     const session: SessionInfo = {
       session_id: response.session_id,
       detached: false,
+      runtime_start_observed: false,
       tmux_session_name: response.tmux_session_name,
       title: 'Untitled',
       project_path: params.projectPath,
