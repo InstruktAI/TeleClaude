@@ -57,7 +57,6 @@ class ReviewContinuationRefusal(StrEnum):
     MALFORMED_REASON = "malformed_reason"
     CLASS_EARNS_NO_CONTINUATION = "class_earns_no_continuation"
     NOT_AT_CAP = "not_at_cap"
-    SAME_INTELLIGENCE_SECOND_CAP = "same_intelligence_second_cap"
     CALLER_NOT_CLAIMANT = "caller_not_claimant"
 
 
@@ -211,22 +210,10 @@ async def apply_review_continuation_stamp(
             )
         caller_role = ReviewContinuationCallerRole.CLAIMANT
     else:
-        if not is_human_caller and caller_session_id == active_runner:
-            _log_review_continuation_decision(
-                slug=slug,
-                phase=phase,
-                ordinal=ordinal,
-                caller_role="",
-                classification=classification.value,
-                outcome="refused",
-                reason=ReviewContinuationRefusal.SAME_INTELLIGENCE_SECOND_CAP,
-            )
-            raise PermissionError(
-                f"review_continuation stamp for {slug} phase {phase} refused: a second cap on the same "
-                "phase is assessed by a different intelligence than the claiming orchestrator"
-            )
         if is_human_caller:
             caller_role = ReviewContinuationCallerRole.HUMAN
+        elif caller_session_id and caller_session_id == active_runner:
+            caller_role = ReviewContinuationCallerRole.CLAIMANT
         else:
             job = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "job") if caller_session_id else None
             if job != JobRole.COORDINATOR.value:
@@ -240,8 +227,8 @@ async def apply_review_continuation_stamp(
                     reason=ReviewContinuationRefusal.CALLER_NOT_CLAIMANT,
                 )
                 raise PermissionError(
-                    f"review_continuation stamp for {slug} phase {phase} at ordinal {ordinal} requires a "
-                    "coordinator session or a human principal"
+                    f"review_continuation stamp for {slug} phase {phase} at ordinal {ordinal} requires the claiming "
+                    "orchestrator session, a coordinator session, or a human principal"
                 )
             caller_role = ReviewContinuationCallerRole.COORDINATOR
 

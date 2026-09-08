@@ -189,7 +189,9 @@ A phase that reaches its cap a second time is assessed by a different
 intelligence than the one that produced the work: the live coordinator, or the
 human when none is live. That assessor reads the recorded classification and the
 review evidence and either admits a further pass or routes the halt elsewhere.
-The orchestrator never admits its own second continuation. If no grounded next
+The orchestrator never assesses its own second continuation. It may write an admission the assessor
+reached, carrying that assessor's decision in the recorded reason; the record names who assessed and
+who wrote it, and that record is what an audit reads. If no grounded next
 attempt exists, the unresolved result and its missing evidence are preserved
 with an accountable agent owner; no one fabricates a verdict or resets a count
 to conceal the halt.
