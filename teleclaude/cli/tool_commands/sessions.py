@@ -345,6 +345,7 @@ def handle_sessions_run(args: list[str]) -> None:
                               [--mode fast|med|slow]
                               [--computer <name>]
                               [--detach]
+                              [--exclude-prior-reviewers]
 
     Creates a new session and immediately runs the given bare canonical command with the
     specified arguments. Useful for dispatching worker commands like next-build.
@@ -357,6 +358,9 @@ def handle_sessions_run(args: list[str]) -> None:
       --mode <mode>      Thinking mode: fast, med, slow (omit to use job policy)
       --computer <name>  Target computer (optional; defaults to local)
       --subfolder <dir>  Subdirectory within the project
+      --exclude-prior-reviewers
+                          Reviewer commands only: exclude every agent that already
+                          reviewed this target from selection; ignored otherwise
 
     Examples:
       telec sessions run --command next-build --args my-slug
@@ -393,6 +397,8 @@ def handle_sessions_run(args: list[str]) -> None:
     additional_context = parsed.value(F.FLAG_RUN_ADDITIONAL_CONTEXT)
     if additional_context is not None:
         body["additional_context"] = additional_context
+    if parsed.has(F.FLAG_RUN_EXCLUDE_PRIOR_REVIEWERS):
+        body["exclude_prior_reviewers"] = True
 
     if not body.get("command"):
         print("Error: --command is required", file=sys.stderr)

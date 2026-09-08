@@ -90,6 +90,8 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
         pre_dispatch: pre-dispatch steps (optional)
         additional_context: extra context for the worker (optional)
         note: trailing note appended to the output (optional)
+        exclude_prior_reviewers: render --exclude-prior-reviewers on the dispatch
+            line, for a review-caused continuation (optional, default False)
     """
 
 
@@ -257,6 +259,7 @@ def format_tool_call(request: ToolCallRequest) -> str:
     post_block = str(request.get("post_block", ""))
     pre_dispatch_block = _format_pre_dispatch_block(str(request.get("pre_dispatch", "")))
     additional_context_flag, additional_context_block = _format_additional_context(request)
+    exclude_prior_reviewers_flag = " --exclude-prior-reviewers" if request.get("exclude_prior_reviewers") else ""
 
     reminder_instruction = format_orchestration_watch_instruction(
         slug=args,
@@ -277,7 +280,7 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
 telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}" \
-  --subfolder "{subfolder}"{additional_context_flag}
+  --subfolder "{subfolder}"{additional_context_flag}{exclude_prior_reviewers_flag}
 Save the returned session_id.
 
 STEP 2 - ARM THE BACKUP REMINDER AND INITIALIZE MARKER:

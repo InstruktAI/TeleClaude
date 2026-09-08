@@ -116,6 +116,8 @@ async def _resolve_launch_intent(
     mode = intent.dispatch_mode or (AgentDispatchMode.FIXED if intent.agent else AgentDispatchMode.AUTOMATIC)
     command_kind = cmd.initial_input.lstrip("/").split(maxsplit=1)[0] if cmd.initial_input else None
     agent_supplied = intent.agent is not None
+    excluded_agents = tuple(cmd.excluded_agents)
+    excluded_agents_logged = ",".join(sorted(excluded_agents)) or None
     preferred_agent = intent.preferred_agent
     if preferred_agent is None and mode is AgentDispatchMode.MANUAL_PREFERENCE:
         preferred_agent = intent.agent
@@ -136,6 +138,7 @@ async def _resolve_launch_intent(
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
         producer_agent=cmd.producer_agent,
+        excluded_agents=excluded_agents,
     )
     if not intent.accepted_at_origin:
         emit_agent_dispatch_decision(
@@ -154,6 +157,7 @@ async def _resolve_launch_intent(
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
             producer_agent=cmd.producer_agent,
+            excluded_agents=excluded_agents_logged,
             command_kind=command_kind,
             thinking_mode=intent.thinking_mode,
         )
@@ -167,6 +171,7 @@ async def _resolve_launch_intent(
             fixed_agent=fixed_agent,
             producer_agent=cmd.producer_agent,
             entry_point=cmd.entry_point,
+            excluded_agents=frozenset(excluded_agents),
         )
     except AgentDispatchFailure as exc:
         emit_agent_dispatch_decision(
@@ -185,6 +190,7 @@ async def _resolve_launch_intent(
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
             producer_agent=cmd.producer_agent,
+            excluded_agents=excluded_agents_logged,
             command_kind=command_kind,
             thinking_mode=intent.thinking_mode,
         )
@@ -197,6 +203,7 @@ async def _resolve_launch_intent(
     intent.preferred_agent = preferred_agent
     intent.fixed_agent = fixed_agent
     intent.producer_agent = cmd.producer_agent
+    intent.excluded_agents = excluded_agents
     intent.decision_basis_digest = basis_digest
     if intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE and intent.message is not None:
         raw_startup_message = intent.message
@@ -226,6 +233,7 @@ async def _resolve_launch_intent(
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
         producer_agent=cmd.producer_agent,
+        excluded_agents=excluded_agents_logged,
         command_kind=command_kind,
         thinking_mode=intent.thinking_mode,
     )
@@ -246,6 +254,7 @@ async def _resolve_launch_intent(
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
         producer_agent=cmd.producer_agent,
+        excluded_agents=excluded_agents_logged,
         command_kind=command_kind,
         thinking_mode=intent.thinking_mode,
         routing_explanation_included=False,

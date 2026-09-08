@@ -45,6 +45,7 @@ class AgentDispatchReason(StrEnum):
     AVAILABILITY_READ_FAILED = "availability_read_failed"
     NO_ELIGIBLE_CANDIDATE = "no_eligible_candidate"
     NO_INDEPENDENT_CANDIDATE = "no_independent_candidate"
+    NO_UNREVIEWED_CANDIDATE = "no_unreviewed_candidate"
     TARGET_CAPABILITY_PRESENT = "target_capability_present"
     TARGET_CAPABILITY_MISSING = "target_capability_missing"
     FIXED_INTENT = "fixed_intent"
@@ -414,6 +415,7 @@ async def resolve_agent_dispatch(
     fixed_agent: str | None,
     producer_agent: str | None,
     entry_point: SessionEntryPoint | None,
+    excluded_agents: frozenset[str] = frozenset(),
 ) -> AgentDispatchDecision:
     """Select one eligible agent without consulting the caller's machine state."""
     del entry_point  # Kept typed at the boundary for structured decision evidence.
@@ -463,6 +465,14 @@ async def resolve_agent_dispatch(
             "No configured and available agent can run this session",
         )
 
+    if excluded_agents:
+        eligible = [agent for agent in eligible if agent not in excluded_agents]
+        if not eligible:
+            raise AgentDispatchFailure(
+                AgentDispatchReason.NO_UNREVIEWED_CANDIDATE,
+                "Every eligible agent has already reviewed this target",
+            )
+
     if role == "reviewer" and producer_agent:
         independent = [agent for agent in eligible if agent != producer_agent]
         if independent:
@@ -494,6 +504,7 @@ def emit_agent_dispatch_decision(
     preferred_agent: str | None = None,
     fixed_agent: str | None = None,
     producer_agent: str | None = None,
+    excluded_agents: str | None = None,
     policy: AgentDispatchPolicy = AgentDispatchPolicy.EACH_OPPORTUNITY,
     revision: int = 1,
     agent_supplied: bool | None = None,
@@ -513,7 +524,8 @@ def emit_agent_dispatch_decision(
         "request_id=%s session_id=%s dispatch_mode=%s entry_point=%s job_role=%s todo_kind=%s "
         "fallback_reason_present=%s policy=%s revision=%s agent_supplied=%s working_slug_present=%s "
         "kind_source=%s decision_basis_digest=%s preferred_agent=%s fixed_agent=%s producer_agent=%s "
-        "command_kind=%s thinking_mode=%s caller_kind_present=%s routing_explanation_included=%s",
+        "excluded_agents=%s command_kind=%s thinking_mode=%s caller_kind_present=%s "
+        "routing_explanation_included=%s",
         stage,
         outcome,
         reason,
@@ -534,6 +546,7 @@ def emit_agent_dispatch_decision(
         preferred_agent,
         fixed_agent,
         producer_agent,
+        excluded_agents,
         command_kind,
         thinking_mode,
         caller_kind_present,
@@ -549,10 +562,12 @@ def decision_basis_digest(
     preferred_agent: str | None,
     fixed_agent: str | None,
     producer_agent: str | None,
+    excluded_agents: tuple[str, ...] = (),
 ) -> str:
     """Create a stable privacy-safe correlation basis for equivalent decisions."""
     basis = json.dumps(
         {
+            "excluded_agents": sorted(excluded_agents),
             "fixed_agent": fixed_agent,
             "mode": mode.value,
             "preferred_agent": preferred_agent,

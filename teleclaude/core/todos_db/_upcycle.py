@@ -9,7 +9,7 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 8
+LATEST_TODO_STATE_SCHEMA_VERSION = 9
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
@@ -19,7 +19,15 @@ _V5_SCHEMA_VERSION = 5
 _V6_SCHEMA_VERSION = 6
 _V7_SCHEMA_VERSION = 7
 _V8_SCHEMA_VERSION = 8
+_V9_SCHEMA_VERSION = 9
 _BUILD_PLAN_DIGEST_KEY = "build_plan_digest"
+_CONTINUATION_REVIEW_KEYS = (
+    "prd_review",
+    "requirements_review",
+    "architecture_review",
+    "plan_review",
+    "build_review",
+)
 _EMPTY_TEXT = ""
 _LEGACY_HANDED_OFF_PHASE = "handed_off"
 
@@ -321,6 +329,18 @@ def _upcycle_v7_to_v8(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     return migrated
 
 
+def _upcycle_v8_to_v9(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Materialize an empty ``continuations`` list on every review verdict state."""
+    migrated = dict(raw)
+    for review_key in _CONTINUATION_REVIEW_KEYS:
+        review = migrated.get(review_key)
+        review_dict = dict(review) if isinstance(review, dict) else {}
+        review_dict.setdefault("continuations", [])
+        migrated[review_key] = review_dict
+    migrated["schema_version"] = _V9_SCHEMA_VERSION
+    return migrated
+
+
 def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
     version = _detect_schema_version(migrated)
@@ -346,6 +366,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v6_to_v7(migrated)
         elif version == _V7_SCHEMA_VERSION:
             migrated = _upcycle_v7_to_v8(migrated)
+        elif version == _V8_SCHEMA_VERSION:
+            migrated = _upcycle_v8_to_v9(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)

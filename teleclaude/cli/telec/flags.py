@@ -92,6 +92,14 @@ FLAG_RUN_SUBFOLDER = Flag("--subfolder", desc="Subdirectory within the project",
 FLAG_RUN_ADDITIONAL_CONTEXT = Flag(
     "--additional-context", desc="Additional context for the worker, appended to startup message", arity=VALUE
 )
+FLAG_RUN_EXCLUDE_PRIOR_REVIEWERS = Flag(
+    "--exclude-prior-reviewers",
+    desc=(
+        "Reviewer commands only: exclude every agent that already reviewed this "
+        "target from selection; ignored for every other command"
+    ),
+    arity=SWITCH,
+)
 
 FLAG_REVIVE_AGENT = Flag("--agent", desc="Treat session_id as native agent session ID for the given agent", arity=VALUE)
 FLAG_REVIVE_ATTACH = Flag("--attach", desc="Attach to tmux session after revive", arity=SWITCH)
@@ -352,7 +360,10 @@ FLAG_STAMP_KICKBACK = Flag(
 )
 FLAG_STAMP_REASON = Flag(
     "--reason",
-    desc=("Reason recorded to input (required with --kickback / --task-outcome error / --diagnosis-unresolved)"),
+    desc=(
+        "Reason recorded to input (required with --kickback / --task-outcome error / "
+        "--diagnosis-unresolved / --review-continuation)"
+    ),
     arity=VALUE,
 )
 FLAG_STAMP_TASK_OUTCOME = Flag(
@@ -371,6 +382,18 @@ FLAG_STAMP_DIAGNOSIS_SETTLED = Flag(
 FLAG_STAMP_DIAGNOSIS_UNRESOLVED = Flag(
     "--diagnosis-unresolved",
     desc="Bug lane: hold the todo when the dispatched peer's diagnosis could not be settled; requires --reason",
+    arity=SWITCH,
+)
+FLAG_STAMP_REVIEW_CONTINUATION = Flag(
+    "--review-continuation",
+    desc=(
+        "Admit one further reviewer pass past a capped review phase's hard limit; "
+        "requires --phase and --reason '<classification>: <evidence>'. The first "
+        "continuation on a phase is accepted only from the claiming orchestrator "
+        "session; any further one only from a coordinator session or a human "
+        "principal. A classification of ambiguous contract or unstable target is "
+        "refused."
+    ),
     arity=SWITCH,
 )
 # Legacy creative-lifecycle and bookkeeping booleans: recognized by the handler

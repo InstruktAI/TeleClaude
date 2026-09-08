@@ -655,8 +655,8 @@ def prepare_review_verdict_from_state(state: Mapping[str, object]) -> str | None
 
 
 def _upcycle_blockers(model: TodoState) -> list[str]:
-    if model.schema_version < 8:
-        return ["todo state could not be upcycled to schema_version 8"]
+    if model.schema_version < 9:
+        return ["todo state could not be upcycled to schema_version 9"]
     return []
 
 

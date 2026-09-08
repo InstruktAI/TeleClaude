@@ -955,6 +955,10 @@ class RunSessionRequest(BaseModel):
     thinking_mode: Literal["fast", "med", "slow"] | None = None
     detach: bool = False
     additional_context: str = ""
+    # Reviewer dispatch only: ask the resolver to exclude every agent that has
+    # already reviewed this target (a review-caused continuation). Ignored for
+    # every other command's job role.
+    exclude_prior_reviewers: bool = False
 
 
 class SendResultRequest(BaseModel):
