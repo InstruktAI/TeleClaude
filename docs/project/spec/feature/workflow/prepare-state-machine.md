@@ -87,18 +87,6 @@ And rewriting the reviewed artifact or findings report does not reset the admitt
 And each admitted pass was counted and persisted before its reviewer instruction was returned
 ```
 
-<!-- planned-change:review-cap-bounded-continuation -->
-#### UC-WPS22: A classified halt routes prepare-review recovery without reopening the cap
-
-```gherkin
-Given a prepare review phase is blocked at its admitted-pass limit
-When the orchestrator classifies the halt from the current review evidence under the review procedure
-Then the machine preserves the cap and reports the phase, admitted-pass count, and evidence required for that classification
-And failed remediation or an unstable target routes to the producer with an adversarial peer
-And incomplete or noisy review routes to a different reviewer
-And an ambiguous contract reaches its owner only when that owner is human
-```
-<!-- change:review-cap-bounded-continuation -->
 #### UC-WPS22: A classified halt continues only through a recorded continuation
 
 ```gherkin
@@ -110,7 +98,6 @@ And a continuation whose reason names incomplete or noisy review dispatches a re
 And without a recorded continuation the cap stays in force and no reviewer is emitted
 And an ambiguous contract reaches its owner only when that owner is human
 ```
-<!-- /planned-change:review-cap-bounded-continuation -->
 
 #### UC-WPS8: A PRD rewritten after human approval is re-approved before the gate advances
 

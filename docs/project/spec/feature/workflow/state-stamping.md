@@ -105,17 +105,6 @@ And legacy import never synthesizes requirements_review or plan_review approval 
 And delivered historical records remain unchanged and readable
 ```
 
-<!-- planned-change:review-cap-bounded-continuation -->
-#### UC-WSS21: Review-round limits record a routed halt rather than a continuation stamp
-
-```gherkin
-Given a lifecycle review reaches its admitted-pass limit without a current approve verdict
-When the state machine returns REVIEW_ROUND_LIMIT
-Then it reports the phase, admitted-pass count, and current review evidence without mutating a continuation allowance
-And the state-write boundary has no review-round-override stamp or human-principal continuation path
-And the orchestrator classifies the halt and carries it to the coordinator before routing recovery
-```
-<!-- change:review-cap-bounded-continuation -->
 #### UC-WSS21: A capped review admits one recorded continuation, and a second only from another intelligence
 
 ```gherkin
@@ -132,7 +121,6 @@ Then the stamp is refused before any write, because a second cap is assessed by 
 When a coordinator session or a human-principal caller runs the same stamp
 Then the continuation is recorded with that caller and the allowance grows by one
 ```
-<!-- /planned-change:review-cap-bounded-continuation -->
 
 ```
 Given a Todo whose nature does not require architecture work

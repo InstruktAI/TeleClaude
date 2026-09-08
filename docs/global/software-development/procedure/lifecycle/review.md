@@ -161,29 +161,6 @@ A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
-<!-- planned-change:review-cap-bounded-continuation -->
-When a loop reaches its applicable documented cap without closure, no further
-automatic review starts. The orchestrator classifies the cause — ambiguous
-contract, failed remediation, unstable target, or incomplete or noisy review —
-and owns the recovery direction under `general/policy/human-contract`.
-Failed remediation returns to the producer with adversarial-peer coverage;
-an unstable target returns to its producer; incomplete or noisy review goes
-to a different reviewer; an ambiguous contract goes to its decision owner.
-Human escalation follows the closed human lane, never the round count.
-The halt classification is recorded to the coordinator log for evidence
-and recurrence, never as a substitute review verdict.
-
-Before authorizing a bounded continuation, the orchestrator records the
-classification, the evidence or changed approach that makes another attempt
-different, the responsible owner and the closure condition. The reviewer
-judges the corrected target independently; authorization to continue is not
-approval of the target. Repeating an unchanged attempt is not recovery.
-If no grounded next attempt exists, preserve the unresolved result and its
-missing evidence with an accountable agent owner. Use supported lifecycle
-operations; a missing recovery route is handled under
-`general/policy/human-contract`, never by fabricating a verdict or resetting
-counts to conceal the halt.
-<!-- change:review-cap-bounded-continuation -->
 When a loop reaches its applicable documented cap without closure, no further
 automatic review starts. The orchestrator classifies the cause — ambiguous
 contract, failed remediation, unstable target, or incomplete or noisy review —
@@ -212,7 +189,6 @@ The orchestrator never admits its own second continuation. If no grounded next
 attempt exists, the unresolved result and its missing evidence are preserved
 with an accountable agent owner; no one fabricates a verdict or resets a count
 to conceal the halt.
-<!-- /planned-change:review-cap-bounded-continuation -->
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

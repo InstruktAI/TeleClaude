@@ -232,13 +232,6 @@ clear it. An empty day is a valid day. The log is write-only for this role — i
 is never read back to decide anything; fleet awareness comes from live sources
 each sweep, and the session's own context holds its working state.
 
-<!-- planned-change:review-cap-bounded-continuation -->
-A classified capped-review halt received from an orchestrator is a `carried`
-moment when it is worth preserving: the coordinator writes the entry with its
-phase, classification, subject, and source. It uses live review evidence and
-its active sweep context to supply precedent and recognize recurrence; the log
-never adjudicates the individual review or becomes a read-back decision source.
-<!-- change:review-cap-bounded-continuation -->
 A capped-review halt has two shapes in the sweep. A continuation an
 orchestrator admitted on its own authority is a recorded, challengeable judgment:
 the coordinator reads its classification and reason and challenges the basis
@@ -248,7 +241,6 @@ classification and the review evidence and either admits a further pass or
 routes the halt to its owner. Either way the entry it writes carries phase,
 classification, subject, and source; the log supplies precedent and recognizes
 recurrence and never becomes a read-back decision source.
-<!-- /planned-change:review-cap-bounded-continuation -->
 
 ### 7. Carry to the human
 
