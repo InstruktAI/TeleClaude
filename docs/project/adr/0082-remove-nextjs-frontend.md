@@ -28,7 +28,13 @@ to none; the Python TUI remains the sole first-party UI.
 
 - The frontend's dependency toolchain (pnpm, Next.js, Playwright), its dedicated
   context-root checkpoint overlay, and its E2E/visual-regression harness are gone.
-  Nothing left in the repository needs a Node toolchain to install or lint.
+  The repository's root-level Node workspace files (`package.json`,
+  `pnpm-lock.yaml`, `pnpm-workspace.yaml`) go with it — their only dependencies
+  (`jsdom`, `tsx`, `dompurify`) backed the frontend's tests, its custom dev
+  server, and one of its components. `bin/install.sh`'s Node/corepack
+  provisioning is unaffected: Node still backs the guardrails lane
+  (`tools/quality.sh`'s prettier/eslint/tsc/jscpd) and worktree setup for other
+  TypeScript-based projects, neither of which was frontend-specific.
 - The architecture and verification docs that existed only to describe this
   application (`project/design/architecture/frontend`, `project/design/architecture/web-api-facade`,
   `project/design/architecture/web-interface`, `project/procedure/frontend-verification`)
