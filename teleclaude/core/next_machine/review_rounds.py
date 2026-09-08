@@ -63,8 +63,8 @@ class ReviewAdmission:
         return self.candidate <= self.maximum
 
     @property
-    def excludes_prior_reviewers(self) -> bool:
-        """Return whether the admitting continuation was caused by the review itself."""
+    def requires_fresh_reviewer_session(self) -> bool:
+        """Return whether the admitting continuation requires a different reviewer session."""
         return self.continuation is not None and self.continuation.classification in _REVIEW_CAUSED_CLASSIFICATIONS
 
 

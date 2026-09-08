@@ -125,17 +125,6 @@ job-policy-facing thinking-mode resolution.
 
 ### Eligibility and ordering
 
-<!-- planned-change:remove-prior-reviewer-agent-exclusion -->
-Automatic selection removes unconfigured, disabled, degraded, and unavailable
-agents. Only operator status `available` is eligible. Reviewer selection then prefers
-an eligible agent different from the producer while preserving the applicable row's
-relative order. The producer remains eligible when no independent candidate survives.
-A reviewer request may additionally name agents that have already reviewed its
-target. Those agents are removed from the candidates before independence is applied
-and never return as a fallback; when no eligible candidate remains once they are
-removed, dispatch fails with a typed no-unreviewed-candidate reason and creates no
-session.
-<!-- change:remove-prior-reviewer-agent-exclusion -->
 Automatic selection removes unconfigured, disabled, degraded, and unavailable
 agents. Only operator status `available` is eligible. Reviewer selection then prefers
 an eligible agent different from the producer while preserving the applicable row's
@@ -144,7 +133,6 @@ Producer separation is the only reviewer-specific narrowing this contract applie
 Reviewer ownership belongs to the reviewer session and its review ledger, so an
 agent that a prior session used to review a target stays eligible for a later
 dispatch against that same target.
-<!-- /planned-change:remove-prior-reviewer-agent-exclusion -->
 
 Manual selection uses a distinct boundary for callers without a system role. A known,
 enabled agent is manually selectable while available or degraded. Operator status
@@ -390,36 +378,10 @@ And no eligible candidate results in an explicit refusal before session creation
 
 <!-- /planned:generic-job-declarative-model -->
 
-<!-- planned-change:remove-prior-reviewer-agent-exclusion -->
-#### UC-RAAD-20: A reviewer request excludes agents that already reviewed its target
-
-```gherkin
-Given an agent caller creates a fresh reviewer-command session
-And the request names agents that have already reviewed the same target
-When TeleClaude selects the reviewer
-Then every named agent is removed from the candidates before reviewer independence is applied
-And selection proceeds over the remaining candidates exactly as for a reviewer request that names none
-And the dispatch decision reports the named agents
-```
-
-#### UC-RAAD-21: No unreviewed candidate creates no session
-
-```gherkin
-Given an agent caller creates a fresh reviewer-command session
-And the request names agents that have already reviewed the same target
-And no eligible candidate remains once the named agents are removed
-When TeleClaude resolves the request
-Then the request fails before session creation with a typed no-unreviewed-candidate reason
-And no named agent is selected as a fallback
-```
-
-<!-- change:remove-prior-reviewer-agent-exclusion -->
 #### UC-RAAD-20: A reviewer request excludes agents that already reviewed its target
 
 #### UC-RAAD-21: No unreviewed candidate creates no session
 
-<!-- /planned-change:remove-prior-reviewer-agent-exclusion -->
-<!-- planned:remove-prior-reviewer-agent-exclusion -->
 #### UC-RAAD-22: A prior reviewer session's agent stays eligible for the same target
 
 ```gherkin
@@ -431,7 +393,6 @@ And selection proceeds over the full eligible order with producer separation app
 And the resolved session may be the same agent implementation the earlier session used
 ```
 
-<!-- /planned:remove-prior-reviewer-agent-exclusion -->
 
 ## Known caveats
 

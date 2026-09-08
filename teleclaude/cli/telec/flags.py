@@ -93,15 +93,6 @@ FLAG_RUN_SUBFOLDER = Flag("--subfolder", desc="Subdirectory within the project",
 FLAG_RUN_ADDITIONAL_CONTEXT = Flag(
     "--additional-context", desc="Additional context for the worker, appended to startup message", arity=VALUE
 )
-FLAG_RUN_EXCLUDE_PRIOR_REVIEWERS = Flag(
-    "--exclude-prior-reviewers",
-    desc=(
-        "Reviewer commands only: exclude every agent that already reviewed this "
-        "target from selection; ignored for every other command"
-    ),
-    arity=SWITCH,
-)
-
 FLAG_REVIVE_AGENT = Flag("--agent", desc="Treat session_id as native agent session ID for the given agent", arity=VALUE)
 FLAG_REVIVE_ATTACH = Flag("--attach", desc="Attach to tmux session after revive", arity=SWITCH)
 

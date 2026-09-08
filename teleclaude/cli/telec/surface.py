@@ -178,7 +178,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args=(
                     "[--command <cmd>] [--path <path>] [--args <val>] [--agent <name>]"
                     " [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--detach]"
-                    " [--additional-context <ctx>] [--exclude-prior-reviewers]"
+                    " [--additional-context <ctx>]"
                 ),
                 flags=[
                     F.FLAG_HELP,
@@ -191,7 +191,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_RUN_SUBFOLDER,
                     F.FLAG_DETACH,
                     F.FLAG_RUN_ADDITIONAL_CONTEXT,
-                    F.FLAG_RUN_EXCLUDE_PRIOR_REVIEWERS,
                 ],
                 notes=[
                     "Creates a fresh session and runs the bare canonical command as the first agent message.",
@@ -205,7 +204,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 examples=[
                     "telec sessions run --command next-build --args my-slug",
-                    "telec sessions run --command next-review-plan --args my-slug --exclude-prior-reviewers",
+                    "telec sessions run --command next-review-plan --args my-slug",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH_TASKER, human=_HR_MEMBER),
             ),

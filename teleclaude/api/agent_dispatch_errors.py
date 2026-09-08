@@ -29,7 +29,6 @@ _CONFLICT_REASONS = frozenset(
         AgentDispatchReason.FIXED_AGENT_UNAVAILABLE,
         AgentDispatchReason.MANUAL_PREFERENCE_UNAVAILABLE,
         AgentDispatchReason.NO_ELIGIBLE_CANDIDATE,
-        AgentDispatchReason.NO_UNREVIEWED_CANDIDATE,
         AgentDispatchReason.MODEL_CHAIN_EXHAUSTED,
     }
 )
