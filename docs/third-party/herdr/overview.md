@@ -1,5 +1,5 @@
 ---
-description: HerdR terminal-workspace-manager architecture, CLI/socket API, and Claude Code hook-integration behavior, verified from source (0.9.0) and a bundled server instance.
+description: HerdR terminal-workspace-manager architecture, CLI/socket API, and Claude Code hook-integration behavior (version 0.9.0).
 ---
 
 # What it is
@@ -132,4 +132,4 @@ client is attached.
 
 - <https://herdr.dev>
 - <https://github.com/ogulcancelik/herdr>
-- Homebrew formula `herdr` (`brew info herdr`)
+- <https://formulae.brew.sh/formula/herdr>
