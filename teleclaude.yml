@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=schemas/teleclaude-project.schema.json
 kind: project
 project_name: TeleClaude
+project_slug: teleclaude
 # Owning company. The association is stated here by the project itself and is
 # never inferred from where the checkout sits.
 company: instrukt-ai
@@ -89,25 +90,24 @@ checkpoint:
         include: [teleclaude/cli/tui/**]
       actions: [tui-reload]
 
-# workflow:
-#   autostart:
-#     feature: true
-#     change: true
-#     bug: true
-#     task: false
-
 jobs:
-  help_desk_intelligence:
-    category: system
-    when:
-      at: '06:00'
-    script: jobs/help_desk_intelligence.py
+  # help_desk_intelligence:
+  #   category: system
+  #   when:
+  #     at: '06:00'
+  #   script: jobs/help_desk_intelligence.py
 
-  youtube_scraper:
-    category: system
-    when:
-      at: '06:00'
-    script: jobs/youtube_scraper.py
+  # youtube_scraper:
+  #   category: system
+  #   when:
+  #     at: '06:00'
+  #   script: jobs/youtube_scraper.py
+
+  # youtube_sync_subscriptions:
+  #   category: system
+  #   when:
+  #     at: '06:00'
+  #   script: jobs/youtube_sync_subscriptions.py
 
   temp_reaper:
     category: system
@@ -121,12 +121,6 @@ jobs:
       at: '05:00'
     script: jobs/project_backup.py
 
-  youtube_sync_subscriptions:
-    category: system
-    when:
-      at: '06:00'
-    script: jobs/youtube_sync_subscriptions.py
-
   log_bug_hunter:
     category: system
     when:
@@ -135,6 +129,3 @@ jobs:
     job: software-development/procedure/maintenance/log-bug-hunter
     agent: claude
     thinking_mode: fast
-# git:
-#   checkout_root: ~/Workspace/public-repos
-project_slug: teleclaude
