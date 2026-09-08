@@ -9,7 +9,7 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 9
+LATEST_TODO_STATE_SCHEMA_VERSION = 10
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
@@ -20,6 +20,7 @@ _V6_SCHEMA_VERSION = 6
 _V7_SCHEMA_VERSION = 7
 _V8_SCHEMA_VERSION = 8
 _V9_SCHEMA_VERSION = 9
+_V10_SCHEMA_VERSION = 10
 _BUILD_PLAN_DIGEST_KEY = "build_plan_digest"
 _CONTINUATION_REVIEW_KEYS = (
     "prd_review",
@@ -341,6 +342,42 @@ def _upcycle_v8_to_v9(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     return migrated
 
 
+def _upcycle_v9_to_v10(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Materialize the assessor fields on every recorded continuation.
+
+    A continuation stored before the second-cap write widened carries no
+    assessor, and the writer was necessarily its own assessor under the rule
+    then in force: ordinal one is the claimant's own assessment, and a later
+    ordinal could only be written by the coordinator or human who assessed it.
+    Materializing that here keeps the version honest for the shape the domain
+    now reads, rather than leaving a default to mask old state.
+    """
+    migrated = dict(raw)
+    for review_key in _CONTINUATION_REVIEW_KEYS:
+        review = migrated.get(review_key)
+        if not isinstance(review, dict):
+            continue
+        review_dict = dict(review)
+        recorded = review_dict.get("continuations")
+        if not isinstance(recorded, list):
+            review_dict["continuations"] = []
+            migrated[review_key] = review_dict
+            continue
+        brought_forward: list[StateValue] = []
+        for entry in recorded:
+            if not isinstance(entry, dict):
+                brought_forward.append(entry)
+                continue
+            continuation = dict(entry)
+            continuation.setdefault("assessor_role", continuation.get("caller_role"))
+            continuation.setdefault("assessor_id", continuation.get("caller_session_id", ""))
+            brought_forward.append(continuation)
+        review_dict["continuations"] = brought_forward
+        migrated[review_key] = review_dict
+    migrated["schema_version"] = _V10_SCHEMA_VERSION
+    return migrated
+
+
 def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
     version = _detect_schema_version(migrated)
@@ -368,6 +405,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v7_to_v8(migrated)
         elif version == _V8_SCHEMA_VERSION:
             migrated = _upcycle_v8_to_v9(migrated)
+        elif version == _V9_SCHEMA_VERSION:
+            migrated = _upcycle_v9_to_v10(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)

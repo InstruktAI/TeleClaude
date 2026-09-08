@@ -304,7 +304,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[9] = 9
+    schema_version: Literal[10] = 10
     phase: str = "pending"
     lifecycle_phase: LifecyclePhase | None = LifecyclePhase.DRAFT
     prepare_phase: str = Field(default="", exclude=True)
