@@ -51,7 +51,19 @@ procedure is ever dispatched.
    and cannot enlarge the current work. Address findings; leave leads where the
    reviewer put them.
 
-2. **Address every finding.** For each:
+2. **Dispose of every finding, then remediate the fixes.** Each finding
+   receives exactly one disposition, written before any remediation: **fix**,
+   **reject**, or **kick back**. A finding is fixed only when it cites a clause
+   that applies, establishes the contradiction, and its closure stays within the
+   frozen scope. One that does not establish its clause, or whose closure
+   prescribes work the authorized intent does not contain, is rejected with the
+   evidence and stands rejected until the reviewer overturns it on changed
+   substrate or material new evidence
+   (`software-development/procedure/lifecycle/review` §6); a finding that
+   enlarges the horizon is invalid under
+   `software-development/policy/definition-of-done-lanes`. One whose closure
+   needs adjacent scope or a different owner is kicked back. For each finding
+   you fix:
    - Understand the issue and its referenced location.
    - Apply the minimal fix that satisfies the finding's closure condition. The
      closure condition is the contract; the reviewer's wording is not a design.
@@ -64,13 +76,15 @@ procedure is ever dispatched.
      persist the updated artifact via
      `telec todo artifacts write {slug} {target_artifact_name} "<content>"`.
 
-3. **Update the findings artifact** with a "Fixes Applied" section recording each
-   issue, the fix, and the commit hash (for code fixes) or the artifact version
-   timestamp (for artifact fixes). Persist via
+3. **Update the findings artifact** with a "Dispositions" section recording,
+   per finding, its disposition and the evidence for it: for a fix, the change
+   and the commit hash (code) or artifact version timestamp (artifact); for a
+   rejection, the reason and the source it rests on; for a kickback, where it
+   was routed. Persist via
    `telec todo artifacts write {slug} {findings_artifact_name} "<content>"`.
 
 4. **Leave the verdict to the reviewer.** Do not change the verdict in the
-   findings artifact. Your "Fixes Applied" section is remediation evidence; the
+   findings artifact. Your "Dispositions" section is remediation evidence; the
    continuing reviewer re-evaluates the target against it, updates the report,
    and stamps the arithmetic verdict. A fixer-written `APPROVE` bypasses
    reviewer authority and the bounded convergence contract.
@@ -91,7 +105,7 @@ procedure is ever dispatched.
 
 - Updated target artifact (code, `architecture`, `implementation-plan`,
   or legacy `requirements`).
-- Updated findings artifact with a "Fixes Applied" section and a verdict reflecting
+- Updated findings artifact with a "Dispositions" section and a verdict reflecting
   the remaining unresolved Requirement-Violation, Critical, and Important findings.
 
 ## Recovery

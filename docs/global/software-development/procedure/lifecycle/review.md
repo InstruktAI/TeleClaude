@@ -166,8 +166,12 @@ automatic review starts. The orchestrator classifies the cause — ambiguous
 contract, failed remediation, unstable target, or incomplete or noisy review —
 from the current review evidence, and records the classification, the evidence
 or changed approach that makes another attempt different, the responsible owner
-and the closure condition. Human escalation follows the closed human lane,
-never the round count.
+and the closure condition. The producer's dispositions are part of that
+evidence: a pass whose open findings are all standing rejections, re-filed
+without changed substrate or material new evidence, was closed by the producer
+and reopened by the reviewer, and the orchestrator classifies it as incomplete
+or noisy review — never as failed remediation or an unstable target. Human
+escalation follows the closed human lane, never the round count.
 
 The classification decides what the orchestrator may do on its own authority.
 Failed remediation whose remaining delta is small and grounded, and incomplete

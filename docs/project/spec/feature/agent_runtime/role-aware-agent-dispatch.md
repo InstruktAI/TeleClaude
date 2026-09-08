@@ -37,8 +37,9 @@ todo kind establish the remaining ordered candidates.
 agent. A system-role preference is considered first but remains subject to automatic
 eligibility and reviewer independence. The canonical command and, for prepare orchestration,
 todo kind establish the remaining ordered candidates. A scheduled job supplies its own ordered
-candidates — its declaration's `agent` preference list — in place of the command row; an empty
-list falls back to the job command's row.
+candidates — its effective declaration's non-empty `agent` preference list — in place
+of a command row. A job has no code-owned candidate order. An empty effective list
+is rejected by the job configuration boundary before selection.
 <!-- /planned-change:generic-job-declarative-model -->
 
 **Manual preference**
@@ -370,15 +371,14 @@ And the dispatch decision reports that fallback is present
 ```
 
 <!-- planned:generic-job-declarative-model -->
-#### UC-RAAD-19: A scheduled job's preference list is its automatic candidate order
+#### UC-RAAD-19:
 
 ```gherkin
-Given a scheduled agent job is dispatched through the run boundary
-And its declaration carries an ordered agent preference list
+Given an agent caller dispatches a scheduled job with configured candidate preferences
 When TeleClaude selects the session agent
-Then the candidate order is that list, evaluated in automatic mode under this contract's eligibility
-And an empty list uses the job command's matrix row instead
-And when no candidate is eligible the request fails before session creation with the typed no-eligible-candidate reason
+Then it considers only those candidates in their configured order
+And it applies the existing automatic eligibility rules
+And no eligible candidate results in an explicit refusal before session creation
 ```
 
 <!-- /planned:generic-job-declarative-model -->

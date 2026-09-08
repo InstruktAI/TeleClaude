@@ -144,12 +144,26 @@ header. Pick your behavior from the reason:
   the plan to satisfy the kickback reason, not only the code.
 - **`findings-fix`** — a `needs_work` verdict was issued. Read
   `telec todo artifacts read {slug} plan-review-findings` alongside the existing
-  plan. Apply a targeted fix only after rechecking that the finding stays
-  inside the authorized outcome and assigns behavior to its established domain
-  owner. A finding that needs adjacent scope, a different owner, or a boundary
-  redraw is a kickback or blocker, not authority to enlarge this plan.
+  plan. Dispose of every finding in the findings artifact before editing the
+  plan; each finding receives exactly one disposition:
+  - **Fix** — the finding cites a clause that applies, establishes the
+    contradiction, and its closure stays inside the authorized outcome and the
+    behavior's established domain owner. Apply the targeted fix.
+  - **Reject** — the finding does not establish that its cited clause applies
+    here, or its closure prescribes work the authorized intent does not contain.
+    Record the rejection with its evidence. It stands rejected until the reviewer
+    overturns it on changed substrate or material new evidence
+    (`software-development/procedure/lifecycle/review` §6). A rejected finding
+    is never fixed to shorten the loop: a finding that enlarges the horizon is
+    invalid under `software-development/policy/definition-of-done-lanes`, and
+    complying with one is how a bounded change grows.
+  - **Kick back** — the finding is valid, but its closure needs adjacent scope,
+    a different owner, or a boundary redraw. That is a kickback or blocker, not
+    authority to enlarge this plan.
+
   Preserve every task not flagged by the findings. Skip the atomicity decision
   (step 2) and proceed directly to step 5.
+
 - **`upstream-changed`** — the plan's recorded `upstream_digests` (`prd`
   and/or `architecture`) drifted from current. Run the `Changes since` diff commands
   listed in the dispatch. Identify the plan tasks whose grounding referenced the
@@ -549,9 +563,10 @@ telec todo prepare {slug}
 
 The state machine routes the next action. It will direct you to dispatch the
 plan reviewer and tail it. On `approve` it advances toward `PREPARED`. On
-`needs_work` it routes you back here to address the findings; read
-`telec todo artifacts read {slug} plan-review-findings`, update the
-implementation-plan to resolve each finding, then advance again.
+`needs_work` it routes you back here; read
+`telec todo artifacts read {slug} plan-review-findings`, dispose of each finding
+under the `findings-fix` classification in step 1b — fix, reject with evidence,
+or kick back — then advance again.
 
 ## Outputs
 
