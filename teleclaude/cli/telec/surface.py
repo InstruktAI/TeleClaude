@@ -699,8 +699,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "integrate": CommandDef(
                 desc="Run the Phase C (integrate) state machine",
-                args="[<slug>]",
-                flags=[F.FLAG_HELP],
+                args="[<slug>] [--abandon]",
+                flags=[F.FLAG_HELP, F.FLAG_TODO_INTEGRATE_ABANDON],
                 auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
             ),
             "artifacts": CommandDef(

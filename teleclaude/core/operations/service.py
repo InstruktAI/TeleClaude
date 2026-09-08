@@ -94,6 +94,13 @@ TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 
+
+def _operation_payload_abandon(operation: Operation) -> bool:
+    """Read the ``abandon`` discriminator from a todo-integrate operation's payload; absent reads False."""
+    payload = json.loads(operation.payload_json)
+    return isinstance(payload, dict) and payload.get("abandon") is True
+
+
 _operations_service: OperationsService | None = None
 
 
@@ -128,7 +135,7 @@ class OperationsService:
         self._poll_after_ms = poll_after_ms
         self._heartbeat_interval_s = heartbeat_interval_s
         self._stale_after_s = stale_after_s
-        self._submit_locks: dict[tuple[str, str, str, str | None], asyncio.Lock] = {}
+        self._submit_locks: dict[tuple[str, str, str, str | None, bool], asyncio.Lock] = {}
         self._submit_guard = asyncio.Lock()
         self._live_tasks: dict[str, asyncio.Task[None]] = {}
         self._live_guard = asyncio.Lock()
@@ -270,13 +277,19 @@ class OperationsService:
         cwd: str,
         caller_session_id: str,
         client_request_id: str | None,
+        abandon: bool = False,
     ) -> SerializedOperation:
-        """Create or reattach a receipt-backed todo-integrate operation."""
+        """Create or reattach a receipt-backed todo-integrate operation.
+
+        ``abandon`` is part of the submit-lock key and the reattach match, so a
+        plain integrate and an ``--abandon`` integrate never reattach to each other.
+        """
         lock = await self._get_submit_lock(
             kind=OPERATION_KIND_TODO_INTEGRATE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
+            abandon=abandon,
         )
         async with lock:
             if client_request_id:
@@ -294,7 +307,7 @@ class OperationsService:
                 cwd=cwd,
                 slug=slug,
             )
-            if existing is not None:
+            if existing is not None and _operation_payload_abandon(existing) == abandon:
                 if existing.state == "queued":
                     await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_INTEGRATE)
                 return self._serialize_operation(existing)
@@ -304,6 +317,7 @@ class OperationsService:
                     "kind": OPERATION_KIND_TODO_INTEGRATE,
                     "slug": slug,
                     "cwd": cwd,
+                    "abandon": abandon,
                 },
                 sort_keys=True,
             )
@@ -635,8 +649,9 @@ class OperationsService:
         caller_session_id: str,
         cwd: str,
         slug: str | None,
+        abandon: bool = False,
     ) -> asyncio.Lock:
-        key = (kind, caller_session_id, cwd, slug)
+        key = (kind, caller_session_id, cwd, slug, abandon)
         async with self._submit_guard:
             lock = self._submit_locks.get(key)
             if lock is None:
@@ -648,7 +663,9 @@ class OperationsService:
         factories: dict[str, Callable[[Operation], Awaitable[str]]] = {
             OPERATION_KIND_TODO_WORK: self._run_todo_work,
             OPERATION_KIND_TASK_RUN: self._run_task_run,
-            OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(self._db, op.slug, op.cwd),
+            OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(
+                self._db, op.slug, op.cwd, abandon=_operation_payload_abandon(op)
+            ),
             OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_PREPARE: self._run_todo_prepare,
             OPERATION_KIND_TODO_RENAME: self._run_todo_rename,

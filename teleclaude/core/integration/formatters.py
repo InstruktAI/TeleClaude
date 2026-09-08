@@ -277,13 +277,13 @@ Rejection output:
    author the distinct scenario and retag. Write into the live contract body
    only, never inside a pending planned-change region. Stage and commit:
    {_COMMIT_CMD_INSTRUCTION}. Call telec todo integrate to re-push.
-2. **Ungroundable — abandon and park.** Run: git -C {worktree} reset --hard {pre_merge_head}.
-   Call telec todo integrate — this parks the candidate as an
-   ungroundable-content-gate concern and continues the drain with every
+2. **Ungroundable — abandon and park.** Run: telec todo integrate --abandon.
+   The state machine resets the integration worktree to the frozen abandon
+   target {pre_merge_head} and parks the candidate as an
+   ungroundable-content-gate concern, continuing the drain with every
    independent candidate.
 
-NEXT: Fix and commit, or abandon with the reset above, then call telec todo
-integrate""" + _format_anomalies(warnings or [])
+NEXT: Fix and commit, or run telec todo integrate --abandon""" + _format_anomalies(warnings or [])
 
 
 def _format_push_rejected(rejection_reason: str, slug: str, worktree: str, *, warnings: list[str] | None = None) -> str:

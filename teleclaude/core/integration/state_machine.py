@@ -83,6 +83,7 @@ def _dispatch_sync(
     state_dir: Path,
     started: float,
     loop: asyncio.AbstractEventLoop | None = None,
+    abandon: bool = False,
 ) -> str:
     """Synchronous state machine loop. Returns instruction string for the agent."""
     _tls.loop = loop
@@ -128,6 +129,13 @@ def _dispatch_sync(
         initial_checkpoint.lease_token = None
         _write_checkpoint(checkpoint_path, initial_checkpoint)
 
+    if abandon and initial_checkpoint.phase != IntegrationPhase.CONTENT_GATE_BLOCKED.value:
+        return _format_error(
+            "ABANDON_WRONG_PHASE",
+            f"--abandon requires the checkpoint to be at CONTENT_GATE_BLOCKED, "
+            f"but it is at {initial_checkpoint.phase!r}",
+        )
+
     for _iter in range(_LOOP_LIMIT):
         checkpoint = _read_checkpoint(checkpoint_path)
 
@@ -156,6 +164,7 @@ def _dispatch_sync(
                 slug=slug,
                 cwd=cwd,
                 started=started,
+                abandon=abandon,
             )
         except Exception:
             logger.exception(
@@ -181,6 +190,7 @@ def _step(
     slug: str | None,
     cwd: str,
     started: float,
+    abandon: bool = False,
 ) -> tuple[bool, str]:
     """Execute one phase step. Returns (continue_loop, instruction_or_empty)."""
     if phase == IntegrationPhase.IDLE:
@@ -248,6 +258,7 @@ def _step(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,
             cwd=cwd,
+            abandon=abandon,
         )
 
     if phase == IntegrationPhase.CLEANUP:
@@ -286,6 +297,8 @@ async def next_integrate(
     db: Db,
     slug: str | None,
     cwd: str,
+    *,
+    abandon: bool = False,
 ) -> str:
     """Integration state machine entry point.
 
@@ -297,6 +310,10 @@ async def next_integrate(
         db: Database instance (reserved for future use).
         slug: Optional slug filter — must match next candidate in FIFO queue.
         cwd: Project root directory for git operations.
+        abandon: The integrator's judgment that a ``CONTENT_GATE_BLOCKED``
+            rejection is ungroundable — resets the integration worktree to the
+            checkpoint-frozen ``pre_merge_head`` and parks the candidate.
+            Refused when the checkpoint is not at that phase.
 
     Returns:
         Plain text instruction block for the agent to execute.
@@ -315,4 +332,5 @@ async def next_integrate(
         state_dir=state_dir,
         started=started,
         loop=loop,
+        abandon=abandon,
     )

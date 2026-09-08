@@ -175,16 +175,21 @@ def _step_content_gate_blocked(
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
     cwd: str,
+    abandon: bool = False,
 ) -> tuple[bool, str]:
     """CONTENT_GATE_BLOCKED: integrator-owned logical merge conflict, re-entered.
 
     A groundable rejection retains ``_step_push_rejected``'s re-push-and-reclassify
     shape: the conflict instruction is re-issued as a beacon on a repeat content-gate
     failure, and recovery hands off to the ordinary PUSH_REJECTED rebase loop on a
-    fast-forward race. An ungroundable rejection is abandoned by resetting the
-    integration worktree to the checkpoint-frozen ``pre_merge_head`` — detected here
-    before any re-push is attempted, and parked through the shared ``_park_candidate``
-    transition so the drain continues with the next independent candidate.
+    fast-forward race. An ungroundable rejection is abandoned when the integrator
+    passes ``abandon=True``: the machine itself resets the integration worktree to
+    the checkpoint-frozen ``pre_merge_head`` — discarding a commit is prohibited on
+    the agent's own git surface, so the machine performs it here through the
+    module's existing git execution path — and parks through the shared
+    ``_park_candidate`` transition so the drain continues with the next independent
+    candidate. The ``head_sha == pre_merge`` branch below is a belt-and-braces
+    detector for a worktree already at the abandon target; it is not the only route.
     """
     key = _get_candidate_key(checkpoint)
     if not key:
@@ -199,6 +204,21 @@ def _step_content_gate_blocked(
             f"CONTENT_GATE_BLOCKED phase for {key.slug} cannot read HEAD or pre_merge_head",
         )
     if head_sha == pre_merge:
+        return _park_candidate(
+            checkpoint=checkpoint,
+            checkpoint_path=checkpoint_path,
+            key=key,
+            reason=_UNGROUNDABLE_CONTENT_GATE_PARK_REASON,
+        )
+
+    if abandon:
+        rc, _, stderr = _run_git(["reset", "--hard", pre_merge], cwd=wt)
+        if rc != 0:
+            return False, _format_error(
+                "ABANDON_RESET_FAILED",
+                f"CONTENT_GATE_BLOCKED phase for {key.slug} failed to reset integration "
+                f"worktree to {pre_merge}: {stderr.strip()}",
+            )
         return _park_candidate(
             checkpoint=checkpoint,
             checkpoint_path=checkpoint_path,

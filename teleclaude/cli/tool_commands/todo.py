@@ -10,6 +10,7 @@ import json
 import sys
 import uuid
 
+from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
 from teleclaude.cli.telec.surface import TODO_DESIGN, TODO_INTEGRATE, TODO_PREPARE, TODO_WORK
 from teleclaude.cli.tool_client import print_json, tool_api_call
@@ -150,7 +151,7 @@ def handle_todo_work(args: list[str]) -> None:
 def handle_todo_integrate(args: list[str]) -> None:
     """Run the integration state machine.
 
-    Usage: telec todo integrate [<slug>]
+    Usage: telec todo integrate [<slug>] [--abandon]
 
     Executes the next deterministic integration step: acquires the integration
     lease, pops the next candidate from the queue, merges, pushes, and cleans
@@ -162,10 +163,15 @@ def handle_todo_integrate(args: list[str]) -> None:
 
     Options:
       <slug>       Candidate slug (optional; must match next in FIFO queue)
+      --abandon    Park the current CONTENT_GATE_BLOCKED candidate as an
+                   ungroundable content-gate concern. The state machine resets
+                   the integration worktree to the frozen pre-merge SHA and
+                   parks; refused when the checkpoint is not at that phase.
 
     Examples:
       telec todo integrate
       telec todo integrate my-feature
+      telec todo integrate --abandon
     """
     parsed = parse_command_args(TODO_INTEGRATE, args)
     slug = _parse_single_slug(parsed)
@@ -175,6 +181,8 @@ def handle_todo_integrate(args: list[str]) -> None:
     }
     if slug is not None:
         body["slug"] = slug
+    if parsed.has(F.FLAG_TODO_INTEGRATE_ABANDON):
+        body["abandon"] = True
 
     receipt = tool_api_call("POST", "/todos/integrate", json_body=body)
     if not isinstance(receipt, dict):
