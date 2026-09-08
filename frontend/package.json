@@ -62,7 +62,7 @@
     "@types/better-sqlite3": "^7",
     "@types/dompurify": "^3.2.0",
     "@types/node": "^22",
-    "@types/nodemailer": "^6",
+    "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
