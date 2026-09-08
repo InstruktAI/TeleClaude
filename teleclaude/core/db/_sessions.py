@@ -519,7 +519,7 @@ class DbSessionsMixin:
                             if current_val is not None:
                                 updates[attr_name] = None
                         else:
-                            parsed = self._parse_iso_datetime(value)
+                            parsed = self._coerce_datetime(value)
                             if parsed and current_val != parsed:
                                 updates[attr_name] = parsed
                         continue
