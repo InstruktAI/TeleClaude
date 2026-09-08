@@ -272,6 +272,20 @@ FLAG_TODO_LIST_JSON = Flag(
 )
 
 # =============================================================================
+# todo integrate
+# =============================================================================
+
+FLAG_TODO_INTEGRATE_ABANDON = Flag(
+    "--abandon",
+    desc=(
+        "Park the current CONTENT_GATE_BLOCKED candidate as an ungroundable content-gate "
+        "concern. The state machine resets the integration worktree to the frozen "
+        "pre-merge SHA and parks — refused when the checkpoint is not at that phase."
+    ),
+    arity=SWITCH,
+)
+
+# =============================================================================
 # todo remove / deliver / update / show / reactivate
 # =============================================================================
 

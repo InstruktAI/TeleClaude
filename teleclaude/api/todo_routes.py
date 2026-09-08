@@ -221,13 +221,16 @@ async def todo_integrate(  # pyright: ignore
     slug: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
     client_request_id: Annotated[str | None, Body()] = None,
+    abandon: Annotated[bool, Body()] = False,
     identity: CallerIdentity = Depends(clearance_todos_integrate),
 ) -> SerializedOperation:
     """Run the integration state machine.
 
     Submits a durable receipt-backed integration operation that preserves
     the caller's session_id for lease ownership checks inside the background
-    runner. Requires integrator clearance.
+    runner. Requires integrator clearance. ``abandon`` carries the
+    integrator's judgment that a CONTENT_GATE_BLOCKED rejection is
+    ungroundable and parks it.
     """
     if not cwd:
         raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
@@ -237,6 +240,7 @@ async def todo_integrate(  # pyright: ignore
         cwd=cwd,
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,
+        abandon=abandon,
     )
 
 
