@@ -87,6 +87,7 @@ And rewriting the reviewed artifact or findings report does not reset the admitt
 And each admitted pass was counted and persisted before its reviewer instruction was returned
 ```
 
+<!-- planned-change:remove-prior-reviewer-agent-exclusion -->
 #### UC-WPS22: A classified halt continues only through a recorded continuation
 
 ```gherkin
@@ -98,6 +99,20 @@ And a continuation whose reason names incomplete or noisy review dispatches a re
 And without a recorded continuation the cap stays in force and no reviewer is emitted
 And an ambiguous contract reaches its owner only when that owner is human
 ```
+<!-- change:remove-prior-reviewer-agent-exclusion -->
+#### UC-WPS22: A classified halt continues only through a recorded continuation
+
+```gherkin
+Given a prepare review phase is blocked at its admitted-pass limit
+When the orchestrator classifies the halt from the current review evidence under the review procedure
+Then the machine reports the phase, admitted-pass count, the continuation stamp that admits one further pass, and the evidence required for that classification
+And a recorded continuation for that phase lets the next "telec todo prepare" call emit one reviewer dispatch, counted and persisted like any admitted pass
+And a continuation whose reason names incomplete or noisy review retires the live reviewer session for this target through its governed lifecycle before dispatching a fresh reviewer through ordinary selection
+And that fresh reviewer resolves through ordinary selection and may run on the same agent implementation as the retired session
+And without a recorded continuation the cap stays in force and no reviewer is emitted
+And an ambiguous contract reaches its owner only when that owner is human
+```
+<!-- /planned-change:remove-prior-reviewer-agent-exclusion -->
 
 #### UC-WPS8: A PRD rewritten after human approval is re-approved before the gate advances
 
