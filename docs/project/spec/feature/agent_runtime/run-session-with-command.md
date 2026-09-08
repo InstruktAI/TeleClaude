@@ -143,10 +143,12 @@ Then no agent is excluded and the request resolves as if it had not asked
 #### UC-ARS1: An earlier reviewer session's agent constrains no later dispatch for the same target
 
 ```
-Given a run-session request for a reviewer command whose target an earlier reviewer session already reviewed
-When the agent_runtime service resolves the dispatch
-Then the earlier session's agent is carried to the resolver as no constraint at all, and only the producer narrows the candidates
-And the request resolves through ordinary automatic selection, carrying the selected agent and typed routing reason as for any automatic request
+Given an agent session asks to start a reviewer command for a target
+And an earlier reviewer session for that same target ran on one of the available agents
+When TeleClaude chooses which agent runs the new session
+Then the earlier session's agent is as eligible as it would be had that session never existed
+And the only reviewer-specific narrowing applied is separation from the agent that produced the work under review
+And the accepted request reports the chosen agent and its typed routing reason exactly as any request with no review history does
 ```
 
 <!-- /planned-change:remove-prior-reviewer-agent-exclusion -->
@@ -413,6 +415,10 @@ And tasker otherwise carries only Worker's permissions — it cannot drive the t
 
 #### Lifecycle driver-start dedup
 
+<!-- planned:remove-prior-reviewer-agent-exclusion -->
+#### UC-DSD5: An orchestrator-class request for a driven slug is refused, including from the holder
+<!-- /planned:remove-prior-reviewer-agent-exclusion -->
+
 ```
 Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
 And an orchestrator-class create request that would bind X — a run-session request whose command carries the orchestrator system role ("next-prepare", "next-work", or a prepare drafting phase the orchestrator performs inline: "next-prepare-intake", "next-prepare-architecture", "next-prepare-diagnose", "next-prepare-plan") resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
@@ -422,6 +428,10 @@ And no second session is created for X
 And the refusal holds even when the requesting session is itself the holder — continuation happens in place via the operator door, never by creating a second orchestrator row
 ```
 
+<!-- planned:remove-prior-reviewer-agent-exclusion -->
+#### UC-DSD6: A task-lane request for a slug with a live active runner is refused
+<!-- /planned:remove-prior-reviewer-agent-exclusion -->
+
 ```
 Given a todo slug X with a live active-runner recorded for X
 And a task-lane create request that would bind X — a run-session or generic session-create launching "next-run-task" for X
@@ -429,6 +439,10 @@ When the create-door dedup check runs before the session is created
 Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
 And no second session is created for X
 ```
+
+<!-- planned:remove-prior-reviewer-agent-exclusion -->
+#### UC-DSD7: A producing worker child-spawn shares its orchestrator's slug
+<!-- /planned:remove-prior-reviewer-agent-exclusion -->
 
 ```
 Given a todo slug X already driven by a live driver
@@ -458,17 +472,17 @@ And later reuse for C on X addresses the newest live reviewer
 ```
 
 <!-- change:remove-prior-reviewer-agent-exclusion -->
-#### UC-DSD4: Every create request for a held review subject is refused, with no admitting field
+#### UC-DSD4: Every request for a held review subject is refused, with nothing a caller can say to admit a second
 
 ```
-Given a todo slug X with a live reviewer session for review command C — one of "next-review-build", "next-review-plan", "next-review-architecture"
-And a create request launching that same command C for X
-When the create-door dedup check runs
-Then the request is refused with a driver-start conflict that names the holding reviewer session, returned as HTTP 409 detail
-And no second reviewer session is created for C on X
-And the refusal states the reuse command that addresses the holder instead
-And no request field admits a second live reviewer for C on X, so replacing the holder means retiring it first
-And a live reviewer for a different review command on X does not refuse this one, because each review phase carries its own verdict
+Given a live reviewer session holds review command C for todo slug X — C being one of "next-review-build", "next-review-plan", "next-review-architecture"
+And an agent session asks to start that same command C for X
+When TeleClaude decides whether the new session may be created
+Then the request is refused with a driver-start conflict naming the holding session, surfaced to the caller as HTTP 409 detail
+And no second reviewer session for C on X comes into being
+And the refusal tells the caller how to address the holder instead
+And no request the caller can compose admits a second live reviewer for C on X, so a caller that needs a different reviewer must first cause the holder to end
+And a live reviewer holding a different review command on X does not refuse this one, because each review phase carries its own verdict
 ```
 
 <!-- /planned-change:remove-prior-reviewer-agent-exclusion -->
