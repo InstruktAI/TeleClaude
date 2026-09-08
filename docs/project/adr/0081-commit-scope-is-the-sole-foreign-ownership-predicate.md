@@ -85,4 +85,5 @@ question for the integrator.
 
 ## Status
 
-Accepted.
+Superseded in full by ADR-0082: span-ownership inspection is withdrawn entire, so
+the predicate this record narrowed no longer exists.

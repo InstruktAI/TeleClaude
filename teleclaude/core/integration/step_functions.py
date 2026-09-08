@@ -18,11 +18,8 @@ from teleclaude.constants import (
 )
 from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
 from teleclaude.core.integration.candidate_scan import (
-    CandidateCleanlinessInspectionError,
-    CandidateCleanlinessOutcome,
     CandidateKey,
     CandidateStateReadError,
-    _inspect_candidate_cleanliness,
     _scan_finalize_ready_candidates,
     _stamp_integration_started,
     _sweep_stale_artifacts,
@@ -66,12 +63,8 @@ from teleclaude.core.integration.lifecycle_events import (
     _emit_lifecycle_event,
 )
 from teleclaude.core.integration.park import (
-    _CANDIDATE_CLEANLINESS_PARK_REASON,
     _TEXTUAL_CONFLICT_PARK_REASON,
-    _ambiguity_from_error_context,
-    _error_context_with_ambiguity,
     _format_content_gate_conflict_or_invariant_error,
-    _log_candidate_cleanliness_decision,
     _park_candidate,
 )
 from teleclaude.core.integration.push_recovery import _is_content_gate_rejection
@@ -250,23 +243,6 @@ def _do_merge(
         _write_checkpoint(checkpoint_path, checkpoint)
         return True, ""
 
-    try:
-        cleanliness = _inspect_candidate_cleanliness(cwd, key)
-    except CandidateStateReadError as exc:
-        return False, _format_error("CANDIDATE_STATE_READ_FAILED", str(exc))
-    except CandidateCleanlinessInspectionError as exc:
-        return False, _format_error("CANDIDATE_CLEANLINESS_INSPECTION_FAILED", str(exc))
-    _log_candidate_cleanliness_decision(key, cleanliness)
-
-    if cleanliness.outcome is CandidateCleanlinessOutcome.FOREIGN:
-        return _park_candidate(
-            checkpoint=checkpoint,
-            checkpoint_path=checkpoint_path,
-            key=key,
-            reason=_CANDIDATE_CLEANLINESS_PARK_REASON,
-        )
-    ambiguity = cleanliness.evidence if cleanliness.outcome is CandidateCleanlinessOutcome.AMBIGUOUS else None
-
     rc, _, _stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
 
     # Guard: squash merge produced no content changes — candidate already integrated.
@@ -303,7 +279,7 @@ def _do_merge(
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
 
         checkpoint.phase = IntegrationPhase.MERGE_CLEAN.value
-        checkpoint.error_context = _error_context_with_ambiguity({"merge_type": "clean"}, ambiguity)
+        checkpoint.error_context = {"merge_type": "clean"}
         _write_checkpoint(checkpoint_path, checkpoint)
 
         _emit_lifecycle_event("integration.merge.succeeded", {"slug": key.slug, "branch": key.branch})
@@ -318,15 +294,12 @@ def _do_merge(
             impl_plan,
             worktree=wt,
             pre_merge_head=pre_merge_head or "",
-            ambiguity=ambiguity,
         )
     else:
         # Conflict
         conflicted_files = _get_conflicted_files(wt)
         checkpoint.phase = IntegrationPhase.MERGE_CONFLICTED.value
-        checkpoint.error_context = _error_context_with_ambiguity(
-            {"merge_type": "conflicted", "conflicted_files": conflicted_files}, ambiguity
-        )
+        checkpoint.error_context = {"merge_type": "conflicted", "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
 
         _emit_lifecycle_event(
@@ -337,7 +310,7 @@ def _do_merge(
             "%s slug=%s phase=MERGE_CONFLICTED files=%d", _NEXT_INTEGRATE_PHASE_LOG, key.slug, len(conflicted_files)
         )
 
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt, ambiguity=ambiguity)
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 
 
 def _step_awaiting_commit(
@@ -352,7 +325,6 @@ def _step_awaiting_commit(
         return False, _format_error("INVALID_STATE", "Awaiting-commit phase has no candidate key")
 
     wt = str(_integration_worktree_path(cwd))
-    ambiguity = _ambiguity_from_error_context(checkpoint.error_context)
 
     # Check for unresolved merge conflicts first (in integration worktree)
     if _merge_head_exists(wt):
@@ -360,7 +332,7 @@ def _step_awaiting_commit(
         checkpoint.error_context = {**(checkpoint.error_context or {}), "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
 
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt, ambiguity=ambiguity)
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 
     # Check if HEAD advanced in integration worktree (commit happened)
     head_sha = _get_head_sha(wt)
@@ -377,16 +349,6 @@ def _step_awaiting_commit(
     # No commit yet — re-prompt
     merge_type = (checkpoint.error_context or {}).get("merge_type", "conflicted")
     if merge_type == "clean":
-        if ambiguity is not None and head_sha is not None and pre_merge is not None and head_sha == pre_merge:
-            unmerged_rc, unmerged_stdout, _ = _run_git(list(_GIT_DIFF_UNMERGED_ARGS), cwd=wt)
-            staged_rc, _, _ = _run_git(list(_GIT_DIFF_STAGED_QUIET_ARGS), cwd=wt)
-            if unmerged_rc == 0 and not unmerged_stdout.strip() and staged_rc == 0:
-                return _park_candidate(
-                    checkpoint=checkpoint,
-                    checkpoint_path=checkpoint_path,
-                    key=key,
-                    reason=_CANDIDATE_CLEANLINESS_PARK_REASON,
-                )
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
@@ -400,7 +362,6 @@ def _step_awaiting_commit(
             impl_plan,
             worktree=wt,
             pre_merge_head=pre_merge or "",
-            ambiguity=ambiguity,
         )
     else:
         conflicted_files = _get_conflicted_files(wt)
@@ -422,7 +383,7 @@ def _step_awaiting_commit(
                     key=key,
                     reason=_TEXTUAL_CONFLICT_PARK_REASON,
                 )
-        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt, ambiguity=ambiguity)
+        return False, _format_conflict_decision(key.slug, key.branch, conflicted_files, wt)
 
 
 def _step_committed(

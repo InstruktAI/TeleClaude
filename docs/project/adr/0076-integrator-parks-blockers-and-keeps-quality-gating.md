@@ -65,5 +65,6 @@ pre-push quality gate authoritative and blocking.
 
 ## Status
 
-Superseded in part by ADR-0081: a referenced-paths breach no longer proves foreign
-ownership; the park-and-drain decision and the pre-push quality gate remain accepted.
+Superseded in part by ADR-0082 (via ADR-0081): the foreign-work park cause is
+withdrawn and its inspection removed; the park-and-drain decision, its textual-conflict
+and content-gate causes, and the pre-push quality gate remain accepted.
