@@ -119,25 +119,6 @@ And skills transform through the deepseek SKILL.md shape (plain frontmatter)
 And a machine without ~/.dsh skips deepseek like the other agents
 ```
 
-<!-- planned-change:mirrors-no-subagents-record-roles -->
-#### UC-DSH-SEARCH-1: history search indexes DSH sessions
-
-```
-Given deepseek sessions persist under ~/.dsh/sessions as session.jsonl.zstd
-When the mirror worker reconciles transcripts (or telec history search runs)
-Then DSH transcripts are discovered under the deepseek session root
-And a delegated child session — whose session entry carries parentSession —
-  yields no session id and is skipped, as Claude's agent- subagent
-  transcripts are
-And each remaining transcript's native session id is read from its session
-  entry (a legacy session- prefix is normalized; the parent directory name
-  is the fallback when the entry is unreadable)
-And the project is recovered from the session entry's cwd
-And a conversation mirror is generated and FTS-searchable
-And `telec history search --agent deepseek <term>` returns matches
-And `--agent all` includes deepseek sessions
-```
-<!-- change:mirrors-no-subagents-record-roles -->
 #### UC-DSH-SEARCH-1: history search indexes DSH sessions
 
 ```
@@ -155,7 +136,6 @@ And a conversation mirror is generated and FTS-searchable
 And `telec history search --agent deepseek <term>` returns matches
 And `--agent all` includes deepseek sessions
 ```
-<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
 #### UC-DSH-SCOPE-1: DSH transcripts feed scoping and transcript views
 
@@ -191,15 +171,6 @@ capability refusal rather than an unknown-agent failure.
   `session_pattern **/session.jsonl*` under `~/.dsh/sessions`, and session
   identity/project are read from the transcript's session entry (id, cwd),
   normalized across the `session-` prefix variants of older artifacts.
-<!-- planned-change:mirrors-no-subagents-record-roles -->
-- Not every artifact under the session root is a session. DSH's session store
-  mints `session-<n>` ordinals for delegated child sessions created without an
-  explicit id and records the spawning session in `parentSession`; that field
-  is the discriminator, and such a transcript carries no identity of its own.
-  The `session-` prefix therefore does not imply a UUID follows it — the
-  identity invariant stays a full UUID, and non-sessions are recognized before
-  they reach it.
-<!-- change:mirrors-no-subagents-record-roles -->
 - Not every artifact under the session root is a session. DSH's session store
   mints `session-<n>` ordinals for delegated child sessions created without an
   explicit id and records the spawning session in `parentSession`; that field
@@ -207,4 +178,3 @@ capability refusal rather than an unknown-agent failure.
   transcript is dropped at discovery. The `session-` prefix therefore does not
   imply a UUID follows it — the identity invariant stays a full UUID, and
   non-sessions never reach it.
-<!-- /planned-change:mirrors-no-subagents-record-roles -->

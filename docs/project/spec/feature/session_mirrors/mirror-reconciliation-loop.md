@@ -11,17 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:mirrors-no-subagents-record-roles -->
-Mirror creation through the event-driven path can miss transcripts —
-service restarts, hook drops, or fresh installs all leave gaps. A
-background worker fills those gaps. The worker is started by the
-session_mirrors service on boot and ticks every five minutes (300
-seconds). Each pass discovers all transcript files under the per-agent
-session roots, asks the mirror store for each transcript's last known
-state, and rebuilds the mirror when the transcript file is newer than the
-stored record (or when no record exists yet). Tombstones for known-empty
-transcripts short-circuit the rebuild (see `empty-transcript-tombstone`).
-<!-- change:mirrors-no-subagents-record-roles -->
 Mirror creation through the event-driven path can miss transcripts —
 service restarts, hook drops, or fresh installs all leave gaps. A
 background worker fills those gaps. The worker is started by the
@@ -33,7 +22,6 @@ known state, and rebuilds the mirror when the transcript file is newer
 than the stored record (or when no record exists yet). Tombstones for
 known-empty transcripts short-circuit the rebuild (see
 `empty-transcript-tombstone`).
-<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
 The worker emits one structured log line per pass with discovered /
 processed / failed / skipped_unchanged counters, the pass duration, and
@@ -158,7 +146,6 @@ And the mirror keeps its stored conversation text indefinitely
 And the mirror remains the durable copy of that conversation
 ```
 
-<!-- planned:mirrors-no-subagents-record-roles -->
 #### UC-MRL-12: Subagent transcripts are never candidates
 
 ```
@@ -172,7 +159,6 @@ And the discovered counter excludes dropped transcripts
 And a subagent transcript mirrored under an earlier rule is removed by store convergence, never refreshed by a pass
 ```
 
-<!-- /planned:mirrors-no-subagents-record-roles -->
 
 #### UC-MRL-11: Project attribution resolves the repository, not the path tail
 

@@ -75,17 +75,6 @@ And queries the mirror store under the native id
 And the mirror store applies no namespace translation of its own
 ```
 
-<!-- planned-change:mirrors-no-subagents-record-roles -->
-#### UC-SIN-4: A derived identity is a full UUID or it is refused
-
-```
-Given a transcript that carries a session identity
-When the value derived for it is not a full UUID
-Then the derivation fails loudly at that boundary
-And no row is stored under the non-conforming value
-And this is distinct from a transcript carrying no session identity at all, which is stored without one
-```
-<!-- change:mirrors-no-subagents-record-roles -->
 #### UC-SIN-4: A derived identity is a full UUID or it is refused
 
 ```
@@ -95,20 +84,7 @@ Then the derivation fails loudly at that boundary
 And no row is stored under the non-conforming value
 And a transcript that carries no session identity of its own never reaches this boundary, because it is dropped as a subagent transcript before derivation
 ```
-<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
-<!-- planned-change:mirrors-no-subagents-record-roles -->
-#### UC-SIN-5: A transcript with no session identity keeps its mirror
-
-```
-Given a transcript that belongs to no session — a subagent transcript dispatched within a session
-When it is mirrored
-Then the mirror is stored and its conversation text is retained
-And its session id is null, because the store admits a mirror that belongs to no session
-And it remains findable by full-text search, which indexes on the row rather than on a session id
-And it is not retrievable by session id, since it carries none
-```
-<!-- change:mirrors-no-subagents-record-roles -->
 #### UC-SIN-5: A subagent transcript belongs to no session and is never mirrored
 
 ```
@@ -118,7 +94,6 @@ Then it is recognized as a subagent transcript before any identity is derived fr
 And no mirror is written for it
 And the archive holds no mirror whose session id is null
 ```
-<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
 ## Known caveats
 
