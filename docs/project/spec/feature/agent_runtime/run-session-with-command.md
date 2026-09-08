@@ -415,10 +415,6 @@ And tasker otherwise carries only Worker's permissions — it cannot drive the t
 
 #### Lifecycle driver-start dedup
 
-<!-- planned:remove-prior-reviewer-agent-exclusion -->
-#### UC-DSD5: An orchestrator-class request for a driven slug is refused, including from the holder
-<!-- /planned:remove-prior-reviewer-agent-exclusion -->
-
 ```
 Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
 And an orchestrator-class create request that would bind X — a run-session request whose command carries the orchestrator system role ("next-prepare", "next-work", or a prepare drafting phase the orchestrator performs inline: "next-prepare-intake", "next-prepare-architecture", "next-prepare-diagnose", "next-prepare-plan") resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
@@ -428,10 +424,6 @@ And no second session is created for X
 And the refusal holds even when the requesting session is itself the holder — continuation happens in place via the operator door, never by creating a second orchestrator row
 ```
 
-<!-- planned:remove-prior-reviewer-agent-exclusion -->
-#### UC-DSD6: A task-lane request for a slug with a live active runner is refused
-<!-- /planned:remove-prior-reviewer-agent-exclusion -->
-
 ```
 Given a todo slug X with a live active-runner recorded for X
 And a task-lane create request that would bind X — a run-session or generic session-create launching "next-run-task" for X
@@ -439,10 +431,6 @@ When the create-door dedup check runs before the session is created
 Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
 And no second session is created for X
 ```
-
-<!-- planned:remove-prior-reviewer-agent-exclusion -->
-#### UC-DSD7: A producing worker child-spawn shares its orchestrator's slug
-<!-- /planned:remove-prior-reviewer-agent-exclusion -->
 
 ```
 Given a todo slug X already driven by a live driver
