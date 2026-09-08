@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import TypedDict
 
+from teleclaude.agent_registry import AGENT_REGISTRY, AgentName
 from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.runtime.binaries import resolve_tmux_binary
 
@@ -47,12 +48,8 @@ def install_launchers(project_root: Path) -> None:
     applications_dir = Path.home() / "Applications"
     applications_dir.mkdir(parents=True, exist_ok=True)
 
-    launcher_apps = (
-        "TmuxLauncher.app",
-        "ClaudeLauncher.app",
-        "GeminiLauncher.app",
-        "CodexLauncher.app",
-        "DeepSeekLauncher.app",
+    launcher_apps = ("TmuxLauncher.app",) + tuple(
+        AGENT_REGISTRY[name].executable.macos_launcher_app for name in AgentName
     )
     missing_apps = [
         project_root / "bin" / app_name for app_name in launcher_apps if not (project_root / "bin" / app_name).is_dir()

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import SQLAlchemyError
 
+from teleclaude.agent_registry import agent_permutation, registry_digest
 from teleclaude.config import config
 from teleclaude.constants import SlashCommand
 from teleclaude.core.agents import AgentName
@@ -169,13 +170,28 @@ class AgentAvailabilityFacts:
         }
 
 
+class AgentDispatchOrderBranch(StrEnum):
+    """Closed token naming which policy resolved an automatic dispatch's candidate order."""
+
+    COMMAND_POLICY = "command_policy"
+    TODO_KIND = "todo_kind"
+    GLOBAL = "global"
+
+
 @dataclass(frozen=True)
 class AgentDispatchDecision:
-    """Selected agent plus a stable, non-user-facing decision reason."""
+    """Selected agent plus a stable, non-user-facing decision reason.
+
+    ``candidate_order`` and ``order_branch`` are populated only for the
+    automatic-dispatch path (empty/``None`` for FIXED and MANUAL_PREFERENCE,
+    which select by identity rather than by order).
+    """
 
     agent: str
     reason: AgentDispatchReason
     fallback_reason: AgentDispatchReason | None = None
+    candidate_order: tuple[str, ...] = ()
+    order_branch: AgentDispatchOrderBranch | None = None
 
 
 @dataclass(frozen=True)
@@ -208,9 +224,9 @@ def classify_fresh_agent_preference(
     return mode, preferred_agent
 
 
-_GLOBAL_ORDER = ("claude", "codex", "gemini", "deepseek")
-_CODEX_FIRST = ("codex", "claude", "gemini", "deepseek")
-_GEMINI_FIRST = ("gemini", "claude", "codex", "deepseek")
+_GLOBAL_ORDER = agent_permutation(AgentName.CLAUDE, AgentName.CODEX, AgentName.GEMINI, AgentName.DEEPSEEK)
+_CODEX_FIRST = agent_permutation(AgentName.CODEX, AgentName.CLAUDE, AgentName.GEMINI, AgentName.DEEPSEEK)
+_GEMINI_FIRST = agent_permutation(AgentName.GEMINI, AgentName.CLAUDE, AgentName.CODEX, AgentName.DEEPSEEK)
 
 _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.ANALYZE_TODO_INPUT: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
@@ -227,7 +243,8 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.NEXT_PREPARE_PLAN: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.NEXT_PREPARE_TASK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
     SlashCommand.NEXT_EMULATE_PO: CommandDispatchPolicy(
-        ("claude", "gemini", "codex", "deepseek"), RunSessionThinkingMode.MED
+        agent_permutation(AgentName.CLAUDE, AgentName.GEMINI, AgentName.CODEX, AgentName.DEEPSEEK),
+        RunSessionThinkingMode.MED,
     ),
     SlashCommand.NEXT_DRIFT_ANALYZE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
     SlashCommand.NEXT_PREPARE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
@@ -253,18 +270,28 @@ def _command_policy(command: str | None) -> CommandDispatchPolicy | None:
         return None
 
 
-def _order_for(command: str | None, todo_kind: str | None) -> tuple[tuple[str, ...], AgentDispatchReason]:
+def _order_for(
+    command: str | None, todo_kind: str | None
+) -> tuple[tuple[str, ...], AgentDispatchReason, AgentDispatchOrderBranch]:
     command_name = command.lstrip("/").split(maxsplit=1)[0] if command is not None else None
     if command_name == SlashCommand.NEXT_PREPARE.value:
         if todo_kind == TODO_KIND_FEATURE:
-            return _COMMAND_POLICIES[SlashCommand.NEXT_PREPARE].agent_order, AgentDispatchReason.ROLE_PREFERENCE
+            return (
+                _COMMAND_POLICIES[SlashCommand.NEXT_PREPARE].agent_order,
+                AgentDispatchReason.ROLE_PREFERENCE,
+                AgentDispatchOrderBranch.TODO_KIND,
+            )
         if todo_kind in {TODO_KIND_CHANGE, TODO_KIND_BUG}:
-            return _CODEX_FIRST, AgentDispatchReason.ROLE_PREFERENCE
-        return _COMMAND_POLICIES[SlashCommand.NEXT_PREPARE].agent_order, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
+            return _CODEX_FIRST, AgentDispatchReason.ROLE_PREFERENCE, AgentDispatchOrderBranch.TODO_KIND
+        return (
+            _COMMAND_POLICIES[SlashCommand.NEXT_PREPARE].agent_order,
+            AgentDispatchReason.GLOBAL_UNMAPPED_ROLE,
+            AgentDispatchOrderBranch.TODO_KIND,
+        )
     policy = _command_policy(command)
     if policy is None:
-        return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE
-    return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE
+        return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE, AgentDispatchOrderBranch.GLOBAL
+    return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE, AgentDispatchOrderBranch.COMMAND_POLICY
 
 
 def _order_with_preference(order: tuple[str, ...], preferred_agent: str | None) -> tuple[str, ...]:
@@ -452,8 +479,8 @@ async def resolve_agent_dispatch(
         )
         return AgentDispatchDecision(agent=preferred_agent, reason=reason)
 
-    order, reason = _order_for(command, todo_kind)
-    order = _order_with_preference(order, preferred_agent)
+    policy_order, reason, order_branch = _order_for(command, todo_kind)
+    order = _order_with_preference(policy_order, preferred_agent)
     eligible = [
         agent
         for agent in order
@@ -481,11 +508,28 @@ async def resolve_agent_dispatch(
                 if preferred_agent == eligible[0] and independent[0] != preferred_agent
                 else None
             )
-            return AgentDispatchDecision(agent=independent[0], reason=reason, fallback_reason=fallback)
-        return AgentDispatchDecision(agent=eligible[0], reason=AgentDispatchReason.NO_INDEPENDENT_CANDIDATE)
+            return AgentDispatchDecision(
+                agent=independent[0],
+                reason=reason,
+                fallback_reason=fallback,
+                candidate_order=policy_order,
+                order_branch=order_branch,
+            )
+        return AgentDispatchDecision(
+            agent=eligible[0],
+            reason=AgentDispatchReason.NO_INDEPENDENT_CANDIDATE,
+            candidate_order=policy_order,
+            order_branch=order_branch,
+        )
 
     fallback = AgentDispatchReason.DETERMINISTIC_INELIGIBILITY if eligible[0] != order[0] else None
-    return AgentDispatchDecision(agent=eligible[0], reason=reason, fallback_reason=fallback)
+    return AgentDispatchDecision(
+        agent=eligible[0],
+        reason=reason,
+        fallback_reason=fallback,
+        candidate_order=policy_order,
+        order_branch=order_branch,
+    )
 
 
 def emit_agent_dispatch_decision(
@@ -515,9 +559,17 @@ def emit_agent_dispatch_decision(
     routing_explanation_included: bool | None = None,
     kind_source: AgentDispatchKindSource = AgentDispatchKindSource.NOT_APPLICABLE,
     decision_basis_digest: str | None = None,
+    candidate_order: tuple[str, ...] = (),
+    order_branch: AgentDispatchOrderBranch | None = None,
     error: bool = False,
 ) -> None:
-    """Emit the single privacy-safe routing record family."""
+    """Emit the single privacy-safe routing record family.
+
+    ``candidate_order`` and ``order_branch`` are populated only for an
+    automatic-dispatch decision; they distinguish a correctly resolved
+    order from a reordered one (OM-13/OM-14), since two branches can share
+    one ``reason`` token while disagreeing on the order they resolved.
+    """
     emit = logger.error if error else logger.info
     emit(
         "agent_runtime.agent_dispatch.decision stage=%s outcome=%s reason=%s selected_agent=%s "
@@ -525,7 +577,7 @@ def emit_agent_dispatch_decision(
         "fallback_reason_present=%s policy=%s revision=%s agent_supplied=%s working_slug_present=%s "
         "kind_source=%s decision_basis_digest=%s preferred_agent=%s fixed_agent=%s producer_agent=%s "
         "excluded_agents=%s command_kind=%s thinking_mode=%s caller_kind_present=%s "
-        "routing_explanation_included=%s",
+        "routing_explanation_included=%s candidate_order=%s order_branch=%s",
         stage,
         outcome,
         reason,
@@ -551,6 +603,24 @@ def emit_agent_dispatch_decision(
         thinking_mode,
         caller_kind_present,
         routing_explanation_included,
+        ",".join(candidate_order) if candidate_order else None,
+        order_branch,
+    )
+
+
+def emit_agent_launch_started(*, session_id: str, agent: str) -> None:
+    """Emit the launch-started record once the agent command is handed to tmux (OM-1).
+
+    Closes the launch half of the OM-1 correlation: session_committed (this
+    module, stage=session_committed) names the session id the caller
+    accepted; this record confirms that session actually reached tmux, with
+    the registry revision the launch resolved against.
+    """
+    logger.info(
+        "agent_runtime.agent_launch.started session_id=%s agent=%s registry_digest=%s outcome=started",
+        session_id,
+        agent,
+        registry_digest(),
     )
 
 

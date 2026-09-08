@@ -4,6 +4,7 @@
  */
 
 export type AgentActivityEvent = UserPromptSubmitActivityEvent | ToolUseActivityEvent | AgentStopActivityEvent;
+export type AgentName = 'claude' | 'codex' | 'gemini' | 'deepseek';
 export type AgentStatus = 'available' | 'unavailable' | 'degraded';
 export type ErrorSeverity = 'warning' | 'error' | 'critical';
 export type HumanRole = 'admin' | 'member' | 'contributor' | 'newcomer';
@@ -42,7 +43,7 @@ export interface CreateSessionRequest {
   computer: string;
   project_path: string;
   launch_kind?: LaunchKind;
-  agent?: 'claude' | 'gemini' | 'codex' | 'deepseek' | null;
+  agent?: AgentName | null;
   thinking_mode?: 'fast' | 'med' | 'slow' | 'default' | null;
   message?: string | null;
   title?: string | null;
@@ -88,17 +89,11 @@ export interface RunSessionRequest {
   command: string;
   args?: string;
   project: string;
-  agent?: 'claude' | 'gemini' | 'codex' | 'deepseek' | null;
+  agent?: AgentName | null;
   subfolder?: string;
   thinking_mode?: ThinkingMode | null;
   detach?: boolean;
   additional_context?: string;
-}
-
-export interface ScheduledSessionRequest {
-  computer: string;
-  project_path: string;
-  job: string;
 }
 
 export interface SendMessageRequest {
@@ -163,7 +158,7 @@ export interface AgentAvailabilityEvent {
 }
 
 export interface AgentAvailabilityInfo {
-  agent: 'claude' | 'gemini' | 'codex' | 'deepseek';
+  agent: AgentName;
   available: boolean | null;
   status?: AgentStatus | null;
   unavailable_until?: string | null;
@@ -240,7 +235,7 @@ export interface CreateSessionResponse {
   session_id: string;
   tmux_session_name: string;
   computer?: string | null;
-  agent?: 'claude' | 'gemini' | 'codex' | 'deepseek' | null;
+  agent?: AgentName | null;
   error?: string | null;
   routing_explanation?: string | null;
   routing_reason?: string | null;
@@ -447,11 +442,19 @@ export interface SessionInfo {
   last_agent_idle_at?: string | null;
   last_output_summary?: string | null;
   last_output_summary_at?: string | null;
+  runtime_start_observed: boolean;
+  runtime_activity_at?: string | null;
+  lifecycle_transitioned_at?: string | null;
+  lifecycle_transition_reason?: string | null;
+  initializing_for_seconds?: number | null;
+  attention?: string | null;
+  procedure?: string | null;
   session_id: string;
   last_input_origin?: string | null;
   title: string;
   project_path?: string | null;
   subdir?: string | null;
+  command?: string | null;
   working_slug?: string | null;
   thinking_mode?: string | null;
   active_agent?: string | null;
@@ -466,6 +469,13 @@ export interface SessionInfo {
 }
 
 export interface SessionMessagesResponse {
+  runtime_start_observed: boolean;
+  runtime_activity_at?: string | null;
+  lifecycle_transitioned_at?: string | null;
+  lifecycle_transition_reason?: string | null;
+  initializing_for_seconds?: number | null;
+  attention?: string | null;
+  procedure?: string | null;
   session_id: string;
   agent?: string | null;
   last_activity?: string | null;

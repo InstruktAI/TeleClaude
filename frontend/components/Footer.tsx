@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { AgentAvailabilityInfo, AgentName } from '@/lib/api/types';
+import { AGENT_NAMES } from '@/lib/api/generated-agent-registry';
+import type { AgentAvailabilityInfo } from '@/lib/api/types';
 import { useLiveAgentAvailability } from '@/lib/hooks/useLiveAgentAvailability';
 import { getFooterRows } from '@/lib/keys/footer-contract';
 import type { FooterContext } from '@/lib/keys/footer-contract';
@@ -11,7 +12,7 @@ export interface FooterProps {
   selectedNodeType?: 'computer' | 'project' | 'session' | null;
 }
 
-const AGENT_ORDER: AgentName[] = ['claude', 'gemini', 'codex'];
+const AGENT_ORDER = AGENT_NAMES;
 
 function formatCountdown(until?: string | null): string {
   if (!until) return '?';

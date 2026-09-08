@@ -4,12 +4,13 @@ This module defines shared constants to ensure consistency.
 """
 
 import functools
-import os
 import re
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import Enum, StrEnum
-from typing import Final, TypedDict
+from typing import Final
+
+from teleclaude import agent_registry
 
 # Taxonomy Types (single source of truth)
 # Used for snippet categorization and get_context filtering
@@ -672,213 +673,15 @@ REDIS_OUTPUT_STREAM_MAXLEN = 10000  # Max output messages per session
 REDIS_OUTPUT_STREAM_TTL = 3600  # Auto-expire output streams after 1 hour
 REDIS_REFRESH_COOLDOWN_SECONDS = 30  # Minimum time between remote refreshes per peer+data type
 
-# Directories mounted into restricted (sandboxed) agent profiles.
-# Add paths here to make them accessible to all agents in restricted mode.
-_LOG_STATE_ROOT = f"{os.environ.get('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')}/instrukt-ai"  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
-RESTRICTED_MOUNT_DIRS: tuple[str, ...] = (
-    "~/.teleclaude/docs",
-    _LOG_STATE_ROOT,
-)
-
-# Agent-specific formatters for restricted mount dirs.
-_CLAUDE_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
-_GEMINI_MOUNT = ",".join(RESTRICTED_MOUNT_DIRS)
-_CODEX_MOUNT = " ".join(f"--add-dir {d}" for d in RESTRICTED_MOUNT_DIRS)
-
-# Git `--author` identity per agent (NOT user-configurable).
-# These are the vendors' own global GitHub App bot accounts: public, stable, and
-# identical for every installation. GitHub attributes a commit by exact email
-# match, so the numeric-id form is what links the commit to the bot account.
+# Directories mounted into restricted (sandboxed) agent profiles, and the git
+# `--author` identity and launch contract per agent: all owned by the
+# canonical agent registry. Re-exported here for existing callers; see
+# `teleclaude.agent_registry` for the single source of this data.
+RESTRICTED_MOUNT_DIRS: tuple[str, ...] = agent_registry.RESTRICTED_MOUNT_DIRS
 GIT_AUTHOR_IDENTITIES: dict[str, str] = {
-    "claude": "claude[bot] <209825114+claude[bot]@users.noreply.github.com>",
-    "codex": ("chatgpt-codex-connector[bot] <199175422+chatgpt-codex-connector[bot]@users.noreply.github.com>"),
-    "gemini": "gemini-cli[bot] <218312386+gemini-cli[bot]@users.noreply.github.com>",
-    # Placeholder until DeepSeek publishes a verified bot account (none exists
-    # as of 2026-08 — no deepseek-ai[bot] GitHub user is registered); decided
-    # by the human for the DSH integration. Replace once a vendor bot exists.
-    "deepseek": "deepseek <noreply@deepseek.co>",
+    name.value: definition.git_identity for name, definition in agent_registry.AGENT_REGISTRY.items()
 }
-
-
-# Agent protocol (NOT user-configurable)
-# Fixed interface contracts for each agent CLI binary.
-# The only user-configurable field is `binary` in config.yml (wrapper path).
-class AgentProtocolDict(TypedDict):
-    """Fixed launch contract for one supported agent runtime."""
-
-    session_dir: str
-    log_pattern: str
-    session_root: str
-    session_pattern: str
-    profiles: dict[str, str]
-    mode_chains: dict[str, list[dict[str, str]]]
-    exec_subcommand: str
-    interactive_flag: str
-    non_interactive_flag: str
-    resume_template: str
-    continue_template: str
-    # True for one-shot runtimes that take the prompt as a launch argument
-    # (e.g. `dsh --profile X <prompt>`) instead of an interactive stdin prompt.
-    prompt_at_launch: bool
-    # True when the launch command must carry a per-launch `--patch` overlay
-    # selecting the model (dsh has no model CLI flag; the profile's default
-    # model is service config that a patch can replace).
-    model_via_launch_patch: bool
-    # Sandbox mode merged into the per-launch patch for the restricted profile.
-    restricted_sandbox_mode: str
-
-
+AgentProtocolDict = agent_registry.AgentProtocolDict
 AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
-    "claude": {
-        "session_dir": "~/.claude/sessions",
-        "log_pattern": "*.jsonl",
-        "session_root": "~/.claude/projects",
-        "session_pattern": "*/*.jsonl",
-        "profiles": {
-            "default": ('--dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\''),
-            "restricted": (
-                "--strict-mcp-config"
-                f' --settings \'{{"forceLoginMethod": "claudeai", "enabledMcpjsonServers": []}}\''
-                f" {_CLAUDE_MOUNT}"
-            ),
-        },
-        "mode_chains": {
-            "fast": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5[1m]' --effort low"}],
-            "med": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5[1m]' --effort high"}],
-            "slow": [
-                {"model": "fable", "flags": "--model 'claude-fable-5-1[1m]' --effort high"},
-                {"model": "opus", "flags": "--model 'claude-opus-5[1m]' --effort high"},
-            ],
-            "default": [],
-        },
-        "exec_subcommand": "",
-        "interactive_flag": "",
-        "non_interactive_flag": "-p",
-        "resume_template": "{base_cmd} --resume {session_id}",
-        "continue_template": "{base_cmd} --continue",
-        "prompt_at_launch": False,
-        "model_via_launch_patch": False,
-        "restricted_sandbox_mode": "",
-    },
-    "gemini": {
-        "session_dir": "~/.gemini/antigravity-cli/brain",
-        "log_pattern": "*/.system_generated/logs/transcript.jsonl",
-        "session_root": "~/.gemini/antigravity-cli/brain",
-        "session_pattern": "*/.system_generated/logs/transcript.jsonl",
-        "profiles": {
-            "default": "--dangerously-skip-permissions",
-            "restricted": f"--sandbox --add-dir {_GEMINI_MOUNT}",
-        },
-        "mode_chains": {
-            "fast": [{"model": "gemini", "flags": "--model 'Gemini 3.8 Flash (Low)'"}],
-            "med": [{"model": "gemini", "flags": "--model 'Gemini 3.8 Flash (Medium)'"}],
-            "slow": [{"model": "gemini", "flags": "--model 'Gemini 3.8 Flash (High)'"}],
-            "default": [],
-        },
-        "exec_subcommand": "",
-        "interactive_flag": "-i",
-        "non_interactive_flag": "-p",
-        "resume_template": "{base_cmd} --conversation {session_id}",
-        "continue_template": "{base_cmd} --continue",
-        "prompt_at_launch": False,
-        "model_via_launch_patch": False,
-        "restricted_sandbox_mode": "",
-    },
-    "codex": {
-        "session_dir": "~/.codex/sessions",
-        "log_pattern": "*.jsonl",
-        "session_root": "~/.codex/sessions",
-        "session_pattern": "**/*.jsonl",
-        "profiles": {
-            "default": "--dangerously-bypass-approvals-and-sandbox --search",
-            "restricted": f"--full-auto --search {_CODEX_MOUNT}",
-        },
-        "mode_chains": {
-            "fast": [
-                {
-                    "model": "luna",
-                    "flags": "-m gpt-5.6-luna -c model_reasoning_effort='medium' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
-                }
-            ],
-            "med": [
-                {
-                    "model": "terra",
-                    "flags": "-m gpt-5.6-terra -c model_reasoning_effort='high' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
-                }
-            ],
-            "slow": [
-                {
-                    "model": "astra",
-                    "flags": "-m gpt-6-astra -c model_reasoning_effort='high' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
-                },
-                {
-                    "model": "sol",
-                    "flags": "-m gpt-5.6-sol -c model_reasoning_effort='high' -c model_auto_compact_token_limit=900000 -c model_context_window=1000000",
-                },
-            ],
-            "default": [],
-        },
-        "exec_subcommand": "exec",
-        "interactive_flag": "",
-        "non_interactive_flag": "",
-        "resume_template": "{base_cmd} resume {session_id}",
-        "continue_template": "{base_cmd} resume --last",
-        "prompt_at_launch": False,
-        "model_via_launch_patch": False,
-        "restricted_sandbox_mode": "",
-    },
-    # DeepSeek Harness (dsh): launched as the interactive TUI profile; the
-    # daemon types prompts into the pane after readiness, like claude.
-    # Sessions persist under ~/.dsh/sessions (zstd-compressed JSONL).
-    "deepseek": {
-        "session_dir": "~/.dsh/sessions",
-        "log_pattern": "session.jsonl*",
-        "session_root": "~/.dsh/sessions",
-        "session_pattern": "**/session.jsonl*",
-        "profiles": {
-            "default": "--profile dsh-tui",
-            # Restricted: same launch; the sandbox override is merged into the
-            # dynamically generated per-launch patch (workspace-write resolves
-            # its root from the session cwd, jailing the agent to its PWD).
-            "restricted": "--profile dsh-tui",
-        },
-        # The mode mapping is a parameter table: `model` is a display label,
-        # `flags` stay CLI flags, and `patch` carries a JSON map of
-        # loader-id -> config for the per-launch overlay (dsh has no model CLI
-        # flag; the patch's model ids are the API's full ids). The patch is
-        # generated per launch, written to the session tmpdir, applied via
-        # `--patch`, and discarded with the session — never a static file.
-        "mode_chains": {
-            "fast": [
-                {
-                    "model": "v4-flash",
-                    "patch": '{"agent-default-model": {"provider": "deepseek-official", "model": "deepseek-v4-flash"}}',
-                }
-            ],
-            "med": [
-                {
-                    "model": "v4-pro",
-                    "patch": '{"agent-default-model": {"provider": "deepseek-official", "model": "deepseek-v4-pro", "reasoningEffort": "high"}}',
-                }
-            ],
-            "slow": [
-                {
-                    "model": "v4-pro",
-                    "patch": '{"agent-default-model": {"provider": "deepseek-official", "model": "deepseek-v4-pro", "reasoningEffort": "max"}}',
-                }
-            ],
-            "default": [],
-        },
-        "exec_subcommand": "",
-        "interactive_flag": "",
-        "non_interactive_flag": "",
-        "resume_template": "{base_cmd} --resume {session_id}",
-        "continue_template": "",
-        "prompt_at_launch": False,
-        "model_via_launch_patch": True,
-        # Merged into the per-launch patch when the restricted profile is used
-        # (workspace-write resolves its root from the session cwd, jailing the
-        # agent to its PWD).
-        "restricted_sandbox_mode": "workspace-write",
-    },
+    name.value: definition.protocol for name, definition in agent_registry.AGENT_REGISTRY.items()
 }

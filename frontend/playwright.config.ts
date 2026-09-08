@@ -7,6 +7,9 @@ const STORAGE_STATE = 'e2e/.auth/state.json';
 export default defineConfig({
   testDir: './e2e',
   testMatch: /.*\.spec\.ts$/,
+  // Bounded two-theme visual-regression baselines (agent-vocabulary-single-registry).
+  // One flat directory per project keeps the path exactly __screenshots__/<project>/<name>.png.
+  snapshotPathTemplate: '{testDir}/__screenshots__/{projectName}/{arg}{ext}',
 
   globalSetup: require.resolve('./e2e/global-setup.ts'),
 

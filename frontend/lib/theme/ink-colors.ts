@@ -11,7 +11,6 @@ import chalk from 'chalk';
 
 import {
   type AgentColorLevel,
-  type AgentType,
   type ThemeMode,
   AGENT_COLORS,
   THEME_TOKENS,
@@ -55,7 +54,7 @@ export function setThemeMode(m: ThemeMode): void {
  */
 export function agentColor(agent: string, level: AgentColorLevel = 'normal'): (text: string) => string {
   const safe = safeAgent(agent);
-  const hex = AGENT_COLORS[mode()][safe][level];
+  const hex = safe ? AGENT_COLORS[mode()][safe][level] : THEME_TOKENS[mode()].statusBarFg;
   return (text: string) => chalk.hex(hex)(text);
 }
 
@@ -66,7 +65,7 @@ export function agentColor(agent: string, level: AgentColorLevel = 'normal'): (t
  */
 export function agentBg(agent: string): (text: string) => string {
   const safe = safeAgent(agent);
-  const hex = AGENT_COLORS[mode()][safe].haze;
+  const hex = safe ? AGENT_COLORS[mode()][safe].haze : THEME_TOKENS[mode()].statusBarFg;
   return (text: string) => chalk.bgHex(hex)(text);
 }
 
@@ -167,8 +166,11 @@ export function statusBarFg(): (text: string) => string {
  */
 export function agentBadge(agent: string, focused: boolean = false): (text: string) => string {
   const safe = safeAgent(agent);
-  const palette = AGENT_COLORS[mode()][safe];
-  const bg = focused ? palette.normal : palette.muted;
+  const bg = safe
+    ? focused
+      ? AGENT_COLORS[mode()][safe].normal
+      : AGENT_COLORS[mode()][safe].muted
+    : THEME_TOKENS[mode()].statusBarFg;
   const fg = mode() === 'dark' ? '#000000' : '#ffffff';
   return (text: string) => chalk.bgHex(bg).hex(fg)(text);
 }

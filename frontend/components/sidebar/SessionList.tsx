@@ -2,23 +2,15 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Brain, Sparkles, Code2 } from 'lucide-react';
 import { fetchSessions } from '@/lib/api/sessions';
 import { displayTitle } from '@/lib/sessions/displayTitle';
 import { useAgentTheming } from '@/hooks/useAgentTheming';
 import { useAgentColors } from '@/hooks/useAgentColors';
-import { safeAgent, type AgentType } from '@/lib/theme/tokens';
+import { AgentIcon } from '@/lib/theme/agent-icons';
+import { safeAgent } from '@/lib/theme/tokens';
 
 function agentIcon(agent: string | null | undefined, color: string) {
-  const className = 'h-3.5 w-3.5';
-  switch (agent) {
-    case 'gemini':
-      return <Sparkles className={className} style={{ color }} />;
-    case 'codex':
-      return <Code2 className={className} style={{ color }} />;
-    default:
-      return <Brain className={className} style={{ color }} />;
-  }
+  return <AgentIcon agent={safeAgent(agent)} className="h-3.5 w-3.5" style={{ color }} />;
 }
 
 function statusDot(status: string) {
@@ -42,7 +34,7 @@ function relativeTime(iso: string | null | undefined): string {
 function SessionItem({ session, isActive }: { session: any; isActive: boolean }) {
   const router = useRouter();
   const { isThemed } = useAgentTheming();
-  const agent: AgentType = safeAgent(session.active_agent);
+  const agent = safeAgent(session.active_agent);
   const colors = useAgentColors(agent);
 
   const title = displayTitle(session);

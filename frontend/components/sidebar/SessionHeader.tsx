@@ -2,24 +2,17 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { Brain, Sparkles, Code2, Square } from 'lucide-react';
+import { Square } from 'lucide-react';
 import { useState } from 'react';
 import { fetchSessions } from '@/lib/api/sessions';
 import type { SessionInfo } from '@/lib/api/types';
 import { displayTitle } from '@/lib/sessions/displayTitle';
 import { useAgentColors } from '@/hooks/useAgentColors';
+import { AgentIcon as ResolvedAgentIcon } from '@/lib/theme/agent-icons';
 import { safeAgent } from '@/lib/theme/tokens';
 
 function AgentIcon({ agent, color }: { agent: string | null | undefined; color: string }) {
-  const props = { className: 'h-3.5 w-3.5', style: { color } };
-  switch (agent) {
-    case 'gemini':
-      return <Sparkles {...props} />;
-    case 'codex':
-      return <Code2 {...props} />;
-    default:
-      return <Brain {...props} />;
-  }
+  return <ResolvedAgentIcon agent={safeAgent(agent)} className="h-3.5 w-3.5" style={{ color }} />;
 }
 
 function statusBadge(status: string) {
@@ -53,7 +46,7 @@ export function SessionHeader({ sessionId }: Props) {
   });
 
   const session = sessions?.find((s) => s.session_id === sessionId);
-  const agentColors = useAgentColors(safeAgent(session?.active_agent || 'codex'));
+  const agentColors = useAgentColors(safeAgent(session?.active_agent));
 
   async function handleEndSession() {
     if (!session) return;

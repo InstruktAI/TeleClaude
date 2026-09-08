@@ -9,7 +9,7 @@ import type { UIMessage } from 'ai';
 import type { AgentActivityEvent, MessageInfo } from '@/lib/api/types';
 import { fetchSessions } from '@/lib/api/sessions';
 import { SessionAgentProvider } from '@/hooks/useSessionAgent';
-import { safeAgent, type AgentType } from '@/lib/theme/tokens';
+import { safeAgent } from '@/lib/theme/tokens';
 import { useWS } from '@/lib/ws/WebSocketProvider';
 
 interface Props {
@@ -86,7 +86,7 @@ export function MyRuntimeProvider({ sessionId, children }: Props) {
     queryFn: fetchSessions,
   });
   const session = sessions?.find((s) => s.session_id === sessionId);
-  const agent: AgentType = safeAgent(session?.active_agent ?? 'codex');
+  const agent = safeAgent(session?.active_agent);
 
   const handleError = useCallback((err: Error) => {
     console.error('Chat stream error:', err);

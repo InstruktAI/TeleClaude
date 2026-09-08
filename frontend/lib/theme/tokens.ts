@@ -2,18 +2,22 @@
  * Design tokens for the TeleClaude color system.
  *
  * NOTE: lib/theme/tokens.css is the visual source of truth for the frontend.
- * Edit that file to get color pickers and auto-completion.
+ * Edit that file to get color pickers and auto-completion. Agent color tiers
+ * are generated from teleclaude/agent_registry.py — see generated-agent-registry.ts.
  *
  * This file provides the logic-level access to hex values for non-CSS contexts:
  *   - Canvas animations (blending, interpolation)
  *   - CLI / Terminal rendering (Ink)
  */
 
+import { AGENT_NAMES, AGENT_PALETTE } from '../api/generated-agent-registry';
+import type { AgentName } from '../api/types';
+
 // ---------------------------------------------------------------------------
 // Type definitions
 // ---------------------------------------------------------------------------
 
-export type AgentType = 'claude' | 'gemini' | 'codex';
+export type AgentType = AgentName;
 export type ThemeMode = 'dark' | 'light';
 export type AgentColorLevel = 'subtle' | 'muted' | 'normal' | 'highlight';
 
@@ -66,72 +70,42 @@ export interface ThemeTokens {
 }
 
 // ---------------------------------------------------------------------------
-// Agent color palettes (Synced with tokens.css)
+// Agent color palettes
 // ---------------------------------------------------------------------------
+// The four color tiers are generated from teleclaude/agent_registry.py
+// (generated-agent-registry.ts) and mirrored in tokens.css. `haze` is a
+// frontend-only presentation value (tmux pane background) with no Python
+// source, so it stays hand-maintained and exhaustively typed here.
 
-const AGENT_COLORS_DARK = {
-  claude: {
-    subtle: '#875f00',
-    muted: '#af875f',
-    normal: '#d7af87',
-    highlight: '#ffffff',
-    haze: '#af875f',
-  },
-  gemini: {
-    subtle: '#8787af',
-    muted: '#af87ff',
-    normal: '#d7afff',
-    highlight: '#ffffff',
-    haze: '#af87ff',
-  },
-  codex: {
-    subtle: '#5f87af',
-    muted: '#87afd7',
-    normal: '#afd7ff',
-    highlight: '#ffffff',
-    haze: '#87afaf',
-  },
-} as const satisfies Record<AgentType, AgentPalette>;
+const AGENT_HAZE: Record<AgentType, Record<ThemeMode, string>> = {
+  claude: { light: '#af875f', dark: '#af875f' },
+  gemini: { light: '#af5fff', dark: '#af87ff' },
+  codex: { light: '#5f8787', dark: '#87afaf' },
+  deepseek: { light: '#4d6bfe', dark: '#7582cf' },
+};
 
-const AGENT_COLORS_LIGHT = {
-  claude: {
-    subtle: '#d7af87',
-    muted: '#af875f',
-    normal: '#875f00',
-    highlight: '#000000',
-    haze: '#af875f',
-  },
-  gemini: {
-    subtle: '#d787ff',
-    muted: '#af5fff',
-    normal: '#870087',
-    highlight: '#000000',
-    haze: '#af5fff',
-  },
-  codex: {
-    subtle: '#87afd7',
-    muted: '#5f87af',
-    normal: '#005f87',
-    highlight: '#000000',
-    haze: '#5f8787',
-  },
-} as const satisfies Record<AgentType, AgentPalette>;
+function paletteForMode(mode: ThemeMode): Record<AgentType, AgentPalette> {
+  return Object.fromEntries(
+    AGENT_NAMES.map((agent) => [agent, { ...AGENT_PALETTE[agent][mode], haze: AGENT_HAZE[agent][mode] }]),
+  ) as Record<AgentType, AgentPalette>;
+}
 
 /** Mode-resolved agent color map. */
 export const AGENT_COLORS: Record<ThemeMode, Record<AgentType, AgentPalette>> = {
-  dark: AGENT_COLORS_DARK,
-  light: AGENT_COLORS_LIGHT,
+  dark: paletteForMode('dark'),
+  light: paletteForMode('light'),
 };
 
-/** All known agent names. */
-export const AGENT_NAMES: readonly AgentType[] = ['claude', 'gemini', 'codex'] as const;
+export { AGENT_NAMES };
 
-/** Default fallback agent when an unknown name is provided. */
-export const DEFAULT_AGENT: AgentType = 'codex';
-
-/** Normalize unknown agent names to a stable default. */
-export function safeAgent(agent: string): AgentType {
-  return AGENT_NAMES.includes(agent as AgentType) ? (agent as AgentType) : DEFAULT_AGENT;
+/** Return the canonical agent name, or `undefined` when the value is not a known agent.
+ *
+ * Never substitutes a different agent's identity: a session carrying an
+ * unrecognized or missing agent value is presented as unknown, not silently
+ * repainted in another agent's colors.
+ */
+export function safeAgent(agent: string | null | undefined): AgentType | undefined {
+  return agent && (AGENT_NAMES as readonly string[]).includes(agent) ? (agent as AgentType) : undefined;
 }
 
 // ---------------------------------------------------------------------------

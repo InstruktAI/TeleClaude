@@ -11,6 +11,29 @@ if ! command -v swiftc >/dev/null 2>&1; then
     exit 1
 fi
 
+# Every canonical agent (teleclaude/agent_registry.py) needs a build_launcher
+# call below; an agent added there without a matching branch here is a
+# packaging omission — fail loudly instead of silently skipping its launcher.
+launcher_python="$REPO_ROOT/.venv/bin/python"
+if [ ! -x "$launcher_python" ]; then
+    launcher_python="python3"
+fi
+known_launcher_agents="claude codex gemini deepseek"
+canonical_agents="$(PYTHONPATH="$REPO_ROOT" "$launcher_python" -m teleclaude.codegen.agent_registry --list 2>/dev/null || true)"
+if [ -z "$canonical_agents" ]; then
+    echo "make launchers: could not resolve the canonical agent list (teleclaude.codegen.agent_registry --list); run 'make install' first" >&2
+    exit 1
+fi
+for agent in $canonical_agents; do
+    case " $known_launcher_agents " in
+        *" $agent "*) ;;
+        *)
+            echo "make launchers: no build_launcher call for canonical agent '$agent'; add its branch to build.sh before rerunning" >&2
+            exit 1
+            ;;
+    esac
+done
+
 n=$(security find-certificate -a -c "$AUTHORITY" 2>/dev/null | grep -c '^keychain:' || true)
 if [ "$n" -eq 0 ]; then
     echo "make launchers: signing authority '$AUTHORITY' is missing. Create one self-signed Code Signing certificate named '$AUTHORITY' in Keychain Access (macos-stable-code-signing Step 1), then rerun make launchers." >&2

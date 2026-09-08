@@ -19,7 +19,7 @@ from teleclaude.config import config
 from teleclaude.config._models import AgentConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
-from teleclaude.core.agent_dispatch import resolve_launch_model
+from teleclaude.core.agent_dispatch import emit_agent_launch_started, resolve_launch_model
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import AgentName, _get_agent_config, assert_agent_enabled, get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
@@ -323,6 +323,7 @@ async def start_agent(
     await db.update_session(session.session_id, **updates)
 
     await execute_terminal_command(session.session_id, command_str, None, True)
+    emit_agent_launch_started(session_id=session.session_id, agent=agent_name)
 
 
 @with_session

@@ -10,8 +10,8 @@ import { createContext, useContext } from 'react';
 import type { AgentType } from '@/lib/theme/tokens';
 
 interface SessionAgentContextValue {
-  /** Agent type for the active session (claude, gemini, codex) */
-  agent: AgentType;
+  /** Canonical agent type for the active session, or `undefined` when not yet known. */
+  agent: AgentType | undefined;
 }
 
 const SessionAgentContext = createContext<SessionAgentContextValue | undefined>(undefined);
@@ -21,14 +21,11 @@ export const SessionAgentProvider = SessionAgentContext.Provider;
 /**
  * Hook to access the active session's agent type.
  *
- * Must be used within SessionAgentProvider.
+ * Must be used within SessionAgentProvider. Returns `undefined` before
+ * session info has loaded or when the session carries no known agent —
+ * callers render neutral presentation rather than assuming an identity.
  */
-export function useSessionAgent(): AgentType {
+export function useSessionAgent(): AgentType | undefined {
   const context = useContext(SessionAgentContext);
-  if (!context) {
-    // Default to 'codex' if context is not available
-    // This gracefully handles cases where the session info hasn't loaded yet
-    return 'codex';
-  }
-  return context.agent;
+  return context?.agent;
 }

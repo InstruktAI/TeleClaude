@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, type CSSProperties } from 'react';
-import { ChevronRight, ChevronDown, Brain, Sparkles, Code2, Monitor } from 'lucide-react';
+import { ChevronRight, ChevronDown, Monitor } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import type { SessionHighlightViewState } from '@/hooks/useSessionHighlights';
@@ -14,6 +14,7 @@ import {
   type ProjectGroup,
   type SessionTreeNode,
 } from '@/lib/sessions/tree';
+import { AgentIcon as ResolvedAgentIcon } from '@/lib/theme/agent-icons';
 import { safeAgent } from '@/lib/theme/tokens';
 import { replaceHomeWithTilde } from '@/lib/utils/path';
 
@@ -85,7 +86,7 @@ function getSessionPalette(agent: string | null, isThemed: boolean): SessionPale
 }
 
 function sessionAgent(agent: string | null | undefined): string | null {
-  return agent ? safeAgent(agent) : null;
+  return safeAgent(agent) ?? null;
 }
 
 function detailOffset(depth: number): string {
@@ -191,15 +192,7 @@ function outputDetailLine(
 // ---------------------------------------------------------------------------
 
 function AgentIcon({ agent, color }: { agent: string | null | undefined; color: string }) {
-  const className = 'h-3.5 w-3.5 shrink-0';
-  switch (agent) {
-    case 'gemini':
-      return <Sparkles className={className} style={{ color }} />;
-    case 'codex':
-      return <Code2 className={className} style={{ color }} />;
-    default:
-      return <Brain className={className} style={{ color }} />;
-  }
+  return <ResolvedAgentIcon agent={safeAgent(agent)} className="h-3.5 w-3.5 shrink-0" style={{ color }} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -489,8 +482,9 @@ export function SessionTree({
         <div
           data-testid={`project-header-${project.path}`}
           data-node-id={nodeId}
-          className={`flex items-center gap-1.5 px-4 py-1 text-xs cursor-pointer hover:bg-accent/50 ${cursorId === nodeId ? 'ring-1 ring-primary' : ''
-            }`}
+          className={`flex items-center gap-1.5 px-4 py-1 text-xs cursor-pointer hover:bg-accent/50 ${
+            cursorId === nodeId ? 'ring-1 ring-primary' : ''
+          }`}
           onClick={() => {
             onCursorChange?.(nodeId);
             toggle(nodeId);
@@ -521,8 +515,9 @@ export function SessionTree({
         <div
           data-testid={`computer-header-${computer.name}`}
           data-node-id={nodeId}
-          className={`flex items-center gap-1.5 px-2 py-1.5 text-xs cursor-pointer hover:bg-accent/50 ${cursorId === nodeId ? 'ring-1 ring-primary' : ''
-            }`}
+          className={`flex items-center gap-1.5 px-2 py-1.5 text-xs cursor-pointer hover:bg-accent/50 ${
+            cursorId === nodeId ? 'ring-1 ring-primary' : ''
+          }`}
           onClick={() => {
             onCursorChange?.(nodeId);
             toggle(nodeId);

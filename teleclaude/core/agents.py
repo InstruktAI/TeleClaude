@@ -1,127 +1,25 @@
-"""Shared Agent metadata."""
+"""Shared Agent metadata.
+
+``AgentName`` and every fixed per-agent fact (prompt markers, startup signal,
+Discord presentation, git identity, launch protocol) are canonically owned
+by ``teleclaude.agent_registry``, a leaf module with no internal
+dependencies. This module re-exports that vocabulary and adds the
+config-dependent accessors a leaf registry module cannot own itself.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum, StrEnum
-
 from instrukt_ai_logging import get_logger
 
+from teleclaude.agent_registry import AGENT_REGISTRY as AGENT_REGISTRY
+from teleclaude.agent_registry import AgentName as AgentName
+from teleclaude.agent_registry import AgentStartupSignal as AgentStartupSignal
+from teleclaude.agent_registry import DiscordAuthorPresentation as DiscordAuthorPresentation
 from teleclaude.config import AgentConfig, config
 
 logger = get_logger(__name__)
 
-
-@dataclass(frozen=True)
-class DiscordAuthorPresentation:
-    """Stable webhook presentation for a known agent author."""
-
-    alias: str
-    avatar_url: str
-
-
-class AgentStartupSignal(StrEnum):
-    """Authority that can open an agent's first-input readiness gate."""
-
-    NATIVE = "native"
-    PANE = "pane"
-
-
-class AgentName(str, Enum):
-    """Known AI agent names."""
-
-    CLAUDE = "claude"
-    CODEX = "codex"
-    GEMINI = "gemini"
-    DEEPSEEK = "deepseek"
-
-    @property
-    def prompt_marker(self) -> str:
-        """Return the TUI prompt marker used for readiness detection."""
-        return _PROMPT_MARKERS_BY_AGENT[self.value]
-
-    @property
-    def startup_signal(self) -> AgentStartupSignal:
-        """Return the provider-declared authority for first-input admission."""
-        return _STARTUP_SIGNALS_BY_AGENT[self]
-
-    @property
-    def git_identity(self) -> str | None:
-        """Return the git ``--author`` value for this agent's GitHub bot identity.
-
-        Resolved once at the config load boundary from
-        ``constants.GIT_AUTHOR_IDENTITIES``. These are the vendors' own global
-        GitHub bot accounts — public, stable, identical for every installation —
-        so they are constants rather than configuration. Returns ``None`` for an
-        agent with no entry; the caller decides how to treat that gap.
-        """
-        agent_config = config.agents.get(self.value)
-        return agent_config.git_identity if agent_config is not None else None
-
-    @property
-    def discord_presentation(self) -> DiscordAuthorPresentation:
-        """Return the closed Discord webhook identity for this agent."""
-        return _DISCORD_PRESENTATIONS_BY_AGENT[self]
-
-    @classmethod
-    def from_str(cls, value: str) -> AgentName:
-        """Convert a string to AgentName, raising ValueError on unknown values."""
-        normalized = value.strip().lower()
-        if normalized == "agy":
-            return cls.GEMINI
-        for member in cls:
-            if member.value == normalized:
-                return member
-        err = f"Unknown agent '{value}'"
-        logger.error(err)
-        raise ValueError(err)
-
-    @classmethod
-    def choices(cls) -> tuple[str, ...]:
-        """Return all agent names as a tuple of string values."""
-        return tuple(member.value for member in cls)
-
-
 KNOWN_AGENT_IDS: tuple[str, ...] = AgentName.choices()
-
-_PROMPT_MARKERS_BY_AGENT: dict[str, str] = {
-    AgentName.CLAUDE.value: "\u276f",
-    # agy renders a footer status line ("? for shortcuts") whenever its input
-    # prompt is idle and ready; it disappears while the agent is working.
-    AgentName.GEMINI.value: "? for shortcuts",
-    AgentName.CODEX.value: "\n\u203a ",
-    # DeepSeek Harness TUI renders its input prompt as the U+276F glyph
-    # (heavy right-pointing angle quotation mark, the same prompt char as
-    # Claude) when idle; the daemon's tmux readiness detection watches for it
-    # before typing the prompt.
-    AgentName.DEEPSEEK.value: "\u276f",
-}
-
-_STARTUP_SIGNALS_BY_AGENT: dict[AgentName, AgentStartupSignal] = {
-    AgentName.CLAUDE: AgentStartupSignal.NATIVE,
-    AgentName.CODEX: AgentStartupSignal.PANE,
-    AgentName.GEMINI: AgentStartupSignal.PANE,
-    AgentName.DEEPSEEK: AgentStartupSignal.PANE,
-}
-
-_DISCORD_PRESENTATIONS_BY_AGENT: dict[AgentName, DiscordAuthorPresentation] = {
-    AgentName.CLAUDE: DiscordAuthorPresentation(
-        alias="Claude",
-        avatar_url="https://avatars.githubusercontent.com/u/209825114?v=4",
-    ),
-    AgentName.CODEX: DiscordAuthorPresentation(
-        alias="Codex",
-        avatar_url="https://avatars.githubusercontent.com/u/199175422?v=4",
-    ),
-    AgentName.GEMINI: DiscordAuthorPresentation(
-        alias="Gemini",
-        avatar_url="https://avatars.githubusercontent.com/u/218312386?v=4",
-    ),
-    AgentName.DEEPSEEK: DiscordAuthorPresentation(
-        alias="DeepSeek",
-        avatar_url="https://github.com/deepseek-ai.png",
-    ),
-}
 
 
 def resolve_parser_agent(active_agent: str | None) -> AgentName:

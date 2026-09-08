@@ -8,6 +8,8 @@
 
 set -euo pipefail
 
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # --- Guards ---
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -58,44 +60,14 @@ else
 fi
 
 # --- Verify credentials ---
-
-echo ""
-echo "=== Credential Check ==="
-errors=0
-
-# Claude: OAuth token in macOS Keychain
-if security find-generic-password -s "Claude Code-credentials" -w \
-     ~/Library/Keychains/login.keychain-db >/dev/null 2>&1; then
-  echo "  Claude: OK (Keychain credential readable)"
-else
-  echo "  Claude: MISSING — run 'claude login' from a GUI terminal session"
-  errors=$((errors + 1))
+#
+# Delegated to teleclaude.runtime.agent_preflight, keyed exhaustively by each
+# canonical agent's registry-declared check kind (Keychain service, file
+# presence, or Keychain-or-file) — see teleclaude/agent_registry.py. Adding a
+# canonical agent registers its check here automatically; this script no
+# longer hand-lists agents.
+PREFLIGHT_PYTHON="$INSTALL_DIR/.venv/bin/python"
+if [[ ! -x "$PREFLIGHT_PYTHON" ]]; then
+  PREFLIGHT_PYTHON="python3"
 fi
-
-# Codex: file-based auth
-if [[ -f "$HOME/.codex/auth.json" ]]; then
-  echo "  Codex:  OK ($HOME/.codex/auth.json exists)"
-else
-  echo "  Codex:  MISSING — run 'codex auth login'"
-  errors=$((errors + 1))
-fi
-
-# Antigravity (agy): Keychain or legacy auth
-# Rationale: Antigravity CLI securely persists credentials in the macOS Keychain generic password keyring under Antigravity-specific service names, falling back to legacy plaintext JSON tokens if present.
-if security find-generic-password -s "Antigravity CLI-credentials" -w ~/Library/Keychains/login.keychain-db >/dev/null 2>&1 || \
-   security find-generic-password -s "Antigravity-credentials" -w ~/Library/Keychains/login.keychain-db >/dev/null 2>&1 || \
-   [[ -f "$HOME/.gemini/oauth_creds.json" ]]; then
-  echo "  Antigravity (agy): OK (Credential readable)"
-else
-  echo "  Antigravity (agy): MISSING — run 'agy auth login' from a GUI terminal session"
-  errors=$((errors + 1))
-fi
-
-echo ""
-if [[ $errors -gt 0 ]]; then
-  echo "WARNING: $errors credential(s) not accessible."
-  echo "         Log in from a GUI terminal, then re-run this script to verify."
-  exit 1
-fi
-
-echo "All credentials verified. Runner is ready for release automation."
+env PYTHONPATH="$INSTALL_DIR" "$PREFLIGHT_PYTHON" -m teleclaude.runtime.agent_preflight

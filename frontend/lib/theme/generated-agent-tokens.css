@@ -1,0 +1,50 @@
+/* -----------------------------------------------------------------------
+ * Auto-generated from teleclaude.agent_registry.
+ * Do not edit by hand. Frontend-only tokens (e.g. haze) stay in tokens.css.
+ * -------------------------------------------------------------------- */
+
+:root {
+  /* -- Agents (claude) -- */
+  --tc-agent-claude-subtle: #d7af87;
+  --tc-agent-claude-muted: #af875f;
+  --tc-agent-claude-normal: #875f00;
+  --tc-agent-claude-highlight: #000000;
+  /* -- Agents (codex) -- */
+  --tc-agent-codex-subtle: #87afd7;
+  --tc-agent-codex-muted: #5f87af;
+  --tc-agent-codex-normal: #005f87;
+  --tc-agent-codex-highlight: #000000;
+  /* -- Agents (gemini) -- */
+  --tc-agent-gemini-subtle: #d787ff;
+  --tc-agent-gemini-muted: #af5fff;
+  --tc-agent-gemini-normal: #870087;
+  --tc-agent-gemini-highlight: #000000;
+  /* -- Agents (deepseek) -- */
+  --tc-agent-deepseek-subtle: #6d7fe0;
+  --tc-agent-deepseek-muted: #4d6bfe;
+  --tc-agent-deepseek-normal: #2f4ad0;
+  --tc-agent-deepseek-highlight: #000000;
+}
+
+.dark {
+  /* -- Agents (claude) -- */
+  --tc-agent-claude-subtle: #875f00;
+  --tc-agent-claude-muted: #af875f;
+  --tc-agent-claude-normal: #d7af87;
+  --tc-agent-claude-highlight: #ffffff;
+  /* -- Agents (codex) -- */
+  --tc-agent-codex-subtle: #5f87af;
+  --tc-agent-codex-muted: #87afd7;
+  --tc-agent-codex-normal: #afd7ff;
+  --tc-agent-codex-highlight: #ffffff;
+  /* -- Agents (gemini) -- */
+  --tc-agent-gemini-subtle: #8787af;
+  --tc-agent-gemini-muted: #af87ff;
+  --tc-agent-gemini-normal: #d7afff;
+  --tc-agent-gemini-highlight: #ffffff;
+  /* -- Agents (deepseek) -- */
+  --tc-agent-deepseek-subtle: #3b4a8a;
+  --tc-agent-deepseek-muted: #7582cf;
+  --tc-agent-deepseek-normal: #9babfb;
+  --tc-agent-deepseek-highlight: #ffffff;
+}

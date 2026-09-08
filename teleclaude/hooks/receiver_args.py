@@ -5,7 +5,11 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-RECEIVER_AGENT_CHOICES: tuple[str, ...] = ("claude", "codex", "gemini", "agy", "deepseek")
+from teleclaude.agent_registry import AGENT_REGISTRY, AgentName
+
+RECEIVER_AGENT_CHOICES: tuple[str, ...] = AgentName.choices() + tuple(
+    alias for name in AgentName for alias in AGENT_REGISTRY[name].aliases
+)
 
 
 def build_receiver_arg_parser() -> argparse.ArgumentParser:

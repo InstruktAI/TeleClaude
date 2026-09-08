@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from teleclaude.agent_registry import AgentName
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.snippet_validation import SnippetScope
 from teleclaude.types.todo_kind import TODO_KIND_USAGE
@@ -36,7 +37,7 @@ FLAG_COMPUTER_MANY = replace(
     arity=GREEDY,
     desc="Query one or more remote computers via daemon API",
 )
-FLAG_AGENT = Flag("--agent", desc="Agent: claude, gemini, codex, deepseek", arity=VALUE)
+FLAG_AGENT = Flag("--agent", desc=f"Agent: {', '.join(AgentName)}", arity=VALUE)
 FLAG_MODE = Flag("--mode", desc="Thinking mode: fast, med, slow", arity=VALUE)
 FLAG_DETACH = Flag(
     "--detach",

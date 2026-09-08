@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { AGENT_NAMES } from '@/lib/api/generated-agent-registry';
 import type { ComputerInfo, ProjectInfo, AgentName, ThinkingMode } from '@/lib/api/types';
 
 interface Prefill {
@@ -205,7 +206,7 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
           <fieldset className="flex flex-col gap-1">
             <legend className="text-xs font-medium text-muted-foreground">Agent</legend>
             <div className="flex gap-2">
-              {(['claude', 'gemini', 'codex'] as AgentName[]).map((a) => (
+              {AGENT_NAMES.map((a) => (
                 <label
                   key={a}
                   className="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-all"
