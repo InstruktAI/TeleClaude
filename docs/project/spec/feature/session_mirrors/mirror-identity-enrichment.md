@@ -32,18 +32,6 @@ still has the identity values it captured.
 
 #### Session record lookup
 
-<!-- planned-change:mirrors-no-subagents-record-roles -->
-```
-Given a mirror event for session_id S (and possibly a transcript_path P)
-When the session_mirrors service resolves session context
-Then a single session record is looked up where session_id = S OR transcript_path = P
-And ties prefer the record whose session_id matches S
-And the returned context exposes
-  session_id, computer, agent, project, transcript_path, human_email, visibility,
-  last_input_origin, adapter_metadata
-And missing fields map to None or the empty string
-```
-<!-- change:mirrors-no-subagents-record-roles -->
 ```
 Given a mirror event for session_id S (and possibly a transcript_path P)
 When the session_mirrors service resolves session context
@@ -54,9 +42,7 @@ And the returned context exposes
   last_input_origin, adapter_metadata, system_role, command, working_slug, title
 And missing fields map to None or the empty string
 ```
-<!-- /planned-change:mirrors-no-subagents-record-roles -->
 
-<!-- planned:mirrors-no-subagents-record-roles -->
 #### Classification and title come from the session record
 
 ```
@@ -73,7 +59,6 @@ Then is_worker is false, and command and slug are null
 And the title falls back to the first user message's stripped text, per `conversation-text-extraction`
 ```
 
-<!-- /planned:mirrors-no-subagents-record-roles -->
 
 #### Identity threading into mirror generation
 
