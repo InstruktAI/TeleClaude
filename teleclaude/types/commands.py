@@ -123,7 +123,6 @@ class CreateSessionCommand(InternalCommand):
     working_slug: str | None = None
     entry_point: SessionEntryPoint | None = None
     producer_agent: str | None = None
-    excluded_agents: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         super().__post_init__()

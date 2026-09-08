@@ -33,6 +33,7 @@ __all__ = [
     "format_plan_reconcile_note",
     "format_prepared",
     "format_procedure_load",
+    "format_reviewer_retirement",
     "format_stash_debt",
     "format_tool_call",
     "format_uncommitted_changes",
@@ -69,6 +70,14 @@ _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
 )
 _PROCEDURE_LOAD_TARGET_ERROR = "Exactly one procedure-load target is required"
 _TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
+_REVIEWER_RETIREMENT_TEMPLATE = """REVIEWER RETIREMENT: {slug}
+
+Execute in order:
+
+telec sessions end {session_id}
+
+{watch_instruction}
+When the reviewer is terminal, call {advance_call}."""
 _DRIFT_CLASS_ORDER = {
     "code": 0,
     "upstream-artifact": 1,
@@ -90,8 +99,6 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
         pre_dispatch: pre-dispatch steps (optional)
         additional_context: extra context for the worker (optional)
         note: trailing note appended to the output (optional)
-        exclude_prior_reviewers: render --exclude-prior-reviewers on the dispatch
-            line, for a review-caused continuation (optional, default False)
     """
 
 
@@ -205,6 +212,22 @@ def format_worker_redispatch(
     )
 
 
+def format_reviewer_retirement(
+    session_id: str,
+    *,
+    slug: str,
+    advance_call: str,
+) -> str:
+    """Format the no-dispatch response that retires a reviewer session."""
+    watch_instruction = format_orchestration_watch_instruction(slug=slug, restart_cadence=True)
+    return _REVIEWER_RETIREMENT_TEMPLATE.format(
+        slug=slug,
+        session_id=session_id,
+        watch_instruction=watch_instruction,
+        advance_call=advance_call,
+    )
+
+
 def dispatch_or_reuse(
     worker_id: str | None,
     *,
@@ -259,8 +282,6 @@ def format_tool_call(request: ToolCallRequest) -> str:
     post_block = str(request.get("post_block", ""))
     pre_dispatch_block = _format_pre_dispatch_block(str(request.get("pre_dispatch", "")))
     additional_context_flag, additional_context_block = _format_additional_context(request)
-    exclude_prior_reviewers_flag = " --exclude-prior-reviewers" if request.get("exclude_prior_reviewers") else ""
-
     reminder_instruction = format_orchestration_watch_instruction(
         slug=args,
         restart_cadence=False,
@@ -280,7 +301,7 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
 telec sessions run --command "{formatted_command}" --args "{args}" --path "{project}" \
-  --subfolder "{subfolder}"{additional_context_flag}{exclude_prior_reviewers_flag}
+  --subfolder "{subfolder}"{additional_context_flag}
 Save the returned session_id.
 
 STEP 2 - ARM THE BACKUP REMINDER AND INITIALIZE MARKER:

@@ -102,7 +102,6 @@ class SessionLaunchIntent:
     preferred_agent: str | None = None
     fixed_agent: str | None = None
     producer_agent: str | None = None
-    excluded_agents: tuple[str, ...] = ()
     decision_basis_digest: str | None = None
     accepted_at_origin: bool = False
     # Transient launch state, resolved before the session row is created and
@@ -125,7 +124,6 @@ class SessionLaunchIntent:
             "preferred_agent": self.preferred_agent,
             "fixed_agent": self.fixed_agent,
             "producer_agent": self.producer_agent,
-            "excluded_agents": list(self.excluded_agents),
             "decision_basis_digest": self.decision_basis_digest,
             "accepted_at_origin": self.accepted_at_origin,
         }
@@ -152,7 +150,6 @@ class SessionLaunchIntent:
             preferred_agent=cast(str | None, data.get("preferred_agent")),
             fixed_agent=cast(str | None, data.get("fixed_agent")),
             producer_agent=cast(str | None, data.get("producer_agent")),
-            excluded_agents=tuple(cast(list[str], data.get("excluded_agents") or [])),
             decision_basis_digest=cast(str | None, data.get("decision_basis_digest")),
             accepted_at_origin=bool(data.get("accepted_at_origin", False)),
         )

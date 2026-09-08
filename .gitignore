@@ -44,6 +44,7 @@ docs/.obsidian/
 logs/
 
 # Caches
+*.tsbuildinfo
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
