@@ -212,15 +212,6 @@ And the loader is composed for the corpus document that name resolves to
 
 #### UC-CLR5: Unsafe names compose no loader and read no file
 
-<!-- planned-change:fix-run-session-loader-argless-commands -->
-```
-Given a run-session request whose command contains traversal ("../x"), an absolute path ("/etc/x"), or more than one segment ("a/b/c")
-When loader composition validates the name before any corpus read
-Then no loader is composed and no file is read
-And the request is rejected naming the offending token
-And a safe name that resolves to no corpus document still launches with the input passed through verbatim, unchanged from today
-```
-<!-- change:fix-run-session-loader-argless-commands -->
 ```
 Given a run-session request whose command contains traversal ("../x"), an absolute path ("/etc/x"), or more than one segment ("a/b/c")
 When loader composition validates the name before any corpus read
@@ -238,29 +229,7 @@ Then no session is created and the request is refused naming the unresolved comm
 And the refusal reaches an API caller as a 400
 And no launch delivers the raw command text in place of the loader
 ```
-<!-- /planned-change:fix-run-session-loader-argless-commands -->
 
-<!-- planned-change:fix-run-session-loader-argless-commands -->
-#### UC-CLR1: Slug-bound worker command with empty args is rejected
-
-```
-Given the normalized command is slug-bound (not in the non-slug-bound set: next-prepare, next-integrate, next-review-commits)
-And the args field is empty
-When command loader-message assembly validates the inputs
-Then it rejects with "<command> requires a slug argument"
-And this validation is agent-independent
-```
-
-#### UC-CLR2: Non-slug-bound command with empty args produces the loader message
-
-```
-Given the normalized command is in the non-slug-bound set (next-prepare, next-integrate, next-review-commits)
-And the args field is empty
-When command loader-message assembly runs
-Then the startup message is the command loader for ~/.teleclaude/commands/<command>.md
-And no slug argument is required
-```
-<!-- change:fix-run-session-loader-argless-commands -->
 #### UC-CLR1: Whether a command may run without arguments is decided at the dispatch door
 
 ```
@@ -281,7 +250,6 @@ Then the startup message is the command loader for ~/.teleclaude/commands/<comma
 And its marker line carries the command with no argument token
 And its provided-inputs section is empty rather than absent
 ```
-<!-- /planned-change:fix-run-session-loader-argless-commands -->
 
 #### UC-CLR3: A dispatched session's title reflects its record fields and is read by nothing
 
@@ -354,7 +322,6 @@ Then the additional context is appended to BOTH the echoed full-command and the 
 And every enabled runtime receives the identical extended message
 ```
 
-<!-- planned:fix-run-session-loader-argless-commands -->
 #### UC-CLR10: Additional context is carried once, outside the provided inputs
 
 ```
@@ -364,7 +331,6 @@ Then the composed message carries the additional context exactly once
 And the context appears after the loader, never inside the marker line and never inside the provided-inputs section
 And this holds whether the request supplies command arguments or none
 ```
-<!-- /planned:fix-run-session-loader-argless-commands -->
 
 
 #### Dispatch privilege enforcement
@@ -617,12 +583,8 @@ When the run-session preparation parses the token
 Then no command lookup succeeds
 And no role inference happens (system role and job remain unset)
 And dispatch privilege enforcement is skipped
-<!-- planned-change:fix-run-session-loader-argless-commands -->
-And the command is still launched verbatim into the agent — agent-side handling decides whether the command is meaningful
-<!-- change:fix-run-session-loader-argless-commands -->
 And a token that resolves to an installed command document is still launched with that document's loader, carrying no role
 And a token that resolves to no installed command document is refused rather than launched
-<!-- /planned-change:fix-run-session-loader-argless-commands -->
 ```
 
 #### UC-RSC-LP1: A launch-argument agent receives the startup message as part of its start command
