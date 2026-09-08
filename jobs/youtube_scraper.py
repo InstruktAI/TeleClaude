@@ -26,8 +26,9 @@ with the job's configured ``tags`` filter list, and fetches recent video
 metadata for each matching channel using the existing YouTube search helper.
 
 Integration:
-- Called by the cron runner (scripts/cron_runner.py) on a daily schedule.
-- Config key: ``jobs.youtube_scraper`` in teleclaude.yml.
+- Not currently scheduled: its ``jobs.youtube_scraper`` declaration in
+  teleclaude.yml is disabled. Runnable standalone through its ``uv`` shebang
+  and ``run_job_cli`` entry.
 - Uses teleclaude/cron/discovery.py to find subscribers.
 - Reads channel rows from teleclaude/tagging/youtube.py.
 - Fetches video metadata via teleclaude/helpers/youtube_helper.py.

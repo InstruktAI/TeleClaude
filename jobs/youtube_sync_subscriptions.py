@@ -32,7 +32,8 @@ subscriber's allowed tag list, validate responses, and fall back to web research
 for channels the normal pass couldn't classify.
 
 Integration:
-- Called by the cron runner (scripts/cron_runner.py) on a daily schedule.
+- Not currently scheduled: its ``teleclaude.yml`` declaration is disabled.
+  Runnable standalone through its ``uv`` shebang and ``run_job_cli`` entry.
 - Uses teleclaude/cron/discovery.py to find subscribers.
 - Delegates all tagging logic to teleclaude/tagging/youtube.py.
 - Per-person config: ~/.teleclaude/people/{name}/teleclaude.yml

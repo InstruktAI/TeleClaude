@@ -9,12 +9,12 @@ Queries recent business memories from the memory store, detects patterns
 across customer interactions, generates a digest summary, and publishes
 the result to the intelligence channel for operator review.
 
-Designed to run daily (e.g. 06:00) so operators start their day with a
-consolidated view of trends, recurring issues, and emerging patterns
-from customer conversations.
+Produces a consolidated view of trends, recurring issues, and emerging
+patterns from customer conversations.
 
 Integration:
-- Scheduled via teleclaude.yml (default: daily at 06:00).
+- Not currently scheduled: its ``teleclaude.yml`` declaration is disabled.
+  Runnable standalone through its ``uv`` shebang and ``run_job_cli`` entry.
 - Reads from the MemoryStore (project-scoped observations).
 - Publishes digest to the ``intelligence`` channel.
 """
