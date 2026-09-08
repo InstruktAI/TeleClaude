@@ -663,6 +663,22 @@ And the message carries no Co-Authored-By line
 ```
 
 
+<!-- planned:fix-doc-sync-commit-joins-figures-pathspec-into-one-arg -->
+
+#### UC-CGIP-32 — A declared path the repository cannot match is refused before git runs
+
+```gherkin
+Given an agent declares several paths on a sealed commit
+And one declared path names nothing the repository can match, while the others carry real changes
+When the sealed commit runs
+Then the commit is refused before git is invoked
+And the diagnostic names each unmatchable declared path
+And the refusal is attributed to the declaration rather than reported as a raw git pathspec error
+And no commit is created
+```
+
+<!-- /planned:fix-doc-sync-commit-joins-figures-pathspec-into-one-arg -->
+
 #### UC-NCR-1 — Change inspection from a context root below the repository root
 
 ```
