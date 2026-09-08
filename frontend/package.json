@@ -32,7 +32,7 @@
     "cli-spinners": "^3.0.0",
     "clsx": "^2",
     "dompurify": "^3.3.1",
-    "drizzle-orm": "^0.38",
+    "drizzle-orm": "^0.45.0",
     "highlight.js": "^11.11.1",
     "ink": "^6.0.0",
     "lucide-react": "^0.468",
