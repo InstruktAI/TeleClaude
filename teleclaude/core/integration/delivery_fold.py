@@ -2,34 +2,36 @@
 
 `DELIVERY_BOOKKEEPING` is the universal delivery chokepoint: every committed path
 — clean merge, conflict resolution, and crash/resume — converges here before the
-push, but only the clean-merge branch folds the delivered slug's pending doc
-snippets eagerly (in `_do_merge`). These helpers let the bookkeeping step re-assert
-the idempotent fold and gate the push on a clean tree, so a delivered slug never
-reaches `origin/main` carrying live markers that trip the platform liveness guard.
+push. These helpers let the bookkeeping step re-assert the idempotent fold and
+gate the push on a clean tree, so a delivered slug never reaches `origin/main`
+carrying live markers that trip the platform liveness guard.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
+from teleclaude.core.next_machine.marker_reconciliation import (
+    MarkerMoment,
+    MarkerReceipt,
+    reconcile_lifecycle_markers,
+)
 from teleclaude.docs_reconcile import ResidualMarkerError, assert_no_residual_markers
 
 
-def reassert_delivered_fold(integration_wt: Path, slug: str) -> tuple[bool, str | None]:
+def reassert_delivered_fold(integration_wt: Path, slug: str) -> tuple[bool, MarkerReceipt, str | None]:
     """Re-run the idempotent delivered-snippet fold over the integration worktree.
 
-    Returns ``(staged_changed, error)``. ``error`` is a human-readable message when
-    the fold fails closed (residual marker or filesystem error) and the caller must
-    suppress the push; it is ``None`` on success. ``staged_changed`` is ``True`` when
-    the fold rewrote snippets and the caller must stage the worktree before the push.
-    Unlike the eager clean-merge fold — which swallows reconcile errors to never fail
-    an already-clean merge — a failure here is surfaced so the tree never reaches main.
+    Returns ``(staged_changed, receipt, error)``. ``error`` is a human-readable
+    message when the fold fails closed (residual marker or filesystem error) and the
+    caller must suppress the push; it is ``None`` on success. ``staged_changed`` is
+    ``True`` when the fold rewrote snippets and the caller must stage the worktree
+    before the push. A failure here is surfaced so the tree never reaches main.
     """
     receipt = reconcile_lifecycle_markers(integration_wt, slug, MarkerMoment.DELIVER)
     if receipt.succeeded:
-        return receipt.outcome.value == "applied", None
-    return False, f"Delivered-snippet fold failed for {slug}; refusing to push: {receipt.reason}"
+        return receipt.outcome.value == "applied", receipt, None
+    return False, receipt, f"Delivered-snippet fold failed for {slug}; refusing to push: {receipt.reason}"
 
 
 def assert_clean_before_push(integration_wt: Path, slug: str) -> str | None:
