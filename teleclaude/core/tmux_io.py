@@ -11,6 +11,7 @@ from signal import Signals
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge
+from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_readiness import (
     PromptDeliveryObservation,
@@ -140,7 +141,12 @@ async def _revive_headless_and_send(
 
     if session.active_agent and session.native_session_id:
         launch = (
-            await resolve_launch_model(session.active_agent, session.thinking_mode, session_id=session.session_id)
+            await resolve_launch_model(
+                session.active_agent,
+                session.thinking_mode,
+                ownership=launch_ownership(session.job),
+                session_id=session.session_id,
+            )
             if session.thinking_mode
             else None
         )

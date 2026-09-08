@@ -14,6 +14,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from teleclaude.agent_registry import agent_permutation, registry_digest
 from teleclaude.config import config
 from teleclaude.constants import SlashCommand
+from teleclaude.core.agent_availability import (
+    AgentAvailabilityStatus,
+    AvailabilityState,
+    LaunchOwnership,
+    is_launchable,
+)
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.models._session import AgentDispatchMode
@@ -141,35 +147,6 @@ class RunSessionThinkingMode(StrEnum):
     SLOW = "slow"
 
 
-class AgentAvailabilityStatus(StrEnum):
-    """Closed operator-availability states used by agent dispatch."""
-
-    AVAILABLE = "available"
-    DEGRADED = "degraded"
-    UNAVAILABLE = "unavailable"
-
-
-@dataclass(frozen=True)
-class AgentAvailabilityFacts:
-    """Availability facts interpreted by the mode-specific dispatch rules."""
-
-    available: bool
-    status: AgentAvailabilityStatus
-
-    @property
-    def automatically_eligible(self) -> bool:
-        """Return whether the agent belongs in the automatic candidate pool."""
-        return self.available and self.status is AgentAvailabilityStatus.AVAILABLE
-
-    @property
-    def manually_selectable(self) -> bool:
-        """Return whether an explicit selection may launch this agent."""
-        return self.available and self.status in {
-            AgentAvailabilityStatus.AVAILABLE,
-            AgentAvailabilityStatus.DEGRADED,
-        }
-
-
 class AgentDispatchOrderBranch(StrEnum):
     """Closed token naming which policy resolved an automatic dispatch's candidate order."""
 
@@ -259,6 +236,7 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.NEXT_RUN_JOB: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.FAST),
 }
 _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
+_MODEL_SKIP_REASON_PREFIX = "model_"
 
 
 def _command_policy(command: str | None) -> CommandDispatchPolicy | None:
@@ -322,7 +300,7 @@ def _configured_enabled(agent: str) -> bool:
     return entry is not None and entry.enabled
 
 
-async def _availability_facts(agent: str) -> AgentAvailabilityFacts:
+async def _availability_facts(agent: str) -> AgentAvailabilityStatus:
     if not db.is_initialized():
         raise AgentDispatchFailure(
             AgentDispatchReason.AVAILABILITY_READ_FAILED,
@@ -330,29 +308,21 @@ async def _availability_facts(agent: str) -> AgentAvailabilityFacts:
         )
     try:
         availability = await db.get_agent_availability(agent)
-    except SQLAlchemyError as exc:
+    except (SQLAlchemyError, ValueError) as exc:
         raise AgentDispatchFailure(
             AgentDispatchReason.AVAILABILITY_READ_FAILED,
             "Unable to read agent availability",
         ) from exc
     if availability is None:
-        return AgentAvailabilityFacts(available=True, status=AgentAvailabilityStatus.AVAILABLE)
-    status_value = availability.get("status")
-    try:
-        status = (
-            AgentAvailabilityStatus(status_value)
-            if isinstance(status_value, str)
-            else AgentAvailabilityStatus.UNAVAILABLE
-        )
-    except ValueError:
-        status = AgentAvailabilityStatus.UNAVAILABLE
-    return AgentAvailabilityFacts(available=bool(availability.get("available")), status=status)
+        return AgentAvailabilityStatus.AVAILABLE
+    return availability.status
 
 
 async def resolve_launch_model(
     agent: str,
     thinking_mode: str,
     *,
+    ownership: LaunchOwnership,
     session_id: str | None = None,
 ) -> LaunchModelResolution:
     """Resolve one computed launch through its declared model fallback chain."""
@@ -366,60 +336,78 @@ async def resolve_launch_model(
             f"Invalid thinking mode '{thinking_mode}' for agent '{agent}'",
         )
     if thinking_mode == "default":
-        logger.debug(
-            "model_launch_resolved agent=%s thinking_mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
+        logger.info(
+            "model_launch_resolved agent=%s thinking_mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s launch_ownership=%s",
             agent,
             thinking_mode,
             session_id,
             None,
             0,
             False,
+            ownership.value,
         )
         return LaunchModelResolution(model=None, flags="")
     chain = agent_cfg.model_chains.get(thinking_mode, default_chain)
     try:
         model_rows = await db.list_model_availability(agent)
-    except (OSError, RuntimeError, SQLAlchemyError) as exc:
+    except (OSError, RuntimeError, SQLAlchemyError, ValueError) as exc:
         raise ModelAvailabilityStateFailure(
             AgentDispatchReason.MODEL_AVAILABILITY_READ_FAILED,
             f"Unable to read model availability for agent '{agent}'",
         ) from exc
-    unavailable_models = {row["model"] for row in model_rows}
     for position, entry in enumerate(chain):
         model = entry.model
-        if model in unavailable_models:
+        state = model_rows.get(model)
+        status = state.status if state is not None else AgentAvailabilityStatus.AVAILABLE
+        if not is_launchable(status, ownership):
             continue
         flags = entry.flags
-        logger.debug(
-            "model_launch_resolved agent=%s thinking_mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s",
+        logger.info(
+            "model_launch_resolved agent=%s thinking_mode=%s session_id=%s selected_model=%s chain_position=%d override_active=%s launch_ownership=%s",
             agent,
             thinking_mode,
             session_id,
             model,
             position,
             thinking_mode in agent_cfg.model_chains,
+            ownership.value,
         )
         if position:
             skipped_models = [skipped.model for skipped in chain[:position]]
-            logger.debug(
-                "model_launch_fallback agent=%s thinking_mode=%s session_id=%s skipped_models=%s selected_model=%s reason=model_unavailable",
+            skipped_statuses = [
+                (
+                    model_rows.get(skipped.model) or AvailabilityState(AgentAvailabilityStatus.AVAILABLE, None, None)
+                ).status.value
+                for skipped in chain[:position]
+            ]
+            logger.info(
+                "model_launch_fallback agent=%s thinking_mode=%s session_id=%s skipped_models=%s skipped_statuses=%s selected_model=%s reason=%s launch_ownership=%s",
                 agent,
                 thinking_mode,
                 session_id,
                 skipped_models,
+                skipped_statuses,
                 model,
+                _MODEL_SKIP_REASON_PREFIX + skipped_statuses[0],
+                ownership.value,
             )
         return LaunchModelResolution(model=model, flags=flags)
-    logger.debug(
-        "model_chain_exhausted agent=%s thinking_mode=%s session_id=%s models_checked=%s",
+    model_statuses = [
+        (model_rows.get(entry.model) or AvailabilityState(AgentAvailabilityStatus.AVAILABLE, None, None)).status.value
+        for entry in chain
+    ]
+    logger.info(
+        "model_chain_exhausted agent=%s thinking_mode=%s session_id=%s models_checked=%s model_statuses=%s launch_ownership=%s",
         agent,
         thinking_mode,
         session_id,
         [entry.model for entry in chain],
+        model_statuses,
+        ownership.value,
     )
     raise ModelChainExhausted(
         AgentDispatchReason.MODEL_CHAIN_EXHAUSTED,
-        f"Every declared model is unavailable for agent '{agent}' mode '{thinking_mode}'",
+        f"Every declared model is unavailable for {ownership.value} launch of agent '{agent}' mode '{thinking_mode}'",
     )
 
 
@@ -446,6 +434,7 @@ async def resolve_agent_dispatch(
 ) -> AgentDispatchDecision:
     """Select one eligible agent without consulting the caller's machine state."""
     del entry_point  # Kept typed at the boundary for structured decision evidence.
+    ownership = LaunchOwnership.HUMAN if mode is AgentDispatchMode.MANUAL_PREFERENCE else LaunchOwnership.JOB_ROLE
 
     if mode is AgentDispatchMode.FIXED:
         if not fixed_agent:
@@ -453,7 +442,7 @@ async def resolve_agent_dispatch(
                 AgentDispatchReason.FIXED_AGENT_REQUIRED, "Fixed launch intent requires an agent"
             )
         _known_enabled(fixed_agent)
-        if not (await _availability_facts(fixed_agent)).automatically_eligible:
+        if not is_launchable(await _availability_facts(fixed_agent), ownership):
             raise AgentDispatchFailure(
                 AgentDispatchReason.FIXED_AGENT_UNAVAILABLE,
                 f"Fixed agent '{fixed_agent}' is not available",
@@ -466,15 +455,15 @@ async def resolve_agent_dispatch(
                 AgentDispatchReason.PREFERRED_AGENT_REQUIRED, "Manual launch intent requires an agent"
             )
         _known_enabled(preferred_agent)
-        availability = await _availability_facts(preferred_agent)
-        if not availability.manually_selectable:
+        status = await _availability_facts(preferred_agent)
+        if not is_launchable(status, ownership):
             raise AgentDispatchFailure(
                 AgentDispatchReason.MANUAL_PREFERENCE_UNAVAILABLE,
                 f"Manual agent '{preferred_agent}' is not available",
             )
         reason = (
             AgentDispatchReason.MANUAL_PREFERENCE_DEGRADED
-            if availability.status is AgentAvailabilityStatus.DEGRADED
+            if status is AgentAvailabilityStatus.DEGRADED
             else AgentDispatchReason.MANUAL_PREFERENCE
         )
         return AgentDispatchDecision(agent=preferred_agent, reason=reason)
@@ -484,7 +473,7 @@ async def resolve_agent_dispatch(
     eligible = [
         agent
         for agent in order
-        if _configured_enabled(agent) and (await _availability_facts(agent)).automatically_eligible
+        if _configured_enabled(agent) and is_launchable(await _availability_facts(agent), ownership)
     ]
     if not eligible:
         raise AgentDispatchFailure(

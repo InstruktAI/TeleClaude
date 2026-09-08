@@ -7,6 +7,7 @@ from enum import StrEnum
 
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.theme import get_agent_status_color
+from teleclaude.core.agent_availability import AgentAvailabilityStatus
 
 _STATUS_TEXT_TEMPLATE = "{agent} {indicator}"
 _STATUS_DETAIL_TEMPLATE = " ({detail})"
@@ -40,13 +41,15 @@ class AgentRenderSpec:
 
 def classify_agent_render_status(info: AgentAvailabilityDTO | None) -> AgentRenderStatus:
     """Classify published availability fields into one presentation state."""
-    if info is None or info.available is None:
+    if info is None or info.status is None:
         return AgentRenderStatus.UNKNOWN
-    if info.status == AgentRenderStatus.DEGRADED.value:
-        return AgentRenderStatus.DEGRADED
-    if info.available:
-        return AgentRenderStatus.AVAILABLE
-    return AgentRenderStatus.UNAVAILABLE
+    match info.status:
+        case AgentAvailabilityStatus.AVAILABLE:
+            return AgentRenderStatus.AVAILABLE
+        case AgentAvailabilityStatus.DEGRADED:
+            return AgentRenderStatus.DEGRADED
+        case AgentAvailabilityStatus.UNAVAILABLE:
+            return AgentRenderStatus.UNAVAILABLE
 
 
 def is_agent_selectable(info: AgentAvailabilityDTO | None) -> bool:

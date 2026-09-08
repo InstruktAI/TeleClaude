@@ -14,6 +14,12 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+from teleclaude.core.agent_availability import (
+    AgentAvailabilityStatus,
+    AvailabilityState,
+    LaunchOwnership,
+    is_launchable,
+)
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 
 from .. import db_models
@@ -123,19 +129,6 @@ def get_session_ids_by_native_sync(db_path: str, native_session_ids: Sequence[st
         engine.dispose()
 
 
-def _parse_iso_utc(value: str) -> datetime | None:
-    try:
-        cleaned = value.strip()
-        if cleaned.endswith("Z"):
-            cleaned = cleaned[:-1] + "+00:00"
-        parsed = datetime.fromisoformat(cleaned)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed
-
-
 def read_agent_availability_sync(db_path: str, agent: str, *, timeout_s: float = 0.2) -> bool:
     """Sync helper to probe agent availability from the main DB.
 
@@ -144,18 +137,15 @@ def read_agent_availability_sync(db_path: str, agent: str, *, timeout_s: float =
     any sqlite error all return True so dispatch is never blocked by an
     unreachable availability table.
 
-    Mirrors the expiry semantics of the async ``Db.get_agent_availability``:
-    an expired ``unavailable_until`` overrides the ``available`` flag, and an
-    expired ``degraded_until`` clears a ``degraded`` reason. Without these
-    checks an agent stays excluded after its TTL has elapsed.
+    Mirrors the normalized typed state used by async availability reads.
     """
     if not Path(db_path).exists():
         return True
     try:
         with sqlite3.connect(db_path, timeout=timeout_s) as conn:
             row = conn.execute(
-                "SELECT available, unavailable_until, degraded_until, reason "  # guard: raw-sql
-                "FROM agent_availability WHERE agent = ?",
+                "SELECT status, status_until, reason "  # guard: raw-sql
+                "FROM agent_availability WHERE agent = ? AND model = ''",
                 (agent,),
             ).fetchone()
     except sqlite3.Error:
@@ -164,22 +154,16 @@ def read_agent_availability_sync(db_path: str, agent: str, *, timeout_s: float =
     if row is None:
         return True
 
-    available_raw, unavailable_until, degraded_until, reason = row
-    now = datetime.now(UTC)
-
-    if isinstance(unavailable_until, str) and unavailable_until.strip():
-        parsed = _parse_iso_utc(unavailable_until)
-        if parsed is not None and parsed <= now:
-            return True
-
-    if isinstance(reason, str) and reason.startswith("degraded"):
-        if isinstance(degraded_until, str) and degraded_until.strip():
-            parsed_degraded = _parse_iso_utc(degraded_until)
-            if parsed_degraded is not None and parsed_degraded <= now:
-                return True
-        return False
-
-    return bool(available_raw)
+    status_raw, status_until, reason = row
+    try:
+        state = AvailabilityState(
+            AgentAvailabilityStatus(str(status_raw)),
+            str(status_until) if status_until is not None else None,
+            str(reason) if reason is not None else None,
+        ).normalized(datetime.now(UTC))
+    except ValueError:
+        return True
+    return is_launchable(state.status, LaunchOwnership.JOB_ROLE)
 
 
 def get_process_spawn_registry_entry_sync(

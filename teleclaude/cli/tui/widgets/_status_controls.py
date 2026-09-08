@@ -57,7 +57,7 @@ def build_pane_theming_cells(pane_theming_mode: str) -> list[tuple[str, Style]]:
 
 def build_agent_pill(agent: str, availability: AgentAvailabilityDTO | None) -> Text:
     """Build the standard agent availability pill used by footer widgets."""
-    until = availability.unavailable_until if availability else None
+    until = availability.status_until if availability else None
     countdown = format_countdown(until)
     spec = build_agent_render_spec(agent, availability, unavailable_detail=countdown)
     return Text(spec.text, style=Style(color=spec.color_pair_id, bold=spec.bold))

@@ -11,6 +11,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Literal, Union, cast
 
+from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.dates import parse_iso_datetime
 
 # Event bus carries internal events (not user commands).
@@ -516,15 +517,13 @@ class AgentAvailabilityContext:
     """Context for agent availability changes broadcast to clients."""
 
     agent: str
-    available: bool | None
-    status: str | None = None
-    unavailable_until: str | None = None
-    degraded_until: str | None = None
+    status: AgentAvailabilityStatus | None = None
+    status_until: str | None = None
     reason: str | None = None
     error: str | None = None
     model: str | None = None
-    model_active: bool | None = None
-    model_unavailable_until: str | None = None
+    model_status: AgentAvailabilityStatus | None = None
+    model_status_until: str | None = None
     model_reason: str | None = None
 
 

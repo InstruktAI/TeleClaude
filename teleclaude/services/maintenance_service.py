@@ -20,6 +20,7 @@ from teleclaude.config import config
 from teleclaude.constants import REMOVED_TODO_RETENTION_WINDOW, RESTART_CONTINUATION_STIMULUS, TodoStatus
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import get_agent_command
@@ -754,7 +755,10 @@ class MaintenanceService:
 
                 launch = (
                     await resolve_launch_model(
-                        session.active_agent, session.thinking_mode, session_id=session.session_id
+                        session.active_agent,
+                        session.thinking_mode,
+                        ownership=launch_ownership(session.job),
+                        session_id=session.session_id,
                     )
                     if session.thinking_mode
                     else None

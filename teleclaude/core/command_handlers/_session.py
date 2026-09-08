@@ -14,6 +14,7 @@ from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR
 from teleclaude.core import tmux_bridge
+from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
     AgentDispatchDecision,
     AgentDispatchFailure,
@@ -372,7 +373,9 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     if launch and launch.kind in {SessionLaunchKind.AGENT, SessionLaunchKind.AGENT_THEN_MESSAGE}:
         if not launch.agent or not launch.thinking_mode:
             raise ValueError("Agent launch intent requires agent and thinking_mode")
-        launch.resolved_model_flags = (await resolve_launch_model(launch.agent, launch.thinking_mode)).flags
+        launch.resolved_model_flags = (
+            await resolve_launch_model(launch.agent, launch.thinking_mode, ownership=launch_ownership(cmd.job))
+        ).flags
 
     # tmux silently falls back to its own cwd if -c points at a non-existent directory.
     # This shows up as sessions "starting in /tmp" (or similar) even though we asked for a project dir.
