@@ -73,7 +73,24 @@ TeleClaude daemon (reachable via `/tmp/teleclaude-api.sock`):
 
 ### Development
 
+<!-- planned-change:frontend-e2e-first-run-setup -->
+
 Prerequisites: Node.js (v22+ recommended), pnpm, a running TeleClaude daemon.
+
+<!-- change:frontend-e2e-first-run-setup -->
+
+Prerequisites: Node.js (v22+ recommended), pnpm, a running TeleClaude daemon.
+
+A fresh clone or worktree runs `make frontend-setup` once before anything else here
+works. The target is idempotent and brings the checkout to a working dev server and a
+runnable Playwright suite: it installs frontend dependencies, creates `frontend/.env`
+from `.env.example` with a generated `AUTH_SECRET`, creates the local SQLite auth
+schema, and installs the pinned Playwright browser. It never overwrites an existing
+`.env`. `TEST_EMAIL` is the one value it cannot choose — it must match a person in the
+TeleClaude people config — so when that value is missing or still the template
+placeholder the target names the registered addresses and stops.
+
+<!-- /planned-change:frontend-e2e-first-run-setup -->
 
 ```bash
 pnpm dev       # custom dev server with WebSocket support
@@ -98,3 +115,16 @@ pnpm start     # custom production server
   changed UI works. See `frontend-verification` for the real post-work check.
 - **Referencing the Python TUI as a source** — if a feature has you reaching for the
   Python TUI, stop and design the web UX from web-native patterns.
+
+<!-- planned:frontend-e2e-first-run-setup -->
+
+- **A fresh checkout fails on `MissingSecret`, a missing `user` table, or a missing
+  browser** — first-run setup has not run. `frontend/.env`, the local SQLite database,
+  and the Playwright browser are all untracked per-checkout state. Use
+  `make frontend-setup`.
+- **Login or the Playwright suite fails with `AccessDenied`** — `TEST_EMAIL` names an
+  address absent from the TeleClaude people config, so the sign-in callback rejects it
+  before a verification code is issued. `telec config people list` names the registered
+  addresses.
+
+<!-- /planned:frontend-e2e-first-run-setup -->

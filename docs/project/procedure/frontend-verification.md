@@ -13,9 +13,26 @@ itself, not just the surrounding shell or the login screen.
 
 ## Preconditions
 
+<!-- planned-change:frontend-e2e-first-run-setup -->
+
 - The frontend dev server is running via `pnpm dev` (WebSocket-capable; raw `next dev`
   leaves live features broken).
 - `frontend/.env` is present with `TEST_EMAIL` set.
+
+<!-- change:frontend-e2e-first-run-setup -->
+
+- First-run setup has completed for this checkout: `make frontend-setup`. It is
+  idempotent, and a fresh clone or worktree needs it before either `pnpm dev` or the
+  Playwright suite works.
+- The frontend dev server is running via `pnpm dev` (WebSocket-capable; raw `next dev`
+  leaves live features broken).
+- `frontend/.env` carries a `TEST_EMAIL` that matches a person registered in the
+  TeleClaude people config. An unregistered address is rejected at the sign-in callback
+  before any verification code is issued, so the browser login and the Playwright suite
+  both fail with `AccessDenied`. `telec config people list` names the registered
+  addresses.
+
+<!-- /planned-change:frontend-e2e-first-run-setup -->
 
 ## Steps
 
