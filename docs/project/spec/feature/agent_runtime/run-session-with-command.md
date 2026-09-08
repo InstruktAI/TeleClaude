@@ -123,7 +123,6 @@ And quota pressure does not reroute the manual preference
 ```
 <!-- /planned:adaptive-usage-routing -->
 
-<!-- planned:review-cap-bounded-continuation -->
 ```
 Given a run-session request for a reviewer command asks to exclude prior reviewers of its target
 When the agent_runtime service resolves the dispatch
@@ -138,7 +137,6 @@ Given a run-session request for a command that is not a reviewer command asks to
 When the agent_runtime service resolves the dispatch
 Then no agent is excluded and the request resolves as if it had not asked
 ```
-<!-- /planned:review-cap-bounded-continuation -->
 
 #### Command and arguments normalization
 
@@ -371,17 +369,6 @@ When the create-door dedup check runs
 Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the producing workers it spawns legitimately share the slug
 ```
 
-<!-- planned-change:review-cap-bounded-continuation -->
-```
-Given a todo slug X with a live reviewer session for review command C — one of "next-review-build", "next-review-plan", "next-review-architecture"
-And a create request launching that same command C for X
-When the create-door dedup check runs
-Then the request is refused with a driver-start conflict that names the holding reviewer session, returned as HTTP 409 detail
-And no second reviewer session is created for C on X
-And the refusal states the reuse command that addresses the holder instead
-And a live reviewer for a different review command on X does not refuse this one, because each review phase carries its own verdict
-```
-<!-- change:review-cap-bounded-continuation -->
 ```
 Given a todo slug X with a live reviewer session for review command C — one of "next-review-build", "next-review-plan", "next-review-architecture"
 And a create request launching that same command C for X that does not ask to exclude prior reviewers
@@ -400,7 +387,6 @@ Then the live reviewer is not a conflict, because the request asks for a reviewe
 And the new reviewer session is created sharing working_slug X
 And later reuse for C on X addresses the newest live reviewer
 ```
-<!-- /planned-change:review-cap-bounded-continuation -->
 
 ```
 Given a todo slug X already driven by a live driver from a session other than the caller
