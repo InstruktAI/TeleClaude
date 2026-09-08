@@ -34,38 +34,38 @@ This spec must always document:
 
 Current raw-to-normalized lifecycle mapping:
 
-| Agent | Raw event and condition | Normalized event | Forwarding |
-| ----- | ----------------------- | ---------------- | ---------- |
-| Claude | `SessionStart` | `session_start` | forwarded |
-| Claude | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
-| Claude | `PreToolUse` | `pre_tool_use` | forwarded |
-| Claude | `Notification` where `notification_type` is `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, or `elicitation_url_dialog` | `agent_blocked` | forwarded |
-| Claude | `Notification` with any other `notification_type` | `agent_notification` | forwarded |
-| Claude | `PostToolUse` | `post_tool_use` | forwarded |
-| Claude | `Stop` | `agent_stop` | forwarded |
-| Claude | `StopFailure` | `agent_turn_failed` | forwarded |
-| Claude | `PostCompact` where `trigger == manual` | `agent_idle` | forwarded |
-| Claude | `PostCompact` where `trigger == auto` | (none) | dropped |
-| Antigravity | `PreInvocation` where `invocationNum == 0` | `session_start` | forwarded |
-| Antigravity | `PreInvocation` where `invocationNum > 0` and latest transcript role is `user` | `user_prompt_submit` | forwarded |
-| Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present | (none) | dropped |
-| Antigravity | `PreToolUse` | `pre_tool_use` | forwarded |
-| Antigravity | `PostInvocation` | `post_tool_use` | forwarded |
-| Antigravity | `Stop` where `error` is a non-empty string | `agent_turn_failed` | forwarded |
-| Antigravity | `Stop` where `error` is empty and `fullyIdle == false` | (none) | dropped |
-| Antigravity | `Stop` where `error` is empty and `fullyIdle == true` | `agent_stop` | forwarded |
-| Codex | `SessionStart` | `session_start` | forwarded |
-| Codex | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
-| Codex | `PreToolUse` | `pre_tool_use` | forwarded |
-| Codex | `PermissionRequest` | `agent_blocked` | forwarded |
-| Codex | `PostToolUse` | `post_tool_use` | forwarded |
-| Codex | `Stop` | `agent_stop` | forwarded |
-| DeepSeek | `SessionStart` | `session_start` | forwarded |
-| DeepSeek | `UserPromptSubmit` | `user_prompt_submit` | forwarded |
-| DeepSeek | `PreToolUse` | `pre_tool_use` | forwarded |
-| DeepSeek | `PostToolUse` | `post_tool_use` | forwarded |
-| DeepSeek | `Stop` | `agent_stop` | forwarded |
-| DeepSeek | `StopFailure` | `agent_turn_failed` | forwarded |
+| Agent       | Raw event and condition                                                                                                                 | Normalized event     | Forwarding |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------- |
+| Claude      | `SessionStart`                                                                                                                          | `session_start`      | forwarded  |
+| Claude      | `UserPromptSubmit`                                                                                                                      | `user_prompt_submit` | forwarded  |
+| Claude      | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+| Claude      | `Notification` where `notification_type` is `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, or `elicitation_url_dialog` | `agent_blocked`      | forwarded  |
+| Claude      | `Notification` with any other `notification_type`                                                                                       | `agent_notification` | forwarded  |
+| Claude      | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
+| Claude      | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
+| Claude      | `StopFailure`                                                                                                                           | `agent_turn_failed`  | forwarded  |
+| Claude      | `PostCompact` where `trigger == manual`                                                                                                 | `agent_idle`         | forwarded  |
+| Claude      | `PostCompact` where `trigger == auto`                                                                                                   | (none)               | dropped    |
+| Antigravity | `PreInvocation` where `invocationNum == 0`                                                                                              | `session_start`      | forwarded  |
+| Antigravity | `PreInvocation` where `invocationNum > 0` and latest transcript role is `user`                                                          | `user_prompt_submit` | forwarded  |
+| Antigravity | `PreInvocation` where `invocationNum > 0` and no prompt boundary is present                                                             | (none)               | dropped    |
+| Antigravity | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+| Antigravity | `PostInvocation`                                                                                                                        | `post_tool_use`      | forwarded  |
+| Antigravity | `Stop` where `error` is a non-empty string                                                                                              | `agent_turn_failed`  | forwarded  |
+| Antigravity | `Stop` where `error` is empty and `fullyIdle == false`                                                                                  | (none)               | dropped    |
+| Antigravity | `Stop` where `error` is empty and `fullyIdle == true`                                                                                   | `agent_stop`         | forwarded  |
+| Codex       | `SessionStart`                                                                                                                          | `session_start`      | forwarded  |
+| Codex       | `UserPromptSubmit`                                                                                                                      | `user_prompt_submit` | forwarded  |
+| Codex       | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+| Codex       | `PermissionRequest`                                                                                                                     | `agent_blocked`      | forwarded  |
+| Codex       | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
+| Codex       | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
+| DeepSeek    | `SessionStart`                                                                                                                          | `session_start`      | forwarded  |
+| DeepSeek    | `UserPromptSubmit`                                                                                                                      | `user_prompt_submit` | forwarded  |
+| DeepSeek    | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+| DeepSeek    | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
+| DeepSeek    | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
+| DeepSeek    | `StopFailure`                                                                                                                           | `agent_turn_failed`  | forwarded  |
 
 `agent_blocked` and `agent_turn_failed` are the distress vocabulary: a session
 waiting on an approval or input decision it cannot resolve itself, and a turn
@@ -97,7 +97,6 @@ observed values. Deciding completion from that vocabulary would announce a
 clean stop as a failure whenever a value is unrecognized, so the platform
 reads the two members the provider designates and leaves the reason to the
 recipient intelligence.
-
 
 **One terminal outcome per turn.** Every provider emits at most one of
 turn-end and turn-failure for a given turn, so the two never both account for
