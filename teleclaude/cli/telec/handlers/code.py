@@ -570,10 +570,21 @@ def _commit_under_lock(
         for path in pathspec
         if (path in snapshot.untracked or path in snapshot.unmerged) and path not in snapshot.staged
     ]
+
+    # A declared --include/--only path must contribute a change git will
+    # record, or a directory beneath which one does. Checked before staging so
+    # a refusal leaves the index untouched. `snapshot.dirty` is deliberately
+    # excluded from the admissible set: it includes plain untracked files, so
+    # an untracked-and-unstaged directory would pass via the prefix clause
+    # without anything of it ever reaching git's pathspec match.
+    declared_paths = only if only is not None else includes
+    if declared_paths:
+        admissible = snapshot.staged | snapshot.modified_unstaged | snapshot.unmerged | set(to_stage)
+        _refuse_declared_paths_without_change(declared_paths, is_only=only is not None, admissible=admissible)
+
     if to_stage:
         _stage_files(to_stage, project_root)
 
-    # Declared includes are intentional; clean paths are harmless Git no-ops.
     # Partial staging would sweep undeclared working-tree hunks, so restage first.
     overlap = snapshot.partial_staged & set(pathspec)
     if overlap:
@@ -613,6 +624,37 @@ def _commit_under_lock(
         committed_files = list(pathspec)
     _record_commit_checkpoint_markers(project_root, committed_files)
     del system_role
+
+
+def _refuse_declared_paths_without_change(
+    declared_paths: list[str],
+    *,
+    is_only: bool,
+    admissible: frozenset[str] | set[str],
+) -> None:
+    """Exit 2 naming every declared path that contributes no change git will record.
+
+    A declared path is admissible when it (or a path beneath it, treated as a
+    directory prefix) is a member of ``admissible``.
+    """
+    offending = sorted(
+        path
+        for path in declared_paths
+        if path not in admissible and not any(q.startswith(f"{path}/") for q in admissible)
+    )
+    if not offending:
+        return
+    channel = "--only" if is_only else "--include"
+    print(f"ERROR: {channel} path(s) contribute no change git will record:", file=sys.stderr)
+    for path in offending:
+        print(f"  {path}", file=sys.stderr)
+    print(
+        "\nEach declared path must be staged, modified-and-unstaged, unmerged, newly\n"
+        "added (untracked and picked up for staging), or a directory containing such a\n"
+        "path. Verify it exists, is not gitignored, and carries a pending change.",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
 
 
 def _resolve_context_payload_paths(paths: list[str], project_root: Path, context_root: Path | None) -> list[str]:
