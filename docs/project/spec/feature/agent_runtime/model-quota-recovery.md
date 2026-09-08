@@ -272,11 +272,11 @@ And a session launched with no job role keeps its degraded primary across the sa
 #### UC-MQR-14: A job-role launch whose chain holds no eligible model fails typed
 
 ```gherkin
-Given every model in an agent's chain for the requested mode is degraded or unavailable
+Given every model in an agent's chain for the requested mode is degraded
 And a launch carrying a job role attempts that dispatch
 Then the dispatch fails with a typed error before session creation
 And the agent-wide operator status is unchanged
-And a launch carrying no job role still runs on the first model that is not unavailable
+And a launch carrying no job role runs on the first entry in that same chain
 ```
 
 #### UC-MQR-15: Model status reaches operator surfaces in the agent-wide vocabulary
