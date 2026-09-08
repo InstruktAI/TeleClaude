@@ -346,7 +346,6 @@ And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the unsynced repo root
 ```
 
-<!-- planned:fix-delivery-produces-two-identical-lifecycl -->
 
 #### UC-WISM32: Delivery reconciles the candidate's pending documentation exactly once
 
@@ -360,7 +359,6 @@ And the repo root reaches the delivered content by synchronizing with origin/mai
 And the recorded delivered commit is the frozen pushed commit
 ```
 
-<!-- /planned:fix-delivery-produces-two-identical-lifecycl -->
 
 
 
