@@ -5,15 +5,15 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import and_, delete, or_, true, update
+from sqlalchemy import delete, or_, true, update
 from sqlmodel import select
 
+from teleclaude.core.agent_availability import AgentAvailabilityStatus, AvailabilityState
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import AgentAvailabilityContext, TeleClaudeEvents
 from teleclaude.events.envelope import EventVisibility
 
 from .. import db_models
-from ..dates import parse_iso_datetime
 from ._rows import HookOutboxRow
 
 if TYPE_CHECKING:
@@ -27,18 +27,21 @@ class DbHooksMixin:
     """Agent availability and hook outbox persistence helpers."""
 
     @staticmethod
+    def _availability_state(row: db_models.AgentAvailability) -> AvailabilityState:
+        """Decode the persisted status value at the store boundary."""
+        return AvailabilityState(AgentAvailabilityStatus(row.status), row.status_until, row.reason)
+
+    @staticmethod
     def _emit_agent_availability_event(
         *,
         agent: str,
-        available: bool | None,
-        status: str | None,
-        unavailable_until: str | None = None,
-        degraded_until: str | None = None,
+        status: AgentAvailabilityStatus | None,
+        status_until: str | None = None,
         reason: str | None = None,
         error: str | None = None,
         model: str | None = None,
-        model_active: bool | None = None,
-        model_unavailable_until: str | None = None,
+        model_status: AgentAvailabilityStatus | None = None,
+        model_status_until: str | None = None,
         model_reason: str | None = None,
     ) -> None:
         """Broadcast a live agent availability change event."""
@@ -46,103 +49,75 @@ class DbHooksMixin:
             TeleClaudeEvents.AGENT_AVAILABILITY,
             AgentAvailabilityContext(
                 agent=agent,
-                available=available,
                 status=status,
-                unavailable_until=unavailable_until,
-                degraded_until=degraded_until,
+                status_until=status_until,
                 reason=reason,
                 error=error,
                 model=model,
-                model_active=model_active,
-                model_unavailable_until=model_unavailable_until,
+                model_status=model_status,
+                model_status_until=model_status_until,
                 model_reason=model_reason,
             ),
             visibility=EventVisibility.CLUSTER,
         )
 
-    async def get_agent_availability(self, agent: str) -> dict[str, bool | str | None] | None:
-        """Get agent availability status.
-
-        Args:
-            agent: Agent name (e.g., "claude", "gemini", "codex")
-
-        Returns:
-            Dict with 'available', 'unavailable_until', 'degraded_until', 'reason', 'status' or None if not found
-        """
+    async def get_agent_availability(self, agent: str) -> AvailabilityState | None:
+        """Get the normalized agent-wide availability state."""
         async with self._session() as db_session:
             row = await db_session.get(db_models.AgentAvailability, (agent, _AGENT_WIDE_MODEL))
             if not row:
                 return None
-            unavailable_until = row.unavailable_until
-            if unavailable_until is not None:
-                parsed_until = self._parse_iso_datetime(unavailable_until)
-                if parsed_until and parsed_until < datetime.now(UTC):
-                    row.available = 1
-                    row.unavailable_until = None
-                    row.degraded_until = None
-                    row.reason = None
-                    db_session.add(row)
-                    await db_session.commit()
-                    return {
-                        "available": True,
-                        "unavailable_until": None,
-                        "degraded_until": None,
-                        "reason": None,
-                        "status": "available",
-                    }
-            # Check degraded_until expiry inline
-            degraded_until = row.degraded_until
-            if degraded_until is not None:
-                parsed_degraded = self._parse_iso_datetime(degraded_until)
-                if parsed_degraded and parsed_degraded < datetime.now(UTC):
-                    row.degraded_until = None
-                    if row.reason and row.reason.startswith("degraded"):
-                        row.reason = None
-                    db_session.add(row)
-                    await db_session.commit()
-            reason = row.reason or None
-            status = "available"
-            if reason and reason.startswith("degraded"):
-                status = "degraded"
-            elif not bool(row.available):
-                status = "unavailable"
-            return {
-                "available": bool(row.available) if row.available is not None else False,
-                "unavailable_until": unavailable_until,
-                "degraded_until": row.degraded_until,
-                "reason": reason,
-                "status": status,
-            }
+            persisted_state = self._availability_state(row)
+            state = persisted_state.normalized(datetime.now(UTC))
+            if state != persisted_state:
+                row.status = state.status.value
+                row.status_until = state.status_until
+                row.reason = state.reason
+                db_session.add(row)
+                await db_session.commit()
+            return state
 
-    @staticmethod
-    def _parse_iso_datetime(value: str) -> datetime | None:
-        """Parse ISO datetime with support for trailing 'Z'."""
-        parsed = parse_iso_datetime(value)
-        if parsed is None:
-            logger.warning("Failed to parse unavailable_until value: %s", value)
-        return parsed
-
-    async def list_model_availability(self, agent: str) -> list[dict[str, str]]:
-        """List the active model-scoped unavailability records for an agent."""
-        now = datetime.now(UTC).isoformat()
+    async def list_model_availability(self, agent: str) -> dict[str, AvailabilityState]:
+        """List normalized, non-available model-scoped states for an agent."""
         statement = (
             select(db_models.AgentAvailability)
             .where(db_models.AgentAvailability.agent == agent)
             .where(db_models.AgentAvailability.model != _AGENT_WIDE_MODEL)
-            .where(db_models.AgentAvailability.available == 0)
-            .where(db_models.AgentAvailability.unavailable_until.is_not(None))
-            .where(db_models.AgentAvailability.unavailable_until > now)
         )
         async with self._session() as db_session:
             rows = list(await db_session.exec(statement))
-        return [
-            {
-                "model": row.model,
-                "unavailable_until": row.unavailable_until or _AGENT_WIDE_MODEL,
-                "reason": row.reason or _AGENT_WIDE_MODEL,
-            }
-            for row in rows
-        ]
+            states: dict[str, AvailabilityState] = {}
+            for row in rows:
+                persisted_state = self._availability_state(row)
+                state = persisted_state.normalized(datetime.now(UTC))
+                if state != persisted_state:
+                    row.status = state.status.value
+                    row.status_until = state.status_until
+                    row.reason = state.reason
+                    db_session.add(row)
+                if state.status is not AgentAvailabilityStatus.AVAILABLE:
+                    states[row.model] = state
+            await db_session.commit()
+        return states
+
+    async def set_agent_availability(self, agent: str, model: str, state: AvailabilityState) -> None:
+        """Persist one agent-wide or model-scoped availability state."""
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.AgentAvailability, (agent, model))
+            if row is None:
+                row = db_models.AgentAvailability(
+                    agent=agent,
+                    model=model,
+                    status=state.status.value,
+                    status_until=state.status_until,
+                    reason=state.reason,
+                )
+            else:
+                row.status = state.status.value
+                row.status_until = state.status_until
+                row.reason = state.reason
+            db_session.add(row)
+            await db_session.commit()
 
     async def mark_agent_unavailable(
         self,
@@ -159,48 +134,25 @@ class DbHooksMixin:
             unavailable_until: ISO timestamp when agent becomes available again
             reason: Reason for unavailability (e.g., "quota_exhausted", "rate_limited")
         """
-        async with self._session() as db_session:
-            row = await db_session.get(db_models.AgentAvailability, (agent, model))
-            if row is None:
-                row = db_models.AgentAvailability(
-                    agent=agent,
-                    model=model,
-                    available=0,
-                    unavailable_until=unavailable_until,
-                    degraded_until=None,
-                    reason=reason,
-                )
-            else:
-                row.available = 0
-                row.unavailable_until = unavailable_until
-                row.degraded_until = None
-                row.reason = reason
-            db_session.add(row)
-            await db_session.commit()
+        state = AvailabilityState(AgentAvailabilityStatus.UNAVAILABLE, unavailable_until, reason)
+        await self.set_agent_availability(agent, model, state)
         if model:
             agent_info = await self.get_agent_availability(agent)
             self._emit_agent_availability_event(
                 agent=agent,
-                available=bool(agent_info.get("available", True)) if agent_info else True,
-                status=str(agent_info.get("status")) if agent_info else "available",
-                unavailable_until=str(agent_info.get("unavailable_until"))
-                if agent_info and agent_info.get("unavailable_until")
-                else None,
-                degraded_until=str(agent_info.get("degraded_until"))
-                if agent_info and agent_info.get("degraded_until")
-                else None,
-                reason=str(agent_info.get("reason")) if agent_info and agent_info.get("reason") else None,
+                status=agent_info.status if agent_info else AgentAvailabilityStatus.AVAILABLE,
+                status_until=agent_info.status_until if agent_info else None,
+                reason=agent_info.reason if agent_info else None,
                 model=model,
-                model_active=True,
-                model_unavailable_until=unavailable_until,
+                model_status=state.status,
+                model_status_until=state.status_until,
                 model_reason=reason,
             )
         else:
             self._emit_agent_availability_event(
                 agent=agent,
-                available=False,
-                status="unavailable",
-                unavailable_until=unavailable_until,
+                status=AgentAvailabilityStatus.UNAVAILABLE,
+                status_until=unavailable_until,
                 reason=reason,
             )
         logger.info("Marked agent %s unavailable until %s (%s)", agent, unavailable_until, reason)
@@ -211,100 +163,73 @@ class DbHooksMixin:
         Args:
             agent: Agent name (e.g., "claude", "gemini", "codex")
         """
-        async with self._session() as db_session:
-            row = await db_session.get(db_models.AgentAvailability, (agent, model))
-            if row is None:
-                row = db_models.AgentAvailability(agent=agent, model=model, available=1)
-            else:
-                row.available = 1
-                row.unavailable_until = None
-                row.degraded_until = None
-                row.reason = None
-            db_session.add(row)
-            await db_session.commit()
+        await self.set_agent_availability(
+            agent, model, AvailabilityState(AgentAvailabilityStatus.AVAILABLE, None, None)
+        )
         if model:
             agent_info = await self.get_agent_availability(agent)
             self._emit_agent_availability_event(
                 agent=agent,
-                available=bool(agent_info.get("available", True)) if agent_info else True,
-                status=str(agent_info.get("status")) if agent_info else "available",
-                unavailable_until=str(agent_info.get("unavailable_until"))
-                if agent_info and agent_info.get("unavailable_until")
-                else None,
-                degraded_until=str(agent_info.get("degraded_until"))
-                if agent_info and agent_info.get("degraded_until")
-                else None,
-                reason=str(agent_info.get("reason")) if agent_info and agent_info.get("reason") else None,
+                status=agent_info.status if agent_info else AgentAvailabilityStatus.AVAILABLE,
+                status_until=agent_info.status_until if agent_info else None,
+                reason=agent_info.reason if agent_info else None,
                 model=model,
-                model_active=False,
+                model_status=AgentAvailabilityStatus.AVAILABLE,
             )
         else:
-            self._emit_agent_availability_event(agent=agent, available=True, status="available")
+            self._emit_agent_availability_event(agent=agent, status=AgentAvailabilityStatus.AVAILABLE)
         logger.info("Marked agent %s available", agent)
 
-    async def mark_agent_degraded(self, agent: str, reason: str, degraded_until: str | None = None) -> None:
+    async def mark_agent_degraded(
+        self,
+        agent: str,
+        reason: str,
+        degraded_until: str | None = None,
+        *,
+        model: str = _AGENT_WIDE_MODEL,
+    ) -> None:
         """Mark an agent as degraded (manual-only, excluded from auto-selection)."""
-        async with self._session() as db_session:
-            row = await db_session.get(db_models.AgentAvailability, (agent, _AGENT_WIDE_MODEL))
-            degraded_reason = reason if reason.startswith("degraded") else f"degraded:{reason}"
-            if row is None:
-                row = db_models.AgentAvailability(
-                    agent=agent,
-                    available=1,
-                    unavailable_until=None,
-                    degraded_until=degraded_until,
-                    reason=degraded_reason,
-                )
-            else:
-                row.available = 1
-                row.unavailable_until = None
-                row.degraded_until = degraded_until
-                row.reason = degraded_reason
-            db_session.add(row)
-            await db_session.commit()
-        self._emit_agent_availability_event(
-            agent=agent,
-            available=True,
-            status="degraded",
-            degraded_until=degraded_until,
-            reason=degraded_reason,
-        )
-        logger.info("Marked agent %s degraded (%s)", agent, degraded_reason)
+        state = AvailabilityState(AgentAvailabilityStatus.DEGRADED, degraded_until, reason)
+        await self.set_agent_availability(agent, model, state)
+        if model:
+            agent_info = await self.get_agent_availability(agent)
+            self._emit_agent_availability_event(
+                agent=agent,
+                status=agent_info.status if agent_info else AgentAvailabilityStatus.AVAILABLE,
+                status_until=agent_info.status_until if agent_info else None,
+                reason=agent_info.reason if agent_info else None,
+                model=model,
+                model_status=state.status,
+                model_status_until=state.status_until,
+                model_reason=reason,
+            )
+        else:
+            self._emit_agent_availability_event(
+                agent=agent,
+                status=AgentAvailabilityStatus.DEGRADED,
+                status_until=degraded_until,
+                reason=reason,
+            )
+        logger.info("Marked agent %s degraded (%s)", agent, reason)
 
     async def clear_expired_agent_availability(self) -> int:
-        """Reset agents whose unavailable_until or degraded_until time has passed.
+        """Reset availability subjects whose status expiry has passed.
 
         Returns:
             Number of agents reset to available
         """
         now = datetime.now(UTC).isoformat()
         select_stmt = select(db_models.AgentAvailability.agent, db_models.AgentAvailability.model).where(
-            or_(
-                and_(
-                    db_models.AgentAvailability.unavailable_until.is_not(None),
-                    db_models.AgentAvailability.unavailable_until < now,
-                ),
-                and_(
-                    db_models.AgentAvailability.degraded_until.is_not(None),
-                    db_models.AgentAvailability.degraded_until < now,
-                ),
-            )
+            db_models.AgentAvailability.status_until.is_not(None),
+            db_models.AgentAvailability.status_until < now,
         )
         stmt = (
             update(db_models.AgentAvailability)
             .where(
-                or_(
-                    and_(
-                        db_models.AgentAvailability.unavailable_until.is_not(None),
-                        db_models.AgentAvailability.unavailable_until < now,
-                    ),
-                    and_(
-                        db_models.AgentAvailability.degraded_until.is_not(None),
-                        db_models.AgentAvailability.degraded_until < now,
-                    ),
-                )
+                db_models.AgentAvailability.status_until.is_not(None),
+                db_models.AgentAvailability.status_until < now,
             )
-            .values(available=1, unavailable_until=None, degraded_until=None, reason=None)
+            .values(status=AgentAvailabilityStatus.AVAILABLE.value, status_until=None, reason=None)
         )
         async with self._session() as db_session:
             expired_agents = list(await db_session.exec(select_stmt))
@@ -314,22 +239,16 @@ class DbHooksMixin:
         if cleared > 0:
             for agent, model in expired_agents:
                 if model == _AGENT_WIDE_MODEL:
-                    self._emit_agent_availability_event(agent=agent, available=True, status="available")
+                    self._emit_agent_availability_event(agent=agent, status=AgentAvailabilityStatus.AVAILABLE)
                 else:
                     agent_info = await self.get_agent_availability(agent)
                     self._emit_agent_availability_event(
                         agent=agent,
-                        available=bool(agent_info.get("available", True)) if agent_info else True,
-                        status=str(agent_info.get("status")) if agent_info else "available",
-                        unavailable_until=str(agent_info.get("unavailable_until"))
-                        if agent_info and agent_info.get("unavailable_until")
-                        else None,
-                        degraded_until=str(agent_info.get("degraded_until"))
-                        if agent_info and agent_info.get("degraded_until")
-                        else None,
-                        reason=str(agent_info.get("reason")) if agent_info and agent_info.get("reason") else None,
+                        status=agent_info.status if agent_info else AgentAvailabilityStatus.AVAILABLE,
+                        status_until=agent_info.status_until if agent_info else None,
+                        reason=agent_info.reason if agent_info else None,
                         model=model,
-                        model_active=False,
+                        model_status=AgentAvailabilityStatus.AVAILABLE,
                     )
             logger.info("Cleared availability for %d agents (TTL expired)", cleared)
         return cleared

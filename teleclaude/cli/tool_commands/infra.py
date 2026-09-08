@@ -150,7 +150,7 @@ def handle_agents_status(args: list[str]) -> None:
       <agent>          Agent name: claude, gemini, codex, deepseek
       --status <s>     Status: available, unavailable, degraded
       --reason <text>  Reason (required for unavailable)
-      --model <model>  Restrict an unavailable status to one declared model
+      --model <model>  Scope the status to one declared model
       --until <ts>     ISO8601 UTC expiry for unavailable or degraded status
       --clear          Reset to available immediately
 
@@ -158,6 +158,7 @@ def handle_agents_status(args: list[str]) -> None:
       telec agents status claude --status unavailable --reason rate_limited
       telec agents status claude --status unavailable --reason quota_exhausted --until 2024-01-01T12:00:00Z
       telec agents status claude --status degraded --reason "slow responses"
+      telec agents status claude --model sonnet --status degraded --reason "slow responses" --until 2024-01-01T12:00:00Z
       telec agents status claude --status degraded --reason "slow responses" --until 2024-01-01T12:00:00Z
       telec agents status claude --clear
     """

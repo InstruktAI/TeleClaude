@@ -19,6 +19,7 @@ from teleclaude.config import config
 from teleclaude.config._models import AgentConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import emit_agent_launch_started, resolve_launch_model
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import AgentName, _get_agent_config, assert_agent_enabled, get_agent_command
@@ -248,7 +249,10 @@ async def start_agent(
     if resolved_model_flags is None:
         resolved_model_flags = (
             await resolve_launch_model(
-                start_args.agent_name, start_args.thinking_mode.value, session_id=session.session_id
+                start_args.agent_name,
+                start_args.thinking_mode.value,
+                ownership=launch_ownership(session.job),
+                session_id=session.session_id,
             )
         ).flags
     base_cmd = get_agent_command(
@@ -375,7 +379,10 @@ async def resume_agent(
 
     launch = (
         await resolve_launch_model(
-            resume_args.agent_name, resume_args.thinking_mode.value, session_id=session.session_id
+            resume_args.agent_name,
+            resume_args.thinking_mode.value,
+            ownership=launch_ownership(session.job),
+            session_id=session.session_id,
         )
         if resume_args.thinking_mode
         else None
@@ -637,7 +644,12 @@ async def agent_restart(
     )
 
     restart_mode = session.thinking_mode if session.thinking_mode else "slow"
-    launch = await resolve_launch_model(target_agent, restart_mode, session_id=session.session_id)
+    launch = await resolve_launch_model(
+        target_agent,
+        restart_mode,
+        ownership=launch_ownership(session.job),
+        session_id=session.session_id,
+    )
     restart_cmd = get_agent_command(
         agent=target_agent,
         thinking_mode=restart_mode,

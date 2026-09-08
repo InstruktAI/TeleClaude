@@ -137,7 +137,7 @@ FLAG_COMPANY_SLUG = Flag("--slug", desc="Company slug (optional; derived from th
 
 FLAG_AGENT_STATUS = Flag("--status", desc="Status: available, unavailable, degraded", arity=VALUE)
 FLAG_AGENT_STATUS_REASON = Flag("--reason", desc="Reason for status change", arity=VALUE)
-FLAG_AGENT_STATUS_MODEL = Flag("--model", desc="Restrict an unavailable status to one declared model", arity=VALUE)
+FLAG_AGENT_STATUS_MODEL = Flag("--model", desc="Scope the status to one declared model", arity=VALUE)
 FLAG_AGENT_STATUS_UNTIL = Flag("--until", desc="ISO8601 UTC expiry for unavailable or degraded", arity=VALUE)
 FLAG_AGENT_STATUS_CLEAR = Flag("--clear", desc="Reset to available immediately", arity=SWITCH)
 

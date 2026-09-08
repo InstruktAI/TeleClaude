@@ -94,6 +94,7 @@ from teleclaude.cli.tui.widgets.agent_status import AgentRenderStatus, classify_
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
+from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.agents import get_enabled_agents
 
 if TYPE_CHECKING:
@@ -1101,16 +1102,16 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             delta = availability.model_delta
             prior_models = prior.models if prior is not None else []
             retained_models = [model for model in prior_models if model.model != delta.model]
-            if delta.active and delta.unavailable_until is not None and delta.reason is not None:
+            if delta.status is not AgentAvailabilityStatus.AVAILABLE:
                 retained_models.append(
                     ModelAvailabilityDTO(
                         model=delta.model,
+                        status=delta.status,
+                        status_until=delta.status_until,
                         unavailable_until=delta.unavailable_until,
                         reason=delta.reason,
                     )
                 )
-            elif delta.active:
-                logger.error("Ignoring incomplete active model availability delta", model=delta.model)
             merged[availability.agent] = availability.model_copy(update={"models": retained_models})
         else:
             merged[availability.agent] = availability

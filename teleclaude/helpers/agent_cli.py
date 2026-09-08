@@ -43,6 +43,7 @@ from teleclaude.runtime.binaries import resolve_agent_binary
 
 logger = get_logger(__name__)
 _APP_CONFIG_COMPAT = app_config
+_AUTOMATIC_ELIGIBILITY_ERROR = "ERROR: configured agent {} is not automatically eligible"
 
 # ---------------------------------------------------------------------------
 # One-shot CLI protocol — self-contained, not shared with interactive sessions.
@@ -155,7 +156,7 @@ def _pick_agent(preferred: AgentName | None, *, requires_structured_one_shot: bo
             return path.exists() and path.is_file() and os.access(path, os.X_OK)
         return shutil.which(binary) is not None
 
-    def db_available(agent: AgentName) -> bool:
+    def automatically_eligible(agent: AgentName) -> bool:
         return read_agent_availability_sync(str(MAIN_DB_PATH), agent.value)
 
     def capability_ok(agent: AgentName) -> bool:
@@ -165,7 +166,10 @@ def _pick_agent(preferred: AgentName | None, *, requires_structured_one_shot: bo
 
     def agent_usable(agent: AgentName) -> bool:
         return (
-            is_agent_enabled(agent.value) and binary_available(agent) and db_available(agent) and capability_ok(agent)
+            is_agent_enabled(agent.value)
+            and binary_available(agent)
+            and automatically_eligible(agent)
+            and capability_ok(agent)
         )
 
     if preferred:
@@ -173,8 +177,8 @@ def _pick_agent(preferred: AgentName | None, *, requires_structured_one_shot: bo
             raise SystemExit(f"ERROR: configured agent {preferred.value} is disabled in config.yml")
         if not binary_available(preferred):
             raise SystemExit(f"ERROR: configured binary for {preferred.value} is not available")
-        if not db_available(preferred):
-            raise SystemExit(f"ERROR: configured agent {preferred.value} is marked unavailable or degraded")
+        if not automatically_eligible(preferred):
+            raise SystemExit(_AUTOMATIC_ELIGIBILITY_ERROR.format(preferred.value))
         if not capability_ok(preferred):
             raise SystemExit(f"ERROR: {preferred.value} does not support schema-constrained structured one-shot calls")
         return preferred

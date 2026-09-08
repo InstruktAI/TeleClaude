@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_io
+from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
@@ -125,7 +126,12 @@ async def _ensure_tmux_for_headless(
 
     if resume_native and session.active_agent and session.native_session_id:
         launch = (
-            await resolve_launch_model(session.active_agent, session.thinking_mode, session_id=session.session_id)
+            await resolve_launch_model(
+                session.active_agent,
+                session.thinking_mode,
+                ownership=launch_ownership(session.job),
+                session_id=session.session_id,
+            )
             if session.thinking_mode
             else None
         )

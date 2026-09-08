@@ -328,10 +328,9 @@ CREATE TABLE IF NOT EXISTS terminal_outbox (
 CREATE TABLE IF NOT EXISTS agent_availability (
     agent TEXT NOT NULL,
     model TEXT NOT NULL DEFAULT '',
-    available INTEGER DEFAULT 1,
-    unavailable_until TEXT,
+    status TEXT NOT NULL DEFAULT 'available',
+    status_until TEXT,
     reason TEXT,
-    degraded_until TEXT,
     PRIMARY KEY (agent, model)
 );
 

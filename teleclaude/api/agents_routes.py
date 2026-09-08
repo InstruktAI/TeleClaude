@@ -14,8 +14,10 @@ from teleclaude.api.auth import (
     clearance_agents_availability,
     clearance_agents_status,
 )
+from teleclaude.api.event_serialization import availability_legacy_fields
 from teleclaude.api_models import AgentAvailabilityDTO, AgentStatusRequest, ModelAvailabilityDTO
 from teleclaude.config import config
+from teleclaude.core.agent_availability import AgentAvailabilityStatus, AvailabilityState
 from teleclaude.core.agents import get_known_agents, normalize_agent_name
 from teleclaude.core.db import db
 
@@ -38,31 +40,30 @@ def _normalize_model_unavailability_until(value: str) -> str:
 
 def _build_agent_dto(
     agent: str,
-    info: dict[str, bool | str | None] | None,
-    models: list[dict[str, str]] | None = None,
+    info: AvailabilityState | None,
+    models: dict[str, AvailabilityState] | None = None,
 ) -> AgentAvailabilityDTO:
-    """Convert db agent availability info dict to DTO."""
-    if info:
-        unavail_until = info.get("unavailable_until")
-        degraded_until = info.get("degraded_until")
-        reason_val = info.get("reason")
-        status_val = info.get("status")
-        status_text = str(status_val) if status_val in {"available", "unavailable", "degraded"} else None
-        return AgentAvailabilityDTO(
-            agent=agent,
-            available=bool(info.get("available", True)),
-            status=status_text,
-            unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
-            degraded_until=str(degraded_until) if degraded_until and degraded_until is not True else None,
-            reason=str(reason_val) if reason_val and reason_val is not True else None,
-            models=[ModelAvailabilityDTO(**row) for row in models or []],
-        )
-    # No record means agent is available (never marked unavailable)
+    """Project typed availability state onto the compatible agent DTO."""
+    state = info or AvailabilityState(AgentAvailabilityStatus.AVAILABLE, None, None)
+    available, unavailable_until, degraded_until = availability_legacy_fields(state.status, state.status_until)
     return AgentAvailabilityDTO(
         agent=agent,
-        available=True,
-        status="available",
-        models=[ModelAvailabilityDTO(**row) for row in models or []],
+        available=available,
+        status=state.status,
+        status_until=state.status_until,
+        unavailable_until=unavailable_until,
+        degraded_until=degraded_until,
+        reason=state.reason,
+        models=[
+            ModelAvailabilityDTO(
+                model=model,
+                status=model_state.status,
+                status_until=model_state.status_until,
+                unavailable_until=availability_legacy_fields(model_state.status, model_state.status_until)[1],
+                reason=model_state.reason,
+            )
+            for model, model_state in (models or {}).items()
+        ],
     )
 
 
@@ -85,7 +86,7 @@ async def get_agent_availability(
             result[agent] = AgentAvailabilityDTO(
                 agent=agent,
                 available=False,
-                status="unavailable",
+                status=AgentAvailabilityStatus.UNAVAILABLE,
                 reason="Disabled in config.yml",
             )
             continue
@@ -133,10 +134,8 @@ async def set_agent_status(
             if model not in known_models:
                 allowed_models = ", ".join(sorted(known_models))
                 raise HTTPException(status_code=400, detail=f"unknown model '{model}'; allowed: {allowed_models}")
-            if request.status not in {None, "unavailable"}:
-                raise HTTPException(status_code=400, detail="model status must be unavailable")
-            if not request.clear and request.until is None:
-                raise HTTPException(status_code=400, detail="model unavailability requires an expiry")
+            if not request.clear and request.status != "available" and request.until is None:
+                raise HTTPException(status_code=400, detail="non-available model status requires an expiry")
             if request.duration_minutes is not None:
                 raise HTTPException(status_code=400, detail="model availability requires an absolute expiry")
             if not request.clear and request.until is not None:
@@ -161,6 +160,7 @@ async def set_agent_status(
                     agent_name,
                     request.reason or "degraded",
                     degraded_until=degraded_until,
+                    model=model or "",
                 )
             else:
                 if not request.reason:

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from teleclaude.agent_registry import AgentName
 from teleclaude.api_session_readiness import SessionReadinessDTOFields
 from teleclaude.config.schema import MessagingChannel
+from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.session_status import AgentStatusValue
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TodoDumpKind
@@ -413,8 +414,10 @@ class ModelAvailabilityDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: str
-    unavailable_until: str
-    reason: str
+    status: AgentAvailabilityStatus
+    status_until: str | None
+    reason: str | None
+    unavailable_until: str | None = None
 
 
 class ModelAvailabilityDeltaDTO(BaseModel):
@@ -423,26 +426,11 @@ class ModelAvailabilityDeltaDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: str
+    status: AgentAvailabilityStatus
+    status_until: str | None
     active: bool
     unavailable_until: str | None = None
     reason: str | None = None
-
-
-def build_model_availability_delta(
-    model: str | None,
-    active: bool | None,
-    unavailable_until: str | None,
-    reason: str | None,
-) -> ModelAvailabilityDeltaDTO | None:
-    """Build the optional live delta carried by an availability event."""
-    if model is None or active is None:
-        return None
-    return ModelAvailabilityDeltaDTO(
-        model=model,
-        active=active,
-        unavailable_until=unavailable_until,
-        reason=reason,
-    )
 
 
 class AgentAvailabilityDTO(BaseModel):
@@ -452,7 +440,8 @@ class AgentAvailabilityDTO(BaseModel):
 
     agent: AgentName
     available: bool | None
-    status: Literal["available", "unavailable", "degraded"] | None = None
+    status: AgentAvailabilityStatus | None = None
+    status_until: str | None = None
     unavailable_until: str | None = None
     degraded_until: str | None = None
     reason: str | None = None

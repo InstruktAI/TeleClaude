@@ -10,6 +10,7 @@ from enum import StrEnum
 
 from sqlmodel import Field, SQLModel
 
+from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.injected_text import TranscriptEntryKind
 from teleclaude.core.origins import InputOrigin
@@ -136,9 +137,8 @@ class AgentAvailability(SQLModel, table=True):
 
     agent: str = Field(primary_key=True)
     model: str = Field(default="", primary_key=True)
-    available: int | None = 1
-    unavailable_until: str | None = None
-    degraded_until: str | None = None
+    status: str = AgentAvailabilityStatus.AVAILABLE.value
+    status_until: str | None = None
     reason: str | None = None
 
 
