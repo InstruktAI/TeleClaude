@@ -38,11 +38,17 @@ thing a subscriber cannot change; nothing validates what a project may override.
 An entry whose pointer the registry
 does not carry is a **local job**, active wherever it is declared. Which kind an
 entry is comes from its pointer alone. A tier carries at most one entry per
-pointer; a duplicate pointer fails the load naming it.
+pointer; a duplicate pointer fails the load naming it. The effective set also
+rejects distinct script pointers with the same module-stem identity inside one
+project; the same identity in different projects remains independent.
 
-An agent job's `agent` field is an ordered preference list. The run boundary
+An effective agent job's `agent` field is a non-empty ordered preference list.
+A subscription may inherit that list from its published declaration. A missing
+or empty effective list fails configuration validation; it never selects a
+code-owned job order. A single declared agent is a one-entry list. The run boundary
 launches the job in automatic dispatch mode with that list as the candidate
-order, so the agent-runtime resolver applies its own eligibility rules: an
+order, with no candidates appended from a command matrix. The agent-runtime
+resolver applies its own eligibility rules: an
 agent that is unconfigured, disabled, degraded, or operator-unavailable is
 skipped and the next candidate is tried. Agent preference is execution
 preference, not identity. When every candidate is ineligible the run closes as
@@ -165,15 +171,14 @@ Then the load fails with an error naming the job and the pointer
 And no agent session can be dispatched for it
 ```
 
-#### UC-JDM-12: Agent preference list resolves through availability
+#### UC-JDM-12:
 
-```
-Given an agent job declaring agent = [a, b, c]
-And agent a is disabled in the machine configuration or marked unavailable
-And agent b is enabled and available
+```gherkin
+Given an agent observes a due job with a configured ordered set of candidate agents
+And the first candidate is ineligible while a later candidate is eligible
 When the job is dispatched
-Then the session is created on agent b
-And the dispatch decision records that a was skipped as ineligible
+Then its session runs on the first eligible candidate in the configured order
+And no agent outside the configured set is selected
 ```
 
 #### UC-JDM-13: A subscription may replace the agent preference
@@ -186,14 +191,14 @@ Then the load succeeds
 And the session is created on agent b
 ```
 
-#### UC-JDM-14: An exhausted preference list fails the run loud
+#### UC-JDM-14:
 
-```
-Given an agent job whose every declared agent is unconfigured, disabled, degraded, or unavailable
+```gherkin
+Given an agent observes a due job whose declared candidates are all ineligible
 When the job is due and dispatch is attempted
 Then no session is created
-And the run is closed as failed with the resolver's refusal reason
-And the failed-run event notifies a human
+And the run closes as failed with candidate exhaustion identified as the reason
+And the failure remains available through the established failed-run reporting path
 ```
 
 #### UC-JDM-10: Removed field does not drive behavior
@@ -245,6 +250,25 @@ Given two registered projects that both subscribe to the same global job
 When the runner walks the registered projects
 Then each project's due run is opened, executed, and closed under that project — an agent session rooted at that project, a script job told which project it runs in
 And run state and run records are kept per project and job, so one project's run never closes or blocks the other's
+```
+
+#### UC-JDM-19:
+
+```gherkin
+Given an agent resolves a project's jobs containing two distinct script declarations with the same execution identity
+When the effective job set is loaded
+Then the conflict is reported explicitly
+And neither declaration silently replaces the other
+```
+
+#### UC-JDM-20:
+
+```gherkin
+Given an agent observes existing job history and unfinished runs during a move to project-scoped execution
+When that state is migrated
+Then each attributable run retains its owning project and unfinished or completed state
+And an aggregate dispatch result does not become a successful project run
+And history that cannot be attributed remains recoverable without closing another project's run
 ```
 
 ## Known caveats

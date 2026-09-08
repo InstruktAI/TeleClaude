@@ -225,7 +225,7 @@ execution pointer — `script` (path, in-process job) or `job` (procedure snippe
 job). The pointer present IS the execution class and the job's identity — an agent job is
 named by its procedure snippet ID, a script job by its module's stem — and there is no
 separate discriminator field and no separate name. The remaining execution fields are `agent`
-(an ordered preference list the run boundary hands to automatic dispatch), `thinking_mode`,
+(a non-empty ordered preference list the run boundary hands to automatic dispatch), `thinking_mode`,
 and `timeout` (seconds; default 1800).
 
 A project `jobs` entry that carries the same execution pointer as a published global job is a
@@ -235,6 +235,10 @@ falling back to the published defaults for the rest. Nothing validates what a pr
 override; the job runs in that project alone. An entry whose pointer is not in the global
 registry is a local job declaration (exactly one pointer plus a `when` schedule). A name-keyed
 `jobs` mapping written before this shape is rewritten to the list at the config load boundary.
+
+A job's candidate order comes only from its effective declaration. A one-entry list
+uses the same selection path as any other list; exhaustion fails the run with the
+selection refusal reason. The command matrix supplies no job candidate defaults.
 
 A project's effective job set is composed once by the configuration context — local
 declarations plus the published jobs it subscribes to, each overlaid by its subscribing entry
@@ -276,12 +280,21 @@ config or last run time, flowing the same open/close lifecycle.
 
 ### Manual run (API)
 
+<!-- planned-change:generic-job-declarative-model -->
 `POST /jobs/{name}/run` launches the standalone cron runner process
 (`scripts/cron_runner.py --job NAME --force`) so the job executes in the ephemeral runner
 process with the same timeout containment as a scheduled run. It opens a run and lets the
 sweep close it; it does not report completion at dispatch and does not run job logic inside
 the daemon. A spawn failure returns an explicit API error so the operator sees the start
 failure synchronously.
+<!-- change:generic-job-declarative-model -->
+`POST /jobs/{name}/run` launches the standalone cron runner for the named job.
+Its optional `project` query parameter selects the registered project; omission
+selects the runner's own project. The cron command receives the same project
+selection and resolves that project's effective declaration. Acceptance records
+dispatch, and the run closes through its normal outcome path. A spawn failure
+returns an explicit API error.
+<!-- /planned-change:generic-job-declarative-model -->
 
 ### Script job contract
 
@@ -328,6 +341,9 @@ rooted at the project the run belongs to, and opens a run keyed by that project 
 agent loads the procedure with its required-read closure, does its work, writes a run report
 under its project's run directory, reports its outcome via `telec jobs report <id>`, and
 stops.
+An agent outcome carries the reporting session's identity as well as the project
+and job. The sweep closes only the run opened for that session; a late outcome
+from an earlier run cannot close its successor.
 <!-- /planned-change:generic-job-declarative-model -->
 
 <!-- planned-change:generic-job-declarative-model -->

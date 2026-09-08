@@ -167,16 +167,13 @@ Then a validation error is raised naming the job
 And the job is not registered with an absent schedule
 ```
 
-#### UC-CFG-JOB-14: Surviving execution-config fields default appropriately
+#### UC-CFG-JOB-14:
 
-```
-Given a project config under load with a jobs entry carrying a `when` block and one execution pointer
-When JobScheduleConfig is constructed
-Then category defaults to "subscription"
-And agent defaults to an empty preference list, so the run boundary uses its command's automatic order
-And thinking_mode defaults to "fast"
-And timeout defaults to None
-And the unset execution pointer (script or job) defaults to None
+```gherkin
+Given an agent submits job configuration whose effective agent declaration has no candidate agents
+When the configuration is resolved for execution
+Then the declaration is rejected with the missing candidates identified
+And the job cannot dispatch using an implicit platform candidate order
 ```
 
 ### Cross-context references
@@ -202,4 +199,4 @@ And the unset execution pointer (script or job) defaults to None
 - **Unit floor is one minute, but unit choice is unconstrained.** A literal `"525600m"` is accepted even though `"1y"` would be more readable; the regex permits only m/h/d so a "year" unit is unrepresentable.
 - **Weekday rule is one-directional.** Empty `weekdays` is always accepted (treated as "no day filter"). The rule fires only when `weekdays` is non-empty AND `at` is missing.
 - **`when` is required for a declaration, not for a subscription.** A local or global job declaration must carry a `when` block; a project's subscription to a global job may carry its own `when`, which overrides the published cadence in that project, or none, in which case it inherits the published cadence.
-- **Removed legacy fields are migrated away; unknown keys surface as warnings.** A removed legacy field in a job entry is rewritten away by the load-boundary migration (`project/spec/feature/config/job-declaration-model`), so it drives no scheduling or execution decision; a misspelled key is surfaced through the recursive unknown-key warning walk (`project/spec/feature/config/unknown-key-warning`). The `when` block itself still accepts unrecognized sub-keys silently — that narrower gap is unchanged here.
+- **Recognized stored legacy fields migrate before validation.** The job declaration's load-boundary migration handles its recognized prior shape. Unknown fields follow the owning configuration boundary's rejection contract in `project/spec/feature/config/unknown-key-warning`.

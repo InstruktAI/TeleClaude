@@ -61,9 +61,16 @@ preference list, not a binding.
 
 ### Command dispatch policy
 
+<!-- planned-change:generic-job-declarative-model -->
 One command-keyed matrix owns automatic agent selection and the default thinking
 mode. System role and job role remain separate session-identity and authority facts;
 neither selects an agent or mode.
+<!-- change:generic-job-declarative-model -->
+Ordinary command-driven work uses the command matrix for automatic candidates and
+default thinking mode. Scheduled jobs instead receive their candidate order and
+execution settings from the effective job declaration; no job row in the matrix
+supplies either. System role and job role remain identity and authority facts.
+<!-- /planned-change:generic-job-declarative-model -->
 
 | Command                     | Ordered agents                                                                        | Default thinking mode |
 | --------------------------- | ------------------------------------------------------------------------------------- | --------------------- |
