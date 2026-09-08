@@ -17,9 +17,17 @@ with an explicit pathspec.
 
 The staging model is asymmetric and follows git's data model:
 
+<!-- planned-change:attribution-by-declaration -->
 - **Modified-tracked files in scope** that are NOT partial-staged ride the
   pathspec straight from the working tree — `git commit -- <path>` records
   the working-tree version, no staging needed.
+<!-- change:attribution-by-declaration -->
+- **Modified-tracked files in scope** that are NOT partial-staged ride the
+  pathspec straight from the working tree — `git commit -- <path>` records
+  the working-tree version, no staging needed. When a shell command wrote the
+  file, `telec code add <path>` declares it into session scope while leaving
+  its index state unchanged.
+<!-- /planned-change:attribution-by-declaration -->
 - **Partial-staged tracked files** in the commit pathspec (staged hunks +
   later working-tree delta) are BLOCKED by the partial-staging guard —
   `git commit -- <path>` would otherwise sweep unstaged hunks the agent
@@ -199,6 +207,7 @@ The pathspec commit is built internally from `workspace scope plus
 
 ## Invariants
 
+<!-- planned-change:attribution-by-declaration -->
 1. **Lock serialisation.** `main_branch_lock()` (flock on
    `GIT_MAIN_LOCK_PATH`) serialises the entire `_commit_under_lock` body.
    No two agents can be inside their commit phase at the same time. The
@@ -214,6 +223,18 @@ The pathspec commit is built internally from `workspace scope plus
    different lock, different file, owned by git itself — so this check
    is the only protection against a previous git process that was
    killed mid-write.
+<!-- change:attribution-by-declaration -->
+1. **Lock serialisation.** `main_branch_lock()` (flock on
+   `GIT_MAIN_LOCK_PATH`) serialises commit execution and the staging mutation
+   performed by `telec code add`. Both paths call
+   `wait_for_index_lock_clear()` while holding that lock before writing the
+   index, so a declaration cannot race another session's commit into
+   `.git/index.lock`. The lock auto-releases on process exit or crash.
+
+   Stale `.git/index.lock` self-heal uses the existing bounded holder and age
+   checks before removal. The flock and Git's index lock remain distinct; the
+   wait is the protection against a prior Git process killed mid-write.
+<!-- /planned-change:attribution-by-declaration -->
 
 2. **Workspace scope is authoritative — for pathspec construction, not staging.**
    `resolve_workspace_scope_resolution()` is the single owner of

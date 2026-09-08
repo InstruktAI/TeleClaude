@@ -584,6 +584,38 @@ Then the reason is framed by the canonical XML checkpoint control envelope
 And no bracket checkpoint envelope is emitted on the hook boundary
 ```
 
+<!-- planned:attribution-by-declaration -->
+#### UC-CP26: An undeclared shell turn is invited to declare without creating a checkpoint obligation
+
+```gherkin
+Given a turn ran one or more shell commands
+And no later sealed add declaration appears in that turn's transcript evidence
+When the agent-stop checkpoint is already produced for an independent action or observation
+Then it carries one advisory line inviting the agent to declare paths it wrote or proceed without declaring any
+And the line is not listed as a required action
+
+Given the same shell activity and absent declaration
+And no independent action or observation warrants a checkpoint
+When checkpoint evaluation completes
+Then the advisory alone produces no checkpoint and does not block the stop
+
+Given a sealed add declaration follows the turn's last shell command
+When checkpoint evaluation completes
+Then the declaration advisory is absent
+```
+
+#### UC-CP27: A live declaration participates in turn attribution
+
+```gherkin
+Given a shared-branch session declares a dirty path through the sealed add surface
+And the path differs from the turn anchor
+When the agent-stop checkpoint resolves the turn's effective files
+Then the declared path participates in the same action and commit decisions as a runtime-recorded file edit
+And the declaration remains available through the session's restart or handoff transcript chain
+And a later sealed-commit command record ends the earlier declaration
+```
+<!-- /planned:attribution-by-declaration -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside

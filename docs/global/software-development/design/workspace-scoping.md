@@ -97,6 +97,26 @@ guardrails lane).
 
 <!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
+<!-- planned:attribution-by-declaration -->
+### Session path declarations
+
+On a shared branch, session-owned path evidence is the union of paths recorded
+by the agent runtime's native file-edit records and live declarations in the
+session's transcript chain. A declaration is an exact executable
+`telec code add <path>...` command record. Its paths carry the record's
+timestamp and stay live until a later `telec code commit` command record in the
+same ordered chain. Restart and handoff transcript files participate in source
+order, so a still-live declaration survives the process boundary without a
+second persistence mechanism.
+
+Every implicit-scope consumer reads this same evidence. Session-scoped
+`telec code changed`, lint, and commit intersect it with the current dirty set;
+the agent-stop checkpoint intersects it with the turn's anchor delta; and
+`telec code owners` retains its timestamps while applying the existing dirty
+set and last-commit boundaries. Worktrees remain task-scoped and do not consult
+session declarations.
+<!-- /planned:attribution-by-declaration -->
+
 ### Batch dirty-path ownership
 
 The read-only `telec code owners <path>...` query resolves custodianship for a
