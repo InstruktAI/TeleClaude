@@ -407,6 +407,10 @@ And no named agent is selected as a fallback
 ```
 
 <!-- change:remove-prior-reviewer-agent-exclusion -->
+#### UC-RAAD-20: A reviewer request excludes agents that already reviewed its target
+
+#### UC-RAAD-21: No unreviewed candidate creates no session
+
 <!-- /planned-change:remove-prior-reviewer-agent-exclusion -->
 <!-- planned:remove-prior-reviewer-agent-exclusion -->
 #### UC-RAAD-22: A prior reviewer session's agent stays eligible for the same target
