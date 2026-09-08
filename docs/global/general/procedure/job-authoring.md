@@ -6,10 +6,6 @@ visibility: 'public'
 
 # Job Authoring — Procedure
 
-## Required reads
-
-@~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
-
 ## Goal
 
 Create a new scheduled job with the correct artifacts in the correct locations,
@@ -32,10 +28,10 @@ validated by existing infrastructure.
 
 ### 2. For agent jobs: write the procedure
 
-The procedure is the job's entire mandate. The runner starts the agent with the
+The procedure defines the job's task. The runner starts the agent with the
 procedure's snippet ID, and the agent loads that procedure together with its
-required-read closure in one pass (`telec docs get <id> --closure`). Nothing else
-describes the job to the agent, so the procedure carries the whole workflow:
+required-read closure in one pass (`telec docs get <id> --closure`). The procedure
+carries the whole task workflow:
 Goal, Preconditions, Steps, Outputs, Recovery.
 
 Place it by the job's nature:
@@ -44,8 +40,9 @@ Place it by the job's nature:
 - Domain-specific jobs: `docs/global/{domain}/procedure/{job-slug}.md`
 - Project-only jobs: `docs/project/procedure/{job-slug}.md`
 
-Add agent-job-hygiene as a required read so the closure delivers the run
-discipline with the workflow. A job procedure carries no `activation_trigger`:
+Define the job-specific artifacts and report under Outputs, including any history
+the next run consumes. The `next-run-job` brief supplies the role boundary and
+structured outcome submission. A job procedure carries no `activation_trigger`:
 triggers belong to procedures an agent may invoke on its own judgment, and a job
 procedure is executed by the runner.
 
@@ -61,13 +58,12 @@ Add under `jobs:`:
 ```yaml
 jobs:
   { job_key }:
-    schedule: hourly | daily | weekly | monthly
-    type: agent | script
-    job: <procedure snippet id> # agent jobs only
-    agent: claude | gemini | codex # agent jobs only
+    category: system
+    when:
+      at: '06:00' # or: every: 60m
+    job: <procedure snippet id> # agent job; use script: jobs/{job_slug}.py for a script job
+    agent: claude | gemini | codex # agent job only
     thinking_mode: fast | med | slow # agent jobs only
-    preferred_hour: 0..23 # optional, non-hourly
-    preferred_weekday: 0..6 # optional, weekly
 ```
 
 <!-- change:generic-job-declarative-model -->

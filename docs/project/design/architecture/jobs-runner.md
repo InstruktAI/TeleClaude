@@ -5,10 +5,6 @@ visibility: 'public'
 
 # Jobs Runner — Design
 
-## Required reads
-
-@~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
-
 ## Purpose
 
 A standalone scheduled process that discovers and executes periodic jobs. Runs
@@ -21,16 +17,13 @@ digests, GitHub issue triage, and future scheduled tasks.
 One-off operations (e.g., initial YouTube subscription fetch during onboarding) live in
 `scripts/` or `teleclaude/entrypoints/` and are invoked directly — they are not jobs.
 
-### Philosophy
+### Execution ownership
 
-**Agents are supervisors, scripts are workers.** The agent owns the outcome: it runs the
-existing functional scripts, watches what happens, fixes forward within its own scope if
-something breaks, writes a run report, and reports a structured outcome that closes its
-run. Scripts run in-process and return their outcome directly.
-
-Agents do not reimplement script logic. The scripts already work — the agent's value is
-resilience, error recovery, and auditability. See the Agent Job Hygiene procedure for the
-full contract.
+An agent job executes the procedure named by its declaration. That procedure owns
+the task, its artifacts, and its recovery steps; the `next-run-job` brief binds
+the job role and submits its structured outcome. A script job runs in-process
+and returns its outcome directly. Scheduling, dispatch, and outcome notification
+belong to the runner.
 
 ### The generic closed-loop run lifecycle
 
@@ -98,7 +91,7 @@ spawned and no stdout is parsed.
 agent session (fire-and-forget) identified by the procedure snippet ID in `job`. That ID
 is the job's identity everywhere: the dispatch argument, the run state key, the run
 directory, and the report key. The agent loads the procedure with its required-read
-closure, does its work, fixes forward within scope, writes a run report, and reports a
+closure, executes its task, produces its declared artifacts, and reports a
 structured outcome via `telec jobs report <id>`. The runner's sweep on a later tick reads
 that outcome and closes the run; a run never reported within its window is stalled.
 
@@ -140,18 +133,21 @@ that project, so a later run cannot overwrite a notification that has not yet be
 #### Cross-project iteration
 
 <!-- planned-change:generic-job-declarative-model -->
-Jobs that fan out across all registered projects (e.g., `log_bug_hunter`) do **not**
-re-implement project discovery. They consume `ProjectCatalogService` (a lazy singleton
-over `~/.teleclaude/projects.yaml`) and `ProjectJobOrchestrator` (a generic iterator that
-runs an injected `run_for_project(node)` per subscribing project and isolates per-project
-exceptions). Per-job services (e.g., `LogBugHunterService`) are one-project executors; the
-cross-project loop lives in the orchestrator.
+The runner's log-bug-hunter fan-out uses `ProjectCatalogService` and
+`ProjectJobOrchestrator` to find subscribing projects, skip a project with a live
+session for this job, and dispatch `next-run-job` with that project's declaration.
+Signal collection, grouping, and suppression matching belong entirely to the
+agent's procedure. There is no per-project hunter service or pre-dispatch log filter.
+The parent run closes on the fan-out result; its success records dispatch, not
+completion of the individual scans. Each agent writes its own scan report and
+structured outcome, and its project-scoped session liveness prevents redispatch.
 <!-- change:generic-job-declarative-model -->
 The runner itself walks every registered project (`ProjectCatalogService`, a lazy singleton
 over `~/.teleclaude/projects.yaml`), composes that project's effective job set, and runs what
-is due there. A job never iterates projects. A per-job service that still exists is a
-one-project executor the runner invokes for the project in hand; a failure in one project is
-isolated and the walk continues.
+is due there. A job never iterates projects, and no job carries a dedicated
+per-project executor: the runner dispatches every job through its declared
+execution class for the project in hand. A failure in one project is isolated
+and the walk continues.
 <!-- /planned-change:generic-job-declarative-model -->
 
 ## Inputs/Outputs
@@ -317,8 +313,8 @@ class JobResult:
 
 ### Agent job contract
 
-1. Write the job's procedure (see the Job Authoring procedure) with agent-job-hygiene as
-   a required read, and sync it so its ID resolves.
+1. Write the job's procedure (see the Job Authoring procedure), including its
+   outputs and recovery, and sync it so its ID resolves.
 2. Register in `teleclaude.yml` with `job` carrying the procedure's snippet ID.
 
 <!-- planned-change:generic-job-declarative-model -->
@@ -471,5 +467,5 @@ cron_runner.py --list       List available jobs and their status
 ### Job procedures
 
 An agent job's complete mandate is the procedure its `job` pointer names. There is no
-separate job document: the procedure carries the workflow, and its required-read closure
-carries the run discipline.
+separate job document: the procedure carries the workflow and its dependencies;
+the `next-run-job` brief supplies the job-role boundary and structured close-out.

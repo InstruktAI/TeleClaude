@@ -18,8 +18,8 @@ Execute one configured agent job from the procedure its declaration points at an
 
 1. Treat `$job` as the job's identity: the procedure snippet ID its `job:` declaration carries.
 2. Run `telec docs get $job --closure` and follow the returned procedure and every included required read as your complete instruction set.
-3. Close the run with `telec jobs report $job` as the Agent Job Hygiene procedure directs.
+3. Produce the procedure's output, then close the run with `telec jobs report $job --success <true|false> --message '<summary>' [--items-processed <n>] [--error '<error>' ...]`. Report success only when the assigned work completed; an empty successful run also completes. Record a failed procedure load or execution as failure.
 
 ## Discipline
 
-The procedure is the complete work scope; never infer work from the schedule or from the ID. Always close the run through the structured reporting surface, including when the job has nothing to do or fails. Stop when the report is recorded.
+The procedure defines the assigned work; the job role supplies no authority to edit or commit code, including repairs to its own tools. Execute the procedure's operations and produce its outputs without adding investigations, memory saves, or bonus work. Report the outcome only through `telec jobs report`; the runner owns event emission and notifications. Stop when the outcome is recorded.

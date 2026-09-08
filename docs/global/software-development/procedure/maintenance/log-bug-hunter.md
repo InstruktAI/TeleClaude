@@ -5,102 +5,101 @@ visibility: 'public'
 
 # Log Bug Hunter — Procedure
 
-## Required reads
-
-@~/.teleclaude/docs/general/procedure/agent-job-hygiene.md
-
 ## Goal
 
-Proactively discover errors in daemon logs before they become user-visible incidents.
-Fix what can be fixed inline; dispatch what cannot to the bug pipeline.
-
-The log-bug-hunter is one bug _source_ feeding the same pipeline that
-`telec bugs report` feeds from interactive sessions.
+Scan the current project's logs, deduplicate error signals, and file the remaining
+observed failures through `telec bugs report`. The bug lifecycle owns diagnosis
+and implementation.
 
 ## Preconditions
 
-1. The runner is executing as the `log-bug-hunter` job for a specific project.
-2. The agent is running inside the target project's root directory and knows
-   the project's `project_slug` (the session is dispatched by
-   `LogBugHunterService` bound to that project).
-3. `instrukt-ai-logs {project_slug} --since <window> --exclude git-wrapper` is
-   available and returns structured log output.
-4. The agent has read access to the codebase for diagnosis.
-5. The agent can commit fixes to the current branch (main).
-6. Previous run records are available for the window and for deduplication in
-   the job's run directory (`~/.teleclaude/jobs/{job_id}/runs/`).
+- The runner started this session in the target project with this procedure's
+  snippet ID as the job identity.
+- The project's log name and the job's schedule are available from its configuration.
+- `instrukt-ai-logs`, `telec bugs suppressions`, `telec bugs list`,
+  `telec todo list`, and `telec bugs report` are available.
+- The run history is the Markdown reports in the directory named under Outputs.
 
 ## Steps
 
-1. Collect the logs this run owns for the current project:
-   - The window starts at the newest previous run record in the job's run
-     directory. With no previous record, the window is one schedule interval
-     as declared in the job's `when` block. Express it as the duration from
-     that start until now.
-   - Run `instrukt-ai-logs {project_slug} --since <window> --exclude git-wrapper`,
-     substituting the project slug of the project you are running in.
-   - If no output or tool unavailable, write a "nothing to process" report and stop.
+1. Establish the scan window for this project.
+   - Read the latest report belonging to this project. Start at its completed
+     scan's end; if it records an incomplete scan, resume from that scan's start.
+   - With no usable prior report, cover one schedule interval from the job's
+     declaration. Record the actual start and end timestamps.
+   - Collect that window with
+     `instrukt-ai-logs {project_slug} --since <window> --exclude git-wrapper`.
+     A successful empty result is a clean scan. A failed collection is an
+     incomplete scan, reported under Recovery.
 
-2. Extract error signals:
-   - Identify lines containing errors, exceptions, tracebacks, and repeated warnings.
-   - Group related log lines into distinct error instances.
-   - Ignore informational and debug-level output.
-   - If no error signals are found, write a "clean run" report and stop.
+2. Read the logs and group related errors, exceptions, tracebacks, and repeated
+   warnings into distinct signals. Ignore informational and debug output.
+   Use the observed messages and context; do not investigate the codebase to
+   establish a diagnosis.
 
-3. Deduplicate against previous runs:
-   - Read the most recent run reports (up to 3).
-   - Skip errors already reported in previous runs unless they have new context
-     (different traceback, increased frequency, new trigger).
-   - Skip (record only) errors whose signal matches an active entry in the
-     project's suppression ledger (`telec bugs suppressions`). The service
-     subtracts suppressed signals before dispatch; this is the in-session
-     backstop for one that slips through. A suppressed signal is noted in the run
-     report, never filed as a bug.
+3. Deduplicate each signal.
+   - Read `telec bugs suppressions` for the project. Match only active entries,
+     using each entry's declared substring or regex semantics. Record matches
+     with their suppression IDs. Skip an invalid regex and record that error.
+   - Read `telec bugs list` and `telec todo list`. Record a matching active
+     bug or todo by its slug instead of filing a duplicate.
+   - Read the latest three reports for this project for prior dispositions and
+     context. A previous failed filing or an unresolved signal remains outstanding;
+     merely mentioning a signal in a report does not make it handled.
+   - New evidence for an already tracked failure belongs with that finding in
+     this run's report; it does not create a second bug for the same failure.
 
-4. Process every error. For each error, decide fix, dispatch, or record:
-   - **Fix inline** when all are true:
-     - Root cause is identifiable from the traceback and surrounding code.
-     - Fix is within daemon codebase scope (Python files under `teleclaude/`).
-     - Fix is small (a few lines), safe, and does not require a restart to verify.
-     - Commit hooks (lint + tests) pass after the fix.
-   - **Dispatch to bug pipeline** when any are true:
-     - Fix requires architectural changes or touches multiple subsystems.
-     - Root cause is unclear and needs investigation.
-     - Fix requires service restart, config changes, or external coordination.
-   - **Record only** when:
-     - Error is transient and self-resolved (network blip, temporary resource pressure).
-     - Error is already tracked by an existing bug (visible in `telec bugs list`) or todo.
+4. File every remaining signal through the bug front door.
+   - Submit the observed error summary and a representative log excerpt through
+     `telec bugs report '<description>'`. Use `--project <owner>` when the
+     defective system belongs to a different project than the scanned logs.
+   - Follow the front door's pre-filing instructions and completion invocation.
+     Its direct-fix question supplies no coding authority to a job.
+   - Let the front door derive the slug. Record the returned bug slug and confirm
+     creation from the result; an instruction card is not a created bug.
+   - If filing fails, record the signal and error as outstanding, then continue
+     with the remaining signals.
 
-5. Execute inline fixes:
-   - Apply minimal fix.
-   - Verify via commit hooks.
-   - Commit with type `fix(scope): subject`.
-
-6. Dispatch unfixable errors to the bug pipeline:
-   - Check if a bug already exists for this error class via `telec bugs list`.
-   - If yes, skip (do not create duplicates).
-   - If no, run `telec bugs report "<description>" --slug fix-{slug}` where
-     description includes: error summary, log excerpt, and attempted diagnosis.
-   - The bug pipeline handles everything downstream: scaffold, branch,
-     worktree, autonomous fix/review/merge.
-
-7. Repeat steps 4–6 until every error from step 3 has been handled (fixed,
-   dispatched, or recorded). Do not stop while unprocessed errors remain.
-
-8. When all errors are processed, write the run report and close the run as the
-   Agent Job Hygiene procedure directs, then go idle. Anomalies in the agent's own
-   operation (tool errors, `telec` command failures, unexpected CLI output) go in
-   the report's Errors section; the report closes the run either way.
+5. Write the run report under Outputs, including a clean or failed scan.
+   Mark the scan complete only after log collection and deduplication succeeded
+   and every signal has been filed or matched to an active suppression or
+   existing work. An outstanding filing keeps the scan incomplete.
+   Return the outcome to the job brief's structured close-out step.
 
 ## Outputs
 
-- Inline fixes committed on main (when safe and small).
-- Bug reports dispatched via `telec bugs report` for errors requiring deeper work.
-- Run report documenting all findings, actions, and skips.
+- A bug filed for each observed error that is neither suppressed nor already tracked.
+- A Markdown report named by the run timestamp in the job's run directory:
+<!-- planned-change:generic-job-declarative-model -->
+  `~/.teleclaude/jobs/{job_id}/runs/`.
+<!-- change:generic-job-declarative-model -->
+  `~/.teleclaude/jobs/{project_slug}/{job_id}/runs/`.
+<!-- /planned-change:generic-job-declarative-model -->
+
+Create the directory when needed. Each report carries:
+
+- **Summary:** project, scan start and end, complete or incomplete, and outcome.
+- **Findings:** each signal's observed evidence and disposition — filed bug slug,
+  existing work slug, suppression ID, or outstanding filing.
+- **Errors:** collection, deduplication, or filing failures; use "None" when absent.
+
+The report is the scan history consumed by the next run. The structured outcome
+submitted by the job brief records whether this run completed successfully.
 
 ## Recovery
 
-1. If `instrukt-ai-logs` fails, write a report noting tool unavailability and stop.
-2. If a fix breaks commit hooks, revert the fix, record the failure in the report,
-   and dispatch the error to the bug pipeline instead.
-3. If deduplication data is unavailable (no previous reports), treat all errors as new.
+- If logs cannot be collected, record the failed collection and an incomplete
+  scan. Report failure; do not describe unavailable logs as a clean run.
+- If suppression or active-work lookup fails, preserve the affected signals as
+  outstanding and report failure. Resume deduplication on the next run.
+- A missing report history is a first scan, not a failed lookup; use the declared
+  schedule interval and current suppression and work records.
+- A failed filing does not block attempts for other signals. Carry its evidence
+  in the report so the next run can retry after deduplication.
+- Tool failures do not authorize repairing scripts, editing code, or bypassing
+  permissions. Record them and close the run as failed.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md
+- ~/.teleclaude/docs/general/policy/human-contract.md
