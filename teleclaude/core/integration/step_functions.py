@@ -69,12 +69,6 @@ from teleclaude.core.integration.park import (
 )
 from teleclaude.core.integration.push_recovery import _is_content_gate_rejection
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
-from teleclaude.core.next_machine.marker_reconciliation import (
-    MarkerMoment,
-    MarkerOutcome,
-    MarkerReceipt,
-    reconcile_lifecycle_markers,
-)
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.hooks.checkpoint import _git_diff_names
@@ -424,7 +418,7 @@ def _step_delivery_bookkeeping(
     wt = str(integration_wt)
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
 
-    _changed, fold_error = reassert_delivered_fold(integration_wt, key.slug)
+    _changed, _, fold_error = reassert_delivered_fold(integration_wt, key.slug)
     if fold_error is not None:
         return False, _format_error("RESIDUAL_MARKERS", fold_error)
     gate_error = assert_clean_before_push(integration_wt, key.slug)
@@ -532,21 +526,6 @@ def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str, source:
     return None
 
 
-def _reconcile_confirmed_delivery(
-    *, cwd: str, slug: str, confirmed_sha: str
-) -> tuple[str | None, MarkerReceipt | None, str | None]:
-    receipt = reconcile_lifecycle_markers(Path(cwd), slug, MarkerMoment.DELIVER)
-    if not receipt.succeeded:
-        return None, None, receipt.reason
-    if receipt.outcome is MarkerOutcome.APPLIED:
-        with main_branch_lock():
-            marker_push_rc, _, marker_push_error = _run_git(["push", "origin", "main"], cwd=cwd)
-        if marker_push_rc != 0:
-            return None, None, marker_push_error.strip()
-        return _get_head_sha(cwd) or confirmed_sha, receipt, None
-    return confirmed_sha, receipt, None
-
-
 def _step_push_succeeded(
     *,
     checkpoint: IntegrationCheckpoint,
@@ -559,7 +538,8 @@ def _step_push_succeeded(
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
 
-    wt = str(_integration_worktree_path(cwd))
+    integration_wt = _integration_worktree_path(cwd)
+    wt = str(integration_wt)
     fetch_rc, _, _ = _run_git(["fetch", "origin"], cwd=wt)
     pushed_sha = checkpoint.pushed_sha
     confirmed_sha: str | None = None
@@ -586,20 +566,15 @@ def _step_push_succeeded(
         logger.info("%s slug=%s phase=PUSH_REJECTED (confirmation gate)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(reason, key.slug, wt)
 
-    reconciled_sha, receipt, reconciliation_error = _reconcile_confirmed_delivery(
-        cwd=cwd,
-        slug=key.slug,
-        confirmed_sha=confirmed_sha,
-    )
-    if reconciled_sha is None or receipt is None:
+    _, receipt, reconciliation_error = reassert_delivered_fold(integration_wt, key.slug)
+    if reconciliation_error is not None:
         return False, _format_error("DELIVERY_RECONCILIATION_FAILED", reconciliation_error or "unknown failure")
-    confirmed_sha = reconciled_sha
 
     todos_db = get_todos_db_sync(cwd)
     delivered = todos_db.deliver_sync(
         key.slug,
         reconciliation_receipt=receipt,
-        reconciliation_root=Path(cwd),
+        reconciliation_root=integration_wt,
         commit=confirmed_sha,
     )
     if not delivered:
