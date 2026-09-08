@@ -460,7 +460,6 @@ When the heuristic engine evaluates the turn window
 Then no path is attributed to the turn from the command text
 And the pre-existing dirty file is not attributed to this turn
 And no checkpoint is produced
-(Whether command text expresses mutating intent is a semantic judgment over agent-authored free text, so code does not make it.)
 ```
 <!-- /planned-change:checkpoint-attributes-foreign-dirty-paths -->
 
