@@ -56,13 +56,17 @@ procedure is ever dispatched.
    **reject**, or **kick back**. A finding is fixed only when it cites a clause
    that applies, establishes the contradiction, and its closure stays within the
    frozen scope. One that does not establish its clause, or whose closure
-   prescribes work the authorized intent does not contain, is rejected with the
-   evidence and stands rejected until the reviewer overturns it on changed
-   substrate or material new evidence
+   enlarges the horizon — new functionality, instrumentation, subsystems, or
+   scope beyond the frozen denominator — is rejected with the evidence and
+   stands rejected until the reviewer overturns it on changed substrate or
+   material new evidence
    (`software-development/procedure/lifecycle/review` §6); a finding that
    enlarges the horizon is invalid under
-   `software-development/policy/definition-of-done-lanes`. One whose closure
-   needs adjacent scope or a different owner is kicked back. For each finding
+   `software-development/policy/definition-of-done-lanes`. A valid omission
+   finding — a missing reflection, verification, or gate the policies require
+   on the authorized work — adds material within scope and is fixed, not
+   rejected. One whose closure needs adjacent scope or a different owner is
+   kicked back. For each finding
    you fix:
    - Understand the issue and its referenced location.
    - Apply the minimal fix that satisfies the finding's closure condition. The

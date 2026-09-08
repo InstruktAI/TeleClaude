@@ -150,13 +150,17 @@ header. Pick your behavior from the reason:
     contradiction, and its closure stays inside the authorized outcome and the
     behavior's established domain owner. Apply the targeted fix.
   - **Reject** — the finding does not establish that its cited clause applies
-    here, or its closure prescribes work the authorized intent does not contain.
-    Record the rejection with its evidence. It stands rejected until the reviewer
-    overturns it on changed substrate or material new evidence
-    (`software-development/procedure/lifecycle/review` §6). A rejected finding
-    is never fixed to shorten the loop: a finding that enlarges the horizon is
-    invalid under `software-development/policy/definition-of-done-lanes`, and
-    complying with one is how a bounded change grows.
+    here, or its closure enlarges the horizon: new functionality,
+    instrumentation, subsystems, or scope beyond the frozen denominator. A valid
+    omission finding — a missing reflection, verification, or gate the policies
+    require on the authorized work — adds material within scope and is not
+    rejected on that ground (`software-development/procedure/lifecycle/review`
+    §6). Record the rejection with its evidence. It stands rejected until the
+    reviewer overturns it on changed substrate or material new evidence. A
+    rejected finding is never fixed to shorten the loop: a finding that enlarges
+    the horizon is invalid under
+    `software-development/policy/definition-of-done-lanes`, and complying with
+    one is how a bounded change grows.
   - **Kick back** — the finding is valid, but its closure needs adjacent scope,
     a different owner, or a boundary redraw. That is a kickback or blocker, not
     authority to enlarge this plan.
