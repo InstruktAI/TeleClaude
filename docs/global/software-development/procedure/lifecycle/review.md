@@ -169,12 +169,33 @@ or changed approach that makes another attempt different, the responsible owner
 and the closure condition. Human escalation follows the closed human lane,
 never the round count.
 
+<!-- planned-change:remove-prior-reviewer-agent-exclusion -->
 The classification decides what the orchestrator may do on its own authority.
 Failed remediation whose remaining delta is small and grounded, and incomplete
 or noisy review, each earn one continuation: the orchestrator admits exactly
 one further pass through the continuation stamp, which persists the
 classification and reason with the caller, and the machine dispatches a
 reviewer that never reviewed this target before when the cause was the review.
+<!-- change:remove-prior-reviewer-agent-exclusion -->
+The classification decides what the orchestrator may do on its own authority.
+Failed remediation whose remaining delta is small and grounded, and incomplete
+or noisy review, each earn one continuation: the orchestrator admits exactly
+one further pass through the continuation stamp, which persists the
+classification and reason with the caller, and the machine dispatches a
+reviewer that never reviewed this target before when the cause was the review.
+
+A reviewer is a session and its ledger, never an implementation. The session
+that produced the halted review has reviewed this target, so the machine retires
+it through the governed session lifecycle and dispatches the replacement only
+once that session is terminal. Retirement is accepted asynchronously, so the two
+acts belong to separate machine calls: the call that admits the continuation
+requests the retirement, and a later call, observing no live reviewer for the
+subject, dispatches. The replacement is chosen by ordinary selection and may run
+on the same agent implementation as the session it replaces — freshness is a
+property of the session, and no agent becomes ineligible for a target by having
+reviewed it before. One live reviewer per review subject holds throughout; no
+caller may compose a request that admits a second.
+<!-- /planned-change:remove-prior-reviewer-agent-exclusion -->
 An ambiguous contract earns no continuation; it goes to its decision owner. An
 unstable target earns no continuation; the producer stops changing the target
 first. The reviewer of a continuation judges the corrected target independently;
