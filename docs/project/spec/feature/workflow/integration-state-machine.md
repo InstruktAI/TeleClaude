@@ -384,7 +384,7 @@ And no candidate is dequeued for that call until repo-root main is synced
 
 ```gherkin
 Given a finalize-ready candidate whose span (origin/main..tip) contains a non-merge commit that belongs to a different in-flight slug
-And the foreign commit is identified by a conventional-commit scope naming another slug present in the todo registry, or by files it touches that fall outside the candidate plan's referenced-paths contract
+And the foreign commit is identified by a conventional-commit scope naming another slug present in the todo registry
 When the integrator prepares to integrate the candidate
 Then the candidate is parked with a recorded candidate-cleanliness reason and integration.candidate.parked is emitted
 And no delivery record is written for the candidate and its transitive dependents are excluded from the drain
@@ -394,10 +394,21 @@ And the drain continues through the remaining independent candidates
 #### UC-WISM26: An ambiguous span commit is surfaced to integrator judgment, never auto-parked
 
 ```gherkin
-Given a candidate span carries a non-merge commit whose ownership cannot be decided by an exact predicate — no conventional-commit scope naming another registered slug and no referenced-paths breach
+Given a candidate span carries a non-merge commit whose conventional-commit header names no slug present in the todo registry
 When the integrator prepares to integrate the candidate
 Then the ambiguous commit is surfaced to the integrator's judgment rather than classified by code
 And the candidate is not parked automatically on the strength of the ambiguous signal alone
+And a touched path outside the candidate plan's referenced-paths contract is carried as the ambiguity's recorded reason
+```
+
+#### UC-WISM32: A commit carrying the candidate's own scope is clean whatever paths it touches
+
+```gherkin
+Given a finalize-ready candidate whose span contains a non-merge commit whose conventional-commit scope is the candidate's own slug
+And that commit touches a file outside the candidate plan's frozen referenced-paths contract
+When the integrator prepares to integrate the candidate
+Then the commit is classified clean and the candidate is neither parked nor surfaced as ambiguous
+And a referenced-paths breach alone never produces a foreign verdict for any commit
 ```
 
 
@@ -490,3 +501,8 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 
 
 - Lifecycle event emission is fire-and-forget; event delivery failure never blocks integration progress and is only logged at debug level.
+
+## See Also
+
+- docs/project/adr/0081-commit-scope-is-the-sole-foreign-ownership-predicate.md — why a referenced-paths breach is ambiguity evidence rather than proof of foreign ownership.
+- docs/project/adr/0076-integrator-parks-blockers-and-keeps-quality-gating.md — the park-and-drain decision this gate operates inside.

@@ -62,3 +62,8 @@ pre-push quality gate authoritative and blocking.
 - **Halt the drain on every ungroundable failure.** Rejected because independent
   candidates do not inherit the blocked candidate's uncertainty and should
   continue delivering.
+
+## Status
+
+Superseded in part by ADR-0081: a referenced-paths breach no longer proves foreign
+ownership; the park-and-drain decision and the pre-push quality gate remain accepted.

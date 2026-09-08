@@ -76,8 +76,8 @@ class CandidateSpanReasonToken(StrEnum):
     """Closed vocabulary for why a span commit resolved foreign or ambiguous."""
 
     FOREIGN_SCOPE = "foreign_scope"
-    FOREIGN_PATH = "foreign_path"
     AMBIGUOUS_HEADER = "ambiguous_header"
+    AMBIGUOUS_PATH = "ambiguous_path"
 
 
 class AmbiguityEvidence(NamedTuple):
@@ -126,7 +126,8 @@ def _referenced_paths_or_raise(cwd: str, slug: str) -> frozenset[str]:
     """Return the candidate's frozen implementation-plan referenced-paths contract.
 
     Missing or invalid metadata is an explicit inspection failure — never an
-    empty-path fallback that would silently make every touched path look foreign.
+    empty-path fallback that would silently make every touched path look
+    unattributed.
     """
     try:
         state = get_todos_db_sync(cwd).read_state_sync(slug)
@@ -187,17 +188,19 @@ def _classify_span_commit(
 ) -> tuple[CandidateCleanlinessOutcome, CandidateSpanReasonToken | None]:
     """Classify one span commit against the exact ownership predicates.
 
-    A scope naming another active slug, or any touched path outside the
-    referenced-paths contract, is exact foreign evidence — independently of
-    each other. A scope equal to the candidate's own slug with every path
-    inside the contract is exact clean evidence. Anything else is ambiguous.
+    A scope naming another active slug is the only foreign evidence: a commit
+    carries its own slug scope, so genuine cross-slug work arrives labelled. A
+    scope equal to the candidate's own slug is clean whatever paths it touches,
+    because a module the build extracted is the slug's own work. An unattributed
+    header is ambiguous, and a touched path outside the frozen referenced-paths
+    contract sharpens that ambiguity's reason without ever creating it.
     """
     if commit.scope is not None and commit.scope != candidate_slug and commit.scope in active_slugs:
         return CandidateCleanlinessOutcome.FOREIGN, CandidateSpanReasonToken.FOREIGN_SCOPE
-    if any(path not in referenced_paths for path in commit.touched_paths):
-        return CandidateCleanlinessOutcome.FOREIGN, CandidateSpanReasonToken.FOREIGN_PATH
     if commit.scope == candidate_slug:
         return CandidateCleanlinessOutcome.CLEAN, None
+    if any(path not in referenced_paths for path in commit.touched_paths):
+        return CandidateCleanlinessOutcome.AMBIGUOUS, CandidateSpanReasonToken.AMBIGUOUS_PATH
     return CandidateCleanlinessOutcome.AMBIGUOUS, CandidateSpanReasonToken.AMBIGUOUS_HEADER
 
 
