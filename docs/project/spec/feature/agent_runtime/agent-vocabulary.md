@@ -1,7 +1,6 @@
 ---
-description: A supported agent has one canonical runtime identity whose launch, presentation, configuration, and setup projections stay uniform across every surface.
-delivered_by:
-  - agent-vocabulary-single-registry
+description: A supported agent has one canonical runtime identity whose launch, presentation,
+  configuration, and setup projections stay uniform across every surface.
 ---
 
 # Canonical Agent Vocabulary — Spec

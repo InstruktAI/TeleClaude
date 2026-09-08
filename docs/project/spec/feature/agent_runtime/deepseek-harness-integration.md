@@ -52,7 +52,6 @@ And a restricted-profile launch merges a sandbox-policy override into the
   session cwd)
 ```
 
-<!-- planned:agent-vocabulary-single-registry -->
 
 #### UC-DSH-AUTH-1: runner setup checks DeepSeek authentication
 
@@ -63,7 +62,6 @@ Then the DeepSeek CLI authentication state is checked with the other enabled run
 And an unusable authentication state is surfaced before managed work is dispatched to DeepSeek
 ```
 
-<!-- /planned:agent-vocabulary-single-registry -->
 
 ### macOS launcher
 
@@ -158,7 +156,6 @@ agent session's author identity.
 
 ### Boundaries
 
-<!-- planned:agent-vocabulary-single-registry -->
 
 - Structured schema-constrained one-shot calls are unsupported by the DeepSeek
 runtime. The headless profile accepts task text and prints a final message,
@@ -166,7 +163,6 @@ but exposes no output-format, schema, response-field, or response-type
 contract. The canonical agent definition records that capability as
 unavailable, and structured one-shot callers receive an explicit unsupported-
 capability refusal rather than an unknown-agent failure.
-<!-- /planned:agent-vocabulary-single-registry -->
 - DSH transcripts are zstd-compressed; session discovery uses
   `session_pattern **/session.jsonl*` under `~/.dsh/sessions`, and session
   identity/project are read from the transcript's session entry (id, cwd),

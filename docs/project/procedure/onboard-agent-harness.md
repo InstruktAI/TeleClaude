@@ -27,21 +27,6 @@ stale agent count.
 
 ## Discipline
 
-<!-- planned-change:agent-vocabulary-single-registry -->
-
-The failure this procedure guards against is **partial onboarding that looks
-complete**. A new runtime reaches "it works" after the launch path and the hook
-adapter land — the agent starts, answers, and stops. Everything downstream of
-that (identity, transcript, scoping, search, distribution, UI arithmetic) fails
-_silently_ and raises nothing: a duplicate dispatch falls through to the Claude
-parser, a codegen literal quietly stops emitting a type, a status widget renders
-three badges because three is baked into a style list. The registry is
-not one list — it is roughly thirty independent places that each decided
-separately how many agents exist, and the only defense is to walk them all and
-prove each one. Treat "the agent is talking to me" as the midpoint of the work,
-never the end of it.
-
-<!-- change:agent-vocabulary-single-registry -->
 
 The failure this procedure guards against is **partial onboarding that looks
 complete**. A new runtime reaches "it works" after the launch path and the hook
@@ -53,7 +38,6 @@ defect. Treat "the agent is talking to me" as the midpoint of the work, never
 the end of it: transcript, scoping, search, distribution, and the real setup
 path still require live verification.
 
-<!-- /planned-change:agent-vocabulary-single-registry -->
 
 ## Steps
 
@@ -139,22 +123,6 @@ the next onboarding will want to diff against.
 
 ### 2. Registry and identity
 
-<!-- planned-change:agent-vocabulary-single-registry -->
-
-The agent key is declared in more than one enum. Missing one produces a runtime
-`ValueError` on a path that may not run until much later.
-
-| Surface                                                            | What to add                                                                                                                                                                                |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `teleclaude/constants.py` → `AGENT_PROTOCOL`                       | The full launch contract: session paths, patterns, profiles, `mode_chains`, resume/continue templates, the `prompt_at_launch` / `model_via_launch_patch` / `restricted_sandbox_mode` flags |
-| `teleclaude/constants.py` → `GIT_AUTHOR_IDENTITIES`                | Commit author identity for the agent                                                                                                                                                       |
-| `teleclaude/core/agents.py` → `AgentName`                          | The canonical enum, plus `_PROMPT_MARKERS_BY_AGENT` and `_DISCORD_PRESENTATIONS_BY_AGENT`                                                                                                  |
-| `teleclaude/helpers/agent_types.py` → `AgentName`                  | **The second enum.** It is a separate declaration and does not inherit from the first                                                                                                      |
-| `teleclaude/hooks/receiver_args.py` → `RECEIVER_AGENT_CHOICES`     | Receiver `--agent` accepted values                                                                                                                                                         |
-| `templates/config.yml`                                             | The `agents.<key>.enabled` entry                                                                                                                                                           |
-| `docs/project/spec/feature/config/agents-inventory-requirement.md` | The known-agent set is contract; its scenarios name the allowed keys                                                                                                                       |
-
-<!-- change:agent-vocabulary-single-registry -->
 
 1. Add one complete entry to the canonical leaf agent registry. The entry owns
    the agent key, execution contract, attribution, readiness, presentation,
@@ -169,7 +137,6 @@ The agent key is declared in more than one enum. Missing one produces a runtime
 4. Keep operational surfaces that cannot import the runtime registry derived
 from its generated outputs. A new runtime is not onboarded while installer,
 runner, launcher, or configuration templates can omit it silently.
-<!-- /planned-change:agent-vocabulary-single-registry -->
 
 ### 3. Launch path
 
@@ -254,27 +221,6 @@ Every entry here is a place a missing branch degrades silently.
 
 ### 7. Surfaces
 
-<!-- planned-change:agent-vocabulary-single-registry -->
-
-1. `teleclaude/cli/tui/theme.py` — palette entries for both appearance modes,
-   and the known-agents set.
-2. `teleclaude/cli/tui/animation_colors.py` — palette registration.
-3. `teleclaude/cli/tui/widgets/telec_footer.py`, `widgets/modals.py`,
-   `widgets/_status_controls.py` — **the arithmetic changes with the count.**
-   Badge spacing, click-target offsets, and style lists written for N agents
-   break at N+1. Derive from the enabled-agents list rather than a literal.
-4. `teleclaude/api_models.py` — the DTO literals.
-5. `teleclaude/codegen/pydantic_to_typescript.py` → `_LITERAL_ALIAS_VALUES` —
-   the alias must match the DTO literal exactly. When it drifts, codegen stops
-   emitting the named type and inlines the union instead, which reads as a
-   cosmetic diff and silently strips a type the frontend imports.
-6. `frontend/lib/api/types.ts`, `frontend/lib/theme/tokens.ts` — frontend agent
-   unions and color tokens.
-7. `teleclaude/cli/telec/surface_types.py`, `cli/tool_commands/sessions.py`,
-`cli/tool_commands/infra.py` — help text and error strings that enumerate
-agents. These are read by agents as well as humans, so a stale list is a
-stale contract.
-<!-- change:agent-vocabulary-single-registry -->
 8. Confirm the TUI consumes the canonical palette and supported-agent
    projections. Agent-count arithmetic derives from the enabled inventory.
 9. Confirm the API code generator emits the named agent type, agent-name list,
@@ -285,7 +231,6 @@ stale contract.
     unknown agent to another runtime.
 11. Confirm agent-facing CLI help and validation output renders the canonical
     vocabulary rather than maintaining prose lists.
-    <!-- /planned-change:agent-vocabulary-single-registry -->
 
 ### 8. Artifacts and distribution
 
