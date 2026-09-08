@@ -20,8 +20,6 @@ matches what was authored.
 from __future__ import annotations
 
 import json
-import re
-from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -31,7 +29,6 @@ from typing import TypedDict, cast
 from teleclaude import paths
 
 # A predicate testing whether a single candidate error line is suppressed.
-Matcher = Callable[[str], bool]
 
 
 class SuppressionLedgerError(Exception):
@@ -192,20 +189,6 @@ def _parse_dt(raw: str | None) -> datetime | None:
         raise SuppressionLedgerError(f"unparseable timestamp {raw!r}: {exc}") from exc
 
 
-def _substring_matcher(pattern: str) -> Matcher:
-    def matches(line: str) -> bool:
-        return pattern in line
-
-    return matches
-
-
-def _regex_matcher(compiled: re.Pattern[str]) -> Matcher:
-    def matches(line: str) -> bool:
-        return compiled.search(line) is not None
-
-    return matches
-
-
 def suppressions_path_for(project_slug: str) -> Path:
     """Resolve the per-project ledger path — the single deterministic source.
 
@@ -263,28 +246,3 @@ def remove(path: Path, suppression_id: str) -> bool:
 def active(ledger: SuppressionLedger, now: datetime) -> list[Suppression]:
     """Return the entries whose expiry is unset or still in the future."""
     return [entry for entry in ledger.suppressions if entry.is_active(now)]
-
-
-def unsuppressed_lines(lines: Iterable[str], ledger: SuppressionLedger, now: datetime) -> list[str]:
-    """Return the lines not matched by any active suppression.
-
-    Each active entry is applied per its :class:`MatchMode`: a literal substring
-    test or a compiled regex search. A regex entry that fails to compile is
-    skipped — it suppresses nothing rather than crashing the scan.
-    """
-    matchers = _active_matchers(ledger, now)
-    return [line for line in lines if not any(matches(line) for matches in matchers)]
-
-
-def _active_matchers(ledger: SuppressionLedger, now: datetime) -> list[Matcher]:
-    matchers: list[Matcher] = []
-    for entry in active(ledger, now):
-        if entry.match is MatchMode.SUBSTRING:
-            matchers.append(_substring_matcher(entry.pattern))
-            continue
-        try:
-            compiled = re.compile(entry.pattern)
-        except re.error:
-            continue
-        matchers.append(_regex_matcher(compiled))
-    return matchers

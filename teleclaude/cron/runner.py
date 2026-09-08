@@ -41,16 +41,15 @@ from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config as global_config
 from teleclaude.config.loader import load_person_config, load_project_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription, is_agent_job, job_identity
+from teleclaude.constants import LOG_BUG_HUNTER_JOB
 from teleclaude.core.models import HumanActionIntent, Session
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.events.schemas.jobs import JobRunEventType
-from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, LOG_BUG_HUNTER_STATE_DIR, TELECLAUDE_HOME, ConfigFileName
-from teleclaude.services.log_bug_hunter_service import LOG_BUG_HUNTER_JOB, LogBugHunterService
+from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, TELECLAUDE_HOME, ConfigFileName
 from teleclaude.services.project_catalog import ProjectNode, get_project_catalog_service
 from teleclaude.services.project_jobs import ProjectJobOrchestrator
-from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
 
@@ -361,11 +360,13 @@ def _run_log_bug_hunter_orchestrated() -> bool:
     Unlike other agent jobs — which spawn a single session rooted at the
     local repository — ``log_bug_hunter`` is cross-project by design. This
     helper walks :class:`ProjectCatalogService`, filters projects whose
-    ``teleclaude.yml:jobs`` subscribes to ``log_bug_hunter``, and runs a
-    per-project :class:`LogBugHunterService` via :class:`ProjectJobOrchestrator`.
-    Returns ``True`` when the iteration completes without an uncaught
-    exception. Per-project failures are isolated and persisted by the
-    service's own state; they do not fail the whole job.
+    ``teleclaude.yml:jobs`` subscribes to ``log_bug_hunter``, and starts one
+    job session per subscriber via :class:`ProjectJobOrchestrator`. The agent
+    resolves the window, the signals, and the suppression ledger from its own
+    procedure; this helper decides only where a session runs, never whether
+    there is anything to find. Returns ``True`` when the iteration completes
+    without an uncaught exception; per-project failures are isolated by the
+    orchestrator and do not fail the whole job.
     """
     # Imports are local so that cron_runner startup stays lean and importing
     # this module does not pull in the daemon API client at module load time.
@@ -379,33 +380,42 @@ def _run_log_bug_hunter_orchestrated() -> bool:
         try:
 
             async def _list_active_sessions() -> list[Session]:
-                # The service only reads ``session.job`` — ``SessionDTO`` carries
-                # the same attribute, so we cast at this narrow boundary instead
-                # of round-tripping through the core model.
+                # Only ``session.job`` and ``session.project_path`` are read —
+                # ``SessionDTO`` carries both, so we cast at this narrow boundary
+                # instead of round-tripping through the core model.
                 dtos = await client.list_sessions(computer=computer)
                 return cast(list[Session], dtos)
 
             async def _run_for_project(node: ProjectNode) -> bool:
                 declaration = node.config.jobs[LOG_BUG_HUNTER_JOB]
+                identity = job_identity(LOG_BUG_HUNTER_JOB, declaration)
+                project_path = str(node.root)
 
-                async def _create_session(cmd: CreateSessionCommand) -> dict[str, str]:
-                    response = await client.run_session(
-                        computer=computer,
-                        project_path=cmd.project_path,
-                        command=_NEXT_RUN_JOB_COMMAND,
-                        args=_job_command_args(declaration),
-                    )
-                    return {"session_id": response.session_id}
+                # Scope the liveness check to this project: the orchestrator hands
+                # every project the same computer-wide session list, so matching on
+                # identity alone would let the first dispatched project starve the
+                # rest. The generic open-run guard cannot cover this — the job's run
+                # closes when the fan-out returns, while its sessions are still working.
+                sessions = await _list_active_sessions()
+                if any(
+                    (session.job or "").strip() == identity and (session.project_path or "") == project_path
+                    for session in sessions
+                ):
+                    logger.info("log bug hunter session already active for project", project=node.slug)
+                    return False
 
-                service = LogBugHunterService(
-                    create_session=_create_session,
-                    list_active_sessions=_list_active_sessions,
-                    project_root=node.root,
-                    project_slug=node.slug,
-                    state_path=LOG_BUG_HUNTER_STATE_DIR / f"{node.slug}.json",
-                    job_identity=job_identity(LOG_BUG_HUNTER_JOB, declaration),
+                response = await client.run_session(
+                    computer=computer,
+                    project_path=project_path,
+                    command=_NEXT_RUN_JOB_COMMAND,
+                    args=_job_command_args(declaration),
                 )
-                return await service.maybe_dispatch()
+                logger.info(
+                    "log bug hunter dispatched",
+                    project=node.slug,
+                    session_id=response.session_id,
+                )
+                return True
 
             orchestrator = ProjectJobOrchestrator(
                 catalog=catalog,
