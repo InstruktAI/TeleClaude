@@ -14,15 +14,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
-from teleclaude.core.next_machine.output_formatting import (
-    ToolCallRequest,
-    dispatch_or_reuse,
-    format_tool_call,
-)
+from teleclaude.core.next_machine.output_formatting import ToolCallRequest, dispatch_or_reuse, format_tool_call
 from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+
 from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
@@ -85,7 +82,7 @@ def _visuals_pending_approval(slug: str, cwd: str) -> str:
 
 
 def _creative_complete(slug: str, live_sessions: list[str]) -> str:
-    end_lines = "\n".join(f"telec sessions end {sid}" for sid in live_sessions)
+    end_lines = "telec sessions end"
     departure_step = "telec reminders set session-departure\n\n"
     cleanup = f"{end_lines}\n{departure_step}" if live_sessions else departure_step
     return (

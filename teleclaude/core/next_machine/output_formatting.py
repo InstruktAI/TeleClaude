@@ -426,7 +426,7 @@ def format_prepared(
     if not resume_work:
         cleanup_lines.append("telec sessions end")
     cleanup = "\n".join(cleanup_lines)
-    cleanup_block = f"{cleanup}\n\n" if cleanup else ""
+    cleanup_block = f"CLEANUP: {cleanup}\n\n"
 
     if resume_work:
         terminal_note = (
@@ -436,12 +436,11 @@ def format_prepared(
         )
     else:
         terminal_note = (
-            f"{slug} is prepared; any drift is reconciled. Run the cleanup above, then arm "
-            "`telec reminders set session-departure` as your final tool action, emit only a brief "
-            "farewell, and yield."
+            "Run the cleanup above, then run `telec reminders set session-departure`, "
+            "emit only a brief farewell, and yield."
         )
 
-    return f"{cleanup_block}PREPARED: {slug} is ready for work.\n\n{terminal_note}"
+    return f"PREPARED: {slug} is ready for work.\n\n{cleanup_block}\n\n{terminal_note}"
 
 
 def format_plan_reconcile_note(slug: str, old_digest: str, new_digest: str) -> str:
