@@ -166,6 +166,7 @@ async def _dispatch_worker(
     if admission is not None:
         if not admission.allowed:
             return False, format_review_round_limit(slug, admission)
+    excludes_prior_reviewers = admission is not None and admission.excludes_prior_reviewers
     # Reuse-or-spawn: prefer an existing live prepare worker for this
     # slug+command and emit `telec sessions send` instead of spawning a
     # fresh one. Prepare workers persist with subdir=None (no worktree on
@@ -175,7 +176,10 @@ async def _dispatch_worker(
     # — no backticks — because the orchestrator executes the emitted
     # `telec sessions send ...` line in a shell and backticks inside
     # double quotes trigger command substitution.
-    worker_id = await find_live_prepare_worker_for_slug(db, slug, command.value)
+    # A continuation classified as incomplete or noisy review excludes the
+    # live worker from reuse: it is precisely the reviewer the classification
+    # named as the cause, so a fresh session is spawned instead.
+    worker_id = None if excludes_prior_reviewers else await find_live_prepare_worker_for_slug(db, slug, command.value)
     if worker_id is not None:
         if admission is not None:
             await admit_prepare_review(todos_db, slug, state, admission)
@@ -208,6 +212,7 @@ async def _dispatch_worker(
         post_block=_dispatch_post_block(slug=slug, expected=expected),
         additional_context=additional_context,
         pre_dispatch=pre_dispatch,
+        exclude_prior_reviewers=excludes_prior_reviewers,
     )
     return False, format_tool_call(request)
 

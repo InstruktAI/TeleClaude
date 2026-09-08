@@ -56,6 +56,10 @@ from teleclaude.core.next_machine.provenance import (
     read_referenced_snippet_digests,
     sync_artifact_provenance,
 )
+from teleclaude.core.next_machine.review_continuation_stamp import (
+    REVIEW_CONTINUATION_STAMP_TYPE,
+    apply_review_continuation_stamp,
+)
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.session_hold import hold_todo_for_diagnosis_unresolved
@@ -197,6 +201,35 @@ async def apply_todo_stamp(
     if stamp_type == "finalize_ready":
         return await asyncio.to_thread(stamp_finalize_ready, cwd, slug, caller_session_id or "")
 
+    return await _apply_mutation_stamp(
+        todos_db,
+        writer,
+        slug,
+        stamp_type=stamp_type,
+        value=value,
+        phase=phase,
+        caller_session_id=caller_session_id,
+        cwd=cwd,
+    )
+
+
+async def _apply_mutation_stamp(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    *,
+    stamp_type: str,
+    value: str,
+    phase: str | None,
+    caller_session_id: str | None,
+    cwd: str,
+) -> dict[str, StateValue]:
+    """Route every remaining stamp type to its handler and commit the result.
+
+    Split from :func:`apply_todo_stamp` to keep that function's own branch
+    count under the complexity guardrail; ``verdict`` and ``finalize_ready``
+    are handled there because they never reach this generic routing.
+    """
     if stamp_type == "deferrals_processed":
         writer.state.deferrals_processed = True
     elif stamp_type in _CREATIVE_GATE_STAMPS:
@@ -296,6 +329,15 @@ async def apply_todo_stamp(
             writer,
             slug,
             outcome=phase or "",
+            reason=value,
+            caller_session_id=caller_session_id,
+        )
+    elif stamp_type == REVIEW_CONTINUATION_STAMP_TYPE:
+        return await apply_review_continuation_stamp(
+            todos_db,
+            writer,
+            slug,
+            phase=phase,
             reason=value,
             caller_session_id=caller_session_id,
         )
@@ -843,6 +885,14 @@ async def _validate_stamp_authority(
     caller_session_id: str | None,
     active_runner: str | None,
 ) -> None:
+    if stamp_type == REVIEW_CONTINUATION_STAMP_TYPE:
+        # The shared claim classification cannot separate the claiming
+        # orchestrator from its slug-bound workers, and refuses a coordinator
+        # (no binding, live foreign claim) or a human principal (non-human-gate
+        # stamp) before the handler could run. Authority is entirely the
+        # handler's, for a human caller and a session caller alike.
+        return
+
     if caller_session_id and caller_session_id.startswith("human:"):
         if is_human_gate_stamp(stamp_type):
             return

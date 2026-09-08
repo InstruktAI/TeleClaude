@@ -33,6 +33,7 @@ from teleclaude.api.auth import (
     clearance_sessions_unsubscribe,
     clearance_sessions_voice,
 )
+from teleclaude.api.run_session_excluded_reviewers import resolve_excluded_reviewer_agents
 from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_refusals import (
     RunSessionRefusal,
@@ -276,6 +277,7 @@ async def enforce_driver_start_guard(
     command: str | None,
     caller_session_id: str | None,
     thinking_mode: str,
+    exclude_prior_reviewers: bool = False,
 ) -> DriverStartGuardResult:
     """Refuse a create-door driver start that would duplicate a live driver.
 
@@ -283,7 +285,9 @@ async def enforce_driver_start_guard(
     the requested launch and runs the two-signal dedup guard, mapping a conflict
     to HTTP 409 naming the holder. A non-driver launch or an unclaimed slug passes
     through silently — except a reviewer launch, which is checked even with no
-    slug (commit review carries no todo slug at all).
+    slug (commit review carries no todo slug at all). ``exclude_prior_reviewers``
+    admits a fresh reviewer beside a live one for the same subject, since the
+    request asks for a reviewer the live holder cannot be.
     """
     normalized_command = _normalize_command(command)
     launch_class = classify_driver_launch(normalized_command)
@@ -297,6 +301,7 @@ async def enforce_driver_start_guard(
             caller_session_id=caller_session_id,
             command=normalized_command,
             thinking_mode=thinking_mode,
+            exclude_prior_reviewers=exclude_prior_reviewers,
         )
     except ReviewerConflict as conflict:
         raise RunSessionRefusal(
@@ -778,6 +783,10 @@ async def _run_session(
         )
         raise refusal from exc
 
+    excluded_agents: frozenset[str] = frozenset()
+    if request.exclude_prior_reviewers and role_info and role_info[1].value == "reviewer" and plan.working_slug:
+        excluded_agents = await resolve_excluded_reviewer_agents(request.project, plan.working_slug, plan.command)
+
     metadata = _build_metadata(
         project_path=request.project,
         subdir=request.subfolder or None,
@@ -806,6 +815,7 @@ async def _run_session(
         if cmd.launch_intent is not None:
             cmd.launch_intent.accepted_at_origin = True
         cmd.producer_agent = producer_agent
+        cmd.excluded_agents = sorted(excluded_agents)
     try:
         guard_result = await enforce_driver_start_guard(
             project_path=request.project,
@@ -813,6 +823,7 @@ async def _run_session(
             command=request.command,
             caller_session_id=plan.initiator_session_id,
             thinking_mode=plan.launch_intent.thinking_mode if plan.launch_intent else "",
+            exclude_prior_reviewers=request.exclude_prior_reviewers,
         )
     except RunSessionRefusal as exc:
         emit_run_outcome(

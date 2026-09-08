@@ -211,6 +211,7 @@ async def _guard_reviewer_start(
     caller_session_id: str | None,
     thinking_mode: str,
     db: Db | None,
+    exclude_prior_reviewers: bool = False,
 ) -> None:
     """Refuse a reviewer create-door start that would duplicate a live reviewer.
 
@@ -227,6 +228,11 @@ async def _guard_reviewer_start(
     refused rather than silently admitted, since a web-origin caller's identity
     is never persisted as ``initiator_session_id`` and so can never be found as
     a prior holder (see :class:`ReviewerIdentityUnresolved`).
+
+    ``exclude_prior_reviewers`` admits a fresh reviewer beside a live one for
+    the same subject: the request asks for a reviewer the live holder cannot
+    be, so reusing it would hand the target back to the reviewer the request
+    declares unusable.
     """
     if command is None:
         return
@@ -248,7 +254,7 @@ async def _guard_reviewer_start(
         holder = await find_live_commit_reviewer_for_initiator(
             runtime_db, project_path, caller_session_id, command_value, thinking_mode
         )
-    if holder is None:
+    if holder is None or exclude_prior_reviewers:
         return
     raise ReviewerConflict(subject=subject, holder=holder, reuse_command=f"telec sessions send {holder}")
 
@@ -262,6 +268,7 @@ async def guard_driver_start(
     command: SlashCommand | None = None,
     thinking_mode: str,
     db: Db | None = None,
+    exclude_prior_reviewers: bool = False,
 ) -> DriverStartGuardResult:
     """Refuse a create-door driver start that would duplicate a live driver.
 
@@ -301,6 +308,7 @@ async def guard_driver_start(
             caller_session_id=caller_session_id,
             thinking_mode=thinking_mode,
             db=db,
+            exclude_prior_reviewers=exclude_prior_reviewers,
         )
         return DriverStartGuardResult()
     if launch_class is DriverLaunchClass.WORKER_CHILD:

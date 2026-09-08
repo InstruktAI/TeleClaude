@@ -409,6 +409,12 @@ class TodosDbTodoMixin:
             entry = await self._active_entry(session, slug)
             return entry.schedule if entry is not None else None
 
+    async def get_created_at(self, slug: str) -> str | None:
+        """Return the live entry's creation timestamp, or None."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await self._active_entry(session, slug)
+            return entry.created_at if entry is not None else None
+
     async def resolve_id(self, slug: str) -> str | None:
         """Resolve an active/icebox slug to its todo id. Returns None if not found."""
         async with self._session() as session:  # type: ignore[attr-defined]

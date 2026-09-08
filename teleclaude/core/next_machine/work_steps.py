@@ -379,17 +379,24 @@ async def _work_step_build_complete(
             await _commit_writer(writer, todos_db, slug, state)
             return True, ""
 
+    # Compute admission before reconciliation so a review-caused continuation's
+    # exclusion reaches both the resolver's live-review branch and the reuse
+    # lookup below — the live reviewer is precisely the one the classification
+    # named as the cause, so neither may hand the review back to it.
+    admission = build_review_admission(state)
+    excludes_prior_reviewers = admission.excludes_prior_reviewers
+
     # Reconcile live-review state: detects ground shifts, reuses active reviewers.
     resolution = await resolve_pending_review_state(
         ReviewDispatchContext(db=db, todos_db=todos_db, worktree_cwd=worktree_cwd, slug=slug),
         state,
         head_before_merge=head_before_merge,
         head_after_merge=head_after_merge,
+        exclude_prior_reviewers=excludes_prior_reviewers,
     )
     if resolution.instruction is not None:
         return False, resolution.instruction
 
-    admission = build_review_admission(state)
     if not admission.allowed:
         return False, format_review_round_limit(slug, admission)
 
@@ -400,7 +407,11 @@ async def _work_step_build_complete(
     kind = kind_raw if isinstance(kind_raw, str) else KIND_FEATURE
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
-    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
+    reviewer_id = (
+        None
+        if excludes_prior_reviewers
+        else await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
+    )
     await admit_build_review(todos_db, slug, state, admission)
     round_num = admission.candidate
 
@@ -434,6 +445,7 @@ async def _work_step_build_complete(
         next_call=f"telec todo work {slug}",
         note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE}",
         post_block=_reviewer_idle_post_block(slug),
+        exclude_prior_reviewers=excludes_prior_reviewers,
     )
     return False, format_tool_call(request)
 

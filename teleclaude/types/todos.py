@@ -107,6 +107,46 @@ class ApprovalsState(BaseModel):
     drift_reviewed: dict[str, DriftReviewedStamp] = Field(default_factory=dict)
 
 
+class ReviewHaltClassification(StrEnum):
+    """Closed vocabulary for why a capped review loop halted.
+
+    Named by the review procedure's convergence rule
+    (``software-development/procedure/lifecycle/review`` §6). Only
+    ``INCOMPLETE_REVIEW`` and ``NOISY_REVIEW`` are review-caused and exclude
+    prior reviewers on the admitted continuation; ``AMBIGUOUS_CONTRACT`` and
+    ``UNSTABLE_TARGET`` earn no continuation at all.
+    """
+
+    FAILED_REMEDIATION = "failed_remediation"
+    INCOMPLETE_REVIEW = "incomplete_review"
+    NOISY_REVIEW = "noisy_review"
+    AMBIGUOUS_CONTRACT = "ambiguous_contract"
+    UNSTABLE_TARGET = "unstable_target"
+
+
+class ReviewContinuationCallerRole(StrEnum):
+    """Closed vocabulary for who was authorized to record a continuation."""
+
+    CLAIMANT = "claimant"
+    COORDINATOR = "coordinator"
+    HUMAN = "human"
+
+
+class ReviewContinuation(BaseModel):
+    """One recorded admission of a review pass beyond the phase's hard cap.
+
+    Additive and durable: the phase's admitted-pass allowance grows by exactly
+    one for every recorded continuation, so a crash-recovered orchestrator, a
+    coordinator, or a human all derive the same allowance from persisted state.
+    """
+
+    classification: ReviewHaltClassification
+    reason: str = ""
+    caller_session_id: str = ""
+    caller_role: ReviewContinuationCallerRole = ReviewContinuationCallerRole.CLAIMANT
+    stamped_at: str = ""
+
+
 class ReviewVerdictState(BaseModel):
     """Verdict state for a prepare review phase.
 
@@ -122,6 +162,7 @@ class ReviewVerdictState(BaseModel):
     review_report_digest: str = ""
     caller_session_id: str = ""
     cleared_by_substantive_drift: bool = False
+    continuations: list[ReviewContinuation] = Field(default_factory=list)
 
 
 class BuildReviewState(BaseModel):
@@ -141,6 +182,7 @@ class BuildReviewState(BaseModel):
     reviewed_target_digest: str = ""
     review_report_digest: str = ""
     caller_session_id: str = ""
+    continuations: list[ReviewContinuation] = Field(default_factory=list)
 
 
 class HoldAuditSource(StrEnum):
@@ -260,7 +302,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[8] = 8
+    schema_version: Literal[9] = 9
     phase: str = "pending"
     lifecycle_phase: LifecyclePhase | None = LifecyclePhase.DRAFT
     prepare_phase: str = Field(default="", exclude=True)

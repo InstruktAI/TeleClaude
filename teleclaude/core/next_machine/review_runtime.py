@@ -189,8 +189,16 @@ async def resolve_pending_review_state(
     *,
     head_before_merge: str,
     head_after_merge: str,
+    exclude_prior_reviewers: bool = False,
 ) -> ReviewResolution:
-    """Reconcile live-review progress before deciding whether to dispatch a reviewer."""
+    """Reconcile live-review progress before deciding whether to dispatch a reviewer.
+
+    ``exclude_prior_reviewers`` bypasses the live-review reuse branch: a
+    review-caused continuation names the live reviewer as the cause of the
+    halt, so its live session is never re-sent to. The finished-review and
+    ground-shift-metadata reconciliation below is unaffected — it reconciles
+    what already happened, not who reviews next.
+    """
     build_review = _read_build_review(state)
     round_raw = build_review.get("round", 0)
     review_round = round_raw if isinstance(round_raw, int) else 0
@@ -205,7 +213,7 @@ async def resolve_pending_review_state(
         "/next-review-",
     )
 
-    if reviewer_id is not None and reviewer_status in ("active", "unknown"):
+    if not exclude_prior_reviewers and reviewer_id is not None and reviewer_status in ("active", "unknown"):
         return await _resolve_live_review(
             context,
             state,
