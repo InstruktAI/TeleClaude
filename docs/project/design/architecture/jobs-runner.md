@@ -374,6 +374,14 @@ first scheduled occurrence after discovery.
 
 ### Run lifecycle persistence
 
+<!-- planned:generic-job-declarative-model -->
+Migration derives project association from recorded execution context and typed
+session identity. Parent fan-out outcomes remain dispatch history; they never
+become successful project scans. Ambiguous history stays recoverable, and an
+active or queued outcome whose ownership cannot be resolved stops migration
+without discarding its original record.
+<!-- /planned:generic-job-declarative-model -->
+
 File: `~/.teleclaude/state/cron_state.json`
 
 <!-- planned-change:generic-job-declarative-model -->
