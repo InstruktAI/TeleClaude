@@ -395,6 +395,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             "todo_removed",
             "projects_snapshot",
             "todos_snapshot",
+            "todo_renamed",
         }:
             return None
 
@@ -437,6 +438,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             return "projects_updated"
         if event == "todos_snapshot":
             return "todos_updated"
+        if event == "todo_renamed":
+            return "todo_updated"
         return event  # type: ignore[return-value]
 
     def _build_generic_payload(self, event: str, data: object) -> JsonDict:
