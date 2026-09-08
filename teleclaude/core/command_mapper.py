@@ -92,6 +92,8 @@ class CommandMapper:
             title = str(title_raw) if title_raw is not None else None
             working_slug_raw = payload.get("working_slug")
             working_slug = str(working_slug_raw) if working_slug_raw is not None else None
+            command_raw = payload.get("command")
+            command = str(command_raw) if command_raw is not None else None
             return _with_computer(
                 CreateSessionCommand(
                     project_path=metadata.project_path or "",
@@ -108,6 +110,7 @@ class CommandMapper:
                     skip_listener_registration=skip_listener_registration,
                     initiator_session_id=initiator_session_id,
                     initiator_computer=config.computer.name if initiator_session_id else None,
+                    command=command,
                     working_slug=working_slug,
                 ),
                 computer,

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
-from teleclaude.core.session_startup_message import prepare_startup_message
+from teleclaude.core.session_startup_message import compose_command_loader
 
 if TYPE_CHECKING:
     from teleclaude.core.next_machine.git_ops import ArtifactDriftStatus
@@ -335,7 +335,7 @@ Trust the process gates (pre-commit hooks, stamp clerical checks)."""
 
 def format_command_loader_message(command_name: str, slug: str) -> str:
     """Compose a command loader for a dispatched prepare worker."""
-    return prepare_startup_message(f"/{command_name} {slug}")
+    return compose_command_loader(command_name, slug)
 
 
 def _format_documented_procedure_loader_message(procedure_id: str, slug: str) -> str:

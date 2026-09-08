@@ -11,6 +11,21 @@ _SLUG_COMMANDS.add("analyze-todo-input")
 _WORKING_SLUG_COMMANDS = _SLUG_COMMANDS | {SlashCommand.NEXT_PREPARE.value}
 _COMMAND_PREFIX = "/"
 
+# Installed command documents outside COMMAND_ROLE_MAP whose own document
+# requires an argument (a slug for next-defer, "the slug of the item to act
+# on" for next-prepare-investigate, a research brief for next-research).
+# COMMAND_ROLE_MAP assigns none of them a role, so the slug-inferable sets
+# above cannot see them; next-prepare-investigate and next-research are not
+# SlashCommand members at all. Both dispatch doors read this single set so
+# they cannot disagree on which non-lifecycle commands require an argument.
+REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS = frozenset(
+    {
+        SlashCommand.NEXT_DEFER.value,
+        "next-prepare-investigate",
+        "next-research",
+    }
+)
+
 
 @dataclass(frozen=True)
 class RunSessionPlan:
@@ -50,3 +65,10 @@ def infer_role_and_slug_from_message(message: str | None) -> tuple[str | None, s
     except ValueError:
         role_info = None
     return (role_info[0], role_info[1].value, slug) if role_info else (None, None, slug)
+
+
+def leading_command_args(message: str | None) -> str:
+    """Return the text following the leading slash command on the message's first line."""
+    if not message or not message.startswith(_COMMAND_PREFIX):
+        return ""
+    return message.partition("\n")[0].partition(" ")[2].strip()

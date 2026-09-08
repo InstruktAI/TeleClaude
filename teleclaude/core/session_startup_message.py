@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from teleclaude.constants import NON_SLUG_BOUND_COMMANDS
 from teleclaude.paths import COMMANDS_DIR
 
-_NON_SLUG_BOUND_VALUES = {command.value for command in NON_SLUG_BOUND_COMMANDS}
 _COMMAND_PREFIX = "/"
 _COMMAND_FILE_SUFFIX = ".md"
 _COMMANDS_ROOT = COMMANDS_DIR.resolve()
@@ -19,7 +17,7 @@ _LOADER_MESSAGE_TEMPLATE = (
     "Treat the following as provided inputs to that instruction set:\n"
     "{args}"
 )
-_SLUG_REQUIRED_MESSAGE_TEMPLATE = "/{command} requires a slug argument"
+_UNKNOWN_COMMAND_MESSAGE_TEMPLATE = "/{command} resolves to no installed command document"
 
 
 class StartupMessageError(ValueError):
@@ -34,21 +32,16 @@ def resolve_command_document(command_name: str) -> Path | None:
     return prompt_path if prompt_path.is_file() else None
 
 
-def prepare_startup_message(startup_message: str) -> str:
-    """Compose a loader for a recognized command regardless of selected runtime."""
-    stripped_message = startup_message.lstrip()
-    if not stripped_message.startswith(_COMMAND_PREFIX):
-        return startup_message
-    command_token, _, remainder = stripped_message.partition(" ")
-    command_name = command_token.removeprefix(_COMMAND_PREFIX)
-    if not command_name:
-        return startup_message
-    args = remainder.strip()
+def compose_command_loader(command_name: str, args: str) -> str:
+    """Compose the loader for an already-resolved command name and its arguments.
+
+    Raises when the command resolves to no installed document. Argument
+    admissibility is the dispatch door's rule, not this function's — it
+    parses nothing and gates nothing but document existence.
+    """
     prompt_path = resolve_command_document(command_name)
     if prompt_path is None:
-        return startup_message
-    if not args and command_name not in _NON_SLUG_BOUND_VALUES:
-        raise StartupMessageError(_SLUG_REQUIRED_MESSAGE_TEMPLATE.format(command=command_name))
+        raise StartupMessageError(_UNKNOWN_COMMAND_MESSAGE_TEMPLATE.format(command=command_name))
     marker_args = f"{_MARKER_ARGUMENT_PREFIX}{args}" if args else ""
     return _LOADER_SECTION_SEPARATOR.join(
         (
@@ -56,3 +49,35 @@ def prepare_startup_message(startup_message: str) -> str:
             _LOADER_MESSAGE_TEMPLATE.format(prompt_path=prompt_path, args=args),
         )
     )
+
+
+def prepare_startup_message(startup_message: str, declared_command: str | None) -> str:
+    """Compose a loader for a dispatched session, from the message's first line only.
+
+    With ``declared_command``, compose from that command and the arguments
+    following it on the first line, then re-append everything after the
+    first line unchanged; a command that resolves to no installed document
+    raises rather than passing the raw text through. With no declared
+    command, keep chat's permissive behavior: resolve the first line's
+    leading token against the installed command corpus and pass the message
+    through unchanged when it does not resolve.
+    """
+    stripped_message = startup_message.lstrip()
+    first_line, _, trailing = stripped_message.partition("\n")
+    trailing = trailing.strip("\n")
+    if declared_command is None:
+        if not first_line.startswith(_COMMAND_PREFIX):
+            return startup_message
+        command_token, _, first_line_args = first_line.partition(" ")
+        command_name = command_token.removeprefix(_COMMAND_PREFIX)
+        if not command_name or resolve_command_document(command_name) is None:
+            return startup_message
+        args = first_line_args.strip()
+    else:
+        command_name = declared_command
+        _, _, first_line_args = first_line.partition(" ")
+        args = first_line_args.strip()
+    composed = compose_command_loader(command_name, args)
+    if trailing:
+        composed = f"{composed}{_LOADER_SECTION_SEPARATOR}{trailing}"
+    return composed
