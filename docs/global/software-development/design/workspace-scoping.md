@@ -78,7 +78,6 @@ guardrails lane).
 | Project languages  | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
 | Explicit file list | CLI arguments (`telec code lint <files...>`)                                                                                             |
 
-<!-- planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
 | Output                  | Description                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -86,16 +85,6 @@ guardrails lane).
 | `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                  |
 | `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane |
 
-<!-- change:distinguish-undetermined-scope-from-empty-scope -->
-
-| Output                  | Description                                                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `dirty_paths`           | Full dirty set from one porcelain parse, including operation kind                                                  |
-| `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                          |
-| `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane         |
-| `touched_signal`        | Whether the session's touched-path set was resolved or could not be determined at all (`RESOLVED`, `UNDETERMINED`) |
-
-<!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
 <!-- planned:attribution-by-declaration -->
 ### Session path declarations
@@ -183,23 +172,11 @@ boundaries and fail the batch when they cannot complete.
    `.git/hooks/pre-commit` performs only a partial-staging backstop. No
    framework stash, no working-tree reset outside the commit pathspec.
 
-<!-- planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
    "pass files explicitly." It never silently falls back to a broader scope.
 
-<!-- change:distinguish-undetermined-scope-from-empty-scope -->
-
-6. **Scope failure is an error.** If workspace scope resolution itself fails —
-   git status errors or an unexpected transcript-collection failure — and no
-   explicit files are provided, the command exits non-zero with guidance:
-   "pass files explicitly." It never silently falls back to a broader scope.
-   An unbound session transcript is not a scope failure: it resolves to an
-   empty scope with `touched_signal` `UNDETERMINED` and is reported per
-   invariant 12.
-
-<!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
 7. **No session identity on a shared branch means full run.** Human and CI
    contexts have no session identity; both legs run the whole suite.
@@ -221,26 +198,6 @@ boundaries and fail the batch when they cannot complete.
     cross-reference validation runs inside the guardrails lane on full runs, so
     an agent's scoped lint never fails on another agent's in-flight docs.
 
-<!-- planned:distinguish-undetermined-scope-from-empty-scope -->
-
-12. **Undetermined scope is never reported as empty scope.** A session whose
-    transcript is not resolvable yields no touched-path signal, and its scope
-    resolves empty with `touched_signal` set to `UNDETERMINED`. A session that
-    owns a transcript and touched no dirty path resolves empty with
-    `touched_signal` set to `RESOLVED`. Every `telec code` verb that reports an
-    empty scope distinguishes the two: on `UNDETERMINED` it states that the
-    scope could not be determined rather than asserting there is nothing to do.
-    The unbound transcript is an expected early-session condition, and the
-    agent_stop checkpoint runs with a bound transcript, so every undetermined
-    diagnostic directs the agent to continue working and let the end-of-turn
-    checkpoint re-resolve the scope. `telec code commit` additionally names
-    `--include` and `--only` as the channels for committing immediately; no
-    other verb names an immediate declaration channel — for `telec code
-changed` and `telec code lint` the checkpoint guidance is the whole
-    recovery pointer. Worktree scope and no-session-identity shared-branch
-    scope are always `RESOLVED` — neither consults the transcript.
-
-<!-- /planned:distinguish-undetermined-scope-from-empty-scope -->
 
 13. **Null means no usable live claimant, not proof of abandonment.** A captured
     session with resolved-empty or `UNDETERMINED` batch attribution contributes
@@ -344,7 +301,6 @@ telec code lint --all   (or CI, no-session shared branch)
 
 ## Failure modes
 
-<!-- planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
 ### Workspace scope unavailable
 
@@ -356,31 +312,6 @@ workspace scope.
 
 No silent fallback to a broader scope.
 
-<!-- change:distinguish-undetermined-scope-from-empty-scope -->
-
-### Workspace scope unavailable
-
-Git status fails, or transcript collection fails unexpectedly, while resolving
-workspace scope.
-
-**Response:** Exit non-zero. Error message includes actionable guidance:
-`Workspace scope unavailable. Pass files explicitly: telec code lint <files...>`
-
-No silent fallback to a broader scope.
-
-### Session transcript not yet bound
-
-The session exists but no transcript is bound yet, so the touched-path set
-cannot be determined. This is an expected early-session condition, not an
-error.
-
-**Response:** Scope resolves empty with `touched_signal` `UNDETERMINED`, and
-each verb reports per invariant 12: the truth (scope undetermined, not empty)
-plus checkpoint-first guidance; `telec code commit` additionally names
-`--include`/`--only` for committing immediately. `telec code lint` prints the
-undetermined notice and returns without running either leg.
-
-<!-- /planned-change:distinguish-undetermined-scope-from-empty-scope -->
 
 ### No session identity on shared branch
 
