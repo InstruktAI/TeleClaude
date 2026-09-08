@@ -144,6 +144,7 @@ class ReviewContinuation(BaseModel):
     reason: str = ""
     caller_session_id: str = ""
     caller_role: ReviewContinuationCallerRole = ReviewContinuationCallerRole.CLAIMANT
+    assessor_role: ReviewContinuationCallerRole | None = None
     stamped_at: str = ""
 
 

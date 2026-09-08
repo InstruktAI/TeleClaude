@@ -78,6 +78,28 @@ def _parse_review_continuation_reason(reason: str) -> tuple[ReviewHaltClassifica
     return classification, text
 
 
+_ASSESSOR_DECLARATION_PREFIX = "assessed-by "
+_ASSESSOR_ROLES = {
+    ReviewContinuationCallerRole.HUMAN.value: ReviewContinuationCallerRole.HUMAN,
+    ReviewContinuationCallerRole.COORDINATOR.value: ReviewContinuationCallerRole.COORDINATOR,
+}
+
+
+def _parse_declared_assessor(evidence: str) -> ReviewContinuationCallerRole | None:
+    """Read the assessor a claimant declares at the head of its evidence.
+
+    The declaration is a closed-vocabulary token in a documented position, read
+    the same structural way as the classification prefix. Whether the named
+    assessor truly assessed is not decidable here and is never graded: the
+    record makes the declaration falsifiable and the human's sweep audits it.
+    """
+    if not evidence.startswith(_ASSESSOR_DECLARATION_PREFIX):
+        return None
+    remainder = evidence[len(_ASSESSOR_DECLARATION_PREFIX) :]
+    token, _, _ = remainder.partition(";")
+    return _ASSESSOR_ROLES.get(token.strip().lower())
+
+
 def _log_review_continuation_decision(
     *,
     slug: str,
@@ -178,6 +200,7 @@ async def apply_review_continuation_stamp(
 
     ordinal = len(continuations) + 1
     active_runner = writer.state.active_runner
+    assessor_role: ReviewContinuationCallerRole | None = None
     is_human_caller = bool(caller_session_id and caller_session_id.startswith("human:"))
     caller_role: ReviewContinuationCallerRole
     if ordinal == 1:
@@ -213,6 +236,22 @@ async def apply_review_continuation_stamp(
         if is_human_caller:
             caller_role = ReviewContinuationCallerRole.HUMAN
         elif caller_session_id and caller_session_id == active_runner:
+            assessor_role = _parse_declared_assessor(evidence_text)
+            if assessor_role is None:
+                _log_review_continuation_decision(
+                    slug=slug,
+                    phase=phase,
+                    ordinal=ordinal,
+                    caller_role="",
+                    classification=classification.value,
+                    outcome="refused",
+                    reason=ReviewContinuationRefusal.CALLER_NOT_CLAIMANT,
+                )
+                raise PermissionError(
+                    f"review_continuation stamp for {slug} phase {phase} at ordinal {ordinal} written by the "
+                    "claiming orchestrator must declare its assessor: begin --reason evidence with "
+                    "'assessed-by human;' or 'assessed-by coordinator;'"
+                )
             caller_role = ReviewContinuationCallerRole.CLAIMANT
         else:
             job = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "job") if caller_session_id else None
@@ -232,8 +271,13 @@ async def apply_review_continuation_stamp(
                 )
             caller_role = ReviewContinuationCallerRole.COORDINATOR
 
+    if caller_role is ReviewContinuationCallerRole.CLAIMANT and ordinal > 1:
+        recorded_assessor = assessor_role
+    else:
+        recorded_assessor = caller_role if ordinal > 1 else None
     continuations.append(
         ReviewContinuation(
+            assessor_role=recorded_assessor,
             classification=classification,
             reason=evidence_text,
             caller_session_id=caller_session_id or "",

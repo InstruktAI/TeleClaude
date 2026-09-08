@@ -190,8 +190,10 @@ intelligence than the one that produced the work: the live coordinator, or the
 human when none is live. That assessor reads the recorded classification and the
 review evidence and either admits a further pass or routes the halt elsewhere.
 The orchestrator never assesses its own second continuation. It may write an admission the assessor
-reached, carrying that assessor's decision in the recorded reason; the record names who assessed and
-who wrote it, and that record is what an audit reads. If no grounded next
+reached, and when it does it declares which assessor reached it; the record then names the assessor and
+the writer separately, and that record is what an audit reads. The declaration is taken as given, like
+every other relayed decision: nothing verifies that the named assessor assessed, and a false declaration
+is answered by the durable record of the session that wrote it. If no grounded next
 attempt exists, the unresolved result and its missing evidence are preserved
 with an accountable agent owner; no one fabricates a verdict or resets a count
 to conceal the halt.
