@@ -145,6 +145,7 @@ class ReviewContinuation(BaseModel):
     caller_session_id: str = ""
     caller_role: ReviewContinuationCallerRole = ReviewContinuationCallerRole.CLAIMANT
     assessor_role: ReviewContinuationCallerRole | None = None
+    assessor_id: str = ""
     stamped_at: str = ""
 
 

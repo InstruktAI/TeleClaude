@@ -85,19 +85,28 @@ _ASSESSOR_ROLES = {
 }
 
 
-def _parse_declared_assessor(evidence: str) -> ReviewContinuationCallerRole | None:
-    """Read the assessor a claimant declares at the head of its evidence.
+def _parse_declared_assessor(evidence: str) -> tuple[ReviewContinuationCallerRole | None, str]:
+    """Read the assessor role and identity a claimant declares at the head of its evidence.
 
-    The declaration is a closed-vocabulary token in a documented position, read
-    the same structural way as the classification prefix. Whether the named
-    assessor truly assessed is not decidable here and is never graded: the
-    record makes the declaration falsifiable and the human's sweep audits it.
+    The declaration is ``assessed-by <role>:<identity>;`` in a documented
+    position, read the same structural way as the classification prefix: the
+    role comes from a closed vocabulary and the identity is stored verbatim.
+    Whether the named assessor truly assessed is not decidable here and is
+    never graded; the record makes the declaration falsifiable and the human's
+    sweep audits it.
     """
     if not evidence.startswith(_ASSESSOR_DECLARATION_PREFIX):
-        return None
+        return None, ""
     remainder = evidence[len(_ASSESSOR_DECLARATION_PREFIX) :]
-    token, _, _ = remainder.partition(";")
-    return _ASSESSOR_ROLES.get(token.strip().lower())
+    declaration, _, _ = remainder.partition(";")
+    role_token, separator, identity = declaration.partition(":")
+    if not separator:
+        return None, ""
+    role = _ASSESSOR_ROLES.get(role_token.strip().lower())
+    assessor_id = identity.strip()
+    if role is None or not assessor_id:
+        return None, ""
+    return role, assessor_id
 
 
 def _log_review_continuation_decision(
@@ -201,6 +210,7 @@ async def apply_review_continuation_stamp(
     ordinal = len(continuations) + 1
     active_runner = writer.state.active_runner
     assessor_role: ReviewContinuationCallerRole | None = None
+    assessor_id = ""
     is_human_caller = bool(caller_session_id and caller_session_id.startswith("human:"))
     caller_role: ReviewContinuationCallerRole
     if ordinal == 1:
@@ -236,7 +246,7 @@ async def apply_review_continuation_stamp(
         if is_human_caller:
             caller_role = ReviewContinuationCallerRole.HUMAN
         elif caller_session_id and caller_session_id == active_runner:
-            assessor_role = _parse_declared_assessor(evidence_text)
+            assessor_role, assessor_id = _parse_declared_assessor(evidence_text)
             if assessor_role is None:
                 _log_review_continuation_decision(
                     slug=slug,
@@ -250,7 +260,7 @@ async def apply_review_continuation_stamp(
                 raise PermissionError(
                     f"review_continuation stamp for {slug} phase {phase} at ordinal {ordinal} written by the "
                     "claiming orchestrator must declare its assessor: begin --reason evidence with "
-                    "'assessed-by human;' or 'assessed-by coordinator;'"
+                    "'assessed-by human:<principal>;' or 'assessed-by coordinator:<session-id>;'"
                 )
             caller_role = ReviewContinuationCallerRole.CLAIMANT
         else:
@@ -272,12 +282,15 @@ async def apply_review_continuation_stamp(
             caller_role = ReviewContinuationCallerRole.COORDINATOR
 
     if caller_role is ReviewContinuationCallerRole.CLAIMANT and ordinal > 1:
-        recorded_assessor = assessor_role
+        recorded_assessor, recorded_assessor_id = assessor_role, assessor_id
+    elif ordinal > 1:
+        recorded_assessor, recorded_assessor_id = caller_role, caller_session_id or ""
     else:
-        recorded_assessor = caller_role if ordinal > 1 else None
+        recorded_assessor, recorded_assessor_id = None, ""
     continuations.append(
         ReviewContinuation(
             assessor_role=recorded_assessor,
+            assessor_id=recorded_assessor_id,
             classification=classification,
             reason=evidence_text,
             caller_session_id=caller_session_id or "",
