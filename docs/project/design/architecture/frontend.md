@@ -126,5 +126,11 @@ pnpm start     # custom production server
   address absent from the TeleClaude people config, so the sign-in callback rejects it
   before a verification code is issued. `telec config people list` names the registered
   addresses.
+- **The Playwright suite hangs waiting for a verification code, or its fixture-backed
+  assertions find nothing** — a dev server was already listening on port 3000, so
+  Playwright reused it instead of starting its own. Fixture data and the one-time-code
+  handoff are enabled only by the environment `playwright.config.ts` injects into a
+  server it starts, and a reused server never receives it. Stop `pnpm dev` and run the
+  suite against a free port.
 
 <!-- /planned:frontend-e2e-first-run-setup -->

@@ -24,13 +24,20 @@ itself, not just the surrounding shell or the login screen.
 - First-run setup has completed for this checkout: `make frontend-setup`. It is
   idempotent, and a fresh clone or worktree needs it before either `pnpm dev` or the
   Playwright suite works.
-- The frontend dev server is running via `pnpm dev` (WebSocket-capable; raw `next dev`
-  leaves live features broken).
 - `frontend/.env` carries a `TEST_EMAIL` that matches a person registered in the
   TeleClaude people config. An unregistered address is rejected at the sign-in callback
   before any verification code is issued, so the browser login and the Playwright suite
   both fail with `AccessDenied`. `telec config people list` names the registered
   addresses.
+- The manual steps below — the availability check and the dev login — run against a
+  frontend dev server started with `pnpm dev` (WebSocket-capable; raw `next dev` leaves
+  live features broken).
+- The Playwright suite instead requires port 3000 to be free, so that Playwright starts
+  the server itself. The suite's fixture data and its one-time-code handoff are both
+  enabled only by the environment `frontend/playwright.config.ts` injects into the
+  server it starts; a server already listening on that port is reused as-is, without
+  that environment, and the run then fails on a verification code that never arrives.
+  Stop a running `pnpm dev` before running the suite.
 
 <!-- /planned-change:frontend-e2e-first-run-setup -->
 
