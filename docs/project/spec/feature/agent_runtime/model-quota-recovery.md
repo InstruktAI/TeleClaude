@@ -24,15 +24,6 @@ agent-wide operator status.
 
 ### Model-scoped availability
 
-<!-- planned-change:scoped-agent-model-availability -->
-The availability record carries an optional model identifier. A record without a
-model is the agent-wide operator status; dispatch eligibility consumes only those
-records, unchanged. A record with a model is consumed only by mode-to-model
-resolution. Model records support `unavailable` with an explicit until instant taken
-from the provider's stated recovery window, and an expired record normalizes back to
-available under the existing availability contract. Intelligence, never keyword
-matching, decides when a model record is written.
-<!-- change:scoped-agent-model-availability -->
 The availability record carries an optional model identifier. A record without a
 model is the agent-wide operator status; agent-candidate eligibility consumes only
 those records, unchanged. A record with a model is consumed only by mode-to-model
@@ -49,38 +40,9 @@ that carries a job role is automatic work: a degraded model is skipped for the n
 configured entry. Both ownerships skip an `unavailable` model. Ownership is read
 from the launch's own job role at fresh dispatch and from the session record's job
 role at restart and revival, so it survives both without pinning a model.
-<!-- /planned-change:scoped-agent-model-availability -->
 
 ### Ordered model chains
 
-<!-- planned-change:scoped-agent-model-availability -->
-Each agent's thinking-mode mapping is an ordered chain of entries. Every entry
-carries its model identifier as data alongside its launch flags. Resolution selects
-the first entry whose model has no active model-scoped unavailability record; later
-entries are fallbacks for the same declared intent. A single-entry chain is the
-default and behaves exactly like today's one mapping.
-
-Claude's `slow` chain is Claude Fable then Claude Opus, both at high effort. Codex
-and Gemini currently declare single-entry chains, so no fallback exists for them.
-Chain contents are declared per-agent policy: the platform ships defaults, and the
-operator configuration may override them per agent and mode. The declaration
-surface, its schema, and startup validation are owned by the configuration
-contract (`project/spec/teleclaude-config`); chain resolution consumes the
-validated policy and never invents a model or substitutes another agent.
-
-Chain resolution applies at every computed launch of an agent process — fresh
-dispatch, restart, and revival alike. A session record pins the agent, the native
-transcript, and the thinking mode, never a model: launch commands are always
-computed from the current mapping, so continuation on a fallback model is the
-same computation the platform has always performed when mappings change. No
-per-session launch state is recorded anywhere; when a model's unavailability
-record expires, the next computed launch returns to the primary automatically.
-
-When resolution selects a non-first entry, it emits one structured warning naming
-the agent, mode, skipped model, selected model, and reason. When every entry in the
-chain is unavailable, dispatch fails with a typed error before session creation and
-the agent-wide status stays untouched.
-<!-- change:scoped-agent-model-availability -->
 Each agent's thinking-mode mapping is an ordered chain of entries. Every entry
 carries its model identifier as data alongside its launch flags. Resolution selects
 the first entry whose model is eligible under the launch's ownership; later
@@ -108,7 +70,6 @@ When resolution selects a non-first entry, it emits one structured warning namin
 the agent, mode, skipped model, selected model, launch ownership, and reason. When no
 entry in the chain is eligible for the launch's ownership, dispatch fails with a typed
 error before session creation and the agent-wide status stays untouched.
-<!-- /planned-change:scoped-agent-model-availability -->
 
 ### Evidence and retry boundary
 
@@ -200,21 +161,12 @@ And no residual fallback behavior remains
 
 #### UC-MQR-8: An exhausted chain fails dispatch without touching agent availability
 
-<!-- planned-change:scoped-agent-model-availability -->
-```gherkin
-Given every model in an agent's chain for the requested mode has an active record
-When a session attempts that dispatch
-Then the dispatch fails with a typed error before session creation
-And the agent-wide operator status is unchanged
-```
-<!-- change:scoped-agent-model-availability -->
 ```gherkin
 Given every model in an agent's chain for the requested mode has an active unavailable status
 When a session attempts that dispatch
 Then the dispatch fails with a typed error before session creation
 And the agent-wide operator status is unchanged
 ```
-<!-- /planned-change:scoped-agent-model-availability -->
 
 #### UC-MQR-9: Operator configuration overrides a declared chain
 
@@ -237,7 +189,6 @@ And the session's transcript and job context are preserved
 And a failed restart triggers no further model-quota recovery for that job
 ```
 
-<!-- planned:scoped-agent-model-availability -->
 #### UC-MQR-11: A human-owned launch keeps its degraded primary model
 
 ```gherkin
@@ -289,18 +240,12 @@ And the agent-wide status is unchanged
 And clearing the model returns it to available and removes it from the reported records
 ```
 
-<!-- /planned:scoped-agent-model-availability -->
 ## Known caveats
 
 - Silence is not quota evidence.
-<!-- planned-change:scoped-agent-model-availability -->
-- Agents with single-entry chains have no fallback: after their model is recorded
-  unavailable, dispatch for that mode fails fast until the record expires.
-<!-- change:scoped-agent-model-availability -->
 - Agents with single-entry chains have no fallback: once their model carries a status
   that the launch's ownership excludes, dispatch for that mode fails fast until the
   status expires.
-<!-- /planned-change:scoped-agent-model-availability -->
 - The chain does not provide cross-agent or cross-harness continuation.
 - Model records are written by parent intelligence; no code path classifies
   provider prose.
