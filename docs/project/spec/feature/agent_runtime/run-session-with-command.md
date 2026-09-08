@@ -197,6 +197,7 @@ And the loader is composed for the corpus document that name resolves to
 
 #### UC-CLR5: Unsafe names compose no loader and read no file
 
+<!-- planned-change:fix-run-session-loader-argless-commands -->
 ```
 Given a run-session request whose command contains traversal ("../x"), an absolute path ("/etc/x"), or more than one segment ("a/b/c")
 When loader composition validates the name before any corpus read
@@ -204,7 +205,27 @@ Then no loader is composed and no file is read
 And the request is rejected naming the offending token
 And a safe name that resolves to no corpus document still launches with the input passed through verbatim, unchanged from today
 ```
+<!-- change:fix-run-session-loader-argless-commands -->
+```
+Given a run-session request whose command contains traversal ("../x"), an absolute path ("/etc/x"), or more than one segment ("a/b/c")
+When loader composition validates the name before any corpus read
+Then no loader is composed and no file is read
+And the request is rejected naming the offending token
+```
 
+#### UC-CLR11: A declared dispatch whose command resolves to no document is refused
+
+```
+Given a session launch that declares the command it dispatches
+And that command name is safe but resolves to no installed command document
+When loader composition runs
+Then no session is created and the request is refused naming the unresolved command
+And the refusal reaches an API caller as a 400
+And no launch delivers the raw command text in place of the loader
+```
+<!-- /planned-change:fix-run-session-loader-argless-commands -->
+
+<!-- planned-change:fix-run-session-loader-argless-commands -->
 #### UC-CLR1: Slug-bound worker command with empty args is rejected
 
 ```
@@ -224,6 +245,28 @@ When command loader-message assembly runs
 Then the startup message is the command loader for ~/.teleclaude/commands/<command>.md
 And no slug argument is required
 ```
+<!-- change:fix-run-session-loader-argless-commands -->
+#### UC-CLR1: Whether a command may run without arguments is decided at the dispatch door
+
+```
+Given a session launch for a command whose arguments are empty
+When the launch is validated
+Then whether empty arguments are acceptable is decided by the dispatch door's own required-argument rule
+And loader composition applies no argument rule of its own
+And a command the dispatch door admits with empty arguments reaches loader composition
+```
+
+#### UC-CLR2: Empty arguments produce the loader message
+
+```
+Given loader composition runs for a command that resolves to an installed command document
+And the args field is empty
+When the startup message is composed
+Then the startup message is the command loader for ~/.teleclaude/commands/<command>.md
+And its marker line carries the command with no argument token
+And its provided-inputs section is empty rather than absent
+```
+<!-- /planned-change:fix-run-session-loader-argless-commands -->
 
 #### UC-CLR3: A dispatched session's title reflects its record fields and is read by nothing
 
@@ -295,6 +338,18 @@ When the run-session preparation assembles the launch payload
 Then the additional context is appended to BOTH the echoed full-command and the composed loader startup message under the literal header "ADDITIONAL CONTEXT:"
 And every enabled runtime receives the identical extended message
 ```
+
+<!-- planned:fix-run-session-loader-argless-commands -->
+#### UC-CLR10: Additional context is carried once, outside the provided inputs
+
+```
+Given a run-session request supplies additional context
+When the loader startup message is composed
+Then the composed message carries the additional context exactly once
+And the context appears after the loader, never inside the marker line and never inside the provided-inputs section
+And this holds whether the request supplies command arguments or none
+```
+<!-- /planned:fix-run-session-loader-argless-commands -->
 
 
 #### Dispatch privilege enforcement
@@ -530,7 +585,12 @@ When the run-session preparation parses the token
 Then no command lookup succeeds
 And no role inference happens (system role and job remain unset)
 And dispatch privilege enforcement is skipped
+<!-- planned-change:fix-run-session-loader-argless-commands -->
 And the command is still launched verbatim into the agent — agent-side handling decides whether the command is meaningful
+<!-- change:fix-run-session-loader-argless-commands -->
+And a token that resolves to an installed command document is still launched with that document's loader, carrying no role
+And a token that resolves to no installed command document is refused rather than launched
+<!-- /planned-change:fix-run-session-loader-argless-commands -->
 ```
 
 #### UC-RSC-LP1: A launch-argument agent receives the startup message as part of its start command
