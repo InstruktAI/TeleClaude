@@ -253,6 +253,27 @@ def reclaim_worktree_trash(cwd: str) -> list[str]:
     return failures
 
 
+def _worktree_is_locked(worktree_path: Path) -> bool:
+    """Check the worktree's own admin dir for a lock marker, without invoking git.
+
+    Nothing in this codebase calls ``git worktree lock``, so an unconditional
+    ``unlock`` always fails ("is not locked") and floods logs with an ERROR
+    that reflects no real fault. Reading the marker directly keeps the
+    unlock call reserved for the rare case where a lock genuinely exists.
+    """
+    git_file = worktree_path / ".git"
+    try:
+        content = git_file.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    prefix = "gitdir:"
+    line = next((line for line in content.splitlines() if line.startswith(prefix)), None)
+    if line is None:
+        return False
+    admin_dir = Path(line[len(prefix) :].strip())
+    return (admin_dir / "locked").exists()
+
+
 def cleanup_delivered_slug(
     cwd: str,
     slug: str,
@@ -273,7 +294,8 @@ def cleanup_delivered_slug(
     # 1. Detach worktree from git bookkeeping, deferring bulk deletion
     worktree_path = project_root / WORKTREE_DIR / slug
     if worktree_path.exists():
-        _run_git_cmd(["worktree", "unlock", str(worktree_path)], cwd=cwd, timeout=None)
+        if _worktree_is_locked(worktree_path):
+            _run_git_cmd(["worktree", "unlock", str(worktree_path)], cwd=cwd, timeout=None)
         trash_dir = project_root / WORKTREE_DIR / ".trash"
         trash_dir.mkdir(parents=True, exist_ok=True)
         trash_path = trash_dir / f"{slug}-{uuid4().hex}"
