@@ -9,7 +9,6 @@ echo "  make install      Set up this TeleClaude checkout and install repo depen
 echo "  make launchers    Build and sign the macOS launcher apps"
 echo "  telec config wizard  Configure this TeleClaude checkout interactively"
 echo "  make start        Start daemon via launchd/systemd"
-echo "  make generate-types  Generate TypeScript types from Pydantic API models"
 echo "  make link         Link shared scripts/docs into ~/.teleclaude"
 echo ""
 echo "Code Quality:"

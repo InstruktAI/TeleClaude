@@ -602,77 +602,6 @@ setup_corepack() {
     print_success "corepack ready"
 }
 
-# Detect the frontend package manager. Mirrors the detection order in
-# teleclaude/quality/package_manager.py (corepack pin first, then lockfile);
-# duplicated here because bootstrap runs before the Python environment exists.
-detect_frontend_pm() {
-    local fr="$1"
-    local pinned
-    pinned=$(sed -nE 's/.*"packageManager"[[:space:]]*:[[:space:]]*"([a-z]+)@.*/\1/p' "$fr/package.json" 2>/dev/null)
-    if [ -n "$pinned" ]; then
-        echo "$pinned"
-        return
-    fi
-    if [ -f "$fr/bun.lock" ] || [ -f "$fr/bun.lockb" ]; then echo bun; return; fi
-    if [ -f "$fr/pnpm-lock.yaml" ]; then echo pnpm; return; fi
-    if [ -f "$fr/yarn.lock" ]; then echo yarn; return; fi
-    if [ -f "$fr/package-lock.json" ]; then echo npm; return; fi
-    echo npm
-}
-
-# Install frontend dependencies with the detected package manager, then seed the
-# corepack packageManager pin when absent so the manager is self-documenting and
-# deterministic on future installs.
-setup_frontend() {
-    local fr="$INSTALL_DIR/frontend"
-    if [ ! -f "$fr/package.json" ]; then
-        return 0
-    fi
-
-    print_header "Installing Frontend Dependencies"
-
-    local pm
-    pm=$(detect_frontend_pm "$fr")
-    print_info "Detected package manager: $pm"
-
-    local -a install_cmd
-    case "$pm" in
-        npm)  install_cmd=(npm ci) ;;
-        pnpm) install_cmd=(corepack pnpm install --frozen-lockfile) ;;
-        bun)  install_cmd=(bun install --frozen-lockfile) ;;
-        yarn)
-            if [ -f "$fr/.yarnrc.yml" ]; then
-                install_cmd=(yarn install --immutable)
-            else
-                install_cmd=(yarn install --frozen-lockfile)
-            fi
-            ;;
-        *) install_cmd=(npm ci) ;;
-    esac
-
-    print_info "Running: ${install_cmd[*]}"
-    if ! (cd "$fr" && "${install_cmd[@]}"); then
-        print_error "Frontend dependency install failed (${install_cmd[*]})"
-        exit 1
-    fi
-
-    if ! grep -q '"packageManager"' "$fr/package.json"; then
-        local version
-        if [ "$pm" = "pnpm" ]; then
-            version=$( (cd "$fr" && corepack pnpm --version 2>/dev/null) )
-        else
-            version=$( (cd "$fr" && "$pm" --version 2>/dev/null) )
-        fi
-        if [ -n "$version" ]; then
-            print_info "Seeding packageManager: $pm@$version"
-            (cd "$fr" && corepack use "$pm@$version") >> "$LOG_FILE" 2>&1 \
-                || print_warning "corepack use failed; packageManager not seeded"
-        fi
-    fi
-
-    print_success "Frontend dependencies installed"
-}
-
 # Pinned together from gogcli's release checksums.txt.
 GOG_VERSION="0.38.1"
 GOG_LINUX_AMD64_SHA256="6576828ed6852949ba424b967c3ff4268b3d9c90e201f90fe3d539fe3a151ebb"
@@ -1104,14 +1033,6 @@ install_deps_only() {
 
     (cd "$INSTALL_DIR" && uv run --group dev python -c "print(\"Python environment ready\")")
 
-    if [ -d "$INSTALL_DIR/frontend" ] && [ -f "$INSTALL_DIR/frontend/package.json" ]; then
-        if command -v pnpm >/dev/null 2>&1; then
-            pnpm --dir "$INSTALL_DIR/frontend" install --ignore-scripts
-        else
-            npm --prefix "$INSTALL_DIR/frontend" install --ignore-scripts
-        fi
-    fi
-
     install_precommit_hook
     install_postmerge_hook
     install_prepush_hook
@@ -1477,7 +1398,6 @@ main() {
         install_log_runtime
     fi
     setup_corepack
-    setup_frontend
     # Agent CLI enablement/install resolves from config and can invoke external
     # installers against the host; CI never needs it (this repository has no
     # test lane that exercises it).

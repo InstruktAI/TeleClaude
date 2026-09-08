@@ -1,4 +1,4 @@
-.PHONY: help install launchers link format lint test clean dev start stop restart kill status cron-smoke generate-types
+.PHONY: help install launchers link format lint test clean dev start stop restart kill status cron-smoke
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -48,7 +48,3 @@ status:
 
 cron-smoke:
 	@CRON_SMOKE_SINCE="$(CRON_SMOKE_SINCE)" tools/make/cron-smoke.sh
-
-generate-types:
-	@uv run -m teleclaude.codegen.pydantic_to_typescript
-	@uv run -m teleclaude.codegen.agent_registry
