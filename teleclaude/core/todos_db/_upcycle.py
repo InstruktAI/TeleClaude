@@ -21,6 +21,7 @@ _V7_SCHEMA_VERSION = 7
 _V8_SCHEMA_VERSION = 8
 _V9_SCHEMA_VERSION = 9
 _V10_SCHEMA_VERSION = 10
+_SELF_ASSESSING_CALLER_ROLES = ("coordinator", "human")
 _BUILD_PLAN_DIGEST_KEY = "build_plan_digest"
 _CONTINUATION_REVIEW_KEYS = (
     "prd_review",
@@ -345,12 +346,15 @@ def _upcycle_v8_to_v9(raw: dict[str, StateValue]) -> dict[str, StateValue]:
 def _upcycle_v9_to_v10(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     """Materialize the assessor fields on every recorded continuation.
 
-    A continuation stored before the second-cap write widened carries no
-    assessor, and the writer was necessarily its own assessor under the rule
-    then in force: ordinal one is the claimant's own assessment, and a later
-    ordinal could only be written by the coordinator or human who assessed it.
-    Materializing that here keeps the version honest for the shape the domain
-    now reads, rather than leaving a default to mask old state.
+    The assessor is derived only where the earlier rule guaranteed one: the
+    first continuation is the claimant's own assessment, and a later one
+    written by a coordinator or human was assessed by that writer. A later
+    continuation written by the claimant carries no derivable assessor, because
+    the rule that made the writer the assessor no longer held when it was
+    stored; that record keeps an unset assessor rather than naming the writer,
+    which would assert an assessment nobody made. Materializing this here keeps
+    the version honest for the shape the domain now reads, rather than leaving
+    a default to mask old state.
     """
     migrated = dict(raw)
     for review_key in _CONTINUATION_REVIEW_KEYS:
@@ -364,13 +368,15 @@ def _upcycle_v9_to_v10(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated[review_key] = review_dict
             continue
         brought_forward: list[StateValue] = []
-        for entry in recorded:
+        for index, entry in enumerate(recorded):
             if not isinstance(entry, dict):
                 brought_forward.append(entry)
                 continue
             continuation = dict(entry)
-            continuation.setdefault("assessor_role", continuation.get("caller_role"))
-            continuation.setdefault("assessor_id", continuation.get("caller_session_id", ""))
+            caller_role = continuation.get("caller_role")
+            writer_assessed = index == 0 or caller_role in _SELF_ASSESSING_CALLER_ROLES
+            continuation.setdefault("assessor_role", caller_role if writer_assessed else None)
+            continuation.setdefault("assessor_id", continuation.get("caller_session_id", "") if writer_assessed else "")
             brought_forward.append(continuation)
         review_dict["continuations"] = brought_forward
         migrated[review_key] = review_dict
