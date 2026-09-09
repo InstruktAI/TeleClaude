@@ -432,7 +432,6 @@ When the heuristic engine evaluates the turn window
 Then a checkpoint is produced surfacing the `telec sync` validation action (per UC-CP10), because the doc turn is not yet satisfied
 ```
 
-<!-- planned-change:checkpoint-attributes-foreign-dirty-paths -->
 #### UC-CP16: Descriptor-only shell redirects do not surface a checkpoint
 
 ```gherkin
@@ -450,18 +449,6 @@ Then the redirect is classified as file-mutating intent
 And a checkpoint is produced
 (The exemption is scoped to non-file sinks, never to the presence of a descriptor number; a numbered descriptor writing to a real path is still a file write.)
 ```
-<!-- change:checkpoint-attributes-foreign-dirty-paths -->
-#### UC-CP16: Shell command text attributes no path to a turn
-
-```gherkin
-Given a turn's only tool activity is shell commands that read, or that name repository paths in prose such as a heredoc body
-And the working tree carries a pre-existing dirty file unrelated to this turn
-When the heuristic engine evaluates the turn window
-Then no path is attributed to the turn from the command text
-And the pre-existing dirty file is not attributed to this turn
-And no checkpoint is produced
-```
-<!-- /planned-change:checkpoint-attributes-foreign-dirty-paths -->
 
 #### UC-CP17: A sealed commit outside the deployed source records no maintenance obligation
 
