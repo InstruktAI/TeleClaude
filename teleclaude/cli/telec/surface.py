@@ -1385,7 +1385,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "add": CommandDef(
-                desc="Stage files for the next commit (NEW, unmerged, or partial-staged tracked)",
+                desc="Declare files for the next commit (stages NEW, unmerged, or partial-staged tracked)",
                 args="<path> [<path> ...]",
                 flags=[F.FLAG_HELP],
                 notes=[
@@ -1396,8 +1396,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "must be fully (re)staged so the pathspec commit does not silently sweep in "
                     "unstaged hunks. The partial-staging guard in `telec code commit` directs agents "
                     "here for recovery.",
-                    "Modified-tracked files that are NOT partial-staged don't need staging — pathspec "
-                    "commits them straight from the working tree.",
+                    "Every successful call declares its paths to session-scoping. Modified-tracked files "
+                    "that are NOT partial-staged don't need staging — pathspec commits them straight from "
+                    "the working tree.",
                     "NEW files in scope are NOT auto-committed; this is the explicit declaration step. "
                     "Without it, untracked files stay untracked (safety net for temp/scratch artifacts "
                     "the agent may have created incidentally).",

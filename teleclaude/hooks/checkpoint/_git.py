@@ -284,15 +284,6 @@ def _extract_turn_file_signals(timeline: TurnTimeline, project_path: str) -> tup
                         touched_files.update(_extract_apply_patch_paths(value, project_path))
             continue
 
-        # Shell tools can mutate files but usually expose only freeform command text.
-        if tool_name in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
-            command = _extract_shell_command(record.input_data)
-            if _command_likely_mutates_files(command):
-                saw_mutation_signal = True
-                shell_touched = _extract_shell_touched_paths(command, project_path)
-                if shell_touched:
-                    touched_files.update(shell_touched)
-
     return touched_files, saw_mutation_signal
 
 
@@ -337,7 +328,7 @@ def _scope_git_files_to_current_turn(
     if not saw_mutation_signal:
         return []
 
-    # Mutation by shell command detected, but no reliable file-path mapping.
+    # A structured mutator ran without a recognized path-bearing field.
     # Prefer fail-closed to avoid broad false positives.
     return []
 

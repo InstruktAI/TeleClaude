@@ -11,9 +11,12 @@ from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.models import Session
 from teleclaude.utils.transcript import extract_effective_tool_calls
 
+from ._declarations import collect_live_declarations
+from ._extractors import normalize_workspace_path
 from ._extractors._common import extract_touch_evidence_from_timeline
 from ._extractors.claude import collect_claude_touch_evidence
 from ._extractors.gemini import collect_gemini_touch_evidence
+from ._transcript_chain import resolve_transcript_sources
 from ._types import AttributionSignal, SessionAttributionResult, TouchEvidence
 
 logger = get_logger(__name__)
@@ -24,7 +27,6 @@ _STRUCTURED_MUTATORS = {
     AgentName.DEEPSEEK: {"write", "edit"},
     AgentName.GEMINI: {"edit", "writefile"},
 }
-_SHELL_MUTATORS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
 _UNDETERMINED_STRATEGY = "foreign_transcript_undetermined"
 _ATTRIBUTION_DEGRADE_LOG = "Foreign transcript attribution failed; marking session undetermined"
 
@@ -60,9 +62,21 @@ def resolve_session_attribution(
             timeline,
             workspace_root=workspace_root,
             structured_tools=_STRUCTURED_MUTATORS[agent],
-            shell_tools=_SHELL_MUTATORS,
         )
         touches = {TouchEvidence(path=path, touched_at=touched_at) for path, touched_at in raw_touches}
+        sources = resolve_transcript_sources(
+            transcript_files=session.transcript_files,
+            transcript_path=transcript_path,
+            agent=agent,
+            native_session_id=session.native_session_id,
+        )
+        touches.update(
+            TouchEvidence(path=declaration.path, touched_at=declaration.declared_at)
+            for declaration in collect_live_declarations(
+                sources,
+                lambda path: normalize_workspace_path(path, workspace_root),
+            )
+        )
         if agent is AgentName.CLAUDE:
             touches.update(
                 collect_claude_touch_evidence(transcript_path=transcript_path, workspace_root=workspace_root)

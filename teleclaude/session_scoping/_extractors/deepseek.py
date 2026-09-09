@@ -12,12 +12,11 @@ from teleclaude.core.agents import AgentName
 from teleclaude.utils.transcript import extract_effective_tool_calls
 
 from .._types import ScopeMode
-from ._common import extract_shell_paths_from_timeline, extract_structured_paths_from_timeline
+from ._common import extract_structured_paths_from_timeline
 
 __all__ = ["collect_deepseek_paths"]
 
 _DSH_STRUCTURED_MUTATORS = {"write", "edit"}
-_DSH_SHELL_MUTATORS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
 
 
 def collect_deepseek_paths(
@@ -42,11 +41,6 @@ def collect_deepseek_paths(
             timeline,
             workspace_root=workspace_root,
             allowed_tools=_DSH_STRUCTURED_MUTATORS,
-        )
-        | extract_shell_paths_from_timeline(
-            timeline,
-            workspace_root=workspace_root,
-            allowed_tools=_DSH_SHELL_MUTATORS,
         ),
         "deepseek_structured_fallback",
     )
