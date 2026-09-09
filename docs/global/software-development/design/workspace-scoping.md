@@ -78,33 +78,11 @@ guardrails lane).
 | Project languages  | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
 | Explicit file list | CLI arguments (`telec code lint <files...>`)                                                                                             |
 
-
 | Output                  | Description                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `dirty_paths`           | Full dirty set from one porcelain parse, including operation kind                                          |
 | `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                  |
 | `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane |
-
-
-<!-- planned:attribution-by-declaration -->
-### Session path declarations
-
-On a shared branch, session-owned path evidence is the union of paths recorded
-by the agent runtime's native file-edit records and live declarations in the
-session's transcript chain. A declaration is an exact executable
-`telec code add <path>...` command record. Its paths carry the record's
-timestamp and stay live until a later `telec code commit` command record in the
-same ordered chain. Restart and handoff transcript files participate in source
-order, so a still-live declaration survives the process boundary without a
-second persistence mechanism.
-
-Every implicit-scope consumer reads this same evidence. Session-scoped
-`telec code changed`, lint, and commit intersect it with the current dirty set;
-the agent-stop checkpoint intersects it with the turn's anchor delta; and
-`telec code owners` retains its timestamps while applying the existing dirty
-set and last-commit boundaries. Worktrees remain task-scoped and do not consult
-session declarations.
-<!-- /planned:attribution-by-declaration -->
 
 ### Batch dirty-path ownership
 
@@ -172,11 +150,9 @@ boundaries and fail the batch when they cannot complete.
    `.git/hooks/pre-commit` performs only a partial-staging backstop. No
    framework stash, no working-tree reset outside the commit pathspec.
 
-
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
    "pass files explicitly." It never silently falls back to a broader scope.
-
 
 7. **No session identity on a shared branch means full run.** Human and CI
    contexts have no session identity; both legs run the whole suite.
@@ -198,15 +174,14 @@ boundaries and fail the batch when they cannot complete.
     cross-reference validation runs inside the guardrails lane on full runs, so
     an agent's scoped lint never fails on another agent's in-flight docs.
 
-
-13. **Null means no usable live claimant, not proof of abandonment.** A captured
+12. **Null means no usable live claimant, not proof of abandonment.** A captured
     session with resolved-empty or `UNDETERMINED` batch attribution contributes
     no claim. `UNDETERMINED` is reported through the batch-level count and
     prohibits destructive null-custody resolution for that query result. A
     later fresh query may restore that authority only after the count reaches
     zero. Invalid paths or a failure to capture the session snapshot or dirty
     set fail the query instead of producing a partial map.
-14. **A commit clears earlier claims.** Touch evidence at or before a path's
+13. **A commit clears earlier claims.** Touch evidence at or before a path's
     last committed boundary is ineligible even when its session remains open.
     A later uncommitted touch creates a new claim from that later timestamp.
 
@@ -301,7 +276,6 @@ telec code lint --all   (or CI, no-session shared branch)
 
 ## Failure modes
 
-
 ### Workspace scope unavailable
 
 Git status, session identity, or transcript collection fails while resolving
@@ -311,7 +285,6 @@ workspace scope.
 `Workspace scope unavailable. Pass files explicitly: telec code lint <files...>`
 
 No silent fallback to a broader scope.
-
 
 ### No session identity on shared branch
 

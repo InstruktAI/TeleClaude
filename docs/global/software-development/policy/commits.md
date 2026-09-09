@@ -72,20 +72,10 @@ All Committizen types are allowed.
   conversation into a finished change. Where the human has not released the
   tracked change for commit, report what remains uncommitted and offer to
   commit; do not commit it, revert it, or suppress the automation.
-<!-- planned-change:attribution-by-declaration -->
 - Before committing on shared `main`, run bare `telec code commit` to surface
   the gate card, then commit with `telec code commit --approved "<message>"`
   using the scoped pathspec the tool resolves. New untracked files require
   explicit inclusion through `telec code add <path>` or `--include <path>`.
-<!-- change:attribution-by-declaration -->
-- Before committing on shared `main`, run bare `telec code commit` to surface
-  the gate card, then commit with `telec code commit --approved "<message>"`
-  using the scoped pathspec the tool resolves.
-- A repository file the session wrote from a shell command is declared with
-  `telec code add <path>` before the turn ends. New untracked files are declared
-  the same way, or through `--include <path>` at commit. A file the session's
-  own tool edits produced needs no declaration.
-<!-- /planned-change:attribution-by-declaration -->
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. When the post-commit
   gate determines that independent review is required, the authoring session
@@ -118,15 +108,6 @@ limitation as that author's mistake — the inversion this policy exists to prev
 - Asking before routine commits shifts technical stewardship back to the human
   and leaves completed work unrecorded. The safety boundary is the sealed commit
   gate plus post-commit review routing, not a human permission prompt.
-
-<!-- planned:attribution-by-declaration -->
-A shell command's text does not reveal which files it wrote. Reading the files
-out of that text mistakes a path the command merely inspected, or quoted as
-prose, for one it changed; on a shared branch that misreading lands on whichever
-actor happens to hold the file open, so one session's investigation is recorded
-as another's work. The session that ran the command is the only party that knows
-what it wrote, which is why the claim is declared rather than derived.
-<!-- /planned:attribution-by-declaration -->
 
 ## Scope
 

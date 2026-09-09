@@ -17,17 +17,9 @@ with an explicit pathspec.
 
 The staging model is asymmetric and follows git's data model:
 
-<!-- planned-change:attribution-by-declaration -->
 - **Modified-tracked files in scope** that are NOT partial-staged ride the
   pathspec straight from the working tree — `git commit -- <path>` records
   the working-tree version, no staging needed.
-<!-- change:attribution-by-declaration -->
-- **Modified-tracked files in scope** that are NOT partial-staged ride the
-  pathspec straight from the working tree — `git commit -- <path>` records
-  the working-tree version, no staging needed. When a shell command wrote the
-  file, `telec code add <path>` declares it into session scope while leaving
-  its index state unchanged.
-<!-- /planned-change:attribution-by-declaration -->
 - **Partial-staged tracked files** in the commit pathspec (staged hunks +
   later working-tree delta) are BLOCKED by the partial-staging guard —
   `git commit -- <path>` would otherwise sweep unstaged hunks the agent
@@ -43,7 +35,6 @@ The staging model is asymmetric and follows git's data model:
   are staged internally via `_stage_files` so the integrator's conflict
   resolution flow runs through the same sealed path.
 
-
 `telec code commit` runs the gates carried by the acting invocation context's
 declared tier. Where that tier carries project subscriptions, it runs format then
 lint in-process against `quality_paths` (the commit pathspec filtered to existing
@@ -53,12 +44,10 @@ outside the pathspec. The installed `.git/hooks/pre-commit` is a thin telec-owne
 guard that performs only a partial-staging check as a backstop for raw
 `git commit` invocations.
 
-
 The git wrapper redirects raw `git commit` (and `git add`) to this command
 for tmux callers.
 
 **Caller paths:**
-
 
 A commit reaches git through one of four contexts in this repository: the human
 shell outside tmux, an autonomous agent inside tmux within a telec-registered
@@ -66,13 +55,12 @@ project, an agent inside tmux within a repository whose own root is a declared
 invocation context that is not a project, and an agent inside tmux operating in a
 repository whose own root carries no declaration.
 
-| Caller context                                  | Command                            | Why telec is or isn't involved                                                                                                                             |
-| ----------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Outside tmux (human shell)                      | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec.                                            |
-| Inside tmux, autonomous agent (registered)      | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                                                                         |
-| Inside tmux, repository root a declared context | `telec code commit --approved ...` | Sealed on the repository's own declaration rather than on project subscriptions; an invocation beneath it resolving to no context root is refused.         |
-| Inside tmux, repository root undeclared         | `git commit ...`                   | The repository's own root carries no declaration → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux.                    |
-
+| Caller context                                  | Command                            | Why telec is or isn't involved                                                                                                                     |
+| ----------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Outside tmux (human shell)                      | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec.                                    |
+| Inside tmux, autonomous agent (registered)      | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                                                                 |
+| Inside tmux, repository root a declared context | `telec code commit --approved ...` | Sealed on the repository's own declaration rather than on project subscriptions; an invocation beneath it resolving to no context root is refused. |
+| Inside tmux, repository root undeclared         | `git commit ...`                   | The repository's own root carries no declaration → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux.            |
 
 Inside tmux there is **no env-var bypass on `git commit`**. The wrapper
 redirects every `git commit` invocation to `telec code commit` with no
@@ -83,7 +71,6 @@ the resolved workspace scope, and the agent must name every path it claims.
 
 The git wrapper enforces the intent layer for every git invocation in a
 tmux session. `telec code commit` runs on top of these guarantees.
-
 
 Every row below presupposes the git invocation targets a sealed repository. A
 telec-registered project that subscribes `code` or `docs` — a working tree under
@@ -99,8 +86,6 @@ ordinary git exactly as stated below, whatever else its tier answers. When the p
 repository's own root carries no declaration at all, the wrapper decides nothing
 from this matrix: it execs the real git binary unmodified, the same transparent
 passthrough it applies outside tmux.
-
-
 
 The wrapper reads capability state from the repository root's `teleclaude.yml`
 — the same declaration the runtime resolves — deriving `code ∨ docs` for commit
@@ -129,7 +114,6 @@ fails validation elsewhere in the overlay is refused by the runtime and honoured
 by the wrapper, which reads only the tier and the capability blocks
 (`project/spec/feature/config/project-capability-manifest`).
 
-
 The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the
 op wins.
@@ -141,7 +125,6 @@ op wins.
 | `git add` (any form) | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | ❌ blocked → `telec code add` | Staging is telec's job; sealed-commit pathspec depends on it. Also the resolved-conflict recovery path during an active merge. |
 
 | `git commit` | ❌ blocked → `telec code commit` | ❌ blocked → `telec code commit` | ⚠️ `telec code commit` (full commit, no pathspec — single-owner trees only) | Sealed commit contract; no env-var bypass. Mid-merge, git refuses any pathspec-scoped commit (`fatal: cannot do a partial commit during a merge`) regardless of pathspec completeness, so in a single-owner tree `telec code commit` degrades to a full-index commit, which carries only that one owner's resolved state. In a repository whose own root is a declared non-project invocation context the tree has more than one owner, and there the commit preserves the eligible set or is refused; it never degrades to the whole index. An ordinary project checkout is a single-owner tree and keeps this row's existing behavior unchanged. |
-
 
 | `git reset HEAD <path>` / `git reset -- <path>` (pathspec) | ✅ allowed | ✅ allowed | ✅ allowed | Path-scoped unstage; index-only effect. |
 | `git reset` (no pathspec) | ❌ blocked | ❌ blocked | ❌ blocked | Discards staged state non-locally. |
@@ -207,7 +190,6 @@ The pathspec commit is built internally from `workspace scope plus
 
 ## Invariants
 
-<!-- planned-change:attribution-by-declaration -->
 1. **Lock serialisation.** `main_branch_lock()` (flock on
    `GIT_MAIN_LOCK_PATH`) serialises the entire `_commit_under_lock` body.
    No two agents can be inside their commit phase at the same time. The
@@ -223,18 +205,6 @@ The pathspec commit is built internally from `workspace scope plus
    different lock, different file, owned by git itself — so this check
    is the only protection against a previous git process that was
    killed mid-write.
-<!-- change:attribution-by-declaration -->
-1. **Lock serialisation.** `main_branch_lock()` (flock on
-   `GIT_MAIN_LOCK_PATH`) serialises commit execution and the staging mutation
-   performed by `telec code add`. Both paths call
-   `wait_for_index_lock_clear()` while holding that lock before writing the
-   index, so a declaration cannot race another session's commit into
-   `.git/index.lock`. The lock auto-releases on process exit or crash.
-
-   Stale `.git/index.lock` self-heal uses the existing bounded holder and age
-   checks before removal. The flock and Git's index lock remain distinct; the
-   wait is the protection against a prior Git process killed mid-write.
-<!-- /planned-change:attribution-by-declaration -->
 
 2. **Workspace scope is authoritative — for pathspec construction, not staging.**
    `resolve_workspace_scope_resolution()` is the single owner of
@@ -257,7 +227,6 @@ The pathspec commit is built internally from `workspace scope plus
    "foreign-staged" check; the pathspec alone enforces the boundary. Agents
    must not unstage foreign files they see in the index.
 
-
 4. **The gates the acting tier carries run in-process before `git commit --no-verify`.**
    Where the acting invocation context's declared tier carries project
    subscriptions, `telec code commit` runs `handle_format` then `handle_lint`
@@ -267,7 +236,6 @@ The pathspec commit is built internally from `workspace scope plus
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
    thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does
    not re-run format or lint.
-
 
 5. **Commit-first gate on main.** Non-integrator agents on main use the bare
    `telec code commit` invocation to surface commit-first and post-commit
@@ -285,7 +253,6 @@ The pathspec commit is built internally from `workspace scope plus
 8. **Real git bypass for the inner commit.** The final `git commit --no-verify`
    call uses the real git binary (via GitPython) so the wrapper's redirect does
    not loop back into telec.
-
 
 9. **`MERGE_HEAD`-aware commit degrades the pathspec boundary where the tree has
    one owner.** When `MERGE_HEAD` is present (resolved via `repo.git_dir`, not a
@@ -305,8 +272,6 @@ The pathspec commit is built internally from `workspace scope plus
    resolved index can hold another context's material. There a commit taken mid-
    merge preserves the eligible set or is refused; it never degrades to recording
    the whole index.
-
-
 
 10. **Two roots resolve as a pair, once, at the entry points.** Every
     `telec code` verb resolves the invocation context root (the nearest
@@ -332,7 +297,6 @@ The pathspec commit is built internally from `workspace scope plus
     owner publishes none carries no such term, and this surface neither
     decides membership nor substitutes an answer in either case.
 
-
 12. **Config publishes facts at two coordinates; this contract owns both
     decisions.** The tier answers config publishes grant no operation. Seal
     coverage — whether raw git is intercepted anywhere in a checkout — is this
@@ -348,7 +312,6 @@ The pathspec commit is built internally from `workspace scope plus
     the two answer alike for every declared tier, and a root whose declaration
     carries no readable tier is refused rather than resolved to any tier.
 
-
 13. **Inspection and commit consume one payload resolution, with the same
     inputs.** The eligible payload — computed scope bounded per invariant 11,
     minus what the commit itself would drop, plus declared paths — is resolved
@@ -362,12 +325,9 @@ The pathspec commit is built internally from `workspace scope plus
     for path, because it is the same computation with the same inputs, not a
     reconciled pair.
 
-
 ## Primary flows
 
-
 Every walkthrough below traces an acting context whose declared tier carries project subscriptions, so its gate steps are the ones that tier carries. In a context whose tier carries none, the same flows run with no gate step at all.
-
 
 ### Agent commit (worktree)
 
@@ -474,14 +434,12 @@ agent did not declare is precisely what the pathspec boundary prevents.
 changes. Exit code 2 — the agent's declaration must match reality; we don't
 quietly drop unreachable claims.
 
-
 **In-process gate failure.** A gate the acting tier carries fails on
 `quality_paths` before `git commit --no-verify` is invoked — format or lint,
 where that tier carries project subscriptions. `telec code commit` exits non-zero
 with the gate output. No commit is produced; files remain in their current state
 for the agent to fix and retry. A tier carrying no project subscriptions runs no
 gate, so this failure mode does not arise there.
-
 
 **Forgotten commit gate.** A non-integrator agent on main passes a message
 without `--approved`. Exit with commit-first guidance and no commit. The agent
