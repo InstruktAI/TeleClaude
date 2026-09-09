@@ -31,7 +31,7 @@ class NoSessionTouchedFiles(ValueError):
 _scaffold_logger = get_logger(__name__)
 
 
-def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str | None, str | None]:
+def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str | None, str | None, str | None]:
     """Load the minimal session metadata needed to discover transcript files.
 
     Uses raw SQL projected to the three columns the transcript discovery needs
@@ -43,12 +43,12 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
         with SqlSession(_create_sync_engine()) as db_session:
             row = db_session.exec(  # type: ignore[call-overload]
                 text(
-                    "SELECT active_agent, native_log_file, native_session_id "  # guard: raw-sql
+                    "SELECT active_agent, native_log_file, native_session_id, transcript_files "  # guard: raw-sql
                     "FROM sessions WHERE session_id = :session_id"
                 ).bindparams(session_id=session_id)
             ).first()
             try:
-                active_agent_raw, native_log_file_raw, native_session_id_raw = row
+                active_agent_raw, native_log_file_raw, native_session_id_raw, transcript_files_raw = row
             except (TypeError, ValueError):
                 fallback_row = db_session.get(db_models.Session, session_id)
                 if not fallback_row:
@@ -56,6 +56,7 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
                 active_agent_raw = getattr(fallback_row, "active_agent", None)
                 native_log_file_raw = getattr(fallback_row, "native_log_file", None)
                 native_session_id_raw = getattr(fallback_row, "native_session_id", None)
+                transcript_files_raw = getattr(fallback_row, "transcript_files", None)
     except OperationalError as exc:
         # An uninitialized session DB (no sessions table — fresh env, CI, or a
         # test temp home) carries no transcript signal. Treat it like the
@@ -69,6 +70,7 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
         str(active_agent_raw) if active_agent_raw else None,
         str(native_log_file_raw) if native_log_file_raw else None,
         str(native_session_id_raw) if native_session_id_raw else None,
+        str(transcript_files_raw) if transcript_files_raw else None,
     )
 
 
@@ -105,7 +107,9 @@ def collect_session_touched_files(project_path: str) -> set[str]:
     if not session_id:
         raise ValueError("session-touched-files lookup requires an active agent session")
 
-    active_agent_raw, native_log_file, native_session_id = _load_session_transcript_metadata(session_id)
+    active_agent_raw, native_log_file, native_session_id, transcript_files = _load_session_transcript_metadata(
+        session_id
+    )
     try:
         agent_name = AgentName.from_str(str(active_agent_raw) if active_agent_raw else get_default_agent())
     except ValueError:
@@ -131,6 +135,7 @@ def collect_session_touched_files(project_path: str) -> set[str]:
         scope_mode="session_dirty",
         transcript_path=transcript_path,
         native_session_id=native_session_id,
+        transcript_files=transcript_files,
     )
 
     if scoped_paths.paths:

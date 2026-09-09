@@ -13,14 +13,12 @@ from teleclaude.utils.transcript._utils import _parse_timestamp
 from .._types import ScopeMode, TouchEvidence
 from ._common import (
     _normalize_workspace_path,
-    extract_shell_paths_from_timeline,
     extract_structured_paths_from_timeline,
 )
 
 __all__ = ["collect_claude_paths"]
 
 _CLAUDE_FALLBACK_MUTATORS = {"write", "edit"}
-_CLAUDE_SHELL_MUTATORS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
 
 
 def _snapshot_paths_from_entry(entry: Mapping[str, object], workspace_root: str | None) -> set[str]:
@@ -82,10 +80,6 @@ def collect_claude_paths(
         timeline,
         workspace_root=workspace_root,
         allowed_tools=_CLAUDE_FALLBACK_MUTATORS,
-    ) | extract_shell_paths_from_timeline(
-        timeline,
-        workspace_root=workspace_root,
-        allowed_tools=_CLAUDE_SHELL_MUTATORS,
     )
 
     if not current_snapshot_paths:

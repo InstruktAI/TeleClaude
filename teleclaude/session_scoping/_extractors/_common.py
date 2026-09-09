@@ -7,11 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from teleclaude.shell_path_parser import (
-    command_likely_mutates_files as _command_likely_mutates_files,
-)
-from teleclaude.shell_path_parser import extract_shell_command as _extract_shell_command
-from teleclaude.shell_path_parser import extract_shell_touched_paths as _extract_shell_touched_paths
 from teleclaude.utils.transcript import TurnTimeline
 from teleclaude.utils.transcript._tool_calls import ToolCallRecord
 
@@ -33,7 +28,6 @@ class ExtractorFunction(Protocol):
 
 __all__ = [
     "ExtractorFunction",
-    "extract_shell_paths_from_timeline",
     "extract_structured_paths_from_timeline",
 ]
 
@@ -103,19 +97,6 @@ def _extract_path_values(
     return paths
 
 
-def extract_shell_paths_from_timeline(
-    timeline: TurnTimeline,
-    *,
-    workspace_root: str | None,
-    allowed_tools: set[str],
-) -> set[str]:
-    """Collect explicit file paths from successful shell-like mutators."""
-    touched_paths: set[str] = set()
-    for record in timeline.tool_calls:
-        touched_paths.update(_extract_paths_from_record(record, workspace_root, set(), allowed_tools))
-    return touched_paths
-
-
 def extract_structured_paths_from_timeline(
     timeline: TurnTimeline,
     *,
@@ -125,7 +106,7 @@ def extract_structured_paths_from_timeline(
     """Collect explicit structured-mutator file paths from a normalized timeline."""
     touched_paths: set[str] = set()
     for record in timeline.tool_calls:
-        touched_paths.update(_extract_paths_from_record(record, workspace_root, allowed_tools, set()))
+        touched_paths.update(_extract_paths_from_record(record, workspace_root, allowed_tools))
     return touched_paths
 
 
@@ -134,14 +115,13 @@ def extract_touch_evidence_from_timeline(
     *,
     workspace_root: str | None,
     structured_tools: set[str],
-    shell_tools: set[str],
 ) -> tuple[tuple[str, datetime], ...]:
     """Return successful timestamped mutations from a normalized timeline."""
     touches: set[tuple[str, datetime]] = set()
     for record in timeline.tool_calls:
         if record.timestamp is None or record.timestamp.tzinfo is None:
             continue
-        paths = _extract_paths_from_record(record, workspace_root, structured_tools, shell_tools)
+        paths = _extract_paths_from_record(record, workspace_root, structured_tools)
         touches.update((path, record.timestamp) for path in paths)
     return tuple(sorted(touches, key=lambda item: (item[1], item[0])))
 
@@ -150,9 +130,8 @@ def _extract_paths_from_record(
     record: ToolCallRecord,
     workspace_root: str | None,
     structured_tools: set[str],
-    shell_tools: set[str],
 ) -> set[str]:
-    """Collect successful structured and shell mutations from one tool record."""
+    """Collect successful structured mutations from one tool record."""
     if record.had_error:
         return set()
     tool_name = _canonical_tool_name(record.tool_name)
@@ -164,10 +143,4 @@ def _extract_paths_from_record(
                 value = record.input_data.get(key)
                 if isinstance(value, str):
                     paths.update(_extract_apply_patch_paths(value, workspace_root))
-    if tool_name in shell_tools:
-        command = _extract_shell_command(record.input_data)
-        if _command_likely_mutates_files(command):
-            paths.update(
-                _extract_shell_touched_paths(command, lambda path: _normalize_workspace_path(path, workspace_root))
-            )
     return paths

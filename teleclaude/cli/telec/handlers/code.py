@@ -216,7 +216,7 @@ def handle_code_owners(args: list[str]) -> None:
 
 
 def handle_code_add(args: list[str]) -> None:
-    """Stage files for the next commit.
+    """Declare files for the next commit and stage only when Git requires it.
 
     Sealed equivalent of ``git add`` for the three cases git's data model
     genuinely requires staging:
@@ -233,8 +233,8 @@ def handle_code_add(args: list[str]) -> None:
        running ``git add`` fully restages the file so the staged version
        matches the working tree, removing the ambiguity.
 
-    Modified-tracked files that are NOT partial-staged are no-ops here
-    (the pathspec commit picks them up directly from the working tree).
+    Every successful call declares its paths to session-scoping. Modified-tracked
+    files that are NOT partial-staged therefore succeed without index mutation.
     Clean paths and missing paths error with the path named.
     """
     positionals: list[str] = []
@@ -251,9 +251,9 @@ def handle_code_add(args: list[str]) -> None:
         print(
             "Usage: telec code add <path> [<path> ...]\n"
             "\n"
-            "Stages NEW files (untracked) so the next `telec code commit` includes them.\n"
-            "Modified files don't need to be added — pathspec commits them straight from\n"
-            "the working tree.",
+            "Declares paths for the next `telec code commit`; NEW files are also staged.\n"
+            "Modified tracked files are declared without staging because pathspec commits\n"
+            "them directly from the working tree.",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -312,15 +312,17 @@ def handle_code_add(args: list[str]) -> None:
         raise SystemExit(2)
 
     if already_tracked:
-        # Friendly no-op explanation: modified-tracked files don't need add.
+        # Modified tracked paths are declarations; pathspec commit needs no index mutation.
         print(
-            "Note: already tracked + modified, no `add` needed (the pathspec\n"
+            "Declared already tracked + modified path(s); no staging needed (the pathspec\n"
             "commit takes them straight from the working tree):\n  " + "\n  ".join(already_tracked),
             file=sys.stderr,
         )
 
     if stageable:
-        _stage_files(stageable, project_root)
+        with main_branch_lock():
+            wait_for_index_lock_clear(project_root)
+            _stage_files(stageable, project_root)
         # "Staged" without "new" — this command also handles unmerged and
         # partial-staged tracked recoveries, so the diagnostic stays neutral.
         print(f"Staged {len(stageable)} file(s):")

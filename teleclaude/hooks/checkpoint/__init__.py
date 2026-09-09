@@ -482,6 +482,7 @@ def get_checkpoint_content(
     agent_name: AgentName,
     project_path: str,
     native_session_id: str | None = None,
+    transcript_files: str | None = None,
     working_slug: str | None = None,
     elapsed_since_turn_start_s: float | None = None,
     turn_anchor_sha: str | None = None,
@@ -572,14 +573,17 @@ def get_checkpoint_content(
             scope_mode="turn_delta",
             transcript_path=transcript_path,
             native_session_id=native_session_id,
+            transcript_files=transcript_files,
             turn_anchor_sha=turn_anchor_sha,
         )
-        effective_files = list(scoped_paths.paths)
+        resolved_files = list(scoped_paths.paths)
+        declared_paths = set(scoped_paths.declared_paths).intersection(resolved_files)
         effective_files = _scope_git_files_to_current_turn(
-            effective_files,
+            resolved_files,
             timeline,
             project_path,
         )
+        effective_files = sorted(set(effective_files) | declared_paths)
         try:
             commit_obligations = read_commit_obligations(session_id)
         except OSError:
@@ -592,8 +596,8 @@ def get_checkpoint_content(
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
 
-        # Intentionally no full-session fallback:
-        # checkpoint attribution must stay strictly turn-local.
+        # Native attribution stays turn-local; live declarations deliberately
+        # survive earlier turns and handoffs until later commit evidence.
         used_session_fallback = False
 
         if not effective_files and not force_main_commit_checkpoint and not commit_obligations:

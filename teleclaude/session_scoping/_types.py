@@ -24,6 +24,7 @@ class ScopedPathsResult:
     """Result returned by the shared session-scoping API."""
 
     paths: tuple[str, ...]
+    declared_paths: tuple[str, ...]
     scope_mode: ScopeMode
     workspace_kind: WorkspaceKind
     strategy: str
@@ -43,6 +44,14 @@ class TouchEvidence:
 
     path: str
     touched_at: datetime
+
+
+@dataclass(frozen=True)
+class DeclarationEvidence:
+    """One successful sealed-add declaration that remains live."""
+
+    path: str
+    declared_at: datetime
 
 
 @dataclass(frozen=True)

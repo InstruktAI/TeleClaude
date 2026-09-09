@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ._common import ExtractorFunction, extract_structured_paths_from_timeline
+from ._common import _normalize_workspace_path as normalize_workspace_path
 from .claude import collect_claude_paths
 from .codex import collect_codex_paths
 from .deepseek import collect_deepseek_paths
@@ -14,6 +15,7 @@ __all__ = [
     "collect_deepseek_paths",
     "collect_gemini_paths",
     "extract_structured_paths_from_timeline",
+    "normalize_workspace_path",
     "resolve_extractor",
 ]
 

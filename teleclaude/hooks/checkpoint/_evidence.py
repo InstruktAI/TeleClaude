@@ -19,10 +19,10 @@ from teleclaude.hooks.checkpoint._git import (
     _extract_shell_command,
     _extract_shell_touched_paths,
     _normalize_repo_path,
-    _segment_tokens,
     _split_shell_segments,
 )
 from teleclaude.hooks.checkpoint._models import CheckpointContext
+from teleclaude.shell_path_parser import executable_command_tokens, matches_command_prefix
 from teleclaude.snippet_validation import companion_parent, is_companion
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
@@ -155,7 +155,6 @@ _MUTATOR_TOOLS = {
     "exec_command",
 }
 _SHELL_TOOLS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
-_SHELL_ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _TELEC_RELOAD_EVIDENCE = "telec reload"
 
 
@@ -245,19 +244,9 @@ def _last_git_file_mutation_index(
     return last_index
 
 
-def _without_leading_env_assignments(tokens: list[str]) -> list[str]:
-    """Return command tokens after shell-local environment assignments."""
-    first_command_idx = 0
-    for token in tokens:
-        if not _SHELL_ENV_ASSIGNMENT_RE.match(token):
-            break
-        first_command_idx += 1
-    return tokens[first_command_idx:]
-
-
 def _segment_matches_evidence(segment: str, evidence: str) -> bool:
     """Match evidence against executable intent, not raw substring mentions."""
-    tokens = _without_leading_env_assignments(_segment_tokens(segment))
+    tokens = executable_command_tokens(segment)
     if not tokens:
         return False
 
@@ -271,13 +260,13 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
     if evidence == "make test":
         return head == "make" and "test" in rest
     if evidence == "telec code test":
-        return head == "telec" and rest[:2] == ["code", "test"]
+        return matches_command_prefix(segment, ("telec", "code", "test"))
     if evidence == "telec code commit":
-        return head == "telec" and rest[:2] == ["code", "commit"]
+        return matches_command_prefix(segment, ("telec", "code", "commit"))
     if evidence == "uv sync":
         return head == "uv" and "sync" in rest
     if evidence == "telec projects init":
-        return head == "telec" and rest[:2] == ["projects", "init"]
+        return matches_command_prefix(segment, ("telec", "projects", "init"))
     if evidence == "pytest":
         return (
             head == "pytest"
@@ -287,7 +276,7 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
     if evidence == "instrukt-ai-logs":
         return head == "instrukt-ai-logs"
     if evidence == _TELEC_RELOAD_EVIDENCE:
-        return head == "telec" and rest[:1] == ["reload"]
+        return matches_command_prefix(segment, ("telec", "reload"))
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
     if evidence == "next-review-commits":
