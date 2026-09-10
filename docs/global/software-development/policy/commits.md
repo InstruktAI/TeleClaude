@@ -72,12 +72,6 @@ All Committizen types are allowed.
   conversation into a finished change. Where the human has not released the
   tracked change for commit, report what remains uncommitted and offer to
   commit; do not commit it, revert it, or suppress the automation.
-<!-- planned-change:attribution-by-declaration -->
-- Before committing on shared `main`, run bare `telec code commit` to surface
-  the gate card, then commit with `telec code commit --approved "<message>"`
-  using the scoped pathspec the tool resolves. New untracked files require
-  explicit inclusion through `telec code add <path>` or `--include <path>`.
-<!-- change:attribution-by-declaration -->
 - Before committing on shared `main`, run bare `telec code commit` to surface
   the gate card, then commit with `telec code commit --approved "<message>"`
   using the scoped pathspec the tool resolves.
@@ -85,7 +79,6 @@ All Committizen types are allowed.
   `telec code add <path>` before the turn ends. New untracked files are declared
   the same way, or through `--include <path>` at commit. A file the session's
   own tool edits produced needs no declaration.
-<!-- /planned-change:attribution-by-declaration -->
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. When the post-commit
   gate determines that independent review is required, the authoring session
@@ -119,12 +112,10 @@ limitation as that author's mistake — the inversion this policy exists to prev
   and leaves completed work unrecorded. The safety boundary is the sealed commit
   gate plus post-commit review routing, not a human permission prompt.
 
-<!-- planned:attribution-by-declaration -->
 A shell command's text does not reveal which files it wrote. Reading paths out
 of that text mistakes files the command merely inspected or quoted as prose for
 files it changed. The session that ran the command declares what it wrote; the
 runtime's file-edit records cover edits made through native tools.
-<!-- /planned:attribution-by-declaration -->
 
 ## Scope
 

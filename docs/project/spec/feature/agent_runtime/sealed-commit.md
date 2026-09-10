@@ -26,11 +26,7 @@ The contract resolves four classes of file state at commit time:
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
 
-<!-- planned-change:attribution-by-declaration -->
-The scope itself is strictly `(this session's transcript-touched paths) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. A deletion of a file that the session did not touch is NOT in scope — closing a previously-existing leak in which agent A's `rm` ended up committed by agent B. Bash-`rm` deletions that fall out of the transcript extractor are declared via `--include <deleted-path>`.
-<!-- change:attribution-by-declaration -->
 The scope itself is strictly `(runtime-recorded file edits ∪ live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. `telec code add <path>...` is the declaration surface: a successful exact command record enters the session's transcript evidence at its recorded time and stays live until a later sealed-commit command record in the same transcript chain. A path named only by arbitrary shell-command text contributes no evidence.
-<!-- /planned-change:attribution-by-declaration -->
 
 A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
 
@@ -285,17 +281,6 @@ And the unmerged-index entry is replaced with a single staged resolved entry
 And a subsequent `telec code commit --approved "<msg>"` records the resolution
 ```
 
-<!-- planned-change:attribution-by-declaration -->
-#### telec code add no-ops cleanly-modified tracked files
-
-```
-Given a tracked file `mod.py` has only an unstaged working-tree edit (not partial-staged, not unmerged, not new)
-When the agent invokes `telec code add mod.py`
-Then no staging occurs
-And the command emits no error
-And the file remains a modified-tracked file ready to ride the next commit's pathspec
-```
-<!-- change:attribution-by-declaration -->
 #### UC-CGIP-35 — telec code add declares a modified tracked file without staging it
 
 ```gherkin
@@ -305,7 +290,6 @@ Then the command succeeds without changing the file's index state
 And the declaration enters that session's scope
 And the command reports the file as declared
 ```
-<!-- /planned-change:attribution-by-declaration -->
 
 #### telec code add rejects clean and missing paths
 
@@ -364,7 +348,6 @@ And the commit proceeds (subject to the other invariants — pathspec constructi
 And this is justified because every change the integrator commits was individually approved via its delivery's lifecycle
 ```
 
-<!-- planned:attribution-by-declaration -->
 #### UC-CGIP-33 — A declaration is one session's path evidence across every scope consumer
 
 ```gherkin
@@ -387,7 +370,6 @@ Then it waits on the same main-branch serialization and index-lock recovery path
 And it either stages the declared path after the index becomes available or fails with the existing bounded lock diagnostic
 And it does not fail merely because the concurrent commit temporarily owns the index lock
 ```
-<!-- /planned:attribution-by-declaration -->
 
 ### Use cases
 

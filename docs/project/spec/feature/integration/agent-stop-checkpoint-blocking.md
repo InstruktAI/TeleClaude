@@ -432,25 +432,6 @@ When the heuristic engine evaluates the turn window
 Then a checkpoint is produced surfacing the `telec sync` validation action (per UC-CP10), because the doc turn is not yet satisfied
 ```
 
-<!-- planned-change:attribution-by-declaration -->
-#### UC-CP16: Descriptor-only shell redirects do not surface a checkpoint
-
-```gherkin
-Given a turn's only shell command is read-only (e.g. `grep`, `git show`) and redirects a file descriptor to a non-file sink (e.g. `2>/dev/null`, `2>&1`)
-And the working tree carries a pre-existing dirty file unrelated to this turn
-When the heuristic engine evaluates the turn window
-Then the descriptor redirect is not classified as file-mutating intent
-And the pre-existing dirty file is not attributed to this turn
-And no checkpoint is produced
-(A descriptor redirect that suppresses or duplicates a stream is not a file write; classifying it as one reattributes stale dirty state to a turn that made no changes.)
-
-Given a turn's only shell command redirects a numbered file descriptor to a real file path (e.g. `2>teleclaude/core/tracked.py`)
-When the heuristic engine evaluates the turn window
-Then the redirect is classified as file-mutating intent
-And a checkpoint is produced
-(The exemption is scoped to non-file sinks, never to the presence of a descriptor number; a numbered descriptor writing to a real path is still a file write.)
-```
-<!-- change:attribution-by-declaration -->
 #### UC-CP16: Shell command text attributes no path to a turn
 
 ```gherkin
@@ -462,7 +443,6 @@ Then no path is attributed to the turn from the shell-command text
 And the pre-existing dirty file is not attributed to this turn
 And no checkpoint is produced for that file
 ```
-<!-- /planned-change:attribution-by-declaration -->
 
 #### UC-CP17: A sealed commit outside the deployed source records no maintenance obligation
 

@@ -84,7 +84,6 @@ guardrails lane).
 | `scoped_dirty_paths`    | Workspace-owned dirty paths, including deletions, safe for commit staging                                  |
 | `scoped_existing_paths` | Workspace-owned existing paths — serialized into `FILES_FROM` (make leg) and passed to the guardrails lane |
 
-<!-- planned:attribution-by-declaration -->
 ### Session path declarations
 
 On a shared branch, session-owned path evidence is the union of paths recorded
@@ -100,7 +99,6 @@ the agent-stop checkpoint intersects it with the turn's anchor delta; and
 `telec code owners` retains its timestamps while applying the existing dirty
 set and last-commit boundaries. Worktrees remain task-scoped and do not consult
 session declarations.
-<!-- /planned:attribution-by-declaration -->
 
 ### Batch dirty-path ownership
 
