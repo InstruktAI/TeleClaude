@@ -1,9 +1,9 @@
 ---
-description: 'Unknown keys in user-facing `teleclaude.yml` overlays are accepted and surfaced as warnings via a recursive walk; the machine `config.yml` applies hard rejection only to the `agents` block.'
-visibility: 'public'
+description: Unknown keys in user-facing overlays and machine config are rejected at their owning load boundary, while parser-declared dynamic mappings remain valid.
+visibility: public
 ---
 
-# Unknown Key Warning — Spec
+# Unknown Key Rejection — Spec
 
 ## Required reads
 
@@ -11,157 +11,168 @@ visibility: 'public'
 
 ## What it is
 
-Every overlay schema model in the user-facing `teleclaude.yml` schema is
-configured to accept unknown keys silently into an extras bag rather than
-failing validation. v1 layers a soft diagnostic on top: after the overlay schema validates the
-config successfully, the unknown-key walker traverses the validated model
-recursively and emits a `logger.warning` for each model node whose
-the extras bag is non-empty. The warning names the dotted path within the config tree, the
-file the config was loaded from, and the unknown key names.
+Every file-backed configuration surface rejects undeclared keys at the boundary
+that owns its schema. User-facing `teleclaude.yml` overlays are validated by
+closed Pydantic models, so an unknown key prevents that overlay from loading.
+The machine `config.yml` is validated against the accepted input shape declared
+by each section parser before the runtime aggregate is built.
 
-The recursion descends through three shapes:
+The machine-config contract is parser-shaped rather than dataclass-field-shaped.
+A parser may intentionally accept aliases, compact mappings, or other input keys
+that do not mirror the resulting runtime object. Those declared inputs remain
+valid; only keys outside the parser's accepted vocabulary are rejected.
 
-- nested schema models reached by walking their fields;
-- `dict` values whose individual entries are schema models (e.g.,
-  `agents` maps where each agent is its own model);
-- `list` values whose individual elements are schema models (e.g.,
-  the `people` list on the global overlay).
+Rejection is immediate and actionable. The validation failure identifies the
+configuration file and the dotted path of every offending key so an operator can
+repair the source instead of discovering later that a typo was ignored.
 
-Behaviour is intentionally soft. Unknown keys do not stop the load and do
-not invalidate any field. A typo in an overlay file passes validation,
-contributes nothing to runtime behaviour, and shows up only in the runtime
-log stream where an operator scanning warnings can spot it. The rationale is
-forward-compatibility: a project pinned to an older release can declare keys
-that a newer release will eventually consume; the older release ignores
-them with a single warning rather than refusing to start.
+Recognized legacy fields in stored local configuration are migrated to their
+declared destinations before validation. A migration preserves the represented
+value, unrelated content, comments, and identity claims. A conflicting or
+unresolvable destination fails the load without discarding the source value.
+The first successful consuming load sees the migrated values, including values
+whose canonical destination is another local configuration file.
 
-The legacy machine `config.yml` follows a different rule because it does not
-flow through schema validation. Its `agents` block is the only sub-tree that gets
-explicit unknown-key validation, and the policy there is HARD — unknown
-agent keys raise a validation error, never warn. Every other top-level key in
-`config.yml` accepts arbitrary dict shape because the legacy parser walks
-typed fields explicitly and ignores anything it does not look for.
+Migration is a stored-file operation. Newly submitted configuration candidates
+are validated against the current accepted vocabulary without legacy-key
+repair. Neither path accepts arbitrary unknown fields.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-CFG-UNKNOWN-1: Unknown top-level overlay key emits a single warning
+#### UC-CFG-UNKNOWN-1: An unknown top-level overlay key blocks loading
 
-```
-Given /repos/my-project/teleclaude.yml contains the key `mystery_key: 42` at the top level
-And `mystery_key` is not declared on the project overlay schema
-When the config loader runs for a project overlay
-Then overlay schema validation succeeds because extra keys are allowed
-And the resulting model holds an extras bag = {"mystery_key": 42}
-And the unknown-key walker is invoked with path="root" and the config file path
-And exactly one logger.warning is emitted with the shape:
-  "Unknown keys in %s at %s: %s", path="root", config_path=<the file>, keys=["mystery_key"]
-And the returned model is otherwise complete and usable
+```gherkin
+Given an operator-authored teleclaude.yml contains an undeclared top-level key
+When the owning overlay is loaded
+Then validation fails before the overlay becomes available to consumers
+And the failure identifies the configuration file and the offending key path
 ```
 
-#### UC-CFG-UNKNOWN-2: Unknown key inside a nested schema model walks to that node's path
+#### UC-CFG-UNKNOWN-2: An unknown nested overlay key blocks loading
 
-```
-Given a teleclaude.yml that includes:
-  business:
-    publishes: ["software-development"]
-    typo_field: "oops"
-And the business overlay schema accepts unknown keys but has no `typo_field`
-When the config loader runs and the unknown-key checker recurses into the config model's fields
-Then the checker visits the business config node via the `business` attribute
-And emits a logger.warning with path="root.business" listing ["typo_field"]
-And no warning is emitted at path="root" (the top-level extras bag is empty)
+```gherkin
+Given an operator-authored teleclaude.yml contains an undeclared key inside a declared nested section
+When the owning overlay is loaded
+Then validation fails at that nested section
+And the failure identifies the configuration file and the dotted offending key path
 ```
 
-#### UC-CFG-UNKNOWN-3: Unknown key in a dict-of-models walks per-key
+#### UC-CFG-UNKNOWN-3: An unknown key in a named overlay mapping blocks loading
 
-```
-Given a teleclaude.yml that includes:
-  agents:
-    claude: { enabled: true, mystery: "x" }
-    gemini: { enabled: false }
-And AgentDispatchConfig accepts extras
-When _warn_unknown_keys reaches the agents dict
-Then it iterates dict values, finds each AgentDispatchConfig instance, and recurses
-And emits a logger.warning with path="root.agents.claude" listing ["mystery"]
-And emits NO warning for path="root.agents.gemini" (no extras present)
+```gherkin
+Given an operator-authored teleclaude.yml contains a mapping of named schema-backed entries
+And one named entry contains an undeclared key
+When the owning overlay is loaded
+Then validation fails for that named entry
+And the failure identifies the entry and offending key path
 ```
 
-#### UC-CFG-UNKNOWN-4: Unknown key in a list-of-models walks per-index
+#### UC-CFG-UNKNOWN-4: An unknown key in an overlay list item blocks loading
 
-```
-Given a teleclaude.yml that includes:
-  people:
-    - { name: "alice", email: "a@x", role: "admin", unknown_field: 1 }
-    - { name: "bob", email: "b@x", role: "member" }
-And PersonEntry accepts extras
-When _warn_unknown_keys recurses into the people list
-Then it iterates the list, finds each PersonEntry instance, and recurses
-And emits a logger.warning with path="root.people[0]" listing ["unknown_field"]
-And no warning is emitted for path="root.people[1]"
+```gherkin
+Given an operator-authored teleclaude.yml contains a list of schema-backed entries
+And one entry contains an undeclared key
+When the owning overlay is loaded
+Then validation fails for that list item
+And the failure identifies the item and offending key path
 ```
 
-#### UC-CFG-UNKNOWN-5: Legacy config.yml: unknown agents key is a HARD error
+#### UC-CFG-UNKNOWN-5: An unknown machine agent key is rejected
 
-```
-Given a config.yml whose top-level `agents` block contains an entry `wizard:`
-And `wizard` is not in the known-agent set
-When the machine-config load runs
-Then the agents-section presence/shape check confirms `agents:` is a mapping
-And the known-agent-key check raises a validation error with message:
-  "Unknown key(s) under `config.yml:agents`: wizard. Allowed keys: <known>."
-And the load fails — no warning path exists for this case
+```gherkin
+Given an operator-authored config.yml declares an agent outside the supported agent vocabulary
+When the machine configuration is loaded
+Then validation fails before the runtime configuration becomes available
+And the failure identifies the unsupported agent key
 ```
 
-#### UC-CFG-UNKNOWN-6: Legacy config.yml: unknown non-agents top-level key is silently accepted
+#### UC-CFG-UNKNOWN-6: An unknown machine-config key blocks loading
 
+```gherkin
+Given an operator-authored config.yml contains a key outside the accepted input shape of its owning section
+When the machine configuration is loaded
+Then validation fails before the runtime configuration becomes available
+And the failure identifies the configuration file and dotted offending key path
 ```
-Given a config.yml whose top-level contains a key `someday_setting: {...}` that no machine-config parser reads
-And the key is not `agents` and is not on the disallowed-runtime list
-When the machine-config load builds the runtime configuration aggregate
-Then the unknown key contributes nothing to the resulting aggregate
-And no warning, no error, no log entry mentions the unused key
-And the runtime proceeds as if the key were absent
+
+#### UC-CFG-UNKNOWN-7: Parser-declared machine-config inputs remain valid
+
+```gherkin
+Given an operator-authored config.yml uses an input key explicitly accepted by its owning section parser
+And that key does not mirror a field name on the resulting runtime object
+When the machine configuration is loaded
+Then the input is accepted
+And the parser maps it into the typed runtime configuration aggregate
+```
+
+#### UC-CFG-UNKNOWN-8: Recognized stored configuration migrates before consumption
+
+```gherkin
+Given an agent loads local configuration containing a recognized legacy setting
+And its identity and declaration are valid for that configuration
+And its declared destination is absent or already holds the same value
+When the configuration is loaded for consumption
+Then the setting is persisted in its declared form before the configuration becomes available
+And the first successful consuming load observes the migrated value
+And unrelated values, comments, and identity claims are preserved
+And loading the migrated configuration again makes no migration changes
+```
+
+#### UC-CFG-UNKNOWN-9: Conflicting migration preserves the source and fails explicitly
+
+```gherkin
+Given an agent loads local configuration containing a recognized legacy setting
+And its declared destination cannot be resolved uniquely or contains a conflicting value
+When the configuration load attempts the migration
+Then the load fails with an explicit conflict
+And neither the source value nor the conflicting destination value is discarded or overwritten
+And the failure exposes no secret values
+```
+
+#### UC-CFG-UNKNOWN-10: An interrupted move remains safely retryable
+
+```gherkin
+Given an agent loads local configuration that moves a legacy value to another local store
+And the destination write succeeds but the source cleanup fails
+When the agent retries the configuration load
+Then the retained source value is reconciled with the equal destination value
+And the source is removed only after the destination is confirmed persisted
+And unrelated destination entries are preserved
+```
+
+#### UC-CFG-UNKNOWN-11: Concurrent migrations preserve each other's updates
+
+```gherkin
+Given two agent processes load local configuration requiring migrations into the same destination
+When those migrations overlap
+Then each migration checks the destination state protected from concurrent mutation
+And both non-conflicting updates remain available after the loads complete
+And neither process removes a source whose destination write did not succeed
 ```
 
 ### Cross-context references
 
-- Warnings flow through the runtime's standard logging stream; operators
-  reviewing runtime logs (or the TUI's logs view) are the only
-  consumers. There is no domain event emitted for unknown keys.
-- The forward-compatibility intent is shared with the `config` bounded
-  context (see `project/spec/domain/config.md`), which flags that the
-  policy may tighten from "warning" to "error" once the migration window
-  closes.
+- The config bounded context owns the accepted vocabulary and the resulting
+  validation failure for every configuration surface.
+- Runtime and adapter consumers receive only configuration that has passed its
+  owning load boundary; they do not implement secondary unknown-key handling.
+- Parser-declared machine-config input shapes are part of the machine-load
+  contract in `project/spec/feature/config/machine-config-load`.
 
 ## Allowed values
 
-- Any unknown key shape is permitted in v1 overlays; the warning only
-  reports the keys, it never restricts them.
-- For `config.yml:agents`, allowed agent keys are those enforced by agent-key validation; any other entry under `agents` raises.
+- Overlay keys declared by the owning Pydantic schema are accepted.
+- Machine-config keys declared by the owning section parser are accepted,
+  including deliberate aliases and dynamic mapping members.
+- Any other key is rejected; there is no warn-and-continue or silent-drop path.
 
 ## Known caveats
 
-- **Warnings, not errors.** A misconfigured operator who relies on a typo'd
-  key (e.g., `enabld: true` instead of `enabled: true`) will see no
-  immediate failure — the default for the real field applies, and the
-  warning is buried in logs. The first symptom may be unexpected runtime
-  behaviour.
-- **Recursion only walks declared field shapes.** The helper recognises
-  three shapes: nested schema models, dict values that are schema models, and
-  list items that are schema models. Unknown keys nested INSIDE the extras bag
-  itself (e.g., the operator dropped a whole subtree with unknown shape) are
-  reported only at the topmost level where the extras bag first appears; the
-  helper does not crack open arbitrary dicts inside the extras bag.
-- **Two configuration surfaces, two policies.** The schema-validation overlay path
-  warns; the legacy machine `config.yml` path raises for `agents` and
-  silently drops everything else. Operators editing both files cannot rely
-  on a single mental model for unknown-key behaviour.
-- **`extra="allow"` is universal on overlay models.** Tightening unknown-key
-  policy in v1 means updating every overlay schema's extra-key setting
-  — a coordinated change, not a per-model knob. The v2
-  cutover is the planned moment for that flip.
-- **No structured warning payload.** The warning is a `logger.warning` with
-  positional format args; downstream filtering must parse strings. There is
-  no event taxonomy entry for unknown-key occurrences.
+- Configuration migration and strict validation apply to each installation's
+  own files. Loading on one installation does not depend on the version,
+  reachability, or migration state of another installation.
+- Dynamic mappings remain open only where their parser explicitly declares that
+  input shape. An open mapping is not a general escape from unknown-key
+  validation.
