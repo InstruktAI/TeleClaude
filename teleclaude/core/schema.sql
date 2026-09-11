@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_agent_stop_at TEXT,
     last_agent_idle_at TEXT,
     turn_anchor_sha TEXT,
+    command TEXT,
     working_slug TEXT,
     lifecycle_status TEXT DEFAULT 'initializing',
     runtime_start_observed INTEGER DEFAULT 0,
@@ -60,7 +61,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_memory_extraction_at TEXT,
     help_desk_processed_at TEXT,
     relay_status TEXT,
-    relay_discord_channel_id TEXT,
+    relay_channel_id TEXT,
     relay_started_at TEXT,
     char_offset INTEGER DEFAULT 0,
     transcript_files TEXT DEFAULT '[]',
@@ -92,6 +93,7 @@ CREATE TABLE IF NOT EXISTS session_listeners (
     caller_session_id TEXT NOT NULL,
     caller_tmux_session TEXT NOT NULL,
     registered_at TEXT NOT NULL,
+    one_shot INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (target_session_id, caller_session_id)
 );
 
@@ -147,6 +149,8 @@ CREATE TABLE IF NOT EXISTS control_outbox (
     created_at TEXT NOT NULL,
     outcome TEXT CHECK(outcome IN ('delivered', 'failed')),
     terminal_at TEXT,
+    envelope_name TEXT,
+    envelope_fields_json TEXT,
     CHECK(
         (outcome IS NULL AND terminal_at IS NULL)
         OR (outcome IS NOT NULL AND terminal_at IS NOT NULL)
@@ -547,6 +551,9 @@ CREATE TABLE IF NOT EXISTS output_generations (
     session_id TEXT NOT NULL,
     binding_id TEXT,
     is_legacy INTEGER NOT NULL DEFAULT 0,
+    native_runtime TEXT,
+    native_session_id TEXT,
+    native_entry_id TEXT,
     created_at TEXT NOT NULL
 );
 
