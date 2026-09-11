@@ -105,9 +105,25 @@ visibility: 'public'
     already produced for it; a new output version or a different effective
     voice produces a new one. Artifacts are bounded in lifetime and private in
     permission.
-12. **Voice identity survives the destination.** Invariant 1 holds for remote
-    destinations, so where a person's room is configured, a session's assigned
-    voice is drawn from services that can render. Falling back to a different
-    voice to satisfy a destination would break the identity that makes two
-    sessions distinguishable by ear.
+12. **A remote destination resolves its chain the same way a local one does.**
+    The chain is the session's assigned service first, then the remaining
+    services in priority order, filtered to those that can render. Rendering
+    capability is a property each backend declares, established per backend
+    rather than assumed from the fact that it currently plays audio.
+13. **A render fallback promotes, exactly as a playback fallback does.** Where
+    the assigned service cannot render or fails to, the first chain entry that
+    succeeds is persisted as the session's assignment — invariant 3's existing
+    behaviour, reached through a new destination. A session already assigned to
+    a non-rendering service is therefore promoted on first remote delivery
+    rather than left silent or spoken in a voice the record contradicts. The
+    session's persisted voice and the voice heard never disagree, and after one
+    promotion the assignment is stable for the rest of the session.
+14. **Promotion changes the artifact identity, not the rule.** Because a cached
+    artifact is identified by effective voice, a promotion simply produces a new
+    artifact; nothing invalidates or rewrites what was cached under the previous
+    voice.
+15. **Local playback is untouched.** The chain, the promotion rule, and the
+    artifact cache above govern remote destinations. A session speaking to host
+    speakers keeps the existing behaviour, including the ability to use a
+    backend that cannot render.
 <!-- /planned:discord-personal-voice-conversation -->

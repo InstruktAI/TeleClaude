@@ -57,6 +57,17 @@ TeleClaudeNext repository.
   the existing session-input delivery contract through which a closed
   voice-originated utterance is accepted. Integration reaches focus only
   through these; it never reads or writes the association directly.
+- **Focus authority is the listening computer.** The record lives with the
+  computer that owns the person's voice connection, because that is the one
+  deciding what to play. Its derived input ordering comes from cluster session
+  snapshots, which already publish the identified human and the time input was
+  last accepted; an explicit selection supersedes the derived value until a
+  later accepted input from that human.
+- **Also published:** a query returning a session's complete user-visible final
+  response together with the output version it belongs to. The published
+  snapshot carries the generated summary and an output digest, neither of which
+  is the spoken contract, so this is the contract a remote listener reads. It is
+  additive: existing queries and payloads are unchanged.
 <!-- /planned:discord-personal-voice-conversation -->
 <!-- planned-change:external-session-identity -->
 - **Published contracts:** session commands, queries, and lifecycle signals
