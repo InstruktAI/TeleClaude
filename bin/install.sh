@@ -725,6 +725,23 @@ install_gog() {
 }
 
 # Install system dependencies
+# Brings a local Redis up without assuming it is down. Probing first keeps a
+# repeat install quiet instead of re-announcing a service that never stopped.
+ensure_local_redis_running() {
+    if redis-cli ping 2>/dev/null | grep -q PONG; then
+        print_info "Redis already running"
+        return 0
+    fi
+
+    print_info "Starting Redis service..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        brew services start redis >> "$LOG_FILE" 2>&1 || true
+    else
+        sudo systemctl enable --now redis 2>&1 | tee -a "$LOG_FILE" > /dev/null || true
+    fi
+    print_success "Redis service management delegated to OS"
+}
+
 install_system_deps() {
     print_header "Installing System Dependencies"
 
@@ -779,23 +796,19 @@ install_system_deps() {
         local redis_url_value=""
         [ -f "$INSTALL_DIR/.env" ] && redis_url_value="$(grep -E '^REDIS_URL=.+' "$INSTALL_DIR/.env" | head -1)"
         redis_url_value="${redis_url_value#REDIS_URL=}"
+        # An installed server is the record of a previous yes, so asking again
+        # offers a choice whose answer cannot change anything. Every sibling
+        # dependency above checks for the binary before acting; Redis only
+        # differs in carrying a prompt when it is genuinely absent.
         if redis_url_skips_local_install "$redis_url_value"; then
             print_info "Remote Redis already configured (REDIS_URL host=$(redis_url_host "$redis_url_value")) — skipping local Redis install"
+        elif command -v redis-server &> /dev/null; then
+            print_info "Redis already installed"
+            ensure_local_redis_running
         elif confirm "Do you want to install and start a local Redis server?" "y"; then
-            if command -v redis-server &> /dev/null; then
-                print_info "Redis already installed"
-            else
-                print_info "Installing Redis..."
-                install_package redis
-            fi
-
-            print_info "Starting Redis service..."
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                brew services start redis >> "$LOG_FILE" 2>&1 || true
-            else
-                sudo systemctl enable --now redis 2>&1 | tee -a "$LOG_FILE" >/dev/null || true
-            fi
-            print_success "Redis service management delegated to OS"
+            print_info "Installing Redis..."
+            install_package redis
+            ensure_local_redis_running
         fi
 
         # macOS-only optional GUI casks (LM Studio: local summarizer; Handy: STT)
