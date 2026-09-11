@@ -33,6 +33,9 @@ docs/.obsidian/
 .env
 !tests/integration/.env
 !tests/integration/config.yml
+# Per-file lock held by the atomic config writer (teleclaude/config/_file_io.py);
+# recreated on every config write, never meaningful to track.
+*.yml.lock
 
 # Runtime
 *.pid
