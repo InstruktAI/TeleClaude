@@ -329,13 +329,18 @@ def plan_snippet_reconciliation(
     writes: list[ReconciliationWrite] = list(companion_writes.values())
     for path, original in contents.items():
         rendered = _render_mode(original, slug, mode, new_slug)
-        if rendered == original:
+        # Compare against the file on disk, never against ``original``. A companion-replaced
+        # parent carries the companion body here, not its own bytes, so comparing the two
+        # in-memory values reports "no change" and drops the write that applies the
+        # replacement — leaving the companion's delete as the only half that lands.
+        on_disk = path.read_text(encoding="utf-8") if path.exists() else None
+        if rendered == on_disk:
             continue
         writes.append(
             ReconciliationWrite(
                 path=path,
                 relative_path=_relative_path(project_root, path),
-                original_content=path.read_text(encoding="utf-8") if path.exists() else None,
+                original_content=on_disk,
                 rendered_content=rendered,
                 line=_first_line(original, slug),
                 carrier=_carrier_for_change(original, slug),
