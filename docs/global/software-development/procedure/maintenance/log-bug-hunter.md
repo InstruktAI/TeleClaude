@@ -70,11 +70,7 @@ and implementation.
 
 - A bug filed for each observed error that is neither suppressed nor already tracked.
 - A Markdown report named by the run timestamp in the job's run directory:
-<!-- planned-change:generic-job-declarative-model -->
-  `~/.teleclaude/jobs/{job_id}/runs/`.
-<!-- change:generic-job-declarative-model -->
   `~/.teleclaude/jobs/{project_slug}/{job_id}/runs/`.
-<!-- /planned-change:generic-job-declarative-model -->
 
 Create the directory when needed. Each report carries:
 

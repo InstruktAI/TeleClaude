@@ -106,17 +106,10 @@ event on close or stall through `EventProducer`; the notification cartridge proj
 actionable event (failure or stall) to admins and stays silent for a clean run. The agent
 never emits events — it reports only through `telec jobs report`, and the runner owns the
 translation to events. When event emission cannot be delivered, the runner persists a
-<!-- planned-change:generic-job-declarative-model -->
-durable pending-emission record — the full payload keyed by `job_name` + `run_started_at` —
-and the next sweep drains the queue, re-emitting each outcome exactly once until it
-succeeds. A job with an unnotified actionable outcome is not re-dispatched, so a later run
-cannot overwrite a notification that has not yet been delivered.
-<!-- change:generic-job-declarative-model -->
 durable pending-emission record — the full payload keyed by the run's project, job identity,
 and `run_started_at` — and the next sweep drains the queue, re-emitting each outcome exactly
 once until it succeeds. A job with an unnotified actionable outcome is not re-dispatched in
 that project, so a later run cannot overwrite a notification that has not yet been delivered.
-<!-- /planned-change:generic-job-declarative-model -->
 
 #### Components
 
@@ -132,50 +125,28 @@ that project, so a later run cannot overwrite a notification that has not yet be
 
 #### Cross-project iteration
 
-<!-- planned-change:generic-job-declarative-model -->
-The runner's log-bug-hunter fan-out uses `ProjectCatalogService` and
-`ProjectJobOrchestrator` to find subscribing projects, skip a project with a live
-session for this job, and dispatch `next-run-job` with that project's declaration.
-Signal collection, grouping, and suppression matching belong entirely to the
-agent's procedure. There is no per-project hunter service or pre-dispatch log filter.
-The parent run closes on the fan-out result; its success records dispatch, not
-completion of the individual scans. Each agent writes its own scan report and
-structured outcome, and its project-scoped session liveness prevents redispatch.
-<!-- change:generic-job-declarative-model -->
 The runner itself walks every registered project (`ProjectCatalogService`, a lazy singleton
 over `~/.teleclaude/projects.yaml`), composes that project's effective job set, and runs what
 is due there. A job never iterates projects, and no job carries a dedicated
 per-project executor: the runner dispatches every job through its declared
 execution class for the project in hand. A failure in one project is isolated
 and the walk continues.
-<!-- /planned-change:generic-job-declarative-model -->
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-<!-- planned-change:generic-job-declarative-model -->
-- `teleclaude.yml` — schedule configuration for each registered job
-- `jobs/*.py` — job modules discovered at runtime, each exposing a module-level `JOB`
-- `~/.teleclaude/state/cron_state.json` — the per-job run lifecycle
-<!-- change:generic-job-declarative-model -->
 - the global `~/.teleclaude/teleclaude.yml` registry and every registered project's `teleclaude.yml` — published jobs, subscriptions, and local declarations
 - `jobs/*.py` — job modules discovered at runtime, each exposing a module-level `JOB`
 - `~/.teleclaude/state/cron_state.json` — the run lifecycle, per project and job
-<!-- /planned-change:generic-job-declarative-model -->
 
 **Outputs:**
 
 - Job execution (side effects defined by each job)
 - A `JobResult` outcome for every run, script and agent alike
 - `job.run.*` events on close/stall, projected to a human when actionable
-<!-- planned-change:generic-job-declarative-model -->
-- Run reports at `~/.teleclaude/jobs/{job_id}/runs/{YYMMDD-HHMMSS}.md` (human-readable audit)
-- Updated run lifecycle in `~/.teleclaude/state/cron_state.json`
-<!-- change:generic-job-declarative-model -->
 - Run reports at `~/.teleclaude/jobs/{project_slug}/{job_id}/runs/{YYMMDD-HHMMSS}.md` (human-readable audit)
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`, per project and job
-<!-- /planned-change:generic-job-declarative-model -->
 
 - Structured logs to `~/.local/state/instrukt-ai/teleclaude/cron.log`
 
@@ -189,32 +160,10 @@ and the walk continues.
 - Both job classes produce the same `JobResult` outcome and `job.run.*` event shape.
 - A clean run is silent; an actionable outcome (failure or stall) notifies a human.
 - Agent jobs produce a run report and a structured outcome every run, even with nothing to process.
-<!-- planned-change:generic-job-declarative-model -->
-- An agent job has one identity, the procedure snippet ID its `job` pointer carries; a script job's identity is its declared name. Dispatch, run state, the run directory, and the report key all use that identity and nothing else names the job.
-<!-- change:generic-job-declarative-model -->
 - An agent job has one identity, the procedure snippet ID its `job` pointer carries; a script job's identity is its `script` module's stem. Dispatch, run state, the run directory, and the report key all use that identity and nothing else names the job.
-<!-- /planned-change:generic-job-declarative-model -->
 
 ### Configuration surface
 
-<!-- planned-change:generic-job-declarative-model -->
-
-#### Project-level: `teleclaude.yml`
-
-The project-root `teleclaude.yml` is the single source of truth for job scheduling. Each
-job is registered under the `jobs:` key. Schedule fields: `schedule`
-(`hourly`/`daily`/`weekly`/`monthly`), `preferred_hour` (0–23), `preferred_weekday` (0–6),
-`preferred_day` (1–31). Execution-mode fields: `script` (path, in-process job), `job`
-(procedure snippet ID, agent job), `agent`, `thinking_mode`, `timeout` (seconds; default 1800).
-`script` and `job` are mutually exclusive; `script` leads.
-
-#### Per-person and global
-
-`~/.teleclaude/people/{name}/teleclaude.yml` carries per-subscriber configuration;
-`~/.teleclaude/teleclaude.yml` carries global scope. Discovery
-(`teleclaude/cron/discovery.py`) scans both for subscribers of a given service.
-
-<!-- change:generic-job-declarative-model -->
 
 #### Project-level: `teleclaude.yml`
 
@@ -252,7 +201,6 @@ published jobs available to every project; a project runs a published job only b
 to it. `~/.teleclaude/people/{name}/teleclaude.yml` carries per-subscriber configuration.
 Discovery (`teleclaude/cron/discovery.py`) scans both for subscribers of a given service.
 
-<!-- /planned-change:generic-job-declarative-model -->
 
 ## Primary flows
 
@@ -280,29 +228,15 @@ config or last run time, flowing the same open/close lifecycle.
 
 ### Manual run (API)
 
-<!-- planned-change:generic-job-declarative-model -->
-`POST /jobs/{name}/run` launches the standalone cron runner process
-(`scripts/cron_runner.py --job NAME --force`) so the job executes in the ephemeral runner
-process with the same timeout containment as a scheduled run. It opens a run and lets the
-sweep close it; it does not report completion at dispatch and does not run job logic inside
-the daemon. A spawn failure returns an explicit API error so the operator sees the start
-failure synchronously.
-<!-- change:generic-job-declarative-model -->
 `POST /jobs/{name}/run` launches the standalone cron runner for the named job.
 Its optional `project` query parameter selects the registered project; omission
 selects the runner's own project. The cron command receives the same project
 selection and resolves that project's effective declaration. Acceptance records
 dispatch, and the run closes through its normal outcome path. A spawn failure
 returns an explicit API error.
-<!-- /planned-change:generic-job-declarative-model -->
 
 ### Script job contract
 
-<!-- planned-change:generic-job-declarative-model -->
-1. Create a Python module in `jobs/` exposing a `Job` subclass and a module-level `JOB`
-   instance, with a PEP 723 header and a `run_job_cli(JOB)` `__main__` for standalone use.
-2. Register in `teleclaude.yml` with `script` pointing to the module.
-<!-- change:generic-job-declarative-model -->
 1. Create a Python module in `jobs/` exposing a `Job` subclass and a module-level `JOB`
    instance, with a PEP 723 header and a `run_job_cli(JOB)` `__main__` for standalone use.
 2. Register in `teleclaude.yml` with `script` pointing to the module.
@@ -311,7 +245,6 @@ returns an explicit API error.
 module serves every subscribing project without reading an ambient working directory. A
 module published in the global registry lives in the mother repository; a module declared
 locally lives in the declaring project.
-<!-- /planned-change:generic-job-declarative-model -->
 
 `JobResult` is the structured outcome both classes produce:
 
@@ -330,12 +263,6 @@ class JobResult:
    outputs and recovery, and sync it so its ID resolves.
 2. Register in `teleclaude.yml` with `job` carrying the procedure's snippet ID.
 
-<!-- planned-change:generic-job-declarative-model -->
-The runner dispatches `/next-run-job <id>` through the canonical command-session contract
-and opens a run keyed by that ID. The agent loads the procedure with its required-read
-closure, does its work, writes a run report, reports its outcome via
-`telec jobs report <id>`, and stops.
-<!-- change:generic-job-declarative-model -->
 The runner dispatches `/next-run-job <id>` through the canonical command-session contract,
 rooted at the project the run belongs to, and opens a run keyed by that project and ID. The
 agent loads the procedure with its required-read closure, does its work, writes a run report
@@ -344,23 +271,7 @@ stops.
 An agent outcome carries the reporting session's identity as well as the project
 and job. The sweep closes only the run opened for that session; a late outcome
 from an earlier run cannot close its successor.
-<!-- /planned-change:generic-job-declarative-model -->
 
-<!-- planned-change:generic-job-declarative-model -->
-
-### Schedule semantics
-
-| Schedule | Minimum interval | Preferred timing                               |
-| -------- | ---------------- | ---------------------------------------------- |
-| hourly   | 1 hour           | —                                              |
-| daily    | 20 hours         | `preferred_hour` (default 6)                   |
-| weekly   | 6 days           | `preferred_weekday` (0=Mon) + `preferred_hour` |
-| monthly  | 25 days          | `preferred_day` (1st) + `preferred_hour`       |
-
-A job runs only when both conditions are met: minimum interval elapsed AND preferred timing
-reached. Jobs that have never run wait for the first scheduled occurrence after discovery.
-
-<!-- change:generic-job-declarative-model -->
 
 ### Schedule semantics
 
@@ -370,45 +281,21 @@ Exactly one of `every`/`at` is set. The full scheduling contract is
 `project/spec/feature/config/job-schedule-contract`. Jobs that have never run wait for the
 first scheduled occurrence after discovery.
 
-<!-- /planned-change:generic-job-declarative-model -->
 
 ### Run lifecycle persistence
 
-<!-- planned:generic-job-declarative-model -->
 Migration derives project association from recorded execution context and typed
 session identity. Parent fan-out outcomes remain dispatch history; they never
 become successful project scans. Ambiguous history stays recoverable, and an
 active or queued outcome whose ownership cannot be resolved stops migration
 without discarding its original record.
-<!-- /planned:generic-job-declarative-model -->
 
 File: `~/.teleclaude/state/cron_state.json`
 
-<!-- planned-change:generic-job-declarative-model -->
-Entries are keyed by job identity — an agent job's procedure snippet ID, a script job's
-declared name.
-<!-- change:generic-job-declarative-model -->
 Entries are keyed by project slug and job identity — an agent job's procedure snippet ID, a
 script job's `script` module stem — so the same published job carries separate lifecycles in
 every project that subscribes to it.
-<!-- /planned-change:generic-job-declarative-model -->
 
-<!-- planned-change:generic-job-declarative-model -->
-```json
-{
-  "jobs": {
-    "<job identity>": {
-      "first_seen_at": "2026-02-04T08:00:00+00:00",
-      "run_started_at": null,
-      "run_session_id": null,
-      "last_run": "2026-02-04T08:00:35+00:00",
-      "last_status": "success",
-      "last_error": null
-    }
-  }
-}
-```
-<!-- change:generic-job-declarative-model -->
 ```json
 {
   "jobs": {
@@ -425,25 +312,18 @@ every project that subscribes to it.
   }
 }
 ```
-<!-- /planned-change:generic-job-declarative-model -->
 
 - `run_started_at` / `run_session_id`: set while a run is open (agent runs carry the session id).
 - `last_run`: completion timestamp of the most recent closed run.
 - `last_status`: `"running"` | `"success"` | `"failed"` | `"stalled"` | `"never"`.
 - `last_error`: error or stall message, or null.
 
-<!-- planned-change:generic-job-declarative-model -->
-A separate `pending_emissions` collection holds undelivered actionable outcomes, each keyed
-by `job_name` + `run_started_at` and carrying its full event payload, so a notification
-survives a transport outage independent of later run state.
-<!-- change:generic-job-declarative-model -->
 A separate `pending_emissions` collection holds undelivered actionable outcomes, each keyed
 by the run's project, job identity, and `run_started_at`, and carrying its full event
 payload, so a notification survives a transport outage independent of later run state. The
 payload carries `job_key` — the project and identity joined — which is the field the
 notification lifecycle groups an outcome under, so two projects running one published job
 keep separate notification lifecycles.
-<!-- /planned-change:generic-job-declarative-model -->
 
 ## Failure modes
 
@@ -452,11 +332,7 @@ keep separate notification lifecycles.
 - **Job module fails to import**: Logged as error, run closed as failed, other jobs still run.
 - **Script job raises during `run()`**: Caught, run closed as failed, other jobs still run.
 - **Script job exceeds `timeout`**: The daemon-thread join records a failed `JobResult` and the runner aborts the rest of the pass so no later job runs concurrently; the hung job is hard-reaped when the runner process exits, freeing the pidlock, and the deferred jobs run on the next trigger.
-<!-- planned-change:generic-job-declarative-model -->
-- **A job cannot start**: An agent session-creation failure records a failed outcome and emits `job.run.failed`; an API runner-process spawn failure returns an explicit API error. A start failure is never a silent skip.
-<!-- change:generic-job-declarative-model -->
 - **A job cannot start**: An agent session-creation failure — including an agent preference list with no eligible candidate — records a failed outcome carrying the dispatch refusal reason and emits `job.run.failed`; an API runner-process spawn failure returns an explicit API error. A start failure is never a silent skip.
-<!-- /planned-change:generic-job-declarative-model -->
 - **Agent run never reported within its window**: Marked `stalled`, emits `job.run.stalled`, notifies a human.
 - **Event emission unavailable**: The outcome is persisted as a durable pending-emission record and re-emitted exactly once on a later sweep; the job is not re-dispatched until its actionable outcome is delivered, so it is never dropped or overwritten.
 - **Overlap (concurrent runner instances)**: Second instance detects the pidfile and exits cleanly; stale pidfiles are detected and overwritten.
@@ -467,16 +343,10 @@ keep separate notification lifecycles.
 A host periodic trigger runs `scripts/cron_runner.py` every 5 minutes (macOS launchd
 `ai.instrukt.teleclaude.cron`, `StartInterval 300`; systemd
 `teleclaude-cron.service` + `.timer`, `OnUnitActiveSec=5min`). `bin/daemon-control.sh`
-<!-- planned-change:generic-job-declarative-model -->
-installs the trigger alongside the daemon on `start`/`restart`. Working directory: repo
-root. Logs: `~/.local/state/instrukt-ai/teleclaude/cron.log`. Overlap prevention: pidfile at
-`~/.teleclaude/cron_runner.pid`.
-<!-- change:generic-job-declarative-model -->
 installs the trigger alongside the daemon on `start`/`restart`. Working directory: repo
 root; each project's jobs run rooted at that project. Logs:
 `~/.local/state/instrukt-ai/teleclaude/cron.log`. Overlap prevention: pidfile at
 `~/.teleclaude/cron_runner.pid`.
-<!-- /planned-change:generic-job-declarative-model -->
 
 ### CLI
 

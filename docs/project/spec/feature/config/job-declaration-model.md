@@ -1,7 +1,9 @@
 ---
-description: Declarative job model — a job is declared by config pointing at exactly one execution target (a `script` entrypoint or a `job` procedure), the mother project publishes global jobs in a global registry, a side project subscribes to one with its own overrides, and the runner runs every subscribed job inside the subscribing project.
-delivered_by:
-  - generic-job-declarative-model
+description: Declarative job model — a job is declared by config pointing at exactly
+  one execution target (a `script` entrypoint or a `job` procedure), the mother project
+  publishes global jobs in a global registry, a side project subscribes to one with
+  its own overrides, and the runner runs every subscribed job inside the subscribing
+  project.
 ---
 
 # Job Declaration Model — Spec

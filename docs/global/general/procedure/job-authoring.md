@@ -51,22 +51,6 @@ resolved against the snippet index.
 
 ### 3. Register in teleclaude.yml
 
-<!-- planned-change:generic-job-declarative-model -->
-
-Add under `jobs:`:
-
-```yaml
-jobs:
-  { job_key }:
-    category: system
-    when:
-      at: '06:00' # or: every: 60m
-    job: <procedure snippet id> # agent job; use script: jobs/{job_slug}.py for a script job
-    agent: claude | gemini | codex # agent job only
-    thinking_mode: fast | med | slow # agent jobs only
-```
-
-<!-- change:generic-job-declarative-model -->
 
 Declare a job as an entry of the `jobs:` list with a `when` schedule and exactly one execution
 pointer — the pointer present is the execution class and the job's identity; there is no name
@@ -88,7 +72,6 @@ override any setting for that project — its own `when`, `agent`, `thinking_mod
 or set `enabled: false` to unsubscribe. Whatever it leaves unset falls back to the published
 defaults, and the job runs inside the subscribing project.
 
-<!-- /planned-change:generic-job-declarative-model -->
 
 The `job:` value is the procedure's canonical snippet ID and is the agent job's
 identity everywhere: dispatch, run state, the run directory, and the structured
@@ -98,17 +81,8 @@ use its own `project/procedure/...` ID.
 
 ### 4. For script jobs: write the script
 
-<!-- planned:generic-job-declarative-model -->
 The module's stem is the script job's identity in run state, the run directory, and the runner's job filter.
-<!-- /planned:generic-job-declarative-model -->
 
-<!-- planned-change:generic-job-declarative-model -->
-Place at `jobs/{job_slug}.py`. Define a `Job` subclass (`jobs/base.py`) whose `run()`
-returns a `JobResult`, and expose it as a module-level `JOB` instance. The cron runner
-imports the module and invokes `JOB.run()` in-process. Keep the PEP 723 dependency header
-and a `if __name__ == "__main__": run_job_cli(JOB)` entrypoint so the script stays
-runnable and debuggable standalone.
-<!-- change:generic-job-declarative-model -->
 Place at `jobs/{job_slug}.py`. Define a `Job` subclass (`jobs/base.py`) whose
 `run(context)` returns a `JobResult`, and expose it as a module-level `JOB` instance. The
 cron runner imports the module and invokes `JOB.run(context)` in-process, passing the
@@ -116,7 +90,6 @@ project the run belongs to — its root and slug — so one published module ser
 subscribing project. Keep the PEP 723 dependency header and a
 `if __name__ == "__main__": run_job_cli(JOB)` entrypoint so the script stays runnable and
 debuggable standalone.
-<!-- /planned-change:generic-job-declarative-model -->
 
 ### 5. Sync and validate
 

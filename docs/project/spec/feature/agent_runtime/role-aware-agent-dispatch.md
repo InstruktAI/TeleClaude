@@ -25,13 +25,6 @@ same way regardless of which supported entry point creates them.
 
 ### Dispatch modes
 
-<!-- planned-change:generic-job-declarative-model -->
-**Automatic preference**
-: Fresh work whose caller omits an agent, or whose system-role caller supplies a preferred
-agent. A system-role preference is considered first but remains subject to automatic
-eligibility and reviewer independence. The canonical command and, for prepare orchestration,
-todo kind establish the remaining ordered candidates.
-<!-- change:generic-job-declarative-model -->
 **Automatic preference**
 : Fresh work whose caller omits an agent, or whose system-role caller supplies a preferred
 agent. A system-role preference is considered first but remains subject to automatic
@@ -42,7 +35,6 @@ of a command row. A job has no code-owned candidate order. An empty effective li
 is rejected by the job configuration boundary before selection.
 The routing decision identifies the job declaration as the candidate-order source
 and retains the existing eligibility fallback or refusal reason.
-<!-- /planned-change:generic-job-declarative-model -->
 
 **Manual preference**
 : Fresh work where a caller without a system role explicitly selects an agent. The
@@ -50,29 +42,17 @@ selected agent must be known and enabled, and must not be operator-unavailable. 
 degraded selected agent is honored because degradation gates automatic dispatch only.
 An invalid manual selection is rejected; it never substitutes another agent.
 
-<!-- planned-change:generic-job-declarative-model -->
-**Fixed agent**
-: Continuation work bound to an existing runtime, transcript, or declared fixed-agent
-job. Fixed work never substitutes another agent.
-<!-- change:generic-job-declarative-model -->
 **Fixed agent**
 : Continuation work bound to an existing runtime or transcript. Fixed work never
 substitutes another agent. A scheduled job is never fixed work: its declaration carries a
 preference list, not a binding.
-<!-- /planned-change:generic-job-declarative-model -->
 
 ### Command dispatch policy
 
-<!-- planned-change:generic-job-declarative-model -->
-One command-keyed matrix owns automatic agent selection and the default thinking
-mode. System role and job role remain separate session-identity and authority facts;
-neither selects an agent or mode.
-<!-- change:generic-job-declarative-model -->
 Ordinary command-driven work uses the command matrix for automatic candidates and
 default thinking mode. Scheduled jobs instead receive their candidate order and
 execution settings from the effective job declaration; no job row in the matrix
 supplies either. System role and job role remain identity and authority facts.
-<!-- /planned-change:generic-job-declarative-model -->
 
 | Command                     | Ordered agents                                                                        | Default thinking mode |
 | --------------------------- | ------------------------------------------------------------------------------------- | --------------------- |
@@ -367,7 +347,6 @@ And the automated caller receives a typed reviewer-independence fallback reason
 And the dispatch decision reports that fallback is present
 ```
 
-<!-- planned:generic-job-declarative-model -->
 #### UC-RAAD-19:
 
 ```gherkin
@@ -379,7 +358,6 @@ And the routing result identifies declaration-sourced selection
 And no eligible candidate results in an explicit refusal before session creation
 ```
 
-<!-- /planned:generic-job-declarative-model -->
 
 #### UC-RAAD-20: A reviewer request excludes agents that already reviewed its target
 

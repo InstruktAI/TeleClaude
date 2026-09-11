@@ -7,15 +7,9 @@ description: Scheduled agent jobs enter the canonical command-session dispatch c
 
 ## What it is
 
-<!-- planned-change:generic-job-declarative-model -->
-A scheduled agent job starts through the same command-session dispatch contract as every other dispatched command. The scheduler supplies the job's identity — the procedure snippet ID its declaration points at — to the daemon-owned run boundary; that boundary finds the declaration carrying that pointer, derives the job session, prepares the runtime-specific command input, and creates the session with the job-runner role. Session bootstrap then issues the job session's system-principal credential through the standard identity lifecycle.
-
-Job configuration remains owned by the configuration context. A scheduler cannot redefine the configured agent, thinking mode, job procedure, or role through an alternate creation contract.
-<!-- change:generic-job-declarative-model -->
 A scheduled agent job starts through the same command-session dispatch contract as every other dispatched command. The scheduler supplies the job's identity — the procedure snippet ID its declaration points at — to the daemon-owned run boundary; that boundary finds the declaration carrying that pointer in the project's composed effective job set (a local declaration, or a published global declaration overlaid by that project's subscription), derives the job session, prepares the runtime-specific command input, and creates the session with the job-runner role. The boundary hands the declaration's agent preference list to automatic dispatch as the candidate order; it never fixes one agent. Session bootstrap then issues the job session's system-principal credential through the standard identity lifecycle.
 
 Job configuration remains owned by the configuration context. A scheduler cannot redefine the configured agent preference, thinking mode, job procedure, or role through an alternate creation contract.
-<!-- /planned-change:generic-job-declarative-model -->
 
 ## Canonical fields
 
