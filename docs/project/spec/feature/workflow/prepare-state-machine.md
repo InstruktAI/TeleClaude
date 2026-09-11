@@ -92,16 +92,19 @@ And each admitted pass was counted and persisted before its reviewer instruction
 
 ```gherkin
 Given a Todo is awaiting PRD, architecture, or implementation-plan review
-And the current target's review loop has already admitted `DEFAULT_MAX_REVIEW_ROUNDS` reviewer passes without closure
+And the current target's review cycle has already admitted `DEFAULT_MAX_REVIEW_ROUNDS` reviewer passes
 And no approve verdict is current for the reviewed artifact and report digests
 When the orchestrator calls "telec todo prepare my-change"
-Then the machine returns REVIEW_ROUND_LIMIT for that exact review phase and review loop
+Then the machine returns REVIEW_ROUND_LIMIT for that exact review phase and review cycle
 And it emits no reviewer dispatch, reuse, or follow-up instruction
 And it preserves the lifecycle phase and active runner for orchestrator classification under the review procedure
-And rewriting the reviewed artifact or findings report while remediating that unclosed loop does not reset its admitted-pass count
+And rewriting the reviewed artifact or findings report while remediating that cycle does not reset its admitted-pass count
 And each admitted pass remains counted and persisted in the phase's cumulative history before its reviewer instruction is returned
-But an earlier review loop that closed before substantive drift forced a stabilized replacement target does not exhaust the replacement's allowance
-And the replacement receives its first complete discovery pass without removing the earlier loop's counters, continuations, report, or verdict evidence
+When a valid substantive drift stamp invalidates that target and any downstream review targets
+Then every affected target starts a new review cycle with `DEFAULT_MAX_REVIEW_ROUNDS` ordinary passes
+And continuations recorded before the substantive stamp do not enlarge the new cycle's allowance
+And the existing first-versus-second continuation authority rules apply within the new cycle
+And a stabilized replacement receives its first complete discovery pass without removing the earlier cycle's counters, continuations, report, or verdict evidence
 ```
 <!-- /planned-change:fix-plan-review-admission-after-closed-target -->
 
