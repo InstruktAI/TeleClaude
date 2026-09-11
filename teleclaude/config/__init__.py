@@ -7,6 +7,7 @@ Config is loaded at module import time and available globally via:
 import getpass
 import os
 import socket
+from collections.abc import Mapping
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from teleclaude.config._chiptunes import ChiptunesConfig as ChiptunesConfig
 from teleclaude.config._chiptunes import parse_chiptunes_config as _parse_chiptunes_config
 from teleclaude.config._coerce import as_bool as _as_bool
 from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
+from teleclaude.config._environment import expand_environment_references
 from teleclaude.config._file_migrations import remove_matching_tmux_binary
 from teleclaude.config._machine_input import EXPERIMENTS_FILE_INPUT, MACHINE_CONFIG_INPUT
 from teleclaude.config._models import AgentConfig as AgentConfig
@@ -80,7 +82,6 @@ from teleclaude.constants import (
 )
 from teleclaude.paths import PROJECT_ENV_PATH, ConfigFileName
 from teleclaude.runtime.binaries import resolve_tmux_binary
-from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
 
@@ -124,6 +125,11 @@ def _refresh_dotenv() -> None:
         os.environ[key] = str(values[key])
     _dotenv_managed_keys.clear()
     _dotenv_managed_keys.update(current)
+
+
+def machine_runtime_environment() -> Mapping[str, str]:
+    """Expose the established machine runtime environment to config adapters."""
+    return os.environ
 
 
 _refresh_dotenv()
@@ -173,7 +179,7 @@ def deep_merge(
 def strip_unset_placeholders(data: object) -> object:
     """Drop config keys whose value is an unexpanded ``${VAR}`` placeholder.
 
-    After :func:`expand_env_vars`, a value still shaped like ``${VAR}`` means the
+    After :func:`expand_environment_references`, a value still shaped like ``${VAR}`` means the
     environment variable was unset. Dropping the key lets the ``DEFAULT_CONFIG``
     value win in :func:`deep_merge`, so the Python default applies instead of a
     literal ``"${VAR}"`` string silently overriding it.
@@ -710,7 +716,9 @@ def build_config_from_raw(
         **{CONFIG_LOAD_ID: load_id, CONFIG_LOAD_OUTCOME: CONFIG_LOAD_ACCEPTED, CONFIG_LOAD_STAGE: CONFIG_LOAD_BUILD},
     )
     user_config: Any = (
-        strip_unset_placeholders(expand_env_vars(raw_user_config)) if isinstance(raw_user_config, dict) else {}
+        strip_unset_placeholders(expand_environment_references(raw_user_config, os.environ, preserve_unresolved=True))
+        if isinstance(raw_user_config, dict)
+        else {}
     )
 
     experiments_path = sibling_dir / "experiments.yml"
@@ -719,7 +727,9 @@ def build_config_from_raw(
             raw_experiments_config = yaml.safe_load(f) or {}
         validate_machine_input(raw_experiments_config, EXPERIMENTS_FILE_INPUT, experiments_path)
         if isinstance(raw_experiments_config, dict) and isinstance(user_config, dict):
-            experiments_config: Any = strip_unset_placeholders(expand_env_vars(raw_experiments_config))
+            experiments_config: Any = strip_unset_placeholders(
+                expand_environment_references(raw_experiments_config, os.environ, preserve_unresolved=True)
+            )
             if "experiments" in experiments_config:
                 user_config.setdefault("experiments", [])
                 exp_list = experiments_config["experiments"]

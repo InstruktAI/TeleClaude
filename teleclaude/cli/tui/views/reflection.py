@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import dataclasses
-import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from types import UnionType
 from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 
 from pydantic import BaseModel
 
+from teleclaude.config._environment import environment_reference_at_path
 from teleclaude.config.tiers import (
     Tier,
     dataclass_field_tier,
@@ -18,6 +20,14 @@ from teleclaude.config.tiers import (
     pydantic_field_tier,
     renders_in_tui,
 )
+
+
+@dataclass(frozen=True)
+class EnvironmentProvenance:
+    """The environment file that owns a reflected placeholder value."""
+
+    name: str
+    path: Path
 
 
 @dataclass
@@ -32,10 +42,13 @@ class ReflectedField:
     description: str | None = None  # Description from field/metadata
     section: str = "General"  # Group name for accordion folding
     env_var: str | None = None  # Backing environment variable when the config value is a ${VAR} reference
+    environment: EnvironmentProvenance | None = None
     owning_source: str = "global"  # The config source owning this field
 
 
-def resolve_env_placeholders(fields: list[ReflectedField]) -> None:
+def resolve_env_placeholders(
+    fields: list[ReflectedField], environment: Mapping[str, str], environment_path: Path
+) -> None:
     """Resolve ``${VAR}`` field values to their environment value in place.
 
     A config value like ``${DISCORD_BOT_TOKEN}`` is a reference to a ``.env`` secret,
@@ -48,7 +61,22 @@ def resolve_env_placeholders(fields: list[ReflectedField]) -> None:
         if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
             var = value[2:-1]
             field.env_var = var
-            field.value = os.environ.get(var, "")  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
+            field.environment = EnvironmentProvenance(var, environment_path)
+            field.value = environment.get(var, "")
+
+
+def bind_environment_provenance(
+    fields: list[ReflectedField], raw_config: object, environment_path: Path, field_prefix: str
+) -> None:
+    """Attach environment ownership from raw YAML without exposing resolved values."""
+    prefix = f"{field_prefix}."
+    for field in fields:
+        if field.key.startswith(prefix):
+            path = tuple(field.key.removeprefix(prefix).split("."))
+            variable = environment_reference_at_path(raw_config, path)
+            if variable is not None:
+                field.env_var = variable
+                field.environment = EnvironmentProvenance(variable, environment_path)
 
 
 def _unpack_union(t: Any) -> list[Any]:

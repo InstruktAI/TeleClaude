@@ -48,6 +48,7 @@ from teleclaude.cli.telec.surface import (
     CONFIG_VALIDATE,
 )
 from teleclaude.config import config
+from teleclaude.config._environment import write_environment_value
 from teleclaude.config.migrations import migrate_person_slugs_if_needed
 from teleclaude.config.schema import PersonEntry, TelegramCreds
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
@@ -486,24 +487,7 @@ def _env_set(pairs: list[str], use_json: bool) -> None:
 
 def _write_env_var(env_file: Path, name: str, value: str) -> None:
     """Set or update a variable in the .env file."""
-    lines: list[str] = []
-    found = False
-
-    if env_file.exists():
-        lines = env_file.read_text().splitlines(keepends=True)
-        for i, line in enumerate(lines):
-            stripped = line.lstrip()
-            if stripped.startswith(f"{name}=") or stripped.startswith(f"export {name}="):
-                lines[i] = f"{name}={value}\n"
-                found = True
-                break
-
-    if not found:
-        if lines and not lines[-1].endswith("\n"):
-            lines.append("\n")
-        lines.append(f"{name}={value}\n")
-
-    env_file.write_text("".join(lines))
+    write_environment_value(env_file, name, value)
 
 
 # --- Notify ---

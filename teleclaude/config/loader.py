@@ -1,7 +1,5 @@
 """Configuration file loading and validation."""
 
-import os
-import stat
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -9,11 +7,18 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from dotenv import dotenv_values
 from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 from ruamel.yaml import YAML
 
+from teleclaude.config._environment import (
+    company_environment_creation_mode,
+    expand_environment_references,
+    find_environment_references,
+    read_environment_file,
+    reconcile_environment_references,
+    write_environment_values,
+)
 from teleclaude.config._file_io import file_transaction
 from teleclaude.config._file_migrations import (
     migrate_global_file,
@@ -37,7 +42,6 @@ from teleclaude.config.schema import (
 )
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 from teleclaude.slug import validate_slug
-from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
 _PERSON_SLUG_FIELD = "slug"
@@ -122,7 +126,12 @@ def load_config[T: BaseModel](
         )
         migrate_global_file(path, canonical_people_dir)
         raw = _read_config_mapping(path)
-    expanded = expand_env_vars(raw)
+    references = find_environment_references(raw)
+    environment_path = path.with_name(ConfigFileName.ENV)
+    local_environment = (
+        read_environment_file(environment_path, company_restricted=kind is ConfigKind.COMPANY) if references else {}
+    )
+    expanded = expand_environment_references(raw, local_environment, config_path=path)
     try:
         model = model_class.model_validate(expanded, extra="forbid")
     except Exception as exc:
@@ -147,7 +156,7 @@ def load_project_config(path: Path) -> ProjectConfig:
 def save_project_config(path: Path, config: ProjectConfig) -> None:
     """Save project config to disk using atomic write (temp + rename)."""
     data = config.model_dump(mode="json", exclude_defaults=True)
-    write_declared_config(path, ConfigKind.PROJECT, data, schema_root=path.parent)
+    _write_overlay_config(path, ConfigKind.PROJECT, data, schema_root=path.parent)
 
 
 def _model_to_dict(model: BaseModel) -> dict[str, Any]:  # guard: loose-dict - Pydantic model_dump output
@@ -184,7 +193,11 @@ def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
             existing = yaml_rt.load(content) or {}
         overlay = _model_to_dict(config)
         merged = _deep_merge(existing, overlay)
-        transaction.replace_text(render_declared_config(target, ConfigKind.GLOBAL, merged, schema_root=target.parent))
+        reconciled, environment_updates = _reconcile_overlay_document(target, ConfigKind.GLOBAL, merged)
+        transaction.replace_text(
+            render_declared_config(target, ConfigKind.GLOBAL, reconciled, schema_root=target.parent)
+        )
+    _write_overlay_environment(target, ConfigKind.GLOBAL, environment_updates)
     logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(existing))
 
 
@@ -197,7 +210,7 @@ def save_person_config(slug: str, config: PersonConfig) -> None:
     person_dir.mkdir(parents=True, exist_ok=True)
     target = person_dir / ConfigFileName.OVERLAY
     data = _model_to_dict(config)
-    write_declared_config(target, ConfigKind.PERSON, data, schema_root=person_dir.parent.parent)
+    _write_overlay_config(target, ConfigKind.PERSON, data, schema_root=person_dir.parent.parent)
     logger.info("Saved person config for %s to %s", slug, target)
 
 
@@ -265,7 +278,7 @@ def save_company_config(slug: str, config: CompanyConfig, companies_root: Path |
     """Atomic write of the company config keyed by slug. Creates the folder if needed."""
     company_dir = _company_dir(slug, companies_root)
     company_dir.mkdir(parents=True, exist_ok=True)
-    write_declared_config(
+    _write_overlay_config(
         company_dir / ConfigFileName.OVERLAY,
         ConfigKind.COMPANY,
         _model_to_dict(config),
@@ -304,16 +317,6 @@ def load_company_config_for_slug(slug: str, companies_root: Path | None = None) 
     return load_company_config(company_config_path)
 
 
-class CompanyCredentialsError(Exception):
-    """Raised when a company ``.env`` exists but cannot be read safely.
-
-    A missing ``.env`` is not an error — it means "no credentials". This error is
-    reserved for the loud-failure cases: a world/group-readable file (secret
-    exposure) or an unreadable file (the secret cannot be resolved). Failures are
-    explicit rather than silently returning empty credentials.
-    """
-
-
 def load_company_credentials(slug: str, companies_root: Path | None = None) -> dict[str, str]:
     """Resolve a company's service credentials through the single resolver seam.
 
@@ -332,17 +335,47 @@ def load_company_credentials(slug: str, companies_root: Path | None = None) -> d
       returning empty credentials.
     """
     env_path = _company_dir(slug, companies_root) / ConfigFileName.ENV
-    if not env_path.exists():
-        return {}
-    file_mode = env_path.stat().st_mode
-    if file_mode & (stat.S_IRWXG | stat.S_IRWXO):
-        raise CompanyCredentialsError(
-            f"Company '{slug}' .env is group/world-accessible ({stat.filemode(file_mode)}); "
-            f"expected owner-only 0600. Refusing to load exposed credentials: {env_path}"
-        )
-    if not os.access(env_path, os.R_OK):
-        raise CompanyCredentialsError(f"Company '{slug}' .env is not readable: {env_path}")
-    return {key: value for key, value in dotenv_values(env_path).items() if value is not None}
+    return read_environment_file(env_path, company_restricted=True)
+
+
+def _write_overlay_config(
+    path: Path,
+    kind: ConfigKind,
+    document: dict[str, Any],  # guard: loose-dict - Pydantic model_dump output
+    *,
+    schema_root: Path,
+) -> None:
+    """Persist one overlay while retaining its raw environment references."""
+    reconciled, environment_updates = _reconcile_overlay_document(path, kind, document)
+    write_declared_config(path, kind, reconciled, schema_root=schema_root)
+    _write_overlay_environment(path, kind, environment_updates)
+
+
+def _reconcile_overlay_document(
+    path: Path,
+    kind: ConfigKind,
+    document: dict[str, Any],  # guard: loose-dict - Pydantic model_dump output
+) -> tuple[dict[str, Any], dict[str, str]]:  # guard: loose-dict - raw YAML config
+    """Reconcile a typed save payload with raw reference-bearing YAML."""
+    raw = _read_config_mapping(path) if path.exists() else {}
+    references = find_environment_references(raw)
+    environment = (
+        read_environment_file(path.with_name(ConfigFileName.ENV), company_restricted=kind is ConfigKind.COMPANY)
+        if references
+        else {}
+    )
+    reconciled, updates = reconcile_environment_references(raw, document, environment)
+    if not isinstance(reconciled, dict):
+        raise ValueError(f"Configuration document must be a mapping: {path}")
+    return reconciled, updates
+
+
+def _write_overlay_environment(path: Path, kind: ConfigKind, updates: Mapping[str, str]) -> None:
+    """Apply placeholder-backed changes only to the owning sibling environment file."""
+    if not updates:
+        return
+    creation_mode = company_environment_creation_mode() if kind is ConfigKind.COMPANY else None
+    write_environment_values(path.with_name(ConfigFileName.ENV), updates, creation_mode=creation_mode)
 
 
 def normalize_person_config_key(value: str) -> str:

@@ -495,10 +495,11 @@ class ConfigContentEditingMixin:
         try:
             deserialized = deserialize_value(raw_value, f.field_type, f.choices)
 
-            if f.env_var:
+            if f.environment is not None:
                 # ${VAR}-backed field: persist to .env, leave the placeholder in config.yml.
-                set_env_var(f.env_var, str(deserialized))
-                reload_config()
+                set_env_var(f.environment.name, str(deserialized), f.environment.path)
+                if f.owning_source == "machine":
+                    reload_config()
             elif f.owning_source == "machine":
                 block_reason = self._section_write_block_reason(key, deserialized)
                 if block_reason is not None:

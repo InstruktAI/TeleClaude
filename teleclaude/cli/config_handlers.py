@@ -10,7 +10,6 @@ Both the interactive menu and onboarding wizard consume this layer.
 from __future__ import annotations
 
 import dataclasses
-import fcntl
 import importlib
 import os
 import secrets
@@ -24,6 +23,7 @@ from pydantic import BaseModel, ValidationError
 from ruamel.yaml.error import YAMLError
 
 import teleclaude.config as _tc_config_module
+from teleclaude.config._environment import write_environment_value
 from teleclaude.config._file_migrations import move_person_invite_token
 from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
 from teleclaude.config.invitations import load_invitations, save_invitations
@@ -534,52 +534,7 @@ def set_env_var(name: str, value: str, env_path: Path | None = None) -> Path:
         raise ValueError("Env var value cannot contain newlines")
 
     target = resolve_env_file_path(env_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    lock_path = target.with_suffix(".lock")
-    tmp_path = target.with_suffix(".tmp")
-
-    with open(lock_path, "w", encoding="utf-8") as lock_file:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        except OSError:
-            pass
-
-        try:
-            lines: list[str] = []
-            found = False
-            if target.exists():
-                lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
-                for index, line in enumerate(lines):
-                    stripped = line.lstrip()
-                    if stripped.startswith(f"export {name}="):
-                        lines[index] = f"export {name}={value}\n"
-                        found = True
-                        break
-                    if stripped.startswith(f"{name}="):
-                        lines[index] = f"{name}={value}\n"
-                        found = True
-                        break
-
-            if not found:
-                if lines and not lines[-1].endswith("\n"):
-                    lines[-1] = f"{lines[-1]}\n"
-                lines.append(f"{name}={value}\n")
-
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                f.write("".join(lines))
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_path, target)
-        except Exception:
-            if tmp_path.exists():
-                tmp_path.unlink()
-            raise
-        finally:
-            try:
-                lock_path.unlink()
-            except OSError:
-                pass
+    write_environment_value(target, name, value)
 
     os.environ[name] = value  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
     logger.info("Updated env var %s in %s", name, target)

@@ -40,7 +40,12 @@ from teleclaude.cli.tui.views._config_constants import (
 from teleclaude.cli.tui.views._project_actions import _load_raw_config, _resolve_config_path
 from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
 from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
-from teleclaude.cli.tui.views.reflection import ReflectedField, reflect_schema, resolve_env_placeholders
+from teleclaude.cli.tui.views.reflection import (
+    ReflectedField,
+    bind_environment_provenance,
+    reflect_schema,
+    resolve_env_placeholders,
+)
 from teleclaude.config import (
     DEFAULT_CONFIG,
     ChiptunesConfig,
@@ -55,15 +60,17 @@ from teleclaude.config import (
     TTSConfig,
     WhatsAppConfig,
     deep_merge,
+    machine_runtime_environment,
     parse_daemon_config,
     parse_stt_config,
     parse_tts_config,
 )
 from teleclaude.config._summarizer import parse_summarizer_config
-from teleclaude.config.loader import list_company_configs
+from teleclaude.config.loader import find_company_config_path, find_person_config_path, list_company_configs
 from teleclaude.config.schema import CompanyConfig, ConfigKind, PersonEntry
 from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
+from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName
 
 __all__ = ["ConfigContent", "ConfigView"]
 
@@ -415,7 +422,7 @@ class ConfigContent(
         render_cycle_id = str(uuid4())
         observe_config_tui(ConfigTuiOutcome.RENDER_REQUESTED, render_cycle_id=render_cycle_id, subtab=tab.value)
         fields = self._build_reflected_fields(tab)
-        resolve_env_placeholders(fields)
+        resolve_env_placeholders(fields, machine_runtime_environment(), PROJECT_ENV_PATH)
         observe_config_tui(
             ConfigTuiOutcome.RENDERED,
             render_cycle_id=render_cycle_id,
@@ -452,15 +459,22 @@ class ConfigContent(
                 )
             fields: list[ReflectedField] = []
             for slug, company in self._companies_data:
-                fields.extend(
-                    reflect_schema(
-                        company,
-                        prefix=f"company:{slug}",
-                        section=company.name or slug,
-                        owning_source="per-company",
-                        inherited_tier=Tier.TUI,
-                    )
+                company_fields = reflect_schema(
+                    company,
+                    prefix=f"company:{slug}",
+                    section=company.name or slug,
+                    owning_source="per-company",
+                    inherited_tier=Tier.TUI,
                 )
+                company_path = find_company_config_path(slug)
+                if company_path is not None:
+                    bind_environment_provenance(
+                        company_fields,
+                        _load_raw_config(company_path),
+                        company_path.with_name(ConfigFileName.ENV),
+                        f"company:{slug}",
+                    )
+                fields.extend(company_fields)
             return fields
 
         if tab == Subtab.INFRA:
@@ -658,8 +672,28 @@ class ConfigContent(
             inherited_tier=Tier.TUI,
         )
 
+        global_raw = _load_raw_config(GLOBAL_CONFIG_PATH)
+        global_people = global_raw.get("people", [])
+        raw_person = next(
+            (
+                person
+                for person in global_people
+                if isinstance(person, dict) and person.get("slug") == person_entry.slug
+            ),
+            {},
+        )
+        bind_environment_provenance(
+            entry_fields, raw_person, GLOBAL_CONFIG_PATH.with_name(ConfigFileName.ENV), "identity"
+        )
+        person_path = find_person_config_path(person_entry)
+        if person_path is not None:
+            bind_environment_provenance(
+                overlay_fields,
+                _load_raw_config(person_path),
+                person_path.with_name(ConfigFileName.ENV),
+                "overlay",
+            )
         fields = entry_fields + overlay_fields
-        resolve_env_placeholders(fields)
         logger.info(
             "config_tui_person_overlay_rendered",
             render_cycle_id=render_cycle_id,
