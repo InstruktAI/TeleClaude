@@ -144,7 +144,17 @@ class ReviewContinuation(BaseModel):
     reason: str = ""
     caller_session_id: str = ""
     caller_role: ReviewContinuationCallerRole = ReviewContinuationCallerRole.CLAIMANT
+    assessor_role: ReviewContinuationCallerRole | None = None
+    assessor_id: str = ""
     stamped_at: str = ""
+
+
+class ReviewCycleState(BaseModel):
+    """Cycle offsets scoped to one prepare-review target."""
+
+    round_offset: int = Field(ge=0, default=0)
+    continuation_offset: int = Field(ge=0, default=0)
+    reconciliation_pending: bool = False
 
 
 class ReviewVerdictState(BaseModel):
@@ -163,6 +173,16 @@ class ReviewVerdictState(BaseModel):
     caller_session_id: str = ""
     cleared_by_substantive_drift: bool = False
     continuations: list[ReviewContinuation] = Field(default_factory=list)
+    cycle: ReviewCycleState = Field(default_factory=ReviewCycleState)
+
+    @model_validator(mode="after")
+    def _validate_cycle_offsets(self) -> ReviewVerdictState:
+        """Keep cycle offsets inside the cumulative history they project."""
+        if self.cycle.round_offset > self.rounds:
+            raise ValueError("review cycle round_offset cannot exceed cumulative rounds")
+        if self.cycle.continuation_offset > len(self.continuations):
+            raise ValueError("review cycle continuation_offset cannot exceed cumulative continuations")
+        return self
 
 
 class BuildReviewState(BaseModel):
@@ -289,7 +309,7 @@ class AuditState(BaseModel):
 
 
 class TodoState(BaseModel):
-    """Canonical state for a TeleClaude work item (schema v4).
+    """Canonical state for a TeleClaude work item (schema v10).
 
     ``lifecycle_phase`` is the only authoritative software-development phase
     pointer. ``phase`` remains the coarse pending/in_progress/done item status
@@ -302,7 +322,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[9] = 9
+    schema_version: Literal[10] = 10
     phase: str = "pending"
     lifecycle_phase: LifecyclePhase | None = LifecyclePhase.DRAFT
     prepare_phase: str = Field(default="", exclude=True)
@@ -385,5 +405,5 @@ class TodoState(BaseModel):
 
     @classmethod
     def defaults(cls) -> TodoState:
-        """Return a fresh v2 TodoState used by schema reset and scaffolding."""
+        """Return a fresh v10 TodoState used by schema reset and scaffolding."""
         return cls()

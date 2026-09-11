@@ -9,7 +9,7 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 9
+LATEST_TODO_STATE_SCHEMA_VERSION = 10
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
@@ -20,6 +20,7 @@ _V6_SCHEMA_VERSION = 6
 _V7_SCHEMA_VERSION = 7
 _V8_SCHEMA_VERSION = 8
 _V9_SCHEMA_VERSION = 9
+_V10_SCHEMA_VERSION = 10
 _BUILD_PLAN_DIGEST_KEY = "build_plan_digest"
 _CONTINUATION_REVIEW_KEYS = (
     "prd_review",
@@ -28,6 +29,7 @@ _CONTINUATION_REVIEW_KEYS = (
     "plan_review",
     "build_review",
 )
+_PREPARE_REVIEW_KEYS = _CONTINUATION_REVIEW_KEYS[:-1]
 _EMPTY_TEXT = ""
 _LEGACY_HANDED_OFF_PHASE = "handed_off"
 
@@ -341,6 +343,22 @@ def _upcycle_v8_to_v9(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     return migrated
 
 
+def _upcycle_v9_to_v10(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Add pending cycle reconciliation to prepare reviews without losing history."""
+    migrated = dict(raw)
+    for review_key in _PREPARE_REVIEW_KEYS:
+        review = migrated.get(review_key)
+        review_dict = dict(review) if isinstance(review, dict) else {}
+        review_dict["cycle"] = {
+            "round_offset": 0,
+            "continuation_offset": 0,
+            "reconciliation_pending": True,
+        }
+        migrated[review_key] = review_dict
+    migrated["schema_version"] = _V10_SCHEMA_VERSION
+    return migrated
+
+
 def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
     version = _detect_schema_version(migrated)
@@ -368,6 +386,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v7_to_v8(migrated)
         elif version == _V8_SCHEMA_VERSION:
             migrated = _upcycle_v8_to_v9(migrated)
+        elif version == _V9_SCHEMA_VERSION:
+            migrated = _upcycle_v9_to_v10(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)

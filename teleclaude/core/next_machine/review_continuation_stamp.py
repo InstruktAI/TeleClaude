@@ -18,8 +18,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import JobRole
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
-from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
+from teleclaude.core.next_machine.review_rounds import ReviewPhase, build_cycle_admission, prepare_cycle_admission
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.paths import MAIN_DB_PATH
@@ -48,6 +48,8 @@ _REVIEW_CONTINUATION_CLASSIFICATION_PHRASES: dict[str, ReviewHaltClassification]
     "ambiguous contract": ReviewHaltClassification.AMBIGUOUS_CONTRACT,
     "unstable target": ReviewHaltClassification.UNSTABLE_TARGET,
 }
+_ASSESSED_BY_PREFIX = "assessed-by:"
+_ASSESSED_BY_SEPARATOR = ";"
 
 
 class ReviewContinuationRefusal(StrEnum):
@@ -77,6 +79,25 @@ def _parse_review_continuation_reason(reason: str) -> tuple[ReviewHaltClassifica
     if classification is None or not text:
         return None, ""
     return classification, text
+
+
+def _parse_declared_assessor(evidence: str) -> tuple[ReviewContinuationCallerRole | None, str]:
+    """Read a structural assessor declaration from claimant-written evidence."""
+    if not evidence.startswith(_ASSESSED_BY_PREFIX):
+        return None, ""
+    declaration, separator, remaining_evidence = evidence[len(_ASSESSED_BY_PREFIX) :].partition(_ASSESSED_BY_SEPARATOR)
+    if not separator or not remaining_evidence.strip():
+        return None, ""
+    role_text, identifier_separator, assessor_id = declaration.strip().partition(":")
+    if not identifier_separator or not assessor_id.strip():
+        return None, ""
+    try:
+        assessor_role = ReviewContinuationCallerRole(role_text.strip())
+    except ValueError:
+        return None, ""
+    if assessor_role not in {ReviewContinuationCallerRole.COORDINATOR, ReviewContinuationCallerRole.HUMAN}:
+        return None, ""
+    return assessor_role, assessor_id.strip()
 
 
 def _log_review_continuation_decision(
@@ -160,10 +181,15 @@ async def apply_review_continuation_stamp(
         raise StateMutationError(f"cannot stamp review_continuation: {classification.value} earns no continuation")
 
     review = writer.verdict_target(phase)
-    admitted = review.rounds if isinstance(review, ReviewVerdictState) else review.round
-    continuations = review.continuations
-    allowance = DEFAULT_MAX_REVIEW_ROUNDS + len(continuations)
-    if admitted < allowance:
+    if isinstance(review, ReviewVerdictState):
+        is_prepare_review = True
+        admission = prepare_cycle_admission(ReviewPhase(phase), review)
+        ordinal = len(review.continuations) - review.cycle.continuation_offset + 1
+    else:
+        is_prepare_review = False
+        admission = build_cycle_admission(review)
+        ordinal = len(review.continuations) + 1
+    if admission.allowed:
         _log_review_continuation_decision(
             slug=slug,
             phase=phase,
@@ -174,13 +200,15 @@ async def apply_review_continuation_stamp(
             reason=ReviewContinuationRefusal.NOT_AT_CAP,
         )
         raise StateMutationError(
-            f"cannot stamp review_continuation: {phase} has not reached its current allowance ({admitted}/{allowance})"
+            f"cannot stamp review_continuation: {phase} has not reached its current allowance "
+            f"({admission.admitted}/{admission.maximum})"
         )
 
-    ordinal = len(continuations) + 1
     active_runner = writer.state.active_runner
     is_human_caller = bool(caller_session_id and caller_session_id.startswith("human:"))
     caller_role: ReviewContinuationCallerRole
+    assessor_role: ReviewContinuationCallerRole
+    assessor_id: str
     if ordinal == 1:
         if is_human_caller or not caller_session_id or caller_session_id != active_runner:
             _log_review_continuation_decision(
@@ -210,23 +238,46 @@ async def apply_review_continuation_stamp(
                 f"review_continuation stamp for {slug} phase {phase} at ordinal 1 requires a live claiming session"
             )
         caller_role = ReviewContinuationCallerRole.CLAIMANT
+        assessor_role = caller_role
+        assessor_id = caller_session_id
     else:
         if not is_human_caller and caller_session_id == active_runner:
-            _log_review_continuation_decision(
-                slug=slug,
-                phase=phase,
-                ordinal=ordinal,
-                caller_role="",
-                classification=classification.value,
-                outcome="refused",
-                reason=ReviewContinuationRefusal.SAME_INTELLIGENCE_SECOND_CAP,
-            )
-            raise PermissionError(
-                f"review_continuation stamp for {slug} phase {phase} refused: a second cap on the same "
-                "phase is assessed by a different intelligence than the claiming orchestrator"
-            )
-        if is_human_caller:
+            if not is_prepare_review:
+                _log_review_continuation_decision(
+                    slug=slug,
+                    phase=phase,
+                    ordinal=ordinal,
+                    caller_role="",
+                    classification=classification.value,
+                    outcome="refused",
+                    reason=ReviewContinuationRefusal.SAME_INTELLIGENCE_SECOND_CAP,
+                )
+                raise PermissionError(
+                    f"review_continuation stamp for {slug} phase {phase} refused: a second cap on the same "
+                    "phase is assessed by a different intelligence than the claiming orchestrator"
+                )
+            declared_role, declared_id = _parse_declared_assessor(evidence_text)
+            if declared_role is None:
+                _log_review_continuation_decision(
+                    slug=slug,
+                    phase=phase,
+                    ordinal=ordinal,
+                    caller_role="",
+                    classification=classification.value,
+                    outcome="refused",
+                    reason=ReviewContinuationRefusal.SAME_INTELLIGENCE_SECOND_CAP,
+                )
+                raise PermissionError(
+                    f"review_continuation stamp for {slug} phase {phase} at ordinal {ordinal} requires a "
+                    "declared coordinator or human assessor"
+                )
+            caller_role = ReviewContinuationCallerRole.CLAIMANT
+            assessor_role = declared_role
+            assessor_id = declared_id
+        elif is_human_caller:
             caller_role = ReviewContinuationCallerRole.HUMAN
+            assessor_role = caller_role
+            assessor_id = caller_session_id or ""
         else:
             job = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "job") if caller_session_id else None
             if job != JobRole.COORDINATOR.value:
@@ -244,16 +295,20 @@ async def apply_review_continuation_stamp(
                     "coordinator session or a human principal"
                 )
             caller_role = ReviewContinuationCallerRole.COORDINATOR
+            assessor_role = caller_role
+            assessor_id = caller_session_id or ""
 
-    continuations.append(
-        ReviewContinuation(
-            classification=classification,
-            reason=evidence_text,
-            caller_session_id=caller_session_id or "",
-            caller_role=caller_role,
-            stamped_at=datetime.now(UTC).isoformat(),
-        )
+    continuation = ReviewContinuation(
+        classification=classification,
+        reason=evidence_text,
+        caller_session_id=caller_session_id or "",
+        caller_role=caller_role,
+        stamped_at=datetime.now(UTC).isoformat(),
     )
+    if is_prepare_review:
+        continuation.assessor_role = assessor_role
+        continuation.assessor_id = assessor_id
+    review.continuations.append(continuation)
     payload = await writer.commit(todos_db, slug)
     _log_review_continuation_decision(
         slug=slug,

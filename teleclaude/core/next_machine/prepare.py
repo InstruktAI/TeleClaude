@@ -142,6 +142,24 @@ async def _adopt_prepare_phase(
 ) -> dict[str, StateValue]:
     writer = StateWriter(raw_state)
     await _hydrate_artifact_presence_for_adoption(todos_db, slug, writer, repo_root=repo_root)
+    artifact_metadata = {metadata["name"]: metadata for metadata in await todos_db.artifact_metadata(slug)}
+    artifact_names = dict(_ADOPTION_ARTIFACTS)
+    for phase, artifacts in REVIEW_EVIDENCE_ARTIFACTS.items():
+        if artifacts.target_artifact_key is None:
+            continue
+        review = writer.review(phase)
+        if not review.cycle.reconciliation_pending:
+            continue
+        target = getattr(writer.state.artifacts, artifacts.target_artifact_key)
+        target_metadata = artifact_metadata.get(artifact_names[artifacts.target_artifact_key])
+        report_metadata = artifact_metadata.get(artifacts.report_artifact_name)
+        target_written_at = target_metadata["updated_at"] if target_metadata is not None else target.produced_at
+        report_written_at = report_metadata["updated_at"] if report_metadata is not None else ""
+        has_empty_bindings = not any((review.verdict, review.reviewed_target_digest, review.review_report_digest))
+        if has_empty_bindings and report_written_at and target_written_at > report_written_at:
+            review.cycle.round_offset = review.rounds
+            review.cycle.continuation_offset = len(review.continuations)
+        review.cycle.reconciliation_pending = False
     report_digests = {
         artifacts.report_artifact_name: await todos_db.artifact_digest(slug, artifacts.report_artifact_name)
         for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()
