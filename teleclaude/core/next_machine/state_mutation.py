@@ -264,9 +264,7 @@ class ApprovalsManager:
         """
         for review_field in _DRIFT_REVIEW_CASCADE.get(artifact, ()):
             review = self._writer.review(review_field)
-            review.cycle.round_offset = review.rounds
-            review.cycle.continuation_offset = len(review.continuations)
-            review.cycle.reconciliation_pending = False
+            review.open_new_cycle()
             review.verdict = ""
             review.reviewed_at = ""
             review.reviewed_target_digest = ""

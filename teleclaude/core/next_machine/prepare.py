@@ -157,9 +157,9 @@ async def _adopt_prepare_phase(
         report_written_at = report_metadata["updated_at"] if report_metadata is not None else ""
         has_empty_bindings = not any((review.verdict, review.reviewed_target_digest, review.review_report_digest))
         if has_empty_bindings and report_written_at and target_written_at > report_written_at:
-            review.cycle.round_offset = review.rounds
-            review.cycle.continuation_offset = len(review.continuations)
-        review.cycle.reconciliation_pending = False
+            review.open_new_cycle()
+        else:
+            review.cycle.reconciliation_pending = False
     report_digests = {
         artifacts.report_artifact_name: await todos_db.artifact_digest(slug, artifacts.report_artifact_name)
         for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()

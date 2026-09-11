@@ -175,6 +175,12 @@ class ReviewVerdictState(BaseModel):
     continuations: list[ReviewContinuation] = Field(default_factory=list)
     cycle: ReviewCycleState = Field(default_factory=ReviewCycleState)
 
+    def open_new_cycle(self) -> None:
+        """Start a review cycle at the current cumulative history boundary."""
+        self.cycle.round_offset = self.rounds
+        self.cycle.continuation_offset = len(self.continuations)
+        self.cycle.reconciliation_pending = False
+
     @model_validator(mode="after")
     def _validate_cycle_offsets(self) -> ReviewVerdictState:
         """Keep cycle offsets inside the cumulative history they project."""
