@@ -28,12 +28,23 @@ from teleclaude.core.integration.checkpoint import (
     _reset_candidate,
     _write_checkpoint,
 )
+from teleclaude.core.integration.delivery_fold import (
+    DeliveredMarkerRecoveryFault,
+    recover_delivered_marker_divergence,
+)
 from teleclaude.core.integration.formatters import (
     _format_error,
     _format_queue_empty,
     _format_repo_root_sync_instruction,
 )
-from teleclaude.core.integration.git_ops import RepoRootSyncStage, _run_git, _synchronize_repo_root
+from teleclaude.core.integration.git_ops import (
+    RepoRootSyncOutcome,
+    RepoRootSyncStage,
+    _mark_repo_root_sync_failure,
+    _publish_repo_root_main,
+    _run_git,
+    _synchronize_repo_root,
+)
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.lifecycle_events import _tls
 from teleclaude.core.integration.push_recovery import _step_content_gate_blocked, _step_push_rejected
@@ -49,12 +60,19 @@ from teleclaude.core.integration.step_functions import (
 )
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
 
 _LOOP_LIMIT = 50  # safety cap on internal state transitions per call
 _REPO_ROOT_SYNC_PROGRESS_PHASE = "repo_root_sync"
+_DELIVERED_MARKER_RECOVERY_FINISHED_EVENT = "integration.delivered_marker_recovery.finished"
+_DELIVERED_MARKER_RECOVERY_FINISHED_LOG = "Delivered-marker recovery finished"
+_DELIVERED_MARKER_RECOVERY_FAULTED_OUTCOME = "faulted"
+_DELIVERED_MARKER_RECOVERY_PUBLISHED_OUTCOME = "published"
+_PUBLICATION_CONFIRMATION_FAILED_OPERATION = "publication_confirmation"
+_PUBLICATION_CONFIRMATION_FAILED_DIAGNOSTIC = "repo-root publication was not confirmed as synchronized"
 
 # Re-export IntegrationPhase for backward compatibility
 # (external code imports it from this module)
@@ -73,6 +91,59 @@ def _candidate_belongs_to_project(checkpoint: IntegrationCheckpoint, *, cwd: str
         if rc == 0:
             return True
     return (Path(cwd) / WORKTREE_DIR / (checkpoint.candidate_slug or "")).exists()
+
+
+def _emit_repo_root_sync_progress(sync_id: str, outcome: str, loop: asyncio.AbstractEventLoop | None) -> None:
+    """Publish one repo-root synchronization outcome to the operation receipt."""
+    progress_args = (_REPO_ROOT_SYNC_PROGRESS_PHASE, outcome, sync_id)
+    if loop is None:
+        emit_operation_progress(*progress_args)
+    else:
+        loop.call_soon_threadsafe(emit_operation_progress, *progress_args)
+
+
+def _log_delivered_marker_recovery_fault(
+    fault: DeliveredMarkerRecoveryFault,
+    *,
+    session_id: str,
+    sync_id: str,
+) -> None:
+    """Record one non-blocking delivered-marker reconciliation fault."""
+    logger.error(
+        _DELIVERED_MARKER_RECOVERY_FINISHED_LOG,
+        event=_DELIVERED_MARKER_RECOVERY_FINISHED_EVENT,
+        outcome=_DELIVERED_MARKER_RECOVERY_FAULTED_OUTCOME,
+        session_id=session_id,
+        sync_id=sync_id,
+        slug=fault.receipt.slug,
+        transition_id=fault.receipt.transition_id,
+        reason=fault.receipt.reason,
+        divergence_paths=tuple(finding.relative_path for finding in fault.divergences),
+        divergence_lines=tuple(finding.line for finding in fault.divergences),
+    )
+
+
+def _log_delivered_marker_recovery_publication(
+    *,
+    session_id: str,
+    sync_id: str,
+    source_head: str,
+    recovery_slug: str,
+    recovery_commit: str,
+    transition_id: str,
+) -> None:
+    """Record a delivered-marker recovery only after its root commit is published."""
+    logger.info(
+        _DELIVERED_MARKER_RECOVERY_FINISHED_LOG,
+        event=_DELIVERED_MARKER_RECOVERY_FINISHED_EVENT,
+        outcome=_DELIVERED_MARKER_RECOVERY_PUBLISHED_OUTCOME,
+        session_id=session_id,
+        sync_id=sync_id,
+        slug=recovery_slug,
+        source_head=source_head,
+        recovery_commit=recovery_commit,
+        transition_id=transition_id,
+    )
 
 
 def _dispatch_sync(
@@ -94,23 +165,70 @@ def _dispatch_sync(
         cwd = resolved
     checkpoint_path = state_dir / "state.json"
     lease_store = IntegrationLeaseStore(state_path=state_dir / "lease.json")
+    initial_checkpoint = _read_checkpoint(checkpoint_path)
 
     repo_root_sync = _synchronize_repo_root(
         cwd=cwd,
         session_id=session_id,
         stage=RepoRootSyncStage.ENTRY,
     )
-    progress_args = (_REPO_ROOT_SYNC_PROGRESS_PHASE, repo_root_sync.outcome.value, repo_root_sync.sync_id)
-    if loop is None:
-        emit_operation_progress(*progress_args)
-    else:
-        loop.call_soon_threadsafe(emit_operation_progress, *progress_args)
+    _emit_repo_root_sync_progress(repo_root_sync.sync_id, repo_root_sync.outcome.value, loop)
     if not repo_root_sync.is_ready:
         return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
 
+    if initial_checkpoint.phase == IntegrationPhase.IDLE.value:
+        recovery = recover_delivered_marker_divergence(
+            Path(cwd),
+            get_todos_db_sync(cwd).delivered_slugs_sync(),
+        )
+        for fault in recovery.faults:
+            _log_delivered_marker_recovery_fault(
+                fault,
+                session_id=session_id,
+                sync_id=repo_root_sync.sync_id,
+            )
+        repo_root_sync = _synchronize_repo_root(
+            cwd=cwd,
+            session_id=session_id,
+            stage=RepoRootSyncStage.ENTRY,
+        )
+        _emit_repo_root_sync_progress(repo_root_sync.sync_id, repo_root_sync.outcome.value, loop)
+        if not repo_root_sync.is_ready:
+            return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
+        if repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
+            publication = _publish_repo_root_main(cwd=cwd, synchronization=repo_root_sync)
+            if not publication.succeeded:
+                return _format_repo_root_sync_instruction(publication.synchronization, project_root=cwd)
+            repo_root_sync = _synchronize_repo_root(
+                cwd=cwd,
+                session_id=session_id,
+                stage=RepoRootSyncStage.ENTRY,
+            )
+            _emit_repo_root_sync_progress(repo_root_sync.sync_id, repo_root_sync.outcome.value, loop)
+            if not repo_root_sync.is_ready:
+                return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
+            if repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
+                repo_root_sync = _mark_repo_root_sync_failure(
+                    repo_root_sync,
+                    outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
+                    failed_operation=_PUBLICATION_CONFIRMATION_FAILED_OPERATION,
+                    diagnostic=_PUBLICATION_CONFIRMATION_FAILED_DIAGNOSTIC,
+                )
+                return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
+            if publication.source_head is not None:
+                for receipt in recovery.applied_receipts:
+                    if receipt.commit is not None:
+                        _log_delivered_marker_recovery_publication(
+                            session_id=session_id,
+                            sync_id=publication.synchronization.sync_id,
+                            source_head=publication.source_head,
+                            recovery_slug=receipt.slug,
+                            recovery_commit=receipt.commit,
+                            transition_id=receipt.transition_id,
+                        )
+
     # Reset session-scoped counters on fresh entry so they reflect only this
     # run's work, not accumulated totals from previous integrator sessions.
-    initial_checkpoint = _read_checkpoint(checkpoint_path)
     if initial_checkpoint.phase == IntegrationPhase.IDLE.value:
         initial_checkpoint.items_processed = 0
         initial_checkpoint.items_blocked = 0

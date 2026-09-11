@@ -18,6 +18,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV, WORKTREE_DIR
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo, no_autostash_env
+from teleclaude.git_lock import main_branch_lock
 
 logger = get_logger(__name__)
 
@@ -26,11 +27,15 @@ _GIT_REV_LIST_COUNTS_ARGS = ("rev-list", "--left-right", "--count", "HEAD...orig
 _GIT_INCOMING_PATHS_ARGS = ("diff", "--name-only", "-z", "HEAD...origin/main")
 _GIT_DIRTY_PATHS_ARGS = ("status", "--porcelain=v1", "-z")
 _GIT_FAST_FORWARD_ARGS = ("merge", "--ff-only", "origin/main")
+_GIT_PUSH_ORIGIN_MAIN_ARGS = ("push", "origin", "main")
 _GIT_PATH_SEPARATOR = "\0"
 _GIT_STATUS_PATH_OFFSET = 3
 _GIT_RENAME_OR_COPY_CODES = frozenset({"R", "C"})
 _REPO_ROOT_SYNC_STARTED_LOG = "integration.repo_root_sync.started"
 _REPO_ROOT_SYNC_CLASSIFIED_LOG = "integration.repo_root_sync.classified"
+_REPO_ROOT_PUBLICATION_FINISHED_EVENT = "integration.repo_root_publication.finished"
+_REPO_ROOT_PUBLICATION_FINISHED_LOG = "Repo-root publication finished"
+_REPO_ROOT_PUBLICATION_SOURCE_HEAD_UNAVAILABLE = "repo-root HEAD is unavailable"
 
 
 class RepoRootSyncStage(StrEnum):
@@ -53,6 +58,13 @@ class RepoRootSyncOutcome(StrEnum):
     DIRTY_STATE_INSPECTION_FAILED = "dirty_state_inspection_failed"
     FAST_FORWARD_FAILED = "fast_forward_failed"
     BOOKKEEPING_PUSH_FAILED = "bookkeeping_push_failed"
+
+
+class RepoRootPublicationOutcome(StrEnum):
+    """Closed outcomes for one locked repo-root main publication."""
+
+    PUBLISHED = "published"
+    FAULTED = "faulted"
 
 
 @dataclass(frozen=True)
@@ -81,7 +93,23 @@ class RepoRootSyncResult:
         }
 
 
+@dataclass(frozen=True)
+class RepoRootPublicationResult:
+    """Typed result of publishing already-committed repo-root main state."""
+
+    outcome: RepoRootPublicationOutcome
+    synchronization: RepoRootSyncResult
+    source_head: str | None
+
+    @property
+    def succeeded(self) -> bool:
+        """Whether origin/main accepted the captured repo-root commit."""
+        return self.outcome is RepoRootPublicationOutcome.PUBLISHED
+
+
 __all__ = [
+    "RepoRootPublicationOutcome",
+    "RepoRootPublicationResult",
     "RepoRootSyncOutcome",
     "RepoRootSyncResult",
     "RepoRootSyncStage",
@@ -96,6 +124,7 @@ __all__ = [
     "_integrator_gitop_env",
     "_mark_repo_root_sync_failure",
     "_merge_head_exists",
+    "_publish_repo_root_main",
     "_run_git",
     "_synchronize_repo_root",
 ]
@@ -327,6 +356,47 @@ def _mark_repo_root_sync_failure(
         dirty_overlap_paths=result.dirty_overlap_paths,
         failed_operation=failed_operation,
         diagnostic=diagnostic,
+    )
+
+
+def _publish_repo_root_main(*, cwd: str, synchronization: RepoRootSyncResult) -> RepoRootPublicationResult:
+    """Push already-committed repo-root main under the canonical main lock."""
+    with main_branch_lock():
+        source_head = _get_head_sha(cwd)
+        if source_head is None:
+            synchronization = _mark_repo_root_sync_failure(
+                synchronization,
+                outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
+                failed_operation=_GIT_PUSH_ORIGIN_MAIN_ARGS[0],
+                diagnostic=_REPO_ROOT_PUBLICATION_SOURCE_HEAD_UNAVAILABLE,
+            )
+            outcome = RepoRootPublicationOutcome.FAULTED
+        else:
+            push_rc, _, push_stderr = _run_git(list(_GIT_PUSH_ORIGIN_MAIN_ARGS), cwd=cwd)
+            if push_rc == 0:
+                outcome = RepoRootPublicationOutcome.PUBLISHED
+            else:
+                synchronization = _mark_repo_root_sync_failure(
+                    synchronization,
+                    outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
+                    failed_operation=_GIT_PUSH_ORIGIN_MAIN_ARGS[0],
+                    diagnostic=push_stderr,
+                )
+                outcome = RepoRootPublicationOutcome.FAULTED
+    log = logger.info if outcome is RepoRootPublicationOutcome.PUBLISHED else logger.error
+    log(
+        _REPO_ROOT_PUBLICATION_FINISHED_LOG,
+        event=_REPO_ROOT_PUBLICATION_FINISHED_EVENT,
+        outcome=outcome.value,
+        session_id=synchronization.session_id,
+        sync_id=synchronization.sync_id,
+        source_head=source_head,
+        reason=synchronization.diagnostic if outcome is RepoRootPublicationOutcome.FAULTED else None,
+    )
+    return RepoRootPublicationResult(
+        outcome=outcome,
+        synchronization=synchronization,
+        source_head=source_head,
     )
 
 
