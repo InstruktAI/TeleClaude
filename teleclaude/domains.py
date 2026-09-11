@@ -16,6 +16,7 @@ from pathlib import Path
 
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import load_roots
+from teleclaude.project_root import declaration_root
 
 
 def publishes_for_root(root: Path) -> set[str]:
@@ -32,7 +33,7 @@ def publishes_for_root(root: Path) -> set[str]:
         load_project_config,
     )
 
-    config_path = root / ConfigFileName.OVERLAY
+    config_path = declaration_root(root) / ConfigFileName.OVERLAY
     if not config_path.is_file():
         return set()
     config = load_project_config(config_path)
@@ -51,7 +52,7 @@ def triggers_for_root(root: Path) -> dict[str, str]:
         load_project_config,
     )
 
-    config_path = root / ConfigFileName.OVERLAY
+    config_path = declaration_root(root) / ConfigFileName.OVERLAY
     if not config_path.is_file():
         return {}
     config = load_project_config(config_path)
