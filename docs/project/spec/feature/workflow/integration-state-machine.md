@@ -8,11 +8,7 @@ visibility: public
 
 ## What it is
 
-<!-- planned-change:integration-root-sync-misses-delivered-doc-fold -->
-The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton (one active integrator per project, enforced by a lease keyed on `integration/main`) and consumes finalize-ready Todos in FIFO order. Each call resumes from a durable checkpoint, executes the next deterministic step, and either loops internally or returns a structured instruction block that asks the calling agent to do the one thing only intelligence can do: compose a squash commit message, resolve a merge conflict, or recover from a rejected push. All git mutations happen inside an isolated integration worktree at `trees/_integration/`, never on repo root, so a dirty or diverged repo root never blocks delivery. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
-<!-- change:integration-root-sync-misses-delivered-doc-fold -->
 The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton (one active integrator per project, enforced by a lease keyed on `integration/main`) and consumes finalize-ready Todos in FIFO order. Each call resumes from a durable checkpoint, executes the next deterministic step, and either loops internally or returns a structured instruction block that asks the calling agent to do the one thing only intelligence can do: compose a squash commit message, resolve a merge conflict, or recover from a rejected push. Candidate git mutations happen inside an isolated integration worktree at `trees/_integration/`. Repo-root mutation is limited to publishing already-committed ahead-only state before candidate selection, fast-forward synchronization after delivery, and slug-scoped settled-marker recovery after a maintenance fault. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
-<!-- /planned-change:integration-root-sync-misses-delivered-doc-fold -->
 
 ## Canonical fields
 
@@ -344,17 +340,6 @@ And the delivery completes without being blocked by the unsynced repo root
 
 #### UC-WISM32: Delivery reconciles the candidate's pending documentation exactly once
 
-<!-- planned-change:integration-root-sync-misses-delivered-doc-fold -->
-```gherkin
-Given a candidate's delivered-snippet fold has been committed into the delivery and pushed to origin/main
-When the confirmation gate records the delivery
-Then the reconciliation the delivery record rests on is the one already applied in the integration worktree
-And no second reconciliation of that slug is applied against the repo root
-And the delivery leaves repo-root main with no commit the delivery itself authored there
-And the repo root reaches the delivered content by synchronizing with origin/main
-And the recorded delivered commit is the frozen pushed commit
-```
-<!-- change:integration-root-sync-misses-delivered-doc-fold -->
 ```gherkin
 Given a candidate's delivered-snippet fold has been committed into the delivery and pushed to origin/main
 When the confirmation gate records the delivery
@@ -364,9 +349,7 @@ And the delivery leaves repo-root main with no commit the delivery itself author
 And the repo root reaches the delivered content by publishing committed ahead-only state before candidate selection and synchronizing with origin/main after delivery
 And the recorded delivered commit is the frozen pushed commit
 ```
-<!-- /planned-change:integration-root-sync-misses-delivered-doc-fold -->
 
-<!-- planned:integration-root-sync-misses-delivered-doc-fold -->
 #### UC-WISM33: Idle integration publishes ahead-only repo-root state before candidate selection
 
 ```gherkin
@@ -391,22 +374,9 @@ And it leaves the original delivery record and recorded delivering commit unchan
 And the recovery is not counted as a second reconciliation in the original candidate delivery
 And unrelated pending documentation remains byte-identical
 ```
-<!-- /planned:integration-root-sync-misses-delivered-doc-fold -->
 
 #### UC-WISM27: The repo-root sync classifies its state instead of probing with a pull that cannot succeed
 
-<!-- planned-change:integration-root-sync-misses-delivered-doc-fold -->
-```gherkin
-Given repo-root main and origin/main are not at the same commit when a "telec todo integrate" call begins
-When the integrator classifies repo-root main against origin
-Then a repo root that is only behind is fast-forwarded and the call proceeds with no instruction returned
-And a repo root that is only ahead proceeds without rewriting its local commits
-And a repo root that is both ahead and behind is reported as the expected post-delivery condition, never as a divergence failure
-And the report carries the intersection of the incoming file list with the repo-root dirty set as a fact
-And the integrator owns the merge — the state machine never merges repo-root main
-And no candidate is dequeued for that call until repo-root main is synced
-```
-<!-- change:integration-root-sync-misses-delivered-doc-fold -->
 ```gherkin
 Given repo-root main and origin/main are not at the same commit when a "telec todo integrate" call begins
 When the integrator classifies repo-root main against origin
@@ -417,7 +387,6 @@ And the report carries the intersection of the incoming file list with the repo-
 And the integrator owns the merge — the state machine never merges repo-root main
 And no candidate is dequeued for that call until repo-root main is synced
 ```
-<!-- /planned-change:integration-root-sync-misses-delivered-doc-fold -->
 
 #### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
 

@@ -52,8 +52,8 @@ from teleclaude.core.integration.git_ops import (
     _get_head_sha,
     _git_dir,
     _integration_worktree_path,
-    _mark_repo_root_sync_failure,
     _merge_head_exists,
+    _publish_repo_root_main,
     _run_git,
     _synchronize_repo_root,
 )
@@ -84,10 +84,8 @@ _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
 _INTEGRATOR_MAINTENANCE_RECORDING_FAILED = "Failed to {operation} integrator maintenance {target} for range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
 _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG = "integration.maintenance_marker.recorded"
-_GIT_PUSH_ORIGIN_MAIN_ARGS = ("push", "origin", "main")
 _REPO_ROOT_SYNC_SOURCE, _INTEGRATION_WORKTREE_SYNC_SOURCE = "repo_root", "integration_worktree"
 _BLUEPRINT_REGENERATED_LOG = "integration.blueprint.regenerated"
-_REPO_ROOT_BOOKKEEPING_PUSHED_LOG = "Pushed %d repo root bookkeeping commit(s) to origin/main"
 
 # ---------------------------------------------------------------------------
 # Git helpers
@@ -601,17 +599,7 @@ def _step_push_succeeded(
         stage=RepoRootSyncStage.POST_DELIVERY,
     )
     if repo_root_sync.is_ready and repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
-        with main_branch_lock():
-            push_rc, _, push_stderr = _run_git(list(_GIT_PUSH_ORIGIN_MAIN_ARGS), cwd=cwd)
-        if push_rc == 0:
-            logger.info(_REPO_ROOT_BOOKKEEPING_PUSHED_LOG, repo_root_sync.ahead_count)
-        else:
-            repo_root_sync = _mark_repo_root_sync_failure(
-                repo_root_sync,
-                outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
-                failed_operation=_GIT_PUSH_ORIGIN_MAIN_ARGS[0],
-                diagnostic=push_stderr,
-            )
+        repo_root_sync = _publish_repo_root_main(cwd=cwd, synchronization=repo_root_sync).synchronization
     checkpoint.warnings = warnings
     if checkpoint.pre_merge_head:
         merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{confirmed_sha}"
