@@ -88,7 +88,7 @@ And rewriting the reviewed artifact or findings report does not reset the admitt
 And each admitted pass was counted and persisted before its reviewer instruction was returned
 ```
 <!-- change:fix-plan-review-admission-after-closed-target -->
-#### UC-WPS21: Every unclosed prepare review loop stops at the shared round limit
+#### UC-WPS21: Every prepare review cycle stops at the shared round limit
 
 ```gherkin
 Given a Todo is awaiting PRD, architecture, or implementation-plan review
