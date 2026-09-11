@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -29,10 +30,13 @@ class FileTransaction:
     def read_text(self, *, encoding: str = "utf-8") -> str:
         return self.path.read_text(encoding=encoding) if self.path.exists() else ""
 
-    def replace_text(self, content: str, *, encoding: str = "utf-8") -> None:
+    def replace_text(self, content: str, *, encoding: str = "utf-8", creation_mode: int | None = None) -> None:
         temporary = self.path.with_name(f"{_TEMPORARY_PREFIX}{self.path.name}.{uuid4().hex}{_TEMPORARY_SUFFIX}")
         try:
             temporary.write_text(content, encoding=encoding)
+            target_mode = stat.S_IMODE(self.path.stat().st_mode) if self.path.exists() else creation_mode
+            if target_mode is not None:
+                temporary.chmod(target_mode)
             with temporary.open(_READ_WRITE_MODE, encoding=encoding) as handle:
                 handle.flush()
                 os.fsync(handle.fileno())

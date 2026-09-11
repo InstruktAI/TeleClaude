@@ -1,7 +1,6 @@
 """Utility functions for TeleClaude."""
 
 import asyncio
-import os
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -118,31 +117,6 @@ def command_retry(
         return wrapper
 
     return decorator
-
-
-def expand_env_vars(config: object) -> object:
-    """Recursively expand environment variables in config.
-
-    Replaces ${VAR} patterns with environment variable values.
-
-    Args:
-        config: Configuration object (dict, list, str, or primitive)
-
-    Returns:
-        Configuration with all ${VAR} patterns replaced
-    """
-    if isinstance(config, dict):
-        return {k: expand_env_vars(v) for k, v in config.items()}
-    if isinstance(config, list):
-        return [expand_env_vars(item) for item in config]
-    if isinstance(config, str):
-
-        def replace_env_var(match: re.Match[str]) -> str:
-            env_var = match.group(1)
-            return os.getenv(env_var, match.group(0))  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
-
-        return re.sub(r"\$\{([^}]+)\}", replace_env_var, config)
-    return config
 
 
 def resolve_project_config_path(project_root: Path) -> Path:
