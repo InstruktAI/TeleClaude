@@ -82,17 +82,6 @@ And the marker carries the delivered merge range (pre_merge_head..advanced repo-
 And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator
 ```
 
-#### UC-WISM35: Repo-root-only pending documentation is folded at delivery
-
-```gherkin
-Given a delivered slug's pending documentation was authored on repo-root main and has not reached origin/main
-And the integration worktree is built from origin/main and therefore never saw that material
-When the PUSH_SUCCEEDED step has synchronized repo-root main
-Then the state machine folds that slug's remaining pending material at the repo root
-And the resulting reconciliation commit is carried by the same bookkeeping push
-But a slug whose material the integration worktree already folded produces no second reconciliation commit
-```
-
 #### UC-WISM2: Push rejection withholds delivery
 
 ```gherkin

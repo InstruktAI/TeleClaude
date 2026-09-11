@@ -44,7 +44,6 @@ from teleclaude.core.integration.formatters import (
 )
 from teleclaude.core.integration.git_ops import (
     RepoRootSyncOutcome,
-    RepoRootSyncResult,
     RepoRootSyncStage,
     _ensure_integration_worktree,
     _get_branch_log,
@@ -70,11 +69,6 @@ from teleclaude.core.integration.park import (
 )
 from teleclaude.core.integration.push_recovery import _is_content_gate_rejection
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
-from teleclaude.core.next_machine.marker_reconciliation import (
-    MarkerMoment,
-    MarkerOutcome,
-    reconcile_lifecycle_markers,
-)
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.hooks.checkpoint import _git_diff_names
@@ -119,8 +113,6 @@ _CLEANUP_COMMIT_SUBJECT_TEMPLATE = "chore({slug}): integration worktree cleanup"
 _GIT_ARG_COMMIT = "commit"
 _GIT_ARG_AUTHOR = "--author"
 _GIT_ARG_MESSAGE = "-m"
-_REPO_ROOT_FOLD_FAILED_WARNING = "Repo-root pending-doc fold failed for {slug}: {reason}"
-_REPO_ROOT_FOLD_APPLIED_LOG = "Folded repo-root-only pending documentation for %s"
 
 
 # ---------------------------------------------------------------------------
@@ -518,61 +510,6 @@ def _step_delivery_bookkeeping(
         return False, _format_push_rejected(rejection, key.slug, wt)
 
 
-def _fold_repo_root_pending(*, cwd: str, slug: str) -> tuple[bool, str | None]:
-    """Fold pending documentation that exists only on repo-root main.
-
-    The integration worktree is built from ``origin/main``, so a pending contract
-    authored on repo-root main and not yet pushed is invisible to the worktree fold
-    and would reach ``origin/main`` still carrying live markers. This pass runs after
-    the repo root has synchronized, so everything the worktree already folded is
-    present and unchanged here and produces no write — the duplicate reconciliation
-    commit is avoided by ordering, not by suppression.
-
-    Returns ``(committed, warning)``. Delivery has already succeeded by this point, so
-    a fault is reported to the caller's warnings and never fails the step.
-    """
-    receipt = reconcile_lifecycle_markers(Path(cwd), slug, MarkerMoment.DELIVER)
-    if not receipt.succeeded:
-        return False, _REPO_ROOT_FOLD_FAILED_WARNING.format(slug=slug, reason=receipt.reason)
-    if receipt.outcome is not MarkerOutcome.APPLIED:
-        return False, None
-    logger.info(_REPO_ROOT_FOLD_APPLIED_LOG, slug)
-    return True, None
-
-
-def _settle_repo_root(*, cwd: str, session_id: str, slug: str, warnings: list[str]) -> RepoRootSyncResult:
-    """Synchronize the repo root, fold its own pending documentation, then push bookkeeping.
-
-    The fold sits between the synchronization and the push so it sees a repo root that
-    already carries everything the integration worktree delivered, and so anything it
-    does commit is still carried by the bookkeeping push below.
-    """
-    repo_root_sync = _synchronize_repo_root(cwd=cwd, session_id=session_id, stage=RepoRootSyncStage.POST_DELIVERY)
-    if repo_root_sync.is_ready:
-        folded, fold_warning = _fold_repo_root_pending(cwd=cwd, slug=slug)
-        if fold_warning is not None:
-            warnings.append(fold_warning)
-        if folded:
-            # The fold commits at the repo root, so the ahead count captured above is
-            # stale; re-synchronize before the push decision reads it.
-            repo_root_sync = _synchronize_repo_root(
-                cwd=cwd, session_id=session_id, stage=RepoRootSyncStage.POST_DELIVERY
-            )
-    if not (repo_root_sync.is_ready and repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY):
-        return repo_root_sync
-    with main_branch_lock():
-        push_rc, _, push_stderr = _run_git(list(_GIT_PUSH_ORIGIN_MAIN_ARGS), cwd=cwd)
-    if push_rc == 0:
-        logger.info(_REPO_ROOT_BOOKKEEPING_PUSHED_LOG, repo_root_sync.ahead_count)
-        return repo_root_sync
-    return _mark_repo_root_sync_failure(
-        repo_root_sync,
-        outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
-        failed_operation=_GIT_PUSH_ORIGIN_MAIN_ARGS[0],
-        diagnostic=push_stderr,
-    )
-
-
 def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str, source: str) -> str | None:
     """Refresh the Blueprint after confirmed delivery without rolling it back on failure."""
     manifest = regenerate_blueprint(cwd, baseline_sha=baseline_sha)
@@ -658,7 +595,23 @@ def _step_push_succeeded(
     finally:
         conn.close()
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
-    repo_root_sync = _settle_repo_root(cwd=cwd, session_id=session_id, slug=key.slug, warnings=warnings)
+    repo_root_sync = _synchronize_repo_root(
+        cwd=cwd,
+        session_id=session_id,
+        stage=RepoRootSyncStage.POST_DELIVERY,
+    )
+    if repo_root_sync.is_ready and repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
+        with main_branch_lock():
+            push_rc, _, push_stderr = _run_git(list(_GIT_PUSH_ORIGIN_MAIN_ARGS), cwd=cwd)
+        if push_rc == 0:
+            logger.info(_REPO_ROOT_BOOKKEEPING_PUSHED_LOG, repo_root_sync.ahead_count)
+        else:
+            repo_root_sync = _mark_repo_root_sync_failure(
+                repo_root_sync,
+                outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
+                failed_operation=_GIT_PUSH_ORIGIN_MAIN_ARGS[0],
+                diagnostic=push_stderr,
+            )
     checkpoint.warnings = warnings
     if checkpoint.pre_merge_head:
         merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{confirmed_sha}"
