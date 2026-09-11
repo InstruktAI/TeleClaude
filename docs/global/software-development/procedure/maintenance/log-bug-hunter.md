@@ -28,7 +28,7 @@ and implementation.
    - With no usable prior report, cover one schedule interval from the job's
      declaration. Record the actual start and end timestamps.
    - Collect that window with
-     `instrukt-ai-logs {project_slug} --since <window> --exclude 'logger=(git-wrapper|teleclaude\\.git\\.exec)'`.
+     `instrukt-ai-logs {project_slug} --since <window> --exclude 'logger=(git-wrapper|teleclaude\.git\.exec)'`.
      A successful empty result is a clean scan. A failed collection is an
      incomplete scan, reported under Recovery.
 
