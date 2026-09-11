@@ -33,9 +33,13 @@ docs/.obsidian/
 .env
 !tests/integration/.env
 !tests/integration/config.yml
-# Per-file lock held by the atomic config writer (teleclaude/config/_file_io.py);
-# recreated on every config write, never meaningful to track.
+# Per-file locks held by the atomic config writer (teleclaude/config/_file_io.py),
+# named <target><.lock> from whichever file it writes. Recreated on every write,
+# never meaningful to track. Enumerated rather than a bare *.lock so the tracked
+# uv.lock and root Cargo.lock stay tracked.
 *.yml.lock
+.env.lock
+invitations.json.lock
 
 # Runtime
 *.pid
