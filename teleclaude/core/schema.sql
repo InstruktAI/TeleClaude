@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- Acceptance time of that span; coupled to last_input, never to the fingerprint clock.
     last_input_written_at TEXT,
     last_projected_at TEXT,
-    last_conversation_injected_at TEXT,
     last_output_raw TEXT,
     last_output_stop_at TEXT,
     last_output_at TEXT,
@@ -132,8 +131,7 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     caller_machine_role TEXT,
     caller_job_role TEXT,
     caller_origin_prefix_len INTEGER,
-    caller_origin_suffix_len INTEGER,
-    binding_disposition TEXT
+    caller_origin_suffix_len INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status ON inbound_queue(session_id, status, next_retry_at);
@@ -474,74 +472,6 @@ CREATE TABLE IF NOT EXISTS memory_manual_sessions (
     project TEXT UNIQUE NOT NULL,
     created_at_epoch INTEGER NOT NULL
 );
-
--- Durable composition root for one native transcript turn. Accepted receipts
--- associate below, so one entry can carry several injected envelopes.
-CREATE TABLE IF NOT EXISTS accepted_turn_bindings (
-    binding_id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    native_runtime TEXT,
-    native_session_id TEXT,
-    native_entry_id TEXT,
-    created_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session ON accepted_turn_bindings(session_id);
-
-CREATE TABLE IF NOT EXISTS turn_receipt_envelopes (
-    binding_id TEXT NOT NULL,
-    inbound_queue_id INTEGER NOT NULL UNIQUE,
-    occurrence_key TEXT NOT NULL,
-    text_kind TEXT NOT NULL CHECK(text_kind IN ('platform_control', 'identity_content', 'reminder')),
-    envelope_span_start INTEGER NOT NULL,
-    envelope_span_end INTEGER NOT NULL,
-    body_span_start INTEGER NOT NULL,
-    body_span_end INTEGER NOT NULL,
-    authored_part_id INTEGER,
-    PRIMARY KEY (binding_id, inbound_queue_id),
-    FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_accepted_turn_bindings_native_entry
-ON accepted_turn_bindings(native_runtime, native_session_id, native_entry_id)
-WHERE native_entry_id IS NOT NULL;
-
--- Exact native entries measured when an accepted receipt cannot be uniquely
--- bound. Identity, rather than content, keeps the durable conflict distinct
--- from later genuine turns that repeat the same text.
-CREATE TABLE IF NOT EXISTS binding_conflict_candidates (
-    inbound_queue_id INTEGER NOT NULL,
-    native_runtime TEXT NOT NULL,
-    native_session_id TEXT NOT NULL,
-    native_entry_id TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (inbound_queue_id, native_runtime, native_session_id, native_entry_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_binding_conflict_candidates_native_entry
-ON binding_conflict_candidates(native_runtime, native_session_id, native_entry_id);
-
--- One ordered authored part of a bound turn (a local-human span, or the
--- injected peer span), each carrying its own event author and original
--- source session copied from the accepted row (or peer segment) at bind time.
-CREATE TABLE IF NOT EXISTS turn_authored_parts (
-    binding_id TEXT NOT NULL,
-    part_id INTEGER NOT NULL,
-    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'injected_peer', 'injected_reminder')),
-    span_start INTEGER NOT NULL,
-    span_end INTEGER NOT NULL,
-    original_source_session_id TEXT,
-    author_kind TEXT NOT NULL CHECK(author_kind IN ('human', 'agent', 'machine')),
-    author_display TEXT NOT NULL,
-    author_agent_runtime TEXT,
-    author_thinking_mode TEXT,
-    author_machine_role TEXT,
-    author_job_role TEXT,
-    origin_surface TEXT,
-    PRIMARY KEY (binding_id, part_id),
-    FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_turn_authored_parts_source ON turn_authored_parts(original_source_session_id);
 
 -- Output generation identity: one row per cut turn boundary for a session.
 -- Assistant output snapshots name their generation so an adapter can edit
