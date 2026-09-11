@@ -1,4 +1,4 @@
-.PHONY: help install launchers link format lint test clean dev start stop restart kill status cron-smoke
+.PHONY: help install launchers launchers-renew-authority link format lint test clean dev start stop restart kill status cron-smoke
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -11,6 +11,9 @@ install:
 
 launchers:
 	@src/Launcher/build.sh
+
+launchers-renew-authority:
+	@src/Launcher/signing-authority.sh replace
 
 link:
 	@./bin/init/link_shared_scripts.sh

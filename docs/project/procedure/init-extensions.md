@@ -52,10 +52,10 @@ remote setup never gates project setup.
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
 A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
-wrapper source and signs them into `bin/`. It is the only entry point that compiles or
-signs. `make install` copies the pre-built `bin/*.app` bundles into `~/Applications/`,
-replacing existing bundles, and never compiles — a missing bundle fails the install step
-naming `make launchers`:
+wrapper source and signs them into `bin/`. The bundles are gitignored build outputs, so
+a fresh checkout has none; `make install` invokes the same builder before copying the
+`bin/*.app` bundles into `~/Applications/`, replacing existing bundles. Both routes
+compile and sign through that one builder:
 
 - `TmuxLauncher.app` — wrapper that gives tmux sessions macOS permission inheritance
 - `ClaudeLauncher.app`, `CodexLauncher.app`, `GeminiLauncher.app` — per-agent launchers
@@ -65,15 +65,30 @@ replacing its own process image, so the bundle identity macOS attributes file
 access to is the wrapper's own. `ClaudeLauncher` and `CodexLauncher` target the
 `claude` and `codex` binaries; `GeminiLauncher` targets `agy`. Building requires
 the Xcode Command Line Tools; absent the Swift compiler `make launchers` fails with the
-`xcode-select --install` remedy and produces no bundle.
+`xcode-select --install` remedy and produces no bundle. Installing on macOS refuses to
+start when that compiler is missing, so the remedy is stated before any work begins
+rather than at the launcher step.
 
 Each bundle is signed for a stable code identity that survives rebuilds, per
 `software-development/procedure/macos-stable-code-signing`: one shared machine-local
 signing authority with a per-executable identifier, so Full Disk Access grants keep
-matching after a recompile.
+matching after a recompile. The build resolves that authority itself: it creates the
+self-signed certificate when none exists, exports a backup for reissuing it elsewhere,
+and asks macOS to let `codesign` use the key unattended.
+
+Because macOS binds Full Disk Access to the certificate rather than to its name, an
+authority that already exists is used as it stands and never silently reissued. An
+expired authority, one whose private key is absent, and an ambiguous name each stop the
+build with the fingerprints and the remedy, and `make launchers-renew-authority` is the
+only route that discards one — it states that every launcher grant dies with it.
+
+After installing the bundles, `make install` compares each one's designated requirement
+against the live authority and names any bundle whose grants no longer match, together
+with the remove-then-re-add remediation that a changed code identity requires.
 
 Source: `teleclaude/project_setup/macos_setup.py:install_launchers()` (install/copy),
-`src/Launcher/build.sh` via the `make launchers` target (build/sign)
+`src/Launcher/build.sh` via the `make launchers` target (build/sign),
+`src/Launcher/signing-authority.sh` (authority lifecycle and bundle identity audit)
 
 ### 2a. macOS tmux server service (`make install`)
 
@@ -105,8 +120,9 @@ launcher binary — not Python directly — is the process requesting access. Th
 is essential because macOS grants Full Disk Access per-binary, and agents run
 through the tmux launcher.
 
-If denials are detected, the user is instructed to enable Full Disk Access for
-the launcher apps in System Settings.
+If denials are detected, `make install` closes with the grant as a named remaining
+step: each launcher bundle's path, and the instruction to remove a stale entry before
+re-adding it, since a row left in place keeps presenting as enabled.
 
 Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 

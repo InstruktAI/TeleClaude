@@ -34,13 +34,8 @@ for agent in $canonical_agents; do
     esac
 done
 
-n=$(security find-certificate -a -c "$AUTHORITY" 2>/dev/null | grep -c '^keychain:' || true)
-if [ "$n" -eq 0 ]; then
-    echo "make launchers: signing authority '$AUTHORITY' is missing. Create one self-signed Code Signing certificate named '$AUTHORITY' in Keychain Access (macos-stable-code-signing Step 1), then rerun make launchers." >&2
-    exit 1
-fi
-if [ "$n" -gt 1 ]; then
-    echo "make launchers: signing authority '$AUTHORITY' is ambiguous ($n certificates). Resolve it by fingerprint before rerunning." >&2
+if ! LAUNCHER_SIGNING_AUTHORITY="$AUTHORITY" "$SCRIPT_DIR/signing-authority.sh" ensure; then
+    echo "make launchers: no usable signing authority; not building unsigned bundles." >&2
     exit 1
 fi
 

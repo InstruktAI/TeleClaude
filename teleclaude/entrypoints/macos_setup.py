@@ -30,7 +30,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """Run the selected macOS setup action against the requested project root."""
+    """Run the selected macOS setup action against the requested project root.
+
+    Returns 1 when the permission probe found denied paths, so the caller can
+    surface the grants the human still has to give.
+    """
     parser = _build_parser()
     args = parser.parse_args()
 
@@ -47,7 +51,8 @@ def main() -> int:
         install_tmux_server_service()
 
     if args.action in ("permissions-probe", "run-all"):
-        run_permissions_probe(project_root)
+        if not run_permissions_probe(project_root):
+            return 1
 
     return 0
 
