@@ -837,11 +837,38 @@ install_macos_casks() {
     _maybe_install_cask "handy" "Install Handy (macOS speech-to-text app)?" "Handy"
 }
 
+# Resolves lms the way its own installer does: PATH, then the home-pointer file
+# that installer writes, then both documented install homes. Looking in fewer
+# places than the vendor writes to is what makes a present lms read as absent
+# and re-runs a multi-minute download on every install.
+_resolve_lms_binary() {
+    local candidate
+    candidate="$(command -v lms 2>/dev/null)"
+    if [ -n "$candidate" ]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    local lmstudio_home="$HOME/.lmstudio"
+    if [ -f "$HOME/.lmstudio-home-pointer" ]; then
+        lmstudio_home="$(cat "$HOME/.lmstudio-home-pointer")"
+    fi
+
+    for candidate in "$lmstudio_home/bin/lms" "$HOME/.lmstudio/bin/lms" "$HOME/.cache/lm-studio/bin/lms"; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Ensure the llmster background service (the lms CLI + daemon) is installed.
 # Detected via the lms binary; installed silently from the official script if absent.
 _ensure_llmster_installed() {
-    if command -v lms &> /dev/null || [ -x "$HOME/.cache/lm-studio/bin/lms" ]; then
-        print_info "llmster (lms) already installed"
+    local lms_binary
+    if lms_binary="$(_resolve_lms_binary)"; then
+        print_info "llmster (lms) already installed ($lms_binary)"
         return 0
     fi
     print_info "Installing llmster background service..."
