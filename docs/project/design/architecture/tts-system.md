@@ -116,8 +116,10 @@ visibility: 'public'
     behaviour, reached through a new destination. A session already assigned to
     a non-rendering service is therefore promoted on first remote delivery
     rather than left silent or spoken in a voice the record contradicts. The
-    session's persisted voice and the voice heard never disagree, and after one
-    promotion the assignment is stable for the rest of the session.
+    session's persisted voice and the voice heard never disagree. Promotion is
+    not once-only: the chain is resolved per delivery, so a later failure of the
+    newly assigned service promotes again, exactly as repeated playback failures
+    already do.
 14. **Promotion changes the artifact identity, not the rule.** Because a cached
     artifact is identified by effective voice, a promotion simply produces a new
     artifact; nothing invalidates or rewrites what was cached under the previous

@@ -129,9 +129,16 @@ Gateway connection and exactly one owner of the voice connection.
     reply for that session is not spoken and the reason is visible. It never
     stalls the room, and it never falls back to speaking the summary, which is
     not the approved outcome.
-20. **Unchanged output is decided without fetching.** The published output
-    digest identifies the version, so re-hearing an unchanged reply is settled
-    against the artifact identity before any cross-computer request is made.
+20. **The final-output version is what identifies a reply, and it is published
+    additively.** The session's output-stop marker is the version; the existing
+    `last_output_digest` is not. That digest is internal dedupe state for output
+    routing — digest-only writes deliberately emit no session-updated event, so a
+    remote snapshot can retain a stale value, and equal text at two versions
+    yields one digest. The snapshot therefore gains the output-stop version as an
+    additive field, and the full-output query returns the same version alongside
+    the text. Re-hearing an unchanged reply is settled against that version
+    before any cross-computer request is made; adapter delivery state never
+    stands in for a domain version.
 21. **Delivery and cancellation use what exists.** A latched utterance reaches a
     remote session through the established cross-computer session-input path.
     Cancellation is local to the voice-owning computer, which owns the playback
@@ -177,9 +184,10 @@ connection on its own authority.
 - **Missing, partial, or ambiguous stop sequence** — no submission, and the
   recording is discarded.
 - **A sender that breaks transmission mid-utterance** — the held utterance
-  arrives as two deliveries. Verified absent for the target client, which
-  transmits continuously while the key is held; not guaranteed for a sender
-  configured otherwise.
+  arrives as two deliveries. The supported client transmits continuously while
+  the key is held, so it does not break mid-utterance; a sender configured for
+  discontinuous transmission is outside that boundary. See
+  `@input#live-evidence-already-established` for the observations behind it.
 - **Packet loss, reordering, and mid-call key rotation** — unverified at design
   time. Ordering is applied before the closure rule; each unresolved case
   resolves to no submission rather than to a guess.
