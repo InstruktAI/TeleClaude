@@ -382,7 +382,7 @@ And a publication or confirmation failure prevents candidate dequeue without rew
 #### UC-WISM34: Settled marker divergence is repaired outside candidate delivery
 
 ```gherkin
-Given lifecycle maintenance faults pending documentation material owned by an already-settled slug
+Given lifecycle maintenance faults pending documentation material owned by an already-delivered slug
 And no active integration candidate can reconcile that material
 When the integrator begins recovery with repository-root main synchronized and safe to mutate
 Then it performs one idempotent slug-scoped delivery reconciliation against the repository root

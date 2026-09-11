@@ -46,10 +46,10 @@ A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
 detects settled-slug/live-marker divergence wherever documentation material
 lives, including repository-root snippets outside a candidate branch, and
 faults the divergence to the integrator with the evidence needed to resolve it.
-The integrator handles that fault as a separate recovery operation after the
-repository root is synchronized and safe to mutate: it reconciles only the
-settled slug, publishes the resulting cleanup through its canonical-main writer
-path, and leaves the original delivery record unchanged.
+The integrator handles a delivered-slug fault as a separate recovery operation
+after the repository root is synchronized and safe to mutate: it reconciles
+only that delivered slug, publishes the resulting cleanup through its
+canonical-main writer path, and leaves the original delivery record unchanged.
 <!-- /planned-change:integration-root-sync-misses-delivered-doc-fold -->
 
 `telec sync` validates snippet shape and builds and deploys indexes; it does not
@@ -146,7 +146,7 @@ And the material may live outside every integration candidate branch
 When lifecycle maintenance sweeps for state and marker divergence
 Then it detects the settled slug wherever the material lives
 And faults the divergence to the integrator with the slug, source path, line, and reason
-And when repository-root main is synchronized and safe to mutate, the integrator runs a new slug-scoped delivery reconciliation as a recovery operation
+And when the faulted slug is delivered and repository-root main is synchronized and safe to mutate, the integrator runs a new slug-scoped delivery reconciliation as a recovery operation
 And it commits and publishes only that recovery result without changing the settled todo's recorded delivery commit
 And a failed recovery leaves the divergence fault active with its failure evidence
 And unrelated live and pending material is not rewritten
