@@ -50,9 +50,12 @@ focused procedure and advances through the machine-owned transitions.
    procedure reads them on the next state-machine advance.
 
    Each PRD, architecture, and plan review phase admits reviewer passes through
-   `DEFAULT_MAX_REVIEW_ROUNDS`. The machine persists the count before returning each
-   reviewer instruction, and neither target nor report rewrites reset it. At
-   the limit it returns `REVIEW_ROUND_LIMIT`, emits no reviewer instruction,
+   review cycles bounded by `DEFAULT_MAX_REVIEW_ROUNDS`. A valid substantive
+   drift stamp starts a new cycle for every review target it invalidates; that
+   cycle receives the ordinary allowance and its own continuations. The machine
+   persists cumulative history before returning each reviewer instruction, and
+   target or report rewrites without a substantive stamp reset nothing. At the
+   current cycle's limit it returns `REVIEW_ROUND_LIMIT`, emits no reviewer instruction,
    and preserves the active prepare session while the halt is classified under
    `software-development/procedure/lifecycle/review`. The orchestrator owns
    that classification and bounded recovery direction; escalation follows

@@ -105,24 +105,6 @@ And legacy import never synthesizes requirements_review or plan_review approval 
 And delivered historical records remain unchanged and readable
 ```
 
-<!-- planned-change:fix-plan-review-admission-after-closed-target -->
-#### UC-WSS21: A capped review admits one recorded continuation, and a second only from another intelligence
-
-```gherkin
-Given a lifecycle review reaches its admitted-pass limit without a current approve verdict
-When the claiming orchestrator runs "telec todo stamp my-slug --review-continuation --phase plan_review --reason '<classification>: <evidence that the next attempt differs>'"
-Then the stamp records the phase, the classification and reason, the caller session, and the time in the review state
-And the phase's admitted-pass allowance grows by exactly one
-And the next state-machine call for that phase emits a reviewer dispatch again, counted like any admitted pass
-And a reason naming an ambiguous contract or an unstable target is refused, because neither earns a continuation
-
-Given the same phase reaches its grown allowance again without an approve verdict
-When the claiming orchestrator runs the continuation stamp a second time
-Then the stamp is refused before any write, because a second cap is assessed by a different intelligence
-When a coordinator session or a human-principal caller runs the same stamp
-Then the continuation is recorded with that caller and the allowance grows by one
-```
-<!-- change:fix-plan-review-admission-after-closed-target -->
 #### UC-WSS21: A capped review cycle admits one recorded continuation, and a second only from another intelligence
 
 ```gherkin
@@ -134,16 +116,16 @@ And the next state-machine call for that phase emits a reviewer dispatch again, 
 And a reason naming an ambiguous contract or an unstable target is refused, because neither earns a continuation
 
 Given the same review cycle reaches its grown allowance again without an approve verdict
-When the claiming orchestrator runs the continuation stamp a second time in that cycle
-Then the stamp is refused before any write, because a second cap in one cycle is assessed by a different intelligence
-When a coordinator session or a human-principal caller runs the same stamp
-Then the continuation is recorded with that caller and the current cycle's allowance grows by one
+When a coordinator session or a human-principal caller runs the continuation stamp directly
+Then the continuation records that caller as both writer and assessor and the current cycle's allowance grows by one
+When instead the claiming orchestrator writes the continuation that a coordinator or human assessor reached
+Then its reason begins with the declared assessor and the stamp records the assessor separately from the claiming-orchestrator writer
+And a claimant-authored second continuation with no declared assessor is refused before any write
 
 Given a valid substantive drift stamp starts a new review cycle for the phase
 Then continuations from earlier cycles remain in cumulative history but do not enlarge the new cycle's allowance
 And the claiming orchestrator owns the first continuation in the new cycle if that cycle reaches its own ordinary limit
 ```
-<!-- /planned-change:fix-plan-review-admission-after-closed-target -->
 
 ```
 Given a Todo whose nature does not require architecture work

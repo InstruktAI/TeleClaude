@@ -203,12 +203,10 @@ new phase:
 - If any re-derivable artifact's drift status is `substantive`, the machine
   clears the artifact's review verdict (and every downstream artifact's review
   verdict) and routes back to the artifact's drafting phase.
-<!-- planned:fix-plan-review-admission-after-closed-target -->
 - Every valid `substantive` stamp starts a new review cycle for each review
   target it invalidates. Each cycle receives the ordinary prepare-review
   allowance and its own continuations, while the phase's cumulative round,
   continuation, report, and verdict history remains intact.
-<!-- /planned:fix-plan-review-admission-after-closed-target -->
 - If drift evidence names an artifact outside the coverage matrix or a class
   whose owning re-derivation path is undefined, the machine halts as an anomaly
   instead of accepting a `substantive` verdict with nowhere coherent to route.

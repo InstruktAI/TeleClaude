@@ -161,7 +161,16 @@ A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
-When a loop reaches its applicable documented cap without closure, no further
+Review passes are admitted within a review cycle. A valid substantive-drift
+stamp ends the current cycle for every review target it invalidates and starts
+a new cycle for each replacement target. The new cycle receives its ordinary
+pass allowance and its own continuations; phase-wide counters, continuation
+records, reports, and verdict evidence remain cumulative. Target or report
+rewrites without a substantive stamp remain inside the current cycle and reset
+nothing. This keeps the admitted-pass denominator grounded in the target it
+governs (`general/principle/grounding`).
+
+When a review cycle reaches its applicable documented cap without closure, no further
 automatic review starts. The orchestrator classifies the cause — ambiguous
 contract, failed remediation, unstable target, or incomplete or noisy review —
 from the current review evidence, and records the classification, the evidence
@@ -180,12 +189,14 @@ one further pass through the continuation stamp, which persists the
 classification and reason with the caller, and the machine dispatches a
 reviewer that never reviewed this target before when the cause was the review.
 An ambiguous contract earns no continuation; it goes to its decision owner. An
-unstable target earns no continuation; the producer stops changing the target
-first. The reviewer of a continuation judges the corrected target independently;
+unstable target earns no continuation inside its current cycle; the producer
+stops changing the target first. When the resulting evidence is stamped
+substantive, that stamp starts the replacement target's new cycle under the
+rule above. The reviewer of a continuation judges the corrected target independently;
 authorization to continue is not approval of the target, and repeating an
 unchanged attempt is not recovery.
 
-A phase that reaches its cap a second time is assessed by a different
+A review cycle that reaches its cap a second time is assessed by a different
 intelligence than the one that produced the work: the live coordinator, or the
 human when none is live. That assessor reads the recorded classification and the
 review evidence and either admits a further pass or routes the halt elsewhere.
