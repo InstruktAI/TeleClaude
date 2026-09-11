@@ -2,9 +2,10 @@
 
 No imports from state_machine.py or step_functions.py (circular-import guard).
 
-All commands assume the agent's cwd is the integration worktree. Commands that
-target the project root (repo root sync, stash recovery) receive ``project_root``
-and emit explicit ``git -C <project_root>`` prefixes.
+Commands default to the integration worktree. Git commands that target the
+project root receive ``project_root`` and emit explicit ``git -C <project_root>``
+prefixes; Telec calls that query repo-root state name it as their tool working
+directory.
 """
 
 from __future__ import annotations
@@ -59,7 +60,8 @@ live owner or attribution uncertainty protects them. Keep the prescribed
 clearance reminder active through the quiet window.
 
 After the quiet window, run this read-only ownership query for the complete
-blocking set exactly as listed above:
+blocking set exactly as listed above, with the tool invocation working directory
+set to `{project_root}`:
 
 `telec code owners {dirty_overlap_command_paths}`
 
