@@ -212,30 +212,6 @@ Then it short-circuits before the heuristic engine runs and the agent-stop event
 (No v1 adapter takes this branch.)
 ```
 
-<!-- planned-change:checkpoint-provenance-ingress-bypass -->
-#### UC-CP7: Heuristic engine fail-open returns fallback message
-
-```gherkin
-Given the heuristic engine hits an internal failure (transcript read error, version-control error, evidence-gathering exception)
-When the engine's outer guard catches the exception
-Then the engine returns a fail-open fallback checkpoint message — NOT nothing
-And the checkpoint pre-emit step treats the fallback as a non-empty reason
-And a checkpoint-seen outbox entry is recorded with the current timestamp
-And the adapter formats the block decision around the fallback message
-And the receiver emits the decision and exits cleanly
-And the agent-stop event is NOT enqueued (the receiver exited before reaching enqueue)
-
-Given the checkpoint pre-emit step ITSELF raises (attribute error, type error, value error, persistence error) OUTSIDE the engine's guard
-When the surrounding step catches it
-Then a warning "checkpoint eval crashed (ignored)" is emitted
-And no block decision is emitted
-And the receiver proceeds to enqueue the agent-stop event normally
-This second branch covers unexpected failures that escape the engine's guard.
-It does NOT cover persistence errors that occur while loading the checkpoint
-row: that path catches locally, logs "checkpoint eval skipped (db error)" at
-debug, returns no decision, and checkpoint evaluation returns no block.
-```
-<!-- change:checkpoint-provenance-ingress-bypass -->
 #### UC-CP7: Evaluation failure does not synthesize a checkpoint
 
 ```gherkin
@@ -247,7 +223,6 @@ And no checkpoint-seen entry is recorded for that failed evaluation
 And no generic or exception-derived instruction is displayed
 And the receiver proceeds to enqueue the agent-stop event normally
 ```
-<!-- /planned-change:checkpoint-provenance-ingress-bypass -->
 
 #### UC-CP8: Worktree subdir resolution for branch detection
 
@@ -659,6 +634,4 @@ And no bracket checkpoint envelope is emitted on the hook boundary
 - docs/project/adr/0037-checkpoint-ledger-separates-commit-detection.md
 - docs/project/adr/0038-companion-drift-caught-at-checkpoint.md
 - docs/project/adr/0070-clean-working-tree-floors-the-commit-action-checkpoint.md
-<!-- planned:checkpoint-provenance-ingress-bypass -->
 - docs/project/adr/0086-checkpoint-failures-do-not-invent-work.md
-<!-- /planned:checkpoint-provenance-ingress-bypass -->
