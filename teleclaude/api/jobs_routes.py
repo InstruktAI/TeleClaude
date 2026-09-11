@@ -9,10 +9,11 @@ from fastapi.concurrency import run_in_threadpool
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import JobDTO
-from teleclaude.config.schema import is_agent_job, job_identity
-from teleclaude.cron import runner as cron_runner_module
+from teleclaude.config.jobs import load_effective_jobs
+from teleclaude.config.schema import JobScheduleConfig
 from teleclaude.cron import state as cron_state_module
 from teleclaude.paths import REPO_ROOT
+from teleclaude.services.project_catalog import get_project_catalog_service
 
 logger = get_logger(__name__)
 
@@ -25,48 +26,26 @@ async def list_jobs() -> list[JobDTO]:
 
     def _get_jobs_sync() -> list[JobDTO]:
         try:
-            python_jobs = cron_runner_module.discover_jobs()
             state = cron_state_module.CronState.load()
-            schedules = cron_runner_module.load_job_schedules()
-
             results: list[JobDTO] = []
-            python_job_names = {job.name for job in python_jobs}
-            agent_jobs = {
-                job_identity(name, cfg): cfg
-                for name, cfg in schedules.items()
-                if is_agent_job(cfg) and name not in python_job_names
-            }
-
-            # Process Python (script) jobs
-            for job in python_jobs:
-                job_state = state.get_job(job.name)
-                sched = schedules.get(job.name)
-                schedule_str = sched.schedule if sched and sched.schedule else None
-                last_run_ts = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else None
-                results.append(
-                    JobDTO(
-                        name=job.name,
-                        type="script",
-                        schedule=schedule_str,
-                        last_run=last_run_ts,
-                        status=job_state.last_status or "never",
+            catalog = get_project_catalog_service()
+            catalog.refresh()
+            for project in catalog.list_projects():
+                for job in load_effective_jobs(project.root):
+                    state_name = f"{project.slug}:{job.identity}"
+                    job_state = state.get_job(state_name)
+                    schedule_str = _describe_schedule(job.declaration)
+                    last_run_ts = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else None
+                    results.append(
+                        JobDTO(
+                            name=job.identity,
+                            project=project.slug,
+                            type="agent" if job.declaration.job else "script",
+                            schedule=schedule_str,
+                            last_run=last_run_ts,
+                            status=job_state.last_status or "never",
+                        )
                     )
-                )
-
-            # Process Agent jobs
-            for name, sched in agent_jobs.items():
-                job_state = state.get_job(name)
-                schedule_str = sched.schedule if sched.schedule else None
-                last_run_ts = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else None
-                results.append(
-                    JobDTO(
-                        name=name,
-                        type="agent",
-                        schedule=schedule_str,
-                        last_run=last_run_ts,
-                        status=job_state.last_status or "never",
-                    )
-                )
 
             results.sort(key=lambda x: x.name)
             return results
@@ -81,11 +60,12 @@ async def list_jobs() -> list[JobDTO]:
         raise HTTPException(status_code=500, detail=f"Failed to list jobs: {exc}") from exc
 
 
-def _spawn_cron_runner(name: str) -> None:
+def _spawn_cron_runner(name: str, project: str | None) -> None:
     script = REPO_ROOT / "scripts" / "cron_runner.py"
+    job_filter = f"{project}:{name}" if project else name
     # The runner process boundary contains hung in-process jobs; no daemon-native helper can reap that thread.
     subprocess.Popen(
-        [str(script), "--job", name, "--force"],
+        [str(script), "--job", job_filter, "--force"],
         cwd=str(REPO_ROOT),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -94,11 +74,22 @@ def _spawn_cron_runner(name: str) -> None:
 
 
 @router.post("/{name:path}/run", status_code=202)
-async def run_job(name: str) -> dict[str, object]:  # guard: loose-dict - API boundary
+async def run_job(name: str, project: str | None = None) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Run a scheduled job immediately (fire-and-forget)."""
     try:
-        _spawn_cron_runner(name)
+        _spawn_cron_runner(name, project)
     except OSError as exc:
         logger.error("Failed to start cron runner process (job=%s): %s", name, exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"Failed to start job runner: {exc}") from exc
-    return {"status": "accepted", "job": name}
+    return {"status": "accepted", "job": name, "project": project}
+
+
+def _describe_schedule(declaration: JobScheduleConfig) -> str | None:
+    when = declaration.when
+    if when is None:
+        return None
+    if when.every:
+        return when.every
+    if isinstance(when.at, list):
+        return ", ".join(when.at)
+    return when.at

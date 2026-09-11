@@ -13,6 +13,7 @@ import sys
 import traceback
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -23,6 +24,7 @@ class JobResult:
     message: str
     items_processed: int = 0
     errors: list[str] | None = None
+    session_id: str | None = None
 
     def to_json(self) -> str:
         """Serialize the result for the cron runner subprocess contract."""
@@ -39,6 +41,7 @@ class JobResult:
         message = data.get("message")
         items_processed = data.get("items_processed", 0)
         errors = data.get("errors")
+        session_id = data.get("session_id")
 
         if not isinstance(success, bool):
             raise ValueError("Job result success must be a boolean")
@@ -49,13 +52,24 @@ class JobResult:
         if errors is not None:
             if not isinstance(errors, list) or any(not isinstance(item, str) for item in errors):
                 raise ValueError("Job result errors must be a list of strings")
+        if session_id is not None and not isinstance(session_id, str):
+            raise ValueError("Job result session_id must be a string")
 
         return cls(
             success=success,
             message=message,
             items_processed=items_processed,
             errors=errors,
+            session_id=session_id,
         )
+
+
+@dataclass(frozen=True)
+class JobRunContext:
+    """The consuming project identity supplied by the generic job runner."""
+
+    project_root: Path
+    project_slug: str
 
 
 class Job(ABC):
@@ -68,7 +82,7 @@ class Job(ABC):
     name: str
 
     @abstractmethod
-    def run(self) -> JobResult:
+    def run(self, context: JobRunContext | None = None) -> JobResult:
         """Execute the job. Returns result with success/failure info."""
         ...
 

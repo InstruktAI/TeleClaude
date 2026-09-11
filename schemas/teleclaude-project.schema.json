@@ -1,5 +1,11 @@
 {
   "$defs": {
+    "AgentName": {
+      "description": "The closed set of AI agents TeleClaude can launch and dispatch to.",
+      "enum": ["claude", "codex", "gemini", "deepseek"],
+      "title": "AgentName",
+      "type": "string"
+    },
     "BusinessConfig": {
       "additionalProperties": true,
       "description": "Business domain configuration.",
@@ -325,13 +331,18 @@
     },
     "JobScheduleConfig": {
       "additionalProperties": true,
-      "description": "Job scheduling and execution configuration.",
+      "description": "One declarative scheduled job or subscription override.",
       "properties": {
         "category": {
           "default": "subscription",
           "enum": ["subscription", "system"],
           "title": "Category",
           "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
         },
         "when": {
           "anyOf": [
@@ -343,52 +354,6 @@
             }
           ],
           "default": null
-        },
-        "schedule": {
-          "anyOf": [
-            {
-              "enum": ["hourly", "daily", "weekly", "monthly"],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Schedule"
-        },
-        "preferred_hour": {
-          "default": 6,
-          "maximum": 23,
-          "minimum": 0,
-          "title": "Preferred Hour",
-          "type": "integer"
-        },
-        "preferred_weekday": {
-          "default": 0,
-          "maximum": 6,
-          "minimum": 0,
-          "title": "Preferred Weekday",
-          "type": "integer"
-        },
-        "preferred_day": {
-          "default": 1,
-          "maximum": 31,
-          "minimum": 1,
-          "title": "Preferred Day",
-          "type": "integer"
-        },
-        "type": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Type"
         },
         "script": {
           "anyOf": [
@@ -417,7 +382,10 @@
         "agent": {
           "anyOf": [
             {
-              "type": "string"
+              "items": {
+                "$ref": "#/$defs/AgentName"
+              },
+              "type": "array"
             },
             {
               "type": "null"
@@ -435,20 +403,8 @@
               "type": "null"
             }
           ],
-          "default": "fast",
-          "title": "Thinking Mode"
-        },
-        "message": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
           "default": null,
-          "title": "Message"
+          "title": "Thinking Mode"
         },
         "timeout": {
           "anyOf": [
@@ -660,12 +616,12 @@
       }
     },
     "jobs": {
-      "additionalProperties": {
+      "default": [],
+      "items": {
         "$ref": "#/$defs/JobScheduleConfig"
       },
-      "default": {},
       "title": "Jobs",
-      "type": "object"
+      "type": "array"
     },
     "channel_subscriptions": {
       "default": [],

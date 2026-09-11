@@ -365,8 +365,9 @@ def _prepare_run_session(
         slash_cmd = None
     is_job_command = slash_cmd is SlashCommand.NEXT_RUN_JOB
     if is_job_command:
-        effective_agent, thinking_mode, job = normalize_job_run_request(request, normalized_args)
-        dispatch_mode = AgentDispatchMode.FIXED
+        candidate_order, thinking_mode, job = normalize_job_run_request(request, normalized_args)
+        effective_agent = None
+        dispatch_mode = AgentDispatchMode.AUTOMATIC
         preferred_agent = None
         entry_point = SessionEntryPoint.CRON
     else:
@@ -380,6 +381,7 @@ def _prepare_run_session(
             command=slash_cmd,
         )
         job = None
+        candidate_order = None
     full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
     startup_message = full_command
     if request.additional_context:
@@ -438,6 +440,7 @@ def _prepare_run_session(
             message=startup_message,
             dispatch_mode=dispatch_mode,
             preferred_agent=preferred_agent,
+            candidate_order=candidate_order,
         ),
         initiator_session_id=initiator_session_id,
         origin_metadata=origin_metadata,

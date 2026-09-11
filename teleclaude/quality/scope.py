@@ -273,22 +273,9 @@ def _is_eligible_path(project_root: Path, path: str, *, context_root: Path | Non
         candidate.relative_to(context)
     except ValueError:
         return False
-    if _has_foreign_nested_root(context, candidate):
-        return False
     if repository == TELECLAUDE_HOME.resolve():
         return home_membership(candidate, home=repository) is HomeMembership.RETAINED
     return True
-
-
-def _has_foreign_nested_root(context_root: Path, candidate: Path) -> bool:
-    current = candidate if candidate.is_dir() else candidate.parent
-    while current != context_root:
-        if (current / ".git").exists() or (current / ConfigFileName.OVERLAY).is_file():
-            return True
-        if current.parent == current:
-            return True
-        current = current.parent
-    return False
 
 
 def _outward_paths(

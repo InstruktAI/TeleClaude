@@ -56,7 +56,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 
-from jobs.base import Job, JobResult, run_job_cli
+from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 from teleclaude.channels import publisher as channels_publisher
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
@@ -151,8 +151,9 @@ class SessionMemoryExtractionJob(Job):
 
     name = "session-memory-extraction"
 
-    def run(self) -> JobResult:
+    def run(self, context: JobRunContext | None = None) -> JobResult:
         """Execute memory extraction for all pending sessions."""
+        del context
         loop = asyncio.new_event_loop()
         try:
             return loop.run_until_complete(self._run_async())

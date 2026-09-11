@@ -47,7 +47,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from jobs.base import Job, JobResult, run_job_cli
+from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 from teleclaude.config.loader import load_project_config
 from teleclaude.cron.discovery import Subscriber, discover_youtube_subscribers
 from teleclaude.helpers.youtube_helper import Video, youtube_search
@@ -56,6 +56,7 @@ from teleclaude.tagging.youtube import ChannelRow, read_csv
 logger = get_logger(__name__)
 
 _DEFAULT_PERIOD_DAYS = 7
+_JOB_SCRIPT = "jobs/youtube_scraper.py"
 
 
 def filter_channels_by_tags(rows: list[ChannelRow], job_tags: list[str]) -> list[ChannelRow]:
@@ -90,11 +91,11 @@ class YouTubeScraperJob(Job):
     def __init__(self, *, period_days: int = _DEFAULT_PERIOD_DAYS):
         self.period_days = period_days
 
-    def _job_tags(self) -> list[str]:
+    def _job_tags(self, project_root: Path) -> list[str]:
         """Read the ``tags`` filter from the project config's job entry."""
-        config_path = _REPO_ROOT / "teleclaude.yml"
+        config_path = project_root / "teleclaude.yml"
         project_config = load_project_config(config_path)
-        job_config = project_config.jobs.get(self.name)
+        job_config = next((job for job in project_config.jobs if job.script == _JOB_SCRIPT), None)
         if job_config is None:
             return []
         return list(getattr(job_config, "tags", []) or [])
@@ -144,9 +145,9 @@ class YouTubeScraperJob(Job):
 
         return len(matching), videos_found, errors
 
-    async def _run_async(self) -> JobResult:
+    async def _run_async(self, project_root: Path) -> JobResult:
         """Async implementation of the scraping pipeline."""
-        job_tags = self._job_tags()
+        job_tags = self._job_tags(project_root)
 
         if not job_tags:
             return JobResult(
@@ -188,11 +189,12 @@ class YouTubeScraperJob(Job):
             errors=all_errors if all_errors else None,
         )
 
-    def run(self) -> JobResult:
+    def run(self, context: JobRunContext | None = None) -> JobResult:
         """Execute channel scraping for all subscribers."""
+        project_root = context.project_root if context is not None else _REPO_ROOT
         loop = asyncio.new_event_loop()
         try:
-            return loop.run_until_complete(self._run_async())
+            return loop.run_until_complete(self._run_async(project_root))
         finally:
             loop.close()
 

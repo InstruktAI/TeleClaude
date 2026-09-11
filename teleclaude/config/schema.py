@@ -5,10 +5,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated, Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from teleclaude.agent_registry import AgentName
 from teleclaude.config.tiers import Tier
 from teleclaude.constants import CHECKPOINT_BASE_ACTIONS
 from teleclaude.events.domain_config import DomainsConfig
@@ -108,36 +110,41 @@ class JobWhenConfig(BaseModel):
 
 
 class JobScheduleConfig(BaseModel):
-    """Job scheduling and execution configuration."""
+    """One declarative scheduled job or subscription override."""
 
     model_config = ConfigDict(extra="allow")
     category: Literal["subscription", "system"] = "subscription"
-    # Preferred scheduling contract.
+    enabled: bool = True
     when: JobWhenConfig | None = None
-    # Legacy schedule fields remain supported as a fallback.
-    schedule: Literal["hourly", "daily", "weekly", "monthly"] | None = None
-    preferred_hour: int = Field(default=6, ge=0, le=23)
-    preferred_weekday: int = Field(default=0, ge=0, le=6)
-    preferred_day: int = Field(default=1, ge=1, le=31)
-
-    # Execution config
-    type: str | None = None
     script: str | None = None
     job: str | None = None
-    agent: str | None = None
-    thinking_mode: str | None = "fast"
-    message: str | None = None
+    agent: list[AgentName] | None = None
+    thinking_mode: str | None = None
     timeout: int | None = None
 
+    @field_validator("agent", mode="before")
+    @classmethod
+    def normalize_agents(cls, value: object) -> object:
+        """Normalize declared candidate aliases to the registry vocabulary."""
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise ValueError("agent must be a YAML list")
+        return [AgentName.from_str(item) if isinstance(item, str) else item for item in value]
 
-AGENT_JOB_TYPE: Final = "agent"
+    @model_validator(mode="after")
+    def require_one_execution_target(self) -> JobScheduleConfig:
+        """Reject declarations that are ambiguous or have no runnable target."""
+        script = self.script.strip() if self.script else ""
+        procedure = self.job.strip() if self.job else ""
+        if bool(script) == bool(procedure):
+            raise ValueError("jobs require exactly one nonblank script or job execution pointer")
+        return self
 
 
 def is_agent_job(schedule: JobScheduleConfig) -> bool:
-    """An agent job carries a `job` procedure pointer (or the explicit agent type) and no script pointer."""
-    if schedule.script:
-        return False
-    return schedule.type == AGENT_JOB_TYPE or bool(schedule.job)
+    """Return whether a declaration targets an agent procedure."""
+    return bool(schedule.job and schedule.job.strip())
 
 
 def job_identity(declared_name: str, schedule: JobScheduleConfig) -> str:
@@ -145,10 +152,12 @@ def job_identity(declared_name: str, schedule: JobScheduleConfig) -> str:
 
     An agent job is identified by its `job` procedure snippet ID: dispatch,
     run state, the run directory, and the structured report all use it. A
-    script job is identified by its declared name.
+    script job identity is its configured module stem.
     """
     if is_agent_job(schedule) and schedule.job:
         return schedule.job.strip()
+    if schedule.script:
+        return Path(schedule.script).stem
     return declared_name
 
 
@@ -551,7 +560,7 @@ class ProjectConfig(BaseModel):
     frontend_root: str | None = None
     business: BusinessConfig = BusinessConfig()
     hooks: HooksConfig = HooksConfig()
-    jobs: dict[str, JobScheduleConfig] = {}
+    jobs: list[JobScheduleConfig] = []
     channel_subscriptions: list[ChannelSubscription] = []
     checkpoint: CheckpointConfig | None = None
     code: CapabilityConfig = CapabilityConfig()
@@ -631,6 +640,7 @@ class GlobalConfig(BaseModel):
     kind: Literal[ConfigKind.GLOBAL] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     env_allow_list: list[str] = []
     people: list[PersonEntry] = []
+    jobs: list[JobScheduleConfig] = []
     subscriptions: list[SubscriptionEntry] = []
     interests: list[str] = []
     event_domains: DomainsConfig | None = None

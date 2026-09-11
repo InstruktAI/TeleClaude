@@ -137,6 +137,7 @@ async def _resolve_launch_intent(
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
         producer_agent=cmd.producer_agent,
+        candidate_order=intent.candidate_order,
     )
     if not intent.accepted_at_origin:
         emit_agent_dispatch_decision(
@@ -167,6 +168,7 @@ async def _resolve_launch_intent(
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
             producer_agent=cmd.producer_agent,
+            candidate_order=intent.candidate_order,
             entry_point=cmd.entry_point,
         )
     except AgentDispatchFailure as exc:

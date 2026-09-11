@@ -1,5 +1,11 @@
 {
   "$defs": {
+    "AgentName": {
+      "description": "The closed set of AI agents TeleClaude can launch and dispatch to.",
+      "enum": ["claude", "codex", "gemini", "deepseek"],
+      "title": "AgentName",
+      "type": "string"
+    },
     "AutonomyLevel": {
       "description": "Execution autonomy levels for domain cartridges.",
       "enum": ["manual", "notify", "auto_notify", "autonomous"],
@@ -116,6 +122,99 @@
         }
       },
       "title": "DomainsConfig",
+      "type": "object"
+    },
+    "JobScheduleConfig": {
+      "additionalProperties": true,
+      "description": "One declarative scheduled job or subscription override.",
+      "properties": {
+        "category": {
+          "default": "subscription",
+          "enum": ["subscription", "system"],
+          "title": "Category",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobWhenConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "script": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Script"
+        },
+        "job": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job"
+        },
+        "agent": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/AgentName"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent"
+        },
+        "thinking_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thinking Mode"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout"
+        }
+      },
+      "title": "JobScheduleConfig",
       "type": "object"
     },
     "JobSubscription": {
@@ -372,6 +471,14 @@
         "$ref": "#/$defs/PersonEntry"
       },
       "title": "People",
+      "type": "array"
+    },
+    "jobs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/JobScheduleConfig"
+      },
+      "title": "Jobs",
       "type": "array"
     },
     "subscriptions": {

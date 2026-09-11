@@ -50,7 +50,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from jobs.base import Job, JobResult, run_job_cli
+from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 from teleclaude.cron.discovery import discover_youtube_subscribers
 from teleclaude.tagging.youtube import sync_youtube_subscriptions
 
@@ -76,8 +76,9 @@ class YouTubeSyncJob(Job):
         self.thinking_mode = thinking_mode
         self.refresh = refresh
 
-    def run(self) -> JobResult:
+    def run(self, context: JobRunContext | None = None) -> JobResult:
         """Execute YouTube sync for all subscribers."""
+        del context
         subscribers = discover_youtube_subscribers()
 
         if not subscribers:

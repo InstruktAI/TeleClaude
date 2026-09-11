@@ -69,7 +69,7 @@ class JobsView(Widget, can_focus=True):
         super().__init__(**kwargs)
         self._jobs: list[JobDTO] = []
         self._nav_items: list[Widget] = []
-        self._jobs_fingerprint: tuple[tuple[str, str, str | None, str | None, str], ...] | None = None
+        self._jobs_fingerprint: tuple[tuple[str, str, str, str | None, str | None, str], ...] | None = None
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="jobs-scroll")
@@ -87,8 +87,8 @@ class JobsView(Widget, can_focus=True):
         self._rebuild()
 
     @staticmethod
-    def _fingerprint_jobs(jobs: list[JobDTO]) -> tuple[tuple[str, str, str | None, str | None, str], ...]:
-        return tuple((job.name, job.type, job.schedule, job.last_run, job.status) for job in jobs)
+    def _fingerprint_jobs(jobs: list[JobDTO]) -> tuple[tuple[str, str, str, str | None, str | None, str], ...]:
+        return tuple((job.project, job.name, job.type, job.schedule, job.last_run, job.status) for job in jobs)
 
     def _rebuild(self) -> None:
         container = self.query_one("#jobs-scroll", VerticalScroll)
@@ -153,4 +153,4 @@ class JobsView(Widget, can_focus=True):
         """Enter: run selected job."""
         row = self._current_job_row()
         if row:
-            self.post_message(SettingsChanged(key=f"run_job:{row.job.name}", value=True))
+            self.post_message(SettingsChanged(key=f"run_job:{row.job.project}:{row.job.name}", value=True))

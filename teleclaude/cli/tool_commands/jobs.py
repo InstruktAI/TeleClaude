@@ -11,9 +11,11 @@ from jobs.base import JobResult
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import JOBS_REPORT
-from teleclaude.config.loader import load_project_config
-from teleclaude.config.schema import job_identity
-from teleclaude.paths import JOBS_DIR, REPO_ROOT, ConfigFileName
+from teleclaude.config.jobs import load_effective_jobs
+from teleclaude.paths import JOBS_DIR
+from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
+from teleclaude.services.project_catalog import get_project_catalog_service
+from teleclaude.session_identity import get_session_id
 
 
 def handle_jobs(args: list[str]) -> None:
@@ -66,8 +68,10 @@ def handle_jobs_report(args: list[str]) -> None:
         raise SystemExit(1)
     items_processed = _parse_non_negative_int(items_processed_raw) if items_processed_raw is not None else 0
 
-    _validate_known_job(job_name)
-    runs_dir = _contained_runs_dir(job_name)
+    project_root = _report_project_root()
+    project_slug = _current_project_slug(project_root)
+    _validate_known_job(job_name, project_root)
+    runs_dir = _contained_runs_dir(_project_job_key(project_slug, job_name))
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     result = JobResult(
@@ -75,6 +79,7 @@ def handle_jobs_report(args: list[str]) -> None:
         message=message,
         items_processed=items_processed,
         errors=errors or None,
+        session_id=get_session_id(),
     )
     record_path = runs_dir / _record_filename()
     record_path.write_text(result.to_json() + "\n", encoding="utf-8")
@@ -115,15 +120,29 @@ def _parse_non_negative_int(raw: str) -> int:
     return value
 
 
-def _validate_known_job(job_name: str) -> None:
-    if job_name not in _load_known_job_names():
+def _validate_known_job(job_name: str, project_root: Path) -> None:
+    if job_name not in _load_known_job_names(project_root):
         print(f"Error: unknown job: {job_name}", file=sys.stderr)
         raise SystemExit(1)
 
 
-def _load_known_job_names() -> set[str]:
-    config = load_project_config(REPO_ROOT / ConfigFileName.OVERLAY)
-    return {job_identity(name, schedule) for name, schedule in config.jobs.items()}
+def _load_known_job_names(project_root: Path) -> set[str]:
+    return {job.identity for job in load_effective_jobs(project_root)}
+
+
+def _report_project_root() -> Path:
+    return resolve_project_root(resolve_invocation_cwd())
+
+
+def _current_project_slug(project_root: Path) -> str:
+    project = get_project_catalog_service().get_by_root(project_root)
+    if project is None:
+        raise ValueError(f"reporting project is not registered: {project_root}")
+    return project.slug
+
+
+def _project_job_key(project_slug: str, job_name: str) -> str:
+    return f"{project_slug}:{job_name}"
 
 
 def _contained_runs_dir(job_name: str) -> Path:

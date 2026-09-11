@@ -21,8 +21,10 @@ from teleclaude.doc_body import (
     split_frontmatter,
 )
 from teleclaude.docs_index import extract_required_reads, get_project_slug
+from teleclaude.docs_publishers import project_slug as publisher_project_slug
 from teleclaude.domains import valid_domains
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, REPO_ROOT
+from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
@@ -211,10 +213,11 @@ def _write_test_output(
 
 def _load_manifest_by_name() -> dict[str, tuple[Path, Path, str]]:
     """Return {slug: (index_path, project_root, slug)} for all registered projects."""
-    catalog = get_project_catalog_service()
     projects: dict[str, tuple[Path, Path, str]] = {}
-    for node in catalog.list_projects():
-        projects[node.slug] = (node.docs_index_path, node.root, node.slug)
+    for root in load_roots():
+        resolved = root.expanduser().resolve()
+        slug = publisher_project_slug(resolved)
+        projects[slug] = (resolved / "docs" / "project" / "index.yaml", resolved, slug)
     return projects
 
 

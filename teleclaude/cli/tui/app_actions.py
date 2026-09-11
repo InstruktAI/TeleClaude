@@ -236,13 +236,14 @@ class TelecAppActionsMixin:
             self._cycle_animation(str(message.value))  # type: ignore[attr-defined]
             return
         if key.startswith("run_job:"):
-            await self._run_footer_job(key.split(":", 1)[1])
+            _, project, job_name = key.split(":", 2)
+            await self._run_footer_job(job_name, project)
 
-    async def _run_footer_job(self, job_name: str) -> None:
+    async def _run_footer_job(self, job_name: str, project: str) -> None:
         """Run a footer-triggered background job and surface the result."""
         try:
-            await self.api.run_job(job_name)  # type: ignore[attr-defined]
-            self.notify(f"Job '{job_name}' started")  # type: ignore[attr-defined]
+            await self.api.run_job(job_name, project)  # type: ignore[attr-defined]
+            self.notify(f"Job '{job_name}' started for {project}")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
             self.notify(f"Failed to run job: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
 

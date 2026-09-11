@@ -79,10 +79,6 @@ ROLE_TASKER = "tasker"
 # root at todo/bug creation — see project/spec/domain/workflow.
 ROLE_JOB_RUNNER = "job_runner"
 
-# The configured slug of the cross-project log bug hunter job. Referenced by the
-# runner's catalog fan-out until per-project enablement replaces it.
-LOG_BUG_HUNTER_JOB = "log_bug_hunter"
-
 
 class DriverLaunchClass(StrEnum):
     """How a session-create launch is treated by the driver-start dedup guard.

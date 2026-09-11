@@ -45,9 +45,9 @@ configure_logging("teleclaude", source="cron")
 logger = get_logger(__name__)
 
 try:
-    from teleclaude.config.schema import is_agent_job, job_identity
-    from teleclaude.cron.runner import _load_job_schedules, discover_jobs, run_due_jobs
-    from teleclaude.cron.state import CronState
+    from teleclaude.config.jobs import load_effective_jobs
+    from teleclaude.cron.runner import load_job_state, run_due_jobs
+    from teleclaude.services.project_catalog import get_project_catalog_service
 except Exception:
     logger.exception("cron_runner failed during import")
     raise SystemExit(1) from None
@@ -97,37 +97,25 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.list_jobs:
-        python_jobs = discover_jobs()
-        state = CronState.load()
-        schedules = _load_job_schedules()
+        catalog = get_project_catalog_service()
+        catalog.refresh()
+        state = load_job_state(catalog)
+        jobs = [(project.slug, job) for project in catalog.list_projects() for job in load_effective_jobs(project.root)]
 
-        # Build unified list: Python jobs + agent jobs from config
-        python_job_names = {job.name for job in python_jobs}
-        agent_jobs = {
-            job_identity(name, cfg): cfg
-            for name, cfg in schedules.items()
-            if is_agent_job(cfg) and name not in python_job_names
-        }
-
-        if not python_jobs and not agent_jobs:
+        if not jobs:
             print("No jobs found")
             return 0
 
         print(f"{'Job':<60} {'Type':<8} {'Schedule':<10} {'Last Run':<25} {'Status':<10}")
         print("-" * 118)
 
-        for job in python_jobs:
-            job_state = state.get_job(job.name)
-            sched = schedules.get(job.name)
-            schedule_str = _describe_schedule(sched) if sched else "none"
+        for project_slug, job in jobs:
+            job_key = f"{project_slug}:{job.identity}"
+            job_state = state.get_job(job_key)
+            schedule_str = _describe_schedule(job.declaration)
             last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
-            print(f"{job.name:<60} {'script':<8} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
-
-        for name, sched in agent_jobs.items():
-            job_state = state.get_job(name)
-            schedule_str = _describe_schedule(sched)
-            last_run = job_state.last_run.strftime("%Y-%m-%d %H:%M:%S") if job_state.last_run else "never"
-            print(f"{name:<60} {'agent':<8} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
+            job_type = "agent" if job.declaration.job else "script"
+            print(f"{job_key:<60} {job_type:<8} {schedule_str:<10} {last_run:<25} {job_state.last_status:<10}")
 
         return 0
 

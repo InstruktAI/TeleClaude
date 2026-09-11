@@ -30,7 +30,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from jobs.base import Job, JobResult, run_job_cli
+from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 
 # from teleclaude.memory.store import MemoryStore
 
@@ -49,8 +49,9 @@ class HelpDeskIntelligenceJob(Job):
     def __init__(self, *, lookback_hours: int = 24) -> None:
         self.lookback_hours = lookback_hours
 
-    def run(self) -> JobResult:
+    def run(self, context: JobRunContext | None = None) -> JobResult:
         """Execute the daily intelligence digest pipeline."""
+        del context
         import asyncio
 
         loop = asyncio.new_event_loop()

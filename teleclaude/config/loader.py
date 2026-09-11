@@ -28,6 +28,7 @@ from teleclaude.config._file_migrations import (
 from teleclaude.config.advancement import advance_config
 from teleclaude.config.context_root import resolve_context_root
 from teleclaude.config.declaration import render_declared_config, write_declared_config
+from teleclaude.config.jobs_migration import migrate_jobs_config
 from teleclaude.config.person_claim import migrate_person_claim_for_target
 from teleclaude.config.schema import (
     AppConfig,
@@ -125,6 +126,9 @@ def load_config[T: BaseModel](
             PEOPLE_DIR if path.expanduser().resolve() == GLOBAL_CONFIG_PATH.expanduser().resolve() else None
         )
         migrate_global_file(path, canonical_people_dir)
+        raw = _read_config_mapping(path)
+    if kind in (ConfigKind.GLOBAL, ConfigKind.PROJECT):
+        migrate_jobs_config(path, kind, schema_root=root)
         raw = _read_config_mapping(path)
     references = find_environment_references(raw)
     environment_path = path.with_name(ConfigFileName.ENV)

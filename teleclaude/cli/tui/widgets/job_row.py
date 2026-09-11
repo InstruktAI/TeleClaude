@@ -38,6 +38,7 @@ class JobRow(TelecMixin, Widget):
 
         # Name
         line.append(self.job.name, style="bold" if status == "running" else "")
+        line.append(f"  @{self.job.project}", style="dim")
 
         # Type
         line.append(f"  [{self.job.type}]", style="dim")

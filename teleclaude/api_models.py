@@ -869,6 +869,7 @@ class JobDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
+    project: str
     type: Literal["agent", "script"]
     schedule: str | None = None
     last_run: str | None = None

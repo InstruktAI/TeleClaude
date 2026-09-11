@@ -79,6 +79,7 @@ class AgentDispatchReason(StrEnum):
     THINKING_MODE_REQUIRED = "thinking_mode_required"
     MODEL_CHAIN_EXHAUSTED = "model_chain_exhausted"
     MODEL_AVAILABILITY_READ_FAILED = "model_availability_read_failed"
+    JOB_DECLARATION = "job_declaration"
 
 
 class AgentDispatchStage(StrEnum):
@@ -152,6 +153,7 @@ class AgentDispatchOrderBranch(StrEnum):
     COMMAND_POLICY = "command_policy"
     TODO_KIND = "todo_kind"
     GLOBAL = "global"
+    JOB_DECLARATION = "job_declaration"
 
 
 @dataclass(frozen=True)
@@ -232,7 +234,6 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.NEXT_CREATE_ART: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.NEXT_CREATE_HTML: CommandDispatchPolicy(_GEMINI_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.NEXT_DEFER: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
-    SlashCommand.NEXT_RUN_JOB: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.FAST),
 }
 _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
 _MODEL_SKIP_REASON_PREFIX = "model_"
@@ -428,6 +429,7 @@ async def resolve_agent_dispatch(
     preferred_agent: str | None,
     fixed_agent: str | None,
     producer_agent: str | None,
+    candidate_order: tuple[str, ...] | None,
     entry_point: SessionEntryPoint | None,
 ) -> AgentDispatchDecision:
     """Select one eligible agent without consulting the caller's machine state."""
@@ -466,7 +468,12 @@ async def resolve_agent_dispatch(
         )
         return AgentDispatchDecision(agent=preferred_agent, reason=reason)
 
-    policy_order, reason, order_branch = _order_for(command, todo_kind)
+    if candidate_order:
+        policy_order = candidate_order
+        reason = AgentDispatchReason.JOB_DECLARATION
+        order_branch = AgentDispatchOrderBranch.JOB_DECLARATION
+    else:
+        policy_order, reason, order_branch = _order_for(command, todo_kind)
     order = _order_with_preference(policy_order, preferred_agent)
     eligible = [
         agent
@@ -609,6 +616,7 @@ def decision_basis_digest(
     preferred_agent: str | None,
     fixed_agent: str | None,
     producer_agent: str | None,
+    candidate_order: tuple[str, ...] | None = None,
 ) -> str:
     """Create a stable privacy-safe correlation basis for equivalent decisions."""
     basis = json.dumps(
@@ -617,6 +625,7 @@ def decision_basis_digest(
             "mode": mode.value,
             "preferred_agent": preferred_agent,
             "producer_agent": producer_agent,
+            "candidate_order": candidate_order,
             "role": role,
             "todo_kind": todo_kind,
         },

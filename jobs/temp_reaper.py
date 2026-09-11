@@ -37,7 +37,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from jobs.base import Job, JobResult, run_job_cli
+from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 
 logger = get_logger(__name__)
 
@@ -138,8 +138,9 @@ class TempReaperJob(Job):
 
     name = "temp_reaper"
 
-    def run(self) -> JobResult:
+    def run(self, context: JobRunContext | None = None) -> JobResult:
         """Find and remove stale temp files."""
+        del context
         temp_dir = _find_claude_temp_dir()
 
         files_removed = 0

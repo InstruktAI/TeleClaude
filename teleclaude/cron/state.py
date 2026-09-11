@@ -51,6 +51,8 @@ class CronStateDict(TypedDict):
 
     jobs: dict[str, JobStateDict]
     pending_emissions: dict[str, PendingEmissionDict]
+    legacy_jobs: dict[str, JobStateDict]
+    legacy_pending_emissions: dict[str, PendingEmissionDict]
 
 
 @dataclass(frozen=True)
@@ -151,9 +153,17 @@ class CronState:
     path: Path
     jobs: dict[str, JobState] = field(default_factory=dict)
     pending_emissions: dict[str, PendingEmission] = field(default_factory=dict)
+    legacy_jobs: dict[str, JobState] = field(default_factory=dict)
+    legacy_pending_emissions: dict[str, PendingEmission] = field(default_factory=dict)
 
     @classmethod
-    def load(cls, path: Path | None = None) -> CronState:
+    def load(
+        cls,
+        path: Path | None = None,
+        *,
+        legacy_project_slug: str | None = None,
+        aggregate_job_keys: frozenset[str] = frozenset(),
+    ) -> CronState:
         """Load state from disk or create new."""
         if path is None:
             path = CRON_STATE_PATH
@@ -174,7 +184,11 @@ class CronState:
                         or "last_notified" in job_data
                     ):
                         needs_migration = True
-                    state.jobs[job_name] = JobState.from_dict(job_data)
+                    target = state.legacy_jobs if job_name in aggregate_job_keys else state.jobs
+                    migrated_name = _migrate_job_key(job_name, legacy_project_slug)
+                    if migrated_name != job_name:
+                        needs_migration = True
+                    target[migrated_name] = JobState.from_dict(job_data)
                 pending_obj = data.get("pending_emissions", {})
                 if not isinstance(pending_obj, dict):
                     needs_migration = True
@@ -182,11 +196,24 @@ class CronState:
                 pending = cast(dict[str, PendingEmissionDict], pending_obj)
                 for key, emission_data in pending.items():
                     try:
-                        state.pending_emissions[key] = PendingEmission.from_dict(emission_data)
+                        emission = PendingEmission.from_dict(emission_data)
+                        if emission.job_name in aggregate_job_keys:
+                            state.legacy_pending_emissions[key] = emission
+                            needs_migration = True
+                        else:
+                            state.pending_emissions[key] = emission
                     except (KeyError, TypeError, ValueError):
                         needs_migration = True
                 if "pending_emissions" not in data:
                     needs_migration = True
+                legacy_jobs_obj = data.get("legacy_jobs", {})
+                if isinstance(legacy_jobs_obj, dict):
+                    for job_name, job_data in cast(dict[str, JobStateDict], legacy_jobs_obj).items():
+                        state.legacy_jobs[job_name] = JobState.from_dict(job_data)
+                legacy_pending_obj = data.get("legacy_pending_emissions", {})
+                if isinstance(legacy_pending_obj, dict):
+                    for key, emission_data in cast(dict[str, PendingEmissionDict], legacy_pending_obj).items():
+                        state.legacy_pending_emissions[key] = PendingEmission.from_dict(emission_data)
             except (json.JSONDecodeError, KeyError):
                 pass
         if needs_migration:
@@ -199,6 +226,10 @@ class CronState:
         data: CronStateDict = {
             "jobs": {name: job.to_dict() for name, job in self.jobs.items()},
             "pending_emissions": {key: emission.to_dict() for key, emission in self.pending_emissions.items()},
+            "legacy_jobs": {name: job.to_dict() for name, job in self.legacy_jobs.items()},
+            "legacy_pending_emissions": {
+                key: emission.to_dict() for key, emission in self.legacy_pending_emissions.items()
+            },
         }
         self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -299,3 +330,10 @@ class CronState:
             for name, job in sorted(self.jobs.items())
             if job.last_status is JobRunStatus.RUNNING and job.run_started_at is not None
         ]
+
+
+def _migrate_job_key(job_name: str, legacy_project_slug: str | None) -> str:
+    """Qualify a pre-cutover ordinary job with its known runner project."""
+    if legacy_project_slug is None or ":" in job_name:
+        return job_name
+    return f"{legacy_project_slug}:{job_name}"

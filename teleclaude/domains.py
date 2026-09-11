@@ -5,15 +5,19 @@ project's ``business.publishes`` declarations. Each domain has exactly one
 owning publisher — a domain declared by two registered projects is a split, and
 sync hard-blocks on it — so the union defines validity with one owner per domain.
 
-The heavy ``config.loader`` (pydantic) import is deferred into the functions so
-that ``import teleclaude.domains`` stays cheap on the CLI help path (this module
-is pulled transitively by ``snippet_validation`` and ``surface``).
+This module reads only the publisher declaration it needs. Full configuration
+loads own normalization and may write an eligible legacy document, so using one
+to discover domains would let read-only cross-project validation mutate an
+unrelated publisher's configuration.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
+from teleclaude.config.schema import BusinessConfig
 from teleclaude.paths import ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.project_root import declaration_root
@@ -23,40 +27,47 @@ def publishes_for_root(root: Path) -> set[str]:
     """Return the domain slugs declared in ``root``'s ``business.publishes``.
 
     A missing ``teleclaude.yml`` is a legitimate non-publisher (empty set). A
-    present-but-invalid or unreadable config fails loudly — silently dropping a
-    publisher's domains would let them disappear from the valid-domain set and
-    the merge without any signal. Each entry's ``trigger`` is validated at
-    config load (required, single-line, bounded length) but is not returned
-    here; see :func:`triggers_for_root`.
+    present-but-invalid or unreadable publisher declaration fails loudly —
+    silently dropping a publisher's domains would let them disappear from the
+    valid-domain set and the merge without any signal. Each entry's ``trigger``
+    is validated here but is not returned; see :func:`triggers_for_root`.
     """
-    from teleclaude.config.loader import (  # noqa: PLC0415 - deferred: keep pydantic config.loader off the CLI-help import path
-        load_project_config,
-    )
-
-    config_path = declaration_root(root) / ConfigFileName.OVERLAY
-    if not config_path.is_file():
+    business = _business_for_root(root)
+    if business is None:
         return set()
-    config = load_project_config(config_path)
-    return {entry.slug for entry in config.business.publishes}
+    return {entry.slug for entry in business.publishes}
 
 
 def triggers_for_root(root: Path) -> dict[str, str]:
     """Return the domain → activation-trigger mapping declared in ``root``'s ``business.publishes``.
 
     A missing ``teleclaude.yml`` is a legitimate non-publisher (empty mapping).
-    Each trigger is already validated (required, single-line, bounded length)
-    at config load, so a published domain reaching this mapping always carries
-    a usable trigger.
+    Each trigger is validated while extracting the publisher declaration, so a
+    published domain reaching this mapping always carries a usable trigger.
     """
-    from teleclaude.config.loader import (  # noqa: PLC0415 - deferred: keep pydantic config.loader off the CLI-help import path
-        load_project_config,
-    )
+    business = _business_for_root(root)
+    if business is None:
+        return {}
+    return {entry.slug: entry.trigger for entry in business.publishes}
 
+
+
+def _business_for_root(root: Path) -> BusinessConfig | None:
+    """Read one publisher declaration without triggering config normalization.
+
+    The declaration is read from the checkout that owns ``root``: a linked
+    worktree carries a branch copy and is never authoritative for it.
+    """
     config_path = declaration_root(root) / ConfigFileName.OVERLAY
     if not config_path.is_file():
-        return {}
-    config = load_project_config(config_path)
-    return {entry.slug: entry.trigger for entry in config.business.publishes}
+        return None
+    try:
+        payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ValueError(f"Failed to read publisher declaration {config_path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"Publisher declaration must be a mapping: {config_path}")
+    return BusinessConfig.model_validate(payload.get("business", {}))
 
 
 def valid_domains() -> set[str]:

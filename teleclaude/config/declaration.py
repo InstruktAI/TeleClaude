@@ -71,8 +71,25 @@ def _schema_modeline(config_path: Path, schema_path: Path) -> str | None:
 
 def _render_document(kind: ConfigKind, document: Mapping[str, object], modeline: str | None) -> str:
     declared_document: Any = document.copy() if isinstance(document, dict) else dict(document)
+    _strip_schema_modelines(declared_document)
     declared_document[_KIND_FIELD] = kind.value
     return _render_yaml(declared_document, modeline)
+
+
+def _strip_schema_modelines(document: Any) -> None:
+    """Remove retained round-trip modelines before rendering the canonical one."""
+    comments = getattr(getattr(document, "ca", None), "comment", None)
+    if not isinstance(comments, list):
+        return
+    for index, source in enumerate(comments):
+        if isinstance(source, list):
+            comments[index] = [
+                token
+                for token in source
+                if not str(getattr(token, "value", "")).lstrip().startswith(_SCHEMA_MODELINE_PREFIX)
+            ]
+        elif str(getattr(source, "value", "")).lstrip().startswith(_SCHEMA_MODELINE_PREFIX):
+            comments[index] = None
 
 
 def _render_yaml(document: Mapping[str, object], modeline: str | None) -> str:

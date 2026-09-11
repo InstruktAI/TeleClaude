@@ -21,8 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-import calendar
-import importlib
+import importlib.util
 import os
 import re
 import sys
@@ -30,37 +29,34 @@ import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
+from hashlib import sha256
 from pathlib import Path
 from queue import Queue
-from typing import cast
+from types import ModuleType
 
 from instrukt_ai_logging import get_logger
 
-from jobs.base import Job, JobResult
-from teleclaude.cli.api_client import TelecAPIClient
+from jobs.base import Job, JobResult, JobRunContext
+from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.config import config as global_config
+from teleclaude.config.jobs import EffectiveJob, load_effective_jobs
 from teleclaude.config.loader import load_person_config, load_project_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription, is_agent_job, job_identity
-from teleclaude.constants import LOG_BUG_HUNTER_JOB
-from teleclaude.core.models import HumanActionIntent, Session
+from teleclaude.core.models import HumanActionIntent
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.events.schemas.jobs import JobRunEventType
 from teleclaude.paths import CRON_PID_PATH, JOBS_DIR, TELECLAUDE_HOME, ConfigFileName
-from teleclaude.services.project_catalog import ProjectNode, get_project_catalog_service
-from teleclaude.services.project_jobs import ProjectJobOrchestrator
+from teleclaude.project_root import resolve_project_root
+from teleclaude.services.project_catalog import ProjectCatalogService, ProjectNode, get_project_catalog_service
 
 logger = get_logger(__name__)
 
 _NEXT_RUN_JOB_COMMAND = "/next-run-job"
-_LOG_HUNTER_SESSION_ACTIVE = "log bug hunter session already active for project"
-_LOG_HUNTER_DISPATCHED = "log bug hunter dispatched"
-
-# Ensure repo root is in path for job imports
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+_DYNAMIC_JOB_PACKAGE_PREFIX = "_teleclaude_job"
+_LEGACY_AGGREGATE_JOB_KEYS = frozenset({"log-bug-hunter", "software-development/procedure/maintenance/log-bug-hunter"})
 
 
 class Schedule(Enum):
@@ -72,7 +68,7 @@ class Schedule(Enum):
     MONTHLY = "monthly"
 
 
-def _load_job_schedules(config_path: Path | None = None) -> dict[str, JobScheduleConfig]:
+def _load_job_schedules(config_path: Path | None = None) -> list[JobScheduleConfig]:
     """Load job schedule configuration from teleclaude.yml."""
     if config_path is None:
         config_path = _REPO_ROOT / ConfigFileName.OVERLAY
@@ -81,9 +77,19 @@ def _load_job_schedules(config_path: Path | None = None) -> dict[str, JobSchedul
     return config.jobs
 
 
-def load_job_schedules(config_path: Path | None = None) -> dict[str, JobScheduleConfig]:
+def load_job_schedules(config_path: Path | None = None) -> list[JobScheduleConfig]:
     """Load job schedule configuration from teleclaude.yml."""
     return _load_job_schedules(config_path)
+
+
+def load_job_state(catalog: ProjectCatalogService | None = None) -> CronState:
+    """Load state with the runner-owned forward migration context."""
+    active_catalog = catalog or get_project_catalog_service()
+    legacy_project = active_catalog.get_by_root(resolve_project_root(_REPO_ROOT))
+    return CronState.load(
+        legacy_project_slug=legacy_project.slug if legacy_project is not None else None,
+        aggregate_job_keys=_LEGACY_AGGREGATE_JOB_KEYS,
+    )
 
 
 def _parse_duration(duration: str) -> timedelta:
@@ -124,12 +130,7 @@ def _is_due(
         if when_due is not None:
             return when_due
 
-    schedule_str = schedule_config.schedule if schedule_config.schedule else "daily"
-    try:
-        schedule = Schedule(schedule_str)
-    except ValueError:
-        schedule = Schedule.DAILY
-    return _is_legacy_schedule_due(schedule, schedule_config, now, elapsed)
+    return False
 
 
 def _is_when_due(
@@ -171,39 +172,6 @@ def _scheduled_occurrence(local_now: datetime, at_time_str: str) -> datetime | N
         return None
 
 
-def _next_daily_occurrence(after: datetime, preferred_hour: int) -> datetime:
-    candidate = after.replace(hour=preferred_hour, minute=0, second=0, microsecond=0)
-    if candidate < after:
-        candidate += timedelta(days=1)
-    return candidate
-
-
-def _next_weekly_occurrence(after: datetime, preferred_weekday: int, preferred_hour: int) -> datetime:
-    day_delta = (preferred_weekday - after.weekday()) % 7
-    candidate = (after + timedelta(days=day_delta)).replace(hour=preferred_hour, minute=0, second=0, microsecond=0)
-    if candidate < after:
-        candidate += timedelta(days=7)
-    return candidate
-
-
-def _next_monthly_occurrence(after: datetime, preferred_day: int, preferred_hour: int) -> datetime:
-    year = after.year
-    month = after.month
-    while True:
-        last_day = calendar.monthrange(year, month)[1]
-        day = min(preferred_day, last_day)
-        candidate = after.replace(
-            year=year, month=month, day=day, hour=preferred_hour, minute=0, second=0, microsecond=0
-        )
-        if candidate >= after:
-            return candidate
-        if month == 12:
-            year += 1
-            month = 1
-        else:
-            month += 1
-
-
 def _is_first_run_due(
     schedule_config: JobScheduleConfig,
     first_seen_at: datetime | None,
@@ -230,53 +198,7 @@ def _is_first_run_due(
                     return True
             return False
 
-    schedule_str = schedule_config.schedule if schedule_config.schedule else "daily"
-    try:
-        schedule = Schedule(schedule_str)
-    except ValueError:
-        schedule = Schedule.DAILY
-
-    local_first_seen = first_seen_at.astimezone()
-    local_now = now.astimezone()
-
-    match schedule:
-        case Schedule.HOURLY:
-            return local_now >= (local_first_seen + timedelta(hours=1))
-        case Schedule.DAILY:
-            next_run = _next_daily_occurrence(local_first_seen, schedule_config.preferred_hour)
-        case Schedule.WEEKLY:
-            next_run = _next_weekly_occurrence(
-                local_first_seen,
-                schedule_config.preferred_weekday,
-                schedule_config.preferred_hour,
-            )
-        case Schedule.MONTHLY:
-            next_run = _next_monthly_occurrence(
-                local_first_seen,
-                schedule_config.preferred_day,
-                schedule_config.preferred_hour,
-            )
-    return local_now >= next_run
-
-
-def _is_legacy_schedule_due(
-    schedule: Schedule,
-    schedule_config: JobScheduleConfig,
-    now: datetime,
-    elapsed: timedelta,
-) -> bool:
-    preferred_hour = schedule_config.preferred_hour
-    preferred_weekday = schedule_config.preferred_weekday
-    preferred_day = schedule_config.preferred_day
-    match schedule:
-        case Schedule.HOURLY:
-            return elapsed >= timedelta(hours=1)
-        case Schedule.DAILY:
-            return elapsed >= timedelta(hours=20) and now.hour >= preferred_hour
-        case Schedule.WEEKLY:
-            return elapsed >= timedelta(days=6) and now.weekday() == preferred_weekday and now.hour >= preferred_hour
-        case Schedule.MONTHLY:
-            return elapsed >= timedelta(days=25) and now.day == preferred_day and now.hour >= preferred_hour
+    return False
 
 
 _DEFAULT_JOB_TIMEOUT_S = 1800  # 30 minutes
@@ -289,7 +211,7 @@ class ScriptJob:
 
     name: str
     script: str
-    module_name: str
+    origin: Path
 
 
 def _acquire_pidlock() -> bool:
@@ -321,7 +243,7 @@ def _job_command_args(schedule: JobScheduleConfig) -> str:
     return str(schedule.job or "").strip()
 
 
-def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
+def _run_agent_job(job_name: str, config: JobScheduleConfig, project_root: Path) -> tuple[str | None, str | None]:
     """Trigger an agent job via the API (fire-and-forget session creation).
 
     Instead of spawning a subprocess directly, this sends a request to the daemon
@@ -329,10 +251,9 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
     """
     # Job sessions are always created on the local computer where the runner is active
     computer = global_config.computer.name
-    # Project root is assumed to be current repo root
-    project_path = str(_REPO_ROOT)
+    project_path = str(project_root)
 
-    async def _trigger() -> str | None:
+    async def _trigger() -> tuple[str | None, str | None]:
         client = TelecAPIClient()
         await client.connect()
         try:
@@ -342,107 +263,29 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> str | None:
                 command=_NEXT_RUN_JOB_COMMAND,
                 args=_job_command_args(config),
             )
-            return response.session_id
-        except Exception as e:
-            logger.error("agent job API trigger failed", name=job_name, error=str(e))
-            return None
+            return response.session_id, None
+        except APIError as error:
+            detail = error.detail or str(error)
+            logger.error("agent job API trigger refused", name=job_name, error=detail)
+            return None, detail
+        except Exception as error:
+            detail = str(error)
+            logger.error("agent job API trigger crashed", name=job_name, error=detail)
+            return None, detail
         finally:
             await client.close()
 
     try:
         return asyncio.run(_trigger())
-    except Exception as e:
-        logger.error("agent job trigger crashed", name=job_name, error=str(e))
-        return None
-
-
-def _run_log_bug_hunter_orchestrated() -> bool:
-    """Dispatch ``log_bug_hunter`` across all subscribed registered projects.
-
-    Unlike other agent jobs — which spawn a single session rooted at the
-    local repository — ``log_bug_hunter`` is cross-project by design. This
-    helper walks :class:`ProjectCatalogService`, filters projects whose
-    ``teleclaude.yml:jobs`` subscribes to ``log_bug_hunter``, and starts one
-    job session per subscriber via :class:`ProjectJobOrchestrator`. The agent
-    resolves the window, the signals, and the suppression ledger from its own
-    procedure; this helper decides only where a session runs, never whether
-    there is anything to find. Returns ``True`` when the iteration completes
-    without an uncaught exception; per-project failures are isolated by the
-    orchestrator and do not fail the whole job.
-    """
-    # Imports are local so that cron_runner startup stays lean and importing
-    # this module does not pull in the daemon API client at module load time.
-    catalog = get_project_catalog_service()
-    catalog.refresh()
-    computer = global_config.computer.name
-
-    async def _orchestrate() -> bool:
-        client = TelecAPIClient()
-        await client.connect()
-        try:
-
-            async def _list_active_sessions() -> list[Session]:
-                # Only ``session.job`` and ``session.project_path`` are read —
-                # ``SessionDTO`` carries both, so we cast at this narrow boundary
-                # instead of round-tripping through the core model.
-                dtos = await client.list_sessions(computer=computer)
-                return cast(list[Session], dtos)
-
-            async def _run_for_project(node: ProjectNode) -> bool:
-                declaration = node.config.jobs[LOG_BUG_HUNTER_JOB]
-                identity = job_identity(LOG_BUG_HUNTER_JOB, declaration)
-                project_path = str(node.root)
-
-                # Scope the liveness check to this project: the orchestrator hands
-                # every project the same computer-wide session list, so matching on
-                # identity alone would let the first dispatched project starve the
-                # rest. The generic open-run guard cannot cover this — the job's run
-                # closes when the fan-out returns, while its sessions are still working.
-                sessions = await _list_active_sessions()
-                if any(
-                    session.job is not None and session.job.strip() == identity and session.project_path == project_path
-                    for session in sessions
-                ):
-                    logger.info(_LOG_HUNTER_SESSION_ACTIVE, project=node.slug)
-                    return False
-
-                response = await client.run_session(
-                    computer=computer,
-                    project_path=project_path,
-                    command=_NEXT_RUN_JOB_COMMAND,
-                    args=_job_command_args(declaration),
-                )
-                logger.info(
-                    _LOG_HUNTER_DISPATCHED,
-                    project=node.slug,
-                    session_id=response.session_id,
-                )
-                return True
-
-            orchestrator = ProjectJobOrchestrator(
-                catalog=catalog,
-                job_slug=LOG_BUG_HUNTER_JOB,
-                run_for_project=_run_for_project,
-            )
-            results = await orchestrator.run_once()
-            logger.info(
-                "log_bug_hunter orchestration complete",
-                project_count=len(results),
-                dispatched=[slug for slug, dispatched in results if dispatched],
-            )
-            return True
-        finally:
-            await client.close()
-
-    try:
-        return asyncio.run(_orchestrate())
-    except Exception as exc:
-        logger.error("log_bug_hunter orchestration crashed", error=str(exc))
-        return False
+    except Exception as error:
+        detail = str(error)
+        logger.error("agent job trigger crashed", name=job_name, error=detail)
+        return None, detail
 
 
 def _should_run_subscription_job(
-    job_name: str,
+    job_identity: str,
+    state_key: str,
     state: CronState,
     now: datetime,
     *,
@@ -451,7 +294,7 @@ def _should_run_subscription_job(
     """Check if any subscriber's schedule makes a subscription job due.
 
     Iterates person configs for enabled JobSubscription entries matching
-    *job_name* and checks if any subscriber's ``when`` schedule is due.
+    *job_identity* and checks if any subscriber's ``when`` schedule is due.
     """
     if root is None:
         root = TELECLAUDE_HOME
@@ -460,7 +303,7 @@ def _should_run_subscription_job(
     if not people_dir.is_dir():
         return False
 
-    job_state = state.get_job(job_name)
+    job_state = state.get_job(state_key)
 
     for person_dir in sorted(people_dir.iterdir()):
         if not person_dir.is_dir():
@@ -476,7 +319,7 @@ def _should_run_subscription_job(
         for sub in person_cfg.subscriptions:
             if not isinstance(sub, JobSubscription):
                 continue
-            if sub.job != job_name or not sub.enabled:
+            if sub.job != job_identity or not sub.enabled:
                 continue
             # Found an enabled subscriber; check schedule
             if sub.when:
@@ -526,7 +369,8 @@ def discover_jobs(jobs_dir: Path | None = None) -> list[ScriptJob]:
     schedules = _load_job_schedules(config_path)
     jobs: list[ScriptJob] = []
 
-    for name, config in schedules.items():
+    for config in schedules:
+        name = job_identity("", config)
         script = str(config.script or "").strip()
         if not script:
             continue
@@ -534,11 +378,10 @@ def discover_jobs(jobs_dir: Path | None = None) -> list[ScriptJob]:
         if not script_path.exists():
             logger.error("configured job script not found", name=name, script=str(script_path))
             continue
-        module_name = _script_to_module_name(script, root=config_root)
-        if module_name is None:
+        if _script_to_module_name(script, root=config_root) is None:
             logger.error("configured job script is outside project root", name=name, script=str(script_path))
             continue
-        jobs.append(ScriptJob(name=name, script=script, module_name=module_name))
+        jobs.append(ScriptJob(name=name, script=script, origin=config_root))
         logger.debug("discovered job", name=name, script=script)
 
     return jobs
@@ -546,21 +389,53 @@ def discover_jobs(jobs_dir: Path | None = None) -> list[ScriptJob]:
 
 def _load_script_job(job: ScriptJob) -> Job:
     """Load the module-level JOB object for a configured script job."""
-    module = importlib.import_module(job.module_name)
+    script_path = _resolve_script_path(job.script, root=job.origin)
+    module_name, package_paths = _script_module_identity(script_path, job.origin)
+    _ensure_origin_packages(package_paths)
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load configured job module {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
     discovered = getattr(module, "JOB", None)
     if not isinstance(discovered, Job):
-        raise TypeError(f"{job.module_name}.JOB must be a jobs.base.Job")
+        raise TypeError(f"{module_name}.JOB must be a jobs.base.Job")
     return discovered
 
 
-def _run_script_job(job: ScriptJob, timeout_s: int | None = None) -> tuple[JobResult, bool]:
+def _script_module_identity(script_path: Path, origin: Path) -> tuple[str, tuple[tuple[str, Path], ...]]:
+    """Name a script module by origin and retain its package-relative imports."""
+    relative = script_path.with_suffix("").relative_to(origin)
+    root_name = f"{_DYNAMIC_JOB_PACKAGE_PREFIX}_{sha256(str(origin).encode()).hexdigest()[:16]}"
+    package_paths: list[tuple[str, Path]] = [(root_name, origin)]
+    current_name = root_name
+    current_path = origin
+    for part in relative.parts[:-1]:
+        current_name = f"{current_name}.{part}"
+        current_path = current_path / part
+        package_paths.append((current_name, current_path))
+    return f"{root_name}.{'.'.join(relative.parts)}", tuple(package_paths)
+
+
+def _ensure_origin_packages(package_paths: tuple[tuple[str, Path], ...]) -> None:
+    """Register only origin-scoped package parents required for relative imports."""
+    for package_name, package_path in package_paths:
+        if package_name in sys.modules:
+            continue
+        package = ModuleType(package_name)
+        package.__path__ = [str(package_path)]
+        sys.modules[package_name] = package
+
+
+def _run_script_job(job: ScriptJob, context: JobRunContext, timeout_s: int | None = None) -> tuple[JobResult, bool]:
     """Run a script job in-process and report whether it timed out."""
     timeout = timeout_s or _DEFAULT_JOB_TIMEOUT_S
     result_queue: Queue[JobResult] = Queue(maxsize=1)
 
     def _worker() -> None:
         try:
-            result_queue.put(_load_script_job(job).run())
+            result_queue.put(_load_script_job(job).run(context))
         except Exception as exc:
             logger.exception("job error", name=job.name, error=str(exc))
             result_queue.put(JobResult(success=False, message=str(exc), errors=[str(exc)]))
@@ -573,9 +448,11 @@ def _run_script_job(job: ScriptJob, timeout_s: int | None = None) -> tuple[JobRe
     return result_queue.get(), False
 
 
-def _dispatch_agent_job(job_name: str, schedule_config: JobScheduleConfig) -> str | None:
-    """Dispatch a generic agent job as a single session rooted at the local repo."""
-    return _run_agent_job(job_name, schedule_config)
+def _dispatch_agent_job(
+    job_name: str, schedule_config: JobScheduleConfig, project_root: Path
+) -> tuple[str | None, str | None]:
+    """Dispatch one generic agent job in its consuming project."""
+    return _run_agent_job(job_name, schedule_config, project_root)
 
 
 def _pending_emission_for_result(
@@ -706,7 +583,9 @@ def _load_reported_result(path: Path) -> JobResult | None:
         return None
 
 
-def _find_reported_result(job_name: str, run_started_at: datetime, jobs_dir: Path) -> JobResult | None:
+def _find_reported_result(
+    job_name: str, run_started_at: datetime, session_id: str | None, jobs_dir: Path
+) -> JobResult | None:
     runs_dir = jobs_dir / job_name / "runs"
     if not runs_dir.is_dir():
         return None
@@ -715,7 +594,7 @@ def _find_reported_result(job_name: str, run_started_at: datetime, jobs_dir: Pat
         if mtime < run_started_at:
             continue
         result = _load_reported_result(path)
-        if result is not None:
+        if result is not None and result.session_id == session_id:
             return result
     return None
 
@@ -730,7 +609,7 @@ def _close_reported_agent_runs(
         schedule_config = schedules.get(job_name)
         if not schedule_config or not is_agent_job(schedule_config) or job_state.run_started_at is None:
             continue
-        result = _find_reported_result(job_name, job_state.run_started_at, jobs_dir)
+        result = _find_reported_result(job_name, job_state.run_started_at, job_state.run_session_id, jobs_dir)
         if result is None:
             continue
         _close_run_with_emission(state, job_name, result, run_started_at=job_state.run_started_at)
@@ -757,7 +636,8 @@ def _mark_stalled_runs(
 
 
 def _job_is_due(
-    job_name: str,
+    state_key: str,
+    job_identity: str,
     job_state_last_run: datetime | None,
     job_state_first_seen_at: datetime | None,
     schedule_config: JobScheduleConfig | None,
@@ -772,7 +652,7 @@ def _job_is_due(
     if schedule_config is None:
         return False
     if schedule_config.category == "subscription":
-        return _should_run_subscription_job(job_name, state, now, root=root)
+        return _should_run_subscription_job(job_identity, state_key, state, now, root=root)
     if job_state_last_run is None:
         return _is_first_run_due(schedule_config, job_state_first_seen_at, now)
     return _is_due(schedule_config, job_state_last_run, now)
@@ -783,21 +663,14 @@ def _run_due_agent_job(
     job_name: str,
     schedule_config: JobScheduleConfig,
     *,
-    declared_name: str,
+    project_root: Path,
 ) -> bool:
     run_started_at = datetime.now(UTC)
-    if declared_name == LOG_BUG_HUNTER_JOB:
-        state.open_run(job_name, started_at=run_started_at)
-        success = _run_log_bug_hunter_orchestrated()
-        result = JobResult(success=success, message=f"{job_name} completed" if success else f"{job_name} failed")
-        _close_run_with_emission(state, job_name, result, run_started_at=run_started_at)
-        return success
-
-    session_id = _dispatch_agent_job(job_name, schedule_config)
+    session_id, refusal_detail = _dispatch_agent_job(job_name, schedule_config, project_root)
     if session_id:
         state.open_run(job_name, started_at=run_started_at, session_id=session_id)
         return True
-    result = JobResult(success=False, message="agent session spawn failed")
+    result = JobResult(success=False, message=refusal_detail or "agent session spawn failed")
     _close_run_with_emission(state, job_name, result, run_started_at=run_started_at)
     return False
 
@@ -807,11 +680,17 @@ def _run_due_script_job(
     job_name: str,
     script_job: ScriptJob,
     schedule_config: JobScheduleConfig | None,
+    project_root: Path,
+    project_slug: str,
 ) -> tuple[bool, bool]:
     try:
         run_started_at = datetime.now(UTC)
         state.open_run(job_name, started_at=run_started_at)
-        result, timed_out = _run_script_job(script_job, timeout_s=schedule_config.timeout if schedule_config else None)
+        result, timed_out = _run_script_job(
+            script_job,
+            JobRunContext(project_root=project_root, project_slug=project_slug),
+            timeout_s=schedule_config.timeout if schedule_config else None,
+        )
         _close_run_with_emission(state, job_name, result, run_started_at=run_started_at)
         if result.success:
             logger.info("job completed", name=job_name, message=result.message, items=result.items_processed)
@@ -865,13 +744,21 @@ def run_due_jobs(
         logger.info("another cron runner is active, skipping")
         return {}
 
-    state = CronState.load()
-    script_jobs = discover_jobs()
-    declared_schedules = _load_job_schedules()
-    # Every job is keyed by its identity from here on: an agent job by its
-    # procedure snippet ID, a script job by its declared name.
-    schedules = {job_identity(name, config): config for name, config in declared_schedules.items()}
-    declared_names = {job_identity(name, config): name for name, config in declared_schedules.items()}
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    state = load_job_state(catalog)
+    project_jobs: list[tuple[ProjectNode, EffectiveJob]] = []
+    schedules: dict[str, JobScheduleConfig] = {}
+    for project in catalog.list_projects():
+        try:
+            effective = load_effective_jobs(project.root)
+        except (OSError, ValueError) as exc:
+            logger.error("effective job load failed", project=project.slug, error=str(exc))
+            continue
+        for job in effective:
+            job_key = f"{project.slug}:{job.identity}"
+            project_jobs.append((project, job))
+            schedules[job_key] = job.declaration
     now = datetime.now(UTC)
     results: dict[str, bool] = {}
 
@@ -881,26 +768,15 @@ def run_due_jobs(
         except Exception as exc:
             logger.error("job outcome emission drain failed", error=str(exc))
 
-    # Build a unified job list: Python modules + agent jobs from config
-    script_job_names = {job.name for job in script_jobs}
+    logger.info("checking jobs", count=len(project_jobs), force=force, dry_run=dry_run)
 
-    all_job_names: list[str] = [job.name for job in script_jobs]
-    for name, config in schedules.items():
-        if is_agent_job(config) and name not in script_job_names:
-            all_job_names.append(name)
-
-    logger.info("checking jobs", count=len(all_job_names), force=force, dry_run=dry_run)
-
-    for job_name in all_job_names:
-        if job_filter and job_name != job_filter:
+    for project, effective_job in project_jobs:
+        job_name = f"{project.slug}:{effective_job.identity}"
+        if job_filter and job_filter not in {job_name, effective_job.identity}:
             continue
 
-        schedule_config = schedules.get(job_name)
-        agent_job = schedule_config is not None and is_agent_job(schedule_config)
-
-        if not schedule_config and not force:
-            logger.debug("job has no schedule config, skipping", name=job_name)
-            continue
+        schedule_config = effective_job.declaration
+        agent_job = is_agent_job(schedule_config)
 
         job_state = state.ensure_first_seen(job_name, now)
 
@@ -914,40 +790,48 @@ def run_due_jobs(
 
         if not _job_is_due(
             job_name,
+            effective_job.identity,
             job_state.last_run,
             job_state.first_seen_at,
             schedule_config,
             state,
             now,
             force=force,
-            root=root,
+            root=project.root,
         ):
             logger.debug("job not due", name=job_name, last_run=job_state.last_run)
             continue
 
-        schedule_name = (schedule_config.schedule or "?") if schedule_config else "forced"
-        logger.info("job due", name=job_name, schedule=schedule_name, type="agent" if agent_job else "python")
+        logger.info("job due", name=job_name, type="agent" if agent_job else "python")
 
         if dry_run:
             results[job_name] = True
             continue
 
-        if agent_job and schedule_config is not None:
+        if agent_job:
             results[job_name] = _run_due_agent_job(
                 state,
                 job_name,
                 schedule_config,
-                declared_name=declared_names.get(job_name, job_name),
+                project_root=project.root,
             )
             continue
 
-        script_job = next((j for j in script_jobs if j.name == job_name), None)
-        if not script_job:
+        script = schedule_config.script
+        if not script:
             logger.error("script job not found", name=job_name)
             results[job_name] = False
             continue
+        module_name = _script_to_module_name(script, root=effective_job.origin.root)
+        if module_name is None:
+            logger.error("configured job script is outside declaration root", name=job_name)
+            results[job_name] = False
+            continue
+        script_job = ScriptJob(name=job_name, script=script, origin=effective_job.origin.root)
 
-        success, timed_out = _run_due_script_job(state, job_name, script_job, schedule_config)
+        success, timed_out = _run_due_script_job(
+            state, job_name, script_job, schedule_config, project.root, project.slug
+        )
         results[job_name] = success
         if timed_out:
             return results

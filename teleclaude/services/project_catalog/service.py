@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 
 from teleclaude.paths import PROJECTS_MANIFEST_PATH
@@ -65,12 +64,6 @@ class ProjectCatalogService:
             if node.root == resolved:
                 return node
         return None
-
-    def iter_projects_with_job(self, job_slug: str) -> Iterator[ProjectNode]:
-        """Yield projects whose ``config.jobs`` dict contains ``job_slug``."""
-        for node in self.list_projects():
-            if job_slug in node.config.jobs:
-                yield node
 
 
 # -- Singleton factory -------------------------------------------------------

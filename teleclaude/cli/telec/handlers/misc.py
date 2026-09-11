@@ -104,8 +104,9 @@ def _handle_reload(_args: list[str]) -> None:
 def _handle_sync(args: list[str]) -> None:
     """Handle telec sync command."""
     parsed = parse_command_args(SYNC, args)
-    project_root = resolve_invocation_project_root()
     skip_deploy = parsed.has(F.FLAG_SKIP_DEPLOY)
+    workspace_root = resolve_workspace_root(resolve_invocation_cwd())
+    project_root = workspace_root if skip_deploy else resolve_invocation_project_root()
     skip_validation = False
     if parsed.has(F.FLAG_SKIP_VALIDATION):
         # Hidden, watcher-only: the live-reload watcher must never block. Reject
@@ -115,7 +116,6 @@ def _handle_sync(args: list[str]) -> None:
         skip_validation = True
 
     if not skip_deploy:
-        workspace_root = resolve_workspace_root(resolve_invocation_cwd())
         if is_slug_worktree(workspace_root):
             raise SystemExit(
                 f"telec sync cannot deploy docs from a slug worktree ({workspace_root}). "

@@ -40,7 +40,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from jobs.base import Job, JobResult, run_job_cli
+from jobs.base import Job, JobResult, JobRunContext, run_job_cli
 
 _PROJECT_TODO_DB = _REPO_ROOT / ".teleclaude" / "todos.db"
 _BACKUPS_DIR = _REPO_ROOT / ".teleclaude" / "backups"
@@ -76,13 +76,13 @@ def _archive_name(now: datetime | None = None) -> str:
     return f"{_ARCHIVE_PREFIX}-{_timestamp_slug(now)}.tar.gz"
 
 
-def _ensure_parent_dirs() -> None:
-    _PROJECT_TODO_DB.parent.mkdir(parents=True, exist_ok=True)
-    _BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+def _ensure_parent_dirs(todo_db: Path, backups_dir: Path) -> None:
+    todo_db.parent.mkdir(parents=True, exist_ok=True)
+    backups_dir.mkdir(parents=True, exist_ok=True)
 
 
-def _load_backup_env() -> dict[str, str]:
-    dotenv_env = {key: value for key, value in dotenv_values(_REPO_ROOT / ".env").items() if value is not None}
+def _load_backup_env(project_root: Path) -> dict[str, str]:
+    dotenv_env = {key: value for key, value in dotenv_values(project_root / ".env").items() if value is not None}
     return dotenv_env | dict(os.environ)
 
 
@@ -98,6 +98,7 @@ def _export_sqlite_snapshot(source_db: Path, destination_db: Path) -> None:
 def _manifest_payload(
     archive_name: str,
     sqlite_name: str,
+    project_root: Path,
     now: datetime | None = None,
 ) -> dict[str, object]:
     created_at = (now or datetime.now(UTC)).astimezone(UTC).isoformat()
@@ -105,7 +106,7 @@ def _manifest_payload(
         "kind": "teleclaude-project-backup",
         "created_at": created_at,
         "project_name": "TeleClaude",
-        "repo_root": str(_REPO_ROOT),
+        "repo_root": str(project_root),
         "artifacts": {
             "sqlite_backup": sqlite_name,
             "archive": archive_name,
@@ -113,8 +114,8 @@ def _manifest_payload(
     }
 
 
-def _create_archive(source_db: Path, archive_path: Path, now: datetime | None = None) -> None:
-    manifest = _manifest_payload(archive_path.name, source_db.name, now=now)
+def _create_archive(source_db: Path, archive_path: Path, project_root: Path, now: datetime | None = None) -> None:
+    manifest = _manifest_payload(archive_path.name, source_db.name, project_root, now=now)
     with tempfile.TemporaryDirectory(prefix="teleclaude-backup-manifest-") as temp_dir:
         manifest_path = Path(temp_dir) / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
@@ -169,16 +170,19 @@ class ProjectBackupJob(Job):
 
     name = "project_backup"
 
-    def run(self) -> JobResult:
+    def run(self, context: JobRunContext | None = None) -> JobResult:
         """Execute the backup workflow and return a JobResult."""
-        backup_env = _load_backup_env()
-        _ensure_parent_dirs()
-        archive_path = _BACKUPS_DIR / _archive_name()
+        project_root = context.project_root if context is not None else _REPO_ROOT
+        todo_db = project_root / ".teleclaude" / "todos.db"
+        backups_dir = project_root / ".teleclaude" / "backups"
+        backup_env = _load_backup_env(project_root)
+        _ensure_parent_dirs(todo_db, backups_dir)
+        archive_path = backups_dir / _archive_name()
 
         with tempfile.TemporaryDirectory(prefix="teleclaude-backup-") as temp_dir:
             sqlite_snapshot = Path(temp_dir) / "todos.db"
-            _export_sqlite_snapshot(_PROJECT_TODO_DB, sqlite_snapshot)
-            _create_archive(sqlite_snapshot, archive_path)
+            _export_sqlite_snapshot(todo_db, sqlite_snapshot)
+            _create_archive(sqlite_snapshot, archive_path, project_root)
 
         upload_target = _build_upload_target(archive_path, backup_env)
         upload_message = ""

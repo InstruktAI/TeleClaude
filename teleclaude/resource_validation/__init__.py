@@ -15,11 +15,8 @@ import os
 from pathlib import Path
 
 import frontmatter
-import yaml
-from pydantic import ValidationError
 
-from teleclaude.config.schema import AGENT_JOB_TYPE, JobWhenConfig
-from teleclaude.context_selector import resolve_snippet_meta
+from teleclaude.config.jobs import load_effective_jobs
 from teleclaude.global_skills import collect_global_skills
 from teleclaude.paths import ConfigFileName
 from teleclaude.resource_validation._models import (
@@ -501,139 +498,10 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
     return errors
 
 
-_PROCEDURE_TAXONOMY = "procedure"
-
-
-def _validate_job_when_or_schedule(
-    job_cfg: dict[object, object],
-    *,
-    name: object,
-    config_path: Path,
-    allowed_schedules: set[str],
-) -> list[str]:
-    errors: list[str] = []
-    when_raw = job_cfg.get("when")
-    has_valid_when = False
-    if when_raw is not None:
-        if not isinstance(when_raw, dict):
-            errors.append(f"{config_path}: jobs.{name}.when must be a mapping")
-        else:
-            try:
-                JobWhenConfig.model_validate(when_raw)
-                has_valid_when = True
-            except ValidationError as exc:
-                err_list = exc.errors()
-                first_msg = err_list[0]["msg"] if err_list else "invalid when config"
-                errors.append(f"{config_path}: jobs.{name}.when {first_msg}")
-    if has_valid_when:
-        return errors
-    schedule = job_cfg.get("schedule")
-    if not isinstance(schedule, str) or schedule not in allowed_schedules:
-        errors.append(f"{config_path}: jobs.{name}.schedule must be one of {sorted(allowed_schedules)}")
-    return errors
-
-
-def _validate_job_preferences(job_cfg: dict[object, object], *, name: object, config_path: Path) -> list[str]:
-    errors: list[str] = []
-    preferred_hour = job_cfg.get("preferred_hour", 6)
-    if not isinstance(preferred_hour, int) or not 0 <= preferred_hour <= 23:
-        errors.append(f"{config_path}: jobs.{name}.preferred_hour must be int 0..23")
-
-    preferred_weekday = job_cfg.get("preferred_weekday", 0)
-    if not isinstance(preferred_weekday, int) or not 0 <= preferred_weekday <= 6:
-        errors.append(f"{config_path}: jobs.{name}.preferred_weekday must be int 0..6")
-
-    preferred_day = job_cfg.get("preferred_day", 1)
-    if not isinstance(preferred_day, int) or not 1 <= preferred_day <= 31:
-        errors.append(f"{config_path}: jobs.{name}.preferred_day must be int 1..31")
-    return errors
-
-
-def _validate_job_execution_target(
-    job_cfg: dict[object, object],
-    *,
-    name: object,
-    config_path: Path,
-    project_root: Path,
-) -> list[str]:
-    errors: list[str] = []
-    script_ref = job_cfg.get("script")
-    has_script = isinstance(script_ref, str) and bool(script_ref.strip())
-    is_agent = not has_script and (str(job_cfg.get("type", "")) == AGENT_JOB_TYPE or "job" in job_cfg)
-    if is_agent:
-        if "message" in job_cfg:
-            errors.append(f"{config_path}: jobs.{name}.message is not allowed for agent jobs")
-        job_ref = job_cfg.get("job")
-        if not isinstance(job_ref, str) or not job_ref.strip():
-            errors.append(f"{config_path}: jobs.{name}.job is required for agent jobs")
-            return errors
-        procedure = resolve_snippet_meta(job_ref, project_root=project_root)
-        if procedure is None:
-            errors.append(f"{config_path}: jobs.{name}.job names unknown snippet {job_ref}")
-        elif procedure.snippet_type != _PROCEDURE_TAXONOMY:
-            errors.append(f"{config_path}: jobs.{name}.job must name a procedure snippet, not {procedure.snippet_type}")
-        elif procedure.delivered_by:
-            errors.append(f"{config_path}: jobs.{name}.job names a pending procedure {job_ref}")
-        return errors
-
-    if has_script:
-        return errors
-    python_module_path = project_root / "jobs" / f"{name}.py"
-    if not python_module_path.exists():
-        errors.append(f"{config_path}: jobs.{name} has no script and missing python module {python_module_path}")
-    return errors
-
-
-def _validate_single_job_config(
-    name: object,
-    raw: object,
-    *,
-    config_path: Path,
-    project_root: Path,
-    allowed_schedules: set[str],
-) -> list[str]:
-    if not isinstance(raw, dict):
-        return [f"{config_path}: jobs.{name} must be a mapping"]
-    return [
-        *_validate_job_when_or_schedule(raw, name=name, config_path=config_path, allowed_schedules=allowed_schedules),
-        *_validate_job_preferences(raw, name=name, config_path=config_path),
-        *_validate_job_execution_target(raw, name=name, config_path=config_path, project_root=project_root),
-    ]
-
-
 def validate_jobs_config(project_root: Path) -> list[str]:
-    """Validate project job config in teleclaude.yml.
-
-    Checks schedule shape, execution mode contract, and job/spec/module references.
-    """
-    config_path = project_root / ConfigFileName.OVERLAY
-    if not config_path.exists():
-        return []
-
+    """Translate the config owner's effective-set refusal into sync findings."""
     try:
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except (yaml.YAMLError, OSError) as exc:
-        return [f"{config_path}: invalid YAML ({exc})"]
-
-    if not isinstance(config, dict):
-        return [f"{config_path}: expected top-level mapping"]
-
-    jobs = config.get("jobs", {})
-    if not isinstance(jobs, dict):
-        return [f"{config_path}: jobs must be a mapping"]
-
-    allowed_schedules = {"hourly", "daily", "weekly", "monthly"}
-    errors: list[str] = []
-
-    for name, raw in jobs.items():
-        errors.extend(
-            _validate_single_job_config(
-                name,
-                raw,
-                config_path=config_path,
-                project_root=project_root,
-                allowed_schedules=allowed_schedules,
-            )
-        )
-
-    return errors
+        load_effective_jobs(project_root)
+    except (OSError, ValueError) as exc:
+        return [f"{project_root / ConfigFileName.OVERLAY}: {exc}"]
+    return []

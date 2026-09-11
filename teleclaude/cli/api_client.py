@@ -775,9 +775,12 @@ class _TelecSessionAPI:
         resp = await self._request("GET", "/jobs")
         return TypeAdapter(list[JobDTO]).validate_json(resp.text)
 
-    async def run_job(self, name: str) -> bool:
+    async def run_job(self, name: str, project: str | None = None) -> bool:
         """Run a scheduled job immediately."""
-        resp = await self._request("POST", f"/jobs/{name}/run", timeout=30.0)
+        params = {"project": project} if project else None
+        resp = await self._request(
+            "POST", f"/jobs/{name}/run", timeout=30.0, request_options=RequestOptions(params=params)
+        )
         data = resp.json()
         return data.get("status") == "success"
 
