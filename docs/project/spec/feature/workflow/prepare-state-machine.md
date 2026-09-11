@@ -73,21 +73,6 @@ And no legacy empty-digest verdict is grandfathered through the gate
 And requirements_review is never derived as a live phase
 ```
 
-<!-- planned-change:fix-plan-review-admission-after-closed-target -->
-#### UC-WPS21: Every prepare review phase stops at the shared round limit
-
-```gherkin
-Given a Todo is awaiting PRD, architecture, or implementation-plan review
-And that phase has already admitted `DEFAULT_MAX_REVIEW_ROUNDS` reviewer passes across any artifact or report rewrites
-And no approve verdict is current for the reviewed artifact and report digests
-When the orchestrator calls "telec todo prepare my-change"
-Then the machine returns REVIEW_ROUND_LIMIT for that exact review phase
-And it emits no reviewer dispatch, reuse, or follow-up instruction
-And it preserves the lifecycle phase and active runner for orchestrator classification under the review procedure
-And rewriting the reviewed artifact or findings report does not reset the admitted-pass count
-And each admitted pass was counted and persisted before its reviewer instruction was returned
-```
-<!-- change:fix-plan-review-admission-after-closed-target -->
 #### UC-WPS21: Every unclosed prepare review loop stops at the shared round limit
 
 ```gherkin
@@ -103,7 +88,6 @@ And each admitted pass remains counted and persisted in the phase's cumulative h
 But an earlier review loop that closed before substantive drift forced a stabilized replacement target does not exhaust the replacement's allowance
 And the replacement receives its first complete discovery pass without removing the earlier loop's counters, continuations, report, or verdict evidence
 ```
-<!-- /planned-change:fix-plan-review-admission-after-closed-target -->
 
 #### UC-WPS22: A classified halt continues only through a recorded continuation
 
