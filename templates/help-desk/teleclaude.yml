@@ -1,11 +1,5 @@
-kind: project
 project:
   name: help-desk
   description: Help desk customer support workspace
 
-# TODO: fix the below config to align with the schema
-# jobs:
-#   help-desk-session-review:
-#     description: Review and summarize recent help desk sessions
-#   help-desk-intelligence:
-#     description: Aggregate help desk insights and trends
+jobs: []

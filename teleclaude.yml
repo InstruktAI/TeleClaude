@@ -1,5 +1,4 @@
 # yaml-language-server: $schema=schemas/teleclaude-project.schema.json
-# yaml-language-server: $schema=schemas/teleclaude-project.schema.json
 kind: project
 project_name: TeleClaude
 project_slug: teleclaude
