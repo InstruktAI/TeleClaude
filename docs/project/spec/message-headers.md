@@ -101,6 +101,7 @@ occupies it, and that reservation is what makes control recognition sound: a
 control test can never match authored content, and content can never be mistaken
 for machine text.
 
+<!-- planned-change:discord-personal-voice-conversation -->
 | Header                                                 | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
 | ------------------------------------------------------ | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
 | `[TeleClaude Notification]`                            | legacy notification entries   | control  | paired      | no               | no                         |
@@ -115,6 +116,23 @@ for machine text.
 | `[Tasker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Job Runner (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Agent - <agent> (session) on computer · utc-minute]` | caller-origin identity header | identity | paired      | yes              | yes                        |
+<!-- change:discord-personal-voice-conversation -->
+| Header                                                 | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
+| ------------------------------------------------------ | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
+| `[TeleClaude Notification]`                            | legacy notification entries   | control  | paired      | no               | no                         |
+| `[TeleClaude Wake]`                                    | control-delivery idle wake    | control  | auto-closed | no               | no                         |
+| `[TeleClaude Restart Continuation]`                    | historical restart entries    | control  | paired      | no               | no                         |
+| `[TeleClaude Checkpoint]`                              | checkpoint surface            | control  | paired      | no               | no                         |
+| `[TeleClaude Live Voice]`                              | personal voice room input     | control  | paired      | no               | no                         |
+| `[Peer (session · author-token · utc-minute)]`         | peer segment header           | identity | paired      | yes              | yes                        |
+| `[Orchestrator (session) on computer · utc-minute]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Integrator (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[System (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Worker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Tasker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Job Runner (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
+| `[Agent - <agent> (session) on computer · utc-minute]` | caller-origin identity header | identity | paired      | yes              | yes                        |
+<!-- /planned-change:discord-personal-voice-conversation -->
 
 Restart continuation is a semantic control envelope at the runtime hook
 boundary. Its paired bracket form is recognized for historical transcript
