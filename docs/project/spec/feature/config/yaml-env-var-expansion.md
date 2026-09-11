@@ -1,5 +1,5 @@
 ---
-description: 'Every YAML config payload (layered `teleclaude.yml` overlays and the machine `config.yml`) is passed through env-var expansion that substitutes `${VAR}` references against the process environment before validation.'
+description: YAML environment references resolve from the environment source owned by their configuration surface, without cross-tier fallback.
 visibility: 'public'
 ---
 
@@ -11,144 +11,127 @@ visibility: 'public'
 
 ## What it is
 
-Every YAML configuration source loaded by the config bounded context — the three
-`teleclaude.yml` overlays (global, project, per-person), the legacy machine
-`config.yml`, and the optional sibling `experiments.yml` — is passed through
-env-var expansion AFTER the YAML parser parses the file and BEFORE the parsed
-payload reaches schema validation (for the overlay path) or config construction
-(for the legacy path). The expansion helper
-walks the parsed structure recursively and substitutes every `${VAR}` token
-inside string values with the corresponding value from the process environment.
+Environment-backed YAML values are resolved at the configuration boundary before typed validation. Each user-facing `teleclaude.yml` overlay resolves `${NAME}` references exclusively from the `.env` file beside that overlay: global, project, company, and person configuration therefore retain independent namespaces even when they use the same variable name.
 
-The substitution shape is narrow on purpose. The recognised token is
-`${VAR}` only — there is no `$VAR` form and no `${VAR:-default}` default
-syntax. A reference whose environment variable is unset is left in place as
-the literal `${VAR}` string; expansion does not raise, does not warn, and
-does not drop the field. The helper is type-preserving for non-string inputs:
-dicts and lists are walked recursively, primitives other than strings pass
-through unchanged.
+Overlay resolution never consults the process environment or another configuration tier. A referenced name missing from the owning `.env` fails that overlay's load. Literal YAML values remain valid, and `.env` entries enter typed configuration only when a YAML value references them.
 
-The substitution point is the same across every entry path, so any YAML
-operator can be authored with env-var references and the same rules apply.
-Test fixtures rely on this contract to inject values via the environment
-without rewriting fixture files; secrets stay out of YAML by being authored
-as `${SECRET_NAME}` placeholders and resolved from the process environment.
+The machine `config.yml` and its optional `experiments.yml` remain a separate runtime surface. They resolve references from the machine runtime environment established at process startup under the machine-config contract.
+
+### Business value
+
+Operators can use conventional environment references without one person's, company's, or project's credentials being silently supplied by another scope. Serialized configuration retains references rather than resolved secrets.
 
 ## Canonical fields
 
+### Overlay source ownership
+
+| Configuration | YAML source                                            | Sole environment source  |
+| ------------- | ------------------------------------------------------ | ------------------------ |
+| Global        | `<teleclaude-home>/teleclaude.yml`                     | `<teleclaude-home>/.env` |
+| Project       | `<project-root>/teleclaude.yml`                        | `<project-root>/.env`    |
+| Company       | `<teleclaude-home>/companies/<company>/teleclaude.yml` | the sibling `.env`       |
+| Person        | `<teleclaude-home>/people/<person>/teleclaude.yml`     | the sibling `.env`       |
+
+No row inherits, shadows, or falls back to another row. The selected YAML path determines the environment path; environment variables do not redirect either source.
+
+### Resolution and persistence
+
+- Resolution walks mappings, lists, and string leaves recursively before schema validation.
+- Only `${NAME}` tokens participate. Substituted values are strings; the typed schema owns any later coercion.
+- A missing sibling `.env` is equivalent to an empty local environment. It is valid when the YAML contains no references and fails when a reference cannot resolve.
+- Loading and resolving an overlay does not mutate the process environment.
+- An unresolved reference fails with the variable name and owning configuration path, without exposing any resolved value.
+- Saving an effective configuration preserves existing `${NAME}` references for values that were not explicitly replaced. An environment-backed edit writes the value to the owning `.env` and retains the reference in YAML.
+- Arbitrary `.env` entries are not injected as model fields. Consumers that need an unreferenced credential use the config context's scope-owned credential-store interface.
+
 ### Use cases
 
-#### UC-CFG-EXPAND-1: Overlay load expands env vars before schema validation
+#### UC-CFG-EXPAND-1
 
-```
-Given path /repos/my-project/teleclaude.yml contains `business: { domains: { primary: "${MY_DOMAIN}" } }`
-And MY_DOMAIN is set to "instrukt.ai" in the environment
-When the config overlay loader runs
-Then the YAML parser returns the raw dict with the literal "${MY_DOMAIN}" string
-And env-var expansion walks the dict and substitutes "${MY_DOMAIN}" -> "instrukt.ai"
-And the overlay schema validator receives "instrukt.ai" as the field value
-And the returned project overlay holds business.domains["primary"] == "instrukt.ai"
+```gherkin
+Given a user-facing configuration contains a `${NAME}` reference
+And its sibling environment file contains NAME
+When that configuration is loaded
+Then the typed configuration contains the sibling file's value
+And validation occurs after resolution
 ```
 
-#### UC-CFG-EXPAND-2: Missing env var leaves literal `${VAR}` token unchanged
+#### UC-CFG-EXPAND-2
 
-```
-Given a teleclaude.yml field contains the literal string "${UNSET_VAR}"
-And UNSET_VAR is not set in the environment
-When env-var expansion walks the parsed dict
-Then the unresolved token is looked up against the process environment and returned unchanged
-And the literal "${UNSET_VAR}" string is preserved in the output
-And no warning, error, or log entry is emitted by the helper
-And the schema validator receives "${UNSET_VAR}" as the field value (validation succeeds for plain str fields)
-```
-
-#### UC-CFG-EXPAND-3: Recursion descends into dicts, lists, and nested mixes
-
-```
-Given a parsed YAML payload of shape:
-  { creds: { telegram: { user_name: "${TG_USER}" } },
-    items: [ "${ITEM_A}", { nested: "${ITEM_B}" } ],
-    count: 7 }
-And the environment contains TG_USER, ITEM_A, ITEM_B
-When env-var expansion is invoked on the payload
-Then the helper dispatches dict -> per-key recursion
-And dispatches list -> per-element recursion
-And substitutes each string leaf using the same `\$\{([^}]+)\}` regex
-And returns a new structure of the same shape with all three references replaced
-And the integer 7 passes through unchanged (non-string primitives are returned as-is)
+```gherkin
+Given a user-facing configuration contains a `${NAME}` reference
+And its sibling environment file does not contain NAME
+And NAME exists in the process environment or another configuration tier
+When that configuration is loaded
+Then loading fails for the unresolved local reference
+And no value is taken from the process environment or another tier
 ```
 
-#### UC-CFG-EXPAND-4: Legacy config.yml expands env vars after the YAML parser runs
+#### UC-CFG-EXPAND-3
 
-```
-Given the resolved machine-config path points to a `config.yml` on disk
-And the file contains a string with "${REDIS_URL}"
-When the machine-config load runs
-Then the YAML parser produces the raw mapping
-And the env-var expansion pass runs on the raw mapping BEFORE the disallowed-runtime-keys check
-And the built-in defaults merge and the typed runtime-config aggregate construction see the substituted values
+```gherkin
+Given a configuration contains references inside mappings, lists, and nested combinations
+When its environment references are resolved
+Then every string leaf is resolved against the same owning environment source
+And non-string values retain their types
 ```
 
-#### UC-CFG-EXPAND-5: Sibling experiments.yml runs through the same helper
+#### UC-CFG-EXPAND-4
 
-```
-Given config.yml sits next to an optional experiments.yml file
-And experiments.yml contains experiment entries with "${EXPERIMENT_FLAG}" references
-When the machine-config load reaches the experiments side-file merge step
-Then experiments.yml is read and parsed as YAML
-And the env-var expansion pass substitutes the references on the raw experiments mapping
-And the substituted experiments are merged into the user-config experiments list
-```
-
-#### UC-CFG-EXPAND-6: Default syntax is NOT supported
-
-```
-Given a YAML field contains "${VAR:-fallback}"
-And the environment does NOT contain a literal entry named "VAR:-fallback"
-When expand_env_vars walks the string
-Then the regex matches "${VAR:-fallback}" as a single token
-And the environment lookup for "VAR:-fallback" returns the original literal
-And the substituted value is the unchanged literal "${VAR:-fallback}"
-And no fallback semantics are applied (the colon-dash form has no meaning to this helper)
+```gherkin
+Given machine configuration contains an environment reference
+And the machine runtime environment was established at process startup
+When machine configuration is loaded
+Then the reference resolves from that runtime environment
+And user-facing overlay environment files do not participate
 ```
 
-### Cross-context references
+#### UC-CFG-EXPAND-5
 
-- Credentials and externally supplied service identifiers use this generic
-  expansion boundary: operators author `${VAR}` placeholders in machine config,
-  the loader resolves them once, and consumers read the typed aggregate. No
-  provider-specific process-environment override runs after expansion.
-- Consumed implicitly by every config consumer — the substitution is
-  invisible past the loader. Once a value has been expanded, downstream
-  code cannot distinguish a literal YAML value from a substituted
-  env-var value.
+```gherkin
+Given an experiments side-file sits beside machine configuration
+And it contains an environment reference
+When machine configuration is loaded
+Then the side-file uses the same machine runtime environment
+And its resolved experiments are composed with the machine configuration
+```
+
+#### UC-CFG-EXPAND-6
+
+```gherkin
+Given a YAML value contains `${NAME:-fallback}`
+When environment references are resolved
+Then the token has no default-value semantics
+And it is treated as an unresolved reference unless that exact supported name exists
+```
+
+#### UC-CFG-EXPAND-7
+
+```gherkin
+Given global, project, company, and person environment files each declare the same name with different values
+And each corresponding configuration references that name
+When the four configurations are loaded
+Then each typed configuration contains only its sibling file's value
+```
+
+#### UC-CFG-EXPAND-8
+
+```gherkin
+Given an effective configuration contains a value resolved from `${NAME}`
+When an unrelated field is edited and the configuration is saved
+Then the YAML retains `${NAME}` rather than the resolved value
+And the resolved value is not serialized into the YAML
+```
 
 ## Allowed values
 
-- Recognised token shape: `${NAME}` where `NAME` matches `[^}]+` (any
-  characters other than `}`).
-- Source of values: the process environment only. No fallback chain, no project-level
-  env files, no `.env` loading by this helper.
+- Reference syntax: `${NAME}` where NAME is a non-empty environment-key identifier accepted by the environment-file parser.
+- Overlay resolution source: the sibling `.env` only.
+- Machine resolution source: the machine runtime environment only.
+- Literal YAML strings remain literal and require no environment entry.
 
 ## Known caveats
 
-- **Missing env vars are silent.** A typo in a `${VAR}` reference produces a
-  literal `${VAR}` string in the loaded config and no diagnostic. The field
-  validator (or the consumer) will only notice if the literal happens to
-  violate a downstream constraint.
-- **No default-value syntax.** Patterns like `${VAR:-default}` or
-  `${VAR:default}` are NOT recognised. The entire `VAR:-default` text is
-  treated as the env-var name and almost always evaluates to "unset", at
-  which point the literal token is preserved.
-- **String-only substitution.** Tokens are only replaced inside string leaves.
-  A YAML integer, boolean, or null is never expanded — it would have to be a
-  quoted string in the source file to participate.
-- **No type coercion.** Substituted env-var values are always strings; if a
-  downstream schema field expects `int` or `bool`, the schema layer's own coercion
-  rules apply after expansion. A `${PORT}` token expanded to `"8080"` will
-  parse as `int` because the schema accepts numeric strings, but a value like
-  `"not-a-number"` will fail validation downstream.
-- **Two different load paths, same helper, different downstream models.**
-  Overlay loads feed schema validation; the legacy machine load feeds
-  the config construction pipeline (legacy path). The expansion contract is identical, but
-  validation behavior diverges after expansion.
+- Resolved string values may be coerced by the destination schema; resolution itself performs no coercion.
+- Environment files may contain keys not referenced by their adjacent YAML. Those keys remain credential-store material and do not expand the typed model's shape.
+- Machine configuration remains intentionally distinct from the overlay system; this contract does not merge either configuration model or environment namespace.
