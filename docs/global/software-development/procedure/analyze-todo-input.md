@@ -39,16 +39,15 @@ executes the work itself and never mutates the `input`.
    Never reconstruct provenance from account identity — the lineage root is the
    authority the work ran under, not its author.
 
-   When the record shows `entry_point=agent`, `human_involved=true`, and a
-   creating session in lineage, resolve that session and read its transcript
-   before classification. The flags select the audit and locate its evidence;
-   they do not prove any input detail was human-decided. Classify from the
-   verified human contribution: direct statements, faithful restatements,
-   logically necessary implications, and existing authoritative product
-   constraints. If another reasonable reading could omit or vary an
-   agent-authored detail while satisfying everything the human said, that detail
-   is unspecified and cannot select the kind or enter a task-plan as requested
-   scope.
+   The `human_involved` flag and lineage do not prove any input detail was
+   human-decided, and the creating session is never inspected to find out.
+   Classify from what the `input` carries: a clause under a `HUMAN-DECISION:`
+   marker is the human's own word, taken as given, alongside faithful
+   restatements, logically necessary implications, and existing authoritative
+   product constraints. If another reasonable reading could omit or vary an
+   agent-authored detail while satisfying everything the input carries, that
+   detail is unspecified and cannot select the kind or enter a task-plan as
+   requested scope.
 
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. This is the
    frozen filing text — possibly a raw human dump, an agent-authored capture, or

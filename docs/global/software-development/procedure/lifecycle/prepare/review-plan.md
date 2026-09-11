@@ -62,11 +62,10 @@ First read the software-development principles as listed in the software-develop
   and bug work. Artifact presence does not create fallback authority across
   kinds.
 
-- When the creation record shows `entry_point=agent`, `human_involved=true`,
-  and a creating session in lineage, resolve that session and inspect its
-  transcript. Review the plan against the verified filing basis rather than
-  treating the whole agent-authored input, a seeded plan, lineage, or the
-  participation flag as evidence of a human decision.
+- Review the plan against the `input` as the authorized basis, with a clause
+  under a `HUMAN-DECISION:` marker taken as the human's own word. Neither a
+  seeded plan, lineage, nor the participation flag is evidence of a human
+  decision, and the creating session is never inspected to test one.
 
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.

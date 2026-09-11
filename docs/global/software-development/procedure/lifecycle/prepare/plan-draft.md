@@ -70,16 +70,13 @@ Read the full context before writing anything:
 - `telec todo artifacts read {slug} architecture` — when present, the thin
   index/log; otherwise read the skip reason. Read the domain-spec / design-doc
   snippets it points at for the actual design content.
-- `telec todo artifacts read {slug} input` — the agent-authored intent capture.
-  Treat any claim that the human authorized scope as a consequential claim:
-  ground it in the input version's authoring-session transcript under
-  `general/policy/grounding`. Lineage, `human_involved`, and artifact position
-  are not evidence of what the human decided.
-  When the creation record shows `entry_point=agent`, `human_involved=true`, and
-  a creating session in lineage, resolve that session and use its transcript to
-  establish the verified filing basis before drafting. For feature/change this
-  is authorized product intent; for bug it is the reported concern rather than
-  an agent-added cause or remedy. A supplied plan or input may remain a technical
+- `telec todo artifacts read {slug} input` — the authorized basis, taken as
+  given, with a clause under a `HUMAN-DECISION:` marker relaying the human's own
+  word. Lineage, `human_involved`, and artifact position are not evidence of what
+  the human decided, and the creating session is never inspected to test a relay
+  (`general/policy/grounding`). For feature/change the basis is authorized
+  product intent; for bug it is the reported concern rather than an agent-added
+  cause or remedy. A supplied plan or input may remain a technical
   hypothesis, but its unsupported business constraints are not approved scope.
 - `telec todo artifacts read {slug} diagnosis` — when present (a `bug` carries
   this). It holds the verified, code-grounded root cause — the causal mechanism —

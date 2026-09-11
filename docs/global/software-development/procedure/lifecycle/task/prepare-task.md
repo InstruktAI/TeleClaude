@@ -27,15 +27,14 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 ## Steps
 
-0. **Audit an agent-authored human-involved handoff.** Read
-   `telec todo show {slug}`. When the creation record shows
-   `entry_point=agent`, `human_involved=true`, and a creating session in lineage,
-   resolve that session and read its transcript before drafting. Establish the
-   requested action boundary, result, recipient, and timing from direct human
-   statements, faithful restatements, logically necessary implications, and
-   existing authoritative constraints. The participation flag and lineage
-   locate evidence; they do not authorize agent-authored contract detail. If
-   another reasonable execution could satisfy everything the human said while
+0. **Audit the handoff.** Read `telec todo show {slug}` and the `input`.
+   Establish the requested action boundary, result, recipient, and timing from
+   what the `input` carries — a clause under a `HUMAN-DECISION:` marker is the
+   human's own word, taken as given — alongside faithful restatements, logically
+   necessary implications, and existing authoritative constraints. The
+   participation flag and lineage do not authorize agent-authored contract
+   detail, and the creating session is never inspected to test it. If another
+   reasonable execution could satisfy everything the input carries while
    omitting or varying a proposed operational or business limit, that limit is
    unspecified. Keep it out of requested scope or present it explicitly for the
    human to decide during authorization.

@@ -29,12 +29,13 @@ not review architecture, implementation mechanism, or concrete proof.
 
 1. Discover the todo's artifacts, then read the `input`, the drafted `prd`, and
    any `log` or deferral material that bears on product intent. Load the relevant
-   product and domain snippets. When the creation record shows
-   `entry_point=agent`, `human_involved=true`, and a creating session in lineage,
-   resolve that session and read its transcript independently; neither the flag,
-   lineage, nor agent-authored approval prose proves what the human decided.
+   product and domain snippets. Take the `input` as the authorized basis, and a
+   clause under a `HUMAN-DECISION:` marker as the human's own word; neither the
+   `human_involved` flag, lineage, nor agent-authored approval prose proves what
+   the human decided, and the creating session is never inspected to test it.
    Distinguish observable current behavior, credible intended state,
-   implementation detail, prior art, assumptions, and verified human intent.
+   implementation detail, prior art, assumptions, and the human intent the
+   input carries.
 2. Re-run the shaping questions from the preparation-artifact-quality policy
    from the evidence rather than trusting the draft's answers:
    - What outcome is this work authorized to change?
