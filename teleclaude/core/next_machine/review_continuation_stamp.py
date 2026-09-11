@@ -18,8 +18,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import JobRole
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
-from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
+from teleclaude.core.next_machine.review_rounds import ReviewPhase, build_cycle_admission, prepare_cycle_admission
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.next_machine.state_mutation import StateMutationError, StateWriter
 from teleclaude.paths import MAIN_DB_PATH
@@ -190,10 +190,13 @@ async def apply_review_continuation_stamp(
         raise StateMutationError(f"cannot stamp review_continuation: {classification.value} earns no continuation")
 
     review = writer.verdict_target(phase)
-    admitted = review.rounds if isinstance(review, ReviewVerdictState) else review.round
-    continuations = review.continuations
-    allowance = DEFAULT_MAX_REVIEW_ROUNDS + len(continuations)
-    if admitted < allowance:
+    if isinstance(review, ReviewVerdictState):
+        admission = prepare_cycle_admission(ReviewPhase(phase), review)
+        ordinal = len(review.continuations) - review.cycle.continuation_offset + 1
+    else:
+        admission = build_cycle_admission(review)
+        ordinal = len(review.continuations) + 1
+    if admission.allowed:
         _log_review_continuation_decision(
             slug=slug,
             phase=phase,
@@ -204,10 +207,10 @@ async def apply_review_continuation_stamp(
             reason=ReviewContinuationRefusal.NOT_AT_CAP,
         )
         raise StateMutationError(
-            f"cannot stamp review_continuation: {phase} has not reached its current allowance ({admitted}/{allowance})"
+            f"cannot stamp review_continuation: {phase} has not reached its current allowance "
+            f"({admission.admitted}/{admission.maximum})"
         )
 
-    ordinal = len(continuations) + 1
     active_runner = writer.state.active_runner
     assessor_role: ReviewContinuationCallerRole | None = None
     assessor_id = ""
@@ -287,7 +290,7 @@ async def apply_review_continuation_stamp(
         recorded_assessor, recorded_assessor_id = caller_role, caller_session_id or ""
     else:
         recorded_assessor, recorded_assessor_id = None, ""
-    continuations.append(
+    review.continuations.append(
         ReviewContinuation(
             assessor_role=recorded_assessor,
             assessor_id=recorded_assessor_id,
