@@ -51,7 +51,6 @@ def triggers_for_root(root: Path) -> dict[str, str]:
     return {entry.slug: entry.trigger for entry in business.publishes}
 
 
-
 def _business_for_root(root: Path) -> BusinessConfig | None:
     """Read one publisher declaration without triggering config normalization.
 
