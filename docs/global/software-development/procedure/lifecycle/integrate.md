@@ -147,14 +147,12 @@ Push to origin/main was rejected (likely non-fast-forward).
 
 ### REPO ROOT SYNC REQUIRED
 
-
 After a delivery push, repo-root `main` is both ahead of and behind origin/main. That is
 the expected condition in a repository where agents commit doc and artifact work directly
 on `main`, not a failure — the state machine reports it classified rather than as an
 error, and carries the intersection of the incoming file list with the repo-root dirty set
 so you can see which case you are in before you act. The merge is yours to run and yours
 to own; the state machine never performs it. Divergence has two instruction shapes:
-
 
 - **Clean working tree:** merge origin/main into local main, resolving any conflicts per
   the **CONFLICT RESOLUTION REQUIRED** section above, then call `telec todo integrate`.
@@ -204,7 +202,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
 
 #### After the dirty-main quiet window
 
-<!-- planned-change:fix-dirty-path-owners-ownership-query-fails -->
 When the same complete blocking path set remains dirty for the full quiet window, run
 
 ```
@@ -215,20 +212,6 @@ with every blocking path from the integration instruction on each post-window re
 beat while the set remains dirty. The command performs no age calculation. Each invocation
 takes one fresh snapshot of open local-project sessions and returns a JSON object keyed by
 every requested project-relative path.
-<!-- change:fix-dirty-path-owners-ownership-query-fails -->
-When the same complete blocking path set remains dirty for the full quiet window, run the
-ownership query with the tool invocation's working directory set to the repo root named by
-the integration instruction:
-
-```
-telec code owners <path>...
-```
-
-Include every blocking path from the integration instruction on each post-window reminder
-beat while the set remains dirty. The command performs no age calculation. Each invocation
-takes one fresh snapshot of open local-project sessions and returns a JSON object keyed by
-every requested project-relative path.
-<!-- /planned-change:fix-dirty-path-owners-ownership-query-fails -->
 
 Resolve ownership on every post-window reminder beat while the complete blocking path set
 remains dirty, using a fresh query invocation and therefore a fresh open-session snapshot.
