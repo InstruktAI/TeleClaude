@@ -29,14 +29,10 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 0. **Audit the handoff.** Read `telec todo show {slug}` and the `input`.
    Establish the requested action boundary, result, recipient, and timing from
-   what the `input` carries — a clause under a `HUMAN-DECISION:` marker is the
-   human's own word, taken as given — alongside faithful restatements, logically
-   necessary implications, and existing authoritative constraints. The
-   participation flag and lineage do not authorize agent-authored contract
-   detail, and the creating session is never inspected to test it. If another
-   reasonable execution could satisfy everything the input carries while
-   omitting or varying a proposed operational or business limit, that limit is
-   unspecified. Keep it out of requested scope or present it explicitly for the
+   what the `input` carries, including its logically necessary implications and
+   existing authoritative constraints. If another reasonable execution could
+   satisfy everything the input carries while omitting or varying a proposed
+   operational or business limit, that limit is unspecified. Keep it out of requested scope or present it explicitly for the
    human to decide during authorization.
 
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. Read it as

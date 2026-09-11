@@ -16,29 +16,23 @@ it to one of three things:
 - **Inspected evidence** — source read, command run, artifact opened, output
   observed. Named specifically enough that another party can re-inspect it.
 - **A human decision** — the human's own direction to this session, or a
-  `HUMAN-DECISION:` relay of it, taken as given (see below). Not re-verified, and
-  not asserted as plain prose that carries no marker.
+  `HUMAN-DECISION:` relay of it (see below).
 - **An inference or assumption** — labelled, with the premise it rests on
   visible.
 
 There is no fourth option. A claim that resolves to none of these is not
 withheld pending research; it is stated as the assumption it is.
 
-### A relayed human decision is taken as given
+### A relayed human decision carries the marker
 
 An agent relaying the human's decision carries it under the `HUMAN-DECISION:`
-marker, in the human's own terms. The receiver acts on it as given: no
-transcript inspection, no evidence gate, no re-verification of any kind —
-investigating whether the human really said it is the human's own affair and out
-of agent scope. The marker is what makes that audit cheap: the human sweeps for
-it and reads what was claimed in their name. A relay without the marker is the
-sending agent's own words, carrying that agent's judgment and nothing more. A
-false or stretched marker is a serious violation, answered by the durable record
-of the session that wrote it.
+marker, in the human's own terms, so the human can sweep for what was claimed in
+their name. The marker is written for that audit. A false or stretched marker is
+a serious violation, answered by the durable record of the session that wrote it.
 
 Lineage identity, a `human_involved` marker, the human's account name, artifact
-position, emphasis, and repetition do not evidence a human decision. They may
-identify authority, provenance, or presence; none says what the human decided.
+position, emphasis, and repetition do not say what the human decided; they
+identify authority, provenance, or presence.
 
 ### Confirmation language is reserved for inspected claims
 

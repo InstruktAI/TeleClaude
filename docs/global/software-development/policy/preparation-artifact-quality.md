@@ -181,13 +181,6 @@ A correctly-shaped input lets intake classify and route. An input that
 prescribes doc paths skips classification and bakes in the author's
 (possibly wrong) routing guess.
 
-The input is an agent-authored intent capture, not proof that every sentence was
-said or decided by the human. A clause carried under a `HUMAN-DECISION:` marker
-relays the human's own word and is taken as given, never verified
-(`general/policy/grounding`); lineage, `human_involved`, emphatic wording, and
-the artifact's position upstream do not turn agent prose into human intent, and
-the authoring session is never inspected to test such a claim.
-
 ### Consuming upstream intent — HOW is a hypothesis, not a directive
 
 The producer-side rules above keep mechanism out of intent where possible. This

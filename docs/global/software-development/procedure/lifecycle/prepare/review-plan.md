@@ -62,10 +62,8 @@ First read the software-development principles as listed in the software-develop
   and bug work. Artifact presence does not create fallback authority across
   kinds.
 
-- Review the plan against the `input` as the authorized basis, with a clause
-  under a `HUMAN-DECISION:` marker taken as the human's own word. Neither a
-  seeded plan, lineage, nor the participation flag is evidence of a human
-  decision, and the creating session is never inspected to test one.
+- Review the plan against the `input` as the authorized basis. A seeded plan
+  is a technical hypothesis, not authorized scope.
 
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
@@ -216,10 +214,9 @@ For a bug, the diagnosed root cause and reported symptom clamp the horizon.
 Adjacent hardening, capability, or refactoring remains out of scope even when a
 domain perspective recommends it.
 
-Reject any consequential product or business detail that exceeds the input's
-intent and its `HUMAN-DECISION:` markers — a scope the plan added on its own
-authority rather than derived from what the input carries.
-If another reasonable implementation could satisfy everything the human said
+Reject any consequential product or business detail that exceeds what the
+input carries — a scope the plan added on its own authority.
+If another reasonable implementation could satisfy the input
 while omitting or varying the detail, it is unspecified; technical prudence
 does not make it authorized scope.
 

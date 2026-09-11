@@ -137,16 +137,12 @@ plausibility.
 ### A relayed human decision is declared, never investigated
 
 An agent relays a human's decision inside already-authorized work under the
-`HUMAN-DECISION:` marker, in the human's own terms, and every receiver acts on
-it as given. A process change never travels under the marker: it is authored
-where the human is present, and a sender that relays one is the one in
-violation. No consumer inspects a transcript, resolves an authoring session, or
-investigates a relay in any way; a receiver checks only whether the directive
-applies to its current work and whether later input it actually received has
-superseded it. Whether an agent claimed a decision the human never made is the
-human's own audit, performed by sweeping the marker, and is out of agent scope.
-A false or stretched marker is a serious violation, answered by the durable
-record of the session that wrote it.
+`HUMAN-DECISION:` marker, in the human's own terms. A process change never
+travels under the marker: it is authored where the human is present, and a
+sender that relays one is the one in violation. A receiver checks only whether
+the directive applies to its current work and whether later input it actually
+received has superseded it. A false or stretched marker is a serious violation,
+answered by the durable record of the session that wrote it.
 
 Lineage, `entry_point`, `human_involved`, the human account on a commit, artifact
 position, emphasis, and repetition are not declarations of what the human

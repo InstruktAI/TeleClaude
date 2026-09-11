@@ -29,13 +29,9 @@ not review architecture, implementation mechanism, or concrete proof.
 
 1. Discover the todo's artifacts, then read the `input`, the drafted `prd`, and
    any `log` or deferral material that bears on product intent. Load the relevant
-   product and domain snippets. Take the `input` as the authorized basis, and a
-   clause under a `HUMAN-DECISION:` marker as the human's own word; neither the
-   `human_involved` flag, lineage, nor agent-authored approval prose proves what
-   the human decided, and the creating session is never inspected to test it.
+   product and domain snippets. Take the `input` as the authorized basis.
    Distinguish observable current behavior, credible intended state,
-   implementation detail, prior art, assumptions, and the human intent the
-   input carries.
+   implementation detail, prior art, and assumptions.
 2. Re-run the shaping questions from the preparation-artifact-quality policy
    from the evidence rather than trusting the draft's answers:
    - What outcome is this work authorized to change?
@@ -45,11 +41,11 @@ not review architecture, implementation mechanism, or concrete proof.
    - How is the world observably different when the outcome is achieved?
 3. Review the PRD as a product contract:
    - Its authorized horizon is explicit and consistent with the source intent.
-   - Every consequential product or business detail stays within the input's
-     intent and its `HUMAN-DECISION:` markers; a detail beyond them is scope the
-     PRD added on its own authority, not the human's. If another reasonable realization could satisfy everything the
-     human said while omitting or varying it, the detail is unspecified and
-     cannot enter the PRD as decided scope.
+   - Every consequential product or business detail stays within what the
+     input carries; a detail beyond it is scope the PRD added on its own
+     authority. If another reasonable realization could satisfy the input while
+     omitting or varying that detail, it is unspecified and cannot enter the
+     PRD as decided scope.
    - Each consequential inclusion and exclusion explains why it belongs here,
      resting on an inspectable premise or a named assumption.
    - The present slice is coherent for the project's scale and phase. A future
@@ -96,8 +92,6 @@ reviewer's own recommendations into authority over product intent.
 
 - If source intent is insufficient to determine the authorized horizon, record
   the unresolved human-owned decision and return `needs_work`; do not invent it.
-- The reviewer never inspects the creating session to test the input; a
-  `HUMAN-DECISION:` marker is taken as given, and its truth is the human's audit.
 - If a desirable omission belongs to a different bounded context or requires a
   boundary redraw, record that ownership fact without making it a requirement
   of the PRD under review.

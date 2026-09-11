@@ -39,22 +39,17 @@ executes the work itself and never mutates the `input`.
    Never reconstruct provenance from account identity — the lineage root is the
    authority the work ran under, not its author.
 
-   The `human_involved` flag and lineage do not prove any input detail was
-   human-decided, and the creating session is never inspected to find out.
-   Classify from what the `input` carries: a clause under a `HUMAN-DECISION:`
-   marker is the human's own word, taken as given, alongside faithful
-   restatements, logically necessary implications, and existing authoritative
-   product constraints. If another reasonable reading could omit or vary an
-   agent-authored detail while satisfying everything the input carries, that
-   detail is unspecified and cannot select the kind or enter a task-plan as
-   requested scope.
+   Classify from what the `input` carries, including its logically necessary
+   implications and existing authoritative product constraints. If another
+   reasonable reading could omit or vary a detail while satisfying everything
+   the input carries, that detail is unspecified and cannot select the kind or
+   enter a task-plan as requested scope.
 
 1. **Read the `input`.** `telec todo artifacts read {slug} input`. This is the
    frozen filing text — possibly a raw human dump, an agent-authored capture, or
    a transcript of a conversation. Read it as a premise to interpret, not as a
-   spec to obey literally. Classify from the intent the input carries and any
-   `HUMAN-DECISION:` marker in it; do not treat a detail the input lacks as
-   settled merely to select a lane.
+   spec to obey literally. Classify from the intent the input carries; do not
+   treat a detail the input lacks as settled merely to select a lane.
 
 2. **Classify.** Decide which kind the dump is, by what the work actually is:
    - any change to the codebase that is not a new capability or a defect → `change`;

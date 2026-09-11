@@ -136,8 +136,6 @@ functional, snippet versus code — decides only where the work executes, per
 - A process change relayed under the marker is the sender's violation, answered
   by that session's durable record; the receiver is not at fault for acting on
   it.
-- Verifying a marked relay by transcript inspection remains a violation
-  (`general/policy/grounding`).
 
 ## Exceptions
 

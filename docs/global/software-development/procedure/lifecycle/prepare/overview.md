@@ -113,15 +113,11 @@ ready to enter its normal lane.
 Before deriving intent or calling the state machine, audit the todo against the
 current `input` and its mechanically recorded creation record. The creation
 record establishes how the todo entered the system and which session lineage
-carried it; it does not establish what a human decided, and this audit never
-inspects the creating session's transcript to find out. Whether the creator
-faithfully relayed the human is the human's own audit, out of prepare's scope.
+carried it; it does not establish what a human decided.
 
 1. Read the creation record and the current `input`.
 2. Take the `input` as the authorized basis for derivation. Its content is the
-   creating agent's shaping of the work, which is trusted like any agent's; a
-   clause carried under a `HUMAN-DECISION:` marker relays the human's own word
-   and is likewise taken as given. Do not investigate either.
+   creating agent's shaping of the work, which is trusted like any agent's.
 3. Derive the work from that basis by kind — the outcome and constraints for
    `feature` and `change`; the reported concern, symptom, and
    expected-versus-observed behavior for `bug`, where causal and scope claims
@@ -327,8 +323,7 @@ state, not a declaration that the human owns its recovery.
 
 ## Outputs
 
-- Every lane begins from the `input` as its authorized basis, with any
-  `HUMAN-DECISION:` marker taken as given.
+- Every lane begins from the `input` as its authorized basis.
 - Feature: digest-bound `prd_review`, human-approved `prd`, behavioral feature
   spec reflection, optional reviewer-approved `architecture`, and a
   reviewer-approved `implementation-plan`.

@@ -39,8 +39,7 @@ and an objective of alleviation never reliably reaches cause.
 
 - `kind == bug`, and the todo is at the `DIAGNOSE` lifecycle phase.
 - `telec todo artifacts read {slug} input` exists with the reported symptom and discovery
-  context, taken as given; a `HUMAN-DECISION:` marker in it relays the human's
-  own framing of the complaint.
+  context.
 - A `diagnosis` carrying no current settled stamp means the phase is mid-exchange, not
   complete.
 
