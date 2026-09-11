@@ -212,6 +212,7 @@ Then it short-circuits before the heuristic engine runs and the agent-stop event
 (No v1 adapter takes this branch.)
 ```
 
+<!-- planned-change:checkpoint-provenance-ingress-bypass -->
 #### UC-CP7: Heuristic engine fail-open returns fallback message
 
 ```gherkin
@@ -234,6 +235,19 @@ It does NOT cover persistence errors that occur while loading the checkpoint
 row: that path catches locally, logs "checkpoint eval skipped (db error)" at
 debug, returns no decision, and checkpoint evaluation returns no block.
 ```
+<!-- change:checkpoint-provenance-ingress-bypass -->
+#### UC-CP7: Evaluation failure does not synthesize a checkpoint
+
+```gherkin
+Given checkpoint evaluation fails before it establishes a complete set of required maintenance actions
+When the engine's outer guard catches the failure
+Then the failure is recorded through the structured logging boundary
+And the engine returns no checkpoint reason
+And no checkpoint-seen entry is recorded for that failed evaluation
+And no generic or exception-derived instruction is displayed
+And the receiver proceeds to enqueue the agent-stop event normally
+```
+<!-- /planned-change:checkpoint-provenance-ingress-bypass -->
 
 #### UC-CP8: Worktree subdir resolution for branch detection
 
@@ -645,3 +659,6 @@ And no bracket checkpoint envelope is emitted on the hook boundary
 - docs/project/adr/0037-checkpoint-ledger-separates-commit-detection.md
 - docs/project/adr/0038-companion-drift-caught-at-checkpoint.md
 - docs/project/adr/0070-clean-working-tree-floors-the-commit-action-checkpoint.md
+<!-- planned:checkpoint-provenance-ingress-bypass -->
+- docs/project/adr/0086-checkpoint-failures-do-not-invent-work.md
+<!-- /planned:checkpoint-provenance-ingress-bypass -->
