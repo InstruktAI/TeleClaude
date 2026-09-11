@@ -263,6 +263,7 @@ EOF
 }
 
 case "${1:-}" in
+    name) printf '%s\n' "$AUTHORITY" ;;
     inspect) inspect_authority ;;
     ensure) ensure_authority ;;
     replace) replace_authority ;;
@@ -271,7 +272,7 @@ case "${1:-}" in
         audit_bundles "$@"
         ;;
     *)
-        echo "usage: signing-authority.sh {inspect|ensure|replace|audit-bundles <bundle>...}" >&2
+        echo "usage: signing-authority.sh {name|inspect|ensure|replace|audit-bundles <bundle>...}" >&2
         exit 2
         ;;
 esac

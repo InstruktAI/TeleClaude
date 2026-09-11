@@ -1259,7 +1259,9 @@ install_global_cli() {
 
 # Everything on macOS that this installer cannot do for the human, surfaced in
 # one block before any work starts. Read-only: it inspects, never creates, so a
-# blocked preflight leaves the machine exactly as it found it.
+# blocked preflight leaves the machine exactly as it found it. Called only when
+# the launcher steps it gates will actually run, so it never blocks a CI install
+# on a compiler and a certificate CI has no use for.
 preflight_macos() {
     if [ "$OS" != "macos" ]; then
         return 0
@@ -1281,10 +1283,13 @@ preflight_macos() {
         blockers=$((blockers + 1))
     fi
 
-    inspection="$("$INSTALL_DIR/src/Launcher/signing-authority.sh" inspect 2>/dev/null || true)"
-    authority_status="$(printf '%s\n' "$inspection" | sed -n 's/^status=//p')"
-    authority_name="$(printf '%s\n' "$inspection" | sed -n 's/^authority=//p')"
-    authority_expiry="$(printf '%s\n' "$inspection" | sed -n 's/^not_after=//p')"
+    if inspection="$("$INSTALL_DIR/src/Launcher/signing-authority.sh" inspect 2>&1)"; then
+        authority_status="$(printf '%s\n' "$inspection" | sed -n 's/^status=//p')"
+        authority_name="$(printf '%s\n' "$inspection" | sed -n 's/^authority=//p')"
+        authority_expiry="$(printf '%s\n' "$inspection" | sed -n 's/^not_after=//p')"
+    else
+        authority_status="unreadable"
+    fi
 
     case "$authority_status" in
         ok)
@@ -1306,6 +1311,11 @@ preflight_macos() {
             echo "        Resolve it, then rerun 'make install':"
             echo "          ambiguous        — security delete-identity -Z <sha1> for the wrong ones"
             echo "          expired / nokey  — make launchers-renew-authority (voids existing grants)"
+            blockers=$((blockers + 1))
+            ;;
+        *)
+            print_error "Could not read the code-signing authority's state."
+            printf '%s\n' "$inspection" | sed 's/^/        /'
             blockers=$((blockers + 1))
             ;;
     esac
@@ -1494,7 +1504,9 @@ main() {
     fi
 
     detect_os
-    preflight_macos
+    if [ "$CI_MODE" = false ]; then
+        preflight_macos
+    fi
     check_python
     check_node
 

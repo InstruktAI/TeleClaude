@@ -4,7 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SOURCE_FILE="$SCRIPT_DIR/main.swift"
-AUTHORITY="InstruktAI Dev"
+SIGNING_AUTHORITY_SCRIPT="$SCRIPT_DIR/signing-authority.sh"
+# The authority name has exactly one owner; a second copy here would let what
+# this script signs with drift from what the installer inspects.
+AUTHORITY="$("$SIGNING_AUTHORITY_SCRIPT" name)"
 
 if ! command -v swiftc >/dev/null 2>&1; then
     echo "make launchers: swiftc is required; install the Xcode Command Line Tools with: xcode-select --install" >&2
@@ -34,7 +37,7 @@ for agent in $canonical_agents; do
     esac
 done
 
-if ! LAUNCHER_SIGNING_AUTHORITY="$AUTHORITY" "$SCRIPT_DIR/signing-authority.sh" ensure; then
+if ! "$SIGNING_AUTHORITY_SCRIPT" ensure; then
     echo "make launchers: no usable signing authority; not building unsigned bundles." >&2
     exit 1
 fi

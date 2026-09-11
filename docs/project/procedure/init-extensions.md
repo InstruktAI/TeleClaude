@@ -76,8 +76,7 @@ matching after a recompile. The build resolves that authority itself: it creates
 self-signed certificate when none exists, exports a backup for reissuing it elsewhere,
 and asks macOS to let `codesign` use the key unattended.
 
-Because macOS binds Full Disk Access to the certificate rather than to its name, an
-authority that already exists is used as it stands and never silently reissued. An
+An authority that already exists is used as it stands and never silently reissued. An
 expired authority, one whose private key is absent, and an ambiguous name each stop the
 build with the fingerprints and the remedy, and `make launchers-renew-authority` is the
 only route that discards one — it states that every launcher grant dies with it.
