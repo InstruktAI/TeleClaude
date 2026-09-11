@@ -202,18 +202,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
 
 #### After the dirty-main quiet window
 
-<!-- planned-change:fix-dirty-path-owners-ownership-query-fails -->
-When the same complete blocking path set remains dirty for the full quiet window, run
-
-```
-telec code owners <path>...
-```
-
-with every blocking path from the integration instruction on each post-window reminder
-beat while the set remains dirty. The command performs no age calculation. Each invocation
-takes one fresh snapshot of open local-project sessions and returns a JSON object keyed by
-every requested project-relative path.
-<!-- change:fix-dirty-path-owners-ownership-query-fails -->
 When the same complete blocking path set remains dirty for the full quiet window, run the
 ownership query with the tool invocation's working directory set to the repo root named by
 the integration instruction:
@@ -226,7 +214,6 @@ Include every blocking path from the integration instruction on each post-window
 beat while the set remains dirty. The command performs no age calculation. Each invocation
 takes one fresh snapshot of open local-project sessions and returns a JSON object keyed by
 every requested project-relative path.
-<!-- /planned-change:fix-dirty-path-owners-ownership-query-fails -->
 
 Resolve ownership on every post-window reminder beat while the complete blocking path set
 remains dirty, using a fresh query invocation and therefore a fresh open-session snapshot.
