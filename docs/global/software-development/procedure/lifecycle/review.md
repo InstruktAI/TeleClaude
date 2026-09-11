@@ -173,10 +173,11 @@ governs (`general/principle/grounding`).
 The v9-to-cycle migration has one explicit initialization rule for legacy
 prepare-review state that cannot carry a cycle boundary it predates. When the
 current verdict and evidence bindings are empty, a retained report exists, and
-the current target was written after that report, the migration starts one new
-cycle at the cumulative round and continuation totals. It applies once during
-upcycle and preserves the historical values. Other legacy shapes keep zero
-offsets. This favors another independent review over permanently blocking a
+the current target was written after that report, the migration records the
+cumulative round and continuation totals as the new cycle's offsets. Cycle-local
+admitted rounds and continuations are totals minus those offsets, so both start
+at zero while the cumulative values remain unchanged. It applies once during
+upcycle. Other legacy shapes keep zero offsets. This favors another independent review over permanently blocking a
 replacement-shaped target whose earlier cycle identity was never persisted
 (`general/principle/grounding`).
 

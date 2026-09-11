@@ -96,6 +96,7 @@ And its current verdict and evidence bindings are empty
 And its current target was written after the retained review report
 When the state is upcycled into the cycle model
 Then the cumulative round and continuation totals become the new cycle's offsets exactly once
+And the cycle-local admitted round and continuation counts therefore start at zero without changing cumulative history
 And other legacy review shapes keep zero offsets
 ```
 
