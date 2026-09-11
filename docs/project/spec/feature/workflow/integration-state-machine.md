@@ -6,10 +6,9 @@ visibility: public
 
 # Integration State Machine — Spec
 
-
 ## What it is
 
-The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton (one active integrator per project, enforced by a lease keyed on `integration/main`) and consumes finalize-ready Todos in FIFO order. Each call resumes from a durable checkpoint, executes the next deterministic step, and either loops internally or returns a structured instruction block that asks the calling agent to do the one thing only intelligence can do: compose a squash commit message, resolve a merge conflict, or recover from a rejected push. All git mutations happen inside an isolated integration worktree at `trees/_integration/`, never on repo root, so a dirty or diverged repo root never blocks delivery. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
+The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton (one active integrator per project, enforced by a lease keyed on `integration/main`) and consumes finalize-ready Todos in FIFO order. Each call resumes from a durable checkpoint, executes the next deterministic step, and either loops internally or returns a structured instruction block that asks the calling agent to do the one thing only intelligence can do: compose a squash commit message, resolve a merge conflict, or recover from a rejected push. Candidate git mutations happen inside an isolated integration worktree at `trees/_integration/`. Repo-root mutation is limited to publishing already-committed ahead-only state before candidate selection, fast-forward synchronization after delivery, and slug-scoped settled-marker recovery after a maintenance fault. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
 
 ## Canonical fields
 
@@ -183,7 +182,6 @@ And the candidate stays at delivery bookkeeping with a residual-marker error nam
 And a delivered slug never reaches origin/main carrying its own live markers
 ```
 
-
 #### UC-WISM5: A pre-push gate rejection is resolved or parked; the gate is never bypassed
 
 ```gherkin
@@ -196,7 +194,6 @@ And a finding it cannot ground confidently parks the candidate with a recorded r
 And no sentinel, flag, or integrator-authored exception permits the failed candidate to pass the gate
 And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
 ```
-
 
 #### UC-WISM6: Held or kicked-back candidates are excluded from the integration pool
 
@@ -249,7 +246,6 @@ When each PUSH_SUCCEEDED step records its delivered merge range into the session
 Then the marker accumulates the union of the delivered ranges across candidates rather than overwriting the prior range
 ```
 
-
 #### UC-WISM9: The pre-push quality gate remains authoritative and blocking
 
 ```gherkin
@@ -261,7 +257,6 @@ And the pre-push telec code lint --all remains the single authoritative content 
 And every failure blocks delivery until the integrator resolves it in the integration worktree or parks the candidate
 And the integration path provides no candidate-specific quality override
 ```
-
 
 #### UC-WISM10: The integrator resumes only a candidate that belongs to the current project
 
@@ -282,7 +277,6 @@ When a new finalize-ready candidate is dequeued and the integrator prepares the 
 Then the integrator fetches origin and resets the integration worktree to current origin/main before pinning the pre-merge base
 And the candidate's squash base is current origin/main, never the stale HEAD
 ```
-
 
 #### UC-WISM19: An ungroundable textual merge conflict parks the candidate and the drain continues
 
@@ -333,8 +327,6 @@ Then the parked set is cleared for the new drain
 And the previously parked candidate is re-attempted as an ordinary finalize-ready candidate
 ```
 
-
-
 #### UC-WISM24: An unsynced post-delivery repo root still regenerates the Blueprint
 
 ```gherkin
@@ -346,21 +338,42 @@ And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the unsynced repo root
 ```
 
-
 #### UC-WISM32: Delivery reconciles the candidate's pending documentation exactly once
 
 ```gherkin
 Given a candidate's delivered-snippet fold has been committed into the delivery and pushed to origin/main
 When the confirmation gate records the delivery
 Then the reconciliation the delivery record rests on is the one already applied in the integration worktree
-And no second reconciliation of that slug is applied against the repo root
+And no second reconciliation of that slug is applied against the repo root as part of candidate delivery
 And the delivery leaves repo-root main with no commit the delivery itself authored there
-And the repo root reaches the delivered content by synchronizing with origin/main
+And the repo root reaches the delivered content by publishing committed ahead-only state before candidate selection and synchronizing with origin/main after delivery
 And the recorded delivered commit is the frozen pushed commit
 ```
 
+#### UC-WISM33: Idle integration publishes ahead-only repo-root state before candidate selection
 
+```gherkin
+Given the integration checkpoint is idle
+And repo-root main contains committed work ahead of origin/main and is not behind it
+When the integrator classifies repository-root synchronization at entry
+Then it publishes repo-root main to origin/main through the integrator's canonical-main writer path
+And it confirms the published commit on origin/main before selecting a candidate
+And the integration worktree is based on that updated origin/main
+And a publication or confirmation failure prevents candidate dequeue without rewriting the local commits
+```
 
+#### UC-WISM34: Settled marker divergence is repaired outside candidate delivery
+
+```gherkin
+Given lifecycle maintenance faults pending documentation material owned by an already-settled slug
+And no active integration candidate can reconcile that material
+When the integrator begins recovery with repository-root main synchronized and safe to mutate
+Then it performs one idempotent slug-scoped delivery reconciliation against the repository root
+And it commits and publishes the reconciliation through the canonical-main writer path
+And it leaves the original delivery record and recorded delivering commit unchanged
+And the recovery is not counted as a second reconciliation in the original candidate delivery
+And unrelated pending documentation remains byte-identical
+```
 
 #### UC-WISM27: The repo-root sync classifies its state instead of probing with a pull that cannot succeed
 
@@ -368,15 +381,12 @@ And the recorded delivered commit is the frozen pushed commit
 Given repo-root main and origin/main are not at the same commit when a "telec todo integrate" call begins
 When the integrator classifies repo-root main against origin
 Then a repo root that is only behind is fast-forwarded and the call proceeds with no instruction returned
-And a repo root that is only ahead proceeds without rewriting its local commits
+And an idle integrator publishes a repo root that is only ahead before candidate selection without rewriting its local commits
 And a repo root that is both ahead and behind is reported as the expected post-delivery condition, never as a divergence failure
 And the report carries the intersection of the incoming file list with the repo-root dirty set as a fact
 And the integrator owns the merge — the state machine never merges repo-root main
 And no candidate is dequeued for that call until repo-root main is synced
 ```
-
-
-
 
 #### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
 
@@ -428,9 +438,7 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 
 ### Cross-context references
 
-
 - `agent_runtime` — receives fire-and-forget lifecycle events: `integration.started`, `integration.candidate.dequeued`, `integration.candidate.already_merged`, `integration.merge.succeeded`, `integration.merge.conflicted`, `integration.candidate.committed`, `integration.push.succeeded`, `integration.push.rejected`, `integration.candidate.delivered`, `integration.candidate.blocked`, `integration.candidate.parked`, `integration.drain.completed`.
-
 
 - `workflow` — delivery bookkeeping records the delivery commit; `workflow.todo.delivered` is emitted by the workflow context after push succeeds.
 - `operations` — `telec todo integrate` returns an operation receipt; the integrator runs inside the operation runner so failures surface through operation status.
@@ -457,17 +465,14 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 
 - The phase enum's AWAITING_COMMIT value is reachable but typically not written; MERGE_CLEAN and MERGE_CONFLICTED are written directly and re-entry handling treats all three equivalently.
 
-
 - A content-gate rejection is distinguished from a fast-forward-race rejection (remote moved; rebase-recoverable) by the pre-push content-gate marker in the rejection output. The pre-push gate remains authoritative and blocking. The integrator fixes a finding it can ground and re-pushes; when it cannot ground the finding, it parks the candidate and continues the drain through independent work. No candidate is delivered past the failed gate.
 
-
-
 - A textual merge conflict the integrator cannot ground a confident resolution for is parked rather than halted: the candidate is set aside with a recorded reason, its transitive dependents are excluded, and the drain continues through the remaining independent candidates (UC-WISM19–UC-WISM21). Parking is a per-drain, in-checkpoint set-aside — `finalize.status` is not retracted, so a later drain re-attempts the candidate (UC-WISM23). This park path is distinct from the content-gate halt above, which is unchanged.
-
 
 - Lifecycle event emission is fire-and-forget; event delivery failure never blocks integration progress and is only logged at debug level.
 
 ## See Also
 
+- docs/project/adr/0085-canonical-doc-state-before-delivery.md — why repo-root documentation is published before candidate selection and terminal divergence repair is a separate operation.
 - docs/project/adr/0082-candidate-span-ownership-inspection-is-withdrawn.md — why span-ownership inspection was removed rather than corrected.
 - docs/project/adr/0076-integrator-parks-blockers-and-keeps-quality-gating.md — the park-and-drain decision, whose conflict and content-gate paths are unchanged.

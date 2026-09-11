@@ -40,6 +40,10 @@ A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
 detects settled-slug/live-marker divergence wherever documentation material
 lives, including repository-root snippets outside a candidate branch, and
 faults the divergence to the integrator with the evidence needed to resolve it.
+The integrator handles that fault as a separate recovery operation after the
+repository root is synchronized and safe to mutate: it reconciles only the
+settled slug, publishes the resulting cleanup through its canonical-main writer
+path, and leaves the original delivery record unchanged.
 
 `telec sync` validates snippet shape and builds and deploys indexes; it does not
 perform lifecycle-driven reconciliation.
@@ -125,6 +129,9 @@ And the material may live outside every integration candidate branch
 When lifecycle maintenance sweeps for state and marker divergence
 Then it detects the settled slug wherever the material lives
 And faults the divergence to the integrator with the slug, source path, line, and reason
+And when repository-root main is synchronized and safe to mutate, the integrator runs a new slug-scoped delivery reconciliation as a recovery operation
+And it commits and publishes only that recovery result without changing the settled todo's recorded delivery commit
+And a failed recovery leaves the divergence fault active with its failure evidence
 And unrelated live and pending material is not rewritten
 ```
 
@@ -163,8 +170,8 @@ And unrelated stale material is not folded into the candidate commit
 
 - workflow — owns todo fate, identity, and reversal transitions and invokes
   reconciliation before making those movements durable.
-- integration — owns candidate delivery reconciliation and receives divergence
-  faults from the maintenance sweep.
+- integration — owns candidate delivery reconciliation and consumes divergence
+  faults from the maintenance sweep through its separate recovery transition.
 - context — owns pending-material parsing, resolution, rendering, and source
   mutation primitives used by lifecycle callers.
 
@@ -178,3 +185,7 @@ And unrelated stale material is not folded into the candidate commit
 - Reassigning material during a split or regroup requires an explicit resulting
   owner for every pending carrier; ambiguous ownership faults rather than being
   guessed.
+
+## See Also
+
+- docs/project/adr/0085-canonical-doc-state-before-delivery.md — why normal delivery publishes repo-root documentation state before candidate selection and reserves repo-root reconciliation for explicit divergence recovery.
