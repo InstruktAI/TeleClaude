@@ -57,7 +57,7 @@ another session, prescribe a fix, stamp the diagnosis, or advance the prepare st
    - **Root cause** — the minimal causal set and its counterfactual, with no fix.
    - **Attack record** — initially empty or marked pending; the peer updates it when the
      prepare-driving session later challenges the written mechanism.
-5. Report completion and wait. If the prepare-driving session returns an evidence gap or
+5. Write the `diagnosis` artifact, then go idle for the prepare-driving session's response. If the prepare-driving session returns an evidence gap or
    challenge, gather the missing evidence, revise the artifact yourself, and update the
    Attack record with the challenged transition, evidence, and resulting movement. The peer
    keeps the pen for every diagnosis version.
