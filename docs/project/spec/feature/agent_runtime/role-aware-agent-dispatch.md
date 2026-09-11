@@ -40,6 +40,8 @@ todo kind establish the remaining ordered candidates. A scheduled job supplies i
 candidates — its effective declaration's non-empty `agent` preference list — in place
 of a command row. A job has no code-owned candidate order. An empty effective list
 is rejected by the job configuration boundary before selection.
+The routing decision identifies the job declaration as the candidate-order source
+and retains the existing eligibility fallback or refusal reason.
 <!-- /planned-change:generic-job-declarative-model -->
 
 **Manual preference**
@@ -373,6 +375,7 @@ Given an agent caller dispatches a scheduled job with configured candidate prefe
 When TeleClaude selects the session agent
 Then it considers only those candidates in their configured order
 And it applies the existing automatic eligibility rules
+And the routing result identifies declaration-sourced selection
 And no eligible candidate results in an explicit refusal before session creation
 ```
 

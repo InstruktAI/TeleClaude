@@ -22,8 +22,11 @@ structured report all use to name an agent job. A `script` pointer names a job
 module relative to the project root, and that module's stem is the script job's
 identity everywhere the job is named — run state, the run directory, and the
 runner's job filter. A `job` pointer must resolve to a delivered procedure
-snippet at config load; an unknown ID, a non-procedure snippet, or a procedure
-pending for another delivery fails the load naming the job and the pointer.
+snippet at config load; an unknown ID, a non-procedure snippet, or a brand-new
+procedure with no delivered body fails the load naming the job and the pointer.
+A delivered procedure remains executable when a replacement or addition is
+pending; execution uses its current body, not the pending material. The lookup
+has no exception for the declaration's delivering slug.
 
 Jobs are declarable at two tiers. A **global job** is published once in the
 global config's `jobs` registry with its default schedule and execution settings
@@ -60,8 +63,9 @@ The scheduling contract is the `when` block alone (see
 `project/spec/feature/config/job-schedule-contract`); a declaration carries no
 legacy schedule or preferred-timing fields, no execution-class discriminator, and
 no agent-prompt override field.
-A declaration still carrying a removed field fails at the project configuration
-load boundary before it can drive behavior.
+Recognized stored job declarations are normalized to the current shape before
+validation. Fields outside that recognized migration follow the owning
+configuration boundary's unknown-input contract.
 
 A project's effective job set is its local jobs plus every global job it
 subscribes to, each resolved as the published declaration overlaid by the
@@ -160,7 +164,7 @@ And it is in the project's effective job set without any global registration
 #### UC-JDM-11: Job pointer must resolve to a delivered procedure
 
 ```
-Given a job declaration whose `job` pointer names an unknown snippet ID, a snippet that is not a procedure, or a procedure pending for another delivery
+Given a job declaration whose `job` pointer names an unknown snippet ID, a snippet that is not a procedure, or a brand-new procedure with no delivered body
 When the config is loaded
 Then the load fails with an error naming the job and the pointer
 And no agent session can be dispatched for it
@@ -199,10 +203,10 @@ And the failure remains available through the established failed-run reporting p
 #### UC-JDM-10: Removed field does not drive behavior
 
 ```
-Given a job declaration still carrying a removed field (an execution-class discriminator, a legacy schedule or preferred-timing field, or an agent-prompt override)
-When the config is loaded
-Then configuration loading fails before the job enters the effective job set
-And the failure identifies the removed field's path
+Given an agent loads stored job configuration containing a recognized retired setting
+When the configuration is prepared for execution
+Then the setting is migrated to the current declaration shape before validation
+And it does not independently control scheduling or execution
 ```
 
 #### UC-JDM-15: Pre-declarative jobs document is migrated forward at load
