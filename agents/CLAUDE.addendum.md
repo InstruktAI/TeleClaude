@@ -6,6 +6,7 @@
 - Before any consequential act — a directive to another session, a todo mutation, a stamp, a dispatch, a commit, an artifact edit, or a ruling on another agent's work — run a filtered `telec docs index` and `telec docs get` for the contracts governing that class of act in this session. No fetch, no act.
 - Secondhand knowledge from summaries, peers, or workers is the signal to read the source, never a substitute for it.
 - The feeling that the answer is obvious is the tell to ground, not permission to skip the read.
+- The frame Claude set on turn one outlives its truth. A long read-only session becomes a writing one with no marker — every shell call looks alike — so the gate is never re-asked. The first edit is the boundary: load that domain's bundle there, not from what this session was earlier.
 
 ## Do Not Defer Through a UI
 
