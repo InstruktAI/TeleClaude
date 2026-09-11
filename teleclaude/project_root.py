@@ -16,6 +16,7 @@ DOC_LAYER_PATTERN = "docs/**"
 
 __all__ = [
     "DOC_LAYER_PATTERN",
+    "declaration_root",
     "forbidden_slug_worktree_doc_paths",
     "is_integration_worktree",
     "is_project_checkout",
@@ -155,6 +156,20 @@ def is_integration_worktree(root: Path) -> bool:
 def is_slug_worktree(root: Path) -> bool:
     """Return True when root is a todo slug worktree (trees/<slug>, not trees/_integration)."""
     return root.parent.name == WORKTREE_DIR and not is_integration_worktree(root)
+
+
+def declaration_root(context_root: Path) -> Path:
+    """Return the checkout whose declaration governs this invocation.
+
+    A linked worktree carries a branch copy of the project declaration, but a
+    worktree is never authoritative for daemon-facing configuration: the tier
+    and subscriptions an invocation answers to belong to the owning checkout.
+    Contexts that are not linked worktrees answer for themselves, so global,
+    person, and nested contexts resolve unchanged.
+    """
+    if not (is_integration_worktree(context_root) or is_slug_worktree(context_root)):
+        return context_root
+    return resolve_project_root(context_root)
 
 
 def forbidden_slug_worktree_doc_paths(root: Path, paths: Iterable[str]) -> tuple[str, ...]:

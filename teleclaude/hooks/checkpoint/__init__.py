@@ -79,6 +79,7 @@ from teleclaude.hooks.checkpoint_flags import (
     read_commit_obligations,
     read_integrator_maintenance_marker,
 )
+from teleclaude.project_root import declaration_root
 from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
@@ -512,7 +513,7 @@ def get_checkpoint_content(
             "transcript_exists": transcript_meta["transcript_exists"],
             "transcript_size_bytes": transcript_meta["transcript_size_bytes"],
         }
-        capability_state = resolve_project_capability_state(Path(project_path).expanduser().resolve())
+        capability_state = resolve_project_capability_state(declaration_root(Path(project_path).expanduser().resolve()))
         checkpoint_config = capability_state.config.checkpoint if capability_state.config is not None else None
         if not _is_checkpoint_project_supported(project_path, capability_state.capabilities, checkpoint_config):
             logger.info(
