@@ -85,3 +85,29 @@ visibility: 'public'
 5. Chiptunes audio focus is queue-scoped, not item-scoped — music resumes only after all queued speech has completed.
 6. Paused chiptunes does not keep a live audio stream open in the background.
 7. Chiptunes pause intent survives daemon restart — `enabled` and `paused` are restored together.
+<!-- planned:discord-personal-voice-conversation -->
+8. **Rendering is separable from destination.** Turning text and a voice into
+   audio is one capability; deciding where that audio is heard is another. A
+   backend that can produce an audio artifact without playing it locally
+   participates in remote destinations; one that cannot still serves local
+   playback unchanged. Destination is chosen by the caller, never by the
+   backend.
+9. **A remote destination never implies a local one.** Activating a listening
+   room is an audio-destination signal for that room only. It does not enable
+   host-speaker playback, and it does not touch chiptunes audio focus, whose
+   queue-scoped claim exists to protect the host's speakers.
+10. **Spoken output is the complete reply.** Where a destination speaks a
+    session's answer, it speaks the full user-visible final response for that
+    output version, not the separately generated summary, which is lossy by
+    construction.
+11. **Rendered audio is identified by session, final-output version, and
+    effective voice.** Re-hearing an unchanged reply reuses the artifact
+    already produced for it; a new output version or a different effective
+    voice produces a new one. Artifacts are bounded in lifetime and private in
+    permission.
+12. **Voice identity survives the destination.** Invariant 1 holds for remote
+    destinations, so where a person's room is configured, a session's assigned
+    voice is drawn from services that can render. Falling back to a different
+    voice to satisfy a destination would break the identity that makes two
+    sessions distinguishable by ear.
+<!-- /planned:discord-personal-voice-conversation -->

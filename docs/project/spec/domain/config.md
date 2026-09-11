@@ -33,6 +33,17 @@ TeleClaudeNext.
   for systems configured by those settings.
 - **Published contracts:** validated configuration models and `telec config`
   commands; consumers never reinterpret missing or invalid values.
+<!-- planned:discord-personal-voice-conversation -->
+- **Also owns:** the person tier's voice-room declaration as typed settings —
+  the voice bot credential reference, the private voice channel, and the
+  computer that owns the voice connection for that person. These are declared
+  fields rather than tolerated extras, so a missing or malformed value is
+  rejected at validation instead of surfacing as absent capability at runtime.
+  The credential resolves only through the person overlay's own tier-local
+  environment; no global or foreign-person fallback exists, and the resolved
+  value is never logged or persisted. Owning the declaration is not owning what
+  it means: which computer may act on it is the integration context's rule.
+<!-- /planned:discord-personal-voice-conversation -->
 <!-- planned:personal-assistant-launch -->
 - **Also published:** person-workspace containment — whether a given path lies
   inside any person's workspace, answered for the composed destination rather

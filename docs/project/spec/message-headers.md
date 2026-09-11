@@ -27,6 +27,21 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
   platform emits it to drive an agent's own loop; it carries nothing about the
   work, and its instructions are addressed to a machine. It carries no
   authored content and never reaches a human-facing surface.
+<!-- planned:discord-personal-voice-conversation -->
+  One control header accompanies rather than replaces an authored turn. A live
+  personal-voice transcription enters as ordinary human input, and a registered
+  control envelope beside it states the modality the agent is answering into:
+  that the input arrived as speech from a personal Discord voice room, and that
+  the final response is to be concise and naturally speakable while retaining
+  every material outcome, decision, blocker, and required next action arising
+  since that input — dropping process narration and optional detail, never
+  information the human needs to act. The envelope is machine-authored control
+  text: it is excluded from human-facing reflection, while the transcription
+  beside it reflects as the human's own words. Modality is stated by the
+  platform, never inferred from what the transcript happens to say, and only
+  this path carries it — ordinary Discord text and uploaded voice attachments
+  receive no such envelope and keep their current behavior.
+<!-- /planned:discord-personal-voice-conversation -->
 - **Reminder header** — identifies a typed reminder transcript entry. There is
   no external author: the owning agent authored the stored intent and the
   platform authored the lifecycle envelope. Armed, replaced, cancelled, and
