@@ -1,11 +1,8 @@
 # teleclaude.yml
+# kind: project
 # project_slug: your-project-slug
 # project_name: Your Project
 # frontend_root: frontend  # optional layout override: directory containing TypeScript/frontend project
-# External webhook ingress is configured on the runtime node in `config.yml`:
-# computer.is_ingress_node: true
-# A same-host reverse proxy forwards only the webhook path prefix to the
-# localhost API server; the API server does not LAN-bind.
 # business:
 #   # Domains this project owns and publishes global docs for, served from
 #   # docs/global/<domain>/. Each domain has exactly one owner across all
@@ -16,14 +13,17 @@
 #     - slug: software-development
 #       trigger: Writing, reviewing, testing, or refactoring code or tests
 #
-# Runtime adapter settings belong in `config.yml`:
-# discord:
-#   enabled: false
-#   token: ${DISCORD_BOT_TOKEN}
-#   guild_id: ${DISCORD_GUILD_ID}
-#   help_desk_channel_id: ${DISCORD_HELP_DESK_CHANNEL_ID}
-#
 # jobs:
+#   # Runs log bug hunter in the project
+#   log_bug_hunter:
+#     category: system
+#     when:
+#       at: 03:00
+#     type: agent
+#     job: software-development/procedure/maintenance/log-bug-hunter
+#     agent: claude
+#     thinking_mode: fast
+#
 #   # Scrapes recent videos for tag-filtered subscribed channels (script job).
 #   youtube_scraper:
 #     category: system

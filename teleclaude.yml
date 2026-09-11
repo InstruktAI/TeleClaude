@@ -1,4 +1,5 @@
 # yaml-language-server: $schema=schemas/teleclaude-project.schema.json
+# yaml-language-server: $schema=schemas/teleclaude-project.schema.json
 kind: project
 project_name: TeleClaude
 project_slug: teleclaude
@@ -9,12 +10,16 @@ env_allow_list: []
 
 business:
   publishes:
-    - slug: software-development
-      trigger: Writing, reviewing, testing, refactoring, or debugging code or tests
-    - slug: creative
-      trigger: Generating images, designing visuals, or producing creative or moodboard artifacts
-    - slug: personal
-      trigger: Work on a person's own mail, calendar and standing instructions. Only an agent started in that person's own workspace does this; asked elsewhere, an agent spawns one there rather than serving it.
+  - slug: software-development
+    trigger: Writing, reviewing, testing, refactoring, or debugging code or 
+      tests
+  - slug: creative
+    trigger: Generating images, designing visuals, or producing creative or 
+      moodboard artifacts
+  - slug: personal
+    trigger: Work on a person's own mail, calendar and standing instructions. 
+      Only an agent started in that person's own workspace does this; asked 
+      elsewhere, an agent spawns one there rather than serving it.
 
 # TeleClaude's own checkpoint maintenance, dogfooded through the same project
 # overlay it hands every onboarded project. The platform-universal base (docs →
@@ -45,49 +50,50 @@ checkpoint:
     # absent: declaring it would bind `test`, which docs/project/policy/test-moratorium.md
     # forbids in this repository. Declaring the scope generically keeps log-check
     # without it.
-    - scope:
-        include: [teleclaude/**/*.py]
-      actions: [log-check]
+  - scope:
+      include: [teleclaude/**/*.py]
+    actions: [log-check]
     # Daemon code requires a restart. CLI modules the daemon imports at startup
     # are re-included via override despite the broad cli/** exclusion.
-    - scope:
-        include: [teleclaude/**/*.py]
-        exclude:
-          - teleclaude/hooks/**
-          - teleclaude/cli/**
-          - teleclaude/utils/**
-          - teleclaude/quality/**
-          - teleclaude/session_scoping/**
-          - teleclaude/project_setup/**
-          - teleclaude/codegen/**
-          - teleclaude/resource_validation/**
-          - teleclaude/entrypoints/**
-          - teleclaude/tagging/**
-          - teleclaude/helpers/**
-        override:
-          - teleclaude/cli/__init__.py
-          - teleclaude/cli/telec/__init__.py
-          - teleclaude/cli/telec/surface.py
-          - teleclaude/cli/telec/surface_types.py
-          - teleclaude/cli/telec/auth.py
-          - teleclaude/cli/telec/help.py
-          - teleclaude/cli/telec/_shared.py
-          - teleclaude/cli/telec/_run_tui.py
-          - teleclaude/cli/tool_client.py
-          - teleclaude/cli/session_auth.py
-      actions: [restart]
-    - scope:
-        include: [config.yml]
-      actions: [restart]
-    - scope:
-        include: [pyproject.toml, requirements*.txt]
-      actions: [deps]
-    - scope:
-        include: [teleclaude/install/**, teleclaude/project_setup/**, teleclaude/hooks/adapters/**, templates/**]
-      actions: [install]
-    - scope:
-        include: [teleclaude/cli/tui/**]
-      actions: [tui-reload]
+  - scope:
+      include: [teleclaude/**/*.py]
+      exclude:
+      - teleclaude/hooks/**
+      - teleclaude/cli/**
+      - teleclaude/utils/**
+      - teleclaude/quality/**
+      - teleclaude/session_scoping/**
+      - teleclaude/project_setup/**
+      - teleclaude/codegen/**
+      - teleclaude/resource_validation/**
+      - teleclaude/entrypoints/**
+      - teleclaude/tagging/**
+      - teleclaude/helpers/**
+      override:
+      - teleclaude/cli/__init__.py
+      - teleclaude/cli/telec/__init__.py
+      - teleclaude/cli/telec/surface.py
+      - teleclaude/cli/telec/surface_types.py
+      - teleclaude/cli/telec/auth.py
+      - teleclaude/cli/telec/help.py
+      - teleclaude/cli/telec/_shared.py
+      - teleclaude/cli/telec/_run_tui.py
+      - teleclaude/cli/tool_client.py
+      - teleclaude/cli/session_auth.py
+    actions: [restart]
+  - scope:
+      include: [config.yml]
+    actions: [restart]
+  - scope:
+      include: [pyproject.toml, requirements*.txt]
+    actions: [deps]
+  - scope:
+      include: [teleclaude/install/**, teleclaude/project_setup/**, 
+          teleclaude/hooks/adapters/**, templates/**]
+    actions: [install]
+  - scope:
+      include: [teleclaude/cli/tui/**]
+    actions: [tui-reload]
 
 jobs:
   # help_desk_intelligence:
@@ -111,19 +117,19 @@ jobs:
   temp_reaper:
     category: system
     when:
-      every: '60m'
+      every: 60m
     script: jobs/temp_reaper.py
 
   project_backup:
     category: system
     when:
-      at: '05:00'
+      at: 05:00
     script: jobs/project_backup.py
 
   log_bug_hunter:
     category: system
     when:
-      at: '03:00'
+      at: 03:00
     type: agent
     job: software-development/procedure/maintenance/log-bug-hunter
     agent: claude

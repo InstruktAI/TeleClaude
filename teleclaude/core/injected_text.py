@@ -314,8 +314,7 @@ _SECTION_SEPARATOR = "\n\n"
 _EMPTY_TEXT = ""
 _CHECKPOINT_BODY = (
     "Continue or validate your work if needed. Perform checkpoint housekeeping silently, then send a short "
-    "user-relevant debrief without mentioning checkpoint chores. Any truly interesting memories to be created that "
-    "meet our criteria? (DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
+    "user-relevant debrief without mentioning checkpoint chores. If everything that is expected of you is done, do not respond."
 )
 
 
