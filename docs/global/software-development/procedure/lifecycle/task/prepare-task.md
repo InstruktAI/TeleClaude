@@ -87,9 +87,9 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 - **Input too sparse to interpret.** Surface the gap and ask one direct question;
   do not invent scope into the plan.
-- **The applicable creating session cannot be resolved or does not support the
-  claimed request.** Do not draft from the agent-authored additions. Surface the
-  mismatch and wait for a human-owned action boundary.
+- **The `input` does not support the claimed request.** Do not draft from the
+  agent-authored additions. Surface the mismatch and wait for a human-owned
+  action boundary.
 - **Intent requires repo modification.** Refuse per Step 2; do not draft a
   `task-plan`.
 - **Plausible duplicate found.** Refuse per Step 3; surface it to the human
