@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV
 from teleclaude.core.blueprint.generate import regenerate_blueprint
 from teleclaude.git import GitCommandError, Repo
+from teleclaude.project_root import is_slug_worktree
 
 logger = get_logger(__name__)
 
@@ -45,6 +46,8 @@ def run_post_merge_regeneration() -> int:
 
     try:
         repo_root = _repo_root_from_env()
+        if is_slug_worktree(repo_root):
+            return 0
         head = _rev_parse(repo_root, "HEAD")
         orig_head = _rev_parse(repo_root, "ORIG_HEAD")
         if head is None or orig_head is None or head == orig_head:
