@@ -87,6 +87,7 @@ logger = get_logger(__name__)
 _INTEGRATOR_MAINTENANCE_ACTION_LINE = "{index}. {action}"
 _INTEGRATOR_MAINTENANCE_ACTIONS_LABEL = "Outstanding actions: {actions}"
 _INTEGRATOR_MAINTENANCE_LOG_WINDOW = "2m"
+_CHECKPOINT_BUILD_FAILED_MESSAGE = "Checkpoint content build failed; no checkpoint emitted"
 
 __all__ = [
     "CheckpointContext",
@@ -495,9 +496,8 @@ def get_checkpoint_content(
     transcript extraction, and message building.
 
     Returns:
-    - str: checkpoint payload when agent action is required or confirmation is useful.
-    - None: no turn-local code changes detected; skip checkpoint entirely.
-    - paired checkpoint envelope: fail-open fallback on internal errors.
+    - str: checkpoint payload when maintenance work is established.
+    - None: no checkpoint work is established or evaluation fails.
     """
     try:
         transcript_meta = _transcript_observability(transcript_path)
@@ -592,7 +592,7 @@ def get_checkpoint_content(
                 extra={**base_extra, "mode": "commit_obligations_read_failed"},
                 exc_info=True,
             )
-            return checkpoint_text()
+            return None
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
 
@@ -773,7 +773,7 @@ def get_checkpoint_content(
 
     except Exception:
         logger.warning(
-            "Checkpoint content build failed (fail-open)",
+            _CHECKPOINT_BUILD_FAILED_MESSAGE,
             extra={
                 "agent": agent_name.value,
                 "project_path": project_path or "",
@@ -783,4 +783,4 @@ def get_checkpoint_content(
             },
             exc_info=True,
         )
-        return checkpoint_text()
+        return None
