@@ -146,7 +146,6 @@ And it dispatches a detached regeneration for the current origin/main baseline
 But an agent asking the same question from a todo worktree receives the fallback with no regeneration dispatched
 ```
 
-<!-- planned:worktree-post-merge-corrupts-shared-blueprint -->
 #### UC-BP2: A slug-worktree merge preserves the shared baseline
 
 ```gherkin
@@ -156,7 +155,6 @@ When origin/main is merged into that worktree
 Then the shared Blueprint continues to reflect the current origin/main
 And no branch-only structure becomes visible to Blueprint consumers
 ```
-<!-- /planned:worktree-post-merge-corrupts-shared-blueprint -->
 
 ## See Also
 
