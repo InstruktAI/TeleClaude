@@ -18,37 +18,6 @@ receives voice runs on another runtime. This design splits the two
 responsibilities across processes while keeping exactly one owner of the
 Gateway connection and exactly one owner of the voice connection.
 
-### Prior art & adopt-vs-build
-
-Surveyed before choosing a dependency:
-
-- **The platform's current Discord library** sends voice with its optional
-  extras and proved able to join the target room and stream speech, but
-  provides no maintained live receive.
-- **The community receive extension** has unmerged encrypted-receive work that
-  its own authors mark unstable; source inspection found paths where a failed
-  decrypt can still reach the decoder and where loss-concealment can inspect a
-  packet before decryption. A known fork retains related concerns. Neither is
-  adopted.
-- **An alternative Python fork** documents that encrypted recording may fail and
-  had no released receive support during investigation; replacing the Gateway
-  library would widen scope without supplying a solution.
-- **The released Node voice library** supports encrypted send and receive,
-  exposes a custom adapter interface that lets another process own the Gateway,
-  and handles key transition and recovery. Its documentation states receive is
-  not guaranteed stable, for the same provider reason above.
-- **Comparable production architecture:** a deployed Discord-to-telephony
-  bridge performs two-way audio with per-user allowlisting, supporting
-  feasibility without removing the provider caveat.
-
-**Decision: adopt the released Node voice library behind a sidecar, and build
-only the bridge.** A live two-process proof joined the room, streamed speech,
-and received clean encrypted audio that the existing transcription backend
-transcribed correctly, splitting two real transmissions at their explicit
-closure markers. Building a receive stack in Python was rejected: it would
-reimplement encrypted transport and key handling — a security boundary — with
-no released implementation to adopt.
-
 ## Inputs/Outputs
 
 **Inputs:**
@@ -153,3 +122,4 @@ connection on its own authority.
 - docs/project/spec/feature/integration/discord-interaction-ownership.md
 - docs/project/design/architecture/tts-system.md
 - docs/project/spec/domain/integration.md
+- docs/project/adr/0084-discord-voice-receive-runs-in-a-node-sidecar.md
