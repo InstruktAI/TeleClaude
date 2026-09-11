@@ -60,6 +60,8 @@ focused procedure and advances through the machine-owned transitions.
    `software-development/procedure/lifecycle/review`. The orchestrator owns
    that classification and bounded recovery direction; escalation follows
    `general/policy/human-contract` rather than the review count.
+   Legacy prepare-review state that predates cycle identity initializes through
+   the one-time migration rule in the shared review procedure.
 
 4. **Human PRD approval belongs to the feature lane only.** A drafted feature
    PRD first passes `prd_review`; the human then judges product intent and

@@ -90,6 +90,13 @@ Then every affected target starts a new review cycle with `DEFAULT_MAX_REVIEW_RO
 And continuations recorded before the substantive stamp do not enlarge the new cycle's allowance
 And the existing first-versus-second continuation authority rules apply within the new cycle
 And a stabilized replacement receives its first complete discovery pass without removing the earlier cycle's counters, continuations, report, or verdict evidence
+
+Given a legacy prepare-review state predates persisted cycle identity
+And its current verdict and evidence bindings are empty
+And its current target was written after the retained review report
+When the state is upcycled into the cycle model
+Then the cumulative round and continuation totals become the new cycle's offsets exactly once
+And other legacy review shapes keep zero offsets
 ```
 
 #### UC-WPS22: A classified halt continues only through a recorded continuation

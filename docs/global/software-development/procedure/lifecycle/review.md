@@ -170,6 +170,16 @@ rewrites without a substantive stamp remain inside the current cycle and reset
 nothing. This keeps the admitted-pass denominator grounded in the target it
 governs (`general/principle/grounding`).
 
+The v9-to-cycle migration has one explicit initialization rule for legacy
+prepare-review state that cannot carry a cycle boundary it predates. When the
+current verdict and evidence bindings are empty, a retained report exists, and
+the current target was written after that report, the migration starts one new
+cycle at the cumulative round and continuation totals. It applies once during
+upcycle and preserves the historical values. Other legacy shapes keep zero
+offsets. This favors another independent review over permanently blocking a
+replacement-shaped target whose earlier cycle identity was never persisted
+(`general/principle/grounding`).
+
 When a review cycle reaches its applicable documented cap without closure, no further
 automatic review starts. The orchestrator classifies the cause — ambiguous
 contract, failed remediation, unstable target, or incomplete or noisy review —
