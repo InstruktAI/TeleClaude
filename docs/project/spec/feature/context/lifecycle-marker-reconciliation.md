@@ -36,6 +36,12 @@ abandoned slug. Every operation is slug-scoped: unrelated pending material stays
 byte-identical, and repeating a completed reconciliation makes no further
 change.
 
+<!-- planned-change:integration-root-sync-misses-delivered-doc-fold -->
+A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
+detects settled-slug/live-marker divergence wherever documentation material
+lives, including repository-root snippets outside a candidate branch, and
+faults the divergence to the integrator with the evidence needed to resolve it.
+<!-- change:integration-root-sync-misses-delivered-doc-fold -->
 A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
 detects settled-slug/live-marker divergence wherever documentation material
 lives, including repository-root snippets outside a candidate branch, and
@@ -44,6 +50,7 @@ The integrator handles that fault as a separate recovery operation after the
 repository root is synchronized and safe to mutate: it reconciles only the
 settled slug, publishes the resulting cleanup through its canonical-main writer
 path, and leaves the original delivery record unchanged.
+<!-- /planned-change:integration-root-sync-misses-delivered-doc-fold -->
 
 `telec sync` validates snippet shape and builds and deploys indexes; it does not
 perform lifecycle-driven reconciliation.
@@ -123,6 +130,16 @@ And the fault remains owned by the intelligence driving that lifecycle moment
 
 #### UC-LMR7: The divergence sweep finds settled material outside delivery candidates
 
+<!-- planned-change:integration-root-sync-misses-delivered-doc-fold -->
+```gherkin
+Given a settled todo still has live pending markers or ownership metadata in documentation sources
+And the material may live outside every integration candidate branch
+When lifecycle maintenance sweeps for state and marker divergence
+Then it detects the settled slug wherever the material lives
+And faults the divergence to the integrator with the slug, source path, line, and reason
+And unrelated live and pending material is not rewritten
+```
+<!-- change:integration-root-sync-misses-delivered-doc-fold -->
 ```gherkin
 Given a settled todo still has live pending markers or ownership metadata in documentation sources
 And the material may live outside every integration candidate branch
@@ -134,6 +151,7 @@ And it commits and publishes only that recovery result without changing the sett
 And a failed recovery leaves the divergence fault active with its failure evidence
 And unrelated live and pending material is not rewritten
 ```
+<!-- /planned-change:integration-root-sync-misses-delivered-doc-fold -->
 
 #### UC-LMR8: Integration pre-applies candidate delivery before bookkeeping
 
@@ -170,8 +188,13 @@ And unrelated stale material is not folded into the candidate commit
 
 - workflow — owns todo fate, identity, and reversal transitions and invokes
   reconciliation before making those movements durable.
+<!-- planned-change:integration-root-sync-misses-delivered-doc-fold -->
+- integration — owns candidate delivery reconciliation and receives divergence
+  faults from the maintenance sweep.
+<!-- change:integration-root-sync-misses-delivered-doc-fold -->
 - integration — owns candidate delivery reconciliation and consumes divergence
   faults from the maintenance sweep through its separate recovery transition.
+<!-- /planned-change:integration-root-sync-misses-delivered-doc-fold -->
 - context — owns pending-material parsing, resolution, rendering, and source
   mutation primitives used by lifecycle callers.
 
