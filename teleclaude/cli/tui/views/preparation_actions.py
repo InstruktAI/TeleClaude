@@ -71,6 +71,23 @@ _OUTCOME_UNKNOWN_MESSAGE_TEMPLATE = "Operation {operation_id} outcome unknown: {
 _OPERATION_ENDED_IN_STATE_MESSAGE_TEMPLATE = "Operation ended in state '{state}'"
 _RUNNER_NOT_DISPATCHED_PREFIX = f"{RUNNER_NOT_DISPATCHED}:"
 _WARNING_RESPONSE_KEY = "warnings"
+_TODO_UPDATE_PATH = "/todos/update"
+_RESPONSE_KEY_STATUS = "status"
+_RESPONSE_STATUS_OK = "ok"
+_RESPONSE_KEY_DETAIL = "detail"
+_TODO_UPDATE_SLUG_KEY = "slug"
+_TODO_UPDATE_CWD_KEY = "cwd"
+_TODO_UPDATE_RELEASE_KEY = "release"
+_TODO_UPDATE_HOLD_KEY = "hold"
+_TODO_UPDATE_REASON_KEY = "reason"
+_HOLD_MODAL_TITLE = "Hold todo"
+_HOLD_MODAL_PROMPT = "Why hold this todo?"
+_HOLD_MODAL_PLACEHOLDER = "Enter a reason..."
+_HOLD_MODAL_SUBMIT_LABEL = "Hold"
+_NO_HOLD_CONTROL_MESSAGE = "No hold control is available for this todo"
+_HOLD_SUCCESS_MESSAGE_TEMPLATE = "Held '{slug}'"
+_RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE = "Released hold on '{slug}'"
+_UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE = "Unexpected response: {response}"
 
 
 class _ApprovalGateState(TypedDict, total=False):
@@ -113,11 +130,10 @@ def _approval_gate_pending(row: TodoRow) -> bool:
 
 
 def _hold_control_available(row: TodoRow) -> bool:
-    if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.REMOVED}:
+    if row.todo.status in {TodoStatus.ICEBOX, TodoStatus.DELIVERED, TodoStatus.HOLDER, TodoStatus.REMOVED}:
         return False
-    # The offered control IS the unhold control: it is present exactly when the
-    # active todo is held, and pressing it clears the flag.
-    return row.todo.held
+    # Active todos can be held or released through the same contextual control.
+    return True
 
 
 class PreparationViewActionsMixin:
@@ -845,13 +861,13 @@ class PreparationViewActionsMixin:
             self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
 
     def action_hold(self) -> None:
-        """h: clear the automatic-dispatch hold brake (offered only when held)."""
+        """h: hold an active todo with a reason, or release its existing hold."""
         row = self._current_todo_row()  # type: ignore[attr-defined]
         if not row:
             return
 
         if not _hold_control_available(row):
-            self.app.notify("No hold control is available for this todo", severity="warning")  # type: ignore[attr-defined]
+            self.app.notify(_NO_HOLD_CONTROL_MESSAGE, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
             return
 
         slug = row.slug
@@ -860,22 +876,74 @@ class PreparationViewActionsMixin:
         if not project_path:
             return
 
+        if not row.todo.held:
+
+            def _on_hold_reason(reason: str | None) -> None:
+                if not reason:
+                    return
+                try:
+                    result = tool_api_request(
+                        "POST",
+                        _TODO_UPDATE_PATH,
+                        json_body={
+                            _TODO_UPDATE_SLUG_KEY: slug,
+                            _TODO_UPDATE_CWD_KEY: project_path,
+                            _TODO_UPDATE_HOLD_KEY: True,
+                            _TODO_UPDATE_REASON_KEY: reason.strip(),
+                        },
+                        timeout=10.0,
+                    )
+                    if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
+                        self.app.notify(_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
+                        self.app._refresh_data()  # type: ignore[attr-defined]
+                    elif isinstance(result, dict) and result.get(_RESPONSE_KEY_DETAIL):
+                        self.app.notify(  # type: ignore[attr-defined]
+                            escape_markup(str(result[_RESPONSE_KEY_DETAIL])), severity=_NOTIFY_SEVERITY_ERROR
+                        )
+                    else:
+                        self.app.notify(  # type: ignore[attr-defined]
+                            escape_markup(_UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result)),
+                            severity=_NOTIFY_SEVERITY_ERROR,
+                        )
+                except Exception as exc:
+                    self.app.notify(escape_markup(str(exc)), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+
+            self.app.push_screen(  # type: ignore[attr-defined]
+                ContentInputModal(
+                    title=_HOLD_MODAL_TITLE,
+                    placeholder=_HOLD_MODAL_PLACEHOLDER,
+                    prompt=_HOLD_MODAL_PROMPT,
+                    submit_label=_HOLD_MODAL_SUBMIT_LABEL,
+                ),
+                callback=_on_hold_reason,
+            )
+            return
+
         try:
             result = tool_api_request(
                 "POST",
-                "/todos/update",
-                json_body={"slug": slug, "cwd": project_path, "release": True},
+                _TODO_UPDATE_PATH,
+                json_body={
+                    _TODO_UPDATE_SLUG_KEY: slug,
+                    _TODO_UPDATE_CWD_KEY: project_path,
+                    _TODO_UPDATE_RELEASE_KEY: True,
+                },
                 timeout=10.0,
             )
-            if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(f"Released hold on '{slug}'")  # type: ignore[attr-defined]
+            if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
+                self.app.notify(_RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
                 self.app._refresh_data()  # type: ignore[attr-defined]
-            elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+            elif isinstance(result, dict) and result.get(_RESPONSE_KEY_DETAIL):
+                self.app.notify(  # type: ignore[attr-defined]
+                    escape_markup(str(result[_RESPONSE_KEY_DETAIL])), severity=_NOTIFY_SEVERITY_ERROR
+                )
             else:
-                self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+                self.app.notify(  # type: ignore[attr-defined]
+                    escape_markup(_UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result)),
+                    severity=_NOTIFY_SEVERITY_ERROR,
+                )
         except Exception as exc:
-            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+            self.app.notify(escape_markup(str(exc)), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
 
     def action_approve_gate(self) -> None:
         """A: approve the selected todo's current human gate."""

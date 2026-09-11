@@ -751,20 +751,24 @@ class ContentInputModal(ModalScreen[str | None]):
         self,
         title: str = "Content",
         placeholder: str = "Enter description...",
+        prompt: str = "Enter a description:",
+        submit_label: str = "Create",
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)  # type: ignore[arg-type]
         self._title = title
         self._placeholder = placeholder
+        self._prompt = prompt
+        self._submit_label = submit_label
 
     def compose(self) -> ComposeResult:
         with Vertical(id="modal-box") as box:
             box.border_title = self._title
-            yield Label("Enter a description:", id="content-label")
+            yield Label(self._prompt, id="content-label")
             yield TextArea(placeholder=self._placeholder, id="content-input")
             yield Label("", id="content-error")
             with Horizontal(id="modal-actions"):
-                yield Button("Create", variant="primary", id="create-btn")
+                yield Button(self._submit_label, variant="primary", id="create-btn")
                 yield Button("[Esc] Cancel", id="cancel-btn")
 
     def on_mount(self) -> None:
