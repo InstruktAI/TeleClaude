@@ -111,11 +111,6 @@ classifies and routes recovery under `general/procedure/orchestration` and
 `general/policy/human-contract`; a technical or architectural blocker does
 not itself require the human.
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-Review/fix loops are capped by `max_review_rounds` (default 3). No fresh fixer
-session is dispatched — the original builder handles the fix cycle, and the next
-review round reuses the same reviewer session when it is still alive.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 Review/fix loops report their round count against the configured threshold. No
 fresh fixer session is dispatched — the original builder handles the fix cycle,
 and the next review round reuses the same reviewer session when it is still
@@ -123,7 +118,6 @@ alive. Crossing the threshold refuses nothing; it instructs this orchestrator to
 dispatch an assist against the loop and keep it alive as one of its children.
 That instruction is reported once and the obligation stands until an assist is
 live.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 ### 5. Finalize
 
@@ -233,14 +227,9 @@ reverts what the amendment invalidates, keeps what still serves, and continues.
   recovery under `general/procedure/orchestration`.
 - Failed recovery iterations require a grounded reassessment and an accountable
   owner, not automatic human escalation; apply `general/policy/human-contract`.
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-- At a review cap, the orchestrator owns the shared review procedure's
-  classification and bounded recovery; unresolved findings still block approval.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 - At the review threshold, dispatch an assist against the loop and keep it
   alive for that loop; it says what shape the loop is in and this orchestrator
   acts on that. Unresolved findings still block approval.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - The state machine checkpoint is crash-safe — re-calling `telec todo work` resumes from last state.
 
 ## See also

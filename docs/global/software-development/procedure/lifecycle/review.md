@@ -161,27 +161,6 @@ A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-Review passes are admitted within a review cycle. A valid substantive-drift
-stamp ends the current cycle for every review target it invalidates and starts
-a new cycle for each replacement target. The new cycle receives its ordinary
-pass allowance and its own continuations; phase-wide counters, continuation
-records, reports, and verdict evidence remain cumulative. Target or report
-rewrites without a substantive stamp remain inside the current cycle and reset
-nothing. This keeps the admitted-pass denominator grounded in the target it
-governs (`general/principle/grounding`).
-
-The v9-to-cycle migration has one explicit initialization rule for legacy
-prepare-review state that cannot carry a cycle boundary it predates. When the
-current verdict and evidence bindings are empty, a retained report exists, and
-the current target was written after that report, the migration records the
-cumulative round and continuation totals as the new cycle's offsets. Cycle-local
-admitted rounds and continuations are totals minus those offsets, so both start
-at zero while the cumulative values remain unchanged. It applies once during
-upcycle. Other legacy shapes keep zero offsets. This favors another independent review over permanently blocking a
-replacement-shaped target whose earlier cycle identity was never persisted
-(`general/principle/grounding`).
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 Review passes are counted within a review cycle. A valid substantive-drift stamp
 ends the current cycle for every review target it invalidates and starts a new
 cycle for each replacement target, counted from zero; phase-wide counters,
@@ -200,52 +179,7 @@ counts from zero while cumulative history is unchanged. Other legacy shapes keep
 a zero offset. This keeps the reported cycle-local count describing the target it
 governs rather than inheriting totals from a boundary that was never persisted
 (`general/principle/grounding`).
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-When a review cycle reaches its applicable documented cap without closure, no further
-automatic review starts. The orchestrator classifies the cause — ambiguous
-contract, failed remediation, unstable target, or incomplete or noisy review —
-from the current review evidence, and records the classification, the evidence
-or changed approach that makes another attempt different, the responsible owner
-and the closure condition. The producer's dispositions are part of that
-evidence: a pass whose open findings are all standing rejections, re-filed
-without changed substrate or material new evidence, was closed by the producer
-and reopened by the reviewer, and the orchestrator classifies it as incomplete
-or noisy review — never as failed remediation or an unstable target. Human
-escalation follows the closed human lane, never the round count.
-
-The classification decides what the orchestrator may do on its own authority.
-Failed remediation whose remaining delta is small and grounded, and incomplete
-or noisy review, each earn one continuation: the orchestrator admits exactly
-one further pass through the continuation stamp, which persists the
-classification and reason with the caller, and the machine dispatches a
-reviewer that never reviewed this target before when the cause was the review.
-An ambiguous contract earns no continuation; it goes to its decision owner. An
-unstable target earns no continuation inside its current cycle; the producer
-stops changing the target first. When the resulting evidence is stamped
-substantive, that stamp starts the replacement target's new cycle under the
-rule above. The reviewer of a continuation judges the corrected target independently;
-authorization to continue is not approval of the target, and repeating an
-unchanged attempt is not recovery.
-
-A review cycle that reaches its cap a second time is assessed by a different
-intelligence than the one that produced the work: the live coordinator. That
-assessor reads the recorded classification and the review evidence and either
-admits a further pass or routes the halt to its owner. With no coordinator live
-there is no assessor: the halt stands unassessed, no further pass is admitted,
-and the unresolved result is preserved with its agent owner. The
-different-intelligence property does not hold on that branch, and the halt
-reaches no one outside the closed human lane.
-The orchestrator never assesses its own second continuation. It may write an admission the assessor
-reached, and when it does it declares which assessor reached it; the record then names the assessor and
-the writer separately, and that record is what an audit reads. The declaration is taken as given, like
-every other relayed decision: nothing verifies that the named assessor assessed, and a false declaration
-is answered by the durable record of the session that wrote it. If no grounded next
-attempt exists, the unresolved result and its missing evidence are preserved
-with an accountable agent owner; no one fabricates a verdict or resets a count
-to conceal the halt.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 When a review cycle reaches its configured threshold, the count is reported
 and nothing is refused. The report names the phase, the passes admitted, and the
 threshold, and it instructs the orchestrator to dispatch an assist against the
@@ -271,7 +205,6 @@ human lane, never the round count.
 Crossing the threshold refuses nothing, so an orchestrator that ignores the
 report and keeps dispatching is doing something no mechanism prevents. The
 obligation to dispatch is carried by this contract rather than by a refusal.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

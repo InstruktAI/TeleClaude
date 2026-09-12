@@ -73,34 +73,6 @@ And no legacy empty-digest verdict is grandfathered through the gate
 And requirements_review is never derived as a live phase
 ```
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-#### UC-WPS21: Every prepare review cycle stops at the shared round limit
-
-```gherkin
-Given a Todo is awaiting PRD, architecture, or implementation-plan review
-And the current target's review cycle has already admitted `DEFAULT_MAX_REVIEW_ROUNDS` reviewer passes
-And no approve verdict is current for the reviewed artifact and report digests
-When the orchestrator calls "telec todo prepare my-change"
-Then the machine returns REVIEW_ROUND_LIMIT for that exact review phase and review cycle
-And it emits no reviewer dispatch, reuse, or follow-up instruction
-And it preserves the lifecycle phase and active runner for orchestrator classification under the review procedure
-And rewriting the reviewed artifact or findings report while remediating that cycle does not reset its admitted-pass count
-And each admitted pass remains counted and persisted in the phase's cumulative history before its reviewer instruction is returned
-When a valid substantive drift stamp invalidates that target and any downstream review targets
-Then every affected target starts a new review cycle with `DEFAULT_MAX_REVIEW_ROUNDS` ordinary passes
-And continuations recorded before the substantive stamp do not enlarge the new cycle's allowance
-And the existing first-versus-second continuation authority rules apply within the new cycle
-And a stabilized replacement receives its first complete discovery pass without removing the earlier cycle's counters, continuations, report, or verdict evidence
-
-Given a legacy prepare-review state predates persisted cycle identity
-And its current verdict and evidence bindings are empty
-And its current target was written after the retained review report
-When the state is upcycled into the cycle model
-Then the cumulative round and continuation totals become the new cycle's offsets exactly once
-And the cycle-local admitted round and continuation counts therefore start at zero without changing cumulative history
-And other legacy review shapes keep zero offsets
-```
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 #### UC-WPS21: Every prepare review cycle counts its passes against the threshold
 
 ```gherkin
@@ -124,21 +96,7 @@ Then the cumulative round total becomes the new cycle's offset exactly once
 And the cycle-local admitted pass count therefore starts at zero without changing cumulative history
 And other legacy review shapes keep a zero offset
 ```
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-#### UC-WPS22: A classified halt continues only through a recorded continuation
-
-```gherkin
-Given a prepare review phase is blocked at its admitted-pass limit
-When the orchestrator classifies the halt from the current review evidence under the review procedure
-Then the machine reports the phase, admitted-pass count, the continuation stamp that admits one further pass, and the evidence required for that classification
-And a recorded continuation for that phase lets the next "telec todo prepare" call emit one reviewer dispatch, counted and persisted like any admitted pass
-And a continuation whose reason names incomplete or noisy review dispatches a reviewer that has not reviewed this target
-And without a recorded continuation the cap stays in force and no reviewer is emitted
-And an ambiguous contract reaches its owner only when that owner is human
-```
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 #### UC-WPS22: A crossed review threshold reports once and dispatches an assist
 
 ```gherkin
@@ -150,7 +108,6 @@ And it reports that instruction once, on the crossing pass, and not on later pas
 And the admitted-pass count keeps rendering on later passes
 And a dispute the assist judges to be in the contract rather than in the work reaches that contract's decision owner, reaching the human only when that owner is human
 ```
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 #### UC-WPS8: A PRD rewritten after human approval is re-approved before the gate advances
 

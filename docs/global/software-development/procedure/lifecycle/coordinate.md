@@ -38,17 +38,6 @@ mismatch, left unattended, would alter the work, waste material effort, cross a
 boundary, or obscure a need of the human's. Below that, leave it — whether
 anything is logged is governed solely by step 6's bar.
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-Ask the owner to expose and reconsider its reasoning against the authorised
-intent, the governing contracts, the current evidence, and the consequences. If
-the judgment survives that challenge, leave it with its owner — including when
-the coordinator would have chosen differently. If it does not survive, return
-it for correction, or carry the unresolved decision to whoever genuinely owns
-it. Challenge never transfers the decision: verdicts the governing contracts
-assign elsewhere — a drift classification, a duplicate retirement, a kickback,
-review-cap closure, a product or architecture approval — stay with those owners
-while their basis is challenged.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 Ask the owner to expose and reconsider its reasoning against the authorised
 intent, the governing contracts, the current evidence, and the consequences. If
 the judgment survives that challenge, leave it with its owner — including when
@@ -58,7 +47,6 @@ it. Challenge never transfers the decision: verdicts the governing contracts
 assign elsewhere — a drift classification, a duplicate retirement, a kickback,
 review-threshold closure, a product or architecture approval — stay with those owners
 while their basis is challenged.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 ### What it is for
 
@@ -244,17 +232,6 @@ clear it. An empty day is a valid day. The log is write-only for this role — i
 is never read back to decide anything; fleet awareness comes from live sources
 each sweep, and the session's own context holds its working state.
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-A capped-review halt has two shapes in the sweep. A continuation an
-orchestrator admitted on its own authority is a recorded, challengeable judgment:
-the coordinator reads its classification and reason and challenges the basis
-where it is missing, as with any other owner-held verdict. A phase halted at its
-cap a second time is the coordinator's own assessment: it reads the recorded
-classification and the review evidence and either admits a further pass or
-routes the halt to its owner. Either way the entry it writes carries phase,
-classification, subject, and source; the log supplies precedent and recognizes
-recurrence and never becomes a read-back decision source.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 A loop past its review threshold has an assist watching it, dispatched by the
 orchestrator and alive for that loop. What the assist says is a challengeable
 judgment like any other owner-held verdict: read its session and challenge the
@@ -264,7 +241,6 @@ attention fallen between roles — point at it. The entry written
 carries phase, subject, source, and what the assist said; the log supplies
 precedent and recognizes recurrence and never becomes a read-back decision
 source.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 ### 7. Carry to the human
 

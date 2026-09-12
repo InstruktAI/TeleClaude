@@ -537,20 +537,12 @@ Verdict rules:
 - The §6a lane execution gate passes first: the `Lane anticipation` section verdicts every catalog lane. A verdict is not stamped over an incomplete sweep.
 - `approve` only when no Requirement-Violation, Critical or Important finding remains unresolved.
 - `needs_work` when any finding in those three tiers remains unresolved.
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-- **Round cap.** The prepare state machine admits plan-review passes through
-  `DEFAULT_MAX_REVIEW_ROUNDS` before halting for the classification required by
-  `software-development/procedure/lifecycle/review`. The cap never changes
-  verdict arithmetic: the reviewer writes the complete report and stamps
-  `approve` only at zero unresolved findings, or `needs_work` otherwise.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 - **Round threshold.** The prepare state machine counts plan-review passes
   against the configured threshold and refuses none. Crossing it obliges the
   orchestrator to dispatch an assist under
   `software-development/procedure/lifecycle/review`. The threshold never changes
   verdict arithmetic: the reviewer writes the complete report and stamps
   `approve` only at zero unresolved findings, or `needs_work` otherwise.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 Write the complete pass via `telec todo artifacts write {slug} plan-review-findings <content>`
 before stamping, with severity levels (Critical, Important), full lane
@@ -578,13 +570,8 @@ Review artifact: plan-review-findings
 ## Recovery
 
 - If unresolved Critical or Important findings remain, mark `needs_work`. The
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-  state machine routes the findings while the loop is admitted; at its cap,
-  follow the shared review procedure's classification and recovery path.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
   state machine routes the findings while the loop runs; past the threshold, an
   assist watches it under the shared review procedure.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - If upstream artifacts themselves are the problem (plan is correct but PRD,
   architecture, or in-scope feature specs are wrong), flag as blocker — the affected
   upstream artifact must be re-reviewed first.

@@ -37,11 +37,7 @@ Build-review-fix-finalize cycle:
 
 - **Build** — bind the feature-spec scenarios in scope and implement the code that satisfies them (RED-GREEN by scenario delta); execute implementation plan task-by-task, commit per task
 - **Review** — parallel review lanes (scope, code, principles, security, tests, errors, types, comments, docs), persisted as a complete report whose digest and reviewed worktree HEAD are bound to the verdict
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-- **Fix** — address review findings minimally, re-review (capped at `max_review_rounds`)
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 - **Fix** — address review findings minimally, re-review (an assist watches the loop past the configured threshold)
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - **Finalize** — integrate latest main, push branch, hand off to integration
 - **Deferrals** — process deferred items into new todos
 - **Bug fix** — systematic debugging for bug-type work items

@@ -203,17 +203,10 @@ new phase:
 - If any re-derivable artifact's drift status is `substantive`, the machine
   clears the artifact's review verdict (and every downstream artifact's review
   verdict) and routes back to the artifact's drafting phase.
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-- Every valid `substantive` stamp starts a new review cycle for each review
-  target it invalidates. Each cycle receives the ordinary prepare-review
-  allowance and its own continuations, while the phase's cumulative round,
-  continuation, report, and verdict history remains intact.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 - Every valid `substantive` stamp starts a new review cycle for each review
   target it invalidates. Each cycle counts its passes from zero against the
   configured threshold, while the phase's cumulative round, report, and verdict
   history remains intact.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - If drift evidence names an artifact outside the coverage matrix or a class
   whose owning re-derivation path is undefined, the machine halts as an anomaly
   instead of accepting a `substantive` verdict with nowhere coherent to route.

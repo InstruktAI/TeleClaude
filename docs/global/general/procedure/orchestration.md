@@ -203,14 +203,6 @@ credit, or instability:
 3. Re-run `telec todo work ...` after the status update.
 4. Do not delegate provider-status mutation to workers.
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-### Review Round Limit Handling (Orchestrator-Owned)
-
-When a preparation or work review reaches its documented cap, apply
-`software-development/procedure/lifecycle/review` §6. The orchestrator owns
-the halt classification and recovery direction; the reviewer retains the
-verdict. `general/policy/human-contract` governs any escalation.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 ### Review Threshold Handling (Orchestrator-Owned)
 
 When a preparation or work review reaches its documented threshold, apply
@@ -220,7 +212,6 @@ loop, keeping it alive as one of its children for the life of that loop. The
 assist says what shape the loop is in; the reviewer retains the verdict and the
 orchestrator retains every decision the contracts assign it.
 `general/policy/human-contract` governs any escalation.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 1. Inspect current evidence:
    - `telec todo artifacts read {slug} review-findings`
@@ -251,18 +242,6 @@ category to reach approve. Per the review procedure severity schema, such
 findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-When a prepare or work state machine returns `REVIEW_ROUND_LIMIT`, the
-orchestrator emits no unclassified reviewer dispatch or follow-up and does
-not stamp an exceptional verdict. It classifies the halt under the shared
-review procedure and, where that classification earns one, admits a single
-continuation through the continuation stamp; the state machine then emits the
-reviewer dispatch itself. A second cap on the same phase is assessed by the
-live coordinator, never by this orchestrator. With none live the halt stands
-unassessed and is preserved with its agent owner. Reminder ownership follows
-`general/policy/reminder`; the halt alone never transfers the next move to the
-human.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 When a prepare or work review crosses its threshold, the orchestrator dispatches
 `next-assist` against the slug and sends it a line each time a pass lands. It
 stamps no exceptional verdict and emits no unclassified reviewer dispatch. The
@@ -271,7 +250,6 @@ it reads both sessions and says what it sees, and this orchestrator acts on
 that. The report is emitted once and the obligation to dispatch stands until an
 assist is live. Reminder ownership follows `general/policy/reminder`; a crossed
 threshold never transfers the next move to the human.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 - Point workers to the kind-resolved approved intent artifact, optional
   `architecture` when present, and `implementation-plan` for the execution

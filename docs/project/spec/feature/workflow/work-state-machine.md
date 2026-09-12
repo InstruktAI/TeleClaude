@@ -284,22 +284,6 @@ And the record of which plan version the build executes against settles only whe
 And a crash-recovered session re-entering the build derives identical instructions from durable state alone
 ```
 
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-#### UC-WSM12: Build review stops at the shared round limit and continues only through a recorded continuation
-
-```gherkin
-Given a Todo has already admitted `DEFAULT_MAX_REVIEW_ROUNDS` build-review passes
-And no approve verdict is current for the worktree HEAD and review-findings digest
-When the orchestrator calls "telec todo work my-feature"
-Then the machine returns REVIEW_ROUND_LIMIT before emitting a reviewer dispatch, reuse, or follow-up beyond that limit
-And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
-And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
-And the limit result names the phase, admitted-pass count, current review evidence, and the continuation stamp that admits one further pass
-And a recorded continuation for build_review lets the next "telec todo work" call emit one reviewer dispatch, counted like any admitted pass
-And a continuation whose reason names incomplete or noisy review dispatches a reviewer that has not reviewed this target
-And only an ambiguous contract owned by a human or a safety gate reaches the human
-```
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 #### UC-WSM12: Build review reports its crossed threshold and dispatches an assist
 
 ```gherkin
@@ -314,7 +298,6 @@ And it reports that instruction once, on the crossing pass, and not on later pas
 And the admitted-pass count keeps rendering on later passes
 And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
 ```
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 #### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure
 
@@ -344,11 +327,7 @@ And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and p
 - A holder entry cannot itself enter work. The orchestrator is always routed to its direct, runnable children via the same holder-resolution helpers prepare uses.
 - The single-flight lock is per `(canonical project root, slug)`. Same slug in a different repo runs independently — this is the explicit behavior, not a leak.
 - Bug-kind Todos require an explicit `telec todo stamp <slug> --build-complete` even when the build session committed and exited; the machine will not advance on commit alone.
-<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
-- Review round limit is not an escape hatch. Hitting it surfaces an error pointing at `review-findings`; the orchestrator must address Requirement-Violation / Critical / Important findings rather than raising the limit.
-<!-- change:gut-review-cap-gate-and-continuation-stamp -->
 - The review threshold is not an escape hatch. Crossing it points at `review-findings` and requires an assist; the orchestrator must address Requirement-Violation / Critical / Important findings rather than moving the threshold.
-<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - The work loop limit bounds in-call transitions. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - `finalize_ready` is gated by a triple-ref check (`worktree HEAD == branch ref == remote ref`) AND the Stamped SHA must equal worktree HEAD; any mismatch refuses the transition and requires a re-stamp.
 - Chokepoint emission is at-least-once at the bus layer under concurrent first-transition writers. Integrator spawning remains at-most-once for duplicate same-key events through cartridge dedup, and distinct-key races are serialized by the integration singleton lease.
