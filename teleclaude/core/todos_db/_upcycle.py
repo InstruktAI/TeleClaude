@@ -7,9 +7,9 @@ from typing import cast
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, canonical_kind
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import ReviewContinuationCallerRole, TodoState
+from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 11
+LATEST_TODO_STATE_SCHEMA_VERSION = 12
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
@@ -22,10 +22,12 @@ _V8_SCHEMA_VERSION = 8
 _V9_SCHEMA_VERSION = 9
 _V10_SCHEMA_VERSION = 10
 _V11_SCHEMA_VERSION = 11
-_SELF_ASSESSING_CALLER_ROLES = (
-    ReviewContinuationCallerRole.COORDINATOR.value,
-    ReviewContinuationCallerRole.HUMAN.value,
-)
+_V12_SCHEMA_VERSION = 12
+# Historical: the v9-to-v10 upcycler's own vocabulary for who self-assesses a
+# continuation. Frozen as literals rather than read from the live
+# ReviewContinuationCallerRole enum, which no longer exists — a migration
+# describes past data, and past data's vocabulary does not track a live type.
+_SELF_ASSESSING_CALLER_ROLES = ("coordinator", "human")
 _BUILD_PLAN_DIGEST_KEY = "build_plan_digest"
 _CONTINUATION_REVIEW_KEYS = (
     "prd_review",
@@ -405,6 +407,39 @@ def _upcycle_v10_to_v11(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     return migrated
 
 
+def _upcycle_v11_to_v12(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    """Drop the review-continuation apparatus's owned persisted fields.
+
+    ``continuations`` had no independent consumer, so per
+    ``software-development/policy/backward-compatibility-hygiene`` the owned
+    shape moves forward rather than acquiring a tolerance branch: the field is
+    dropped from every review key, and its cycle-scoped offset is dropped from
+    the four prepare keys. ``round_offset`` and ``reconciliation_pending``
+    describe the surviving substantive-drift cycle mechanism and are untouched.
+    """
+    migrated = dict(raw)
+    for review_key in _CONTINUATION_REVIEW_KEYS:
+        review = migrated.get(review_key)
+        if not isinstance(review, dict):
+            continue
+        review_dict = dict(review)
+        review_dict.pop("continuations", None)
+        migrated[review_key] = review_dict
+    for review_key in _PREPARE_REVIEW_KEYS:
+        review = migrated.get(review_key)
+        if not isinstance(review, dict):
+            continue
+        review_dict = dict(review)
+        cycle = review_dict.get("cycle")
+        if isinstance(cycle, dict):
+            cycle_dict = dict(cycle)
+            cycle_dict.pop("continuation_offset", None)
+            review_dict["cycle"] = cycle_dict
+        migrated[review_key] = review_dict
+    migrated["schema_version"] = _V12_SCHEMA_VERSION
+    return migrated
+
+
 def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
     version = _detect_schema_version(migrated)
@@ -436,6 +471,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v9_to_v10(migrated)
         elif version == _V10_SCHEMA_VERSION:
             migrated = _upcycle_v10_to_v11(migrated)
+        elif version == _V11_SCHEMA_VERSION:
+            migrated = _upcycle_v11_to_v12(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)

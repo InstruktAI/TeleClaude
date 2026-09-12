@@ -33,7 +33,6 @@ __all__ = [
     "format_plan_reconcile_note",
     "format_prepared",
     "format_procedure_load",
-    "format_reviewer_retirement",
     "format_stash_debt",
     "format_tool_call",
     "format_uncommitted_changes",
@@ -70,14 +69,6 @@ _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
 )
 _PROCEDURE_LOAD_TARGET_ERROR = "Exactly one procedure-load target is required"
 _TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
-_REVIEWER_RETIREMENT_TEMPLATE = """REVIEWER RETIREMENT: {slug}
-
-Execute in order:
-
-telec sessions end {session_id}
-
-{watch_instruction}
-When the reviewer is terminal, call {advance_call}."""
 _DRIFT_CLASS_ORDER = {
     "code": 0,
     "upstream-artifact": 1,
@@ -209,22 +200,6 @@ def format_worker_redispatch(
         f"{format_send_command(session_id, message)}\n\n"
         f"{format_orchestration_watch_instruction(slug=slug, restart_cadence=True)}\n"
         f"When the worker reports idle, call {advance_call}."
-    )
-
-
-def format_reviewer_retirement(
-    session_id: str,
-    *,
-    slug: str,
-    advance_call: str,
-) -> str:
-    """Format the no-dispatch response that retires a reviewer session."""
-    watch_instruction = format_orchestration_watch_instruction(slug=slug, restart_cadence=True)
-    return _REVIEWER_RETIREMENT_TEMPLATE.format(
-        slug=slug,
-        session_id=session_id,
-        watch_instruction=watch_instruction,
-        advance_call=advance_call,
     )
 
 

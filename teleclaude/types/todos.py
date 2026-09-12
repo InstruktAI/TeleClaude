@@ -107,53 +107,10 @@ class ApprovalsState(BaseModel):
     drift_reviewed: dict[str, DriftReviewedStamp] = Field(default_factory=dict)
 
 
-class ReviewHaltClassification(StrEnum):
-    """Closed vocabulary for why a capped review loop halted.
-
-    Named by the review procedure's convergence rule
-    (``software-development/procedure/lifecycle/review`` §6). Only
-    ``INCOMPLETE_REVIEW`` and ``NOISY_REVIEW`` are review-caused and exclude
-    prior reviewers on the admitted continuation; ``AMBIGUOUS_CONTRACT`` and
-    ``UNSTABLE_TARGET`` earn no continuation at all.
-    """
-
-    FAILED_REMEDIATION = "failed_remediation"
-    INCOMPLETE_REVIEW = "incomplete_review"
-    NOISY_REVIEW = "noisy_review"
-    AMBIGUOUS_CONTRACT = "ambiguous_contract"
-    UNSTABLE_TARGET = "unstable_target"
-
-
-class ReviewContinuationCallerRole(StrEnum):
-    """Closed vocabulary for who was authorized to record a continuation."""
-
-    CLAIMANT = "claimant"
-    COORDINATOR = "coordinator"
-    HUMAN = "human"
-
-
-class ReviewContinuation(BaseModel):
-    """One recorded admission of a review pass beyond the phase's hard cap.
-
-    Additive and durable: the phase's admitted-pass allowance grows by exactly
-    one for every recorded continuation, so a crash-recovered orchestrator, a
-    coordinator, or a human all derive the same allowance from persisted state.
-    """
-
-    classification: ReviewHaltClassification
-    reason: str = ""
-    caller_session_id: str = ""
-    caller_role: ReviewContinuationCallerRole = ReviewContinuationCallerRole.CLAIMANT
-    assessor_role: ReviewContinuationCallerRole | None = None
-    assessor_id: str = ""
-    stamped_at: str = ""
-
-
 class ReviewCycleState(BaseModel):
     """Cycle offsets scoped to one prepare-review target."""
 
     round_offset: int = Field(ge=0, default=0)
-    continuation_offset: int = Field(ge=0, default=0)
     reconciliation_pending: bool = False
 
 
@@ -172,13 +129,11 @@ class ReviewVerdictState(BaseModel):
     review_report_digest: str = ""
     caller_session_id: str = ""
     cleared_by_substantive_drift: bool = False
-    continuations: list[ReviewContinuation] = Field(default_factory=list)
     cycle: ReviewCycleState = Field(default_factory=ReviewCycleState)
 
     def open_new_cycle(self) -> None:
         """Start a review cycle at the current cumulative history boundary."""
         self.cycle.round_offset = self.rounds
-        self.cycle.continuation_offset = len(self.continuations)
         self.cycle.reconciliation_pending = False
 
     @model_validator(mode="after")
@@ -186,8 +141,6 @@ class ReviewVerdictState(BaseModel):
         """Keep cycle offsets inside the cumulative history they project."""
         if self.cycle.round_offset > self.rounds:
             raise ValueError("review cycle round_offset cannot exceed cumulative rounds")
-        if self.cycle.continuation_offset > len(self.continuations):
-            raise ValueError("review cycle continuation_offset cannot exceed cumulative continuations")
         return self
 
 
@@ -208,7 +161,6 @@ class BuildReviewState(BaseModel):
     reviewed_target_digest: str = ""
     review_report_digest: str = ""
     caller_session_id: str = ""
-    continuations: list[ReviewContinuation] = Field(default_factory=list)
 
 
 class HoldAuditSource(StrEnum):
@@ -328,7 +280,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[11] = 11
+    schema_version: Literal[12] = 12
     phase: str = "pending"
     lifecycle_phase: LifecyclePhase | None = LifecyclePhase.DRAFT
     prepare_phase: str = Field(default="", exclude=True)

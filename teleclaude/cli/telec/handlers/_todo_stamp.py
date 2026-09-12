@@ -42,7 +42,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
             "--task-approved, --drift-reviewed, --kind-assign, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
             "--art-approved, --visuals-approved, --kickback, --task-outcome, "
-            "--diagnosis-settled, --diagnosis-unresolved, --review-continuation)"
+            "--diagnosis-settled, --diagnosis-unresolved)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -56,12 +56,6 @@ def _handle_todo_stamp(args: list[str]) -> None:
         raise SystemExit(1)
     if stamp_type == "diagnosis_unresolved" and not value:
         print("--diagnosis-unresolved requires --reason <reason>")
-        raise SystemExit(1)
-    if stamp_type == "review_continuation" and not phase:
-        print("--review-continuation requires --phase <prd_review|architecture_review|plan_review|build_review>")
-        raise SystemExit(1)
-    if stamp_type == "review_continuation" and not value:
-        print("--review-continuation requires --reason '<classification>: <evidence>'")
         raise SystemExit(1)
 
     body: _TodoStampBody = {
@@ -136,8 +130,6 @@ def _parse_todo_stamp_args(parsed: ParsedArgs) -> tuple[str | None, str | None, 
     if parsed.has(F.FLAG_STAMP_TASK_OUTCOME):
         stamp_type = "task_outcome"
         phase = parsed.value(F.FLAG_STAMP_TASK_OUTCOME)
-    if parsed.has(F.FLAG_STAMP_REVIEW_CONTINUATION):
-        stamp_type = "review_continuation"
     reason_value = parsed.value(F.FLAG_STAMP_REASON)
     if reason_value is not None:
         value = reason_value

@@ -17,7 +17,6 @@ from teleclaude.core.next_machine.output_formatting import format_error
 from teleclaude.core.next_machine.review_rounds import (
     admit_build_review,
     build_review_admission,
-    format_review_round_limit,
 )
 from teleclaude.core.next_machine.runtime.scripts import (
     format_review_ground_shift_script,
@@ -99,12 +98,6 @@ async def _resolve_live_review(
         )
         if overlapping_files:
             admission = build_review_admission(state)
-            if not admission.allowed:
-                return ReviewResolution(
-                    state=state,
-                    status=PhaseStatus.PENDING.value,
-                    instruction=format_review_round_limit(context.slug, admission),
-                )
             await admit_build_review(context.todos_db, context.slug, state, admission)
             if needs_initial_baseline or needs_head_refresh:
                 await _persist_review_dispatch_metadata(
@@ -114,6 +107,10 @@ async def _resolve_live_review(
                     baseline_commit=current_head if needs_initial_baseline else None,
                     dispatch_head=current_head if current_head else None,
                 )
+            # The threshold report, if any, is composed once by the caller in
+            # work_steps.py, which prefixes it onto every instruction this
+            # function can return — including this one. Composing it here too
+            # would state it twice on the one pass where both are non-empty.
             return ReviewResolution(
                 state=state,
                 status=PhaseStatus.PENDING.value,
@@ -189,14 +186,8 @@ async def resolve_pending_review_state(
     *,
     head_before_merge: str,
     head_after_merge: str,
-    requires_fresh_reviewer_session: bool = False,
 ) -> ReviewResolution:
-    """Reconcile live-review progress before deciding whether to dispatch a reviewer.
-
-    A fresh-reviewer continuation skips live-review reuse because its prior
-    reviewer session is retired before ordinary selection resumes. Finished-review
-    and ground-shift-metadata reconciliation remain independent of that decision.
-    """
+    """Reconcile live-review progress before deciding whether to dispatch a reviewer."""
     build_review = _read_build_review(state)
     round_raw = build_review.get("round", 0)
     review_round = round_raw if isinstance(round_raw, int) else 0
@@ -211,7 +202,7 @@ async def resolve_pending_review_state(
         "/next-review-",
     )
 
-    if not requires_fresh_reviewer_session and reviewer_id is not None and reviewer_status in ("active", "unknown"):
+    if reviewer_id is not None and reviewer_status in ("active", "unknown"):
         return await _resolve_live_review(
             context,
             state,

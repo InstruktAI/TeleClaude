@@ -47,7 +47,6 @@ from teleclaude.core.next_machine.output_formatting import (
     format_finalize_handoff_complete,
     format_orchestration_watch_instruction,
     format_plan_reconcile_note,
-    format_reviewer_retirement,
     format_send_command,
     format_tool_call,
     format_uncommitted_changes,
@@ -64,7 +63,8 @@ if TYPE_CHECKING:
 from teleclaude.core.next_machine.review_rounds import (
     admit_build_review,
     build_review_admission,
-    format_review_round_limit,
+    format_admission_count,
+    format_review_threshold_report,
 )
 from teleclaude.core.next_machine.review_runtime import ReviewDispatchContext, resolve_pending_review_state
 
@@ -380,17 +380,9 @@ async def _work_step_build_complete(
             await _commit_writer(writer, todos_db, slug, state)
             return True, ""
 
-    # A review-caused continuation retires its live reviewer before ordinary
-    # selection can dispatch the replacement.
     admission = build_review_admission(state)
-    requires_fresh_reviewer_session = admission.requires_fresh_reviewer_session
+    report = format_review_threshold_report(slug, admission)
     reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
-    if requires_fresh_reviewer_session and reviewer_id is not None:
-        return False, format_reviewer_retirement(
-            reviewer_id,
-            slug=slug,
-            advance_call=f"telec todo work {slug}",
-        )
 
     # Reconcile live-review state: detects ground shifts, reuses active reviewers.
     resolution = await resolve_pending_review_state(
@@ -398,13 +390,9 @@ async def _work_step_build_complete(
         state,
         head_before_merge=head_before_merge,
         head_after_merge=head_after_merge,
-        requires_fresh_reviewer_session=requires_fresh_reviewer_session,
     )
     if resolution.instruction is not None:
-        return False, resolution.instruction
-
-    if not admission.allowed:
-        return False, format_review_round_limit(slug, admission)
+        return False, f"{report}\n\n{resolution.instruction}" if report else resolution.instruction
 
     # No live reviewer claimed the review — dispatch a fresh one.
     build_review_raw = state.get("build_review")
@@ -414,13 +402,12 @@ async def _work_step_build_complete(
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
     await admit_build_review(todos_db, slug, state, admission)
-    round_num = admission.candidate
 
     if reviewer_id is not None:
         head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
         baseline_text = baseline or "unset"
         message = (
-            f"Re-review round {round_num}/{admission.maximum} for {slug}. "
+            f"Re-review for {slug}. Admitted {format_admission_count(admission)}. "
             f"Incremental scope: review only commits since baseline {baseline_text} "
             f"up to HEAD {head_sha or '<unknown>'}. "
             f"Read `telec todo artifacts read {slug} review-findings` first — your re-review "
@@ -431,12 +418,13 @@ async def _work_step_build_complete(
             f"counts are zero. Stamp verdict with "
             f"`telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`."
         )
-        return False, format_worker_redispatch(
+        redispatch_script = format_worker_redispatch(
             reviewer_id,
             slug=slug,
             message=message,
             advance_call=f"telec todo work {slug}",
         )
+        return False, f"{report}\n\n{redispatch_script}" if report else redispatch_script
 
     request = ToolCallRequest(
         command=SlashCommand.NEXT_REVIEW_BUILD,
@@ -444,10 +432,11 @@ async def _work_step_build_complete(
         project=_derive_project_root(cwd, slug),
         subfolder=f"{WORKTREE_DIR}/{slug}",
         next_call=f"telec todo work {slug}",
-        note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE}",
+        note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE} Admitted {format_admission_count(admission)}.",
         post_block=_reviewer_idle_post_block(slug),
     )
-    return False, format_tool_call(request)
+    tool_call_script = format_tool_call(request)
+    return False, f"{report}\n\n{tool_call_script}" if report else tool_call_script
 
 
 async def _work_step_review_changes_requested(

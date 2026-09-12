@@ -30,14 +30,14 @@ from teleclaude.core.next_machine.output_formatting import (
     format_blocker_resolution,
     format_pending_classes_for_dispatch,
     format_procedure_load,
-    format_reviewer_retirement,
     format_tool_call,
     format_worker_redispatch,
 )
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason
 from teleclaude.core.next_machine.review_rounds import (
     admit_prepare_review,
-    format_review_round_limit,
+    format_admission_count,
+    format_review_threshold_report,
     prepare_review_admission,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
@@ -164,9 +164,7 @@ async def _dispatch_worker(
 ) -> tuple[bool, str]:
     _ = blockers  # not surfaced in verbatim dispatch script
     admission = prepare_review_admission(state, phase)
-    if admission is not None:
-        if not admission.allowed:
-            return False, format_review_round_limit(slug, admission)
+    report = format_review_threshold_report(slug, admission) if admission is not None else ""
     # Reuse-or-spawn: prefer an existing live prepare worker for this
     # slug+command and emit `telec sessions send` instead of spawning a
     # fresh one. Prepare workers persist with subdir=None (no worktree on
@@ -177,17 +175,12 @@ async def _dispatch_worker(
     # `telec sessions send ...` line in a shell and backticks inside
     # double quotes trigger command substitution.
     worker_id = await find_live_prepare_worker_for_slug(db, slug, command.value)
-    if admission is not None and admission.requires_fresh_reviewer_session and worker_id is not None:
-        return False, format_reviewer_retirement(
-            worker_id,
-            slug=slug,
-            advance_call=f"telec todo prepare {slug}",
-        )
     if worker_id is not None:
         if admission is not None:
             await admit_prepare_review(todos_db, slug, state, admission)
+        count_clause = f" Admitted {format_admission_count(admission)}." if admission is not None else ""
         base_message = (
-            f"Re-run your task for {slug}. The relevant artifact(s) have been "
+            f"Re-run your task for {slug}.{count_clause} The relevant artifact(s) have been "
             f"updated since your prior pass. If a review-findings artifact "
             f"exists, read it first: telec todo artifacts read {slug} "
             f"review-findings. Then re-execute your loaded procedure on the new "
@@ -196,12 +189,13 @@ async def _dispatch_worker(
             f"drift_reviewed for each re-assessed artifact."
         )
         message = f"{additional_context} {base_message}" if additional_context else base_message
-        return False, format_worker_redispatch(
+        redispatch_script = format_worker_redispatch(
             worker_id,
             slug=slug,
             message=message,
             advance_call=f"telec todo prepare {slug}",
         )
+        return False, f"{report}\n\n{redispatch_script}" if report else redispatch_script
 
     # No live worker — spawn a fresh one.
     if admission is not None:
@@ -215,8 +209,10 @@ async def _dispatch_worker(
         post_block=_dispatch_post_block(slug=slug, expected=expected),
         additional_context=additional_context,
         pre_dispatch=pre_dispatch,
+        note=f"Admitted {format_admission_count(admission)}." if admission is not None else "",
     )
-    return False, format_tool_call(request)
+    tool_call_script = format_tool_call(request)
+    return False, f"{report}\n\n{tool_call_script}" if report else tool_call_script
 
 
 def _load_procedure(

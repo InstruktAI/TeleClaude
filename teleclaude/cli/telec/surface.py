@@ -793,7 +793,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--kickback --reason <reason>]"
                     " [--task-outcome <success|error> [--reason <text>]]"
                     " [--diagnosis-settled] [--diagnosis-unresolved --reason <reason>]"
-                    " [--review-continuation --phase <p> --reason <reason>]"
                 ),
                 flags=[
                     F.FLAG_HELP,
@@ -811,7 +810,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_STAMP_TASK_OUTCOME,
                     F.FLAG_STAMP_DIAGNOSIS_SETTLED,
                     F.FLAG_STAMP_DIAGNOSIS_UNRESOLVED,
-                    F.FLAG_STAMP_REVIEW_CONTINUATION,
                     F.FLAG_STAMP_REQUIREMENTS_READY,
                     F.FLAG_STAMP_PLAN_READY,
                     F.FLAG_STAMP_DEFERRALS_PROCESSED,
@@ -831,8 +829,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     'telec todo stamp my-task --task-outcome error --reason "<why a human is needed>"',
                     "telec todo stamp my-bug --diagnosis-settled",
                     'telec todo stamp my-bug --diagnosis-unresolved --reason "<why>"',
-                    "telec todo stamp my-slug --review-continuation --phase plan_review "
-                    "--reason 'noisy review: prior pass raised findings observable at the discovery pass'",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

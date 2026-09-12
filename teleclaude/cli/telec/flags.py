@@ -366,10 +366,7 @@ FLAG_STAMP_KICKBACK = Flag(
 )
 FLAG_STAMP_REASON = Flag(
     "--reason",
-    desc=(
-        "Reason recorded to input (required with --kickback / --task-outcome error / "
-        "--diagnosis-unresolved / --review-continuation)"
-    ),
+    desc=("Reason recorded to input (required with --kickback / --task-outcome error / --diagnosis-unresolved)"),
     arity=VALUE,
 )
 FLAG_STAMP_TASK_OUTCOME = Flag(
@@ -388,18 +385,6 @@ FLAG_STAMP_DIAGNOSIS_SETTLED = Flag(
 FLAG_STAMP_DIAGNOSIS_UNRESOLVED = Flag(
     "--diagnosis-unresolved",
     desc="Bug lane: hold the todo when the dispatched peer's diagnosis could not be settled; requires --reason",
-    arity=SWITCH,
-)
-FLAG_STAMP_REVIEW_CONTINUATION = Flag(
-    "--review-continuation",
-    desc=(
-        "Admit one further reviewer pass past a capped review phase's hard limit; "
-        "requires --phase and --reason '<classification>: <evidence>'. The first "
-        "continuation on a phase is accepted only from the claiming orchestrator "
-        "session; any further one only from a coordinator session or a human "
-        "principal. A classification of ambiguous contract or unstable target is "
-        "refused."
-    ),
     arity=SWITCH,
 )
 # Legacy creative-lifecycle and bookkeeping booleans: recognized by the handler

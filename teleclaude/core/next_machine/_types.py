@@ -132,7 +132,7 @@ class WorktreeScript(str, Enum):
 
 SCRIPTS_KEY = "scripts"
 PAREN_OPEN = "("
-DEFAULT_MAX_REVIEW_ROUNDS = 3
+DEFAULT_REVIEW_ROUND_THRESHOLD = 4
 NEXT_WORK_PHASE_LOG = "NEXT_WORK_PHASE"
 _PREP_STATE_VERSION = 1
 _WORKTREE_PREP_STATE_REL = ".teleclaude/worktree-prep-state.json"
