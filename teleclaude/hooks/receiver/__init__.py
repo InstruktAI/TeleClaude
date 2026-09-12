@@ -23,7 +23,7 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
 from teleclaude import paths as tc_paths
-from teleclaude.config.loader import load_company_config, load_global_config, load_project_config
+from teleclaude.config.loader import load_company_config, load_declared_project_config, load_global_config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HookSourceKind
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
@@ -482,10 +482,10 @@ def _resolve_company_header(cwd: str | None) -> str | None:
     """
     if not cwd:
         return None
-    project_yml = Path(cwd) / tc_paths.ConfigFileName.OVERLAY
-    if not project_yml.exists():
+    declared_project = load_declared_project_config(Path(cwd))
+    if declared_project is None:
         return None
-    company_slug = load_project_config(project_yml).company
+    company_slug = declared_project.company
     if not company_slug:
         return None
     company_yml = tc_paths.COMPANIES_ROOT / company_slug / tc_paths.ConfigFileName.OVERLAY

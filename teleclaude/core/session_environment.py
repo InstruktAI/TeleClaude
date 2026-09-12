@@ -7,9 +7,8 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from teleclaude.config import config
-from teleclaude.config.loader import load_global_config, load_project_config
+from teleclaude.config.loader import load_declared_project_config, load_global_config
 from teleclaude.runtime.environment import filter_platform_session_environment
-from teleclaude.utils import resolve_project_config_path
 
 
 def _load_agent_env_allow_list(project_path: str | None) -> list[str]:
@@ -25,11 +24,11 @@ def _load_agent_env_allow_list(project_path: str | None) -> list[str]:
     if not project_path:
         return result
 
-    config_path = resolve_project_config_path(Path(project_path))
-    if not config_path.exists():
+    declared_project = load_declared_project_config(Path(project_path))
+    if declared_project is None:
         return result
 
-    for name in load_project_config(config_path).env_allow_list:
+    for name in declared_project.env_allow_list:
         if name in seen:
             continue
         seen.add(name)

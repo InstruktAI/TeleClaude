@@ -14,7 +14,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import ALL_CAPABILITIES, Capabilities, capabilities_from_project_config
-from teleclaude.config.loader import load_project_config
+from teleclaude.config.loader import load_declared_project_config
 from teleclaude.config.schema import ProjectConfig
 from teleclaude.constants import (
     CHECKPOINT_BASE_ACTIONS,
@@ -27,7 +27,6 @@ from teleclaude.constants import (
     CheckpointScope,
     _compile_glob,
 )
-from teleclaude.paths import ConfigFileName
 
 logger = get_logger(__name__)
 
@@ -201,14 +200,16 @@ def _append_conventional_extras(bindings: list[CheckpointBinding], overlay: obje
 def load_checkpoint_model(project_path: str) -> CheckpointModel:
     """Load the effective checkpoint model for a project (base ⊕ overlay).
 
-    Fail-open: an unreadable project config degrades to base-only with the slug
-    derived from the directory name, never raising.
+    A root that declares no project (person, company, global home, or no
+    declaration at all) has no project overlay to merge and returns the base
+    model directly. Fail-open applies only to a genuinely unreadable or
+    malformed declaration, which degrades to base-only with the slug derived
+    from the directory name, never raising.
     """
     root = Path(project_path) if project_path else Path(_DEFAULT_PROJECT_PATH)
     fallback_slug = root.name or _DEFAULT_PROJECT_SLUG
     try:
-        config = load_project_config(root / ConfigFileName.OVERLAY)
-        return checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
+        config = load_declared_project_config(root)
     except Exception:
         logger.warning(
             "Checkpoint overlay unreadable; falling back to base-only model",
@@ -216,6 +217,9 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
             exc_info=True,
         )
         return base_checkpoint_model(fallback_slug)
+    if config is None:
+        return base_checkpoint_model(fallback_slug)
+    return checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
 
 
 def checkpoint_model_from_project_config(

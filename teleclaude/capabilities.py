@@ -9,7 +9,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.context_root import load_declared_config_kind
-from teleclaude.config.loader import load_project_config
+from teleclaude.config.loader import load_declared_project_config
 from teleclaude.config.schema import ConfigKind, ProjectConfig
 from teleclaude.paths import ConfigFileName
 
@@ -128,12 +128,7 @@ def resolve_tier_permissions(root: Path) -> TierPermissions:
 
 def resolve_project_capability_state(project_root: Path) -> ProjectCapabilityState:
     """Resolve capabilities and retain the parsed overlay for downstream consumers."""
-    manifest_path = project_root / ConfigFileName.OVERLAY
-    if not manifest_path.is_file():
+    config = load_declared_project_config(project_root)
+    if config is None:
         return ProjectCapabilityState(capabilities=NOT_A_TARGET, config=None)
-
-    if load_declared_config_kind(manifest_path) is not ConfigKind.PROJECT:
-        return ProjectCapabilityState(capabilities=NOT_A_TARGET, config=None)
-
-    config = load_project_config(manifest_path)
     return ProjectCapabilityState(capabilities=capabilities_from_project_config(config), config=config)

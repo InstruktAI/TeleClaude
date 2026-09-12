@@ -26,7 +26,7 @@ from teleclaude.config._file_migrations import (
     remove_person_notifications,
 )
 from teleclaude.config.advancement import advance_config
-from teleclaude.config.context_root import resolve_context_root
+from teleclaude.config.context_root import load_declared_config_kind, resolve_context_root
 from teleclaude.config.declaration import render_declared_config, write_declared_config
 from teleclaude.config.jobs_migration import migrate_jobs_config
 from teleclaude.config.person_claim import migrate_person_claim_for_target
@@ -155,6 +155,21 @@ def _read_config_mapping(path: Path) -> object:
 def load_project_config(path: Path) -> ProjectConfig:
     """Load project-level configuration."""
     return load_config(path, ProjectConfig, ConfigKind.PROJECT, path.parent)
+
+
+def load_declared_project_config(root: Path) -> ProjectConfig | None:
+    """Load the project configuration for a root declaring `kind: project`.
+
+    Returns `None` when `root` carries no configuration file, or carries one
+    declaring a tier other than project. Raises `ValueError` for a malformed
+    declaration, matching `load_project_config`'s existing contract.
+    """
+    marker = root / ConfigFileName.OVERLAY
+    if not marker.is_file():
+        return None
+    if load_declared_config_kind(marker) is not ConfigKind.PROJECT:
+        return None
+    return load_project_config(marker)
 
 
 def save_project_config(path: Path, config: ProjectConfig) -> None:

@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from teleclaude.config.loader import load_global_config, load_project_config
+from teleclaude.config.loader import load_declared_project_config, load_global_config
 from teleclaude.config.schema import JobScheduleConfig, is_agent_job, job_identity
 from teleclaude.context_selector import resolve_snippet_meta
-from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
+from teleclaude.paths import GLOBAL_CONFIG_PATH
 
 _WHEN_FIELD: Final = "when"
 _AGENT_FIELD: Final = "agent"
@@ -39,7 +39,8 @@ def load_effective_jobs(project_root: Path) -> tuple[EffectiveJob, ...]:
     target_root = project_root.expanduser().resolve()
     published_root = GLOBAL_CONFIG_PATH.parent
     published = load_global_config().jobs
-    local = load_project_config(target_root / ConfigFileName.OVERLAY).jobs
+    declared_project = load_declared_project_config(target_root)
+    local = declared_project.jobs if declared_project is not None else []
     local_pointers = {_execution_pointer(declaration) for declaration in local}
     published_by_pointer = _index_by_pointer(
         declaration for declaration in published if _execution_pointer(declaration) in local_pointers
