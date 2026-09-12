@@ -232,6 +232,7 @@ clear it. An empty day is a valid day. The log is write-only for this role — i
 is never read back to decide anything; fleet awareness comes from live sources
 each sweep, and the session's own context holds its working state.
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 A capped-review halt has two shapes in the sweep. A continuation an
 orchestrator admitted on its own authority is a recorded, challengeable judgment:
 the coordinator reads its classification and reason and challenges the basis
@@ -241,6 +242,16 @@ classification and the review evidence and either admits a further pass or
 routes the halt to its owner. Either way the entry it writes carries phase,
 classification, subject, and source; the log supplies precedent and recognizes
 recurrence and never becomes a read-back decision source.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+A loop past its review threshold has an assist watching it, dispatched by the
+orchestrator and alive for that loop. What the assist says is a challengeable
+judgment like any other owner-held verdict: read its session and challenge the
+basis where it is missing, and own none of it. A threshold crossed with no
+assist live is attention fallen between roles — point at it. The entry written
+carries phase, subject, source, and what the assist said; the log supplies
+precedent and recognizes recurrence and never becomes a read-back decision
+source.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 ### 7. Carry to the human
 

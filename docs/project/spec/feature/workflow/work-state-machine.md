@@ -284,6 +284,7 @@ And the record of which plan version the build executes against settles only whe
 And a crash-recovered session re-entering the build derives identical instructions from durable state alone
 ```
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 #### UC-WSM12: Build review stops at the shared round limit and continues only through a recorded continuation
 
 ```gherkin
@@ -298,6 +299,21 @@ And a recorded continuation for build_review lets the next "telec todo work" cal
 And a continuation whose reason names incomplete or noisy review dispatches a reviewer that has not reviewed this target
 And only an ambiguous contract owned by a human or a safety gate reaches the human
 ```
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+#### UC-WSM12: Build review reports its crossed threshold and dispatches an assist
+
+```gherkin
+Given a Todo has admitted build-review passes up to its configured round threshold
+And no approve verdict is current for the worktree HEAD and review-findings digest
+When the orchestrator calls "telec todo work my-feature"
+Then the machine reports the phase, admitted-pass count, threshold and current review evidence, and instructs the orchestrator to dispatch an assist against the loop
+And it refuses no reviewer dispatch and emits no continuation stamp
+And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
+And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
+And it reports that instruction once, on the crossing pass, and not on later passes
+And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
+```
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 #### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure
 

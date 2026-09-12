@@ -236,11 +236,21 @@ authority, coordinator act, intervention stop, and settlement evidence match.
 
 - **Evidence available:** configured `max_review_rounds`, round counter, current review
   findings/verdict, and Work recovery contract.
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - **Ownership:** Work Orchestrator owns the pragmatic closure judgment and execution;
   Work state machine owns resulting state.
 - **Coordinator:** when the cap is reached and closure was skipped, point to the cap's
   contract/configuration address and the current review-findings artifact address. Do
   not send findings content or the decision to Human merely because the rounds ended.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+- **Ownership:** Work Orchestrator owns dispatching the assist and acting on what it
+  says; the assist owns what it says and records nothing else; Work state machine
+  owns resulting state.
+- **Coordinator:** when the threshold is crossed and no assist is live, point to the
+  threshold's contract/configuration address and the current review-findings artifact
+  address. Do not send findings content or the decision to Human merely because the
+  rounds ended, and do not judge the loop.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - **Stop and settlement:** stop after the pointer. Settle when the orchestrator records
   pragmatic closure or grounds that the remaining decision is independently
   human-owned.

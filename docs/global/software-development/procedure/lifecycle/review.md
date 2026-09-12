@@ -181,6 +181,7 @@ upcycle. Other legacy shapes keep zero offsets. This favors another independent 
 replacement-shaped target whose earlier cycle identity was never persisted
 (`general/principle/grounding`).
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 When a review cycle reaches its applicable documented cap without closure, no further
 automatic review starts. The orchestrator classifies the cause — ambiguous
 contract, failed remediation, unstable target, or incomplete or noisy review —
@@ -223,6 +224,33 @@ is answered by the durable record of the session that wrote it. If no grounded n
 attempt exists, the unresolved result and its missing evidence are preserved
 with an accountable agent owner; no one fabricates a verdict or resets a count
 to conceal the halt.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+When a review cycle reaches its applicable documented cap, the count is reported
+and nothing is refused. The report names the phase, the passes admitted, and the
+threshold, and it instructs the orchestrator to dispatch an assist against the
+loop. It is emitted once, on the pass that crosses the threshold, and not again;
+the count keeps rendering afterwards. The instruction stands until an assist is
+live — an orchestrator that did not act on the crossing pass is still obliged,
+and is not reminded a second time.
+
+The assist is an ordinary child of the orchestrator and lives for the loop. The
+orchestrator sends it a line when a pass lands; it reads both sessions and the
+review evidence itself, and says what shape the loop is in or says nothing. It
+admits no passes, records no verdict and stamps nothing: what it produces is a
+statement in its own session, and the orchestrator acts on what it read. Its
+procedure is `software-development/procedure/lifecycle/assist`.
+
+Nothing classifies the halt into a recorded vocabulary. Whether a loop is
+converging, contested, moving under its reviewer, or stuck on a contract that
+admits two grounded readings is what the assist says in its own words. A dispute
+the assist judges to be in the contract rather than in the work leaves the loop
+and goes to that contract's decision owner. Human escalation follows the closed
+human lane, never the round count.
+
+Nothing enforces any of this. With no gate, an orchestrator that ignores the
+report and keeps dispatching is doing something no mechanism prevents; the
+obligation is carried by this contract rather than by a refusal.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

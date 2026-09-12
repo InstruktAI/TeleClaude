@@ -49,6 +49,7 @@ focused procedure and advances through the machine-owned transitions.
    findings artifact and a verdict to its review stamp; the active phase
    procedure reads them on the next state-machine advance.
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
    Each PRD, architecture, and plan review phase admits reviewer passes through
    review cycles bounded by `DEFAULT_MAX_REVIEW_ROUNDS`. A valid substantive
    drift stamp starts a new cycle for every review target it invalidates; that
@@ -60,6 +61,17 @@ focused procedure and advances through the machine-owned transitions.
    `software-development/procedure/lifecycle/review`. The orchestrator owns
    that classification and bounded recovery direction; escalation follows
    `general/policy/human-contract` rather than the review count.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+   Each PRD, architecture, and plan review phase admits reviewer passes through
+   review cycles. A valid substantive drift stamp starts a new cycle for every
+   review target it invalidates. The machine persists cumulative history before
+   returning each reviewer instruction, and target or report rewrites without a
+   substantive stamp reset nothing. At the configured threshold it reports the
+   count once and instructs this session to dispatch an assist against the loop;
+   it refuses no pass and preserves the active prepare session. The assist reads
+   both sides and says what shape the loop is in; escalation follows
+   `general/policy/human-contract` rather than the review count.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
    Legacy prepare-review state that predates cycle identity initializes through
    the one-time migration rule in the shared review procedure.
 
