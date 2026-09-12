@@ -332,10 +332,10 @@ def _project_message_blocks(
         )
         return
     if not isinstance(content, list):
-        logger.debug("Skipping entry with non-list content", entry_index=entry_idx, role=role)
+        logger.trace("Skipping entry with non-list content", entry_index=entry_idx, role=role)
         return
     if role not in ("user", "assistant"):
-        logger.debug("Skipping non-user/non-assistant block-based entry", entry_index=entry_idx, role=role)
+        logger.trace("Skipping non-user/non-assistant block-based entry", entry_index=entry_idx, role=role)
         return
     classifications_by_index = {classification.index: classification for classification in user_classifications}
     for block_index, block in enumerate(content):
