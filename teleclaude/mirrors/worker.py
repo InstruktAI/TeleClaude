@@ -57,7 +57,6 @@ class ReconcileResult:
     shrink_accepted: int
     shrink_refused: int
     failed: int
-    tombstone_bypassed: int
     orphan_unreprojectable: int
     skipped_unchanged: int
     duration_s: float
@@ -91,20 +90,15 @@ class MirrorWorker:
         self,
         source_identity: str,
         candidate: TranscriptCandidate,
-        *,
-        version_current: bool,
-    ) -> tuple[bool, bool]:
+    ) -> bool:
         tombstone = get_mirror_tombstone(source_identity, db=self.db_path)
         if tombstone is None:
-            return False, False
+            return False
         file_size, file_mtime = self._candidate_file_state(candidate)
         if tombstone.file_size == file_size and tombstone.file_mtime == file_mtime:
-            if version_current:
-                return True, False
-            delete_mirror_tombstone(source_identity, db=self.db_path)
-            return False, True
+            return True
         delete_mirror_tombstone(source_identity, db=self.db_path)
-        return False, False
+        return False
 
     def _record_tombstone(self, source_identity: str, candidate: TranscriptCandidate) -> None:
         file_size, file_mtime = self._candidate_file_state(candidate)
@@ -137,7 +131,6 @@ class MirrorWorker:
             shrink_accepted=result.shrink_accepted,
             shrink_refused=result.shrink_refused,
             failed=result.failed,
-            tombstone_bypassed=result.tombstone_bypassed,
             orphan_unreprojectable=result.orphan_unreprojectable,
             skipped_unchanged=result.skipped_unchanged,
             duration_s=result.duration_s,
@@ -163,7 +156,6 @@ class MirrorWorker:
             shrink_accepted=0,
             shrink_refused=0,
             failed=0,
-            tombstone_bypassed=0,
             orphan_unreprojectable=0,
             skipped_unchanged=0,
             duration_s=0.0,
@@ -181,14 +173,7 @@ class MirrorWorker:
                     continue
 
                 source_identity = build_source_identity(candidate.path, candidate.agent)
-                should_skip_tombstone, tombstone_bypassed = self._should_skip_tombstoned_transcript(
-                    source_identity,
-                    candidate,
-                    version_current=version_current,
-                )
-                if tombstone_bypassed:
-                    result.tombstone_bypassed += 1
-                if should_skip_tombstone:
+                if self._should_skip_tombstoned_transcript(source_identity, candidate):
                     result.skipped_unchanged += 1
                     continue
 
