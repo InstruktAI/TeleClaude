@@ -16,7 +16,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ROLE_WORKER
 from teleclaude.core.agents import AgentName
 from teleclaude.paths import MAIN_DB_PATH
-from teleclaude.utils.transcript_discovery import SessionId, extract_project, extract_session_id, is_subagent_transcript
+from teleclaude.utils.transcript_discovery import (
+    SessionId,
+    classify_transcript,
+    extract_project,
+    extract_session_id,
+)
 
 logger = get_logger(__name__)
 
@@ -47,7 +52,7 @@ _MISSING_COLUMN_ERROR = "no such column"
 # recorded in the database rather than re-derived per process: schema init runs on every
 # process that opens the store, including read-only CLI calls, so an ungated scan would
 # both re-read the table on every invocation and take a write lock a reader never needed.
-_DATA_REVISION = 5
+_DATA_REVISION = 6
 
 _READ_DATA_REVISION_SQL = "PRAGMA user_version"
 _WRITE_DATA_REVISION_SQL = f"PRAGMA user_version = {_DATA_REVISION}"
@@ -273,17 +278,19 @@ def _session_role_map() -> dict[str, str]:
 def reconcile_mirror_records(conn: sqlite3.Connection) -> None:
     """Delete mirrors discovery no longer produces; realign `is_worker` from the record.
 
-    A subagent transcript or a null-session row is exactly what discovery now refuses
-    to recognize, so the archive must not keep holding it (UC-MSB-3). `is_worker` is
-    realigned from the joined record's `system_role` for every surviving row whose
-    transcript path resolves to one; every other stored column — title, command,
-    slug — is left as written, by decision. The file-existence and subagent scan runs
-    to completion before any write, so it never holds the write lock.
+    A subagent transcript, a headless one-shot invocation, or a null-session row is
+    exactly what discovery now refuses to recognize, so the archive must not keep
+    holding it (UC-MSB-3, UC-MRL-13). `is_worker` is realigned from the joined record's
+    `system_role` for every surviving row whose transcript path resolves to one; every
+    other stored column — title, command, slug — is left as written, by decision. The
+    file-existence and admission scan runs to completion before any write, so it never
+    holds the write lock.
     """
     rows = conn.execute(_SELECT_CONVERGENCE_ROWS_SQL).fetchall()
     to_delete: list[tuple[int, str | None]] = []
     deleted_null_session = 0
     deleted_subagent = 0
+    deleted_headless = 0
     for row_id, session_id, source_identity, raw_agent, raw_metadata in rows:
         if session_id is None:
             to_delete.append((row_id, source_identity))
@@ -298,9 +305,15 @@ def reconcile_mirror_records(conn: sqlite3.Connection) -> None:
         except (OSError, TypeError, ValueError):
             continue
         path = Path(transcript_path).expanduser()
-        if path.exists() and is_subagent_transcript(path, agent):
+        if not path.exists():
+            continue
+        is_subagent, is_headless = classify_transcript(path, agent)
+        if is_subagent:
             to_delete.append((row_id, source_identity))
             deleted_subagent += 1
+        elif is_headless:
+            to_delete.append((row_id, source_identity))
+            deleted_headless += 1
 
     if to_delete:
         conn.executemany(_DELETE_MIRROR_ROW_SQL, [(row_id,) for row_id, _ in to_delete])
@@ -332,6 +345,7 @@ def reconcile_mirror_records(conn: sqlite3.Connection) -> None:
         data_revision=_DATA_REVISION,
         total=len(rows),
         deleted_subagent=deleted_subagent,
+        deleted_headless=deleted_headless,
         deleted_null_session=deleted_null_session,
         realigned=len(worker_updates),
     )

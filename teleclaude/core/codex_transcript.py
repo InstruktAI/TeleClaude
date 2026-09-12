@@ -40,6 +40,7 @@ from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
@@ -48,6 +49,22 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 _RECENT_DISCOVERY_DAYS = 7
+
+
+class CodexInvocationMode(StrEnum):
+    """How Codex recorded a transcript's invocation, from ``session_meta.payload.source``.
+
+    ``source`` is a plain string for an ordinary invocation and a dict for a spawned
+    subagent (``{"subagent": {"thread_spawn": {...}}}``); the dict shape carries no
+    invocation mode and resolves to ``UNKNOWN`` here, since ``is_codex_subagent_transcript``
+    already owns that case. ``UNKNOWN`` also covers a future value this enum does not yet
+    name, so an unrecognized invocation is never silently treated as any known mode.
+    """
+
+    CLI = "cli"
+    EXEC = "exec"
+    VSCODE = "vscode"
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -69,6 +86,7 @@ class CodexTranscriptMeta:
     parent_thread_id: str | None
     session_started_at: datetime | None
     cwd: str | None
+    invocation_mode: CodexInvocationMode
 
 
 class _CodexTranscriptIndex:
@@ -126,6 +144,7 @@ class _CodexTranscriptIndex:
                 parent_thread_id=None,
                 session_started_at=None,
                 cwd=None,
+                invocation_mode=CodexInvocationMode.UNKNOWN,
             )
         elif root_meta_from_path is not None:
             fallback_root_meta = root_meta_from_path
@@ -333,6 +352,11 @@ def read_codex_transcript_meta(transcript_path: str | Path | None) -> CodexTrans
     subagent = source.get("subagent") if isinstance(source, dict) else None
     spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else None
 
+    try:
+        invocation_mode = CodexInvocationMode(source) if isinstance(source, str) else CodexInvocationMode.UNKNOWN
+    except ValueError:
+        invocation_mode = CodexInvocationMode.UNKNOWN
+
     thread_id = payload.get("id")
     if not isinstance(thread_id, str) or not thread_id:
         thread_id = None
@@ -355,6 +379,7 @@ def read_codex_transcript_meta(transcript_path: str | Path | None) -> CodexTrans
         parent_thread_id=parent_thread_id,
         session_started_at=session_started_at,
         cwd=cwd,
+        invocation_mode=invocation_mode,
     )
 
 
@@ -423,10 +448,19 @@ def discover_codex_transcript_family(
     ]
 
 
+def is_codex_subagent_meta(meta: CodexTranscriptMeta | None) -> bool:
+    """Return True when already-parsed transcript metadata belongs to a spawned Codex subagent.
+
+    The single owner of the subagent determination: both the by-path convenience
+    wrapper below and any caller that has already parsed the header (to avoid a second
+    read when another rule needs the same metadata) resolve through this one check.
+    """
+    return bool(meta and meta.parent_thread_id)
+
+
 def is_codex_subagent_transcript(transcript_path: str | None) -> bool:
     """Return True when the transcript belongs to a spawned Codex subagent."""
-    meta = read_codex_transcript_meta(transcript_path)
-    return bool(meta and meta.parent_thread_id)
+    return is_codex_subagent_meta(read_codex_transcript_meta(transcript_path))
 
 
 def resolve_hook_transcript_metadata(

@@ -16,7 +16,10 @@ from teleclaude.config import config
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import (
+    CodexInvocationMode,
+    CodexTranscriptMeta,
     discover_codex_transcript_path,
+    is_codex_subagent_meta,
     is_codex_subagent_transcript,
     read_codex_transcript_meta,
 )
@@ -26,10 +29,12 @@ __all__ = [
     "SessionId",
     "TranscriptCandidate",
     "build_source_identity",
+    "classify_transcript",
     "discover_transcripts",
     "extract_project",
     "extract_session_id",
     "in_session_root",
+    "is_headless_transcript",
     "is_subagent_transcript",
     "recover_native_project",
 ]
@@ -129,6 +134,46 @@ def is_subagent_transcript(path: Path, agent: AgentName) -> bool:
     return False
 
 
+def _is_codex_headless_meta(meta: CodexTranscriptMeta | None) -> bool:
+    """Return whether already-parsed Codex transcript metadata records a headless invocation.
+
+    The single owner of the headless determination: both the by-path convenience
+    wrapper below and a caller that has already parsed the header for another rule (to
+    avoid a second read) resolve through this one check.
+    """
+    return meta is not None and meta.invocation_mode == CodexInvocationMode.EXEC
+
+
+def is_headless_transcript(path: Path, agent: AgentName) -> bool:
+    """Return whether a transcript belongs to a headless one-shot invocation, not a session.
+
+    A headless invocation is a single prompt handed to a runtime as a subprocess call —
+    never a live conversation and never a TeleClaude session. One rule per runtime,
+    reading invocation mode from the transcript itself rather than the presence of a
+    session record, applied identically at discovery and at store convergence. Only
+    Codex's format records invocation mode; every other runtime's transcripts carry no
+    such signal and are never dropped by this rule.
+    """
+    if agent == AgentName.CODEX:
+        return _is_codex_headless_meta(read_codex_transcript_meta(path))
+    return False
+
+
+def classify_transcript(path: Path, agent: AgentName) -> tuple[bool, bool]:
+    """Classify a candidate against the subagent and headless exclusion rules.
+
+    Returns ``(is_subagent, is_headless)``. Codex carries both signals in the same
+    parsed header, so this resolves them from one ``read_codex_transcript_meta`` call
+    rather than the two independent reads that calling ``is_subagent_transcript`` and
+    ``is_headless_transcript`` back to back would cost. Every other runtime carries no
+    headless rule, and ``is_subagent_transcript``'s own single read already covers it.
+    """
+    if agent == AgentName.CODEX:
+        meta = read_codex_transcript_meta(path)
+        return is_codex_subagent_meta(meta), _is_codex_headless_meta(meta)
+    return is_subagent_transcript(path, agent), False
+
+
 def build_source_identity(path: Path | str, agent: AgentName) -> str:
     """Build a deterministic identity from the transcript's path relative to its root.
 
@@ -145,6 +190,19 @@ def build_source_identity(path: Path | str, agent: AgentName) -> str:
     return f"{agent.value}:{expanded_path.as_posix()}"
 
 
+def _is_admitted_transcript(path: Path, agent: AgentName) -> bool:
+    """Return whether a transcript candidate is admitted to mirror generation.
+
+    Applied identically in every discovery branch so a rule added once here reaches
+    both the primary glob loop and the legacy Gemini fallback, rather than each branch
+    growing its own copy of the admission rules. A candidate is dropped before its
+    identity, project, or content is read from it. Delegates to classify_transcript so
+    a Codex candidate's header is parsed once, not once per rule.
+    """
+    is_subagent, is_headless = classify_transcript(path, agent)
+    return not is_subagent and not is_headless
+
+
 def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[TranscriptCandidate]:
     """Find transcript files for one or more agents, newest first."""
     candidates: list[TranscriptCandidate] = []
@@ -155,7 +213,7 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
         if root.exists():
             pattern = str(AGENT_PROTOCOL[agent.value]["session_pattern"])
             for path in root.glob(pattern):
-                if path.is_file() and not is_subagent_transcript(path, agent):
+                if path.is_file() and _is_admitted_transcript(path, agent):
                     candidates.append(TranscriptCandidate(path=path, agent=agent, mtime=path.stat().st_mtime))
 
         # If agent is GEMINI, also search legacy fallback paths
@@ -165,7 +223,7 @@ def discover_transcripts(agents: Sequence[AgentName] | None = None) -> list[Tran
                 # Perform shallow, highly optimized globs to avoid blocking event loop recursive walks
                 for pattern in ("*/chats/session-*.json", "session-*.json"):
                     for path in legacy_root.glob(pattern):
-                        if path.is_file():
+                        if path.is_file() and _is_admitted_transcript(path, agent):
                             candidates.append(TranscriptCandidate(path=path, agent=agent, mtime=path.stat().st_mtime))
 
     candidates.sort(key=lambda c: c.mtime, reverse=True)
