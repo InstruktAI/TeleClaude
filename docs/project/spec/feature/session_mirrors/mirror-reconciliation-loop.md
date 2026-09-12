@@ -15,15 +15,6 @@ Mirror creation through the event-driven path can miss transcripts —
 service restarts, hook drops, or fresh installs all leave gaps. A
 background worker fills those gaps. The worker is started by the
 session_mirrors service on boot and ticks every five minutes (300
-<!-- planned-change:fix-mirror-reconcile-scope-includes-headless-transcripts -->
-seconds). Each pass discovers all transcript files under the per-agent
-session roots, drops every transcript the per-runtime subagent rule
-recognizes, asks the mirror store for each remaining transcript's last
-known state, and rebuilds the mirror when the transcript file is newer
-than the stored record (or when no record exists yet). Tombstones for
-known-empty transcripts short-circuit the rebuild (see
-`empty-transcript-tombstone`).
-<!-- change:fix-mirror-reconcile-scope-includes-headless-transcripts -->
 seconds). Each pass discovers all transcript files under the per-agent
 session roots, drops every transcript the per-runtime subagent rule or
 the per-runtime headless rule recognizes, asks the mirror store for each
@@ -31,7 +22,6 @@ remaining transcript's last known state, and rebuilds the mirror when the
 transcript file is newer than the stored record (or when no record exists
 yet). Tombstones for known-empty transcripts short-circuit the rebuild
 (see `empty-transcript-tombstone`).
-<!-- /planned-change:fix-mirror-reconcile-scope-includes-headless-transcripts -->
 
 The worker emits one structured log line per pass with discovered /
 processed / failed / skipped_unchanged counters, the pass duration, and
@@ -169,7 +159,6 @@ And the discovered counter excludes dropped transcripts
 And a subagent transcript mirrored under an earlier rule is removed by store convergence, never refreshed by a pass
 ```
 
-<!-- planned:fix-mirror-reconcile-scope-includes-headless-transcripts -->
 #### UC-MRL-13: Headless one-shot invocations are never candidates
 
 ```
@@ -182,7 +171,6 @@ And the rule reads invocation mode from the transcript itself and never consults
 And the discovered counter excludes dropped transcripts
 And a headless transcript mirrored under an earlier rule is removed by store convergence, never refreshed by a pass
 ```
-<!-- /planned:fix-mirror-reconcile-scope-includes-headless-transcripts -->
 
 
 #### UC-MRL-11: Project attribution resolves the repository, not the path tail
