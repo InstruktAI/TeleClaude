@@ -105,6 +105,7 @@ And legacy import never synthesizes requirements_review or plan_review approval 
 And delivered historical records remain unchanged and readable
 ```
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 #### UC-WSS21: A capped review cycle admits one recorded continuation, and a second only from another intelligence
 
 ```gherkin
@@ -126,6 +127,8 @@ Given a valid substantive drift stamp starts a new review cycle for the phase
 Then continuations from earlier cycles remain in cumulative history but do not enlarge the new cycle's allowance
 And the claiming orchestrator owns the first continuation in the new cycle if that cycle reaches its own ordinary limit
 ```
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 ```
 Given a Todo whose nature does not require architecture work

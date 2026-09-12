@@ -73,6 +73,7 @@ And no legacy empty-digest verdict is grandfathered through the gate
 And requirements_review is never derived as a live phase
 ```
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 #### UC-WPS21: Every prepare review cycle stops at the shared round limit
 
 ```gherkin
@@ -99,6 +100,23 @@ Then the cumulative round and continuation totals become the new cycle's offsets
 And the cycle-local admitted round and continuation counts therefore start at zero without changing cumulative history
 And other legacy review shapes keep zero offsets
 ```
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+#### UC-WPS21: Every prepare review cycle counts its passes against the threshold
+
+```gherkin
+Given a Todo is awaiting PRD, architecture, or implementation-plan review
+And the current target's review cycle has already admitted passes up to its configured threshold
+And no approve verdict is current for the reviewed artifact and report digests
+When the orchestrator calls "telec todo prepare my-change"
+Then the machine reports the phase, the review cycle and the admitted-pass count, and refuses no reviewer dispatch
+And it preserves the lifecycle phase and active runner
+And rewriting the reviewed artifact or findings report while remediating that cycle does not reset its admitted-pass count
+And each admitted pass remains counted and persisted in the phase's cumulative history before its reviewer instruction is returned
+When a valid substantive drift stamp invalidates that target and any downstream review targets
+Then every affected target starts a new review cycle counted from zero
+And a stabilized replacement receives its first complete discovery pass without removing the earlier cycle's counters, report, or verdict evidence
+```
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 <!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 #### UC-WPS22: A classified halt continues only through a recorded continuation

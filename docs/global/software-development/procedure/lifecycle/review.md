@@ -161,6 +161,7 @@ A finding that was observable in the discovery pass and is raised later is the
 reviewer's incompleteness: it halts the loop for reassessment instead of being
 appended to the producer's work.
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 Review passes are admitted within a review cycle. A valid substantive-drift
 stamp ends the current cycle for every review target it invalidates and starts
 a new cycle for each replacement target. The new cycle receives its ordinary
@@ -180,6 +181,15 @@ at zero while the cumulative values remain unchanged. It applies once during
 upcycle. Other legacy shapes keep zero offsets. This favors another independent review over permanently blocking a
 replacement-shaped target whose earlier cycle identity was never persisted
 (`general/principle/grounding`).
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+Review passes are counted within a review cycle. A valid substantive-drift stamp
+ends the current cycle for every review target it invalidates and starts a new
+cycle for each replacement target, counted from zero; phase-wide counters,
+reports, and verdict evidence remain cumulative. Target or report rewrites
+without a substantive stamp remain inside the current cycle and reset nothing.
+This keeps the admitted-pass denominator grounded in the target it governs
+(`general/principle/grounding`).
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 <!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 When a review cycle reaches its applicable documented cap without closure, no further

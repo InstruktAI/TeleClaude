@@ -344,7 +344,11 @@ And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and p
 - A holder entry cannot itself enter work. The orchestrator is always routed to its direct, runnable children via the same holder-resolution helpers prepare uses.
 - The single-flight lock is per `(canonical project root, slug)`. Same slug in a different repo runs independently — this is the explicit behavior, not a leak.
 - Bug-kind Todos require an explicit `telec todo stamp <slug> --build-complete` even when the build session committed and exited; the machine will not advance on commit alone.
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - Review round limit is not an escape hatch. Hitting it surfaces an error pointing at `review-findings`; the orchestrator must address Requirement-Violation / Critical / Important findings rather than raising the limit.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+- The review threshold is not an escape hatch. Crossing it points at `review-findings` and requires an assist; the orchestrator must address Requirement-Violation / Critical / Important findings rather than moving the threshold.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - The work loop limit bounds in-call transitions. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - `finalize_ready` is gated by a triple-ref check (`worktree HEAD == branch ref == remote ref`) AND the Stamped SHA must equal worktree HEAD; any mismatch refuses the transition and requires a re-stamp.
 - Chokepoint emission is at-least-once at the bus layer under concurrent first-transition writers. Integrator spawning remains at-most-once for duplicate same-key events through cartridge dedup, and distinct-key races are serialized by the integration singleton lease.

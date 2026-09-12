@@ -232,10 +232,17 @@ authority, coordinator act, intervention stop, and settlement evidence match.
   when the child resumes, the orchestrator grounds a deliberate wait, or the
   escalation lands; the orchestrator then owns watching the child.
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 ##### NC-09 — Review-cap pragmatic closure
 
 - **Evidence available:** configured `max_review_rounds`, round counter, current review
   findings/verdict, and Work recovery contract.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+##### NC-09 — Review threshold crossed
+
+- **Evidence available:** configured round threshold, round counter, current review
+  findings/verdict, whether an assist is live for the loop, and Work recovery contract.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 <!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - **Ownership:** Work Orchestrator owns the pragmatic closure judgment and execution;
   Work state machine owns resulting state.

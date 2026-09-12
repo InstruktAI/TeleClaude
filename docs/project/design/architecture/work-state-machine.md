@@ -92,7 +92,11 @@ build_review:
 
 <!-- /planned:fix-work-verdict-stamp-silent-noop -->
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - **Review round limit**: after `max_review_rounds` (default 3) iterations, the machine returns `REVIEW_ROUND_LIMIT` for orchestrator decision instead of looping.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+- **Review threshold**: at the configured threshold the machine reports the admitted-pass count and instructs the orchestrator to dispatch an assist against the loop; it refuses no pass and keeps looping.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready` on the finalize sub-state; the Work machine performs the triple-ref-gated advance from `review_approved` to terminal `lifecycle_phase=finalize_ready` and ends the worker's child sessions and own session inside the same step. There is no separate `handed_off` follow-up phase.
 - **Integration emission is state-bound, not path-bound**: the `TodosDb.write_state` chokepoint fires a `_on_phase_transition` hook on every owned-commit lifecycle-phase change; the daemon-registered translator emits the `domain.software-development.planning.todo_finalize_ready` event on every `* → finalize_ready` transition the chokepoint observes, regardless of which writer (the work-machine claim, or any future writer landing the transition through the same chokepoint) produced it. v1 `TodosDb` does NOT serialize writers per project, so concurrent writers landing the same transition can each fire the hook — the chokepoint provides **at-least-once** emission at the bus layer. The `IntegrationTriggerCartridge`'s `_spawned_event_keys` dedup keyed on `(slug, sha, worker_session_id)` collapses duplicates to **exactly one** integrator spawn per logical event, and the integrator's `integration/main` singleton lease serializes spawns into a single integration run per slug. The work-step no longer emits the event directly. The integrator's periodic candidate scanner remains the in-band safety net for cases where the chokepoint emission was not delivered (e.g., daemon down).
 - **Stash prohibition**: git stash is forbidden in all agent workflows. The machine checks for stash debt.
@@ -300,6 +304,10 @@ sequenceDiagram
 - **Missing preparation artifacts**: returns a prepare-directed error for the current slug — run `telec todo prepare {slug}` first.
 - **Stale preparation grounding**: returns instruction to re-run prepare before building.
 - **Worker crash**: orchestrator retries once, then escalates with context.
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - **Review round limit exceeded**: returns `REVIEW_ROUND_LIMIT` for orchestrator classification under the shared review procedure.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+- **Review threshold crossed**: reports the admitted-pass count once and instructs the orchestrator to dispatch an assist under the shared review procedure; no pass is refused.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 - **Build gates fail**: the `build_complete` stamp is rejected; the builder fixes the issue before review.
 - **State repair**: reconciles from authoritative fields only; commits alone never repair to `build_complete`.
