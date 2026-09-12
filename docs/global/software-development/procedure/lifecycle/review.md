@@ -246,7 +246,7 @@ attempt exists, the unresolved result and its missing evidence are preserved
 with an accountable agent owner; no one fabricates a verdict or resets a count
 to conceal the halt.
 <!-- change:gut-review-cap-gate-and-continuation-stamp -->
-When a review cycle reaches its applicable documented cap, the count is reported
+When a review cycle reaches its configured threshold, the count is reported
 and nothing is refused. The report names the phase, the passes admitted, and the
 threshold, and it instructs the orchestrator to dispatch an assist against the
 loop. It is emitted once, on the pass that crosses the threshold, and not again;

@@ -1,5 +1,5 @@
 ---
-description: Watch a capped review loop from outside it, say when a party's next act should change, and say when further passes will not improve the target.
+description: Watch a review loop that has crossed its round threshold from outside it, say when a party's next act should change, and say when further passes will not improve the target.
 activation_trigger: Use when invoked against a review loop that has reached its configured round threshold without closure.
 ---
 
