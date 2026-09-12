@@ -45,5 +45,15 @@
          which hot-reloads live sections and self-restarts (KeepAlive relaunches) only for
          connection-bound changes. A launchd WatchPaths here would blindly restart on every
          config edit, preempting the hot path. -->
+
+    <!-- Forces macOS to keep this process at a high scheduling priority -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <!-- Gives it the highest possible CPU scheduling priority (lower means higher priority) -->
+    <key>Nice</key>
+    <integer>-20</integer>
+    <!-- Prevents macOS from aggressively putting the process into App Nap / efficiency throttling -->
+    <key>LowPriorityIO</key>
+    <false/>
 </dict>
 </plist>

@@ -271,12 +271,10 @@ Procedure:
 
 - Move the content of `AGENTS.md` into a new `AGENTS.master.md`.
 
-
 - Run `telec sync`.
 - Verify the regenerated `AGENTS.md` (inflated from the master, possibly with
   baseline additions) and the `CLAUDE.md` shim are produced. The original
   content survives in `AGENTS.master.md`.
-
 
 **Case 3 — Substantive standalone `CLAUDE.md`, no `AGENTS.md`.** Respect by
 default. Do not auto-create a master — a substantive standalone `CLAUDE.md`
@@ -304,11 +302,7 @@ proceeds.
 
 - A set of schema-valid doc snippets under `docs/project/`.
 - A concise summary of what was created/updated.
-
-
 - A `telec sync --skip-deploy` run confirming snippet validity.
-
-
 - An updated `.telec-init-meta.yaml` recording `last_analyzed_commit` set to the
   HEAD commit analyzed, so the next run has a diff base.
 
