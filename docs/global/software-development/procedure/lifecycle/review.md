@@ -189,6 +189,17 @@ reports, and verdict evidence remain cumulative. Target or report rewrites
 without a substantive stamp remain inside the current cycle and reset nothing.
 This keeps the admitted-pass denominator grounded in the target it governs
 (`general/principle/grounding`).
+
+The v9-to-cycle migration has one explicit initialization rule for legacy
+prepare-review state that cannot carry a cycle boundary it predates. When the
+current verdict and evidence bindings are empty, a retained report exists, and
+the current target was written after that report, the migration records the
+cumulative round total as the new cycle's offset, once, during upcycle.
+Cycle-local admitted passes are that total minus the offset, so the new cycle
+counts from zero while cumulative history is unchanged. Other legacy shapes keep
+a zero offset. This keeps the reported cycle-local count describing the target it
+governs rather than inheriting totals from a boundary that was never persisted
+(`general/principle/grounding`).
 <!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 <!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->

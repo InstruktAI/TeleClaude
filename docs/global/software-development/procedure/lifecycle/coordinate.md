@@ -38,6 +38,7 @@ mismatch, left unattended, would alter the work, waste material effort, cross a
 boundary, or obscure a need of the human's. Below that, leave it — whether
 anything is logged is governed solely by step 6's bar.
 
+<!-- planned-change:gut-review-cap-gate-and-continuation-stamp -->
 Ask the owner to expose and reconsider its reasoning against the authorised
 intent, the governing contracts, the current evidence, and the consequences. If
 the judgment survives that challenge, leave it with its owner — including when
@@ -47,6 +48,17 @@ it. Challenge never transfers the decision: verdicts the governing contracts
 assign elsewhere — a drift classification, a duplicate retirement, a kickback,
 review-cap closure, a product or architecture approval — stay with those owners
 while their basis is challenged.
+<!-- change:gut-review-cap-gate-and-continuation-stamp -->
+Ask the owner to expose and reconsider its reasoning against the authorised
+intent, the governing contracts, the current evidence, and the consequences. If
+the judgment survives that challenge, leave it with its owner — including when
+the coordinator would have chosen differently. If it does not survive, return
+it for correction, or carry the unresolved decision to whoever genuinely owns
+it. Challenge never transfers the decision: verdicts the governing contracts
+assign elsewhere — a drift classification, a duplicate retirement, a kickback,
+review-threshold closure, a product or architecture approval — stay with those owners
+while their basis is challenged.
+<!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 ### What it is for
 

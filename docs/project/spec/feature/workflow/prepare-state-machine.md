@@ -115,6 +115,14 @@ And each admitted pass remains counted and persisted in the phase's cumulative h
 When a valid substantive drift stamp invalidates that target and any downstream review targets
 Then every affected target starts a new review cycle counted from zero
 And a stabilized replacement receives its first complete discovery pass without removing the earlier cycle's counters, report, or verdict evidence
+
+Given a legacy prepare-review state predates persisted cycle identity
+And its current verdict and evidence bindings are empty
+And its current target was written after the retained review report
+When the state is upcycled into the cycle model
+Then the cumulative round total becomes the new cycle's offset exactly once
+And the cycle-local admitted pass count therefore starts at zero without changing cumulative history
+And other legacy review shapes keep a zero offset
 ```
 <!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
