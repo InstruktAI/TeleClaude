@@ -248,8 +248,8 @@ and goes to that contract's decision owner. Human escalation follows the closed
 human lane, never the round count.
 
 Crossing the threshold refuses nothing, so an orchestrator that ignores the
-report and keeps dispatching is doing something no mechanism prevents. That
-obligation is carried by this contract rather than by a refusal.
+report and keeps dispatching is doing something no mechanism prevents. The
+obligation to dispatch is carried by this contract rather than by a refusal.
 <!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
