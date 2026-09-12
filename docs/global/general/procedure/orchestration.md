@@ -211,7 +211,7 @@ When a preparation or work review reaches its documented cap, apply
 the halt classification and recovery direction; the reviewer retains the
 verdict. `general/policy/human-contract` governs any escalation.
 <!-- change:gut-review-cap-gate-and-continuation-stamp -->
-### Review Round Limit Handling (Orchestrator-Owned)
+### Review Threshold Handling (Orchestrator-Owned)
 
 When a preparation or work review reaches its documented threshold, apply
 `software-development/procedure/lifecycle/review` §6. Nothing is refused: the

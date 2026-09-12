@@ -247,8 +247,8 @@ the assist judges to be in the contract rather than in the work leaves the loop
 and goes to that contract's decision owner. Human escalation follows the closed
 human lane, never the round count.
 
-Nothing enforces any of this. With no gate, an orchestrator that ignores the
-report and keeps dispatching is doing something no mechanism prevents; the
+Crossing the threshold refuses nothing, so an orchestrator that ignores the
+report and keeps dispatching is doing something no mechanism prevents. That
 obligation is carried by this contract rather than by a refusal.
 <!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 

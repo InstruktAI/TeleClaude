@@ -311,6 +311,7 @@ And it refuses no reviewer dispatch and emits no continuation stamp
 And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
 And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
 And it reports that instruction once, on the crossing pass, and not on later passes
+And the admitted-pass count keeps rendering on later passes
 And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
 ```
 <!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->

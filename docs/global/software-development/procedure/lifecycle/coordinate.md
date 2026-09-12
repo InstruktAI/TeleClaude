@@ -247,7 +247,8 @@ A loop past its review threshold has an assist watching it, dispatched by the
 orchestrator and alive for that loop. What the assist says is a challengeable
 judgment like any other owner-held verdict: read its session and challenge the
 basis where it is missing, and own none of it. A threshold crossed with no
-assist live is attention fallen between roles — point at it. The entry written
+assist live, where the orchestrator is not still acting on the crossing pass, is
+attention fallen between roles — point at it. The entry written
 carries phase, subject, source, and what the assist said; the log supplies
 precedent and recognizes recurrence and never becomes a read-back decision
 source.

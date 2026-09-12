@@ -68,8 +68,10 @@ focused procedure and advances through the machine-owned transitions.
    returning each reviewer instruction, and target or report rewrites without a
    substantive stamp reset nothing. At the configured threshold it reports the
    count once and instructs this session to dispatch an assist against the loop;
-   it refuses no pass and preserves the active prepare session. The assist reads
-   both sides and says what shape the loop is in; escalation follows
+   it refuses no pass and preserves the active prepare session. That instruction
+   is reported once and the obligation to dispatch stands until an assist is
+   live. The assist reads both sides and says what shape the loop is in;
+   escalation follows
    `general/policy/human-contract` rather than the review count.
 <!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
    Legacy prepare-review state that predates cycle identity initializes through

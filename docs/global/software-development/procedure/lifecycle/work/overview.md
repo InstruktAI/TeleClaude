@@ -121,6 +121,8 @@ fresh fixer session is dispatched — the original builder handles the fix cycle
 and the next review round reuses the same reviewer session when it is still
 alive. Crossing the threshold refuses nothing; it instructs this orchestrator to
 dispatch an assist against the loop and keep it alive as one of its children.
+That instruction is reported once and the obligation stands until an assist is
+live.
 <!-- /planned-change:gut-review-cap-gate-and-continuation-stamp -->
 
 ### 5. Finalize
