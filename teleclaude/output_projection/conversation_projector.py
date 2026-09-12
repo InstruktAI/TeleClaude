@@ -386,7 +386,7 @@ def project_entries(
     since_dt = _parse_timestamp(since) if since else None
     for entry_idx, entry in enumerate(entries):
         if not isinstance(entry, Mapping):
-            logger.debug("Skipping non-Mapping entry", entry_index=entry_idx)
+            logger.trace("Skipping non-Mapping entry", entry_index=entry_idx)
             continue
         entry_map = cast(Mapping[str, object], entry)
 
@@ -400,7 +400,7 @@ def project_entries(
                     continue
 
         if entry_map.get("type") == "summary":
-            logger.debug("Skipping summary entry", entry_index=entry_idx)
+            logger.trace("Skipping summary entry", entry_index=entry_idx)
             continue
 
         if _is_compaction_entry(entry_map, entry_idx):  # type: ignore[arg-type]
@@ -408,7 +408,7 @@ def project_entries(
             continue
 
         if is_runtime_artifact_entry(entry_map, agent_name):
-            logger.debug(_RUNTIME_ARTIFACT_SKIPPED_LOG, entry_index=entry_idx, agent=agent_name.value)
+            logger.trace(_RUNTIME_ARTIFACT_SKIPPED_LOG, entry_index=entry_idx, agent=agent_name.value)
             continue
 
         message = normalize_transcript_entry_message(entry_map)
