@@ -40,8 +40,10 @@ contract under dispute. Never from either party's account of the other: the
 artifacts carry the verdict and the findings, and each session carries whether a
 finding was reached or asserted, what it weighed, and what it set aside.
 
-Nothing pushes this to you. You read when you are invoked, and you read the
-sources rather than anyone's summary of them.
+You are dispatched once and you live for the loop, like any other worker the
+orchestrator holds. It sends you a line when a pass lands; you read the sources
+yourself rather than anyone's summary of them, and what it sent you is a signal
+that something happened, never the evidence.
 
 ### 2. Establish what actually changed
 
@@ -90,14 +92,13 @@ is the only party that dispatches reviewers, so it is the only party the
 statement binds — a reviewer told the loop is finished can do nothing with it.
 Name what remains unresolved and who owns it.
 
-Then rest with that statement as your last message. You persist nothing else, so
-your session is the only record of why the loop ended; ending it yourself would
-destroy the evidence the orchestrator acted on. The orchestrator that invoked
-you closes you once it has read the statement.
+Then rest with that statement as your last message and stay available. You
+persist nothing else, so your session is the only record of why the loop ended;
+ending it yourself would destroy the evidence the orchestrator acted on. You are
+closed at the orchestrator's terminal cleanup, with its other children.
 
-You may state that the loop is not finished, or say nothing at all and rest. The
-orchestrator invokes you again if it wants another read. Nothing obliges you to
-end a loop you do not judge ended.
+You may state that the loop is not finished, or say nothing at all and keep
+watching. Nothing obliges you to end a loop you do not judge ended.
 
 ## Outputs
 
