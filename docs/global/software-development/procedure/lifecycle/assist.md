@@ -27,24 +27,27 @@ challenge the basis.
 ## Preconditions
 
 - A review loop has reached its configured round threshold without closure.
-- You were given the addresses: the target, the review evidence, both sessions,
-  and the contract under dispute.
+- You were invoked against that loop and given the addresses: the target, the
+  review evidence, both sessions, and the contract under dispute.
 
 ## Steps
 
-### 1. Subscribe and orient
+### 1. Read both parties yourself
 
-Subscribe to both parties so their turns reach you, then read. Derive the
-dispute yourself from the addresses — the target, the review evidence, both
-sessions' records, and the contract under dispute. Never from either party's
-account of the other.
+Tail both sessions and read the evidence they produced. Derive the dispute from
+the addresses — the target, the review evidence, both sessions' records, and the
+contract under dispute. Never from either party's account of the other: the
+artifacts carry the verdict and the findings, and each session carries whether a
+finding was reached or asserted, what it weighed, and what it set aside.
 
-### 2. Wake and read the evidence, not the tick
+Nothing pushes this to you. You read when you are invoked, and you read the
+sources rather than anyone's summary of them.
 
-You wake when either party completes a turn. A turn is not a pass: an
-orchestrator completes one when it dispatches a reviewer and again when it
-processes a verdict, so most wakes have nothing new beneath them. Read what
-changed in the sources before concluding anything moved.
+### 2. Establish what actually changed
+
+A round is not the same as movement. Before concluding that the loop advanced or
+stalled, compare what the sources say now against what they said at the pass
+before. Most of the difference between two passes is restatement.
 
 ### 3. Recognise the shape
 
@@ -88,15 +91,21 @@ statement binds — a reviewer told the loop is finished can do nothing with it.
 Name what remains unresolved and who owns it.
 
 Then rest with that statement as your last message. You persist nothing else, so
-your session is the only record of why the loop ended; ending it destroys the
-evidence the orchestrator acted on.
+your session is the only record of why the loop ended; ending it yourself would
+destroy the evidence the orchestrator acted on. The orchestrator that invoked
+you closes you once it has read the statement.
+
+You may state that the loop is not finished, or say nothing at all and rest. The
+orchestrator invokes you again if it wants another read. Nothing obliges you to
+end a loop you do not judge ended.
 
 ## Outputs
 
 - Messages to one party at a time, carrying addresses rather than content,
-  possibly none across the whole loop.
-- A closing statement to the orchestrator naming what remains unresolved and its
-  owner, left as the session's last message.
+  possibly none at all.
+- A statement to the orchestrator, left as the session's last message: what shape
+  the loop is in, and — when you judge it so — that further passes will not
+  improve the target, with what remains unresolved and who owns it.
 
 ## Recovery
 
