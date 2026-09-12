@@ -245,7 +245,9 @@ not stamp an exceptional verdict. It classifies the halt under the shared
 review procedure and, where that classification earns one, admits a single
 continuation through the continuation stamp; the state machine then emits the
 reviewer dispatch itself. A second cap on the same phase is assessed by the
-coordinator or the human, never by this orchestrator. Reminder ownership
+live coordinator, never by this orchestrator. With none live the halt stays with
+its agent owner, whose basis a peer falsifies; the count alone moves nothing to
+the human. Reminder ownership
 follows `general/policy/reminder`; the halt alone never transfers the next
 move to the human.
 

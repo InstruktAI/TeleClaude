@@ -15,10 +15,12 @@ visibility: 'public'
 
 Refuse code that performs any of these against agent free-text output:
 
-- Hardcoded vocabulary tables for content categorization (`_ACK_*`, `_KEYWORDS`, `_HINTS`, `_PHRASES`).
+- Vocabulary tables that infer a category from prose the agent never declared.
 - Regex on free text for semantic decisions.
 - Word-count thresholds for "is this important?" / "is this meaningful?".
-- Predicates like `is_meaningful`, `is_ack`, `should_emit`, `is_actionable` on natural language.
+- Predicates that decide a property of natural language from its content — whether
+  prose is meaningful, acknowledging, actionable, worth emitting, or anything else
+  about what it says.
 - Auto-fixers that rewrite agent artifacts to match structural rubrics (regex section-header grading followed by regex-driven section insertion).
 - Sentiment, completeness, or quality scoring of agent output.
 

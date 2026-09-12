@@ -300,6 +300,6 @@ sequenceDiagram
 - **Missing preparation artifacts**: returns a prepare-directed error for the current slug — run `telec todo prepare {slug}` first.
 - **Stale preparation grounding**: returns instruction to re-run prepare before building.
 - **Worker crash**: orchestrator retries once, then escalates with context.
-- **Review round limit exceeded**: returns `REVIEW_ROUND_LIMIT` for orchestrator decision — approve with documented follow-up for non-critical residual items, or escalate if unresolved critical findings remain.
+- **Review round limit exceeded**: returns `REVIEW_ROUND_LIMIT` for orchestrator classification under the shared review procedure. No verdict is stamped over unresolved findings, and the halt alone transfers nothing to the human.
 - **Build gates fail**: the `build_complete` stamp is rejected; the builder fixes the issue before review.
 - **State repair**: reconciles from authoritative fields only; commits alone never repair to `build_complete`.

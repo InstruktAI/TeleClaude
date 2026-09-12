@@ -208,9 +208,12 @@ authorization to continue is not approval of the target, and repeating an
 unchanged attempt is not recovery.
 
 A review cycle that reaches its cap a second time is assessed by a different
-intelligence than the one that produced the work: the live coordinator, or the
-human when none is live. That assessor reads the recorded classification and the
-review evidence and either admits a further pass or routes the halt elsewhere.
+intelligence than the one that produced the work: the live coordinator. That
+assessor reads the recorded classification and the review evidence and either
+admits a further pass or routes the halt to its owner. With no coordinator live
+there is no assessor, and the different-intelligence property does not hold on
+that branch: the holder keeps the verdict with a peer falsifying its basis, and
+the halt reaches no one outside the closed human lane.
 The orchestrator never assesses its own second continuation. It may write an admission the assessor
 reached, and when it does it declares which assessor reached it; the record then names the assessor and
 the writer separately, and that record is what an audit reads. The declaration is taken as given, like
