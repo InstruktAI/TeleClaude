@@ -711,7 +711,7 @@ def build_config_from_raw(
     validate_machine_input(raw_user_config, MACHINE_CONFIG_INPUT, source)
     load_id = str(uuid4())
     field_sources = credential_field_sources(raw_user_config)
-    logger.info(
+    logger.debug(
         CONFIG_LOAD_EVENT,
         **{CONFIG_LOAD_ID: load_id, CONFIG_LOAD_OUTCOME: CONFIG_LOAD_ACCEPTED, CONFIG_LOAD_STAGE: CONFIG_LOAD_BUILD},
     )

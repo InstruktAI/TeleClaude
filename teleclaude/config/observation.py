@@ -69,7 +69,7 @@ def log_agent_config_validation(
         fields["enabled_count"] = enabled_count
     if registry_count is not None:
         fields["registry_count"] = registry_count
-    logger.info(AGENT_CONFIG_VALIDATION_EVENT, **fields)
+    logger.debug(AGENT_CONFIG_VALIDATION_EVENT, **fields)
 
 
 SOURCE_ABSENT = "absent"

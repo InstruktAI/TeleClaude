@@ -481,7 +481,7 @@ class TelecAppMediaMixin:
         """Emit a bounded diagnostic snapshot for the header animation path."""
         tracker = self._animation_perf  # type: ignore[attr-defined]
         snapshot = tracker.snapshot(header_entity_count=self._header_entity_count())
-        logger.info(
+        logger.trace(
             "TUI animation performance",
             reason=reason,
             tick_count=snapshot.tick_count,
