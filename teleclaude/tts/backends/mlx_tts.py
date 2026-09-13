@@ -149,6 +149,7 @@ class MLXTTSBackend:
             return False
 
         try:
+            logger.info("MLX TTS [%s]: speaking %d chars (voice=%s)", self._service_name, len(text), voice_name)
             voice = voice_name or self._service_name
             model_type = getattr(getattr(self._model, "config", None), "tts_model_type", "unknown")
 
