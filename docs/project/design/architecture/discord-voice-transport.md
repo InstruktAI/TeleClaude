@@ -52,27 +52,34 @@ Gateway connection and exactly one owner of the voice connection.
    release. The run is therefore a positive, receiver-visible release marker.
    The evidence for this on the target client is recorded at
    `@input#live-evidence-already-established`.
-4. **The closure rule is executable and counts nothing.** Packets are ordered by
-   their transport sequence. A run of consecutive stop frames closes the
-   utterance at the first frame of the run; the audio before it is the
-   utterance. Recognition is by consecutive identical frames, not by a fixed
-   count — the number observed in one session is an observation, never a
-   constant. An incomplete run at the end of received data, or a run that
-   cannot be ordered, closes nothing: nothing is submitted and the recording is
+4. **The closure rule is executable, counts nothing, and needs no ordering
+   evidence.** The receive stream delivers decrypted Opus frames in arrival
+   order; the library's public subscription exposes no transport sequence or
+   timestamp, so the rule is stated over arrival order alone. A run of
+   consecutive stop frames closes the utterance at the first frame of the run;
+   the frames before it are the utterance. Recognition is by consecutive
+   identical frames, not by a fixed count — the number observed in one session
+   is an observation, never a constant. An incomplete run at the end of
+   received data closes nothing: nothing is submitted and the recording is
    discarded through an explicit lifecycle transition.
 5. **Every other closure mechanism is refused.** Silence detection,
    voice-activity detection, elapsed time, and inferred speaking state never
    close or submit. The receive library's timeout-derived speaking-end event
    and its silence- and inactivity-based stream-end modes are specifically not
-   used; the transport reads raw packets and applies the rule above. A
-   speaking-state update carrying a zero mode is not a documented stop signal
+   used; the transport reads the raw frame stream and applies the rule above.
+   A speaking-state update carrying a zero mode is not a documented stop signal
    and is not relied upon.
-6. **Conditions not yet exercised are verified before delivery, not designed
-   around.** Packet loss, reordering, discontinuous-transmission settings,
-   mobile clients, and an in-call key rotation are listed in
-   `@input#verification-required-before-delivery` and are the plan's
-   verification tasks. Each is exercised against the rule above; the rule is
-   not weakened in anticipation of them.
+6. **Reordering and loss fail closed by construction.** A frame arriving out of
+   order can only break a stop run — which then closes nothing and discards —
+   or land after a close, where it is dropped as post-close noise. Neither path
+   submits a partial utterance. Ordering evidence is available if fidelity
+   under reordering is later wanted: the library exports its UDP socket, whose
+   raw datagram event carries the unencrypted transport header alongside the
+   encrypted payload, so sequence and timestamp can be read there and matched
+   to the decrypted stream by arrival. That is a fidelity refinement, not a
+   condition of the guarantee, and the conditions not yet exercised —
+   discontinuous transmission, mobile clients, in-call key rotation — remain
+   the plan's verification tasks per `@input#verification-required-before-delivery`.
 7. **An utterance is latched to the session focused when it began.** A focus
    change during capture, transcription, or delivery never redirects it.
 8. **Only the configured person is received.** Audio from any other speaker in
@@ -119,19 +126,32 @@ Gateway connection and exactly one owner of the voice connection.
 17. **Focus derivation needs no new publication.** The cluster session snapshot
     already carries the identified human and the time their input was last
     accepted, which is exactly what the focus rule orders on. The voice-owning
-    computer derives focus from snapshots it already receives.
-18. **One additive query carries the spoken reply.** A session's complete
+    computer derives focus from snapshots it already holds.
+18. **Remote session state is event-driven, so the voice owner registers an
+    observation.** Snapshot refresh for sessions runs at bootstrap and on
+    request, never on a periodic cadence. The platform already carries a
+    daemon-level observation contract — an observer signals interest in a
+    session on its host with a bounded lifetime, and the host can ask whether a
+    session is observed — with no host-side publisher yet. This delivery
+    completes it: while the person is in the room, the voice owner signals
+    observation of the focused session for a bounded window and renews it on
+    focus change; on agent stop, the host checks whether the session is
+    observed and, if so, sends the existing daemon-level system command
+    envelope to the observer with a new command naming the session and its
+    output-stop version. The observer requests a sessions refresh for that host
+    and fetches the reply. Nothing polls.
+19. **One additive query carries the spoken reply.** A session's complete
     user-visible final response is not in the published snapshot, which carries
     the generated summary and an output digest. A request for that full output
     and its version is added to the cross-computer request vocabulary as a new
     entry; existing entries and payloads are unchanged, and readers tolerate
     fields they do not know.
-19. **A peer that lacks the query degrades rather than fails.** The fleet runs
-    mixed versions, so an unknown-request answer from an older peer means the
-    reply for that session is not spoken and the reason is visible. It never
-    stalls the room, and it never falls back to speaking the summary, which is
-    not the approved outcome.
-20. **The final-output version is what identifies a reply, and it is published
+20. **A peer that lacks the query or the command degrades rather than fails.**
+    The fleet runs mixed versions, so an unknown request from an older peer
+    means the reply for that session is not spoken and the reason is visible.
+    It never stalls the room, and it never falls back to speaking the summary,
+    which is not the approved outcome.
+21. **The final-output version is what identifies a reply, and it is published
     additively.** The session's output-stop marker is the version; the existing
     `last_output_digest` is not. That digest is internal dedupe state for output
     routing — digest-only writes deliberately emit no session-updated event, so a
@@ -141,10 +161,16 @@ Gateway connection and exactly one owner of the voice connection.
     the text. Re-hearing an unchanged reply is settled against that version
     before any cross-computer request is made; adapter delivery state never
     stands in for a domain version.
-21. **Delivery and cancellation use what exists.** A latched utterance reaches a
-    remote session through the established cross-computer session-input path.
-    Cancellation is local to the voice-owning computer, which owns the playback
-    queue, and needs no fleet contract.
+22. **Explicit selection plays immediately.** The focus-set command, executed
+    on the voice owner, both records the selection and triggers playback of the
+    selected session's current version — reusing the cached artifact when that
+    version is already rendered. Selection is therefore never a silent state
+    change waiting on a new stop.
+23. **Delivery and cancellation use what exists.** A latched utterance reaches
+    a remote session through the established cross-computer command envelope,
+    as a text-input command carrying the transcription and its control
+    envelope. Cancellation is local to the voice-owning computer, which owns
+    the playback queue, and needs no fleet contract.
 
 ## Primary flows
 
@@ -185,9 +211,9 @@ connection on its own authority.
   degrading into inferred submission.
 - **Missing, partial, or unorderable stop sequence** — no submission, and the
   recording is discarded.
-- **Packet loss, reordering, and mid-call key rotation** — ordering is applied
-  before the closure rule; a case the rule cannot resolve produces no
-  submission rather than a guess.
+- **Packet loss, reordering, and mid-call key rotation** — a broken stop run
+  closes nothing and discards; a late frame after a close is dropped. No case
+  produces a submission by inference.
 - **Sidecar unavailable or crashed** — the voice room is simply unavailable;
   text conversation is unaffected.
 - **Bot identity divergence** — where the configured voice token authenticates

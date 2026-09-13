@@ -27,9 +27,13 @@ description: '@discordjs/voice 0.19.2 — encrypted (DAVE) send and receive over
   streams (`subscribe(userId, { end })`). The public speaking-end signal
   (`receiver.speaking.on('end')`) is emitted after a fixed packet-inactivity
   timeout; the subscription `end` behaviours are `Manual`, `AfterSilence`, and
-  `AfterInactivity`. None of these is a sender-emitted stop signal; raw packets,
-  with RTP sequence and timestamp, are available for a consumer that applies its
-  own framing rule.
+  `AfterInactivity`. None of these is a sender-emitted stop signal. The
+  subscribed stream pushes decrypted Opus frames only: the RTP header is parsed
+  and removed before the push, and neither sequence nor timestamp is exposed on
+  the stream. The unencrypted transport header remains observable one layer
+  down — `Networking` and `VoiceUDPSocket` are public exports, and the UDP
+  socket emits each raw received datagram as a `message` event before
+  decryption.
 - **Stability caveat (upstream wording):** receiving audio is not guaranteed to
   be stable, because Discord does not document bot voice reception as a
   supported public API.
