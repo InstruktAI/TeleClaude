@@ -50,10 +50,8 @@ Gateway connection and exactly one owner of the voice connection.
    push-to-talk the held key is the transmission: the client encodes and sends
    throughout it, silence included, so it stops sending exactly once — at
    release. The run is therefore a positive, receiver-visible release marker.
-   The originating investigation established this on the target client: one
-   held transmission containing a silent pause produced no run at the pause and
-   one run at release, and a second press produced a second run
-   (`@input#live-evidence-already-established`).
+   The evidence for this on the target client is recorded at
+   `@input#live-evidence-already-established`.
 4. **The closure rule is executable and counts nothing.** Packets are ordered by
    their transport sequence. A run of consecutive stop frames closes the
    utterance at the first frame of the run; the audio before it is the
