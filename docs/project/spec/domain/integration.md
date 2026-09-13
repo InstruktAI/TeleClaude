@@ -35,9 +35,8 @@ implementation remain the current appliance contract.
   push-to-talk utterance, discarding audio from any speaker other than the
   configured person, and playback of a rendered audio artifact into the room.
   Utterance closure is provider protocol semantics and resolves here: the
-  sender-emitted stop sequence is the only close, it marks a transmission break
-  rather than a release, and an absent or unorderable sequence produces no
-  handoff.
+  sender-emitted stop sequence is the push-to-talk release and the only close,
+  and an absent or unorderable sequence produces no handoff.
 - **Owns (voice connection ownership):** which computer holds the connection
   for a bot identity in a guild. A personal voice channel has no forum
   ancestry, so ownership is read from the person's declared voice

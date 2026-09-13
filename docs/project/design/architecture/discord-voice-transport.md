@@ -45,32 +45,36 @@ Gateway connection and exactly one owner of the voice connection.
    playback. This extends the fleet rule in
    `project/spec/feature/integration/discord-interaction-ownership` to a
    resource with no forum ancestry to derive ownership from.
-3. **A sender-emitted stop sequence closes an utterance; nothing else does.**
-   The provider specifies that a client about to stop sending audio first emits
-   a short run of Opus silence frames, so that run is a positive,
-   receiver-visible marker rather than an absence the receiver infers. It marks
-   a **sender-side transmission break**, which is what the receiver can observe;
-   it is not itself a release event, and the provider documents no
-   end-of-transmission protocol. A speaking-state update carrying a zero mode is
-   likewise not a documented stop signal and is not relied upon.
-4. **Break equals release only while the sender transmits continuously.** A
-   push-to-talk client encodes and sends throughout a held key, including during
-   silence, so its only break is the release. That property belongs to the
-   sending client, not to the provider contract: a sender configured for
-   discontinuous transmission may break mid-utterance and close it early. The
-   consequence is a held utterance arriving as two deliveries, never a partial
-   utterance submitted as whole, so the safety guarantee survives a condition
-   the platform does not control while the fidelity guarantee depends on it.
+3. **The sender's stop sequence is the push-to-talk release.** A Discord client
+   emits a run of Opus silence frames immediately before it stops sending. Under
+   push-to-talk the held key is the transmission: the client encodes and sends
+   throughout it, silence included, so it stops sending exactly once — at
+   release. The run is therefore a positive, receiver-visible release marker.
+   The originating investigation established this on the target client: one
+   held transmission containing a silent pause produced no run at the pause and
+   one run at release, and a second press produced a second run
+   (`@input#live-evidence-already-established`).
+4. **The closure rule is executable and counts nothing.** Packets are ordered by
+   their transport sequence. A run of consecutive stop frames closes the
+   utterance at the first frame of the run; the audio before it is the
+   utterance. Recognition is by consecutive identical frames, not by a fixed
+   count — the number observed in one session is an observation, never a
+   constant. An incomplete run at the end of received data, or a run that
+   cannot be ordered, closes nothing: nothing is submitted and the recording is
+   discarded through an explicit lifecycle transition.
 5. **Every other closure mechanism is refused.** Silence detection,
-   voice-activity detection, elapsed time, inferred speaking state, and frame
-   counting never close or submit. The receive library's timeout-derived
-   speaking-end event and its silence- and inactivity-based stream-end modes are
-   specifically not used; the transport reads raw packets and applies the rule
-   above. Frame counts observed in one session are observations, not constants.
-6. **Ambiguity fails closed.** Packets are ordered by their transport sequence
-   before the rule is applied. An absent, incomplete, or unorderable stop
-   sequence closes nothing, submits nothing, and discards its recording through
-   an explicit lifecycle transition.
+   voice-activity detection, elapsed time, and inferred speaking state never
+   close or submit. The receive library's timeout-derived speaking-end event
+   and its silence- and inactivity-based stream-end modes are specifically not
+   used; the transport reads raw packets and applies the rule above. A
+   speaking-state update carrying a zero mode is not a documented stop signal
+   and is not relied upon.
+6. **Conditions not yet exercised are verified before delivery, not designed
+   around.** Packet loss, reordering, discontinuous-transmission settings,
+   mobile clients, and an in-call key rotation are listed in
+   `@input#verification-required-before-delivery` and are the plan's
+   verification tasks. Each is exercised against the rule above; the rule is
+   not weakened in anticipation of them.
 7. **An utterance is latched to the session focused when it began.** A focus
    change during capture, transcription, or delivery never redirects it.
 8. **Only the configured person is received.** Audio from any other speaker in
@@ -181,16 +185,11 @@ connection on its own authority.
   document bot voice reception as a supported API, so provider behaviour may
   change without notice. The transport fails closed and visibly rather than
   degrading into inferred submission.
-- **Missing, partial, or ambiguous stop sequence** — no submission, and the
+- **Missing, partial, or unorderable stop sequence** — no submission, and the
   recording is discarded.
-- **A sender that breaks transmission mid-utterance** — the held utterance
-  arrives as two deliveries. The supported client transmits continuously while
-  the key is held, so it does not break mid-utterance; a sender configured for
-  discontinuous transmission is outside that boundary. See
-  `@input#live-evidence-already-established` for the observations behind it.
-- **Packet loss, reordering, and mid-call key rotation** — unverified at design
-  time. Ordering is applied before the closure rule; each unresolved case
-  resolves to no submission rather than to a guess.
+- **Packet loss, reordering, and mid-call key rotation** — ordering is applied
+  before the closure rule; a case the rule cannot resolve produces no
+  submission rather than a guess.
 - **Sidecar unavailable or crashed** — the voice room is simply unavailable;
   text conversation is unaffected.
 - **Bot identity divergence** — where the configured voice token authenticates
