@@ -135,6 +135,17 @@ Both values are rendered once into the opening and the paired close is derived
 from it, so the two never disagree.
 <!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 
+<!-- planned:fix-user-turn-reflection-identity-segments-r -->
+During mixed-version operation, the caller opening recognizer accepts both the
+keyed and preceding keyless shape. An upgraded target canonicalizes a keyless
+live caller envelope from the command's structured caller metadata and durable
+occurrence key before accepting it into the native-entry path; it never parses
+the keyless header for author identity. An older target treats the added final
+field as part of the already-open caller delimiter and derives its matching
+close from that complete opening. The keyless transition remains a compatibility
+reader only; upgraded writers emit the keyed shape.
+<!-- /planned:fix-user-turn-reflection-identity-segments-r -->
+
 ### One model, two codecs
 
 The registry owns one semantic envelope model: kind, label, closure discipline,
