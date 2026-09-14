@@ -21,9 +21,6 @@ and where those outputs land.
   - Frontmatter: required `name` and `description`
   - Identity: `name` must equal the containing folder in every skill package
   - Body: pass-through; never graded against TeleClaude's artifact taxonomy
-- **Agents**:
-  - Frontmatter: `name`, `description`, optional tool and permission fields
-  - Body: normalized agent schema (see below)
 - **Hooks**:
   - Frontmatter and body follow the target runtime’s hook schema
 
@@ -164,21 +161,6 @@ The `SKILL.md` body and every supporting Markdown resource retain their upstream
 structure and are not checked against any section taxonomy. The universal `name`,
 `description`, and folder-identity contract applies to the entrypoint.
 
-### Agents
-
-1. `# <Agent Name>`
-2. `## Required reads` (only if needed)
-3. Activation line: `You are now the <Role>.`
-4. `## Purpose`
-5. `## Scope`
-6. `## Inputs`
-7. `## Outputs`
-8. `## Procedure`
-
-All normalized sections are mandatory for agents; only the explicitly identified
-sections above are optional. If content does not fit the normalized sections, it
-should not be included in those artifacts.
-
 ## Known caveats
 
 - Normalized commands use the declared command frontmatter. Skill packages may
@@ -207,13 +189,12 @@ should not be included in those artifacts.
 ### Runtime support matrix
 
 - **Claude Code**
-  - Commands, Skills, Agents, Hooks
+  - Commands, Skills, Hooks
   - Outputs: `~/.claude/` (global) and `.claude/` (project)
 - **Codex CLI**
   - Commands, Skills
-  - No Hooks, no Agents
+  - No Hooks
   - Outputs: `~/.codex/` (global) and `.codex/` (project)
 - **Gemini CLI**
   - Commands, Skills, Hooks
-  - No Agents
   - Outputs: `~/.gemini/` (global) and `.gemini/` (project)
