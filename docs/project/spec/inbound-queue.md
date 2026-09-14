@@ -50,11 +50,11 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     session_id TEXT NOT NULL,
     origin TEXT NOT NULL,
     message_type TEXT NOT NULL DEFAULT 'text'
-        CHECK(message_type IN ('text', 'voice', 'file', 'reminder')),
+        CHECK(message_type IN ('text', 'voice', 'file')),
     text_kind TEXT NOT NULL DEFAULT 'ordinary'
-        CHECK(text_kind IN ('platform_control', 'identity_content', 'reminder', 'ordinary')),
+        CHECK(text_kind IN ('platform_control', 'identity_content', 'ordinary')),
     source_feature TEXT NOT NULL DEFAULT ''
-        CHECK(source_feature IN ('', 'telegram', 'discord', 'whatsapp', 'web', 'voice', 'relay', 'caller_send', 'peer_bundle', 'listener', 'agent_restart', 'reminder')),
+        CHECK(source_feature IN ('', 'telegram', 'discord', 'whatsapp', 'web', 'voice', 'relay', 'caller_send', 'peer_bundle', 'listener', 'agent_restart')),
     occurrence_key TEXT,
     content TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
