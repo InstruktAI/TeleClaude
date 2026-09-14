@@ -49,14 +49,9 @@ the local store is expected and not reported**: todos are machine-local, so a
 snippet carried in git routinely references an in-flight todo that lives on
 another computer, or one already hard-purged with its markers folded by
 maintenance. A slug resolving to a **delivered** todo is reported only when the
-validated checkout contains that todo's delivery commit. The fold is an act of
-the delivery commit itself, so a checkout that does not contain that commit
-still carries the markers correctly and is not reported; the todos store is
-machine-local and unversioned, and delivery status alone therefore establishes
-nothing about the tree being validated. A delivered todo whose delivery commit
-is unrecorded is likewise not reported, because the checkout relation cannot be
-established. Scoped per-file runs and runs without a reachable todos DB
-validate shape only.
+validated checkout contains that todo's delivery commit. A delivered todo whose
+delivery commit is unrecorded is not reported. Scoped per-file runs and runs
+without a reachable todos DB validate shape only.
 <!-- /planned-change:fix-delivered-slug-marker-check-blocks-sync -->
 
 ## Canonical fields
