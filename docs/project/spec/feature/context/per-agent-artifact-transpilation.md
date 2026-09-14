@@ -78,19 +78,6 @@ Scenario: Codex output escapes single-quoted scalars in frontmatter
   And the artifact is written under the Codex per-agent output directory
 ```
 
-<!-- planned-change:drop-skill-taxonomy-optin -->
-```
-Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
-  Given a source skill artifact with name, description, and parameters
-  When the transpiler processes the skill for the Gemini target
-  Then the Gemini skill transform delegates to the shared frontmatter emitter
-  And the output is Markdown with YAML frontmatter (same shape as the Claude skill output)
-  And the "hooks" key is removed from the emitted frontmatter
-  And the parameters preamble is rendered into the body as HTML comments
-  And the required source name is checked against the skill folder before emission
-  And teleclaude_taxonomy is stripped from emitted frontmatter when present
-```
-<!-- change:drop-skill-taxonomy-optin -->
 ```
 Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
   Given a source skill artifact with name, description, and parameters
@@ -101,7 +88,6 @@ Scenario: Gemini skill is transpiled to Markdown/YAML, not TOML
   And the parameters preamble is rendered into the body as HTML comments
   And the required source name is checked against the skill folder before emission
 ```
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ```
 <!-- planned-change:retire-native-artifact-deployment -->
@@ -130,18 +116,6 @@ Scenario: Missing per-agent output directory is created automatically
   And no error is raised for the missing parent path
 ```
 
-<!-- planned-change:drop-skill-taxonomy-optin -->
-```
-Scenario: Skill packages retain upstream structure through the runtime renderer
-  Given a skill package exists under agents/skills/<name>/ or .agents/skills/<name>/
-  And its Markdown does not follow TeleClaude's normalized skill section taxonomy
-  When the transpiler processes the skill for any target agent
-  Then the entrypoint's name, description, and folder identity are validated
-  And body taxonomy validation runs only when SKILL.md declares teleclaude_taxonomy: true
-  And inline directives and agent tokens are rendered through the normal pipeline
-  And the skill is emitted under the source folder's name for each target agent
-```
-<!-- change:drop-skill-taxonomy-optin -->
 #### UC-PAT1: A skill package retains its upstream structure
 
 ```gherkin
@@ -153,7 +127,6 @@ Scenario: An agent synchronizes a skill package with upstream-authored structure
   And inline directives and agent tokens are rendered through the normal pipeline
   And the package keeps the source folder's name wherever it is emitted
 ```
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 <!-- planned:retire-native-artifact-deployment -->
 

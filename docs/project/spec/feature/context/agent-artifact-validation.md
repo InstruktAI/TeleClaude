@@ -12,16 +12,9 @@ visibility: 'public'
 ## What it is
 
 Agent artifact validation is the context gate that runs during `telec sync`.
-<!-- planned-change:drop-skill-taxonomy-optin -->
-It enforces the normalized shape of commands and agents, plus a two-tier skill
-contract. Every `SKILL.md` must declare `name` and `description`, with `name`
-equal to its folder. A skill body is graded against TeleClaude's taxonomy only
-when its frontmatter declares `teleclaude_taxonomy: true`.
-<!-- change:drop-skill-taxonomy-optin -->
 It enforces the normalized shape of commands and agents, plus a skill identity
 contract. Every `SKILL.md` must declare `name` and `description`, with `name`
 equal to its folder. Skill bodies are never graded against TeleClaude's taxonomy.
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 <!-- planned-change:agent-artifact-source-layout -->
 
@@ -59,31 +52,10 @@ Scenario: Every skill entrypoint has identity metadata
   Given SKILL.md exists in a skill source folder of any tier
 <!-- /planned-change:agent-artifact-source-layout -->
   And its name or description frontmatter is missing, empty, or its name differs from <name>
-<!-- planned-change:drop-skill-taxonomy-optin -->
-  When artifact validation runs
-  Then the entrypoint is rejected regardless of its taxonomy opt-in
-<!-- change:drop-skill-taxonomy-optin -->
   When artifact validation runs
   Then the entrypoint is rejected
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 ```
 
-<!-- planned-change:drop-skill-taxonomy-optin -->
-```
-Scenario: A third-party skill body stays outside taxonomy validation
-  Given a validly identified SKILL.md does not declare teleclaude_taxonomy: true
-  And its headings and section order do not match TeleClaude's normalized skill schema
-  When artifact validation runs
-  Then the body produces no taxonomy-validation finding
-```
-
-```
-Scenario: A TeleClaude skill opts into the complete taxonomy
-  Given a validly identified SKILL.md declares teleclaude_taxonomy: true
-  When its H1, Required reads placement, normalized sections, inline references, or See Also references are invalid
-  Then artifact validation rejects the skill entrypoint
-```
-<!-- change:drop-skill-taxonomy-optin -->
 #### UC-AAV1: A skill body stays outside taxonomy validation
 
 ```gherkin
@@ -93,7 +65,6 @@ Scenario: An agent validates a skill package that retains its upstream body stru
   When the agent runs artifact validation
   Then the skill body produces no taxonomy-validation finding
 ```
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ```
 Scenario: Command lacks the role activation line
@@ -232,15 +203,9 @@ Scenario: The cross-publisher skill-name collision check runs on a full validati
   check does not verify existence in isolation.
 - The heading collector skips fenced code blocks so example markdown inside
   code fences does not produce false H2 hits.
-<!-- planned-change:drop-skill-taxonomy-optin -->
-- Skill discovery requires the `SKILL.md` filename specifically. Its identity
-  metadata is always validated, while body taxonomy is opt-in. Supporting Markdown
-  remains opaque package content in either skill scope.
-<!-- change:drop-skill-taxonomy-optin -->
 - Skill discovery requires the `SKILL.md` filename specifically. Its identity
   metadata is always validated, and its body is never graded against TeleClaude's
   taxonomy. Supporting Markdown remains opaque package content in either skill scope.
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 <!-- planned-change:agent-artifact-source-layout -->
 - The mother-project gate remains a silent skip for global commands, agents,
   addenda, and masters. Registered projects' `agents/skills/<name>/` folders are

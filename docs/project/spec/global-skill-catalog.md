@@ -78,15 +78,9 @@ all projects pinned to the same digest.
 2. A global skill folder in any other registered root is a validation finding naming the
    folder, and it blocks the sync.
 <!-- /planned-change:agent-artifact-source-layout -->
-<!-- planned-change:drop-skill-taxonomy-optin -->
-3. Each entrypoint receives universal identity validation: non-empty `name` and
-   `description`, with `name` equal to the containing folder. Body taxonomy runs only
-   when `SKILL.md` declares `teleclaude_taxonomy: true`; supporting Markdown is opaque.
-<!-- change:drop-skill-taxonomy-optin -->
 3. Each entrypoint receives universal identity validation: non-empty `name` and
    `description`, with `name` equal to the containing folder. Skill bodies and supporting
    Markdown are opaque to taxonomy validation.
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 4. Sync computes each package-tree digest and materializes any missing immutable
    snapshot under the skill store.
 5. Sync assembles `.skills.next` from name-to-snapshot symlinks and atomically swaps it
@@ -108,19 +102,11 @@ the listing on demand; a package absent from that listing is incorporated throug
 
 ### Authorship
 
-<!-- planned-change:drop-skill-taxonomy-optin -->
-
-The catalog is a third-party curation surface. Packages enter through
-`general/procedure/skill-management`, keep their upstream structure, and do not opt into
-TeleClaude taxonomy. Every package uses the same rendering pipeline.
-
-<!-- change:drop-skill-taxonomy-optin -->
 
 The catalog is a third-party curation surface. Packages enter through
 `general/procedure/skill-management` and keep their upstream structure. Every package
 uses the same rendering pipeline.
 
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 ## Known caveats
 

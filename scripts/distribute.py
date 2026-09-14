@@ -169,7 +169,6 @@ ArtifactFrontmatter = TypedDict(
         "argument-hint": str,
         "domain": str,
         "hooks": object,
-        "teleclaude_taxonomy": bool,
         "parameters": list[
             dict[str, object]  # guard: loose-dict - TOML parsed data — pyproject config
         ],  # guard: loose-dict - Parameter dicts have variable schema per artifact type
@@ -513,7 +512,6 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     filtered = cast(ArtifactFrontmatter, dict(metadata))
     if agent_name != "claude":
         filtered.pop("hooks", None)
-    filtered.pop("teleclaude_taxonomy", None)
     return filtered
 
 

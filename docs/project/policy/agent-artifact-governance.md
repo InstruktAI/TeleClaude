@@ -17,11 +17,7 @@ visibility: 'public'
 <!-- change:agent-artifact-source-layout -->
 - The TeleClaude repo is the mother project for global artifact governance. Only this repo publishes the global master, general commands, global skills, addenda, and catalog instructions; a domain-partitioned global command publishes from the one repository that declares its domain.
 <!-- /planned-change:agent-artifact-source-layout -->
-<!-- planned-change:drop-skill-taxonomy-optin -->
-- Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Every entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure unless `SKILL.md` explicitly declares `teleclaude_taxonomy: true`.
-<!-- change:drop-skill-taxonomy-optin -->
 - Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Every entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure.
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 <!-- planned-change:agent-artifact-source-layout -->
 - The Mother project alone owns `agents/skills/AGENTS.master.md`. A side project's `agents/skills/AGENTS.master.md` or generated `AGENTS.md` is never parsed or published; only its named skill folders contribute.
 <!-- change:agent-artifact-source-layout -->
