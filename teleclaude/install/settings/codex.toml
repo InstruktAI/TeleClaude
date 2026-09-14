@@ -12,6 +12,9 @@ sandbox_mode                      ="danger-full-access"
 show_raw_agent_reasoning          =true
 suppress_unstable_features_warning=true
 
+[tui]
+  auto_recap=false
+
 [features]
   hooks      =true
   memories   =false
