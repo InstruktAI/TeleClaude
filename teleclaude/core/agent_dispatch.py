@@ -235,23 +235,21 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
 }
 _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit thinking mode: fast, med, or slow"
 _MODEL_SKIP_REASON_PREFIX = "model_"
+_COMMAND_PREFIX = "/"
 
 
 def _order_for(
     command: str | None,
 ) -> tuple[tuple[str, ...], AgentDispatchReason, AgentDispatchOrderBranch]:
     slash_command = None
-    if command is not None and command.startswith("/"):
-        # Only a genuine slash-command attempt is worth surfacing. Generic fresh
-        # work — an ordinary first message with no leading slash, e.g. plain
-        # chat from Telegram/Discord — is the normal, expected case (UC-RAAD-5)
-        # and must never be parsed or logged: doing either turns arbitrary
-        # caller-supplied conversation content into a dispatch-decision detail.
-        token = command.lstrip("/").split(maxsplit=1)[0]
+    if command is not None and command.startswith(_COMMAND_PREFIX):
+        # A leading slash marks a genuine command attempt; anything else is
+        # generic fresh work and is never parsed here.
+        token = command.lstrip(_COMMAND_PREFIX).split(maxsplit=1)[0]
         try:
             slash_command = SlashCommand(token)
         except ValueError:
-            logger.error("agent_dispatch_command_unmapped command=%s", token)
+            logger.error("agent_dispatch_command_unmapped")
     if slash_command is None:
         return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE, AgentDispatchOrderBranch.GLOBAL
     policy = _COMMAND_POLICIES.get(slash_command)
