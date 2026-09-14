@@ -315,7 +315,6 @@ Then the session is not treated as terminal (a stuck or in-flight close must sti
 And the close command is dispatched and the request is accepted as usual
 ```
 
-<!-- planned:fix-session-coordination-cannot-correlate-ac -->
 #### UC-SL37: Manual close distinguishes lifecycle-driver relationships
 
 ```gherkin
@@ -330,7 +329,6 @@ When no current or recorded relationship explains the session
 Then the close continues without changing todo state
 And the unexplained correlation is reported
 ```
-<!-- /planned:fix-session-coordination-cannot-correlate-ac -->
 
 #### UC-SL30: Caller-scoped termination closes every direct child and nothing else
 
