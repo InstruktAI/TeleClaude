@@ -74,6 +74,16 @@ contracts and never creates shared ownership.
   membership — which of the repository's paths are retained; `agent_runtime`
   asks, and neither decides membership nor substitutes an answer where none is
   published.
+<!-- planned:agent-artifact-source-layout -->
+- `workflow` owns the canonical command-name vocabulary and emits every name
+  domain-qualified; `context` owns the corpus those names are laid out in and
+  the reach that admits a source into it, read from `config`'s publishing
+  declaration; `agent_runtime` owns resolving an emitted name to one corpus
+  document at dispatch. None of the four restates another's rule: `workflow`
+  never inspects the corpus, `context` never composes a dispatch, and
+  `agent_runtime` never decides reach.
+<!-- /planned:agent-artifact-source-layout -->
+
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web
 frontend are `presentation`'s hosting surfaces. Existing placement outside

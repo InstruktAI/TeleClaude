@@ -49,6 +49,25 @@ hold none to is read at whatever its snippets declare about themselves. The
 scope is a property of the caller, never of the invocation's directory.
 <!-- /planned:docs-tier-layering -->
 
+<!-- planned:agent-artifact-source-layout -->
+- **Also owns:** the artifact-source registry — which directories of a
+  registered root are authored artifact sources, of which kind, at which tier,
+  with which reach — and every decision taken from it: reach admission,
+  composition of the domain-partitioned global command corpus and the
+  mother-only skill catalog, project delivery, and retraction of what a run no
+  longer produces. Implementation roots for this ownership are
+  `teleclaude/agent_artifacts.py`, `teleclaude/artifact_ownership.py`,
+  `teleclaude/global_skills.py`, and `scripts/distribute.py`.
+- **Also does not own:** the publishing declaration that bounds reach (a
+  `config` fact), the canonical command-name vocabulary (a `workflow` fact), or
+  the resolution of a name to a document at dispatch (an `agent_runtime`
+  decision). This context consumes the first through its published contract
+  and lays out the corpus the other two are defined against.
+- **Also publishes:** the registry as a typed contract every directory consumer
+  reads; the composed corpus laid out as `<domain>/<name>`; and reach and
+  collision findings that name the offending files.
+<!-- /planned:agent-artifact-source-layout -->
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md
