@@ -164,7 +164,6 @@ async def _resolve_launch_intent(
             mode=mode,
             role=cmd.job,
             command=cmd.initial_input,
-            todo_kind=todo_kind,
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
             producer_agent=cmd.producer_agent,

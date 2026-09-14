@@ -23,7 +23,6 @@ from teleclaude.core.agent_availability import (
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.models._session import AgentDispatchMode
-from teleclaude.types.todo_kind import TODO_KIND_BUG, TODO_KIND_CHANGE, TODO_KIND_FEATURE
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionEntryPoint
@@ -151,7 +150,6 @@ class AgentDispatchOrderBranch(StrEnum):
     """Closed token naming which policy resolved an automatic dispatch's candidate order."""
 
     COMMAND_POLICY = "command_policy"
-    TODO_KIND = "todo_kind"
     GLOBAL = "global"
     JOB_DECLARATION = "job_declaration"
 
@@ -239,36 +237,21 @@ _THINKING_MODE_REQUIRED_MESSAGE = "Assess the work and retry with an explicit th
 _MODEL_SKIP_REASON_PREFIX = "model_"
 
 
-def _command_policy(command: str | None) -> CommandDispatchPolicy | None:
-    if command is None:
-        return None
-    try:
-        return _COMMAND_POLICIES.get(SlashCommand(command.lstrip("/").split(maxsplit=1)[0]))
-    except ValueError:
-        return None
-
-
 def _order_for(
-    command: str | None, todo_kind: str | None
+    command: str | None,
 ) -> tuple[tuple[str, ...], AgentDispatchReason, AgentDispatchOrderBranch]:
-    command_name = command.lstrip("/").split(maxsplit=1)[0] if command is not None else None
-    if command_name == SlashCommand.NEXT_PREPARE.value:
-        if todo_kind == TODO_KIND_FEATURE:
-            return (
-                _COMMAND_POLICIES[SlashCommand.NEXT_PREPARE].agent_order,
-                AgentDispatchReason.ROLE_PREFERENCE,
-                AgentDispatchOrderBranch.TODO_KIND,
-            )
-        if todo_kind in {TODO_KIND_CHANGE, TODO_KIND_BUG}:
-            return _CODEX_FIRST, AgentDispatchReason.ROLE_PREFERENCE, AgentDispatchOrderBranch.TODO_KIND
-        return (
-            _COMMAND_POLICIES[SlashCommand.NEXT_PREPARE].agent_order,
-            AgentDispatchReason.GLOBAL_UNMAPPED_ROLE,
-            AgentDispatchOrderBranch.TODO_KIND,
-        )
-    policy = _command_policy(command)
-    if policy is None:
+    slash_command = None
+    if command is not None:
+        try:
+            slash_command = SlashCommand(command.lstrip("/").split(maxsplit=1)[0])
+        except ValueError:
+            logger.error("agent_dispatch_command_unmapped command=%s", command)
+    if slash_command is None:
         return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE, AgentDispatchOrderBranch.GLOBAL
+    policy = _COMMAND_POLICIES.get(slash_command)
+    if policy is None:
+        logger.error("agent_dispatch_policy_defect command=%s", slash_command.value)
+        return _GLOBAL_ORDER, AgentDispatchReason.KNOWN_ROLE_POLICY_DEFECT, AgentDispatchOrderBranch.GLOBAL
     return policy.agent_order, AgentDispatchReason.ROLE_PREFERENCE, AgentDispatchOrderBranch.COMMAND_POLICY
 
 
@@ -425,7 +408,6 @@ async def resolve_agent_dispatch(
     mode: AgentDispatchMode,
     role: str | None,
     command: str | None,
-    todo_kind: str | None,
     preferred_agent: str | None,
     fixed_agent: str | None,
     producer_agent: str | None,
@@ -473,7 +455,7 @@ async def resolve_agent_dispatch(
         reason = AgentDispatchReason.JOB_DECLARATION
         order_branch = AgentDispatchOrderBranch.JOB_DECLARATION
     else:
-        policy_order, reason, order_branch = _order_for(command, todo_kind)
+        policy_order, reason, order_branch = _order_for(command)
     order = _order_with_preference(policy_order, preferred_agent)
     eligible = [
         agent
