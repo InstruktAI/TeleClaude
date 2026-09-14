@@ -214,7 +214,14 @@ FLAG_TODO_PROJECT_ROOT = Flag(
     "--project-root", "-p", desc="Target an explicit project root instead of the invocation cwd", arity=VALUE
 )
 FLAG_TODO_GROUP = Flag(
-    "--group", desc="Attach the new todo as a child of <parent-slug>, making the parent a holder", arity=VALUE
+    "--group",
+    desc=(
+        "Attach the new todo as a child of <parent-slug>, making the parent a holder. Grouping moves the "
+        "parent's pending documentation ownership to the first grouped child: every in-body marker, companion "
+        "filename, and delivered_by membership naming the parent is rewritten to that child and committed as part "
+        "of the same transition."
+    ),
+    arity=VALUE,
 )
 FLAG_TODO_PLAN = Flag(
     "--plan",

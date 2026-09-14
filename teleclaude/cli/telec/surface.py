@@ -567,7 +567,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "via the existing derivation; the first grouped child strips the parent's todo_state "
                     "while preserving all its artifacts as frozen evidence, and is refused once the parent's "
                     "lifecycle_phase has reached prepared or the work lane, so build, review, and finalize "
-                    "state is never shredded.",
+                    "state is never shredded. Grouping also moves the parent's pending documentation ownership to the first "
+                    "grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent "
+                    "is rewritten to that child and committed as part of the same transition.",
                     "ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. "
                     "Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where "
                     "human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI "

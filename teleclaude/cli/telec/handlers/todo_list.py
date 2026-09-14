@@ -12,6 +12,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import TODO_LIST
+from teleclaude.constants import TodoStatus
 from teleclaude.core.todo import parse_since_to_cutoff
 from teleclaude.core.todo_tree import TodoNode, build_todo_sections, flatten
 from teleclaude.project_root import resolve_invocation_project_root
@@ -171,6 +172,11 @@ def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
 
 def _node_to_dict(node: TodoNode) -> _TrimmedTodoDict:
     result = _todo_to_trimmed_dict(node.todo)
+    if node.is_holder and node.todo.status in (TodoStatus.DELIVERED, TodoStatus.REMOVED):
+        # Terminal holders are labels; only active holders expose leaf-derived status.
+        result.pop("status", None)
+        result.pop("delivered_at", None)
+        result.pop("removed_at", None)
     if node.children:
         result["children"] = [_node_to_dict(child) for child in node.children]
     return result
