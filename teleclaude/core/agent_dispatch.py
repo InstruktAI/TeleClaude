@@ -241,7 +241,12 @@ def _order_for(
     command: str | None,
 ) -> tuple[tuple[str, ...], AgentDispatchReason, AgentDispatchOrderBranch]:
     slash_command = None
-    if command is not None:
+    if command is not None and command.startswith("/"):
+        # Only a genuine slash-command attempt is worth surfacing. Generic fresh
+        # work — an ordinary first message with no leading slash, e.g. plain
+        # chat from Telegram/Discord — is the normal, expected case (UC-RAAD-5)
+        # and must never be parsed or logged: doing either turns arbitrary
+        # caller-supplied conversation content into a dispatch-decision detail.
         token = command.lstrip("/").split(maxsplit=1)[0]
         try:
             slash_command = SlashCommand(token)
