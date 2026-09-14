@@ -7,9 +7,9 @@ visibility: 'public'
 
 ## Goal
 
-Scan the current project's logs, deduplicate error signals, and file the remaining
-observed failures through `telec bugs report`. The bug lifecycle owns diagnosis
-and implementation.
+Scan the current project's logs, reject warnings and errors attributable to congestion or
+a computer restart, deduplicate the remaining error signals, and file the observed failures
+through `telec bugs report`. The bug lifecycle owns diagnosis and implementation.
 
 ## Preconditions
 
@@ -32,12 +32,23 @@ and implementation.
      A successful empty result is a clean scan. A failed collection is an
      incomplete scan, reported under Recovery.
 
-2. Read the logs and group related errors, exceptions, tracebacks, and repeated
-   warnings into distinct signals. Ignore informational and debug output.
-   Use the observed messages and context; do not investigate the codebase to
-   establish a diagnosis.
+2. Establish which records are eligible to become signals.
+   - Under `software-development/policy/observability`, only `ERROR` and `CRITICAL`
+     records, exceptions, and tracebacks are filing candidates. A `WARNING` never becomes
+     a signal or bug report, however often it repeats. Adjacent warnings may be read only as
+     context for an eligible error; they are not findings and are omitted from the report.
+   - Group related eligible records into distinct error signals. Use the observed messages
+     and context; do not investigate the codebase to establish a diagnosis.
+   - Before an error signal may proceed, falsify both operational explanations: congestion
+     and a computer restart. Correlate its timing and surrounding records with the available
+     restart evidence, resource-pressure or backlog evidence, and subsequent recovery. The
+     filing burden is positive: absence of evidence for congestion or restart is not evidence
+     against them.
+   - When congestion or a computer restart explains the error, exclude it. When the available
+     observations cannot rule out either cause, exclude it as causally inconclusive. Record the
+     exclusion in the run report; never create a bug to obtain the missing causal evidence.
 
-3. Deduplicate each signal.
+3. Deduplicate each error signal that passed the eligibility and causal gates.
    - Read `telec bugs suppressions` for the project. Match only active entries,
      using each entry's declared substring or regex semantics. Record matches
      with their suppression IDs. Skip an invalid regex and record that error.
@@ -49,7 +60,7 @@ and implementation.
    - New evidence for an already tracked failure belongs with that finding in
      this run's report; it does not create a second bug for the same failure.
 
-4. File every remaining signal through the bug front door.
+4. File every remaining error signal through the bug front door.
    - Submit the observed error summary and a representative log excerpt through
      `telec bugs report '<description>'`. Use `--project <owner>` when the
      defective system belongs to a different project than the scanned logs.
@@ -61,22 +72,25 @@ and implementation.
      with the remaining signals.
 
 5. Write the run report under Outputs, including a clean or failed scan.
-   Mark the scan complete only after log collection and deduplication succeeded
-   and every signal has been filed or matched to an active suppression or
-   existing work. An outstanding filing keeps the scan incomplete.
+   Mark the scan complete only after log collection, causal classification, and
+   deduplication succeeded and every eligible error signal has been filed, excluded,
+   or matched to an active suppression or existing work. An outstanding filing keeps
+   the scan incomplete.
    Return the outcome to the job brief's structured close-out step.
 
 ## Outputs
 
-- A bug filed for each observed error that is neither suppressed nor already tracked.
+- A bug filed for each observed error that passes the causal gate and is neither suppressed
+  nor already tracked.
 - A Markdown report named by the run timestamp in the job's run directory:
   `~/.teleclaude/jobs/{project_slug}/{job_id}/runs/`.
 
 Create the directory when needed. Each report carries:
 
 - **Summary:** project, scan start and end, complete or incomplete, and outcome.
-- **Findings:** each signal's observed evidence and disposition — filed bug slug,
-  existing work slug, suppression ID, or outstanding filing.
+- **Findings:** each eligible error signal's observed evidence and disposition — filed bug
+  slug, existing work slug, suppression ID, exclusion cause, or outstanding filing. Warning
+  records do not appear as findings.
 - **Errors:** collection, deduplication, or filing failures; use "None" when absent.
 
 The report is the scan history consumed by the next run. The structured outcome
@@ -88,6 +102,9 @@ submitted by the job brief records whether this run completed successfully.
   scan. Report failure; do not describe unavailable logs as a clean run.
 - If suppression or active-work lookup fails, preserve the affected signals as
   outstanding and report failure. Resume deduplication on the next run.
+- If the available observations cannot falsify congestion or a computer restart for an error,
+  record the causal-evidence gap and exclude that error from filing. Uncertainty never promotes
+  an operationally explainable error into a bug report.
 - A missing report history is a first scan, not a failed lookup; use the declared
   schedule interval and current suppression and work records.
 - A failed filing does not block attempts for other signals. Carry its evidence
@@ -97,5 +114,6 @@ submitted by the job brief records whether this run completed successfully.
 
 ## See Also
 
+- ~/.teleclaude/docs/software-development/policy/observability.md
 - ~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md
 - ~/.teleclaude/docs/general/policy/human-contract.md
