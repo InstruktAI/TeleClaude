@@ -242,10 +242,11 @@ def _order_for(
 ) -> tuple[tuple[str, ...], AgentDispatchReason, AgentDispatchOrderBranch]:
     slash_command = None
     if command is not None:
+        token = command.lstrip("/").split(maxsplit=1)[0]
         try:
-            slash_command = SlashCommand(command.lstrip("/").split(maxsplit=1)[0])
+            slash_command = SlashCommand(token)
         except ValueError:
-            logger.error("agent_dispatch_command_unmapped command=%s", command)
+            logger.error("agent_dispatch_command_unmapped command=%s", token)
     if slash_command is None:
         return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE, AgentDispatchOrderBranch.GLOBAL
     policy = _COMMAND_POLICIES.get(slash_command)
