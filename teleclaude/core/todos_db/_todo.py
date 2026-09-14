@@ -27,7 +27,7 @@ from teleclaude.core.next_machine.marker_reconciliation import (
     restore_lifecycle_markers,
 )
 from teleclaude.core.todos_db._base import _generate_id
-from teleclaude.core.todos_db._errors import HolderTransitionRefused
+from teleclaude.core.todos_db._errors import HolderReconciliationRefused, HolderTransitionRefused
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
     TODO_TABLE,
@@ -214,7 +214,9 @@ class TodosDbTodoMixin:
             new_slug=first_child_slug,
         )
         if not receipt.succeeded:
-            raise ValueError(f"cannot group under {group_slug!r}: marker reconciliation failed ({receipt.reason})")
+            raise HolderReconciliationRefused(
+                f"cannot group under {group_slug!r}: marker reconciliation failed ({receipt.reason})"
+            )
 
         parent.status = TodoStatus.HOLDER.value
         parent.updated_at = datetime.now(UTC).isoformat()

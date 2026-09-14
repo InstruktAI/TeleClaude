@@ -24,3 +24,12 @@ class HolderTransitionRefused(ValueError):
     working, while the API layer can catch this specific type and surface a
     clean 409.
     """
+
+
+class HolderReconciliationRefused(ValueError):
+    """A holder transition was refused because documentation reconciliation failed safely.
+
+    Subclasses ``ValueError`` so existing ``except ValueError`` paths keep
+    working, while the API layer can catch this specific type and surface a
+    clean 409.
+    """
