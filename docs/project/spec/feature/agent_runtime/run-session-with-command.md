@@ -313,6 +313,20 @@ And the context appears after the loader, never inside the marker line and never
 And this holds whether the request supplies command arguments or none
 ```
 
+<!-- planned:agent-artifact-source-layout -->
+
+#### UC-CLR11: The loader resolves a domain-qualified name directly and a bare token to its unique corpus match
+
+```
+Given the command corpus carries global commands under <domain>/ and project commands at its root
+When loader composition resolves a canonical name before any corpus read
+Then a name of the form <domain>/<token> resolves to <domain>/<token>.md and nothing else
+And a bare token resolves to <token>.md at the corpus root when that file exists
+And otherwise a bare token resolves to the one <domain>/<token>.md the corpus carries
+And a bare token that matches more than one domain composes no loader and is refused naming every candidate
+And a bare token that matches nothing is refused as an unknown command
+```
+<!-- /planned:agent-artifact-source-layout -->
 
 #### Dispatch privilege enforcement
 

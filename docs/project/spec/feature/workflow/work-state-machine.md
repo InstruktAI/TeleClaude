@@ -382,6 +382,18 @@ And the script contains neither remembered child identifiers nor a manual child-
 And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and prepare-to-work resumes emit no bulk child cleanup
 ```
 
+<!-- planned:agent-artifact-source-layout -->
+#### UC-WSM14: Every command the work machine emits is domain-qualified
+
+```gherkin
+Given the work machine composes a build, review, fix, finalize, or drift dispatch
+When it names a command in that script
+Then the name is the canonical domain-qualified value from the command vocabulary
+And a live-session lookup for that slug and command matches the qualified token
+```
+
+<!-- /planned:agent-artifact-source-layout -->
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.

@@ -35,6 +35,13 @@ feature specs remain the current contract.
   which is why the answer is published from here rather than from the context
   that owns the project's configuration file. Consumers read it through this
   contract and never interpret git metadata themselves.
+<!-- planned:agent-artifact-source-layout -->
+- **Also owns:** the canonical command-name vocabulary — one domain-qualified
+  value per command — and every emission of it: dispatch requests, machine
+  scripts, procedure loads, and the session titles and live-session matches
+  derived from them. The corpus those names are laid out in belongs to
+  `context`; resolving a name to a document belongs to `agent_runtime`.
+<!-- /planned:agent-artifact-source-layout -->
 
 ## See Also
 

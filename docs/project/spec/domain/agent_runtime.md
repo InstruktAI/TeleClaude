@@ -88,6 +88,13 @@ TeleClaudeNext repository.
   reaches both only through these contracts, never by reading hook internals,
   the native-session map, or session storage directly.
 <!-- /planned-change:external-session-identity -->
+<!-- planned:agent-artifact-source-layout -->
+- **Also owns:** resolving a canonical command name to one corpus document at
+  dispatch — a domain-qualified name directly, a bare token to the root file or
+  its unique partitioned match, ambiguity refused by name. It reads the corpus
+  `context` publishes and the vocabulary `workflow` emits, and decides neither
+  reach nor layout.
+<!-- /planned:agent-artifact-source-layout -->
 
 ## See Also
 

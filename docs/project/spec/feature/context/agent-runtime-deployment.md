@@ -84,6 +84,7 @@ directories, eager-indexed in their context's generated entrypoint.
 <!-- /planned-change:agent-artifact-source-layout -->
 
 
+<!-- planned-change:agent-artifact-source-layout -->
 TeleClaude command artifacts are not runtime artifacts at all: command
 documents deploy to `~/.teleclaude/commands/` from the global phase alone,
 and no per-agent runtime receives any command artifact — native or
@@ -93,6 +94,19 @@ which instructs the session to read the corpus document directly. The global
 corpus is the `~/.teleclaude/commands/` directory, reusable across projects. A
 canonical command name is a bare command token or one domain segment followed
 by a command token; the loader resolves both forms.
+<!-- change:agent-artifact-source-layout -->
+TeleClaude command artifacts are not runtime artifacts at all: command
+documents deploy to `~/.teleclaude/commands/` — global commands under
+`<domain>/` from the global phase, project commands at the corpus root under
+their project's scope key from the local phase — and no per-agent runtime
+receives any command artifact, native or otherwise. Commands are reached
+exclusively through the loader message TeleClaude composes at dispatch (and
+for machine-emitted procedure loads), which instructs the session to read the
+corpus document directly. The corpus is the `~/.teleclaude/commands/`
+directory, reusable across projects. The shape of a canonical command name and
+how the loader resolves it are the agent runtime's contract
+(`project/spec/feature/agent_runtime/run-session-with-command`).
+<!-- /planned-change:agent-artifact-source-layout -->
 
 Global skills compose to `~/.teleclaude/skills/` and are discovered through the
 catalog the master points at; they reach no runtime home. Tier-local skills — the
@@ -440,14 +454,15 @@ Scenario: UC-ARD23 Global commands are partitioned by published domain and gated
   And general commands and global skills from a repository that is not the mother are refused the same way
 ```
 
-#### UC-ARD24: A global command is invoked by its explicit domain-namespaced name
+#### UC-ARD24: A global command is deployed under its domain in the corpus
 
 ```
-Scenario: UC-ARD24 A global command is invoked by its explicit domain-namespaced name
-  Given a command deployed to the global corpus under a domain
-  When a session or the lifecycle machinery names that command
-  Then the name carries the domain as its first segment
-  And two domains may each carry a command of the same bare name without collision
+Scenario: UC-ARD24 A global command is deployed under its domain in the corpus
+  Given a repository publishes a domain and carries a command under agents/global/commands/<domain>/
+  When sync runs in deploy mode
+  Then the command is deployed at ~/.teleclaude/commands/<domain>/<name>.md
+  And the deployed-commands manifest records it by that relative path under the publishing scope
+  And two domains may each carry a command of the same bare name without either overwriting the other
 ```
 
 #### UC-ARD32: No sync during the mother's artifact migration retracts a deployed artifact

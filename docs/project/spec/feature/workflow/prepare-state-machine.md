@@ -328,6 +328,18 @@ And the lifecycle runner may reassess the Todo from that recorded state
 And no claim held by a different live session is changed
 ```
 
+<!-- planned:agent-artifact-source-layout -->
+#### UC-WPS26: Every command the prepare machine emits is domain-qualified
+
+```gherkin
+Given the prepare machine composes a dispatch, re-dispatch, or procedure-load script
+When it names a command in that script
+Then the name is the canonical domain-qualified value from the command vocabulary
+And no script carries a bare command token
+```
+
+<!-- /planned:agent-artifact-source-layout -->
+
 ### Auto-continue
 
 Auto-continue is the PREPARED transition behavior that dispatches prepare for newly unblocked dependent children. The executable scenarios are `UC-WPS1` and `UC-WPS2`.

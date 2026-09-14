@@ -56,9 +56,11 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   publisher root's in-reach global command sources.
 - The global skill catalog at `~/.teleclaude/skills/`, composed from the
   mother's `agents/global/skills/<name>/` folders alone.
-- Project delivery: each project's `agents/project/` sources rendered into that
-  project's runtime skill directories and into `.agents/`, which is written and
-  never read.
+- Project commands at the corpus root, `~/.teleclaude/commands/<name>.md`,
+  owned in the deployed-commands manifest under the project's scope key — the
+  path a project command already reaches sessions by today. Project skills
+  rendered into that project's runtime skill directories and into `.agents/`,
+  which is written and never read.
 - Validation findings that name the file and the reach it exceeds, or both
   files and the colliding name, and fail sync.
 - The deployed-commands ownership manifest, keyed by relative corpus path.
@@ -84,17 +86,14 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   The one-owner-per-domain resolution reuses the docs publisher registry
   (`teleclaude/docs_publishers.py`, `PublisherRegistry`): a domain has exactly
   one owning publisher for documentation and for commands, resolved once.
-- **`workflow` owns the name vocabulary.** `SlashCommand` values carry their
-  domain segment (`software-development/next-build`). Every emit site — the
-  prepare and work state-machine formatters, agent dispatch, and the sessions
-  API — composes from the enum and never from a literal. The session title and
-  the live-session matchers compare the qualified token.
-- **`agent_runtime` owns resolution.** The loader
-  (`teleclaude/core/session_startup_message.py`) resolves a domain-qualified
-  name to `<domain>/<name>.md` directly. It resolves a bare token to the unique
-  `*/<name>.md` in the corpus; two matches are refused naming both, and none is
-  refused as today. This is global-corpus resolution only; resolution against a
-  session's tier context is `tier-command-corpus`.
+- **`workflow` owns the name vocabulary and every emission of it.** The rule
+  is stated in the workflow domain spec and bound by the prepare and work
+  state-machine specs; this document only records that the vocabulary is the
+  contract `context` lays the corpus out against.
+- **`agent_runtime` owns resolution.** The rule is stated in the agent runtime
+  domain spec and bound by the run-session-with-command spec; this document
+  only records that resolution reads the corpus `context` publishes and decides
+  nothing about reach or layout.
 - **`config` owns the declaration, never the gate.** `business.publishes` says
   what a repository may reach; `context` decides admission from it.
 
@@ -113,10 +112,23 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 
 ### Corpus layout and names
 
-- The corpus is partitioned by domain; two domains may carry the same bare
-  file name. The deployed-commands manifest keys by relative path
-  (`<domain>/<name>.md`), so partitioning and migration are ordinary
-  add-and-retract deltas within one sync run.
+- The corpus is partitioned by domain for global commands; two domains may
+  carry the same bare file name. Project commands sit at the corpus root under
+  their project's scope key, as they do today; a project carries no domain and
+  claims none.
+- The deployed-commands manifest keys by relative corpus path — `<name>.md` at
+  the root or `<domain>/<name>.md`, never deeper — so partitioning and
+  migration are ordinary add-and-retract deltas within one sync run.
+- **Manifest forward migration.** The manifest carries a schema version. The
+  first load of an unversioned manifest rewrites it in place before any
+  reconciliation reads it: every existing entry is a basename, and a basename is
+  the root-relative path of a file that is at the corpus root, so each entry is
+  carried forward unchanged in meaning and the file gains its version. Domain
+  code reads only the versioned shape; the unversioned reader exists only inside
+  that migration step (`software-development/policy/backward-compatibility-hygiene`,
+  owned internal data). A later sync that stages `<domain>/<name>.md` for a
+  relocated command retracts the root entry and records the partitioned one in
+  the same run.
 - Domain assignment of the mother's existing commands follows the governing
   procedure's domain (`@prd#premises-and-assumptions`): every lifecycle,
   review, run, drift, defer, emulate, coordinate, integrate, work, prepare, and
