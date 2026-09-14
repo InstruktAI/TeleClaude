@@ -18,7 +18,8 @@ conversation binding: a message that creates a session is its first input, and
 a message for an existing session runs there. A launcher-created empty session
 is an existing session for this purpose. Command input does not itself replace
 the session, switch its agent, grant privileges, or change an existing session's
-role or workflow ownership.
+role or workflow ownership. An invoked workflow retains its existing authority
+to claim work and adopt the corresponding role through its own operations.
 
 ## Canonical fields
 
@@ -39,16 +40,20 @@ role or workflow ownership.
   because they contain a command name. A recognized invocation that violates
   an existing argument or authorization rule is refused visibly.
 - For a newly created command session, command identity and applicable role,
-  job, and working-slug metadata are established through canonical command
-  creation. Existing-session invocation preserves that session's authority.
+  job, working-slug metadata, and required execution context are established
+  through canonical command creation. Worktree-bound commands derive their
+  execution context from the command and work item without extra modal input.
+  Existing-session normalization preserves that session's authority; an
+  invoked operation retains its own claim/adoption contract.
 - Discord sender identity is evaluated for the current message. Permission to
   converse in a channel does not confer permission to create a privileged role.
 - Discord invitation, bot filtering, channel ownership, customer/help-desk,
   relay, attachment, and native interaction handling retain their contracts.
   Only text routed to an agent enters shorthand recognition.
 - Accepted command input follows ordinary durable input acceptance and
-  occupancy-aware delivery, retaining the human actor and source occurrence.
-  Command expansion is performed once, and retries do not wrap a loader again.
+  occupancy-aware delivery, retaining the human actor, original command text,
+  and source occurrence separately from generated loader content. Command
+  expansion is performed once, and retries do not wrap a loader again.
 - Non-Discord adapters, ordinary CLI/API messages, peer messages, and text typed
   directly into an agent's native composer acquire no shorthand interpretation
   from this capability. Explicit command dispatch retains its current contract.
@@ -116,9 +121,9 @@ And explicit command-dispatch requests retain their existing loading behavior
 
 ```gherkin
 Given a human sends command input through Discord
-When the requested invocation is not permitted by the sender's or target session's applicable authority
-Then the command invocation is refused visibly
-And no privileged session role or workflow ownership is granted by interpreting the text
+When session creation or an operation performed by the command requires authority the caller does not hold
+Then that operation is refused visibly by its existing authority gate
+And interpreting the text does not grant privileges or bypass workflow ownership
 ```
 
 #### UC-ICI6: Invalid arguments are visible
@@ -151,9 +156,13 @@ And the selected project and agent preference reach that computer unchanged
 
 ## Known caveats
 
-Command loading in an existing session does not perform a role conversion.
-Operations inside the command remain subject to that session's existing
-clearance and workflow ownership rules.
+Shorthand normalization in an existing session does not perform a role
+conversion. Operations inside the command remain subject to existing clearance
+and workflow ownership rules, including authorized claim/adoption transitions.
+
+Discord slash-prefixed input here is ordinary message content delivered to the
+adapter. Native Discord application-command interactions have their separate
+contract; this capability registers no application commands.
 
 ## See Also
 
