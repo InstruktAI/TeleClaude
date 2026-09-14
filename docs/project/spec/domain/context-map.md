@@ -79,9 +79,11 @@ contracts and never creates shared ownership.
   domain-qualified; `context` owns the corpus those names are laid out in and
   the reach that admits a source into it, read from `config`'s publishing
   declaration; `agent_runtime` owns resolving an emitted name to one corpus
-  document at dispatch. None of the four restates another's rule: `workflow`
-  never inspects the corpus, `context` never composes a dispatch, and
-  `agent_runtime` never decides reach.
+  document at dispatch, and owns the session record, title, and live-session
+  attribution query that carry and match the dispatched value, which `workflow`
+  consumes. None of the four restates another's rule: `workflow` never inspects
+  the corpus or matches sessions itself, `context` never composes a dispatch,
+  and `agent_runtime` never decides reach.
 <!-- /planned:agent-artifact-source-layout -->
 
 The daemon, handler, adapter, database, and background-worker labels are layers

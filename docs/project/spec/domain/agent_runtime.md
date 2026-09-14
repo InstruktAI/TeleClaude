@@ -89,11 +89,13 @@ TeleClaudeNext repository.
   the native-session map, or session storage directly.
 <!-- /planned-change:external-session-identity -->
 <!-- planned:agent-artifact-source-layout -->
-- **Also owns:** resolving a canonical command name to one corpus document at
-  dispatch — a domain-qualified name directly, a bare token to the root file or
-  its unique partitioned match, ambiguity refused by name. It reads the corpus
-  `context` publishes and the vocabulary `workflow` emits, and decides neither
-  reach nor layout.
+- **Also owns:** resolving a canonical command name to one document at
+  dispatch — a domain-qualified name in the shared corpus directly, a bare
+  token to its unique match across the dispatching session's project delivery
+  location and the corpus, ambiguity refused by name — and the session record,
+  title, and live-session attribution query that carry and match the value as
+  dispatched. It reads the locations `context` publishes and the vocabulary
+  `workflow` emits, and decides neither reach nor layout.
 <!-- /planned:agent-artifact-source-layout -->
 
 ## See Also

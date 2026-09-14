@@ -315,16 +315,27 @@ And this holds whether the request supplies command arguments or none
 
 <!-- planned:agent-artifact-source-layout -->
 
-#### UC-CLR12: The loader resolves a domain-qualified name directly and a bare token to its unique corpus match
+#### UC-CLR12: The loader resolves a domain-qualified name in the shared corpus and a bare token to its unique match across the session's project delivery and the corpus
 
 ```
-Given the command corpus carries global commands under <domain>/ and project commands at its root
-When loader composition resolves a canonical name before any corpus read
-Then a name of the form <domain>/<token> resolves to <domain>/<token>.md and nothing else
-And a bare token resolves to <token>.md at the corpus root when that file exists
-And otherwise a bare token resolves to the one <domain>/<token>.md the corpus carries
-And a bare token that matches more than one domain composes no loader and is refused naming every candidate
-And a bare token that matches nothing is refused as an unknown command
+Given the shared corpus carries global commands under <domain>/ and the dispatching session's project carries its own commands under .agents/commands/
+When loader composition resolves a canonical name before any document read
+Then a name of the form <domain>/<token> resolves to the corpus document <domain>/<token>.md and nothing else
+And a bare token is matched against the session's project delivery location .agents/commands/<token>.md and every corpus document <domain>/<token>.md
+And a bare token with exactly one match resolves to it
+And a bare token with more than one match composes no loader and is refused naming every candidate
+And a bare token with no match is refused as an unknown command
+And a session rooted in one project never resolves another project's command
+```
+
+#### UC-CLR13: The session record and its live-session attribution carry the command as dispatched
+
+```
+Given a session is dispatched with a domain-qualified command value
+When the session record and title are written and a live-session attribution query names that slug and command
+Then the record's command is the dispatched value and the title reflects it as UC-CLR3 states
+And the attribution query matches the session by that same value
+And the requesting context consumes the query result and owns none of the record, the title, or the match
 ```
 <!-- /planned:agent-artifact-source-layout -->
 

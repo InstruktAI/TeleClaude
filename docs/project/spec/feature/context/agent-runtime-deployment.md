@@ -95,11 +95,12 @@ corpus is the `~/.teleclaude/commands/` directory, reusable across projects. A
 canonical command name is a bare command token or one domain segment followed
 by a command token; the loader resolves both forms.
 <!-- change:agent-artifact-source-layout -->
-TeleClaude command artifacts are not runtime artifacts at all: command
-documents deploy to `~/.teleclaude/commands/` — global commands under
-`<domain>/` from the global phase, project commands at the corpus root under
-their project's scope key from the local phase — and no per-agent runtime
-receives any command artifact, native or otherwise. Commands are reached
+TeleClaude command artifacts are not runtime artifacts at all: global command
+documents deploy to `~/.teleclaude/commands/<domain>/` from the global phase,
+project command documents deploy to the project's own `.agents/commands/`
+delivery location from the local phase and reach no further than that
+project, and no per-agent runtime receives any command artifact, native or
+otherwise. Commands are reached
 exclusively through the loader message TeleClaude composes at dispatch (and
 for machine-emitted procedure loads), which instructs the session to read the
 corpus document directly. The corpus is the `~/.teleclaude/commands/`
