@@ -1,5 +1,5 @@
 ---
-description: Personal Discord voice rooms provide push-to-talk agent input, automatic session-voiced replies, and explicit thread selection.
+description: Personal Discord voice rooms provide push-to-talk agent input, automatic spoken replies in one configured room voice, and explicit thread selection.
 delivered_by:
   - discord-personal-voice-conversation
 ---
@@ -8,7 +8,7 @@ delivered_by:
 
 ## What it is
 
-A human can converse aloud with one TeleClaude agent session while remaining in a private Discord voice channel. Entering the configured room brings the voice bot into the call. Push-to-talk speech is transcribed and delivered to the human's selected session; that session's complete reply is rendered with its persistent voice and played into the room automatically.
+A human can converse aloud with one TeleClaude agent session while remaining in a private Discord voice channel. Entering the configured room brings the voice bot into the call. Push-to-talk speech is transcribed and delivered to the human's selected session; that session's complete reply is rendered in the one Discord voice configured for the rendering speech service and played into the room automatically.
 
 The selected session follows the human's latest accepted input across sessions. A thread-level `Listen here` control explicitly selects a different session and plays its latest complete reply, so listening can move between agent threads without sending a prompt.
 
@@ -30,7 +30,7 @@ The human can move between visible agent threads and voice conversation without 
 - The established voice-input workflow owns transcription, lifecycle feedback, and exactly-once delivery after the Discord transport produces a closed utterance.
 - Spoken output renders the complete user-visible final response rather than the separately generated output summary, using the one Discord voice configured for the rendering provider. The session's own per-session voice and the local summary playback are unchanged.
 - Discord voice presence is an audio-destination activation signal. It does not enable host-speaker playback or change local chiptunes audio focus.
-- Audio cached for replay is identified by session, final-output version, and effective voice. Replaying unchanged output reuses that audio.
+- Audio cached for replay is identified by session, final-output version, rendering service, and voice. Replaying unchanged output reuses that audio.
 - Changing focus or leaving the room stops stale playback and removes queued speech belonging to the previous selection.
 - Voice connection ownership is singular for a bot identity within a guild. Fleet peers that do not own the connection never join, move, receive, or play through it.
 - Thread controls use generation-specific identity and exact-message registration. A process-wide component handler never claims unrelated Discord messages.
