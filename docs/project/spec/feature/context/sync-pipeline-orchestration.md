@@ -247,11 +247,12 @@ Scenario: UC-SPO5 A global skill folder registers its publisher by existence
 
 ```gherkin
 Given a project whose git hooks, docs filter driver, and manifest registration are all out of date
-When the operator runs telec sync in deploy mode
+When an agent invokes a deploy-mode synchronization for that project
 Then no git hook is installed or refreshed
 And the docs filter driver is neither configured nor removed
-And the project manifest is left unchanged
-And the pipeline still records provenance, builds indexes, and distributes artifacts
+And the project registry is left unchanged
+And no reachable project's configuration file is advanced by the run
+And the run still records snippet provenance, builds indexes, and distributes artifacts
 ```
 
 <!-- /planned-change:sync-stops-converging-project-setup -->

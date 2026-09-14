@@ -48,30 +48,17 @@ and `teleclaude/project_setup/capability_markers.py:project_capabilities()`
 
 <!-- planned-change:sync-stops-converging-project-setup -->
 ### 3. Configure git smudge/clean filters (`docs` only)
-<!-- change:sync-stops-converging-project-setup -->
-### 3. Converge the git smudge/clean filter driver
-<!-- /planned-change:sync-stops-converging-project-setup -->
 
 Sets up the `teleclaude-docs` git filter that handles tilde expansion:
 
 - **Smudge** (checkout): expands `@~/.teleclaude` to `@$HOME/.teleclaude`
 - **Clean** (commit): converts absolute paths back to `@~/.teleclaude`
 
-<!-- planned-change:sync-stops-converging-project-setup -->
 Re-checks out `docs/` and `agents/docs/` to apply the smudge filter to existing files.
 
 A project that does not subscribe `docs` gets no filter driver.
 
 Source: `teleclaude/project_setup/git_filters.py:setup_git_filters()`
-<!-- change:sync-stops-converging-project-setup -->
-Converges the driver to the declaration: a project subscribing `docs` gets the driver
-installed, and a project that does not has TeleClaude's driver removed from its git
-config. Tracked files a checkout left unexpanded, and files still carrying a prior
-filter pattern's residue, are re-checked out so the smudge filter applies to them; a
-locally modified file is left untouched.
-
-Source: `teleclaude/project_setup/git_filters.py:ensure_git_filters()`
-<!-- /planned-change:sync-stops-converging-project-setup -->
 
 ### 4. Update .gitattributes (`docs` only)
 
@@ -82,6 +69,35 @@ only; no later capability change edits it.
 
 Source: `teleclaude/project_setup/gitattributes.py:update_gitattributes()`
 
+<!-- change:sync-stops-converging-project-setup -->
+### 3. Update .gitattributes (`docs` only)
+
+Adds filter patterns so that `docs/**/*.md` and `agents/docs/**/*.md` use the
+`teleclaude-docs` filter. Idempotent — skips patterns already present. This is the
+one project-tracked file TeleClaude writes, and it is written additively at adoption
+only; no later capability change edits it.
+
+This step precedes driver convergence, because the repair pass below admits a file
+only when its resolved filter attribute names the `teleclaude-docs` filter. A first
+adoption whose attributes were not yet installed would otherwise repair nothing.
+
+Source: `teleclaude/project_setup/gitattributes.py:update_gitattributes()`
+
+### 4. Converge the git smudge/clean filter driver
+
+Converges the driver to the declaration: a project subscribing `docs` gets the driver
+installed, and a project that does not has TeleClaude's driver removed from its git
+config. The driver handles tilde expansion — smudge expands the portable
+`@~/.teleclaude` reference to the absolute home path on checkout, and clean contracts
+it back on commit.
+
+Tracked files a checkout left unexpanded, and files still carrying a prior filter
+pattern's residue, are re-checked out so the smudge filter applies to them; a locally
+modified file is left untouched.
+
+Source: `teleclaude/project_setup/git_filters.py:ensure_git_filters()`
+
+<!-- /planned-change:sync-stops-converging-project-setup -->
 ### 5. Sync project artifacts
 
 
@@ -116,10 +132,19 @@ and `teleclaude/project_setup/skeleton.py:deploy_skeleton()`
 ### 7. Ensure `project_slug` and register the project root
 
 Reads `teleclaude.yml`, ensures `project_slug` is set (deriving one from
+<!-- planned-change:sync-stops-converging-project-setup -->
 `project_name` or the directory name via `normalize_slug` when missing or
 invalid), and writes it back in place using comment-preserving YAML. Then
 appends the absolute project root to `~/.teleclaude/projects.yaml`
 idempotently.
+<!-- change:sync-stops-converging-project-setup -->
+`project_name` or the directory name via `normalize_slug` when missing or
+invalid), and writes it back in place using comment-preserving YAML. Then
+appends the project's durable main checkout to `~/.teleclaude/projects.yaml`
+idempotently. The registered path is always that canonical checkout: invoked
+from a linked worktree, initialization resolves back to the owning checkout, so
+an ephemeral worktree path never enters the registry.
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
 
 `telec projects init` is the **sole** writer of the project registry. `telec sync`

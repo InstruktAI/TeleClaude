@@ -249,7 +249,7 @@ And the inert filter line is left in place
 ```
 Given a project whose .gitattributes carries the TeleClaude docs-filter line
 And the docs capability is disabled
-When project initialization next runs for that project
+When an agent next runs project initialization for that project
 Then the .gitattributes file is not edited
 And the docs filter driver is removed from the git config
 And the inert filter line is left in place
@@ -363,13 +363,25 @@ And a hook the project authored itself is left in place
 ```
 Given a repository onboarded before the plumbing read the declaration
 And whose installed hooks are the ones TeleClaude owns
-When project initialization next runs for that repository
+When an agent next runs project initialization for that repository
 Then its TeleClaude-owned hooks are refreshed to read the declaration
 And a hook the project authored itself is left in place
 And a telec sync for that repository refreshes no hook
 ```
 <!-- /planned-change:sync-stops-converging-project-setup -->
 
+<!-- planned:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-26: Initialization registers the durable main checkout
+
+```gherkin
+Given a project whose linked worktree is checked out alongside its main checkout
+When an agent runs project initialization from inside that worktree
+Then the project's main checkout is the path recorded in the project registry
+And the worktree's own path is absent from the registry
+And running initialization again adds no duplicate entry
+```
+
+<!-- /planned:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 
 ```
