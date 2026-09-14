@@ -107,9 +107,8 @@ Generate doc snippets following the company scaffolding spec:
 
 After snippet generation:
 
-
-- Run `telec sync --skip-deploy` to confirm snippet validity.
-
+- Company snippets are validated by the analysis session as it writes them (step 7). A
+  company root is not a sync or lint target, so no separate validation command applies.
 
 - Update `meta.yaml` with:
   - `last_onboarded_at` timestamp.
