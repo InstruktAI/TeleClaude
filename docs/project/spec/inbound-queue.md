@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS accepted_turn_bindings (
 CREATE TABLE IF NOT EXISTS turn_authored_parts (
     binding_id TEXT NOT NULL,
     part_id INTEGER NOT NULL,
-    part_kind TEXT NOT NULL,
+    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'caller', 'peer')),
     span_start INTEGER NOT NULL,
     span_end INTEGER NOT NULL,
     original_source_session_id TEXT,
