@@ -4,6 +4,11 @@ description: 'Prepare phase design: one driving session loads phase-scoped proce
 
 # Prepare — Design
 
+## Required reads
+
+- @~/.teleclaude/docs/software-development/principle/externalized-structural-context.md
+- @~/.teleclaude/docs/software-development/design/sdlc/overview.md
+
 ## Purpose
 
 Define how the prepare phase produces the aligned artifacts that downstream
