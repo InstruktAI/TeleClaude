@@ -8,6 +8,7 @@ visibility: internal
 
 ## What it is
 
+<!-- planned-change:agent-artifact-source-layout -->
 `teleclaude.yml` declares which platform capabilities a project subscribes to.
 Capabilities are explicit in config. The initial declaration is inferred from
 repo shape at **onboard** — deterministic structural checks (a Makefile or a
@@ -18,6 +19,18 @@ any capability-gated plumbing installs — and later refined by
 from repo shape; the runtime reads only the written declaration. The checkpoint
 engine's activation is derived from the subscribed capabilities — there is no
 independent on/off flag for the engine itself.
+<!-- change:agent-artifact-source-layout -->
+`teleclaude.yml` declares which platform capabilities a project subscribes to.
+Capabilities are explicit in config. The initial declaration is inferred from
+repo shape at **onboard** — deterministic structural checks (a Makefile or a
+language tree → `code`; snippet frontmatter under `docs/` → `docs`; authored
+artifacts under `agents/` → `agents`, never `.agents/`, which is a delivery
+location), written into `teleclaude.yml` before any capability-gated plumbing
+installs — and later refined by `telec projects analyze` / `assess`. No **runtime** code path infers a capability
+from repo shape; the runtime reads only the written declaration. The checkpoint
+engine's activation is derived from the subscribed capabilities — there is no
+independent on/off flag for the engine itself.
+<!-- /planned-change:agent-artifact-source-layout -->
 
 ## Canonical fields
 

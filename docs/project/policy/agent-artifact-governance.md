@@ -17,7 +17,11 @@ visibility: 'public'
 <!-- change:agent-artifact-source-layout -->
 - The TeleClaude repo is the mother project for global artifact governance. Only this repo publishes the global master, general commands, global skills, addenda, and catalog instructions; a domain-partitioned global command publishes from the one repository that declares its domain.
 <!-- /planned-change:agent-artifact-source-layout -->
+<!-- planned-change:agent-artifact-source-layout -->
 - Every registered project may publish human-curated global skill folders from `agents/skills/<name>/`; the folder's existence is the publication declaration. Every entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure.
+<!-- change:agent-artifact-source-layout -->
+- Every skill entrypoint keeps the universal name, description, and folder-identity contract. Package bodies retain their upstream structure.
+<!-- /planned-change:agent-artifact-source-layout -->
 <!-- planned-change:agent-artifact-source-layout -->
 - The Mother project alone owns `agents/skills/AGENTS.master.md`. A side project's `agents/skills/AGENTS.master.md` or generated `AGENTS.md` is never parsed or published; only its named skill folders contribute.
 <!-- change:agent-artifact-source-layout -->
@@ -53,7 +57,11 @@ Addendum files (`agents/{AGENT}.addendum.md`) are thin behavioral shims for agen
 
 ## Enforcement
 
+<!-- planned-change:agent-artifact-source-layout -->
 - Global publishing outside `agents/skills/<name>/` is gated to this repo only.
+<!-- change:agent-artifact-source-layout -->
+- General commands and global skills publish from this repository alone; a domain command publishes only from the repository that declares its domain. A global source outside a repository's reach is refused at validation with a finding naming the file and the reach it exceeds.
+<!-- /planned-change:agent-artifact-source-layout -->
 - Side-project skill catalog masters and generated catalog entrypoints are excluded from publication; the Mother-owned catalog is the only catalog instruction source.
 - Published third-party skill package bodies and supporting Markdown are never rejected for failing TeleClaude artifact section or heading rules; their `SKILL.md` identity metadata is still required.
 

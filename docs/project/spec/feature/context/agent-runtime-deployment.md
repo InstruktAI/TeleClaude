@@ -450,15 +450,14 @@ Scenario: UC-ARD24 A global command is invoked by its explicit domain-namespaced
   And two domains may each carry a command of the same bare name without collision
 ```
 
-#### UC-ARD32: The mother's artifact sources are read at both roots until relocation completes
+#### UC-ARD32: No sync during the mother's artifact migration retracts a deployed artifact
 
 ```
-Scenario: UC-ARD32 The mother's artifact sources are read at both roots until relocation completes
-  Given the mother carries artifact sources at the flat artifact root, the tiered root, or both
-  When sync runs in deploy mode
-  Then every artifact found at either root is composed into the global corpus
-  And no previously deployed artifact is retracted because it moved between the two roots
-  And the flat root ceases to be a source only once it carries no artifacts
+Scenario: UC-ARD32 No sync during the mother's artifact migration retracts a deployed artifact
+  Given the mother's artifact sources are partway through relocation into the tiered layout
+  When sync runs in deploy mode at any point during that relocation
+  Then every global command and skill deployed before the relocation began is still deployed
+  And no deployed artifact is retracted because its source moved
 ```
 
 <!-- /planned:agent-artifact-source-layout -->
