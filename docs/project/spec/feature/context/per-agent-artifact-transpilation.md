@@ -173,16 +173,9 @@ Scenario: Per-target skill emission is limited to tier-local packages
   this normalization step becomes vestigial — but removing it requires
   verifying the fixed parser is in the Codex version every operator has
   installed.
-<!-- planned-change:drop-skill-taxonomy-optin -->
-- Skill folders are the runtime identity, and every source `SKILL.md` must declare
-  the same `name` plus a non-empty `description`. An upstream heading taxonomy is
-  preserved unless the entrypoint opts into TeleClaude's taxonomy. Target transforms
-  emit the package under its folder name and omit the build-only opt-in field.
-<!-- change:drop-skill-taxonomy-optin -->
 - Skill folders are the runtime identity, and every source `SKILL.md` must declare
   the same `name` plus a non-empty `description`. An upstream heading taxonomy is
   always preserved. Target transforms emit the package under its folder name.
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 - The parameter preamble is injected into the artifact body as HTML comments;
   it is NOT preserved in frontmatter. Downstream consumers that read the
   Deployed artifact as YAML/TOML alone will NOT see `parameters` — they must
