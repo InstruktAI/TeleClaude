@@ -37,21 +37,28 @@ another session, prescribe a fix, stamp the diagnosis, or advance the prepare st
    procedure: reproduce where possible, perform the unconditional provenance check, bisect
    the failing path, and isolate one falsifiable causal mechanism. Label synthetic
    reproduction and state any gap from the organic path.
-3. Trace backward to the earliest violated contract inside the stated system boundary.
-   Record the complete minimal causal set, including enabling conditions such as races,
-   ordering, or omitted handling. When the root is a shared contract, enumerate every
-   producer, entry path, and consumer in the boundary and classify each from observed
-   evidence.
+3. Apply the debugging procedure's operation-outcome and failure-handling distinction.
+   Record the operation, the source and applicability of its expected outcome, and the
+   evidence supporting the investigation boundary. Trace backward to the earliest violated
+   contract inside that boundary. Record the complete minimal causal set, including
+   enabling conditions such as races, ordering, or omitted handling. When the root is a
+   shared contract, enumerate every producer, entry path, and consumer in the boundary and
+   classify each from observed evidence.
+   Account for the reported occurrences individually or in evidence-supported causal
+   groups. State which transitions a reproduction supports and which remain unsupported
+   for the reported occurrences. Record unexplained occurrences and the missing evidence
+   without representing them as explained by the reproduction.
 4. Write `diagnosis` with `telec todo artifacts write {slug} diagnosis <content>`. Keep
    observations separate from the argument that cites them, and include:
    - **Status** — `Draft`, `Settled`, or `Unresolved`.
-   - **Symptom** — expected versus observed behavior, organic trigger, reproduction status,
-     and any synthetic-to-organic gap.
+   - **Symptom** — expected versus observed behavior, the expected outcome's source and its
+     applicability to the observed conditions, organic trigger, reproduction status, and
+     any synthetic-to-organic gap.
    - **Provenance** — exactly `Regression`, `Latent`, or `Provenance not established`, with
      the evidence required by the debugging procedure.
    - **Observations** — what was seen, how it was obtained, and why it was inspected.
    - **Causal trace** — every transition, its carrying observations, its falsifier, comparable
-     near misses, and the implementation census when the root is shared.
+     near misses, occurrence coverage, and the implementation census when the root is shared.
    - **Alternatives** — the strongest credible rival and the discriminating check actually
      run, or the reason no credible rival survives statement.
    - **Root cause** — the minimal causal set and its counterfactual, with no fix.

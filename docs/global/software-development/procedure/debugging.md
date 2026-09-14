@@ -98,6 +98,25 @@ touched and surface it for its own triage. It never widens the present fix; the
 
 If manual tracing is insufficient, add instrumentation before the problematic operation: log the arguments, `cwd`, environment variables, and `new Error().stack` to expose the full call chain.
 
+**Operation outcome and failure handling.** Establish the operation's expected
+outcome under the observed conditions from the applicable contract and the
+reported concern. Distinguish a failure to meet that outcome from a defect in
+reporting or handling it. Trace the causal dependencies needed to explain each
+discrepancy; process and host boundaries do not themselves terminate that
+trace. At an unavailable evidence boundary, state what is established and what
+remains unknown.
+
+Handling that controls execution, recovery, or resulting state participates in
+the operation's causal chain. A presentation-only cause is sufficient only when
+evidence establishes that the underlying outcome conforms to the contract
+applicable to the observed conditions. A contract requiring an error to be
+reported does not establish that the condition producing that error is
+correct.
+
+A shared error signature does not establish a shared cause. Evidence from a
+different triggering condition supports a reported occurrence only to the
+extent that their causal paths are established to coincide.
+
 ### 3. Isolate
 
 - Form one falsifiable hypothesis: "Failure occurs because X under Y conditions."

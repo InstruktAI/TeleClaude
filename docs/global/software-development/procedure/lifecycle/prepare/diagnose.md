@@ -132,7 +132,10 @@ Interrogate in this order:
    rules out.
 3. **Ask why the trace stops at the claimed origin** rather than at an upstream cause. A
    stopping point that reflects where the investigation began, rather than where the system
-   boundary is, is the most common way a located symptom passes as a mechanism.
+   boundary is, is the most common way a located symptom passes as a mechanism. Apply the
+   debugging procedure's operation-outcome and failure-handling distinction to the claimed
+   stopping point. Challenge whether the cited contract applies to the observed conditions
+   and whether the evidence supports the diagnosis's occurrence coverage.
 4. **Challenge horizontal completeness.** When the claimed origin is a shared contract, ask
    which producers, entry paths, and consumers implement it and what evidence accounts for
    each one. An unexplained sibling path means the root is not settled, even when the vertical
@@ -164,9 +167,13 @@ over the argument.
 
 ### 4. Settle and advance — the driving session
 
-Settle when two conditions hold, both readable from the artifact rather than from either
-party's confidence: **every causal transition is evidenced**, and **the strongest rival no
-longer explains the observations**. Conviction is the judgment that applies that standard; it
+Settle when three conditions hold, all readable from the artifact rather than from either
+party's confidence: **every causal transition is evidenced**; **the strongest rival no
+longer explains the observations**; and **the diagnosis explains the reported discrepancy
+across the reported occurrences**. Excluding an occurrence requires evidence that it does
+not instantiate that discrepancy; an unexplained occurrence is not excluded merely because
+it falls outside the proposed causal account. Recording a missing observation does not
+satisfy this condition. Conviction is the judgment that applies that standard; it
 is never the standard itself, which is why a plan reviewer can re-run it later against the
 same text.
 

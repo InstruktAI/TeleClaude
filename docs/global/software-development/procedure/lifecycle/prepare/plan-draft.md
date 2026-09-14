@@ -422,6 +422,15 @@ snippet this same prepare pass authored does not create scope; the `diagnosis`
 and the `input` symptom are the only scope authorities for a bug
 (`software-development/procedure/debugging`, step 5).
 
+State the operation's observable outcome and relevant effects after the fix
+under the diagnosed triggering conditions. Derive verification of the
+applicable operation and presentation contracts under those conditions, using
+the project's sanctioned evidence. Evidence of changed presentation alone does
+not establish the correctness of the underlying outcome. If the settled
+diagnosis cannot support this derivation, return the gap to diagnosis rather
+than substituting a narrower outcome. Record any unresolved part of the
+reported concern as undelivered; naming follow-up work does not discharge it.
+
 A structural-ratchet deepening on the bug's direct change path is authorized
 HOW when all five ratchet conditions hold (`definition-of-done` §2). Other
 structural work the investigation surfaced remains out of scope: record it as a

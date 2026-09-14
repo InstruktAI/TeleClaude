@@ -61,6 +61,15 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
      this run's report; it does not create a second bug for the same failure.
 
 4. File every remaining error signal through the bug front door.
+   - State the operation and the observed consequence the records support,
+     distinguishing the operation's outcome from how that outcome is surfaced.
+     An operation the records identify as attempted is stated as the report's
+     subject; where several operations are identified, preserve their evidenced
+     relationship. State an expected outcome only with its supporting source.
+     Preserve an unknown operation, outcome, or expectation explicitly; never
+     infer one from an error signature. A reporting defect is stated as the
+     discrepancy in reporting, without asserting that the underlying operation
+     failed.
    - Submit the observed error summary and a representative log excerpt through
      `telec bugs report '<description>'`. Use `--project <owner>` when the
      defective system belongs to a different project than the scanned logs.

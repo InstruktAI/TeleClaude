@@ -666,7 +666,10 @@ Simplification findings are **Important** severity. The simplify lane only flags
 When `kind == "bug"`, the `input` artifact is the bug report and the intent source (no `prd`),
 sharpened by the `diagnosis` root cause. Verify:
 
-1. Fix addresses the symptom described in `input`.
+1. Fix addresses the evidenced concern in `input`. Independently apply the debugging
+   procedure's operation-outcome and failure-handling distinction to the diagnosis, then
+   verify that the delivered behavior satisfies that concern under the diagnosed conditions.
+   A recorded disposition or named follow-up does not establish delivery.
 2. Root cause analysis is sound.
 3. Fix is minimal and targeted: the smallest change that removes the diagnosed root cause, plus the
    verification proving the symptom gone — and **nothing else**. A delta that removes no part of the
