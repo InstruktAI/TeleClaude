@@ -148,10 +148,10 @@ Scenario: Skill packages retain upstream structure through the runtime renderer
 Scenario: An agent synchronizes a skill package with upstream-authored structure
   Given an agent authors a skill package with valid identity metadata
   And its Markdown does not follow TeleClaude's normalized skill section taxonomy
-  When the agent synchronizes the skill for a supported runtime
+  When the agent synchronizes the skill
   Then the package body produces no taxonomy-validation finding
   And inline directives and agent tokens are rendered through the normal pipeline
-  And the skill is emitted under the source folder's name
+  And the package keeps the source folder's name wherever it is emitted
 ```
 <!-- /planned-change:drop-skill-taxonomy-optin -->
 
@@ -200,10 +200,16 @@ Scenario: Per-target skill emission is limited to tier-local packages
   this normalization step becomes vestigial — but removing it requires
   verifying the fixed parser is in the Codex version every operator has
   installed.
+<!-- planned-change:drop-skill-taxonomy-optin -->
 - Skill folders are the runtime identity, and every source `SKILL.md` must declare
   the same `name` plus a non-empty `description`. An upstream heading taxonomy is
   preserved unless the entrypoint opts into TeleClaude's taxonomy. Target transforms
   emit the package under its folder name and omit the build-only opt-in field.
+<!-- change:drop-skill-taxonomy-optin -->
+- Skill folders are the runtime identity, and every source `SKILL.md` must declare
+  the same `name` plus a non-empty `description`. An upstream heading taxonomy is
+  always preserved. Target transforms emit the package under its folder name.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 - The parameter preamble is injected into the artifact body as HTML comments;
   it is NOT preserved in frontmatter. Downstream consumers that read the
   Deployed artifact as YAML/TOML alone will NOT see `parameters` — they must
