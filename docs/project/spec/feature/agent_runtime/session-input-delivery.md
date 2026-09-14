@@ -37,12 +37,12 @@ The input-readiness owner consumes those facts and observes the complete live
 composer. Lifecycle coordination records the declared runtime-start fact; it
 does not infer composer readiness from the shared normalized event name.
 
-| Runtime | Startup authority for post-launch first-input delivery | Lifecycle-start observation |
-| --- | --- | --- |
-| Claude | Reliable native start signal, followed by ordinary composer protection at delivery | Native `SessionStart` |
-| Codex | Complete live-pane composer readiness; no dependency on the later start hook | Native `SessionStart`, deferred until the submitted prompt starts a turn |
-| Antigravity (agy) | Complete live-pane composer readiness | First native `PreInvocation`, normalized by the adapter to `session_start` |
-| DeepSeek | Complete live-pane composer readiness; Claude-compatible hook names confer no pre-input startup guarantee | Its declared hook adapter's runtime-start observation |
+| Runtime           | Startup authority for post-launch first-input delivery                                                    | Lifecycle-start observation                                                |
+| ----------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Claude            | Reliable native start signal, followed by ordinary composer protection at delivery                        | Native `SessionStart`                                                      |
+| Codex             | Complete live-pane composer readiness; no dependency on the later start hook                              | Native `SessionStart`, deferred until the submitted prompt starts a turn   |
+| Antigravity (agy) | Complete live-pane composer readiness                                                                     | First native `PreInvocation`, normalized by the adapter to `session_start` |
+| DeepSeek          | Complete live-pane composer readiness; Claude-compatible hook names confer no pre-input startup guarantee | Its declared hook adapter's runtime-start observation                      |
 
 The startup gate applies consistently to fresh sessions, first input accepted
 after an empty launch, and resumed or adopted sessions. An initializing
@@ -148,8 +148,13 @@ Then a caller whose session runs an agent has its message prepended with an iden
 And a caller whose session runs no agent has its message prepended with an identity header naming its machine-role label and session
 And a caller whose session does not resolve at all has the send refused with an explicit error, because no truthful identity can be composed for it
 And no fabricated role label, and no human identity, is ever substituted to force a header
+<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
 And every composed header additionally carries the send-moment occurrence time, truncated to the minute in UTC
 And that occurrence time is rendered once into the opening delimiter, with the paired closing derived from it
+<!-- change:fix-user-turn-reflection-identity-segments-r -->
+And every composed header additionally carries the send-moment occurrence time, truncated to the minute in UTC, plus the accepted row's opaque occurrence key
+And those correlation fields are rendered once into the opening delimiter, with the paired closing derived from it
+<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 And the rendered identity matches what every other surface resolves for the same caller
 And in no branch is a session-originated message delivered as human-looking typed input
 ```
@@ -215,7 +220,11 @@ And projection reads that durable composition rather than a mutable session-leve
 Given closed peer or machine envelopes and locally typed human text appear together in one native turn
 And the local text may repeat an injected body's words or resemble a platform header
 When accepted input is bound to that native turn
+<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
 Then every complete injected envelope is correlated to its accepted occurrence without comparing its rendered body or the whole native turn for equality
+<!-- change:fix-user-turn-reflection-identity-segments-r -->
+Then every complete injected envelope carrying an occurrence key is correlated to the accepted row with that same key, without comparing its rendered body or the whole native turn for equality
+<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 And only each correlated envelope's body span binds to that accepted occurrence
 And every span outside the correlated envelopes remains ordered local-human input
 And repeated processing of the same accepted occurrence is a no-op
@@ -239,7 +248,11 @@ And an unresolved delivery state is surfaced and held rather than guessed, dropp
 Given an authenticated caller sends a plain (non-direct) message that carries a caller session id
 When the send is accepted into durable inbound state
 Then the caller session's resolved event author — author class, its own agent runtime or machine role, and display identity — and the caller session as original source are recorded on the accepted row and preserved on its transcript binding
+<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
 And the readable caller-origin identity header is presentation for the receiving agent and carries no attribution authority, so removing it from the entry or forging it in a local body changes no recorded authorship
+<!-- change:fix-user-turn-reflection-identity-segments-r -->
+And the readable caller-origin identity header is presentation for the receiving agent: its opaque occurrence key may locate an accepted row, but only that row's stored author supplies attribution, so an unknown, already-bound, duplicated, removed, or altered key changes no recorded authorship
+<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 And the target session reflects that authored part from the recorded event author, never from the target session's own human or agent identity
 And the Discord copy of that part renders under the caller's resolved identity marked as an author from another session, with the readable caller-origin header omitted from its body
 And a caller whose session does not resolve is refused before acceptance rather than recorded under a guessed author

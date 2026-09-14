@@ -43,6 +43,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_queue_source_dedup
     ON inbound_queue(origin, source_message_id) WHERE source_message_id IS NOT NULL;
 ```
 
+<!-- planned:fix-user-turn-reflection-identity-segments-r -->
+### Accepted-turn binding state
+
+Caller-origin conversational rows carry a closed binding disposition with two
+terminal values: `legacy_pre_cutover` for delivered rows that predate the
+binding cutover and cannot be reconstructed truthfully, and `input_conflict`
+when one accepted occurrence cannot be correlated to exactly one native entry.
+Absence means the row remains eligible to bind.
+
+The accepted-turn binding aggregate persists one runtime-qualified native-entry
+root, its ordered authored parts, and the accepted receipt envelopes correlated
+to those parts. Receipt envelopes retain the inbound row id, occurrence key,
+accepted text kind, envelope and body spans, and authored-part id. A native
+entry and an accepted occurrence each bind at most once. Binding conflicts keep
+their exact native-entry candidates as durable evidence and never acquire a
+guessed author.
+<!-- /planned:fix-user-turn-reflection-identity-segments-r -->
+
 ### Reminder machine input
 
 Reminder firings use the control-delivery surface and never enter this queue.
@@ -139,7 +157,16 @@ Adapters that provide stable message IDs (Discord, Telegram, WhatsApp) must pass
 
 ### Cleanup
 
+<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
 `cleanup_inbound(older_than_iso)` deletes rows with `status IN ('delivered', 'expired')` older than the threshold. Scheduled periodically by the maintenance service.
+<!-- change:fix-user-turn-reflection-identity-segments-r -->
+`cleanup_inbound(older_than_iso)` deletes expired rows older than the threshold.
+A delivered row becomes cleanup-eligible only after its accepted occurrence is
+bound to a runtime-qualified native entry or it carries a terminal binding
+disposition. Delivered post-cutover rows with neither survive cleanup so later
+projection or recovery can bind them. The maintenance service schedules the
+cleanup periodically.
+<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 
 ### Adapter Contract
 
