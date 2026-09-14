@@ -50,11 +50,10 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     session_id TEXT NOT NULL,
     origin TEXT NOT NULL,
     message_type TEXT NOT NULL DEFAULT 'text'
-        CHECK(message_type IN ('text', 'voice', 'file')),
+        CHECK(message_type IN ('text', 'voice', 'file', 'reminder')),
     text_kind TEXT NOT NULL DEFAULT 'ordinary'
-        CHECK(text_kind IN ('platform_control', 'identity_content', 'ordinary')),
-    source_feature TEXT NOT NULL DEFAULT ''
-        CHECK(source_feature IN ('', 'telegram', 'discord', 'whatsapp', 'web', 'voice', 'relay', 'caller_send', 'peer_bundle', 'listener', 'agent_restart')),
+        CHECK(text_kind IN ('platform_control', 'identity_content', 'reminder', 'third_party_runtime_artifact', 'ordinary')),
+    source_feature TEXT NOT NULL DEFAULT '',
     occurrence_key TEXT,
     content TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
@@ -170,10 +169,18 @@ guessed author.
 
 ### Reminder machine input
 
+<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
 Reminder firings use the control-delivery surface and never enter this queue.
 The inbound queue therefore owns conversational text, voice, and file input
 only; it defines no reminder origin, message type, retry path, or turn-part
 classification.
+<!-- change:fix-user-turn-reflection-identity-segments-r -->
+Reminder firings use the control-delivery surface and never enter this queue.
+The inbound schema retains historical `reminder` message/classification members
+so owned existing rows remain readable, but no active reminder producer writes
+them and no reminder retry path is defined here. Conversational text, voice, and
+file input are the queue's active message types.
+<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 
 ### Status Lifecycle
 
