@@ -23,8 +23,8 @@ Gateway connection and exactly one owner of the voice connection.
 **Inputs:**
 
 - Voice-state and voice-server events from the existing Discord Gateway client.
-- The person-scoped voice configuration: bot token, voice channel, and the
-  computer declared to own the connection.
+- The person-scoped voice configuration: bot token and voice channel; the
+  machine configuration's master flag, which names the owning computer.
 - Rendered audio artifacts produced by the TTS render contract.
 
 **Outputs:**
@@ -39,12 +39,14 @@ Gateway connection and exactly one owner of the voice connection.
    sidecar never holds a long-lived bot token and never opens a Gateway
    connection of its own. It requests voice-state changes; the Python client
    executes them through the library's public voice-state API.
-2. **One owner per bot identity per guild.** The computer named by the person's
-   voice configuration owns the connection. A peer that receives the same
+2. **One owner per bot identity per guild.** The mesh master — the one computer
+   the machine configuration already designates to provision this bot's shared
+   Discord structure — owns the connection. A peer that receives the same
    provider event performs no voice side effect — no join, move, receive, or
    playback. This extends the fleet rule in
    `project/spec/feature/integration/discord-interaction-ownership` to a
-   resource with no forum ancestry to derive ownership from.
+   resource with no forum ancestry to derive ownership from, using the
+   singular role the fleet already has rather than a new declaration.
 3. **The sender's stop sequence is the push-to-talk release.** A Discord client
    emits a run of Opus silence frames immediately before it stops sending. Under
    push-to-talk the held key is the transmission: the client encodes and sends

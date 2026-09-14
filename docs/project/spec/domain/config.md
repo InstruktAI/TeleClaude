@@ -35,14 +35,16 @@ TeleClaudeNext.
   commands; consumers never reinterpret missing or invalid values.
 <!-- planned:discord-personal-voice-conversation -->
 - **Also owns:** the person tier's voice-room declaration as typed settings —
-  the voice bot credential reference, the private voice channel, and the
-  computer that owns the voice connection for that person. These are declared
-  fields rather than tolerated extras, so a missing or malformed value is
-  rejected at validation instead of surfacing as absent capability at runtime.
-  The credential resolves only through the person overlay's own tier-local
-  environment; no global or foreign-person fallback exists, and the resolved
-  value is never logged or persisted. Owning the declaration is not owning what
-  it means: which computer may act on it is the integration context's rule.
+  the voice bot credential reference and the private voice channel. These are
+  declared fields rather than tolerated extras, so a missing or malformed value
+  is rejected at validation instead of surfacing as absent capability at
+  runtime. The credential resolves only through the person overlay's own
+  tier-local environment; no global or foreign-person fallback exists, and the
+  resolved value is never logged or persisted. Which computer acts on the
+  declaration is not a person setting: the machine configuration's existing
+  `computer.is_master` — exactly one in the mesh — already names the one
+  computer that provisions this bot's shared Discord structure, and voice
+  ownership follows it. Owning the declaration is not owning what it means.
 - **Also owns:** the machine TTS configuration's per-service `discord_voice`
   declaration — one name drawn from that service's own `voices` list, with the
   first entry as the template default — as a typed setting validated against

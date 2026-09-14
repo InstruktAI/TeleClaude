@@ -39,9 +39,10 @@ implementation remain the current appliance contract.
   and an absent or unorderable sequence produces no handoff.
 - **Owns (voice connection ownership):** which computer holds the connection
   for a bot identity in a guild. A personal voice channel has no forum
-  ancestry, so ownership is read from the person's declared voice
-  configuration rather than derived from a project category. A peer that
-  receives the same provider event performs no voice side effect.
+  ancestry, so ownership is not derived from a project category; it follows
+  the mesh master — the one computer that already provisions this bot's
+  shared Discord structure — and a peer that receives the same provider event
+  performs no voice side effect.
 - **Does not own (voice):** which session the person is listening to, what a
   session's spoken reply says, how audio is rendered, or whether a
   transcription becomes agent input. Integration hands a closed utterance to
