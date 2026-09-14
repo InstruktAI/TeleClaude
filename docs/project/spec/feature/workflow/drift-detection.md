@@ -618,6 +618,22 @@ Scenario: matching cosmetic stamp clears upstream drift on a multi-upstream plan
   And the prepare machine settles at prepared without re-dispatching the drift-analyzer for implementation-plan
 ```
 
+<!-- planned:fix-artifact-snippet-provenance-is-never-cap -->
+
+#### UC-WDD13: Artifact provenance resolves snippets against the request's project
+
+```gherkin
+Scenario: provenance captures owned snippets for a project other than the daemon's working directory
+  Given the workflow daemon process is running with a working directory belonging to one project
+  And a Todo in a different project owns a project snippet through its delivered_by membership
+  When an artifact is written for that Todo through "telec todo artifacts write"
+  Then owned_snippet_digests contains that snippet's current body digest
+  And referenced_snippet_digests contains a digest for every validator-accepted project reference in the artifact body
+  And async_provenance_complete is true
+```
+
+<!-- /planned:fix-artifact-snippet-provenance-is-never-cap -->
+
 ### Cross-context references
 
 - `agent_runtime` — the `/next-drift-analyze` worker session is dispatched
