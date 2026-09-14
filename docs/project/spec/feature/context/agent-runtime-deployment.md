@@ -478,6 +478,28 @@ Scenario: UC-ARD32 No sync during the mother's artifact migration retracts a dep
 
 <!-- /planned:agent-artifact-source-layout -->
 
+<!-- planned:docs-tier-layering -->
+#### UC-ARD35: Participating tier documentation is materialized into the deployed snapshot
+
+```
+Given a company or person tier whose declaration records participation in the documentation surface
+And that tier's home holds authored documentation sources
+When a deploy-mode sync publishes the documentation snapshot
+Then that tier's sources are copied into the staged generation under companies/<slug>/ or people/<slug>/
+And the merged index carries every entry of that tier's catalog under its tier-qualified identity
+And the staged generation replaces the deployed root atomically, tier material included
+And no reader is served the tier's material from its authoring home
+```
+
+#### UC-ARD36: A tier that does not participate publishes nothing
+
+```
+Given a company or person tier whose declaration records no participation in the documentation surface
+When a deploy-mode sync publishes the documentation snapshot
+Then nothing from that tier's home enters the staged generation or the merged index
+```
+<!-- /planned:docs-tier-layering -->
+
 <!-- planned:tier-command-corpus -->
 
 #### UC-ARD25: Every tier root carries its own expanded command corpus

@@ -286,6 +286,20 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
 ```
 
 <!-- /planned-change:sync-stops-converging-project-setup -->
+<!-- planned:docs-tier-layering -->
+#### UC-SPO17: A change under a participating tier's documentation tree triggers publication
+
+```
+Given a company or person tier whose declaration records participation in the documentation surface
+And the docs watcher is running
+When a documentation source under that tier's home changes
+Then the watcher admits the path as sync-relevant
+And the home resolves as a synchronization target for its tier material
+And the same deploy-mode publication runs that a registered project's change triggers
+And no global agent-artifact publication path opens from the tier's home
+```
+<!-- /planned:docs-tier-layering -->
+
 #### UC-SPO12: Concurrent syncs observe a complete documentation deployment
 
 ```gherkin

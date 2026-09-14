@@ -234,12 +234,12 @@ declaration, never inferred from its location on disk. Participation is answered
 independent of whether the tier is an invocation context or carries project
 subscriptions.
 
-A tier whose catalog is never built is indistinguishable from a tier holding no
-content. Construction is part of what makes a tier a tier, not a step taken
-after it exists. A participating tier that holds no snippets therefore keeps an
-empty catalog: the catalog's existence answers participation, its entries answer
-content, and a consumer that finds no file has found a tier that does not
-participate, never one that is merely empty.
+A participating tier that holds no snippets keeps an empty catalog. The
+catalog's existence answers participation; its entries answer content.
+
+Tier catalogs and sources are published like every other publisher's: they
+enter the staged documentation generation and the merged index, and every
+reader reads the deployed corpus. Nothing reads a tier's authoring home.
 <!-- /planned:docs-tier-layering -->
 
 ## Failure modes
