@@ -34,7 +34,10 @@ eligibility. Its observable outcomes live in
 
 - Dispatch mode: automatic preference, manual preference, or fixed agent.
 - Canonical job role, plus todo kind for a prepare orchestrator.
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
 - Producer agent for reviewer dispatch when known.
+<!-- change:remove-reviewer-producer-agent-independence -->
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 - Explicit agent plus caller authority: a caller without a system role makes a
   manual preference, while a system-role caller contributes an automatic preferred
   candidate. A bound runtime agent remains fixed continuation.
@@ -58,15 +61,21 @@ configuration and availability never travel to a caller for speculative selectio
 ### One policy owner
 
 - `teleclaude/core/agent_dispatch.py` owns the typed resolver, role matrix, eligibility
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
   filtering, reviewer separation, and decision reasons.
-<!-- planned-change:session-handoff -->
+<!-- change:remove-reviewer-producer-agent-independence -->
+  filtering, and decision reasons.
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
 - `teleclaude/core/command_handlers/_session.py` invokes that resolver once, before it
   writes the session row or starts a runtime. This is the universal target-machine
   boundary shared by API, adapter, workflow, scheduled, integration, and remote starts.
-<!-- change:session-handoff -->
-- `teleclaude/core/command_handlers/_session.py` invokes that resolver once, before it
-  writes the session row or starts a runtime. This is the universal target-machine
-  boundary shared by API, adapter, workflow, scheduled, integration, and remote starts.
+<!-- change:remove-reviewer-producer-agent-independence -->
+- `teleclaude/core/command_handlers/_session.py` invokes that resolver before it writes
+  the session row or starts a runtime. This is the universal fresh-session boundary
+  shared by API, adapter, workflow, scheduled, integration, and remote starts.
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
+<!-- planned:session-handoff -->
   The restart handler invokes the same resolver for a handoff restart, before the
   first durable session write of that handoff — ahead of the closed-session revive and
   headless adoption a restart otherwise performs first, and ahead of terminating the
@@ -75,9 +84,8 @@ configuration and availability never travel to a caller for speculative selectio
   command-to-role registry. It supplies no todo kind, because a handoff reads no
   workflow state; a prepare-orchestrator handoff therefore resolves through the
   resolver's own command-only path for that command, which surfaces the missing kind
-  in its reason token. For a reviewer role it derives the producer as the initiating
-  session's active agent, the same derivation fresh reviewer dispatch uses.
-<!-- /planned-change:session-handoff -->
+  in its reason token.
+<!-- /planned:session-handoff -->
 - API routes, CLI clients, workflow, generated instructions, scheduled jobs, adapters,
   and integration carry typed dispatch intent; they never carry role orders,
   availability logic, or a pre-resolved automatic default.
@@ -96,8 +104,14 @@ configuration and availability never travel to a caller for speculative selectio
   unavailable rows are ineligible; expired rows normalize to available through the
   existing database expiry semantics. A storage read failure remains a typed dispatch
   failure and is never treated as a missing row.
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
 - Reviewer independence is applied inside the eligible set while preserving row order.
   The producer remains usable when no independent candidate survives.
+<!-- change:remove-reviewer-producer-agent-independence -->
+- Reviewer selection uses the same eligible ordered candidates as every other automatic
+  fresh-session role. The initiating or producing session's agent does not narrow or
+  reorder the candidate set.
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 - Matrix order is stable. Configuration iteration order never becomes policy.
 - An empty eligible set refuses creation instead of choosing outside the contract.
 
@@ -107,9 +121,15 @@ configuration and availability never travel to a caller for speculative selectio
   preference. It must be known and enabled. Operator status `available` or
   `degraded` selects that exact agent; `unavailable`, unknown, or disabled preference
   is rejected before session creation and never enters automatic fallback ordering.
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
 - An explicitly supplied agent from a system-role caller is an automatic preferred
   candidate. It is selected only when automatically eligible and compatible with
   reviewer independence; otherwise normal automatic ordering selects the fallback.
+<!-- change:remove-reviewer-producer-agent-independence -->
+- An explicitly supplied agent from a system-role caller is an automatic preferred
+  candidate. It is selected when automatically eligible; otherwise normal automatic
+  ordering selects the fallback.
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 <!-- planned-change:session-handoff -->
 - Resume, revive, restart, attach, transcript-bound continuation, and declared
   fixed-agent jobs are fixed. They never cross-agent substitute.
@@ -131,10 +151,16 @@ configuration and availability never travel to a caller for speculative selectio
 - The agent-runtime database owns operator availability. The resolver reads the
   existing availability records and their expiry semantics; it introduces no second
   status store and emits no new event family.
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
 - `SessionLaunchIntent` preserves automatic, manual-preference, or fixed intent plus
   the supplied preferred or fixed agent. `CreateSessionCommand` carries job role,
   prepare todo kind when applicable, and producer identity when reviewer separation
   cannot be derived from the initiating session.
+<!-- change:remove-reviewer-producer-agent-independence -->
+- `SessionLaunchIntent` preserves automatic, manual-preference, or fixed intent plus
+  the supplied preferred or fixed agent. `CreateSessionCommand` carries job role and
+  prepare todo kind when applicable.
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 - The selected agent is materialized only after resolution, then remains the existing
   `Session.active_agent` value and launch-intent agent used by startup. No routing
   explanation is persisted as session input.
@@ -185,11 +211,18 @@ configuration and availability never travel to a caller for speculative selectio
 
 ### Session-creation flow
 
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
 Automatic fresh-session callers preserve an absent agent through request, client,
 adapter, lifecycle, and integration boundaries. Command-bearing doors derive the
 canonical job from `COMMAND_ROLE_MAP`; lifecycle dispatch supplies prepare todo kind,
 and reviewer dispatch supplies or makes derivable the producer. Generated orchestration
 supplies role context without selecting an agent.
+<!-- change:remove-reviewer-producer-agent-independence -->
+Automatic fresh-session callers preserve an absent agent through request, client,
+adapter, lifecycle, and integration boundaries. Command-bearing doors derive the
+canonical job from `COMMAND_ROLE_MAP`; lifecycle dispatch supplies prepare todo kind.
+Generated orchestration supplies role context without selecting an agent.
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 
 The target-machine session handler resolves typed dispatch intent against its local
 configuration and availability immediately before session creation. Agent-specific
@@ -200,7 +233,11 @@ startup rewriting and launch occur only after the selected agent is materialized
 ```mermaid
 flowchart LR
     Caller[Fresh-session caller]
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
     Context[Dispatch mode + role + kind + producer]
+<!-- change:remove-reviewer-producer-agent-independence -->
+    Context[Dispatch mode + role + kind]
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
     Boundary[Target-machine session create boundary]
     Resolver[Agent dispatch resolver]
     State[Configured inventory + operator availability]
@@ -211,10 +248,17 @@ flowchart LR
     Resolver -->|typed decision| Create
 ```
 
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
 The selection boundary resolves role context before agent-specific launch behavior. A
 prepare dispatch carries todo kind. Reviewer dispatch carries the producer when known.
 Unknown role context uses the global order and remains observably distinct from a
 missing row for a known role.
+<!-- change:remove-reviewer-producer-agent-independence -->
+The selection boundary resolves role context before agent-specific launch behavior. A
+prepare dispatch carries todo kind. Reviewer dispatch uses the same role context as any
+other fresh-session dispatch. Unknown role context uses the global order and remains
+observably distinct from a missing row for a known role.
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 
 <!-- planned:session-handoff -->
 ### Handoff restart
@@ -233,8 +277,7 @@ flowchart LR
 
 A handoff restart is the one continuation that re-enters the selection boundary. The
 restart handler supplies the session's recorded command and registry-derived role, no
-todo kind, the initiating session's agent as producer for a reviewer role, and the
-caller's authority for any explicitly named agent. It resolves before the first durable
+todo kind, and the caller's authority for any explicitly named agent. It resolves before the first durable
 session write, launches the successor without a native session id, and hands the
 successor a startup brief composed in core in the ordinary dispatch shape. Transcript
 chaining and active-agent adoption ride the existing native-metadata update path when
@@ -288,16 +331,15 @@ provider parsing in callers.
   serializing Claude or the configured default.
 - **Core command model:** launch intent distinguishes automatic, manual preference, and
   fixed continuation until the target-machine handler resolves it.
-<!-- planned-change:session-handoff -->
+<!-- planned-change:remove-reviewer-producer-agent-independence -->
 - **Core:** one resolver owns role order, eligibility, reviewer separation, manual
   preference, fixed continuation, explanation, and no-candidate semantics. The session
   handler is the sole caller that materializes an agent for fresh work.
-<!-- change:session-handoff -->
-- **Core:** one resolver owns role order, eligibility, reviewer separation, manual
-  preference, fixed continuation, explanation, and no-candidate semantics. The session
-  handler materializes an agent for fresh work; the restart handler materializes the
-  successor for a handoff restart. Both consume the resolver's decision unchanged.
-<!-- /planned-change:session-handoff -->
+<!-- change:remove-reviewer-producer-agent-independence -->
+- **Core:** one resolver owns role order, eligibility, manual preference, fixed
+  continuation, explanation, and no-candidate semantics. Every invocation point
+  consumes the resolver's decision unchanged.
+<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 <!-- planned:session-handoff -->
 - **Restart request contract:** the restart request carries typed handoff intent, a
   handoff flag and an optional named agent, beside the existing self-restart flag.
