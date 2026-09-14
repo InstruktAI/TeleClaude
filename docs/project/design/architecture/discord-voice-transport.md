@@ -45,11 +45,10 @@ Gateway connection and exactly one owner of the voice connection.
    provider event performs no voice side effect — no join, move, receive, or
    playback. This extends the fleet rule in
    `project/spec/feature/integration/discord-interaction-ownership` to a
-   resource with no forum ancestry to derive ownership from, using the
-   singular role the fleet already has rather than a new declaration. Peers
-   learn which computer is the master from fleet discovery: the heartbeat
-   carries the master flag as an additive field, and a peer that predates it
-   cannot route a room selection and says so rather than guessing.
+   resource with no forum ancestry. Which node is the master is a published
+   fact of fleet discovery owned by the reconciliation context; the thread
+   owner resolves it there, and a peer that predates the advertisement cannot
+   route a room selection and says so rather than guessing.
 3. **The sender's stop sequence is the push-to-talk release.** A Discord client
    emits a run of Opus silence frames immediately before it stops sending. Under
    push-to-talk the held key is the transmission: the client encodes and sends
@@ -134,31 +133,35 @@ Gateway connection and exactly one owner of the voice connection.
     already carries the identified human and the time their input was last
     accepted, which is exactly what the focus rule orders on. The voice-owning
     computer derives focus from snapshots it already holds.
-18. **Remote session state is event-driven, so the voice owner registers an
-    observation.** Snapshot refresh for sessions runs at bootstrap and on
-    request, never on a periodic cadence. The platform already carries a
-    daemon-level observation contract — an observer signals interest in a
-    session on its host with a bounded lifetime, and the host can ask whether a
-    session is observed — with no host-side publisher yet. This delivery
-    completes it: while the person is in the room, the voice owner signals
-    observation of the focused session for a bounded window and renews it on
-    focus change; on agent stop, the host checks whether the session is
-    observed and, if so, sends the existing daemon-level system command
-    envelope to the observer with a new command naming the session and its
-    output-stop version. The observer requests a sessions refresh for that host
-    and fetches the reply. Nothing polls.
-19. **One additive query carries the spoken reply.** A session's complete
+18. **A remote focused session is observed for as long as it is focused.**
+    Snapshot refresh for sessions runs at bootstrap and on request, never on a
+    cadence, so the master learns of a remote stop through the agent-runtime
+    observation contract: it registers interest in the focused session on its
+    host, renews that interest on a fixed cadence for the whole time the person
+    is in the room and the session is focused — never only on focus change —
+    re-registers after its own restart, and drops it on leave or focus change.
+    On agent stop the host, finding the session observed, sends the observer
+    the daemon-level system command naming the session and its output-stop
+    version; the observer requests a sessions refresh and fetches the reply.
+    Nothing polls, and an unchanged focus never outlives its observation.
+19. **Peer support is established before it is relied on.** The host-side
+    publisher is a capability the host advertises in fleet discovery. The
+    master registers observation only on a host that advertises it; a focused
+    session on a host that does not is reported unavailable to the room
+    immediately and visibly, not awaited. This is the fleet rule that
+    coordination which needs agreement refuses rather than guesses.
+20. **One additive query carries the spoken reply.** A session's complete
     user-visible final response is not in the published snapshot, which carries
     the generated summary and an output digest. A request for that full output
     and its version is added to the cross-computer request vocabulary as a new
     entry; existing entries and payloads are unchanged, and readers tolerate
     fields they do not know.
-20. **A peer that lacks the query or the command degrades rather than fails.**
-    The fleet runs mixed versions, so an unknown request from an older peer
-    means the reply for that session is not spoken and the reason is visible.
-    It never stalls the room, and it never falls back to speaking the summary,
-    which is not the approved outcome.
-21. **The final-output version is what identifies a reply, and it is published
+21. **A peer that lacks the query degrades rather than fails.** The fleet runs
+    mixed versions, so an unknown request from an older peer means the reply
+    for that session is not spoken and the reason is visible. It never stalls
+    the room, and it never falls back to speaking the summary, which is not the
+    approved outcome.
+22. **The final-output version is what identifies a reply, and it is published
     additively.** The session's output-stop marker is the version; the existing
     `last_output_digest` is not. That digest is internal dedupe state for output
     routing — digest-only writes deliberately emit no session-updated event, so a
@@ -168,12 +171,12 @@ Gateway connection and exactly one owner of the voice connection.
     the text. Re-hearing an unchanged reply is settled against that version
     before any cross-computer request is made; adapter delivery state never
     stands in for a domain version.
-22. **Explicit selection plays immediately.** The focus-set command, executed
+23. **Explicit selection plays immediately.** The focus-set command, executed
     on the voice owner, both records the selection and triggers playback of the
     selected session's current version — reusing the cached artifact when that
     version is already rendered. Selection is therefore never a silent state
     change waiting on a new stop.
-23. **Delivery and cancellation use what exists.** A latched utterance reaches
+24. **Delivery and cancellation use what exists.** A latched utterance reaches
     a remote session through the established cross-computer command envelope,
     as an ordinary text-input command carrying the transcription. Cancellation is local to the voice-owning computer, which owns
     the playback queue, and needs no fleet contract.

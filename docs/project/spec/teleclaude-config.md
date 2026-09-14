@@ -240,7 +240,11 @@ Valid **only** in `~/.teleclaude/people/{slug}/teleclaude.yml`.
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }
+<!-- planned-change:discord-personal-voice-conversation -->
   discord: { user_id, nick, avatar_url }
+<!-- change:discord-personal-voice-conversation -->
+  discord: { user_id, nick, avatar_url, voice_bot_token, voice_channel_id } # voice_bot_token normally ${DISCORD_BOT_TOKEN} in the person .env; voice_channel_id a channel snowflake; both present or both absent; the token must authenticate the same bot the Discord adapter runs
+<!-- /planned-change:discord-personal-voice-conversation -->
   whatsapp: { phone_number }
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
@@ -603,6 +607,9 @@ tts:
   services:
     openai: { enabled: boolean, api_key: string | null } # API key normally ${OPENAI_API_KEY}
     elevenlabs: { enabled: boolean, api_key: string | null } # API key normally ${ELEVENLABS_API_KEY}
+<!-- planned:discord-personal-voice-conversation -->
+    <service>: { ..., voices: [{ name, voice_id? }], discord_voice: string } # discord_voice is one name from that service's own voices list; defaults to the first entry; a name outside the list fails validation naming the service
+<!-- /planned:discord-personal-voice-conversation -->
 ```
 
 Summary/title generation tries `local` (when `enabled` + `base_url`) first, then the

@@ -64,7 +64,12 @@ TeleClaudeNext repository.
   last accepted; an explicit selection supersedes the derived value until a
   later accepted input from that human.
 - **Also published:** a query returning a session's complete user-visible final
-  response together with the output version it belongs to. The published
+  response together with the output version it belongs to; and the session
+  observation contract — a peer registers renewable, bounded interest in a live
+  session, and on that session's agent stop this runtime sends the observing
+  peer a notification naming the session and its output-stop version. The
+  runtime publishes both halves; what an observer does with the notification is
+  the observer's own contract. The published
   snapshot carries the generated summary and an output digest, neither of which
   is the spoken contract, so this is the contract a remote listener reads. It is
   additive: existing queries and payloads are unchanged.
