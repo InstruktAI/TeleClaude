@@ -1,5 +1,4 @@
 """Constants used across TeleClaude.
-
 This module defines shared constants to ensure consistency.
 """
 
