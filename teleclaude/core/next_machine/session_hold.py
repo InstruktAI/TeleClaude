@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -21,8 +22,35 @@ logger = get_logger(__name__)
 
 MANUAL_CLOSE_HELD_REASON = "held"
 ACTIVE_RUNNER_CLEARED_REASON = "cleared"
-_SESSION_NOT_PROJECT_CHECKOUT_REASON = "session-not-project-checkout"
 _GATE_APPROVAL_EVENT_SOURCE = "workflow.gate_approval"
+_MANUAL_SESSION_CLOSE_DRIVER_CLASSIFIED_EVENT = "manual_session_close_driver_classified"
+_SESSION_CLOSE_EVENT_SOURCE = "workflow.session_close"
+_WORKFLOW_PROJECT_PATH_RESOLVED_REASON = "ok"
+
+
+class ManualCloseDriverReason(StrEnum):
+    """Reasons produced by the manual-close driver correlation."""
+
+    CURRENT_DRIVER = "current-driver"
+    NON_DRIVER_WORKER = "non-driver-worker"
+    RELEASED_DRIVER = "released-driver"
+    ACTIVE_RUNNER_NOT_FOUND = "active-runner-not-found"
+    ACTIVE_RUNNER_AMBIGUOUS = "active-runner-ambiguous"
+    SESSION_NOT_FOUND = "session-not-found"
+    SESSION_PROJECT_MISSING = "session-project-missing"
+    SESSION_NOT_PROJECT_CHECKOUT = "session-not-project-checkout"
+    STATE_NOT_FOUND = "state-not-found"
+
+
+class ManualCloseDriverOutcome(StrEnum):
+    """Terminal manual-close outcomes emitted for driver correlation."""
+
+    HELD = "held"
+    EXPLAINED_NOOP = "explained_noop"
+    UNRESOLVED = "unresolved"
+
+
+_SESSION_NOT_PROJECT_CHECKOUT_REASON = ManualCloseDriverReason.SESSION_NOT_PROJECT_CHECKOUT
 
 
 @dataclass(frozen=True)
@@ -40,13 +68,22 @@ class DriverOwnershipReconciliation:
     cleared_slugs: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ManualCloseDriverCorrelation:
+    """The auditable driver relationship for one manual session close."""
+
+    slug: str | None
+    project_path: str | None
+    reason: ManualCloseDriverReason
+
+
 def _workflow_project_path(session_project_path: str | None) -> tuple[str | None, str]:
     if not session_project_path:
-        return None, "session-project-missing"
+        return None, ManualCloseDriverReason.SESSION_PROJECT_MISSING
     project_path = str(Path(session_project_path).resolve())
     if not is_project_checkout(project_path):
         return None, _SESSION_NOT_PROJECT_CHECKOUT_REASON
-    return project_path, "ok"
+    return project_path, _WORKFLOW_PROJECT_PATH_RESOLVED_REASON
 
 
 async def _emit_todo_updated(*, slug: str, project_path: str, source: str) -> None:
@@ -83,24 +120,80 @@ async def _emit_session_ended(*, session_id: str, project_path: str) -> None:
         logger.info("agent_runtime.session.ended not emitted: event producer unavailable", session_id=session_id)
 
 
-async def _active_runner_slug(db: Db, session_id: str) -> tuple[str | None, str | None, str]:
+async def _manual_close_driver_correlation(db: Db, session_id: str) -> ManualCloseDriverCorrelation:
     session = await db.get_session(session_id)
     if session is None:
-        return None, None, "session-not-found"
+        return ManualCloseDriverCorrelation(
+            slug=None,
+            project_path=None,
+            reason=ManualCloseDriverReason.SESSION_NOT_FOUND,
+        )
     project_path, reason = _workflow_project_path(session.project_path)
     if project_path is None:
-        return None, None, reason
+        return ManualCloseDriverCorrelation(
+            slug=None,
+            project_path=None,
+            reason=ManualCloseDriverReason(reason),
+        )
     todos_db = await get_todos_db(project_path)
     matches: list[str] = []
     for row in await todos_db.list_todo(include_icebox=True):
         state = await todos_db.read_state(row["slug"])
         if state and state.get("active_runner") == session_id:
             matches.append(row["slug"])
-    if not matches:
-        return None, project_path, "active-runner-not-found"
+    if len(matches) == 1:
+        return ManualCloseDriverCorrelation(
+            slug=matches[0],
+            project_path=project_path,
+            reason=ManualCloseDriverReason.CURRENT_DRIVER,
+        )
     if len(matches) > 1:
-        return None, project_path, "active-runner-ambiguous"
-    return matches[0], project_path, "ok"
+        return ManualCloseDriverCorrelation(
+            slug=None,
+            project_path=project_path,
+            reason=ManualCloseDriverReason.ACTIVE_RUNNER_AMBIGUOUS,
+        )
+    working_slug = session.working_slug
+    if working_slug:
+        state = await todos_db.read_state(working_slug)
+        active_runner = state.get("active_runner") if state is not None else None
+        if isinstance(active_runner, str) and active_runner:
+            return ManualCloseDriverCorrelation(
+                slug=working_slug,
+                project_path=project_path,
+                reason=ManualCloseDriverReason.NON_DRIVER_WORKER,
+            )
+        if await todos_db.removed_todo_claims_active_runner(working_slug, session_id):
+            return ManualCloseDriverCorrelation(
+                slug=working_slug,
+                project_path=project_path,
+                reason=ManualCloseDriverReason.RELEASED_DRIVER,
+            )
+    return ManualCloseDriverCorrelation(
+        slug=None,
+        project_path=project_path,
+        reason=ManualCloseDriverReason.ACTIVE_RUNNER_NOT_FOUND,
+    )
+
+
+def _manual_close_driver_outcome(reason: ManualCloseDriverReason) -> ManualCloseDriverOutcome:
+    if reason is ManualCloseDriverReason.CURRENT_DRIVER:
+        return ManualCloseDriverOutcome.HELD
+    if reason in {ManualCloseDriverReason.NON_DRIVER_WORKER, ManualCloseDriverReason.RELEASED_DRIVER}:
+        return ManualCloseDriverOutcome.EXPLAINED_NOOP
+    return ManualCloseDriverOutcome.UNRESOLVED
+
+
+def _log_manual_close_driver_correlation(*, session_id: str, correlation: ManualCloseDriverCorrelation) -> None:
+    outcome = _manual_close_driver_outcome(correlation.reason)
+    log = logger.warning if outcome is ManualCloseDriverOutcome.UNRESOLVED else logger.info
+    log(
+        _MANUAL_SESSION_CLOSE_DRIVER_CLASSIFIED_EVENT,
+        session_id=session_id,
+        todo_slug=correlation.slug,
+        outcome=outcome.value,
+        reason=correlation.reason.value,
+    )
 
 
 async def _project_path_for_session_end(db: Db, session_id: str) -> tuple[str | None, str]:
@@ -151,18 +244,33 @@ def hold_todo_for_diagnosis_unresolved(writer: StateWriter, *, reason: str, call
 
 
 async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveRunnerMutationResult:
-    slug, project_path, reason = await _active_runner_slug(db, session_id)
-    if slug is None or project_path is None:
-        if reason != _SESSION_NOT_PROJECT_CHECKOUT_REASON:
-            logger.warning(
-                "manual session close could not correlate active_runner", session_id=session_id, reason=reason
-            )
-        return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=False, reason=reason)
+    correlation = await _manual_close_driver_correlation(db, session_id)
+    if correlation.reason is not ManualCloseDriverReason.CURRENT_DRIVER:
+        if correlation.reason is not _SESSION_NOT_PROJECT_CHECKOUT_REASON:
+            _log_manual_close_driver_correlation(session_id=session_id, correlation=correlation)
+        return ActiveRunnerMutationResult(
+            slug=correlation.slug,
+            project_path=correlation.project_path,
+            mutated=False,
+            reason=correlation.reason,
+        )
 
-    todos_db = await get_todos_db(project_path)
-    state = await todos_db.read_state(slug)
+    assert correlation.slug is not None and correlation.project_path is not None
+    todos_db = await get_todos_db(correlation.project_path)
+    state = await todos_db.read_state(correlation.slug)
     if state is None:
-        return ActiveRunnerMutationResult(slug=slug, project_path=project_path, mutated=False, reason="state-not-found")
+        state_missing = ManualCloseDriverCorrelation(
+            slug=correlation.slug,
+            project_path=correlation.project_path,
+            reason=ManualCloseDriverReason.STATE_NOT_FOUND,
+        )
+        _log_manual_close_driver_correlation(session_id=session_id, correlation=state_missing)
+        return ActiveRunnerMutationResult(
+            slug=correlation.slug,
+            project_path=correlation.project_path,
+            mutated=False,
+            reason=state_missing.reason,
+        )
     writer = StateWriter(state)
     writer.state.hold = True
     writer.state.hold_audit = HoldAuditState(
@@ -171,11 +279,16 @@ async def hold_todo_for_manual_session_close(db: Db, session_id: str) -> ActiveR
         set_by_session_id=session_id,
         reason="manual session close",
     )
-    await writer.commit(todos_db, slug)
-    await _emit_todo_updated(slug=slug, project_path=project_path, source="workflow.session_close")
+    await writer.commit(todos_db, correlation.slug)
+    _log_manual_close_driver_correlation(session_id=session_id, correlation=correlation)
+    await _emit_todo_updated(
+        slug=correlation.slug,
+        project_path=correlation.project_path,
+        source=_SESSION_CLOSE_EVENT_SOURCE,
+    )
     return ActiveRunnerMutationResult(
-        slug=slug,
-        project_path=project_path,
+        slug=correlation.slug,
+        project_path=correlation.project_path,
         mutated=True,
         reason=MANUAL_CLOSE_HELD_REASON,
     )

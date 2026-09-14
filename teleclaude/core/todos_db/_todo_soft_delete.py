@@ -423,6 +423,21 @@ class TodosDbTodoSoftDeleteMixin:
             )
             return result.first() is not None
 
+    async def removed_todo_claims_active_runner(self, slug: str, session_id: str) -> bool:
+        """Return whether a retained removal claim names this former lifecycle driver."""
+        async with cast(Any, self)._session() as session:
+            result = await session.exec(
+                select(Todo.removed_claim).where(TODO_TABLE.c.slug == slug).where(TODO_TABLE.c.status == "removed")
+            )
+            for removed_claim in result.all():
+                try:
+                    claim = json.loads(removed_claim)
+                except (TypeError, ValueError):
+                    continue
+                if isinstance(claim, dict) and claim.get("active_runner") == session_id:
+                    return True
+        return False
+
     async def find_live_slug_conflict(self, slug: str, *, session: SqlAsyncSession | None = None) -> str | None:
         """Return the status of a conflicting active/icebox/holder row, or None.
 
