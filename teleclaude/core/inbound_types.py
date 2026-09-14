@@ -10,3 +10,18 @@ class InboundMessageType(StrEnum):
     VOICE = "voice"
     FILE = "file"
     REMINDER = "reminder"
+
+
+class InboundBindingDisposition(StrEnum):
+    """Terminal states for delivered rows that cannot acquire a turn binding."""
+
+    LEGACY_PRE_CUTOVER = "legacy_pre_cutover"
+    INPUT_CONFLICT = "input_conflict"
+
+
+class TurnPartKind(StrEnum):
+    """Authorship classes for the ordered spans of one bound native turn."""
+
+    LOCAL = "local"
+    CALLER = "caller"
+    PEER = "peer"

@@ -303,8 +303,8 @@ def format_peer_message(*, messages: list[HumanFacingMessage | ParsedPeerSegment
     return _SECTION_SEPARATOR.join(sections)
 
 
-def format_identity_conversation(*, header: str, body: str) -> tuple[str, int, int]:
+def format_identity_conversation(*, header: str, body: str, occurrence_key: str | None = None) -> tuple[str, int, int]:
     """Render an identity-bearing conversation with platform-owned boundaries."""
-    envelope = identity_content_envelope(header, body)
+    envelope = identity_content_envelope(header, body, occurrence_key)
     body_start, body_end = envelope.body_span
     return envelope.rendered, body_start, len(envelope.rendered) - body_end

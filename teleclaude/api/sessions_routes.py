@@ -700,24 +700,26 @@ async def _wrap_message_with_origin(
     message_text: str,
     caller_session_id: str | None,
     event_identity: ResolvedSessionEventIdentity | None = None,
+    occurrence_key: str | None = None,
 ) -> tuple[str, int, int]:
     identity = event_identity or await _resolve_caller_event_identity(caller_session_id)
     header = identity.header if identity is not None else None
     if not header:
         return message_text, 0, 0
-    return format_identity_conversation(header=header, body=message_text)
+    return format_identity_conversation(header=header, body=message_text, occurrence_key=occurrence_key)
 
 
 async def _process_api_message(
     session_id: str,
     message_text: str,
     metadata: MessageMetadata,
+    occurrence_key: str | None = None,
     computer: str | None = None,
 ) -> None:
     # guard: loose-dict - CommandMapper.map_api_input payload boundary
     payload: dict[str, object] = {"session_id": session_id, "text": message_text}
-    if metadata.caller_session_id:
-        payload[OCCURRENCE_KEY] = uuid4().hex  # identity-content needs a durable receipt key (f52119d34)
+    if occurrence_key is not None:
+        payload[OCCURRENCE_KEY] = occurrence_key
     cmd = CommandMapper.map_api_input("message", payload, metadata, computer=computer)
     await dispatch_command(_STATE.client, cmd)
 
@@ -892,15 +894,17 @@ async def send_message_endpoint(
             metadata.caller_thinking_mode = caller_author.thinking_mode
             metadata.caller_machine_role = caller_author.machine_role
             metadata.caller_job_role = caller_job_role
+        occurrence_key = uuid4().hex if caller_resolution is not None else None
         message_text, caller_prefix_len, caller_suffix_len = await _wrap_message_with_origin(
             request.message,
             identity.session_id,
             event_identity,
+            occurrence_key,
         )
         if caller_resolution is not None:
             metadata.caller_origin_prefix_len = caller_prefix_len
             metadata.caller_origin_suffix_len = caller_suffix_len
-        await _process_api_message(session_id, message_text, metadata, computer=computer)
+        await _process_api_message(session_id, message_text, metadata, occurrence_key, computer=computer)
         return SendMessageResponseDTO(status="success", mode="work")
     except (SessionMessageRejectedError, UnidentifiableCallerError) as exc:
         if isinstance(exc, UnidentifiableCallerError):

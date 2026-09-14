@@ -15,7 +15,14 @@ from ._base import DbBase
 from ._control_delivery import ControlDeliveryRecord, DbControlDeliveryMixin
 from ._conversation_delivery import DbConversationDeliveryMixin
 from ._hooks import DbHooksMixin
-from ._inbound import DbInboundMixin
+from ._inbound import (
+    AcceptedTurnBindingRecord,
+    DbInboundMixin,
+    NativeReference,
+    TurnAuthoredPartInput,
+    TurnAuthoredPartRecord,
+    TurnReceiptEnvelopeInput,
+)
 from ._links import DbLinksMixin
 from ._listeners import DbListenersMixin
 from ._operations import DbOperationsMixin
@@ -90,14 +97,19 @@ async def get_db() -> Db:
 
 
 __all__ = [
+    "AcceptedTurnBindingRecord",
     "ControlDeliveryRecord",
     "Db",
     "DiscordSendIntent",
     "HookOutboxRow",
     "InboundQueueRow",
+    "NativeReference",
     "OperationRow",
     "OutputGeneration",
     "SessionIdentityError",
+    "TurnAuthoredPartInput",
+    "TurnAuthoredPartRecord",
+    "TurnReceiptEnvelopeInput",
     "db",
     "delete_process_spawn_registry_entry_sync",
     "get_db",

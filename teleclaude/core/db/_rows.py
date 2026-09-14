@@ -45,6 +45,7 @@ class InboundQueueRow(TypedDict):
     caller_job_role: str | None
     caller_origin_prefix_len: int | None
     caller_origin_suffix_len: int | None
+    binding_disposition: str | None
     reflection_claimed_at: str | None
 
 

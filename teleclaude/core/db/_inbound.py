@@ -1,5 +1,6 @@
 """Mixin: DbInboundMixin."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -10,9 +11,9 @@ from sqlmodel import select
 
 from .. import db_models
 from ..dates import parse_iso_datetime
-from ..inbound_types import InboundMessageType
+from ..inbound_types import InboundBindingDisposition, InboundMessageType, TurnPartKind
 from ..injected_text import InjectedTextSourceFeature, TranscriptEntryKind
-from ..models import MessageAuthor
+from ..models import MessageAuthor, MessageAuthorKind
 from ._rows import InboundQueueRow
 
 if TYPE_CHECKING:
@@ -55,8 +56,57 @@ def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
         caller_job_role=row.caller_job_role,
         caller_origin_prefix_len=row.caller_origin_prefix_len,
         caller_origin_suffix_len=row.caller_origin_suffix_len,
+        binding_disposition=row.binding_disposition,
         reflection_claimed_at=row.reflection_claimed_at,
     )
+
+
+@dataclass(frozen=True)
+class NativeReference:
+    """A native entry identifier qualified by its runtime and native session."""
+
+    runtime: str
+    native_session_id: str
+    entry_id: str
+
+
+@dataclass(frozen=True)
+class TurnAuthoredPartInput:
+    """One author-owned span that belongs to a bound native entry."""
+
+    part_kind: TurnPartKind
+    span_start: int
+    span_end: int
+    original_source_session_id: str | None
+    author: MessageAuthor
+    author_job_role: str | None = None
+
+
+@dataclass(frozen=True)
+class TurnAuthoredPartRecord(TurnAuthoredPartInput):
+    """A persisted authored span with its stable order within the binding."""
+
+    part_id: int = 0
+
+
+@dataclass(frozen=True)
+class TurnReceiptEnvelopeInput:
+    """One accepted occurrence and its structurally matched envelope spans."""
+
+    inbound_queue_id: int
+    envelope_index: int
+    occurrence_key: str
+    envelope_span: tuple[int, int]
+    body_span: tuple[int, int]
+    authored_part_id: int | None
+
+
+@dataclass(frozen=True)
+class AcceptedTurnBindingRecord:
+    """A binding and its ordered authored parts."""
+
+    binding_id: str
+    parts: tuple[TurnAuthoredPartRecord, ...]
 
 
 class DbInboundMixin:
@@ -276,78 +326,150 @@ class DbInboundMixin:
             rows = result.all()
             return [_decode_inbound_row(row) for row in rows]
 
-    async def fetch_recent_delivered_caller_inbound(
-        self,
-        session_id: str,
-        *,
-        delivered_after_iso: str | None,
-        limit: int = 20,
-    ) -> list[InboundQueueRow]:
-        """Return a session's most recently delivered caller-originated rows, newest first.
+    async def get_inbound_row(self, row_id: int) -> db_models.InboundQueue | None:
+        """Fetch one accepted inbound row by id, including its caller-provenance columns."""
+        async with self._session() as db_session:
+            return await db_session.get(db_models.InboundQueue, row_id)
 
-        ``delivered_after_iso`` bounds the result to rows delivered after that
-        instant, so a caller can scope the lookup to one turn window.
-        """
+    async def get_unbound_delivered_caller_inbound(self, session_id: str) -> list[InboundQueueRow]:
+        """Return post-cutover caller receipts awaiting a native-entry binding."""
+        associated_ids = select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id)
         statement = (
             select(db_models.InboundQueue)
             .where(db_models.InboundQueue.session_id == session_id)
             .where(db_models.InboundQueue.status == _DELIVERED_STATUS)
             .where(db_models.InboundQueue.caller_session_id.is_not(None))  # type: ignore[union-attr]
-            .where(db_models.InboundQueue.reflected_at.is_(None))  # type: ignore[union-attr]
-            .order_by(db_models.InboundQueue.id.desc())  # type: ignore[union-attr]
-            .limit(limit)
+            .where(db_models.InboundQueue.binding_disposition.is_(None))  # type: ignore[union-attr]
+            .where(db_models.InboundQueue.id.notin_(associated_ids))
+            .order_by(db_models.InboundQueue.id.asc())  # type: ignore[arg-type]
         )
-        if delivered_after_iso is not None:
-            statement = statement.where(db_models.InboundQueue.processed_at > delivered_after_iso)  # type: ignore[operator]
         async with self._session() as db_session:
             rows = (await db_session.exec(statement)).all()
             return [_decode_inbound_row(row) for row in rows]
 
-    async def claim_inbound_reflection(self, row_id: int, *, now_iso: str) -> bool:
-        """CAS a reflection claim on an unconsumed, unclaimed row. Returns True when claimed.
-
-        A standing claim is never reclaimed here: a fresh one is an in-flight
-        attempt, and an orphaned one (a crash mid-attempt) means delivery is
-        unknowable, so its row is finalized as omitted rather than re-sent.
-        """
-        stmt = (
-            update(db_models.InboundQueue)
-            .where(
-                db_models.InboundQueue.id == row_id,
-                db_models.InboundQueue.reflected_at.is_(None),  # type: ignore[union-attr]
-                db_models.InboundQueue.reflection_claimed_at.is_(None),  # type: ignore[union-attr]
+    async def create_turn_binding(
+        self,
+        *,
+        binding_id: str,
+        session_id: str,
+        native_reference: NativeReference,
+        parts: list[TurnAuthoredPartInput],
+        receipt: TurnReceiptEnvelopeInput,
+    ) -> bool:
+        """Atomically persist one native-entry correlation and its ordered authored spans."""
+        now = datetime.now(UTC).isoformat()
+        async with self._session() as db_session:
+            existing = await db_session.exec(
+                select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id).where(
+                    db_models.TurnReceiptEnvelopeRow.inbound_queue_id == receipt.inbound_queue_id
+                )
             )
-            .values(reflection_claimed_at=now_iso)
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
-            await db_session.commit()
-            return (result.rowcount or 0) == 1
+            if existing.first() is not None:
+                return False
+            db_session.add(
+                db_models.AcceptedTurnBindingRow(
+                    binding_id=binding_id,
+                    session_id=session_id,
+                    native_runtime=native_reference.runtime,
+                    native_session_id=native_reference.native_session_id,
+                    native_entry_id=native_reference.entry_id,
+                    created_at=now,
+                )
+            )
+            for part_id, part in enumerate(parts):
+                db_session.add(
+                    db_models.TurnAuthoredPartRow(
+                        binding_id=binding_id,
+                        part_id=part_id,
+                        part_kind=part.part_kind.value,
+                        span_start=part.span_start,
+                        span_end=part.span_end,
+                        original_source_session_id=part.original_source_session_id,
+                        author_kind=part.author.kind.value,
+                        author_display=part.author.display,
+                        author_agent_runtime=part.author.agent_runtime,
+                        author_thinking_mode=part.author.thinking_mode,
+                        author_machine_role=part.author.machine_role,
+                        author_job_role=part.author_job_role,
+                    )
+                )
+            db_session.add(
+                db_models.TurnReceiptEnvelopeRow(
+                    binding_id=binding_id,
+                    inbound_queue_id=receipt.inbound_queue_id,
+                    envelope_index=receipt.envelope_index,
+                    occurrence_key=receipt.occurrence_key,
+                    envelope_span_start=receipt.envelope_span[0],
+                    envelope_span_end=receipt.envelope_span[1],
+                    body_span_start=receipt.body_span[0],
+                    body_span_end=receipt.body_span[1],
+                    authored_part_id=receipt.authored_part_id,
+                )
+            )
+            try:
+                await db_session.commit()
+            except IntegrityError:
+                await db_session.rollback()
+                return False
+            return True
 
-    async def finalize_inbound_reflection(self, row_id: int, *, now_iso: str) -> None:
-        """Record terminal reflection consumption after a platform receipt."""
-        stmt = (
-            update(db_models.InboundQueue)
-            .where(db_models.InboundQueue.id == row_id)
-            .values(reflected_at=now_iso, reflection_claimed_at=None)
-        )
+    async def get_turn_binding(self, binding_id: str) -> AcceptedTurnBindingRecord | None:
+        """Read a binding's parts in their durable projection order."""
         async with self._session() as db_session:
-            await db_session.exec(stmt)
-            await db_session.commit()
+            binding = await db_session.get(db_models.AcceptedTurnBindingRow, binding_id)
+            if binding is None:
+                return None
+            part_rows = (
+                await db_session.exec(
+                    select(db_models.TurnAuthoredPartRow)
+                    .where(db_models.TurnAuthoredPartRow.binding_id == binding_id)
+                    .order_by(db_models.TurnAuthoredPartRow.part_id)  # type: ignore[arg-type]
+                )
+            ).all()
+            parts = tuple(
+                TurnAuthoredPartRecord(
+                    part_id=row.part_id,
+                    part_kind=TurnPartKind(row.part_kind),
+                    span_start=row.span_start,
+                    span_end=row.span_end,
+                    original_source_session_id=row.original_source_session_id,
+                    author=MessageAuthor(
+                        kind=MessageAuthorKind(row.author_kind),
+                        display=row.author_display,
+                        session_id=row.original_source_session_id,
+                        agent_runtime=row.author_agent_runtime,
+                        thinking_mode=row.author_thinking_mode,
+                        machine_role=row.author_machine_role,
+                    ),
+                    author_job_role=row.author_job_role,
+                )
+                for row in part_rows
+            )
+            return AcceptedTurnBindingRecord(binding_id=binding.binding_id, parts=parts)
 
-    async def release_inbound_reflection(self, row_id: int) -> None:
-        """Release a reflection claim whose adapter handoff produced no receipt."""
-        stmt = (
-            update(db_models.InboundQueue).where(db_models.InboundQueue.id == row_id).values(reflection_claimed_at=None)
-        )
+    async def mark_inbound_binding_conflict(self, row_id: int, candidate: NativeReference) -> None:
+        """Fail closed for one occurrence whose candidate cannot be bound uniquely."""
+        now = datetime.now(UTC).isoformat()
         async with self._session() as db_session:
-            await db_session.exec(stmt)
-            await db_session.commit()
-
-    async def get_inbound_row(self, row_id: int) -> db_models.InboundQueue | None:
-        """Fetch one accepted inbound row by id, including its caller-provenance columns."""
-        async with self._session() as db_session:
-            return await db_session.get(db_models.InboundQueue, row_id)
+            await db_session.exec(
+                update(db_models.InboundQueue)
+                .where(db_models.InboundQueue.id == row_id)
+                .where(db_models.InboundQueue.binding_disposition.is_(None))  # type: ignore[union-attr]
+                .values(binding_disposition=InboundBindingDisposition.INPUT_CONFLICT.value)
+            )
+            db_session.add(
+                db_models.BindingConflictCandidateRow(
+                    inbound_queue_id=row_id,
+                    native_runtime=candidate.runtime,
+                    native_session_id=candidate.native_session_id,
+                    native_entry_id=candidate.entry_id,
+                    created_at=now,
+                )
+            )
+            try:
+                await db_session.commit()
+            except IntegrityError:
+                await db_session.rollback()
 
     async def expire_inbound_for_session(self, session_id: str, now_iso: str) -> int:
         """Mark all pending/failed inbound messages for a session as expired. Returns count."""

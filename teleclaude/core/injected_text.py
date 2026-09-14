@@ -135,6 +135,7 @@ _WAKE_BRACKET_OPENING = "[TeleClaude Wake]"
 _RESTART_CONTINUATION_BRACKET_OPENING = "[TeleClaude Restart Continuation]"
 _PEER_BRACKET_OPENING = "[Peer ({session_id} · {author_token} · {occurred_at})]"
 _CALLER_IDENTITY_BRACKET_OPENING = "[{role}{category} ({session_id}) on {computer} · {occurred_at}]"
+_CALLER_IDENTITY_KEYED_SUFFIX = " · {occurrence_key}]"
 _REMINDER_BRACKET_OPENING = "[Reminder {slug} {occurrence_key}]"
 _ACTION_BRACKET_OPENING = "[Action ({topic} · {occurred_at})]"
 _CHECKPOINT_BRACKET_CLOSING = "[/TeleClaude Checkpoint]"
@@ -158,8 +159,9 @@ _WAKE_OPENING_RE = re.compile(re.escape(_WAKE_BRACKET_OPENING))
 _RESTART_CONTINUATION_OPENING_RE = re.compile(re.escape(_RESTART_CONTINUATION_BRACKET_OPENING))
 _PEER_OPENING_RE = re.compile(r"\[Peer \([^\]\n]+ · [^\]\n]+ · [^\]\n]+\)\]")
 _CALLER_IDENTITY_OPENING_RE = re.compile(
-    r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+\]"
+    r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+(?: · [^\]\n]+)?\]"
 )
+_CALLER_OCCURRENCE_KEY_RE = re.compile(r" · (?P<occurrence_key>[0-9a-f]{32})\]$")
 _REMINDER_OPENING_RE = re.compile(r"\[Reminder [^\]\n]+\]")
 _IDENTITY_FIELDS = frozenset(
     {EnvelopeField.ROLE, EnvelopeField.SESSION_ID, EnvelopeField.COMPUTER, EnvelopeField.OCCURRED_AT}
@@ -417,15 +419,28 @@ def platform_control_text(label: PlatformTextLabel, body: str = _EMPTY_TEXT) -> 
 def identity_content_envelope(
     header: str,
     body: str,
+    occurrence_key: str | None = None,
 ) -> InjectedTextEnvelope:
     """Compose a paired identity envelope from its resolved opening header."""
     if not (_CALLER_IDENTITY_OPENING_RE.fullmatch(header) or _PEER_OPENING_RE.fullmatch(header)):
         raise ValueError("Identity headers must use the closed identity vocabulary")
+    if occurrence_key is not None:
+        if is_peer_opening(header):
+            raise ValueError("Peer envelopes do not carry caller occurrence keys")
+        header = header.removesuffix("]") + _CALLER_IDENTITY_KEYED_SUFFIX.format(occurrence_key=occurrence_key)
     return InjectedTextEnvelope(
         opening=header,
         closing=f"[/{header.removeprefix('[')}",
         body=body,
     )
+
+
+def caller_occurrence_key(opening: str) -> str | None:
+    """Return the opaque key carried by a complete caller opening, when present."""
+    if not _CALLER_IDENTITY_OPENING_RE.fullmatch(opening):
+        return None
+    match = _CALLER_OCCURRENCE_KEY_RE.search(opening)
+    return match.group("occurrence_key") if match is not None else None
 
 
 def reminder_envelope(opening: str, body: str) -> InjectedTextEnvelope:
@@ -700,6 +715,7 @@ __all__ = [
     "TranscriptCutSegment",
     "TranscriptEntryKind",
     "TranscriptTextClassification",
+    "caller_occurrence_key",
     "checkpoint_text",
     "classify_transcript_text",
     "cut_transcript_entry",
