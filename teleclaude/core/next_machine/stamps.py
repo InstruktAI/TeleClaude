@@ -75,7 +75,7 @@ from teleclaude.core.next_machine.state_mutation import (
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_invocation_project_root, resolve_project_root
-from teleclaude.snippet_validation import snippet_body_digest
+from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import HoldAuditSource, HoldAuditState
 
@@ -226,6 +226,7 @@ async def _apply_mutation_stamp(
     count under the complexity guardrail; ``verdict`` and ``finalize_ready``
     are handled there because they never reach this generic routing.
     """
+    snippet_digest_fn = snippet_body_digest_for(cwd)
     if stamp_type == "deferrals_processed":
         writer.state.deferrals_processed = True
     elif stamp_type in _CREATIVE_GATE_STAMPS:
@@ -239,7 +240,7 @@ async def _apply_mutation_stamp(
             ARTIFACT_REQUIREMENTS,
             "requirements_ready",
             repo_root=cwd,
-            snippet_digest_fn=snippet_body_digest,
+            snippet_digest_fn=snippet_digest_fn,
         )
     elif stamp_type == "plan_ready":
         await _apply_readiness_stamp(
@@ -249,7 +250,7 @@ async def _apply_mutation_stamp(
             ARTIFACT_IMPLEMENTATION_PLAN,
             "plan_ready",
             repo_root=cwd,
-            snippet_digest_fn=snippet_body_digest,
+            snippet_digest_fn=snippet_digest_fn,
         )
     elif stamp_type == "prd_approved":
         await _apply_approval_stamp(
@@ -260,7 +261,7 @@ async def _apply_mutation_stamp(
             "prd_approved",
             caller_session_id,
             repo_root=cwd,
-            snippet_digest_fn=snippet_body_digest,
+            snippet_digest_fn=snippet_digest_fn,
         )
     elif stamp_type == "task_approved":
         await _apply_task_approval_stamp(
@@ -269,7 +270,7 @@ async def _apply_mutation_stamp(
             slug,
             caller_session_id,
             repo_root=cwd,
-            snippet_digest_fn=snippet_body_digest,
+            snippet_digest_fn=snippet_digest_fn,
         )
     elif stamp_type == "diagnosis_settled":
         await _apply_diagnosis_settled_stamp(
@@ -278,7 +279,7 @@ async def _apply_mutation_stamp(
             slug,
             caller_session_id,
             repo_root=cwd,
-            snippet_digest_fn=snippet_body_digest,
+            snippet_digest_fn=snippet_digest_fn,
         )
     elif stamp_type == "diagnosis_unresolved":
         _apply_diagnosis_unresolved_stamp(writer, reason=value, caller_session_id=caller_session_id)
@@ -291,7 +292,7 @@ async def _apply_mutation_stamp(
             slug,
             value,
             repo_root=cwd,
-            snippet_digest_fn=snippet_body_digest,
+            snippet_digest_fn=snippet_digest_fn,
             caller_session_id=caller_session_id or "",
         )
     elif stamp_type == _KIND_ASSIGN_VALUE:
@@ -666,6 +667,7 @@ async def _apply_drift_reviewed_stamp(
         todos_db,
         slug,
         artifact_name,
+        repo_root=repo_root,
         snippet_digest_fn=snippet_digest_fn,
     )
     referenced_snippets = await read_referenced_snippet_digests(
@@ -789,7 +791,7 @@ async def _apply_kickback_stamp(
         ARTIFACT_INPUT,
         repo_root=repo_root,
         artifact_body=artifact_body,
-        snippet_digest_fn=snippet_body_digest,
+        snippet_digest_fn=snippet_body_digest_for(repo_root),
     )
     ApprovalsManager(writer).cascade_substantive_drift(ARTIFACT_IMPLEMENTATION_PLAN)
     writer.state.build_gate_claim_at = _EMPTY_TEXT

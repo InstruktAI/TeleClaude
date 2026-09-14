@@ -37,11 +37,16 @@ from teleclaude.core.next_machine.output_formatting import (
     format_procedure_load,
 )
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
-from teleclaude.core.next_machine.provenance import refresh_referenced_paths, sync_artifact_provenance
+from teleclaude.core.next_machine.provenance import (
+    read_owned_snippet_digests,
+    read_referenced_snippet_digests,
+    refresh_referenced_paths,
+    sync_artifact_provenance,
+)
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.snippet_validation import snippet_body_digest
+from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.state_value import StateValue
 
 if TYPE_CHECKING:
@@ -119,7 +124,28 @@ async def _hydrate_artifact_presence_for_adoption(
         if not await todos_db.artifact_exists(slug, artifact_name):
             continue
         artifact_body = await todos_db.read_artifact(slug, artifact_name)
+        snippet_digest_fn = snippet_body_digest_for(repo_root)
         if entry.digest and entry.async_provenance_complete:
+            if not entry.owned_snippet_digests or not entry.referenced_snippet_digests:
+                owned_snippet_digests = await read_owned_snippet_digests(
+                    todos_db,
+                    slug,
+                    artifact_name,
+                    repo_root=repo_root,
+                    snippet_digest_fn=snippet_digest_fn,
+                )
+                referenced_snippet_digests = await read_referenced_snippet_digests(
+                    todos_db,
+                    slug,
+                    artifact_name,
+                    artifact_body,
+                    repo_root=repo_root,
+                    snippet_digest_fn=snippet_digest_fn,
+                )
+                if not entry.owned_snippet_digests and owned_snippet_digests:
+                    entry.owned_snippet_digests = owned_snippet_digests
+                if not entry.referenced_snippet_digests and referenced_snippet_digests:
+                    entry.referenced_snippet_digests = referenced_snippet_digests
             refresh_referenced_paths(writer, state_key, artifact_body=artifact_body)
             continue
         await sync_artifact_provenance(
@@ -129,7 +155,7 @@ async def _hydrate_artifact_presence_for_adoption(
             artifact_name,
             repo_root=repo_root,
             artifact_body=artifact_body,
-            snippet_digest_fn=snippet_body_digest,
+            snippet_digest_fn=snippet_digest_fn,
         )
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -384,22 +384,27 @@ def _global_ref_prefixes() -> tuple[str, ...]:
     return tuple(dict.fromkeys((configured_prefix, home_prefix, tilde_prefix)))
 
 
-def snippet_body_digest(snippet_id: str) -> str:
-    """Return SHA256 of snippet content, excluding delivered_by frontmatter churn."""
-    snippet_path = _resolve_snippet_path(snippet_id)
-    if snippet_path is None:
-        return ""
-    try:
-        content = snippet_path.read_text(encoding="utf-8")
-    except OSError:
-        return ""
-    filtered = _strip_delivered_by_frontmatter(content)
-    return hashlib.sha256(filtered.encode("utf-8")).hexdigest()
+def snippet_body_digest_for(repo_root: str) -> Callable[[str], str]:
+    """Return a digest seam bound to the project whose snippets it resolves."""
+    project_index = Path(repo_root) / "docs" / "project" / "index.yaml"
+
+    def snippet_body_digest(snippet_id: str) -> str:
+        """Return SHA256 of snippet content, excluding delivered_by frontmatter churn."""
+        snippet_path = _resolve_snippet_path(snippet_id, project_index=project_index)
+        if snippet_path is None:
+            return ""
+        try:
+            content = snippet_path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+        filtered = _strip_delivered_by_frontmatter(content)
+        return hashlib.sha256(filtered.encode("utf-8")).hexdigest()
+
+    return snippet_body_digest
 
 
-def _resolve_snippet_path(snippet_id: str) -> Path | None:
+def _resolve_snippet_path(snippet_id: str, *, project_index: Path) -> Path | None:
     """Resolve a canonical snippet ID through project then global snippet indexes."""
-    project_index = Path.cwd() / "docs" / "project" / "index.yaml"
     global_index = GLOBAL_DOCS_DIR / "index.yaml"
     for index_path in (project_index, global_index):
         resolved = _resolve_snippet_path_from_index(snippet_id, index_path)

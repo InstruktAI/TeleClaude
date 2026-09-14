@@ -77,7 +77,7 @@ from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
-from teleclaude.snippet_validation import snippet_body_digest
+from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.creation_record import EntryPoint
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
 from teleclaude.types.todo_kind import TODO_KIND_CHANGE, TODO_KIND_TASK
@@ -474,7 +474,7 @@ async def _sync_artifact_provenance_state(
         artifact_name,
         repo_root=repo_root,
         artifact_body=artifact_body,
-        snippet_digest_fn=snippet_body_digest,
+        snippet_digest_fn=snippet_body_digest_for(repo_root),
     )
     if artifact_name == ARTIFACT_TASK_PLAN:
         writer.state.lifecycle_phase = adopt_prepare_handoff_phase(writer.state, report_digests={})
