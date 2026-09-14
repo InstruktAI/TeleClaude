@@ -14,15 +14,13 @@ and where those outputs land.
 ## Canonical fields
 
 - **Commands**:
-  - Frontmatter: `description`, optional `argument-hint`, optional `parameters`
+  - Frontmatter: `description`, optional `argument-hint`, optional `parameters`, optional `hooks` (emitted for Claude Code outputs only)
   - Body: normalized command schema (see below)
 
 - **Skills**:
   - Frontmatter: required `name` and `description`
   - Identity: `name` must equal the containing folder in every skill package
   - Body: pass-through; never graded against TeleClaude's artifact taxonomy
-- **Hooks**:
-  - Frontmatter and body follow the target runtime’s hook schema
 
 ## Allowed values
 
@@ -188,13 +186,12 @@ structure and are not checked against any section taxonomy. The universal `name`
 
 ### Runtime support matrix
 
-- **Claude Code**
-  - Commands, Skills, Hooks
-  - Outputs: `~/.claude/` (global) and `.claude/` (project)
-- **Codex CLI**
-  - Commands, Skills
-  - No Hooks
-  - Outputs: `~/.codex/` (global) and `.codex/` (project)
-- **Gemini CLI**
-  - Commands, Skills, Hooks
-  - Outputs: `~/.gemini/` (global) and `.gemini/` (project)
+Commands never reach a runtime home: they compose to the global command corpus
+and are reached through the loader message composed at dispatch. Global skills
+compose to the catalog and reach no runtime home either. What a runtime receives
+natively is its entrypoint master and the tier-local skills of the root it runs
+in; the mother's deployment contract owns the per-runtime locations.
+
+- **Claude Code**: entrypoint master, tier-local skills, `hooks` frontmatter honored
+- **Codex CLI**: entrypoint master, tier-local skills; `hooks` not emitted
+- **Gemini CLI**: entrypoint master, tier-local skills; `hooks` not emitted

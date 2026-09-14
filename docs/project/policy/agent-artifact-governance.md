@@ -47,7 +47,11 @@ Addendum files (`agents/{AGENT}.addendum.md`) are thin behavioral shims for agen
 
 ## Rationale
 
+<!-- planned-change:agent-artifact-source-layout -->
 - A single mother-owned catalog definition prevents split-brain global instructions while registered projects remain free to contribute human-curated skill packages by folder.
+<!-- change:agent-artifact-source-layout -->
+- A single mother-owned catalog definition prevents split-brain global instructions, and routing every global skill through the mother's own folders makes the catalog the one curation surface rather than a merge of publishers.
+<!-- /planned-change:agent-artifact-source-layout -->
 - Rendering the catalog after assembling its links lets the human-authored source describe the real deployed catalog without preloading that catalog into every agent baseline.
 - Addenda are confined to this repo because agent-specific failure-mode tuning belongs with the agent-artifact sources, not with adopting projects.
 

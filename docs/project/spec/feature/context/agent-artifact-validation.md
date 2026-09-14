@@ -12,7 +12,7 @@ visibility: 'public'
 ## What it is
 
 Agent artifact validation is the context gate that runs during `telec sync`.
-It enforces the normalized shape of commands and agents, plus a skill identity
+It enforces the normalized shape of commands, plus a skill identity
 contract. Every `SKILL.md` must declare `name` and `description`, with `name`
 equal to its folder. Skill bodies are never graded against TeleClaude's taxonomy.
 
@@ -83,7 +83,7 @@ Scenario: Section order does not match the artifact kind
 
 ```
 Scenario: Required reads is not the first H2 in an artifact
-  Given an agent artifact whose first H2 is "## Purpose"
+  Given a command artifact whose first H2 is "## Purpose"
   And a "## Required reads" H2 appears later
   When body-structure validation runs
   Then the Required-reads placement error is reported
@@ -163,7 +163,7 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
 
 ```
 Scenario: Scoped validation grades the artifacts in its path set
-  Given a path set naming a command, an agent, and a skill entrypoint under a configured artifact source
+  Given a path set naming a command and a skill entrypoint under a configured artifact source
   When artifact validation runs scoped to that path set
   Then each named artifact is validated against the contract for its kind
   And a supporting file inside a skill package resolves to that package's SKILL.md
@@ -173,12 +173,13 @@ Scenario: Scoped validation grades the artifacts in its path set
 
 ```
 Scenario: The commit gate validates the artifacts in its pathspec
-  Given a commit pathspec naming an agent artifact
+  Given a commit pathspec naming a command or skill source
   When telec code commit runs
   Then artifact validation runs scoped to that pathspec
   And a validation finding refuses the commit
 ```
 
+<!-- planned-change:agent-artifact-source-layout -->
 #### UC-AAV5: The cross-publisher skill-name collision check runs on a full validation run
 
 ```
@@ -187,6 +188,8 @@ Scenario: The cross-publisher skill-name collision check runs on a full validati
   When a full artifact validation run executes
   Then the collision is reported naming both publisher roots
 ```
+<!-- change:agent-artifact-source-layout -->
+<!-- /planned-change:agent-artifact-source-layout -->
 
 ### Cross-context references
 
