@@ -172,7 +172,7 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
   And the folder contains SKILL.md and optional supporting Markdown resources
   When telec sync processes the global skill publication surface
   Then supporting Markdown is not checked for TeleClaude headings, section order, role lines, or taxonomy shape
-  And SKILL.md receives identity validation plus taxonomy validation only when explicitly opted in
+  And SKILL.md receives identity validation
   And the package is rendered through the artifact output pipeline without rewriting its authored structure
 ```
 <!-- change:agent-artifact-source-layout -->
@@ -189,6 +189,8 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
 
 
 <!-- planned:commit-gate-owns-source-validation -->
+#### UC-AAV3: Scoped validation grades the artifacts in its path set
+
 ```
 Scenario: Scoped validation grades the artifacts in its path set
   Given a path set naming a command, an agent, and a skill entrypoint under a configured artifact source
@@ -197,6 +199,8 @@ Scenario: Scoped validation grades the artifacts in its path set
   And a supporting file inside a skill package resolves to that package's SKILL.md
 ```
 
+#### UC-AAV4: The commit gate validates the artifacts in its pathspec
+
 ```
 Scenario: The commit gate validates the artifacts in its pathspec
   Given a commit pathspec naming an agent artifact
@@ -204,6 +208,8 @@ Scenario: The commit gate validates the artifacts in its pathspec
   Then artifact validation runs scoped to that pathspec
   And a validation finding refuses the commit
 ```
+
+#### UC-AAV5: The cross-publisher skill-name collision check runs on a full validation run
 
 ```
 Scenario: The cross-publisher skill-name collision check runs on a full validation run
@@ -226,9 +232,15 @@ Scenario: The cross-publisher skill-name collision check runs on a full validati
   check does not verify existence in isolation.
 - The heading collector skips fenced code blocks so example markdown inside
   code fences does not produce false H2 hits.
+<!-- planned-change:drop-skill-taxonomy-optin -->
 - Skill discovery requires the `SKILL.md` filename specifically. Its identity
   metadata is always validated, while body taxonomy is opt-in. Supporting Markdown
   remains opaque package content in either skill scope.
+<!-- change:drop-skill-taxonomy-optin -->
+- Skill discovery requires the `SKILL.md` filename specifically. Its identity
+  metadata is always validated, and its body is never graded against TeleClaude's
+  taxonomy. Supporting Markdown remains opaque package content in either skill scope.
+<!-- /planned-change:drop-skill-taxonomy-optin -->
 <!-- planned-change:agent-artifact-source-layout -->
 - The mother-project gate remains a silent skip for global commands, agents,
   addenda, and masters. Registered projects' `agents/skills/<name>/` folders are
