@@ -9,11 +9,7 @@ visibility: 'public'
 
 Codify the prepare phase as a deterministic chain of artifact-derivation steps where the PRD is the only human approval gate, lean enough that small work skips phases that don't earn their place, and capable of running autonomously in standin mode until real human intent approval is required. PRDs normally receive independent review before that gate; an exact owner-directed literal correction may use the bounded claimant-stamp path defined by the intake contract.
 
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped procedure for each step (intake, architecture, plan) and doing the phase's work itself. Each derived artifact is verified by a cross-model reviewer running in a separately-dispatched session. The active procedure dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
-<!-- change:remove-reviewer-producer-agent-independence -->
 The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped procedure for each step (intake, architecture, plan) and doing the phase's work itself. Each derived artifact is verified by an independently dispatched reviewer session. The active procedure dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 
 ## Inputs/Outputs
 
@@ -65,15 +61,9 @@ The confirmed plan is the handoff input to the work phase.
 - Substantive drift triggers re-derivation of affected layers and clears every downstream review verdict; cosmetic drift is recorded with an evidence anchor and expires lazily per class when current evidence moves past the anchor.
 - Work-entry drift triggers a bounce to `telec todo prepare {slug}` — the prepare BLOCKED branch handles the drift, and the PREPARED terminal script tail bounces the orchestrator back to `telec todo work {slug}` automatically. No human gate on either cosmetic or substantive verdicts; intent-level PRD refinement is the only human-gated path and is orthogonal to drift.
 
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-**Cross-model verification:**
-
-- The independent verification of derived artifacts (architecture, plan) comes from cross-model reviewers dispatched per phase. The active procedure dispatches the reviewer, tails it, and integrates the verdict.
-<!-- change:remove-reviewer-producer-agent-independence -->
 **Independent verification:**
 
 - The independent verification of derived artifacts (architecture, plan) comes from a separate reviewer session dispatched per phase. The active procedure dispatches the reviewer, tails it, and integrates the verdict.
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 - The PRD normally receives an independently dispatched review before the human intent gate. When the human owner supplies an exact literal replacement and explicitly directs approval, the active prepare claimant may bind `prd_review=approve` to that corrected digest without dispatching another reviewer; the human remains the sole authority for `prd_approved`.
 
 ## Primary flows
@@ -103,11 +93,7 @@ flowchart TD
     AssessArch -->|skip — stamp with reason| PlanPhase
     AssessArch -->|proceed| ArchPhase
 
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-    ArchPhase[Architecture phase<br/>design authored into domain-spec / design-doc snippets<br/>thin architecture index artifact logs the edits<br/>code-intelligence for brownfield<br/>cross-model peer verifies]
-<!-- change:remove-reviewer-producer-agent-independence -->
     ArchPhase[Architecture phase<br/>design authored into domain-spec / design-doc snippets<br/>thin architecture index artifact logs the edits<br/>code-intelligence for brownfield<br/>separate reviewer session verifies]
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
     ArchPhase --> ArchReview[Reviewer verdict]
     ArchReview --> PlanPhase
 
@@ -165,11 +151,7 @@ Also covers the parked-create case: human comes back to a slug created with `--i
 - **Work item is too large.** BA at intake recommends breakdown in plain register. Creates a container todo and per-part children via `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child gets its own track through the chain. Parent becomes a holder.
 - **Standard scaffold doesn't exist for a needed surface.** Architecture phase surfaces this as a blocking finding. Options: defer this work until the flavor is built; split the flavor-build as its own todo first; ask the human whether the product constraint permits a documented one-off.
 - **Architecture and PRD disagree post-derivation.** When architecture surfaces something the PRD didn't anticipate (a hidden dependency, an unexpected scope expansion), the Architect surfaces the gap to the human as an open question. May trigger PRD refinement before architecture is finalized.
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-- **Active procedure drifts into orchestrator-shaped action.** If a procedure dispatches new sessions for its sub-work (instead of doing it itself), that's a regression — the design is one session loading procedures, not many sessions dispatched. The only legitimate dispatches in prepare are the PO emulator (intake standin) and the cross-model reviewers.
-<!-- change:remove-reviewer-producer-agent-independence -->
 - **Active procedure drifts into orchestrator-shaped action.** If a procedure dispatches new sessions for its sub-work (instead of doing it itself), that's a regression — the design is one session loading procedures, not many sessions dispatched. The only legitimate dispatches in prepare are the PO emulator (intake standin) and the independently dispatched reviewers.
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 - **No `additional_context` mode marker.** Default to `human_in_loop: true`. Better to under-trigger standin mode than to standin-mode a real-human session.
 
 ### Open design choices still being prototyped

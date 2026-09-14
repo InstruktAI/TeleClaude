@@ -123,18 +123,6 @@ And quota pressure does not reroute the manual preference
 ```
 <!-- /planned:adaptive-usage-routing -->
 
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-#### UC-ARS1: An earlier reviewer session's agent constrains no later dispatch for the same target
-
-```
-Given an agent session asks to start a reviewer command for a target
-And an earlier reviewer session for that same target ran on one of the available agents
-When TeleClaude chooses which agent runs the new session
-Then the earlier session's agent is as eligible as it would be had that session never existed
-And the only reviewer-specific narrowing applied is separation from the agent that produced the work under review
-And the accepted request reports the chosen agent and its typed routing reason exactly as any request with no review history does
-```
-<!-- change:remove-reviewer-producer-agent-independence -->
 #### UC-ARS1: Reviewer history and producer identity constrain no dispatch
 
 ```
@@ -144,7 +132,6 @@ When TeleClaude chooses which agent runs the new session
 Then those sessions' agents remain as eligible as if those sessions had never existed
 And the accepted request reports the chosen agent and typed routing reason exactly as any automatic request with the same role context does
 ```
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 
 
 #### Command and arguments normalization
