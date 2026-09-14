@@ -137,14 +137,25 @@ And no tier authorization is required
 ```
 <!-- /planned:docs-tier-layering -->
 
-#### UC-DSP18: Reaching a tier by snippet identity meets the selector rule
-
+<!-- planned-change:docs-tier-layering -->
 ```
 Given a snippet ID whose prefix matches a known project slug in the cross-project catalog
 When the caller references that ID without --projects
 Then the cross-project Source is loaded
 And visibility gating still applies
 ```
+<!-- change:docs-tier-layering -->
+#### UC-DSP18: Reaching a tier by snippet identity meets the selector rule
+
+```
+Given a snippet ID whose prefix matches a known project slug in the cross-project catalog
+And that Source is not already in the caller's assembled catalogs
+And the caller is authorized to name a tier explicitly
+When the caller references that ID without a selector
+Then the cross-project Source is loaded
+And visibility gating still applies
+```
+<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP1: Scope filter keeps only global snippets
 
@@ -166,6 +177,7 @@ And global-scoped snippets are excluded
 
 #### UC-DSP3: Project filter keeps only the queried project's snippets
 
+<!-- planned-change:docs-tier-layering -->
 ```
 Given --project <slug> matching a registered project in the cross-project catalog
 When the Selection policy applies the project filter
@@ -173,14 +185,33 @@ Then only snippets whose source project is <slug> are returned
 And global snippets and the current project's snippets are excluded
 And the filter composes with --areas, --domains, --baseline-only, --scope, and --target
 ```
+<!-- change:docs-tier-layering -->
+```
+Given --project <slug> matching a registered project in the cross-project catalog
+And the caller is authorized to name a tier explicitly
+When the Selection policy applies the project filter
+Then only snippets whose source project is <slug> are returned
+And global snippets and the current project's snippets are excluded
+And the filter composes with --areas, --domains, --baseline-only, --scope, and --target
+```
+<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP4: Project filter on an unknown slug returns nothing
 
+<!-- planned-change:docs-tier-layering -->
 ```
 Given --project <slug> matching no project in the cross-project catalog
 When the Selection policy applies the project filter
 Then no snippets are returned
 ```
+<!-- change:docs-tier-layering -->
+```
+Given --project <slug> matching no project in the cross-project catalog
+And the caller is authorized to name a tier explicitly
+When the Selection policy applies the project filter
+Then no snippets are returned
+```
+<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP5: Domains filter keeps only snippets in the requested published domains
 
@@ -251,14 +282,15 @@ Then that project enters the set and is read in full
 And the company's other projects do not enter it
 ```
 
-#### UC-DSP26: A company role that covers projects elsewhere opens none here
+#### UC-DSP26: A company's administrative role opens every project that company owns
 
 ```
-Given an agent session running under the identity of a person holding a company role that covers that company's projects for other purposes
-And that person holds no declared assignment to one of those projects
+Given an agent session running under the identity of a person holding a company's administrative role
+And that company owns a project the person holds no explicit assignment to
 When the Selection policy resolves the caller's project set
-Then that project does not enter the set
-And no identity from it is assembled for this caller
+Then that project enters the set and is read in full
+And a project owned by a different company does not enter it on that role's account
+And the Selection policy reads the covered set as the roster resolves it rather than deriving it from the role
 ```
 
 #### UC-DSP13: A platform administrator reaches any named tier
@@ -270,27 +302,16 @@ When the Selection policy resolves the request
 Then that named tier is returned in full
 ```
 
-#### UC-DSP17: A non-administrator is refused the person and company selectors
+#### UC-DSP17: A non-administrator is refused every tier selector
 
 ```
 Given an agent session running under the identity of a person who is not a platform administrator
-And the session names a person or a company tier explicitly by selector
+And the session names a person, a company, or a project tier explicitly by selector
 When the Selection policy resolves the request
 Then the reach is refused before the named tier is looked up
 And the refusal stands whether or not that identity holds a declared relationship to the named tier
 And the refusal does not fall back to a narrower read of that tier
 And the refusal is identical whether or not the named tier exists
-```
-
-#### UC-DSP28: The project selector keeps its answer and announces its retirement
-
-```
-Given an agent session running under the identity of a person who is not a platform administrator
-And the session names a project tier explicitly by selector
-When the Selection policy resolves the request
-Then the permitted material is returned
-And a deprecation notice states that the selector becomes administrator-only at the next major release
-And the notice accompanies the result rather than replacing it
 ```
 
 #### UC-DSP27: A non-administrator is refused an identity outside its assembled catalogs

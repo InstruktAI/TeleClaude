@@ -159,11 +159,11 @@ tiers the stage named, and the include predicate applies the depth it assigned.
 The stage is the only place the two inputs meet. The relationship facts stay
 owned by their declaring contexts; the reach rule stays here.
 
-A company role may cover that company's projects for purposes outside
-documentation. Documentation reach does not consume that coverage: it consumes
-the explicit person-to-project assignment and nothing derived from a role. Where
-the relationship contract offers both a coverage answer and the assignment facts
-behind it, this stage reads the assignments.
+The projects a caller reaches are the projects the roster's resolution reports
+for them — explicit assignments and, for a company's administrative role, every
+project that company owns — taken as one answer. This stage never recomputes
+coverage from a role: the roster resolves it once, and documentation reads the
+result.
 
 Reach and depth are separate answers and are never traded for one another. Reach
 decides which tiers are assembled; depth decides how much of an assembled tier is
@@ -188,11 +188,6 @@ relationship to choose what to load has taken the reach decision.
 a person, a company, or a project: naming a tier explicitly is reserved to
 platform administrators. A caller who is not one reads their derived scope,
 narrowed by the filters that name no tier.
-
-The rule binds the person and company selectors. The project selector is open to
-every caller and carries a deprecation notice on each invocation; it binds at the
-next major release. Both groups agree in outcome: a caller who may not name a
-tier reaches nothing of it beyond what it declares public.
 
 Retrieving a snippet by an identity already present in the caller's assembled
 catalogs is not naming a tier: it is the second phase of the discovery the caller

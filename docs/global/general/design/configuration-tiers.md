@@ -152,16 +152,16 @@ one index entry, listed on demand — rather than autoloaded into every session.
   company's documentation in full. There are no levels of allowance inside a
   company.
 - **Company membership does not carry that company's projects.** Belonging opens
-  the company's own documentation. What opens a project's documentation is the
-  explicit declared assignment of a person to that project, and nothing else —
-  including a company role broad enough to cover that company's projects for
-  other purposes. Documentation reach consumes the assignment fact specifically,
-  never a wider coverage answer computed from a role. Which declarations
-  establish an assignment, and where they are declared, belong to the
-  configuration tier; what documentation does with them belongs here.
+  the company's own documentation. A project's documentation opens through the
+  reach the roster resolves for the person: an explicit assignment to that
+  project, or the company's administrative role, which covers everything that
+  company owns. Documentation consumes that resolved reach as one answer and
+  derives nothing from a role itself. Which declarations establish reach, and
+  where they are declared, belong to the configuration tier; what documentation
+  does with the answer belongs here.
 - **A caller's relationship-derived scope is exactly three things.** Their own
-  person tier, the projects they are assigned to, and the documentation of every
-  company they belong to. Those three travel with the caller and are in scope
+  person tier, the projects they reach through the roster, and the documentation
+  of every company they belong to. Those three travel with the caller and are in scope
   wherever they are working. A platform admin is outside this and reaches
   everything, including every company they own.
 - **Reach is wider than the relationship-derived part, and depth is not.** Global
@@ -219,11 +219,9 @@ wherever they are working, independently of the directory they are in.
 Someone with no relationship to a company is not shut out of it — they meet the
 snippet's own declaration and read what is public, which is how a help desk
 running inside a project registered to a company answers public questions for
-people who do not belong to it. Explicit selectors naming a person or a company
-override the derived scope and are available to platform admins only, whatever
-relationship the caller holds to the tier they name. The project selector is
-available to every caller and carries a deprecation notice; it becomes
-administrator-only at the next major release.
+people who do not belong to it. Explicit selectors naming a person, a company, or
+a project override the derived scope and are available to platform admins only,
+whatever relationship the caller holds to the tier they name.
 <!-- /planned:docs-tier-layering -->
 
 ## Failure modes
@@ -244,9 +242,11 @@ administrator-only at the next major release.
   inside a company invents a distinction the business does not have, and produces
   a permission matrix nobody asked for and no one can maintain.
 - **Deriving project access from company membership.** Belonging to a company
-  and being assigned to one of its projects are separate declarations. Treating
-  the first as implying the second hands every member of a company every project
-  it owns, which is the opposite of what assignment exists to express.
+  and reaching one of its projects are separate declarations. Treating the first
+  as implying the second hands every member of a company every project it owns,
+  which is the opposite of what assignment exists to express. The company's
+  administrative role is the one declaration that covers all of them, and the
+  roster resolves it; documentation never infers it from a role on its own.
 - **A tier that is modelled but unread.** A declared relationship with no
   consumer looks like a working feature and is not. Presence in the schema is
   not presence in behaviour.
