@@ -43,13 +43,8 @@ focused procedure and advances through the machine-owned transitions.
    the lifecycle awareness underneath. The hat comes off when the phase ends
    and the next procedure loads.
 
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-3. **Reviewers are cross-model and dispatched.** When the state machine
-   routes to a review step, dispatch the reviewer as a separate session via
-<!-- change:remove-reviewer-producer-agent-independence -->
 3. **Reviewers are independently dispatched.** When the state machine
    routes to a review step, dispatch the reviewer as a separate session via
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
    `telec sessions run` and tail it. The reviewer writes its findings to the
    findings artifact and a verdict to its review stamp; the active phase
    procedure reads them on the next state-machine advance.
@@ -224,11 +219,7 @@ For `feature`, `change`, and `bug`, call `telec todo prepare {slug}`. The
 machine returns a verbatim execution script for the current phase. The script
 describes either a procedure load (load
 the next phase's procedure and do its work), a reviewer dispatch (dispatch a
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-cross-model reviewer and tail it), an approval pause (present to the real
-<!-- change:remove-reviewer-producer-agent-independence -->
 separate reviewer session and tail it), an approval pause (present to the real
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
 
 Execute the script verbatim. The script's flexibility belongs to

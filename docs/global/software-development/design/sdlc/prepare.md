@@ -1,12 +1,12 @@
 ---
-description: 'Prepare phase design: one driving session loads phase-scoped procedures in sequence, produces the prepare artifacts (PRD, architecture doc-snippet edits + thin index, implementation plan), and submits each derived artifact to a cross-model reviewer. PRD is the only human approval gate.'
-visibility: 'public'
+description: 'Prepare phase design: one driving session loads phase-scoped procedures in sequence, produces the prepare artifacts, and submits each derived artifact to an independently dispatched reviewer. PRD is the only human approval gate.'
 ---
 
 # Prepare — Design
 
 ## Required reads
 
+- @~/.teleclaude/docs/software-development/principle/externalized-structural-context.md
 - @~/.teleclaude/docs/software-development/design/sdlc/overview.md
 
 ## Purpose
@@ -17,8 +17,8 @@ work must consume.
 Prepare exists to turn a problem impulse into build-ready truth. One session
 drives the whole prepare lifecycle. The session loads a phase-scoped procedure for
 each step in the chain — intake, architecture, plan — and does the
-work for that step itself. Each derived artifact is verified by a cross-model
-reviewer running in a separate dispatched session. The PRD is verified by the
+work for that step itself. Each derived artifact is verified by an independently
+dispatched reviewer session. The PRD is verified by the
 human, who is the sole authority on intent.
 
 ## Inputs/Outputs
@@ -48,9 +48,9 @@ human, who is the sole authority on intent.
   (`~/.teleclaude/commands/next-prepare-architecture.md`). Plan = Planner hat (`~/.teleclaude/commands/next-prepare-plan.md`). The
   hat is the loaded procedure; the lifecycle awareness underneath persists
   across hats.
-- Reviewers are cross-model and dispatched. Each derived artifact
-  (architecture, plan) is reviewed by a separately-dispatched
-  cross-model session. The active procedure dispatches the reviewer,
+- Reviewers are independently dispatched. Each derived artifact
+  (architecture, plan) is reviewed by a separate reviewer session. The active
+  procedure dispatches the reviewer,
   tails it, and reads its findings and verdict on the next state-machine
   advance.
 - The PRD is the only human approval gate. The human reviews the PRD and
@@ -109,7 +109,7 @@ slug.
 
 For each derivation phase, the same session loads the phase's procedure, grounds
 in upstream artifacts, produces the phase artifact, and advances the state
-machine. The state machine then dispatches a cross-model reviewer. The
+machine. The state machine then dispatches a separate reviewer session. The
 active procedure tails the reviewer; on `approve` the chain advances; on
 `needs_work` the active procedure addresses the findings and advances again to
 re-dispatch the reviewer.

@@ -28,11 +28,7 @@ same way regardless of which supported entry point creates them.
 **Automatic preference**
 : Fresh work whose caller omits an agent, or whose system-role caller supplies a preferred
 agent. A system-role preference is considered first but remains subject to automatic
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-eligibility and reviewer independence. The canonical command
-<!-- change:remove-reviewer-producer-agent-independence -->
 eligibility. The canonical command
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 establishes the remaining ordered candidates. A scheduled job supplies its own ordered
 candidates — its effective declaration's non-empty `agent` preference list — in place
 of a command row. A job has no code-owned candidate order. An empty effective list
@@ -111,23 +107,12 @@ job-policy-facing thinking-mode resolution.
 
 ### Eligibility and ordering
 
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-Automatic selection removes unconfigured, disabled, degraded, and unavailable
-agents. Only operator status `available` is eligible. Reviewer selection then prefers
-an eligible agent different from the producer while preserving the applicable row's
-relative order. The producer remains eligible when no independent candidate survives.
-Producer separation is the only reviewer-specific narrowing this contract applies.
-Reviewer ownership belongs to the reviewer session and its review ledger, so an
-agent that a prior session used to review a target stays eligible for a later
-dispatch against that same target.
-<!-- change:remove-reviewer-producer-agent-independence -->
 Automatic selection removes unconfigured, disabled, degraded, and unavailable
 agents. Only operator status `available` is eligible. Reviewer selection uses that
 same eligible ordered set without narrowing or reordering it by the agent used by an
 initiating, producing, or earlier reviewer session. Reviewer independence comes from
 the separately dispatched session and its review ownership, not from selecting a
 different agent implementation.
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 
 Manual selection uses a distinct boundary for callers without a system role. A known,
 enabled agent is manually selectable while available or degraded. Operator status
@@ -135,11 +120,7 @@ enabled agent is manually selectable while available or degraded. Operator statu
 never enters automatic fallback ordering.
 
 A system-role caller's explicit agent remains automatic preference. The candidate is
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-selected only while automatically eligible and compatible with reviewer independence;
-<!-- change:remove-reviewer-producer-agent-independence -->
 selected only while automatically eligible;
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 otherwise the resolver continues through the canonical command order. Degraded and
 unavailable agents therefore remain reserved from automated dispatch even when an
 automated caller names one explicitly.
@@ -181,18 +162,6 @@ Then unconfigured, disabled, degraded, and unavailable agents are excluded
 And only an operator-available agent may be selected
 ```
 
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-#### UC-RAAD-4: Reviewer independence preserves eligibility and order
-
-```gherkin
-Given an agent caller creates a fresh reviewer-command session
-And an eligible candidate differs from the producer
-When TeleClaude selects the reviewer
-Then the independent candidate is preferred without promoting an ineligible agent
-And the command row's relative order is otherwise preserved
-And the producer may review when no independent eligible candidate remains
-```
-<!-- change:remove-reviewer-producer-agent-independence -->
 #### UC-RAAD-4: Reviewer dispatch follows ordinary automatic ordering
 
 ```gherkin
@@ -201,7 +170,6 @@ When TeleClaude selects the reviewer
 Then it uses the same eligible ordered candidate set as any other automatic fresh session
 And the agent used by the initiating or producing session does not change the result
 ```
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 
 #### UC-RAAD-5: Unmapped work remains operable and deterministic
 
@@ -353,19 +321,6 @@ And normal automatic ordering selects the fallback
 And the caller receives the selected agent and typed fallback reason
 ```
 
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-#### UC-RAAD-18: Reviewer independence reports a displaced automatic preference
-
-```gherkin
-Given a system-role caller explicitly prefers an automatically eligible agent for a fresh reviewer command
-And the preferred agent is the producer
-And another automatically eligible agent exists
-When TeleClaude selects the reviewer
-Then it selects an independent eligible agent without changing command-row relative order
-And the automated caller receives a typed reviewer-independence fallback reason
-And the dispatch decision reports that fallback is present
-```
-<!-- change:remove-reviewer-producer-agent-independence -->
 #### UC-RAAD-18: Reviewer preference uses ordinary automatic eligibility
 
 ```gherkin
@@ -375,7 +330,6 @@ When TeleClaude selects the reviewer
 Then it selects the preferred agent
 And it reports no producer-separation fallback reason
 ```
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 
 #### UC-RAAD-19:
 
@@ -400,11 +354,7 @@ Given an agent caller creates a fresh reviewer-command session for a target
 And an earlier reviewer session for that same target ran on one of the eligible agents
 When TeleClaude selects the reviewer
 Then that agent is not removed from the candidates
-<!-- planned-change:remove-reviewer-producer-agent-independence -->
-And selection proceeds over the full eligible order with producer separation applied as for any reviewer request
-<!-- change:remove-reviewer-producer-agent-independence -->
 And selection proceeds over the same full eligible order as any reviewer request
-<!-- /planned-change:remove-reviewer-producer-agent-independence -->
 And the resolved session may be the same agent implementation the earlier session used
 ```
 

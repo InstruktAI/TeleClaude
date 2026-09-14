@@ -122,7 +122,6 @@ class CreateSessionCommand(InternalCommand):
     command: str | None = None
     working_slug: str | None = None
     entry_point: SessionEntryPoint | None = None
-    producer_agent: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
