@@ -24,6 +24,9 @@ from teleclaude.core.injected_text import (
     EnvelopeName,
     InjectedTextSourceFeature,
     TranscriptEntryKind,
+    caller_occurrence_key,
+    identity_content_envelope,
+    scan_injected_envelopes,
     semantic_envelope,
     visible_input_update,
 )
@@ -57,6 +60,7 @@ _CALLER_SEND_CONTROL_SOURCE_KEY_TEMPLATE = "caller-send-delivery-exhausted:{inbo
 _PEER_ATTENTION_HANDOFF_DECIDED_EVENT = "peer_attention_handoff_decided"
 _PEER_ATTENTION_MISSING_OCCURRENCE_REASON = "peer_occurrence_required"
 _PEER_ATTENTION_CONTROL_SOURCE_KEY_TEMPLATE = "peer-attention:{source_occurrence_id}"
+_CALLER_IDENTITY_COMPATIBILITY_REASON = "caller_identity_compatibility"
 _PEER_ATTENTION_NOTIFICATION = (
     "Peer input is pending. If unfinished work needs to resume, preserve continuation through the existing "
     "reminder mechanism, then yield voluntarily so the peer input becomes your next conversational input."
@@ -772,6 +776,36 @@ def _caller_author_from_command(cmd: ProcessMessageCommand) -> MessageAuthor | N
     )
 
 
+def _canonical_caller_content(cmd: ProcessMessageCommand) -> tuple[str, int | None, int | None]:
+    """Return the accepted caller envelope, adding K only from command authority."""
+    if cmd.source_feature is not InjectedTextSourceFeature.CALLER_SEND or cmd.caller_session_id is None:
+        return cmd.text, cmd.caller_origin_prefix_len, cmd.caller_origin_suffix_len
+    envelopes = scan_injected_envelopes(cmd.text)
+    if len(envelopes) != 1 or envelopes[0].kind is not TranscriptEntryKind.IDENTITY_CONTENT:
+        raise SessionMessageRejectedError(session_id=cmd.session_id, reason=_CALLER_IDENTITY_COMPATIBILITY_REASON)
+    envelope = envelopes[0]
+    if envelope.envelope_span != (0, len(cmd.text)):
+        raise SessionMessageRejectedError(session_id=cmd.session_id, reason=_CALLER_IDENTITY_COMPATIBILITY_REASON)
+    if caller_occurrence_key(envelope.opening) is not None:
+        return cmd.text, envelope.body_span[0], len(cmd.text) - envelope.body_span[1]
+    if (
+        cmd.occurrence_key is None
+        or cmd.caller_author_kind is None
+        or cmd.caller_author_display is None
+        or cmd.caller_origin_prefix_len != envelope.body_span[0]
+        or cmd.caller_origin_suffix_len != len(cmd.text) - envelope.body_span[1]
+    ):
+        raise SessionMessageRejectedError(session_id=cmd.session_id, reason=_CALLER_IDENTITY_COMPATIBILITY_REASON)
+    body = cmd.text[envelope.body_span[0] : envelope.body_span[1]]
+    canonical = identity_content_envelope(envelope.opening, body, cmd.occurrence_key).rendered
+    canonical_envelope = scan_injected_envelopes(canonical)[0]
+    return (
+        canonical,
+        canonical_envelope.body_span[0],
+        len(canonical) - canonical_envelope.body_span[1],
+    )
+
+
 async def process_message(
     cmd: ProcessMessageCommand,
     client: "AdapterClient",
@@ -794,19 +828,20 @@ async def process_message(
     peer_attention_snapshot = _capture_peer_attention_snapshot(cmd, session)
 
     origin = cmd.origin or ""
+    content, caller_prefix_len, caller_suffix_len = _canonical_caller_content(cmd)
 
     async def _record_after_insert(_row_id: int) -> None:
         await _record_accepted_input_metadata(
             session_id=session_id,
             origin=origin,
-            message_text=cmd.text,
+            message_text=content,
             origin_metadata=cmd.origin_metadata,
         )
 
     row_id = await get_inbound_queue_manager().enqueue(
         session_id=session_id,
         origin=origin,
-        content=cmd.text,
+        content=content,
         text_kind=cmd.text_kind,
         source_feature=cmd.source_feature,
         occurrence_key=cmd.occurrence_key,
@@ -819,8 +854,8 @@ async def process_message(
         caller_session_id=cmd.caller_session_id,
         caller_author=_caller_author_from_command(cmd),
         caller_job_role=cmd.caller_job_role,
-        caller_origin_prefix_len=cmd.caller_origin_prefix_len,
-        caller_origin_suffix_len=cmd.caller_origin_suffix_len,
+        caller_origin_prefix_len=caller_prefix_len,
+        caller_origin_suffix_len=caller_suffix_len,
         post_insert_callback=_record_after_insert,
     )
     if peer_attention_snapshot is not None:
@@ -828,7 +863,7 @@ async def process_message(
             session_id=session_id,
             snapshot=peer_attention_snapshot,
         )
-    if row_id is not None and cmd.caller_origin_suffix_len:
+    if row_id is not None and caller_suffix_len:
         logger.info(
             "conversation_envelope_committed",
             outcome="success",

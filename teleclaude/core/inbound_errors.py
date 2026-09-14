@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-SessionMessageRejectionReason = Literal["not_found", "closed", "unavailable"]
+SessionMessageRejectionReason = Literal["not_found", "closed", "unavailable", "caller_identity_compatibility"]
 
 
 class SessionMessageRejectedError(RuntimeError):
@@ -17,6 +17,8 @@ class SessionMessageRejectedError(RuntimeError):
             message = f"Session {session_id} not found"
         elif reason == "unavailable":
             message = f"Session {session_id} is unavailable"
+        elif reason == "caller_identity_compatibility":
+            message = f"Session {session_id} received caller identity content that cannot be safely canonicalized"
         else:
             message = f"Session {session_id} is closed"
         super().__init__(message)

@@ -131,11 +131,68 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     caller_machine_role TEXT,
     caller_job_role TEXT,
     caller_origin_prefix_len INTEGER,
-    caller_origin_suffix_len INTEGER
+    caller_origin_suffix_len INTEGER,
+    binding_disposition TEXT CHECK(binding_disposition IN ('legacy_pre_cutover', 'input_conflict'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status ON inbound_queue(session_id, status, next_retry_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_queue_source_dedup ON inbound_queue(origin, source_message_id) WHERE source_message_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS accepted_turn_bindings (
+    binding_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    native_runtime TEXT NOT NULL,
+    native_session_id TEXT NOT NULL,
+    native_entry_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(native_runtime, native_session_id, native_entry_id)
+);
+
+CREATE TABLE IF NOT EXISTS turn_receipt_envelopes (
+    binding_id TEXT NOT NULL,
+    inbound_queue_id INTEGER NOT NULL,
+    envelope_index INTEGER NOT NULL,
+    occurrence_key TEXT NOT NULL,
+    envelope_span_start INTEGER NOT NULL,
+    envelope_span_end INTEGER NOT NULL,
+    body_span_start INTEGER NOT NULL,
+    body_span_end INTEGER NOT NULL,
+    authored_part_id INTEGER,
+    PRIMARY KEY (binding_id, inbound_queue_id, envelope_index),
+    UNIQUE (inbound_queue_id),
+    FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE,
+    FOREIGN KEY (inbound_queue_id) REFERENCES inbound_queue(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS binding_conflict_candidates (
+    inbound_queue_id INTEGER NOT NULL,
+    native_runtime TEXT NOT NULL,
+    native_session_id TEXT NOT NULL,
+    native_entry_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (inbound_queue_id, native_runtime, native_session_id, native_entry_id),
+    FOREIGN KEY (inbound_queue_id) REFERENCES inbound_queue(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS turn_authored_parts (
+    binding_id TEXT NOT NULL,
+    part_id INTEGER NOT NULL,
+    part_kind TEXT NOT NULL CHECK(part_kind IN ('local', 'caller', 'peer')),
+    span_start INTEGER NOT NULL,
+    span_end INTEGER NOT NULL,
+    original_source_session_id TEXT,
+    author_kind TEXT NOT NULL,
+    author_display TEXT NOT NULL,
+    author_agent_runtime TEXT,
+    author_thinking_mode TEXT,
+    author_machine_role TEXT,
+    author_job_role TEXT,
+    PRIMARY KEY (binding_id, part_id),
+    FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session ON accepted_turn_bindings(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_turn_receipt_envelopes_binding ON turn_receipt_envelopes(binding_id);
 
 -- Durable control payloads delivered through agent hook boundaries.
 CREATE TABLE IF NOT EXISTS control_outbox (

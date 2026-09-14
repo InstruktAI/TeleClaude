@@ -18,7 +18,9 @@ from teleclaude.core.db import db
 from teleclaude.core.identity import resolve_discord_author_alias
 from teleclaude.core.injected_text import (
     TranscriptEntryKind,
+    caller_occurrence_key,
     classify_transcript_text,
+    scan_injected_envelopes,
     visible_input_update,
 )
 from teleclaude.core.models import MessageAuthor, MessageMetadata
@@ -26,6 +28,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.session_output import assistant_messages_are_bare_noop
 from teleclaude.core.session_title import clear_title_projection_state
+from teleclaude.core.turn_binding import bind_pending_native_turns, binding_id_for_native_entry
 from teleclaude.core.user_reflection_observation import (
     UserReflectionProjectionOutcome,
     UserReflectionProjectionReason,
@@ -456,13 +459,21 @@ async def _project_user_reflection(
             native_session_id=session.native_session_id,
             native_entry_id=entry_id,
         )
+    await bind_pending_native_turns(session)
+    requires_binding = any(
+        segment.kind is TranscriptEntryKind.IDENTITY_CONTENT and caller_occurrence_key(segment.opening) is not None
+        for segment in scan_injected_envelopes(user_text)
+    )
+    binding_id = (
+        binding_id_for_native_entry(session.session_id, entry_id) if requires_binding and entry_id is not None else None
+    )
     watermark_dt = _as_utc(session.last_projected_at)
     if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
         observe_user_reflection_projection(
             session,
             native_entry_id=entry_id,
             commitment=None,
-            binding_id=None,
+            binding_id=binding_id,
             outcome=UserReflectionProjectionOutcome.SUPPRESSED,
             reason=UserReflectionProjectionReason.PROJECTION_WATERMARK,
         )
@@ -482,7 +493,7 @@ async def _project_user_reflection(
             session,
             native_entry_id=entry_id,
             commitment=commitment,
-            binding_id=None,
+            binding_id=binding_id,
             outcome=outcome,
             reason=reason,
             platform_message_ids=platform_message_ids,
@@ -518,8 +529,12 @@ async def _project_user_reflection(
                 adapter_client,
                 user_text=user_text,
                 source=source,
-                delivered_after=watermark_dt,
+                binding_id=binding_id,
+                requires_binding=requires_binding,
             )
+        if result.unbound:
+            observe(UserReflectionProjectionOutcome.DEFERRED, UserReflectionProjectionReason.ACCEPTED_RECEIPT_UNBOUND)
+            return session, False, False
         outcome, reason = _user_reflection_delivery_disposition(
             adapter_client,
             source=source,

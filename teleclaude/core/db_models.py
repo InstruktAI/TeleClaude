@@ -226,6 +226,71 @@ class InboundQueue(SQLModel, table=True):
     caller_job_role: str | None = None
     caller_origin_prefix_len: int | None = None
     caller_origin_suffix_len: int | None = None
+    binding_disposition: str | None = None
+
+
+class AcceptedTurnBindingRow(SQLModel, table=True):
+    """The durable composition root for one runtime-qualified user entry."""
+
+    __tablename__ = "accepted_turn_bindings"
+    __table_args__ = {"extend_existing": True}
+
+    binding_id: str = Field(primary_key=True)
+    session_id: str
+    native_runtime: str
+    native_session_id: str
+    native_entry_id: str
+    created_at: str
+
+
+class TurnReceiptEnvelopeRow(SQLModel, table=True):
+    """An accepted occurrence and the opaque envelope span it owns."""
+
+    __tablename__ = "turn_receipt_envelopes"
+    __table_args__ = {"extend_existing": True}
+
+    binding_id: str = Field(primary_key=True)
+    inbound_queue_id: int = Field(primary_key=True)
+    envelope_index: int = Field(primary_key=True)
+    occurrence_key: str
+    envelope_span_start: int
+    envelope_span_end: int
+    body_span_start: int
+    body_span_end: int
+    authored_part_id: int | None = None
+
+
+class BindingConflictCandidateRow(SQLModel, table=True):
+    """A native entry considered for an accepted row that remains ambiguous."""
+
+    __tablename__ = "binding_conflict_candidates"
+    __table_args__ = {"extend_existing": True}
+
+    inbound_queue_id: int = Field(primary_key=True)
+    native_runtime: str = Field(primary_key=True)
+    native_session_id: str = Field(primary_key=True)
+    native_entry_id: str = Field(primary_key=True)
+    created_at: str
+
+
+class TurnAuthoredPartRow(SQLModel, table=True):
+    """One ordered author-owned span extracted from a bound native turn."""
+
+    __tablename__ = "turn_authored_parts"
+    __table_args__ = {"extend_existing": True}
+
+    binding_id: str = Field(primary_key=True)
+    part_id: int = Field(primary_key=True)
+    part_kind: str
+    span_start: int
+    span_end: int
+    original_source_session_id: str | None = None
+    author_kind: str
+    author_display: str
+    author_agent_runtime: str | None = None
+    author_thinking_mode: str | None = None
+    author_machine_role: str | None = None
+    author_job_role: str | None = None
 
 
 class ConversationLinkMode(StrEnum):
