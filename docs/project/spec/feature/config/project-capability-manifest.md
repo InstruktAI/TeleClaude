@@ -93,19 +93,37 @@ Derivation rules:
   the human in the loop — and never touched again. Enabling or disabling `docs`
   toggles the filter driver in `.git/config` (TeleClaude's own, untracked); with
   the driver absent the `.gitattributes` line is inert, because git treats a
+<!-- planned-change:sync-stops-converging-project-setup -->
   filter attribute whose driver is undefined as a no-op. The driver is reconciled
   from the declaration (present iff `docs`) on the same mutating `telec sync` path
   that refreshes the TeleClaude-owned hooks of a `code`-subscribing project;
   `--skip-deploy` leaves both untouched. The safety guarantee — TeleClaude never
   rewrites a project-owned file on a toggle — holds by construction, not by a
   runtime guard.
+<!-- change:sync-stops-converging-project-setup -->
+  filter attribute whose driver is undefined as a no-op. The driver is reconciled
+  from the declaration (present iff `docs`) by project initialization, which also
+  installs the TeleClaude-owned hooks of a `code`-subscribing project; no sync path
+  touches either. The safety guarantee — TeleClaude never
+  rewrites a project-owned file on a toggle — holds by construction, not by a
+  runtime guard.
+<!-- /planned-change:sync-stops-converging-project-setup -->
 - Onboard is the one-time additive install: it writes the `.gitattributes` line,
   installs the git hooks under the git directory, and configures the filter
+<!-- planned-change:sync-stops-converging-project-setup -->
   driver. It preserves any hook the project already authored rather than
   overwriting it. After onboard, a toggle takes effect on the plumbing's next
   invocation because the plumbing reads the declaration itself; a mutating
   `telec sync` separately refreshes the TeleClaude-owned hooks and reconciles the
   filter driver. Neither path ever rewrites a project-tracked file.
+<!-- change:sync-stops-converging-project-setup -->
+  driver. It preserves any hook the project already authored rather than
+  overwriting it. After onboard, a toggle takes effect on the plumbing's next
+  invocation because the plumbing reads the declaration itself; re-running
+  initialization is what refreshes the TeleClaude-owned hooks and reconciles the
+  filter driver to the current declaration. Neither path ever rewrites a
+  project-tracked file.
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
   non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
@@ -219,6 +237,7 @@ And no capability state is written outside the project's declaration
 
 #### UC-CFG-CAP-11: Disabling docs never edits the tracked .gitattributes file
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 ```
 Given a project whose .gitattributes carries the TeleClaude docs-filter line
 When the docs capability is disabled
@@ -226,6 +245,16 @@ Then the .gitattributes file is not edited
 And the docs filter driver is removed from the git config
 And the inert filter line is left in place
 ```
+<!-- change:sync-stops-converging-project-setup -->
+```
+Given a project whose .gitattributes carries the TeleClaude docs-filter line
+And the docs capability is disabled
+When project initialization next runs for that project
+Then the .gitattributes file is not edited
+And the docs filter driver is removed from the git config
+And the inert filter line is left in place
+```
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
 #### UC-CFG-CAP-12: A capability toggle never edits a project-tracked file
 
@@ -322,6 +351,7 @@ And it resolves identically to the same declaration written in block form
 
 #### UC-CFG-CAP-22: An already-adopted repository picks up the declaration read
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 ```
 Given a repository onboarded before the plumbing read the declaration
 And whose installed hooks are the ones TeleClaude owns
@@ -329,6 +359,16 @@ When a mutating telec sync runs for that repository
 Then its TeleClaude-owned hooks are refreshed to read the declaration
 And a hook the project authored itself is left in place
 ```
+<!-- change:sync-stops-converging-project-setup -->
+```
+Given a repository onboarded before the plumbing read the declaration
+And whose installed hooks are the ones TeleClaude owns
+When project initialization next runs for that repository
+Then its TeleClaude-owned hooks are refreshed to read the declaration
+And a hook the project authored itself is left in place
+And a telec sync for that repository refreshes no hook
+```
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
 #### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 

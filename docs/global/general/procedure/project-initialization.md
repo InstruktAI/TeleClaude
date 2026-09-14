@@ -46,18 +46,32 @@ re-infers from repository shape at runtime.
 Source: `teleclaude/project_setup/init_flow.py:_declare_inferred_capabilities()`
 and `teleclaude/project_setup/capability_markers.py:project_capabilities()`
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 ### 3. Configure git smudge/clean filters (`docs` only)
+<!-- change:sync-stops-converging-project-setup -->
+### 3. Converge the git smudge/clean filter driver
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
 Sets up the `teleclaude-docs` git filter that handles tilde expansion:
 
 - **Smudge** (checkout): expands `@~/.teleclaude` to `@$HOME/.teleclaude`
 - **Clean** (commit): converts absolute paths back to `@~/.teleclaude`
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 Re-checks out `docs/` and `agents/docs/` to apply the smudge filter to existing files.
 
 A project that does not subscribe `docs` gets no filter driver.
 
 Source: `teleclaude/project_setup/git_filters.py:setup_git_filters()`
+<!-- change:sync-stops-converging-project-setup -->
+Converges the driver to the declaration: a project subscribing `docs` gets the driver
+installed, and a project that does not has TeleClaude's driver removed from its git
+config. Tracked files a checkout left unexpanded, and files still carrying a prior
+filter pattern's residue, are re-checked out so the smudge filter applies to them; a
+locally modified file is left untouched.
+
+Source: `teleclaude/project_setup/git_filters.py:ensure_git_filters()`
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
 ### 4. Update .gitattributes (`docs` only)
 

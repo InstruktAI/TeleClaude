@@ -1,5 +1,5 @@
 ---
-description: 'telec sync validates authored snippet, artifact, and jobs-config source and always blocks on findings; deploy mode records best-effort provenance, builds indexes, and distributes runtime artifacts.'
+description: 'The telec sync pipeline: what each phase does, how per-project capability gating scopes it, and the contract each phase carries.'
 visibility: 'public'
 ---
 
@@ -13,15 +13,23 @@ visibility: 'public'
 
 
 `telec sync` is the operator-facing command that promotes git-tracked Source
+<!-- planned-change:sync-validation-moves-to-lint -->
 into Deployed agent runtime outputs. Its responsibility is synchronization:
 validate authored source shape, record best-effort provenance, rebuild derived
 indexes, and distribute runtime artifacts. It does not mutate doc snippets in
+<!-- change:sync-validation-moves-to-lint -->
+into Deployed agent runtime outputs. Its responsibility is synchronization:
+promotion only. It validates no source. It does not mutate doc snippets in
+<!-- /planned-change:sync-validation-moves-to-lint -->
 response to todo delivery state; delivery-driven `delivered_by` reconciliation
 belongs to the integration lifecycle before the delivery commit is made.
 
 The sync pipeline is:
 
+<!-- planned-change:sync-validation-moves-to-lint -->
 1. **Validate** — run snippet, artifact, and jobs-config validators.
+<!-- change:sync-validation-moves-to-lint -->
+<!-- /planned-change:sync-validation-moves-to-lint -->
 2. **Record provenance** _(best-effort)_ — when a provenance back-end is
    configured, insert `delivered_by` memberships for audit. Back-end
    unavailability is caught and logged as a warning. This step never blocks
@@ -29,6 +37,7 @@ The sync pipeline is:
 3. **Build indexes** — write fresh derived doc indexes from source snippets.
 4. **Distribute** — invoke the distribution step in deploy mode.
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 A deploy-mode run also registers the invoking project's durable root in the
 project manifest when that project declares a non-empty `business.publishes` or
 contains at least one direct `agents/skills/<name>/` folder. The domain
@@ -37,7 +46,10 @@ is itself the declaration — no separate capability or registration step exists
 The registered root is the canonical main checkout (a worktree resolves to its
 owning checkout), and registration is idempotent. The read-only `--skip-deploy`
 gate performs no registration.
+<!-- change:sync-stops-converging-project-setup -->
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
+<!-- planned-change:sync-validation-moves-to-lint -->
 Validation always blocks: any finding stops the pipeline and `telec sync` exits
 non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 
@@ -51,6 +63,13 @@ non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 
 Validation findings are stdout text grouped by error code and reason; there is
 no machine-readable output channel today.
+<!-- change:sync-validation-moves-to-lint -->
+`telec sync` performs no source validation and accepts no flag beyond `--help`,
+so it has no blocking mode and nothing to bypass. Snippet, artifact, and
+jobs-config validation belongs to the guardrails lint lane and the commit gate;
+project bootstrap runs the same validators non-blocking through its own path
+(see Known caveats).
+<!-- /planned-change:sync-validation-moves-to-lint -->
 
 ## Canonical fields
 
@@ -58,10 +77,15 @@ Each per-project phase runs only when the project subscribes the capability that
 owns it (`project/spec/feature/config/project-capability-manifest`). Snippet
 validation, index building, and documentation publication run only under a
 subscribed `docs`; agent-artifact transpilation and deployment run only under a
+<!-- planned-change:sync-stops-converging-project-setup -->
 subscribed `agents`. A project subscribing neither still registers and still
 converges its derived plumbing.
+<!-- change:sync-stops-converging-project-setup -->
+subscribed `agents`. A project subscribing neither runs no per-project phase.
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 Plumbing reconciliation runs on the mutating sync path only: it reconciles the
 docs filter driver (present iff `docs`) from the declaration and refreshes the
 TeleClaude-owned git hooks of a project subscribing `code`, leaving a hook the
@@ -70,6 +94,14 @@ installed plumbing reads the declaration on each invocation
 (`project/spec/feature/config/project-capability-manifest`). `--skip-deploy` is
 read-only — it installs or withdraws no hooks or `.gitattributes` lines and does
 not touch the driver.
+<!-- change:sync-stops-converging-project-setup -->
+Project-setup convergence is not a sync phase. The docs filter driver and the
+TeleClaude-owned git hooks are installed and reconciled by project
+initialization, and the project manifest is written there
+(`general/procedure/project-initialization`). No sync path — deploying or
+read-only — installs, refreshes, or withdraws a hook, a filter driver, or a
+manifest entry.
+<!-- /planned-change:sync-stops-converging-project-setup -->
 
 
 The behavioral contract for this gating lives in
@@ -85,8 +117,12 @@ behavior; this spec references them rather than restating them.
 Scenario: Full sync on a clean Mother project checkout
   Given the project source is git-tracked and validates cleanly
   When the operator runs telec sync
+<!-- planned-change:sync-validation-moves-to-lint -->
   Then snippet, artifact, and jobs-config validators run once
   And the index-build phase produces a fresh index
+<!-- change:sync-validation-moves-to-lint -->
+  Then the index-build phase produces a fresh index
+<!-- /planned-change:sync-validation-moves-to-lint -->
   And broken or self-pointing tracked docs symlinks are repaired
   And the distribution step is invoked in deploy mode
 And the run exits zero
@@ -94,6 +130,7 @@ And the run exits zero
 
 
 
+<!-- planned-change:sync-validation-moves-to-lint -->
 ```
 Scenario: --skip-deploy validates but produces no derived outputs
   Given the operator wants to validate without deploying
@@ -102,9 +139,12 @@ Scenario: --skip-deploy validates but produces no derived outputs
   And no index build, symlink repair, or distribution step runs
 And the run exits zero only when validation is clean
 ```
+<!-- change:sync-validation-moves-to-lint -->
+<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
 
+<!-- planned-change:sync-validation-moves-to-lint -->
 ```
 Scenario: Validation findings always block
   Given snippet, artifact, or jobs-config validation reports a finding
@@ -113,9 +153,12 @@ Scenario: Validation findings always block
   And the pipeline aborts before any deploy
 And the run exits non-zero
 ```
+<!-- change:sync-validation-moves-to-lint -->
+<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
 
+<!-- planned-change:sync-validation-moves-to-lint -->
 ```
 Scenario: The docs watcher bypasses validation to live-reload
   Given the docs watcher authorizes the hidden --skip-validation flag
@@ -132,6 +175,8 @@ Scenario: A non-watcher caller is rejected from bypassing validation
   Then the command is rejected and exits non-zero
 And no deploy occurs
 ```
+<!-- change:sync-validation-moves-to-lint -->
+<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
 ```
@@ -148,10 +193,15 @@ Scenario: Provenance back-end is unavailable
 Scenario: Delivery completes before sync
   Given an integration delivery staged snippet lifecycle reconciliation in its merge commit
   When telec sync runs after the delivery
+<!-- planned-change:sync-validation-moves-to-lint -->
   Then sync validates the already-mutated source
+<!-- change:sync-validation-moves-to-lint -->
+  Then sync deploys the already-mutated source
+<!-- /planned-change:sync-validation-moves-to-lint -->
   And sync performs no additional source markdown mutations
 ```
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 ```
 Scenario: UC-SPO1 A publishing sync registers the publisher so its domain is universally valid
   Given a project declares a domain in business.publishes in its own teleclaude.yml
@@ -192,6 +242,19 @@ Scenario: UC-SPO5 A global skill folder registers its publisher by existence
   And running telec sync again does not add a duplicate manifest entry
 ```
 
+<!-- change:sync-stops-converging-project-setup -->
+#### UC-SPO16: Deploy-mode sync converges no project setup
+
+```gherkin
+Given a project whose git hooks, docs filter driver, and manifest registration are all out of date
+When the operator runs telec sync in deploy mode
+Then no git hook is installed or refreshed
+And the docs filter driver is neither configured nor removed
+And the project manifest is left unchanged
+And the pipeline still records provenance, builds indexes, and distributes artifacts
+```
+
+<!-- /planned-change:sync-stops-converging-project-setup -->
 #### UC-SPO4: Deploy-mode sync is refused from a slug worktree
 
 ```
@@ -199,8 +262,13 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
   Given telec sync runs in deploy mode from a slug worktree (trees/<slug>, not trees/_integration)
   When the pipeline starts
   Then it exits non-zero with an error that docs deployment is not allowed from a slug worktree
+<!-- planned-change:sync-validation-moves-to-lint -->
   And no validation, index build, symlink repair, or distribution step runs
   And a --skip-deploy run, and deploy-mode sync from the main checkout or the integration worktree, are unaffected
+<!-- change:sync-validation-moves-to-lint -->
+  And no index build, symlink repair, or distribution step runs
+  And deploy-mode sync from the main checkout or the integration worktree is unaffected
+<!-- /planned-change:sync-validation-moves-to-lint -->
 ```
 
 #### UC-SPO12: Concurrent syncs observe a complete documentation deployment
@@ -266,16 +334,26 @@ And validation reports a finding only when that source target is missing
   provenance store is expected until the back-end is healthy again.
 
 
+<!-- planned-change:sync-validation-moves-to-lint -->
 - `--skip-deploy` exits before index build and symlink repair. Broken tracked
   symlinks may therefore remain broken until a full sync runs.
 - `--skip-validation` deploys unvalidated source; it is reserved for the docs
   watcher's live reload, where the commit gate remains the validation contract.
+<!-- change:sync-validation-moves-to-lint -->
+<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
+<!-- planned-change:sync-validation-moves-to-lint -->
 - Project bootstrap (`telec projects init` / `onboard`, via `sync_bootstrap`)
   validates and reports findings without blocking, then deploys — a human-run,
   one-time setup path distinct from the always-blocking `telec sync` command.
   The commit gate remains the validation contract for ongoing work.
+<!-- change:sync-validation-moves-to-lint -->
+- Project bootstrap (`telec projects init` / `onboard`, via `sync_bootstrap`)
+  reports source findings without blocking, then deploys — a human-run, one-time
+  setup path, and the only path on which the deployment command runs a validator
+  at all. The commit gate remains the validation contract for ongoing work.
+<!-- /planned-change:sync-validation-moves-to-lint -->
 - The distribution step is optional in stripped-down deployments because a
   missing distribution entrypoint silently skips phase 4.
 - The v1 CLI namespace is `telec sync`. The v2 target is `telec context sync`.
