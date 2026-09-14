@@ -42,7 +42,7 @@ from teleclaude.core.next_machine.review_rounds import (
 )
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.snippet_validation import snippet_body_digest
+from teleclaude.snippet_validation import snippet_body_digest_for
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -134,7 +134,7 @@ async def _derive_and_commit_drift(
         writer.state,
         repo_root=cwd,
         todos_db=todos_db,
-        snippet_digest_fn=snippet_body_digest,
+        snippet_digest_fn=snippet_body_digest_for(cwd),
         writer=writer,
     )
     await _commit_writer(writer, todos_db, slug, state)

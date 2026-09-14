@@ -70,7 +70,7 @@ from teleclaude.core.next_machine.work_steps import _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.session_identity import get_session_id
-from teleclaude.snippet_validation import snippet_body_digest
+from teleclaude.snippet_validation import snippet_body_digest_for
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -388,7 +388,7 @@ async def _check_work_entry_drift(
         writer.state,
         repo_root=cwd,
         todos_db=todos_db,
-        snippet_digest_fn=snippet_body_digest,
+        snippet_digest_fn=snippet_body_digest_for(cwd),
         writer=writer,
     )
     await writer.commit(todos_db, resolved_slug)

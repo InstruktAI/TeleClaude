@@ -78,6 +78,7 @@ async def sync_artifact_provenance(
         todos_db,
         slug,
         artifact_name,
+        repo_root=repo_root,
         snippet_digest_fn=snippet_digest_fn,
     )
     entry.referenced_snippet_digests = await read_referenced_snippet_digests(
@@ -154,13 +155,14 @@ async def read_owned_snippet_digests(
     slug: str,
     artifact_name: str,
     *,
+    repo_root: str,
     snippet_digest_fn: Callable[[str], str],
 ) -> dict[str, str]:
     """Read snippets whose delivered_by membership names this todo."""
     _ = todos_db, artifact_name
     return {
         snippet_id: digest
-        for snippet_id in _snippet_ids_delivered_by(slug)
+        for snippet_id in _snippet_ids_delivered_by(slug, repo_root=repo_root)
         if (digest := snippet_digest_fn(snippet_id))
     }
 
@@ -248,9 +250,9 @@ def _global_ref_to_id(ref: str) -> str:
     return ""
 
 
-def _snippet_ids_delivered_by(slug: str) -> list[str]:
+def _snippet_ids_delivered_by(slug: str, *, repo_root: str) -> list[str]:
     ids: set[str] = set()
-    for index_path in (Path.cwd() / "docs" / "project" / "index.yaml", GLOBAL_DOCS_DIR / "index.yaml"):
+    for index_path in (Path(repo_root) / "docs" / "project" / "index.yaml", GLOBAL_DOCS_DIR / "index.yaml"):
         ids.update(_snippet_ids_delivered_by_from_index(index_path, slug))
     return sorted(ids)
 
