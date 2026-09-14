@@ -36,13 +36,7 @@ from teleclaude.api_models import (
     TuiBootstrapDTO,
     TuiBootstrapPillar,
 )
-from teleclaude.cli.models import (
-    SubscribeData,
-    SubscribeRequest,
-    UnsubscribeData,
-    UnsubscribeRequest,
-    WsEvent,
-)
+from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.operation_caller_identity import get_caller_session_id
@@ -435,7 +429,7 @@ class _TelecConnectionClient:
         Raises:
             APIError: If request fails
         """
-        request_timeout = timeout if timeout is not None else 5.0
+        request_timeout = timeout if timeout is not None else 15.0
         options = request_options or RequestOptions()
         method_enum = self._normalize_http_method(method)
 
