@@ -618,7 +618,6 @@ Scenario: matching cosmetic stamp clears upstream drift on a multi-upstream plan
   And the prepare machine settles at prepared without re-dispatching the drift-analyzer for implementation-plan
 ```
 
-<!-- planned:fix-artifact-snippet-provenance-is-never-cap -->
 
 #### UC-WDD13: Artifact provenance resolves snippets against the request's project
 
@@ -632,7 +631,6 @@ Scenario: provenance captures owned snippets for a project other than the daemon
   And async_provenance_complete is true
 ```
 
-<!-- /planned:fix-artifact-snippet-provenance-is-never-cap -->
 
 ### Cross-context references
 
