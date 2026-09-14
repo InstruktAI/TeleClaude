@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from teleclaude.paths import REPO_ROOT
+from teleclaude.paths import REPO_ROOT, ConfigFileName
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -26,6 +26,7 @@ from teleclaude.quality.scope import (
     resolve_workspace_scope_resolution,
     validate_scoped_paths,
 )
+from teleclaude.resource_validation import validate_all_artifacts, validate_jobs_config
 
 __all__ = [
     "GuardrailsLane",
@@ -234,6 +235,27 @@ class _RawSqlStep:
 
 
 @dataclass
+class _SourceValidationStep:
+    """Validate source artifacts selected by the active lint scope."""
+
+    name: str = "source_validation"
+    _project_root: Path = field(default_factory=Path)
+    _run_all: bool = False
+
+    def run(self, targets: list[str]) -> None:
+        """Reject malformed artifacts and selected jobs declarations."""
+        paths = None if self._run_all else targets
+        findings = validate_all_artifacts(self._project_root, paths=paths)
+        if self._run_all or str(ConfigFileName.OVERLAY) in _normalize_targets(targets, self._project_root):
+            findings.extend(validate_jobs_config(self._project_root))
+        if not findings:
+            return
+        for finding in findings:
+            logger.error(finding)
+        raise SystemExit(1)
+
+
+@dataclass
 class _SnapshotTestingStep:
     """Snapshot-testing assertion policy enforcement."""
 
@@ -298,6 +320,7 @@ class GuardrailsLane:
             _HomePathsStep(_project_root=root, _run_all=run_all),
             _ResourceValidationStep(_project_root=root, _run_all=run_all),
             _RawSqlStep(_project_root=root, _run_all=run_all),
+            _SourceValidationStep(_project_root=root, _run_all=run_all),
             _SnapshotTestingStep(_project_root=root, _run_all=run_all),
             _ForbidUnitTestsStep(_project_root=root, _run_all=run_all),
             _ForbidTsUnitTestsStep(_project_root=root, _run_all=run_all),

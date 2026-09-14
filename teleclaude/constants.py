@@ -584,14 +584,13 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
     ),
 }
 
-# Universal base bindings (telec-contract paths). They fire on every checkpoint
-# in every onboarded project regardless of language. `test` and `log-check` are
-# NOT bound here — they attach to a project-declared `code` scope (code is an
-# allowlist; an unmatched file is silent).
-CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
+# Universal base bindings preserve their scopes for project overlays. Platform
+# defaults bind no action; `test` and `log-check` attach to a project-declared
+# `code` scope (code is an allowlist; an unmatched file is silent).
+CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=())
 CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("agents/**", ".agents/**", "**/AGENTS.master.md")),
-    actions=("sync",),
+    actions=(),
 )
 CHECKPOINT_BASE_CODE_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("Makefile", ".pre-commit-config.yaml", ".gitattributes", ".husky/pre-commit")),
