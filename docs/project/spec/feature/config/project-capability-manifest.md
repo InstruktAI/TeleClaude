@@ -424,18 +424,6 @@ And a hook the project authored itself is left in place
 #### UC-CFG-CAP-22:
 
 <!-- /planned-change:sync-stops-converging-project-setup -->
-<!-- planned:sync-stops-converging-project-setup -->
-#### UC-CFG-CAP-27: The registry records a project's durable main checkout
-
-```gherkin
-Given a project whose linked worktree is checked out alongside its main checkout
-When an agent adopts that project from inside the worktree
-Then the registry lists the project once, by its main checkout
-And the worktree is absent from the registry
-And adopting it again leaves the registry unchanged
-```
-
-<!-- /planned:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 
 ```

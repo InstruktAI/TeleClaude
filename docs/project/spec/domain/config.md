@@ -93,6 +93,13 @@ TeleClaudeNext.
   Carrying a configuration file is not an ownership basis. The decomposition is
   `project/design/architecture/config-tier-resolution`.
 
+<!-- planned:sync-stops-converging-project-setup -->
+#### Use cases (index of feature specs)
+
+- **project-registry** — `docs/project/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
+
+<!-- /planned:sync-stops-converging-project-setup -->
+
 ## See Also
 
 - docs/project/spec/teleclaude-config.md
