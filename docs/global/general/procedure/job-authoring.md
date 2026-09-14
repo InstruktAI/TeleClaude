@@ -103,8 +103,18 @@ Commit the change. The commit gate validates:
 <!-- /planned-change:commit-gate-owns-source-validation -->
 
 - Snippet schema: required H2 sections per taxonomy type.
+<!-- planned-change:commit-gate-owns-source-validation -->
 - Job config: schedule shape, execution pointer, and — for an agent job — that the
   `job:` pointer resolves to a delivered procedure snippet.
+<!-- change:commit-gate-owns-source-validation -->
+- Job config: schedule shape, execution pointer, and — for an agent job — that the
+  `job:` pointer resolves to a delivered procedure snippet.
+
+A declaration authored in the global registry is validated through a project that
+subscribes its execution pointer, where the effective set resolves the published
+declaration onto that project's own: run `telec sync` from that project root. The
+global registry root is not a sync target, so a sync run there validates nothing.
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 ## Outputs
 
