@@ -24,7 +24,10 @@ Create and maintain concise, schema-compliant tool specifications that scale thr
 6. Document only operational edge cases in `Known caveats`.
 
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 7. Run `telec sync` after updates.
+<!-- change:commit-gate-owns-source-validation -->
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 
 ## Outputs
@@ -33,13 +36,20 @@ Create and maintain concise, schema-compliant tool specifications that scale thr
 - Updated `spec/tools/baseline.md` ordering if needed.
 
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 - Synced artifacts after `telec sync`.
+<!-- change:commit-gate-owns-source-validation -->
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 
 ## Recovery
 
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 - If docs validation reports unknown-section findings, remove non-schema headings — validation always blocks, so `telec sync` (and `--skip-deploy`) fail until they are fixed.
+<!-- change:commit-gate-owns-source-validation -->
+- If docs validation reports unknown-section findings, remove non-schema headings — validation always blocks, so `telec code commit` fails until they are fixed.
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 
 - If tool details become noisy, split by primitive instead of expanding a single spec.

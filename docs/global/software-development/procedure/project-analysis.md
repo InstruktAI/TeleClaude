@@ -271,8 +271,12 @@ Procedure:
 
 - Move the content of `AGENTS.md` into a new `AGENTS.master.md`.
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 - Run `telec sync`.
 - Verify the regenerated `AGENTS.md` (inflated from the master, possibly with
+<!-- change:commit-gate-owns-source-validation -->
+- Verify the regenerated `AGENTS.md` (inflated from the master, possibly with
+<!-- /planned-change:commit-gate-owns-source-validation -->
   baseline additions) and the `CLAUDE.md` shim are produced. The original
   content survives in `AGENTS.master.md`.
 
@@ -302,7 +306,10 @@ proceeds.
 
 - A set of schema-valid doc snippets under `docs/project/`.
 - A concise summary of what was created/updated.
+<!-- planned-change:commit-gate-owns-source-validation -->
 - A `telec sync --skip-deploy` run confirming snippet validity.
+<!-- change:commit-gate-owns-source-validation -->
+<!-- /planned-change:commit-gate-owns-source-validation -->
 - An updated `.telec-init-meta.yaml` recording `last_analyzed_commit` set to the
   HEAD commit analyzed, so the next run has a diff base.
 

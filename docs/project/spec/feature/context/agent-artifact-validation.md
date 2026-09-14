@@ -188,6 +188,31 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
 <!-- /planned-change:agent-artifact-source-layout -->
 
 
+<!-- planned:commit-gate-owns-source-validation -->
+```
+Scenario: Scoped validation grades the artifacts in its path set
+  Given a path set naming a command, an agent, and a skill entrypoint under a configured artifact source
+  When artifact validation runs scoped to that path set
+  Then each named artifact is validated against the contract for its kind
+  And a supporting file inside a skill package resolves to that package's SKILL.md
+```
+
+```
+Scenario: The commit gate validates the artifacts in its pathspec
+  Given a commit pathspec naming an agent artifact
+  When telec code commit runs
+  Then artifact validation runs scoped to that pathspec
+  And a validation finding refuses the commit
+```
+
+```
+Scenario: The cross-publisher skill-name collision check runs on a full validation run
+  Given two registered projects each contribute a global skill folder of the same name
+  When a full artifact validation run executes
+  Then the collision is reported naming both publisher roots
+```
+<!-- /planned:commit-gate-owns-source-validation -->
+
 ### Cross-context references
 
 - agent_runtime — the deployed artifacts ultimately drive what the agent CLI

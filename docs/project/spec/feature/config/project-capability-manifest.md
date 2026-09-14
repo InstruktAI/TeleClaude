@@ -82,9 +82,15 @@ Derivation rules:
   capability state is substituted for it — the direction the runtime takes for a
   declaration it cannot read (UC-CFG-CAP-3). The plumbing never falls open and
   never falls closed on such a block, and it claims nothing about the rest of
-  the file: overlay validation belongs to the runtime. A global or person
+  <!-- planned-change:commit-gate-owns-source-validation -->
+the file: overlay validation belongs to the runtime. A global or person
   declaration carries no capability blocks; what the plumbing decides at such a
   repository root is the seal, per `project/design/code-commit`. Because the
+<!-- change:commit-gate-owns-source-validation -->
+the file: overlay validation belongs to the runtime. A global, person, or
+  company declaration carries no capability blocks; what the plumbing decides at
+  such a repository root is the seal, per `project/design/code-commit`. Because the
+<!-- /planned-change:commit-gate-owns-source-validation -->
   declaration is a file the project tracks, a clone carries the project's real
   capability state before any TeleClaude command has run against it.
 
@@ -357,6 +363,18 @@ Given a project whose teleclaude.yml carries a code capability block that declar
 When the capabilities are resolved by the runtime or by the installed plumbing
 Then the code capability resolves to subscribed on both readers
 ```
+
+<!-- planned:commit-gate-owns-source-validation -->
+#### UC-CFG-CAP-26: A non-project tier root reaches the sealed-commit surface
+
+```
+Given a repository root whose declaration carries a non-project tier
+When telec code changed or telec code commit runs at that root
+Then the command operates on that root
+And the commit is made through the sealed-commit surface
+And the commit is scoped to the acting context root rather than the whole repository
+```
+<!-- /planned:commit-gate-owns-source-validation -->
 
 
 ## Known caveats

@@ -52,7 +52,10 @@ Capture authoritative documentation for project dependencies and store concise i
 
 5. **Stop**
    - Stop when the brief is satisfied and remaining gaps are explicitly recorded.
+<!-- planned-change:commit-gate-owns-source-validation -->
    - Run `telec sync` after writing the snippet.
+<!-- change:commit-gate-owns-source-validation -->
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 **Bulk workflow (stack scan):**
 
@@ -67,7 +70,10 @@ Capture authoritative documentation for project dependencies and store concise i
 ## Outputs
 
 - Documentation snippet(s) under the selected scope with Sources and Gaps/Unknowns sections.
+<!-- planned-change:commit-gate-owns-source-validation -->
 - `telec sync` run after any new or updated snippet.
+<!-- change:commit-gate-owns-source-validation -->
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 ## Recovery
 

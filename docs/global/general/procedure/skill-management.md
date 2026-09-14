@@ -130,10 +130,16 @@ Read step 5 before reaching for a project destination.
    TeleClaude repository and committing. Never delete a catalog entry or an immutable
    store snapshot through a project path.
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 9. **Validate and verify.** Run `telec sync`, then confirm the package reached its
    intended scope: a global adoption appears in the `general/procedure/skill-use`
    listing, a project adoption or link appears in that project's rendered runtime
    artifacts.
+<!-- change:commit-gate-owns-source-validation -->
+9. **Verify.** Confirm the package reached its intended scope: a global adoption
+   appears in the `general/procedure/skill-use` listing, a project adoption or link
+   appears in that project's rendered runtime artifacts.
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 ## Outputs
 

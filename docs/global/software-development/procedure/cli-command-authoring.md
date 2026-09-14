@@ -30,9 +30,13 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 
 9. **Add to `Required tools`** in relevant lifecycle procedure docs if the command is procedure-scoped.
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 10. **Deploy.** Run `telec sync` to rebuild indexes and deploy artifacts.
 
 11. **Verify.** `make restart && make status` for daemon-backed commands. Smoke test the full flow.
+<!-- change:commit-gate-owns-source-validation -->
+10. **Verify.** `make restart && make status` for daemon-backed commands. Smoke test the full flow.
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 ## Preconditions
 
@@ -46,7 +50,10 @@ Add new CLI commands to `telec` consistently, following REST resource convention
 - An API endpoint (if daemon-backed) in `teleclaude/api/`.
 - Functional tests bound to the command's feature-spec scenarios (when it exposes observable behavior; contract tooling is not tested).
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 - Updated indexes via `telec sync`.
+<!-- change:commit-gate-owns-source-validation -->
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 ## Recovery
 

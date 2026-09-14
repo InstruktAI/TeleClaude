@@ -58,8 +58,11 @@ for supported CLIs.
    has no such counterpart. This is a judgement, not a machine check — listing several
    procedures for context is not the same as having one that owns your inputs and outputs.
 8. **ADR discipline (decision capture).** Artifacts describe the _current behavior_; they hold no reasoning logs. An ADR is reserved for a real, contestable decision and the default is none — consult `general/policy/adr-discipline` for the bar before writing one.
+<!-- planned-change:commit-gate-owns-source-validation -->
 9. After the authorized artifact batch is stable, run `telec sync`. This step
    supplies neither authoring nor commit authority.
+<!-- change:commit-gate-owns-source-validation -->
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 ## Outputs
 
@@ -68,7 +71,11 @@ for supported CLIs.
 
 ## Recovery
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 - If `telec sync` fails, fix the issue and rerun it.
+<!-- change:commit-gate-owns-source-validation -->
+- If the commit gate reports artifact validation findings, fix them and rerun `telec code commit`.
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 ## See Also
 

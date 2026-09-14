@@ -21,9 +21,7 @@ Build and distribute agent artifacts in this repository.
 
 1. Update the appropriate scope (global or project).
 
-
-2. Run `telec sync` to generate and deploy runtime-specific outputs.
-
+2. The docs watcher publishes the change; runtime-specific outputs regenerate on save.
 
 ## Outputs
 

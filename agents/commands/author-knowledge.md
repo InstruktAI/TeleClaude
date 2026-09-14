@@ -20,7 +20,7 @@ Help the user offload organizational or project knowledge into structured docume
 1. If a topic was given as an argument, start there; otherwise ask the user what area to document.
 2. Extract and organize the knowledge conversationally. Keep forming content in the session scratchpad; do not edit Git-tracked documentation while the knowledge set is still growing.
 3. Show the proposed snippet set and continue the conversation until every active participant agrees it is complete.
-4. After the human releases that agreed set for authoring, execute the doc-snippet-authoring procedure, author the batch, and run `telec sync`.
+4. After the human releases that agreed set for authoring, execute the doc-snippet-authoring procedure and author the batch.
 5. Report the uncommitted batch and offer to commit it. Authoring release is not commit authority.
 
 ## Discipline
