@@ -46,14 +46,9 @@ structured outcome submission. A job procedure carries no `activation_trigger`:
 triggers belong to procedures an agent may invoke on its own judgment, and a job
 procedure is executed by the runner.
 
-<!-- planned-change:fix-telec-sync-chciken-egg -->
-Run `telec sync` before declaring the job, because the declaration's pointer is
-resolved against the snippet index.
-<!-- change:fix-telec-sync-chciken-egg -->
 The declaration's pointer is resolved against the owning publisher's snippet
 source tree, so the procedure file only needs to exist at its taxonomy path
 before the declaration is validated.
-<!-- /planned-change:fix-telec-sync-chciken-egg -->
 
 ### 3. Register in teleclaude.yml
 
@@ -115,14 +110,9 @@ Run `telec sync`. Validation checks:
 ## Recovery
 
 - If `telec sync` fails, fix the reported issue and rerun.
-<!-- planned-change:fix-telec-sync-chciken-egg -->
-- If validation reports the `job:` pointer as unknown, the procedure has not been
-  indexed yet: sync the procedure first, then declare the job.
-<!-- change:fix-telec-sync-chciken-egg -->
 - If validation reports the `job:` pointer as unknown, the procedure is missing
   from its publisher source tree: confirm the file exists at the taxonomy path
   the pointer names, that its snippet type is `procedure`, and that it carries no
   `delivered_by`.
-<!-- /planned-change:fix-telec-sync-chciken-egg -->
 - If unsure about execution mode, default to agent — it can always be
   simplified to script later.
