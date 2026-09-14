@@ -107,7 +107,7 @@ Scenario: parameters contains duplicate names
 Scenario: Required reads orders refs incorrectly
   Given a Required reads block listing a skill ref before a command ref
   When the Required-reads ordering check runs
-  Then the ordering error is reported (commands → agents → skills)
+  Then the ordering error is reported (commands → skills)
 ```
 
 <!-- planned-change:agent-artifact-source-layout -->

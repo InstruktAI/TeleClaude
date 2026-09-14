@@ -63,7 +63,7 @@ visibility: 'public'
 
 ## Enforcement
 
-- Distribution runs validate normalized authored commands and agents before output.
+- Distribution runs validate normalized authored commands before output.
   Every skill entrypoint is identity-validated; skill bodies are never graded
   against TeleClaude's artifact taxonomy. Supporting Markdown under either skill
   scope retains its authored structure.
