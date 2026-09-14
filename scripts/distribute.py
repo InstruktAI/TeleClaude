@@ -28,7 +28,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Literal, NamedTuple, NotRequired, cast
+from typing import Literal, NamedTuple, cast
 from uuid import uuid4
 
 import frontmatter
@@ -43,6 +43,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from teleclaude.artifact_ownership import reconcile_deployed_files, retract_retired_native_artifacts
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.config.declaration import schema_filename
 from teleclaude.config.schema import ConfigKind
@@ -61,7 +62,6 @@ from teleclaude.global_skills import compose_global_skill_catalog, global_skill_
 from teleclaude.mcp.registry import McpRegistry, load_effective_registry, load_project_declarations, project_mcp_root
 from teleclaude.paths import (
     COMMANDS_DIR,
-    DEPLOYED_COMMANDS_MANIFEST_PATH,
     GLOBAL_DOCS_DIR,
     TELECLAUDE_HOME,
 )
@@ -81,6 +81,12 @@ _DOCS_ENABLED_FLAG = "--docs-enabled"
 _AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing during deployment."
 _DOCS_ENABLED_HELP = "Enable or disable documentation deployment."
 _PROJECT_MASTER_FILENAME = "AGENTS.master.md"
+_COMMANDS_KEY = "commands"
+_CODEX_AGENT_NAME = "codex"
+_GEMINI_AGENT_NAME = "gemini"
+_COMMANDS_STAGING_DIRECTORY = "commands"
+_COMMAND_ARTIFACT_KIND = "command"
+_MARKDOWN_EXTENSION = ".md"
 _UTF8 = "utf-8"
 _NEWLINE = "\n"
 _SNIPPET_ID_BLOCK = "id: {snippet_id}\n\n{body}"
@@ -95,12 +101,6 @@ _DOMAIN_BASELINE_BUNDLE_GENERATED = "domain_baseline_bundle_generated"
 _GENERATED_REQUIRED_READ_EXPANDED = "generated_required_read_expanded"
 _INLINE_REF_PREFIX = "@"
 _PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "project"
-_MALFORMED_COMMANDS_MANIFEST_MESSAGE = (
-    "Malformed deployed commands manifest at {path}: {detail}. Inspect or delete it to re-seed command ownership."
-)
-_COMMANDS_MANIFEST_EXPECTED_OBJECT_DETAIL = "expected an object"
-_COMMANDS_MANIFEST_EXPECTED_SCOPE_ENTRIES_DETAIL = "expected scope-to-list entries"
-_COMMANDS_MANIFEST_BASENAME_DETAIL = "command names must be basenames"
 _CONFIG_SCHEMA_DIRECTORY = "schemas"
 _MCP_INDEX_HEADER = "## Available MCP Servers\n\n"
 _MCP_INDEX_ENTRY_TEMPLATE = "- `{slug}` — {trigger}"
@@ -116,8 +116,6 @@ class DistributionObservation:
     process_correlation_id: str
 
 
-_INVALID_COMMAND_BASENAMES = frozenset({".", ".."})
-_COMMAND_NAME_SEPARATORS = frozenset({"/", "\\"})
 _APPENDED_SECTION_TEMPLATE = "{content}\n\n---\n\n{sections}\n"
 
 
@@ -221,19 +219,14 @@ ActivatableScope = DomainScope | ProjectScope | GlobalScope
 class AgentConfig(TypedDict):
     """Agent-specific output and deploy paths."""
 
-    check_dir: str
+    home_root: str
+    project_dir: str
     prefix: str
     master_dest: str
-    commands_dest_dir: str
-    agents_dest_dir: str
     skills_dest_dir: str
     skills_ext: str
     ext: str
     transform: Transform
-    deploy_master_dest: NotRequired[str]
-    deploy_commands_dest: NotRequired[str]
-    deploy_agents_dest: NotRequired[str]
-    deploy_skills_dest: NotRequired[str]
 
 
 class FileArtifactType(NamedTuple):
@@ -242,166 +235,19 @@ class FileArtifactType(NamedTuple):
     name: str
     source_dir_key: str
     dest_dir_key: str
-    deploy_dir_key: str
     ext_key: str
     kind: Literal["file", "skill"]
     artifact_kind: str  # "agent", "command", or "skill" — passed to validate_artifact
-
-
-def _mirror_exclusions_for_agent(
-    config: AgentConfig,
-    specs: list[FileArtifactType],
-) -> frozenset[str]:
-    """Staging basenames whose explicit ``deploy_*_dest`` lands outside the agent's home root.
-
-    The per-agent mirror copies ``dist/<agent>/`` into ``~/.{agent}/`` (global
-    phase) or ``project_root/.{agent}/`` (local phase). When a spec's explicit
-    deploy target lives OUTSIDE the agent's home root (``config["check_dir"]``)
-    — Codex commands route to ``~/.teleclaude/commands`` (outside ``~/.codex``)
-    — mirroring the staging subdir into the home root produces a dead duplicate.
-    Such basenames are reported here so the blanket copytree can skip them while
-    the explicit deploy still writes them to the external destination.
-
-    Other artifacts whose deploy target lives under ``check_dir`` (Claude/Gemini
-    commands) are NOT excluded — the blanket mirror places them correctly in
-    both phases.
-    """
-    excluded: set[str] = set()
-    agent_home = os.path.normpath(config["check_dir"])
-    for spec in specs:
-        deploy_dest = str(config.get(spec.deploy_dir_key) or "")
-        if not deploy_dest:
-            continue
-        dest_basename = os.path.basename(str(config.get(spec.dest_dir_key) or ""))
-        if not dest_basename:
-            continue
-        deploy_norm = os.path.normpath(deploy_dest)
-        if deploy_norm != agent_home and not deploy_norm.startswith(agent_home + os.sep):
-            excluded.add(dest_basename)
-    return frozenset(excluded)
 
 
 def _deploy_agent(
     *,
     dist_agent_root: str,
     target_root: str,
-    config: AgentConfig,
-    specs: list[FileArtifactType],
 ) -> None:
-    """Mirror ``dist/<agent>/`` into ``target_root`` and route externally-deployed subdirs.
-
-    Blanket-mirrors the staging tree, skipping any artifact subdir whose explicit
-    deploy lands outside the agent's home root (see ``_mirror_exclusions_for_agent``).
-    Then walks the specs and explicitly copies each artifact whose deploy target
-    differs from the mirror destination — preserving the existing dual-write for
-    artifacts that map both into the agent home and an external location.
-    """
+    """Mirror one agent's staged artifacts into its deployment root."""
     os.makedirs(target_root, exist_ok=True)
-    excluded_basenames = _mirror_exclusions_for_agent(config, specs)
-
-    def _ignore(
-        directory: str,
-        _names: list[str],
-        _root: str = dist_agent_root,
-        _excluded: frozenset[str] = excluded_basenames,
-    ) -> frozenset[str]:
-        return _excluded if directory == _root else frozenset()
-
-    shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True, ignore=_ignore)
-
-    for spec in specs:
-        deploy_dest = str(config.get(spec.deploy_dir_key) or "")
-        if not deploy_dest:
-            continue
-        dest_dir_basename = os.path.basename(str(config.get(spec.dest_dir_key) or ""))
-        dist_src = os.path.join(dist_agent_root, dest_dir_basename)
-        copytree_dest = os.path.join(target_root, dest_dir_basename)
-        if os.path.normpath(deploy_dest) != os.path.normpath(copytree_dest) and os.path.isdir(dist_src):
-            os.makedirs(deploy_dest, exist_ok=True)
-            shutil.copytree(dist_src, deploy_dest, dirs_exist_ok=True)
-
-
-def _load_deployed_commands_manifest(manifest_path: Path) -> dict[str, set[str]]:
-    """Load the per-source-scope command ownership inventory."""
-    try:
-        payload: object = json.loads(manifest_path.read_text(encoding=_UTF8))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(_MALFORMED_COMMANDS_MANIFEST_MESSAGE.format(path=manifest_path, detail=exc)) from exc
-
-    if not isinstance(payload, dict):
-        raise RuntimeError(
-            _MALFORMED_COMMANDS_MANIFEST_MESSAGE.format(
-                path=manifest_path,
-                detail=_COMMANDS_MANIFEST_EXPECTED_OBJECT_DETAIL,
-            )
-        )
-
-    ownership: dict[str, set[str]] = {}
-    for scope_key, filenames in payload.items():
-        if not isinstance(scope_key, str) or not isinstance(filenames, list):
-            raise RuntimeError(
-                _MALFORMED_COMMANDS_MANIFEST_MESSAGE.format(
-                    path=manifest_path,
-                    detail=_COMMANDS_MANIFEST_EXPECTED_SCOPE_ENTRIES_DETAIL,
-                )
-            )
-        if any(
-            not isinstance(filename, str)
-            or not filename
-            or filename in _INVALID_COMMAND_BASENAMES
-            or any(separator in filename for separator in _COMMAND_NAME_SEPARATORS)
-            for filename in filenames
-        ):
-            raise RuntimeError(
-                _MALFORMED_COMMANDS_MANIFEST_MESSAGE.format(
-                    path=manifest_path,
-                    detail=_COMMANDS_MANIFEST_BASENAME_DETAIL,
-                )
-            )
-        ownership[scope_key] = set(filenames)
-    return ownership
-
-
-def _write_deployed_commands_manifest(manifest_path: Path, ownership: dict[str, set[str]]) -> None:
-    """Persist command ownership with stable, human-inspectable ordering."""
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    serialized = {scope_key: sorted(filenames) for scope_key, filenames in sorted(ownership.items())}
-    manifest_path.write_text(json.dumps(serialized, indent=2) + _NEWLINE, encoding=_UTF8)
-
-
-def _reconcile_deployed_commands(
-    *,
-    scope_key: str,
-    staged_commands_dir: Path,
-    commands_dir: Path = COMMANDS_DIR,
-    manifest_path: Path = DEPLOYED_COMMANDS_MANIFEST_PATH,
-) -> None:
-    """Retract this scope's absent commands while preserving other scopes' ownership."""
-    current_filenames = (
-        {entry.name for entry in staged_commands_dir.iterdir() if entry.is_file()}
-        if staged_commands_dir.is_dir()
-        else set()
-    )
-    if not manifest_path.exists():
-        # No inventory means there is no evidence that an existing destination file is ours.
-        _write_deployed_commands_manifest(manifest_path, {scope_key: current_filenames})
-        return
-
-    ownership = _load_deployed_commands_manifest(manifest_path)
-    previous_filenames = ownership.get(scope_key)
-    if previous_filenames is None:
-        _write_deployed_commands_manifest(manifest_path, {**ownership, scope_key: current_filenames})
-        return
-
-    other_filenames = set().union(
-        *(filenames for other_scope, filenames in ownership.items() if other_scope != scope_key)
-    )
-    for filename in sorted(previous_filenames - current_filenames - other_filenames):
-        # Manifest validation constrains every deletion to one direct child of COMMANDS_DIR.
-        (commands_dir / filename).unlink(missing_ok=True)
-
-    ownership[scope_key] = current_filenames
-    _write_deployed_commands_manifest(manifest_path, ownership)
+    shutil.copytree(dist_agent_root, target_root, dirs_exist_ok=True)
 
 
 def transform_to_codex(post: Post) -> str:
@@ -1542,69 +1388,47 @@ def main() -> None:  # noqa: C901
     dist_dir = "dist"
 
     master_agents_file = os.path.join(agents_root, "AGENTS.global.md")
-    master_agents_dir = os.path.join(agents_root, "agents")
     master_commands_dir = os.path.join(agents_root, "commands")
-    dot_master_agents_dir = os.path.join(dot_agents_root, "agents")
     dot_master_commands_dir = os.path.join(dot_agents_root, "commands")
     dot_master_skills_dir = os.path.join(dot_agents_root, "skills")
     agents_config: dict[str, AgentConfig] = {
         "claude": {
-            "check_dir": os.path.expanduser("~/.claude"),
+            "home_root": os.path.expanduser("~/.claude"),
+            "project_dir": ".claude",
             "prefix": "/",
             "master_dest": os.path.join(dist_dir, "claude", "CLAUDE.md"),
-            "commands_dest_dir": os.path.join(dist_dir, "claude", "commands"),
-            "agents_dest_dir": os.path.join(dist_dir, "claude", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "claude", "skills"),
             "skills_ext": ".md",
-            "deploy_master_dest": os.path.join(os.path.expanduser("~/.claude"), "CLAUDE.md"),
-            "deploy_commands_dest": os.path.join(os.path.expanduser("~/.claude"), "commands"),
-            "deploy_agents_dest": os.path.join(os.path.expanduser("~/.claude"), "agents"),
-            "deploy_skills_dest": os.path.join(os.path.expanduser("~/.claude"), "skills"),
             "ext": ".md",
             "transform": dump_frontmatter,
         },
         "codex": {
-            "check_dir": os.path.expanduser("~/.codex"),
+            "home_root": os.path.expanduser("~/.codex"),
+            "project_dir": ".codex",
             "prefix": "~/.teleclaude/commands/",
             "master_dest": os.path.join(dist_dir, "codex", "AGENTS.md"),
-            "commands_dest_dir": os.path.join(dist_dir, "codex", "prompts"),
-            "agents_dest_dir": os.path.join(dist_dir, "codex", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "codex", "skills"),
             "skills_ext": ".md",
-            "deploy_master_dest": os.path.join(os.path.expanduser("~/.codex"), "AGENTS.md"),
-            "deploy_commands_dest": str(COMMANDS_DIR),
-            "deploy_agents_dest": os.path.join(os.path.expanduser("~/.codex"), "agents"),
-            "deploy_skills_dest": os.path.join(os.path.expanduser("~/.codex"), "skills"),
             "ext": ".md",
             "transform": transform_to_codex,
         },
         "gemini": {
-            "check_dir": os.path.expanduser("~/.gemini"),
+            "home_root": os.path.expanduser("~/.gemini/antigravity-cli"),
+            "project_dir": ".gemini",
             "prefix": "/",
-            "master_dest": os.path.join(dist_dir, "gemini", "GEMINI.md"),
-            "commands_dest_dir": os.path.join(dist_dir, "gemini", "commands"),
-            "agents_dest_dir": os.path.join(dist_dir, "gemini", "agents"),
+            "master_dest": os.path.join(dist_dir, "gemini", "AGENTS.md"),
             "skills_dest_dir": os.path.join(dist_dir, "gemini", "skills"),
             "skills_ext": ".md",
-            "deploy_master_dest": os.path.join(os.path.expanduser("~/.gemini"), "GEMINI.md"),
-            "deploy_commands_dest": os.path.join(os.path.expanduser("~/.gemini"), "commands"),
-            "deploy_agents_dest": os.path.join(os.path.expanduser("~/.gemini"), "agents"),
-            "deploy_skills_dest": os.path.join(os.path.expanduser("~/.gemini"), "skills"),
             "ext": ".toml",
             "transform": transform_to_gemini,
         },
         "deepseek": {
-            "check_dir": os.path.expanduser("~/.dsh"),
+            "home_root": os.path.expanduser("~/.dsh"),
+            "project_dir": ".dsh",
             "prefix": "/",
             "master_dest": os.path.join(dist_dir, "deepseek", "AGENTS.md"),
-            "commands_dest_dir": os.path.join(dist_dir, "deepseek", "commands"),
-            "agents_dest_dir": os.path.join(dist_dir, "deepseek", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "deepseek", "skills"),
             "skills_ext": ".md",
-            "deploy_master_dest": os.path.join(os.path.expanduser("~/.dsh"), "AGENTS.md"),
-            "deploy_commands_dest": os.path.join(os.path.expanduser("~/.dsh"), "commands"),
-            "deploy_agents_dest": os.path.join(os.path.expanduser("~/.dsh"), "agents"),
-            "deploy_skills_dest": os.path.join(os.path.expanduser("~/.dsh"), "skills"),
             "ext": ".md",
             "transform": dump_frontmatter,
         },
@@ -1612,28 +1436,9 @@ def main() -> None:  # noqa: C901
 
     artifact_specs: list[FileArtifactType] = [
         FileArtifactType(
-            name="agents",
-            source_dir_key="agents_dir",
-            dest_dir_key="agents_dest_dir",
-            deploy_dir_key="deploy_agents_dest",
-            ext_key="ext",
-            kind="file",
-            artifact_kind="agent",
-        ),
-        FileArtifactType(
-            name="commands",
-            source_dir_key="commands",
-            dest_dir_key="commands_dest_dir",
-            deploy_dir_key="deploy_commands_dest",
-            ext_key="ext",
-            kind="file",
-            artifact_kind="command",
-        ),
-        FileArtifactType(
             name="skills",
             source_dir_key="skills",
             dest_dir_key="skills_dest_dir",
-            deploy_dir_key="deploy_skills_dest",
             ext_key="skills_ext",
             kind="skill",
             artifact_kind="skill",
@@ -1646,16 +1451,14 @@ def main() -> None:  # noqa: C901
             {
                 "label": "agents",
                 "master": master_agents_file,
-                "agents_dir": master_agents_dir,
-                "commands": master_commands_dir,
+                _COMMANDS_KEY: master_commands_dir,
             }
         ]
     local_sources = [
         {
             "label": ".agents",
             "master": os.path.join(project_root, ".agents", "__none__"),
-            "agents_dir": dot_master_agents_dir,
-            "commands": dot_master_commands_dir,
+            _COMMANDS_KEY: dot_master_commands_dir,
             "skills": dot_master_skills_dir,
         },
     ]
@@ -1672,6 +1475,32 @@ def main() -> None:  # noqa: C901
 
     global_sources = _existing_sources(global_sources)
     local_sources = _existing_sources(local_sources)
+
+    def _validate_command_sources(sources: list[dict[str, str]]) -> list[str]:
+        errors: list[str] = []
+        command_items: list[str] = []
+        for source in sources:
+            command_dir = source.get(_COMMANDS_KEY)
+            if isinstance(command_dir, str) and os.path.isdir(command_dir):
+                command_items.extend(
+                    filename for filename in os.listdir(command_dir) if filename.endswith(_MARKDOWN_EXTENSION)
+                )
+        for item in sorted(set(command_items)):
+            for source in sources:
+                command_dir = source.get(_COMMANDS_KEY)
+                if not isinstance(command_dir, str):
+                    continue
+                item_path = os.path.join(command_dir, item)
+                if not os.path.exists(item_path):
+                    continue
+                try:
+                    with open(item_path, encoding=_UTF8) as file_obj:
+                        post = frontmatter.load(file_obj)
+                    validate_artifact(post, item_path, kind=_COMMAND_ARTIFACT_KIND, project_root=Path(project_root))
+                except (OSError, ValueError, yaml.YAMLError) as exc:
+                    errors.append(str(exc))
+                break
+        return errors
 
     def _validate_sources(sources: list[dict[str, str]]) -> list[str]:
         errors: list[str] = []
@@ -1715,6 +1544,7 @@ def main() -> None:  # noqa: C901
                         resolve_skill_name(post, item)
                 except Exception as e:
                     errors.append(str(e))
+        errors.extend(_validate_command_sources(sources))
         return errors
 
     errors: list[str] = []
@@ -1759,6 +1589,7 @@ def main() -> None:  # noqa: C901
         agent_master_contents: list[str] = []
         markdown_outputs: list[str] = []
         artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
+        command_items: list[str] = []
         for source in sources:
             if os.path.isfile(source["master"]) and source["label"] != ".agents":
                 with open(source["master"], encoding="utf-8") as f:
@@ -1773,13 +1604,46 @@ def main() -> None:  # noqa: C901
                     artifact_items[spec.name].extend(
                         [name for name in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir, name))]
                     )
+            command_dir = source.get(_COMMANDS_KEY)
+            if isinstance(command_dir, str) and os.path.isdir(command_dir):
+                command_items.extend(
+                    filename for filename in os.listdir(command_dir) if filename.endswith(_MARKDOWN_EXTENSION)
+                )
         for spec in artifact_specs:
             artifact_items[spec.name] = sorted(set(artifact_items[spec.name]))
 
+        commands_dist_dir = Path(dist_dir) / _COMMANDS_STAGING_DIRECTORY
+        commands_dist_dir.mkdir(parents=True, exist_ok=True)
+        commands_config = agents_config[_CODEX_AGENT_NAME]
+        for item in sorted(set(command_items)):
+            for source in sources:
+                command_dir = source.get(_COMMANDS_KEY)
+                if not isinstance(command_dir, str):
+                    continue
+                item_path = os.path.join(command_dir, item)
+                if not os.path.exists(item_path):
+                    continue
+                with open(item_path, encoding=_UTF8) as file_obj:
+                    post = frontmatter.load(file_obj)
+                validate_artifact(post, item_path, kind=_COMMAND_ARTIFACT_KIND, project_root=Path(project_root))
+                content = process_file(post.content, commands_config["prefix"], _CODEX_AGENT_NAME)
+                content = expand_inline_refs(
+                    content,
+                    project_root=Path(project_root),
+                    current_path=Path(item_path),
+                    warn_only=args.warn_only,
+                    observation=observation,
+                )
+                prepared = Post(content, **_filter_frontmatter(post.metadata, _CODEX_AGENT_NAME))
+                command_output_path = commands_dist_dir / f"{Path(item).stem}{commands_config['ext']}"
+                command_output_path.write_text(dump_frontmatter(prepared).rstrip(_NEWLINE) + _NEWLINE, encoding=_UTF8)
+                markdown_outputs.append(str(command_output_path))
+                break
+
         built_agents: list[str] = []
         for agent_name, config in agents_config.items():
-            if agent_name != "agents" and not os.path.isdir(config["check_dir"]):
-                print(f"Skipping {agent_name}: directory {config['check_dir']} not found.")
+            if agent_name != "agents" and not os.path.isdir(config["home_root"]):
+                print(f"Skipping {agent_name}: directory {config['home_root']} not found.")
                 continue
 
             print(f"Processing {agent_name}...")
@@ -1946,21 +1810,27 @@ def main() -> None:  # noqa: C901
 
                 print(f"Deploying {agent_name}...")
 
-                target_root = os.path.join(deploy_root, os.path.basename(config["check_dir"]))
+                target_root = (
+                    config["home_root"] if is_global_phase else os.path.join(deploy_root, config["project_dir"])
+                )
                 dist_agent_root = os.path.join(dist_dir, agent_name)
                 _deploy_agent(
                     dist_agent_root=dist_agent_root,
                     target_root=target_root,
-                    config=config,
-                    specs=artifact_specs,
                 )
 
-            codex_config = agents_config["codex"]
-            if os.path.isdir(codex_config["check_dir"]):
-                _reconcile_deployed_commands(
-                    scope_key=scope_key,
-                    staged_commands_dir=Path(dist_dir) / "codex" / os.path.basename(codex_config["commands_dest_dir"]),
-                )
+            shutil.copytree(commands_dist_dir, COMMANDS_DIR, dirs_exist_ok=True)
+            reconcile_deployed_files(scope_key=scope_key, staged_commands_dir=commands_dist_dir)
+            retract_retired_native_artifacts(
+                scope_key=scope_key,
+                scope_root=Path(deploy_root),
+                is_global_scope=is_global_phase,
+                replacement_master_written=(
+                    Path(dist_dir)
+                    / _GEMINI_AGENT_NAME
+                    / os.path.basename(agents_config[_GEMINI_AGENT_NAME]["master_dest"])
+                ).is_file(),
+            )
 
             print("Deployment complete.")
 

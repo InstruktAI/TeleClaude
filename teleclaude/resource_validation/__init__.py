@@ -244,7 +244,7 @@ def _validate_artifact_role_activation(
     first_section_idx: int,
 ) -> None:
     role_lines = [line.strip() for line in lines]
-    if kind in {"command", "agent"}:
+    if kind == "command":
         has_role = any(line.startswith("You are now the ") for line in role_lines[h1_idx + 1 : first_section_idx])
         if not has_role:
             raise ValueError(f"{path} must include a role activation line before the first section")
@@ -322,7 +322,7 @@ def _validate_artifact_section_order(lines: list[str], path: str, *, kind: str, 
 
 
 def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> None:
-    """Validate body structure of a command or agent artifact."""
+    """Validate body structure of a command artifact."""
     if kind == _SKILL_KIND:
         return
     _validate_artifact_argument_hint(post, path, kind=kind)
@@ -404,20 +404,18 @@ def validate_all_artifacts(project_root: Path) -> list[str]:
         global_sources = [
             {
                 "label": "agents",
-                "agents_dir": str(agents_root / "agents"),
                 "commands": str(agents_root / "commands"),
             }
         ]
     local_sources = [
         {
             "label": ".agents",
-            "agents_dir": str(dot_agents_root / "agents"),
             "commands": str(dot_agents_root / "commands"),
             _SKILLS_KEY: str(dot_agents_root / _SKILLS_DIRNAME),
         },
     ]
 
-    kind_map = {"agents_dir": "agent", "commands": "command", _SKILLS_KEY: _SKILL_KIND}
+    kind_map = {"commands": "command", _SKILLS_KEY: _SKILL_KIND}
     errors: list[str] = []
 
     for sources in (global_sources, local_sources):
