@@ -23,6 +23,7 @@ where the type is derived from the path, not from frontmatter.
 `id`/`type`/`scope` are path-derived and are no longer authored or validated, so
 there is no id-to-path check.
 
+<!-- planned-change:fix-delivered-slug-marker-check-blocks-sync -->
 Frontmatter shape is always validated: `delivered_by`, when present, must be a
 non-empty list of slug strings; absence means the snippet is current. No
 `status` field is validated or required. On a full `telec sync` run with the
@@ -36,6 +37,27 @@ another computer, or one already hard-purged with its markers folded by
 maintenance. Only a slug resolving to a **delivered** todo is reported — a
 marker that delivery should have folded but did not. Scoped per-file runs and
 runs without a reachable todos DB validate shape only.
+<!-- change:fix-delivered-slug-marker-check-blocks-sync -->
+Frontmatter shape is always validated: `delivered_by`, when present, must be a
+non-empty list of slug strings; absence means the snippet is current. No
+`status` field is validated or required. On a full `telec sync` run with the
+todos DB reachable, relationship state is additionally validated against the
+**local** todos store: every `delivered_by` slug and every in-body planned /
+planned-change marker slug is checked. A slug resolving to a retained todo —
+active, icebox, or soft-removed — is tolerated. A slug that names **no todo in
+the local store is expected and not reported**: todos are machine-local, so a
+snippet carried in git routinely references an in-flight todo that lives on
+another computer, or one already hard-purged with its markers folded by
+maintenance. A slug resolving to a **delivered** todo is reported only when the
+validated checkout contains that todo's delivery commit. The fold is an act of
+the delivery commit itself, so a checkout that does not contain that commit
+still carries the markers correctly and is not reported; the todos store is
+machine-local and unversioned, and delivery status alone therefore establishes
+nothing about the tree being validated. A delivered todo whose delivery commit
+is unrecorded is likewise not reported, because the checkout relation cannot be
+established. Scoped per-file runs and runs without a reachable todos DB
+validate shape only.
+<!-- /planned-change:fix-delivered-slug-marker-check-blocks-sync -->
 
 ## Canonical fields
 
@@ -56,6 +78,7 @@ Scenario: delivered_by is an empty list
   Then a "snippet_delivered_by_invalid_shape" finding is reported
 ```
 
+<!-- planned-change:fix-delivered-slug-marker-check-blocks-sync -->
 ```
 Scenario: delivered_by relationship state is validated on a full run
   Given a snippet with delivered_by ["already-delivered-slug"]
@@ -78,6 +101,42 @@ Scenario: delivered_by relationship state is not checked on a scoped run
   When snippet validation runs
   Then the shape is accepted and no relationship finding is reported
 ```
+<!-- change:fix-delivered-slug-marker-check-blocks-sync -->
+```
+Scenario: delivered_by relationship state is validated on a full run
+  Given a snippet with delivered_by ["already-delivered-slug"]
+  And the todos DB is reachable (full run)
+  And the checkout contains that todo's delivery commit
+  When snippet validation runs
+  Then a "snippet_delivered_by_invalid_slug" finding is reported
+Scenario: delivered_by naming a delivered todo whose delivery commit the checkout lacks is tolerated
+  Given a snippet with delivered_by ["already-delivered-slug"]
+  And the todos DB is reachable (full run)
+  And the checkout does not contain that todo's delivery commit
+  When snippet validation runs
+  Then no relationship finding is reported
+Scenario: delivered_by naming a delivered todo with no recorded delivery commit is tolerated
+  Given a snippet with delivered_by ["already-delivered-slug"]
+  And the todos DB records no delivery commit for that todo
+  When snippet validation runs
+  Then no relationship finding is reported
+Scenario: delivered_by naming a soft-removed todo is tolerated
+  Given a snippet with delivered_by ["removed-slug"]
+  And the todos DB reports "removed-slug" as removed (full run)
+  When snippet validation runs
+  Then no relationship finding is reported
+Scenario: delivered_by naming a slug absent from the local store is tolerated
+  Given a snippet with delivered_by ["unknown-slug"]
+  And the todos DB has no todo "unknown-slug" (full run)
+  When snippet validation runs
+  Then no relationship finding is reported
+Scenario: delivered_by relationship state is not checked on a scoped run
+  Given a snippet with delivered_by ["already-delivered-slug"]
+  And validation runs per-file without the todos DB
+  When snippet validation runs
+  Then the shape is accepted and no relationship finding is reported
+```
+<!-- /planned-change:fix-delivered-slug-marker-check-blocks-sync -->
 
 #### UC-SFV1: Planned-change marker shape is validated mechanically
 
@@ -92,6 +151,7 @@ Then a planned-change marker finding is reported
 
 #### UC-SFV1b: In-body marker slug liveness is validated on full runs
 
+<!-- planned-change:fix-delivered-slug-marker-check-blocks-sync -->
 ```
 Given a snippet contains an in-body planned or planned-change marker whose slug resolves to a delivered todo
 And the todos DB is reachable (full run)
@@ -107,6 +167,27 @@ Given validation runs per-file or without a reachable todos DB
 When snippet validation runs
 Then marker-liveness is not checked
 ```
+<!-- change:fix-delivered-slug-marker-check-blocks-sync -->
+```
+Given a snippet contains an in-body planned or planned-change marker whose slug resolves to a delivered todo
+And the todos DB is reachable (full run)
+And the checkout contains that todo's delivery commit
+When snippet validation runs
+Then a "snippet_planned_marker_invalid_slug" finding is reported for that slug
+Given the marker slug resolves to a delivered todo whose delivery commit the checkout does not contain, or whose delivery commit is unrecorded
+When snippet validation runs
+Then no marker-liveness finding is reported
+Given the marker slug resolves to a retained todo (active, icebox, or soft-removed), or names no todo in the local store
+When snippet validation runs
+Then no marker-liveness finding is reported
+Given the marker appears only inside an inline code span or a fenced code block (a syntax example)
+When snippet validation runs
+Then no marker-liveness finding is reported
+Given validation runs per-file or without a reachable todos DB
+When snippet validation runs
+Then marker-liveness is not checked
+```
+<!-- /planned-change:fix-delivered-slug-marker-check-blocks-sync -->
 
 #### UC-SFV1c: In-body markers must be whole-line, non-nested, and balanced
 
@@ -187,3 +268,9 @@ Scenario: Per-type required sections missing
   on any other taxonomy type.
 - `id`/`type`/`scope` are no longer authored or validated — they are derived
   from the Source's path, so no id-to-path mismatch check exists.
+
+<!-- planned:fix-delivered-slug-marker-check-blocks-sync -->
+## See Also
+
+- docs/project/spec/feature/context/lifecycle-marker-reconciliation.md — the owner of the delivery fold, which performs the marker removal as part of the delivery commit.
+<!-- /planned:fix-delivered-slug-marker-check-blocks-sync -->
