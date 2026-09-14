@@ -27,9 +27,8 @@ The human can move between visible agent threads and voice conversation without 
 - Voice focus identifies exactly one live agent session. An accepted human input updates focus to its session; `Listen here` updates focus without creating agent input.
 - An incoming transmission captures the focused session at its start. Later focus changes never redirect an utterance already being transcribed or delivered.
 - Discord's explicit transmission-end framing closes a push-to-talk utterance. Silence, voice activity, and elapsed time never authorize submission. Missing or structurally incomplete closure produces no agent input.
-- A closed live-room transcription reaches the agent with a registered platform-control envelope identifying Discord personal voice as the input modality. Its directive asks for a concise, speakable final response that preserves every material outcome, decision, blocker, and required next action arising since that input while omitting process narration and optional detail. Ordinary Discord text and uploaded audio attachments do not receive this envelope.
 - The established voice-input workflow owns transcription, lifecycle feedback, and exactly-once delivery after the Discord transport produces a closed utterance.
-- Spoken output uses the session's persisted TTS service and voice. It renders the complete user-visible final response rather than the separately generated output summary.
+- Spoken output renders the complete user-visible final response rather than the separately generated output summary, using the one Discord voice configured for the rendering provider. The session's own per-session voice and the local summary playback are unchanged.
 - Discord voice presence is an audio-destination activation signal. It does not enable host-speaker playback or change local chiptunes audio focus.
 - Audio cached for replay is identified by session, final-output version, and effective voice. Replaying unchanged output reuses that audio.
 - Changing focus or leaving the room stops stale playback and removes queued speech belonging to the previous selection.
@@ -89,27 +88,15 @@ Then no transcription is submitted to an agent
 And the incomplete recording is discarded through an explicit lifecycle transition
 ```
 
-#### UC-DPVC-6
-
-```gherkin
-Given a live-room transcription is delivered to the focused session
-When the agent receives that input
-Then a platform-owned marker identifies it as Discord personal voice
-And directs the agent to make its final response concise and suitable for spoken playback
-And the final response retains every material outcome, decision, blocker, and required next action arising since that voice input
-And process narration and optional detail are omitted
-And ordinary Discord text and uploaded audio messages receive no such marker
-```
-
 #### UC-DPVC-7
 
 ```gherkin
-Given the focused session completes a substantive user-visible reply for Discord personal voice
+Given the focused session completes a substantive user-visible reply
 And its human remains in the configured voice room
 When voice output is delivered
-Then the complete reply is synthesized with that session's persisted voice
+Then the complete reply is synthesized with the Discord voice configured for the rendering provider
 And it plays automatically through the voice bot
-And host-speaker playback remains unchanged
+And host-speaker playback and its summary behaviour remain unchanged
 ```
 
 #### UC-DPVC-8

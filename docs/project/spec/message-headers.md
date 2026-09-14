@@ -27,21 +27,6 @@ Headers come in three kinds, distinguished by what their metadata is _for_:
   platform emits it to drive an agent's own loop; it carries nothing about the
   work, and its instructions are addressed to a machine. It carries no
   authored content and never reaches a human-facing surface.
-<!-- planned:discord-personal-voice-conversation -->
-  One control header accompanies rather than replaces an authored turn. A live
-  personal-voice transcription enters as ordinary human input, and a registered
-  control envelope beside it states the modality the agent is answering into:
-  that the input arrived as speech from a personal Discord voice room, and that
-  the final response is to be concise and naturally speakable while retaining
-  every material outcome, decision, blocker, and required next action arising
-  since that input — dropping process narration and optional detail, never
-  information the human needs to act. The envelope is machine-authored control
-  text: it is excluded from human-facing reflection, while the transcription
-  beside it reflects as the human's own words. Modality is stated by the
-  platform, never inferred from what the transcript happens to say, and only
-  this path carries it — ordinary Discord text and uploaded voice attachments
-  receive no such envelope and keep their current behavior.
-<!-- /planned:discord-personal-voice-conversation -->
 - **Reminder header** — identifies a typed reminder transcript entry. There is
   no external author: the owning agent authored the stored intent and the
   platform authored the lifecycle envelope. Armed, replaced, cancelled, and
@@ -101,7 +86,6 @@ occupies it, and that reservation is what makes control recognition sound: a
 control test can never match authored content, and content can never be mistaken
 for machine text.
 
-<!-- planned-change:discord-personal-voice-conversation -->
 | Header                                                 | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
 | ------------------------------------------------------ | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
 | `[TeleClaude Notification]`                            | legacy notification entries   | control  | paired      | no               | no                         |
@@ -116,23 +100,6 @@ for machine text.
 | `[Tasker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Job Runner (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Agent - <agent> (session) on computer · utc-minute]` | caller-origin identity header | identity | paired      | yes              | yes                        |
-<!-- change:discord-personal-voice-conversation -->
-| Header                                                 | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
-| ------------------------------------------------------ | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
-| `[TeleClaude Notification]`                            | legacy notification entries   | control  | paired      | no               | no                         |
-| `[TeleClaude Wake]`                                    | control-delivery idle wake    | control  | auto-closed | no               | no                         |
-| `[TeleClaude Restart Continuation]`                    | historical restart entries    | control  | paired      | no               | no                         |
-| `[TeleClaude Checkpoint]`                              | checkpoint surface            | control  | paired      | no               | no                         |
-| `[TeleClaude Live Voice]`                              | personal voice room input     | control  | paired      | no               | no                         |
-| `[Peer (session · author-token · utc-minute)]`         | peer segment header           | identity | paired      | yes              | yes                        |
-| `[Orchestrator (session) on computer · utc-minute]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Integrator (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[System (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Worker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Tasker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Job Runner (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Agent - <agent> (session) on computer · utc-minute]` | caller-origin identity header | identity | paired      | yes              | yes                        |
-<!-- /planned-change:discord-personal-voice-conversation -->
 
 Restart continuation is a semantic control envelope at the runtime hook
 boundary. Its paired bracket form is recognized for historical transcript

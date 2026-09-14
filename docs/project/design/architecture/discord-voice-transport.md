@@ -52,10 +52,7 @@ Gateway connection and exactly one owner of the voice connection.
    release. The run is therefore a positive, receiver-visible release marker.
    The evidence for this on the target client is recorded at
    `@input#live-evidence-already-established`.
-4. **The closure rule is executable, counts nothing, and needs no ordering
-   evidence.** The receive stream delivers decrypted Opus frames in arrival
-   order; the library's public subscription exposes no transport sequence or
-   timestamp, so the rule is stated over arrival order alone. A run of
+4. **The closure rule is executable and counts nothing.** A run of
    consecutive stop frames closes the utterance at the first frame of the run;
    the frames before it are the utterance. Recognition is by consecutive
    identical frames, not by a fixed count — the number observed in one session
@@ -66,20 +63,25 @@ Gateway connection and exactly one owner of the voice connection.
    voice-activity detection, elapsed time, and inferred speaking state never
    close or submit. The receive library's timeout-derived speaking-end event
    and its silence- and inactivity-based stream-end modes are specifically not
-   used; the transport reads the raw frame stream and applies the rule above.
-   A speaking-state update carrying a zero mode is not a documented stop signal
+   used; the transport reads the frame stream and applies the rule above. A
+   speaking-state update carrying a zero mode is not a documented stop signal
    and is not relied upon.
-6. **Reordering and loss fail closed by construction.** A frame arriving out of
-   order can only break a stop run — which then closes nothing and discards —
-   or land after a close, where it is dropped as post-close noise. Neither path
-   submits a partial utterance. Ordering evidence is available if fidelity
-   under reordering is later wanted: the library exports its UDP socket, whose
-   raw datagram event carries the unencrypted transport header alongside the
-   encrypted payload, so sequence and timestamp can be read there and matched
-   to the decrypted stream by arrival. That is a fidelity refinement, not a
-   condition of the guarantee, and the conditions not yet exercised —
-   discontinuous transmission, mobile clients, in-call key rotation — remain
-   the plan's verification tasks per `@input#verification-required-before-delivery`.
+6. **A close is submitted only with transport continuity proven.** The
+   library's public subscription delivers decrypted frames in arrival order and
+   exposes no sequence or timestamp, and arrival order alone cannot tell a
+   genuine stop run from one assembled by loss or reordering — a lost or
+   delayed audio frame between two stop runs would let them read as one and
+   close early. The transport therefore reads the unencrypted transport header
+   — sequence and timestamp — from the library's exported UDP socket, whose
+   raw-datagram event fires for every received packet before decryption, and
+   matches header to decrypted frame by SSRC and arrival. A close is submitted
+   only when the stop run is sequence-contiguous with the audio before it and
+   no gap or reorder touches that boundary. A capture whose continuity cannot
+   be proven — a gap, a reorder across the run, an unmatched frame — is
+   discarded through the explicit lifecycle transition, never submitted. The
+   conditions not yet exercised — discontinuous transmission, mobile clients,
+   in-call key rotation — remain the plan's verification tasks per
+   `@input#verification-required-before-delivery`.
 7. **An utterance is latched to the session focused when it began.** A focus
    change during capture, transcription, or delivery never redirects it.
 8. **Only the configured person is received.** Audio from any other speaker in
@@ -168,8 +170,7 @@ Gateway connection and exactly one owner of the voice connection.
     change waiting on a new stop.
 23. **Delivery and cancellation use what exists.** A latched utterance reaches
     a remote session through the established cross-computer command envelope,
-    as a text-input command carrying the transcription and its control
-    envelope. Cancellation is local to the voice-owning computer, which owns
+    as an ordinary text-input command carrying the transcription. Cancellation is local to the voice-owning computer, which owns
     the playback queue, and needs no fleet contract.
 
 ## Primary flows
@@ -211,9 +212,10 @@ connection on its own authority.
   degrading into inferred submission.
 - **Missing, partial, or unorderable stop sequence** — no submission, and the
   recording is discarded.
-- **Packet loss, reordering, and mid-call key rotation** — a broken stop run
-  closes nothing and discards; a late frame after a close is dropped. No case
-  produces a submission by inference.
+- **Packet loss, reordering, and mid-call key rotation** — any gap or reorder
+  touching a stop-run boundary fails the continuity proof and the capture is
+  discarded; a late frame after a proven close is dropped. No case produces a
+  submission by inference.
 - **Sidecar unavailable or crashed** — the voice room is simply unavailable;
   text conversation is unaffected.
 - **Bot identity divergence** — where the configured voice token authenticates

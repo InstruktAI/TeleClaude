@@ -43,6 +43,10 @@ TeleClaudeNext.
   environment; no global or foreign-person fallback exists, and the resolved
   value is never logged or persisted. Owning the declaration is not owning what
   it means: which computer may act on it is the integration context's rule.
+- **Also owns:** the machine TTS configuration's per-service `discord_voice`
+  declaration — one name drawn from that service's own `voices` list, with the
+  first entry as the template default — as a typed setting validated against
+  the list it names. What the room does with it belongs to the TTS design.
 <!-- /planned:discord-personal-voice-conversation -->
 <!-- planned:personal-assistant-launch -->
 - **Also published:** person-workspace containment — whether a given path lies

@@ -96,36 +96,18 @@ visibility: 'public'
    room is an audio-destination signal for that room only. It does not enable
    host-speaker playback, and it does not touch chiptunes audio focus, whose
    queue-scoped claim exists to protect the host's speakers.
-10. **Spoken output is the complete reply.** Where a destination speaks a
-    session's answer, it speaks the full user-visible final response for that
-    output version, not the separately generated summary, which is lossy by
-    construction.
-11. **Rendered audio is identified by session, final-output version, and
-    effective voice.** Re-hearing an unchanged reply reuses the artifact
-    already produced for it; a new output version or a different effective
-    voice produces a new one. Artifacts are bounded in lifetime and private in
+10. **The Discord room speaks the complete reply, in one configured voice.**
+    Each service declares one `discord_voice`, a name from its own `voices`
+    list, defaulting to the first entry; the template carries that default.
+    A Discord delivery resolves its chain from `service_priority` filtered to
+    services that can render, and renders with that service's `discord_voice`.
+    Per-session voice assignment, its fallback promotion, and the summary
+    spoken on host speakers are untouched by this destination: the room is a
+    one-to-one conversation and hears the whole answer, while local playback
+    keeps its shorter summaries so many sessions can be heard.
+11. **Rendered audio is identified by session, final-output version, service,
+    and voice.** Re-hearing an unchanged reply reuses the artifact already
+    produced for it; a new output version or a different effective voice
+    produces a new one. Artifacts are bounded in lifetime and private in
     permission.
-12. **A remote destination resolves its chain the same way a local one does.**
-    The chain is the session's assigned service first, then the remaining
-    services in priority order, filtered to those that can render. Rendering
-    capability is a property each backend declares, established per backend
-    rather than assumed from the fact that it currently plays audio.
-13. **A render fallback promotes, exactly as a playback fallback does.** Where
-    the assigned service cannot render or fails to, the first chain entry that
-    succeeds is persisted as the session's assignment — invariant 3's existing
-    behaviour, reached through a new destination. A session already assigned to
-    a non-rendering service is therefore promoted on first remote delivery
-    rather than left silent or spoken in a voice the record contradicts. The
-    session's persisted voice and the voice heard never disagree. Promotion is
-    not once-only: the chain is resolved per delivery, so a later failure of the
-    newly assigned service promotes again, exactly as repeated playback failures
-    already do.
-14. **Promotion changes the artifact identity, not the rule.** Because a cached
-    artifact is identified by effective voice, a promotion simply produces a new
-    artifact; nothing invalidates or rewrites what was cached under the previous
-    voice.
-15. **Local playback is untouched.** The chain, the promotion rule, and the
-    artifact cache above govern remote destinations. A session speaking to host
-    speakers keeps the existing behaviour, including the ability to use a
-    backend that cannot render.
 <!-- /planned:discord-personal-voice-conversation -->
