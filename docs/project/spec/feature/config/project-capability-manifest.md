@@ -82,12 +82,12 @@ Derivation rules:
   capability state is substituted for it — the direction the runtime takes for a
   declaration it cannot read (UC-CFG-CAP-3). The plumbing never falls open and
   never falls closed on such a block, and it claims nothing about the rest of
-  <!-- planned-change:commit-gate-owns-source-validation -->
-the file: overlay validation belongs to the runtime. A global or person
+<!-- planned-change:commit-gate-owns-source-validation -->
+  the file: overlay validation belongs to the runtime. A global or person
   declaration carries no capability blocks; what the plumbing decides at such a
   repository root is the seal, per `project/design/code-commit`. Because the
 <!-- change:commit-gate-owns-source-validation -->
-the file: overlay validation belongs to the runtime. A global, person, or
+  the file: overlay validation belongs to the runtime. A global, person, or
   company declaration carries no capability blocks; what the plumbing decides at
   such a repository root is the seal, per `project/design/code-commit`. Because the
 <!-- /planned-change:commit-gate-owns-source-validation -->

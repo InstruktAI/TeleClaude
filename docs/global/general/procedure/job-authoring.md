@@ -92,9 +92,15 @@ subscribing project. Keep the PEP 723 dependency header and a
 `if __name__ == "__main__": run_job_cli(JOB)` entrypoint so the script stays runnable and
 debuggable standalone.
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 ### 5. Sync and validate
 
 Run `telec sync`. Validation checks:
+<!-- change:commit-gate-owns-source-validation -->
+### 5. Validate
+
+Commit the change. The commit gate validates:
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 - Snippet schema: required H2 sections per taxonomy type.
 - Job config: schedule shape, execution pointer, and — for an agent job — that the
@@ -105,11 +111,19 @@ Run `telec sync`. Validation checks:
 - Procedure (agent jobs only).
 - `teleclaude.yml` entry.
 - Script file (script jobs only).
+<!-- planned-change:commit-gate-owns-source-validation -->
 - Successful `telec sync` with no validation errors.
+<!-- change:commit-gate-owns-source-validation -->
+- A commit-gate run reporting no validation findings.
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 ## Recovery
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 - If `telec sync` fails, fix the reported issue and rerun.
+<!-- change:commit-gate-owns-source-validation -->
+- If the commit gate reports findings, fix the reported issue and rerun `telec code commit`.
+<!-- /planned-change:commit-gate-owns-source-validation -->
 - If validation reports the `job:` pointer as unknown, the procedure is missing
   from its publisher source tree: confirm the file exists at the taxonomy path
   the pointer names, that its snippet type is `procedure`, and that it carries no
