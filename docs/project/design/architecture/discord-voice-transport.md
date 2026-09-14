@@ -46,7 +46,10 @@ Gateway connection and exactly one owner of the voice connection.
    playback. This extends the fleet rule in
    `project/spec/feature/integration/discord-interaction-ownership` to a
    resource with no forum ancestry to derive ownership from, using the
-   singular role the fleet already has rather than a new declaration.
+   singular role the fleet already has rather than a new declaration. Peers
+   learn which computer is the master from fleet discovery: the heartbeat
+   carries the master flag as an additive field, and a peer that predates it
+   cannot route a room selection and says so rather than guessing.
 3. **The sender's stop sequence is the push-to-talk release.** A Discord client
    emits a run of Opus silence frames immediately before it stops sending. Under
    push-to-talk the held key is the transmission: the client encodes and sends
