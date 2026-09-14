@@ -342,8 +342,9 @@ And no action is surfaced, because its evidence was observed
 
 #### UC-CP11: Integrator post-merge maintenance force-fire
 
-```gherkin
 <!-- planned-change:commit-gate-owns-source-validation -->
+
+```gherkin
 Given a session whose role is integrator
 And the integration state machine advanced repo-root main this turn and recorded the integrator-maintenance marker carrying the delivered merge range
 When the heuristic engine evaluates the turn window
@@ -365,6 +366,7 @@ marker's owner — receives post-merge maintenance.)
 
 <!-- change:commit-gate-owns-source-validation -->
 
+```gherkin
 Given a session whose role is integrator
 And the integration state machine advanced repo-root main this turn and recorded the integrator-maintenance marker carrying the delivered merge range
 When the heuristic engine evaluates the turn window
@@ -382,10 +384,10 @@ Then no maintenance checkpoint is force-fired on account of the moved main HEAD
 (Repo-root main is a shared working copy; raw HEAD movement is not
 self-attributable, so only the lease-guarded integrator singleton — the recorded
 marker's owner — receives post-merge maintenance.)
-
-````
+```
 
 <!-- /planned-change:commit-gate-owns-source-validation -->
+
 #### UC-CP12: Committed code surfaces discharging maintenance obligations
 
 <!-- planned-change:commit-gate-owns-source-validation -->
@@ -420,7 +422,7 @@ When the heuristic engine evaluates the turn window
 Then that committed file's maintenance obligations are still recorded from the commit
 And its implied maintenance action is surfaced
 (The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
-````
+```
 
 <!-- change:commit-gate-owns-source-validation -->
 
