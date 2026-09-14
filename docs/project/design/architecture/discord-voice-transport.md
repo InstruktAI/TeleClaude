@@ -148,8 +148,7 @@ Gateway connection and exactly one owner of the voice connection.
     publisher is a capability the host advertises in fleet discovery. The
     master registers observation only on a host that advertises it; a focused
     session on a host that does not is reported unavailable to the room
-    immediately and visibly, not awaited. This is the fleet rule that
-    coordination which needs agreement refuses rather than guesses.
+    immediately and visibly, not awaited.
 20. **One additive query carries the spoken reply.** A session's complete
     user-visible final response is not in the published snapshot, which carries
     the generated summary and an output digest. A request for that full output
