@@ -170,6 +170,17 @@ Then the decision reads that tier's declared participation in the documentation 
 And a tier whose material does not participate gets no catalog
 And the decision is never inferred from the tier's location on disk
 ```
+
+#### UC-DIB14: A participating tier with no snippets keeps an empty catalog
+
+```
+Given a tier whose declaration records participation in the documentation surface
+And that tier's documentation home holds no snippets
+When the index build writes that tier's catalog
+Then an index with no entries is written at the tier's documentation home
+And the catalog is not deleted for being empty
+And its existence answers participation while its entries answer content
+```
 <!-- /planned:docs-tier-layering -->
 
 ### Cross-context references

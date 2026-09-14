@@ -241,7 +241,10 @@ subscriptions.
 
 A tier whose catalog is never built is indistinguishable from a tier holding no
 content. Construction is part of what makes a tier a tier, not a step taken
-after it exists.
+after it exists. A participating tier that holds no snippets therefore keeps an
+empty catalog: the catalog's existence answers participation, its entries answer
+content, and a consumer that finds no file has found a tier that does not
+participate, never one that is merely empty.
 <!-- /planned:docs-tier-layering -->
 
 ## Failure modes
