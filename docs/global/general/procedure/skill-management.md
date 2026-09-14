@@ -47,30 +47,11 @@ Read step 5 before reaching for a project destination.
    Report what you found before adopting. Unresolved concerns stop the adoption; they are
    not a trade-off for the adopting agent to make alone.
 
-<!-- planned-change:drop-skill-taxonomy-optin -->
-3. **Preserve upstream authorship.** Do not rewrite headings, restructure the body, add
-   TeleClaude sections, or add `teleclaude_taxonomy`. Only `SKILL.md` frontmatter is
-   normalized: `name` and `description` must be non-empty, and `name` must equal the
-   containing folder. Scripts, references, and assets are copied verbatim and stay
-   opaque to TeleClaude taxonomy validation.
-
-   **The adopted package is atomic.** A catalog skill stands alone: it never depends on
-   another catalog entry, and never on an upstream package that was not adopted.
-   Upstream commonly splits one capability across a thin invoker and the package
-   carrying the body, or composes several packages behind a single name — a body that
-   tells its reader to go call another skill is such a split. Resolve it at adoption.
-   Prefer **selection**: adopt the package that carries the body, name the folder for
-   the invocation people actually use, and normalize `name` to match. Only where no
-   single upstream package stands alone, **consolidate** the referenced content into one
-   package. A consolidated package is no longer byte-identical to any upstream package,
-   which changes how it updates.
-<!-- change:drop-skill-taxonomy-optin -->
 3. **Preserve upstream authorship.** Do not rewrite headings, restructure the body, or
    add TeleClaude sections. Only `SKILL.md` frontmatter is normalized: `name` and
    `description` must be non-empty, and `name` must equal the containing folder.
    Scripts, references, and assets are copied verbatim and stay opaque to TeleClaude
    taxonomy validation.
-<!-- /planned-change:drop-skill-taxonomy-optin -->
 
 <!-- planned-change:split-review-routing-from-sync-scope -->
 4. **Adopt globally — the default destination.** Place the complete package at
