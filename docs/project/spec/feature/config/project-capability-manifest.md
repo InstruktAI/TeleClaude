@@ -101,10 +101,10 @@ Derivation rules:
   rewrites a project-owned file on a toggle — holds by construction, not by a
   runtime guard.
 <!-- change:sync-stops-converging-project-setup -->
-  filter attribute whose driver is undefined as a no-op. The driver is reconciled
-  from the declaration (present iff `docs`) by project initialization, which also
-  installs the TeleClaude-owned hooks of a `code`-subscribing project; no sync path
-  touches either. The safety guarantee — TeleClaude never
+  filter attribute whose driver is undefined as a no-op. Converging the installed
+  driver and hooks to this declaration is reconciliation's act, contracted in
+  `project/spec/feature/reconciliation/project-plumbing-convergence`; this
+  declaration is what that act reads. The safety guarantee — TeleClaude never
   rewrites a project-owned file on a toggle — holds by construction, not by a
   runtime guard.
 <!-- /planned-change:sync-stops-converging-project-setup -->
@@ -119,10 +119,10 @@ Derivation rules:
 <!-- change:sync-stops-converging-project-setup -->
   driver. It preserves any hook the project already authored rather than
   overwriting it. After onboard, a toggle takes effect on the plumbing's next
-  invocation because the plumbing reads the declaration itself; re-running
-  initialization is what refreshes the TeleClaude-owned hooks and reconciles the
-  filter driver to the current declaration. Neither path ever rewrites a
-  project-tracked file.
+  invocation because the plumbing reads the declaration itself; bringing
+  already-installed plumbing back in line with a changed declaration is
+  reconciliation's act, under the contract referenced above. Neither path ever
+  rewrites a project-tracked file.
 <!-- /planned-change:sync-stops-converging-project-setup -->
 
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
@@ -225,6 +225,7 @@ Then the command refuses with a message naming the code capability
 And telec code commit and telec code add remain available because docs is subscribed
 ```
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-10: Onboard installs plumbing for a subscribed capability
 
 ```
@@ -235,9 +236,11 @@ And the docs filter driver is configured
 And no capability state is written outside the project's declaration
 ```
 
+<!-- change:sync-stops-converging-project-setup -->
+<!-- /planned-change:sync-stops-converging-project-setup -->
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-11: Disabling docs never edits the tracked .gitattributes file
 
-<!-- planned-change:sync-stops-converging-project-setup -->
 ```
 Given a project whose .gitattributes carries the TeleClaude docs-filter line
 When the docs capability is disabled
@@ -246,16 +249,8 @@ And the docs filter driver is removed from the git config
 And the inert filter line is left in place
 ```
 <!-- change:sync-stops-converging-project-setup -->
-```
-Given a project whose .gitattributes carries the TeleClaude docs-filter line
-And the docs capability is disabled
-When an agent next runs project initialization for that project
-Then the .gitattributes file is not edited
-And the docs filter driver is removed from the git config
-And the inert filter line is left in place
-```
 <!-- /planned-change:sync-stops-converging-project-setup -->
-
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-12: A capability toggle never edits a project-tracked file
 
 ```
@@ -265,6 +260,18 @@ Then no file the project tracks is edited, removed from, or truncated apart from
 And no capability state is written anywhere outside that declaration
 ```
 
+<!-- change:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-12: A capability toggle never edits a project-tracked file
+
+```
+Given a project with git-tracked files
+When an agent changes any capability toggle
+Then no file the project tracks is edited, removed from, or truncated apart from the declaration carrying the toggle
+And no capability state is written anywhere outside that declaration
+```
+
+<!-- /planned-change:sync-stops-converging-project-setup -->
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-13: Onboard does not clobber a hook the project already authored
 
 ```
@@ -273,6 +280,8 @@ When onboarding installs capability plumbing
 Then the project's existing hook is preserved rather than overwritten
 ```
 
+<!-- change:sync-stops-converging-project-setup -->
+<!-- /planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-14: A non-adopting path never touches a manifest-less repository
 
 ```
@@ -300,6 +309,7 @@ Then it decides by reading the capability toggles from the project's teleclaude.
 And it spawns no interpreter to read them
 ```
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
 
 ```
@@ -310,6 +320,19 @@ Then no snippet is validated, indexed, or published for it
 And its subscribed agent artifacts are still deployed
 ```
 
+<!-- change:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
+
+```
+Given a project that does not subscribe the docs capability
+And that carries snippet sources under docs/
+When an agent invokes the sync pipeline for that project
+Then no snippet is validated, indexed, or published for it
+And its subscribed agent artifacts are still deployed
+```
+
+<!-- /planned-change:sync-stops-converging-project-setup -->
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-18: An unsubscribed agents capability leaves artifact distribution idle
 
 ```
@@ -320,6 +343,19 @@ Then no agent artifact is transpiled or deployed for it
 And its subscribed snippets are still validated, indexed, and published
 ```
 
+<!-- change:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-18: An unsubscribed agents capability leaves artifact distribution idle
+
+```
+Given a project that does not subscribe the agents capability
+And that carries agent artifact sources
+When an agent invokes the sync pipeline for that project
+Then no agent artifact is transpiled or deployed for it
+And its subscribed snippets are still validated, indexed, and published
+```
+
+<!-- /planned-change:sync-stops-converging-project-setup -->
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-19: Onboarding a data repository installs no code or docs plumbing
 
 ```
@@ -330,6 +366,8 @@ And no git hook, docs filter driver, or .gitattributes docs line is installed fo
 And the declaration is written before any capability-gated plumbing would run
 ```
 
+<!-- change:sync-stops-converging-project-setup -->
+<!-- /planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-20: A fresh clone honors the declaration before any TeleClaude command runs
 
 ```
@@ -349,9 +387,9 @@ Then the code capability resolves to unsubscribed
 And it resolves identically to the same declaration written in block form
 ```
 
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-22: An already-adopted repository picks up the declaration read
 
-<!-- planned-change:sync-stops-converging-project-setup -->
 ```
 Given a repository onboarded before the plumbing read the declaration
 And whose installed hooks are the ones TeleClaude owns
@@ -360,28 +398,7 @@ Then its TeleClaude-owned hooks are refreshed to read the declaration
 And a hook the project authored itself is left in place
 ```
 <!-- change:sync-stops-converging-project-setup -->
-```
-Given a repository onboarded before the plumbing read the declaration
-And whose installed hooks are the ones TeleClaude owns
-When an agent next runs project initialization for that repository
-Then its TeleClaude-owned hooks are refreshed to read the declaration
-And a hook the project authored itself is left in place
-And a telec sync for that repository refreshes no hook
-```
 <!-- /planned-change:sync-stops-converging-project-setup -->
-
-<!-- planned:sync-stops-converging-project-setup -->
-#### UC-CFG-CAP-26: Initialization registers the durable main checkout
-
-```gherkin
-Given a project whose linked worktree is checked out alongside its main checkout
-When an agent runs project initialization from inside that worktree
-Then the project's main checkout is the path recorded in the project registry
-And the worktree's own path is absent from the registry
-And running initialization again adds no duplicate entry
-```
-
-<!-- /planned:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 
 ```

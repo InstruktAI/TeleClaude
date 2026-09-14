@@ -256,6 +256,7 @@ And the run still records snippet provenance, builds indexes, and distributes ar
 ```
 
 <!-- /planned-change:sync-stops-converging-project-setup -->
+<!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-SPO4: Deploy-mode sync is refused from a slug worktree
 
 ```
@@ -272,6 +273,24 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
 <!-- /planned-change:sync-validation-moves-to-lint -->
 ```
 
+<!-- change:sync-stops-converging-project-setup -->
+#### UC-SPO4: Deploy-mode sync is refused from a slug worktree
+
+```
+Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
+  Given an agent invokes telec sync in deploy mode from a slug worktree (trees/<slug>, not trees/_integration)
+  When the pipeline starts
+  Then it exits non-zero with an error that docs deployment is not allowed from a slug worktree
+<!-- planned-change:sync-validation-moves-to-lint -->
+  And no validation, index build, symlink repair, or distribution step runs
+  And a --skip-deploy run, and deploy-mode sync from the main checkout or the integration worktree, are unaffected
+<!-- change:sync-validation-moves-to-lint -->
+  And no index build, symlink repair, or distribution step runs
+  And deploy-mode sync from the main checkout or the integration worktree is unaffected
+<!-- /planned-change:sync-validation-moves-to-lint -->
+```
+
+<!-- /planned-change:sync-stops-converging-project-setup -->
 #### UC-SPO12: Concurrent syncs observe a complete documentation deployment
 
 ```gherkin
