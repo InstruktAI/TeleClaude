@@ -34,7 +34,7 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 - Commit-obligation ledger — session-scoped marker carrying outstanding `main_only` maintenance actions derived from every sealed `telec code commit` in the turn; unioned into the turn's effective actions so committing does not empty the action ledger. Individual obligations discharge when evidence is observed; the ledger is hard-cleared at the next `user_prompt_submit`.
 - Integrator-maintenance marker — session-scoped marker carrying the delivered merge range; for the integrator session it sources the changed files when there are no turn-local edits.
 - `TurnTimeline` — Ordered tool calls from the current checkpoint cycle, extracted from the agent transcript via `extract_effective_tool_calls(..., scope="checkpoint")`.
-- `CheckpointContext` — Session context: project path, working slug, agent name, and `system_role` (e.g. `"integrator"`) threaded from the session row by the receiver.
+- `CheckpointContext` — Session context: project path, agent name, and `system_role` (e.g. `"integrator"`) threaded from the session row by the receiver. The working slug accompanies structured diagnostic records.
 
 **Outputs:**
 
@@ -101,6 +101,14 @@ The effective action set is a TeleClaude-owned **platform-universal base** merge
 
 The engine evaluates a turn only when the project subscribes at least one maintenance-owing capability — `code`, `docs`, or `agents` enabled in `teleclaude.yml`, or any project-declared binding present (`project/spec/feature/config/project-capability-manifest`). A project with no subscribed capability receives no checkpoint at `agent_stop`: no timeline extraction, no evidence scanning, no commit obligation — silence is derived from having nothing to enforce, never declared through an independent kill-switch. There is no standalone engine on/off flag; the `checkpoint:` section remains the overlay declaration only (Invariant 22). The commit obligation homes under `code ∨ docs` — the capabilities whose contract includes committing. Capability toggles are authored at analyze-time (`project/procedure/checkpoint-overlay-projection`); the runtime reads the declaration only. This extends Invariant 24 one level up: no enabled/disabled classifier at engine level, only subscribed capabilities.
 
+### Invariant 27 — Mutation ordering
+
+The checkpoint reads mutation paths from the runtime's structured file-edit
+records in the current checkpoint cycle. Commit evidence is evaluated after
+the last matching record for the attributed files, or across the cycle when
+there is no matching record. The post-commit review latch is eligible when
+the resulting evaluation owes no commit action.
+
 ## Primary flows
 
 ### 0. Context-aware checkpoint builder
@@ -120,13 +128,11 @@ flowchart TD
     H --> H2[Verification gap detection]
     H --> H3[Error state detection]
     H --> H4[Edit hygiene]
-    H --> H5[Slug alignment]
 
     H1 --> I[CheckpointResult]
     H2 --> I
     H3 --> I
     H4 --> I
-    H5 --> I
 
     I --> J{All clear?}
     J -->|Yes| K[Minimal all-clear message]
@@ -224,7 +230,6 @@ sequenceDiagram
 | Daemon restart during active turn                             | Timestamps persist in DB; next `agent_stop` evaluates correctly                                   | No action needed                                                      |
 | DB field missing (migration not run)                          | `AttributeError` on session access                                                                | Run migration 004; daemon auto-runs on startup                        |
 | Agent silent after checkpoint                                 | Same output re-extracted at next `agent_stop`                                                     | TTS dedup skips speaking; DB still updates                            |
-| Slug alignment off                                            | Slug mismatch observation surfaced                                                                | Agent re-aligns working slug                                          |
 | Rapid successive stops (< 30s)                                | Checkpoint skipped due to threshold                                                               | Correct behavior                                                      |
 | Codex checkpoint loop                                         | Hook re-entry limiter detects repeated blocked stop                                               | Correct behavior                                                      |
 | Both `last_message_sent_at` and `last_checkpoint_at` are None | No turn start → checkpoint skipped                                                                | First real user message sets `last_message_sent_at`                   |

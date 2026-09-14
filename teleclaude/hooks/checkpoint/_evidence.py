@@ -1,27 +1,21 @@
-"""Evidence checking, blast-radius, companion drift, and slug alignment."""
+"""Evidence checking, blast-radius, and companion presence."""
 
-import re
 from pathlib import Path
 
 from teleclaude.checkpoint_model import scope_matches
 from teleclaude.constants import (
-    ARTIFACT_IMPLEMENTATION_PLAN,
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
     CHECKPOINT_COMMIT_EVIDENCE,
     CHECKPOINT_REVIEW_DISPATCH_EVIDENCE,
     CheckpointScope,
 )
-from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.hooks.checkpoint._git import (
     _canonical_tool_name,
-    _command_likely_mutates_files,
     _extract_apply_patch_paths,
     _extract_shell_command,
-    _extract_shell_touched_paths,
     _normalize_repo_path,
     _split_shell_segments,
 )
-from teleclaude.hooks.checkpoint._models import CheckpointContext
 from teleclaude.shell_path_parser import executable_command_tokens, matches_command_prefix
 from teleclaude.snippet_validation import companion_parent, is_companion
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
@@ -29,11 +23,9 @@ from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 __all__ = [
     "_check_blast_radius",
     "_check_companion_drift",
-    "_check_slug_alignment",
     "_command_has_evidence",
     "_compute_log_since_window",
     "_dedupe_strings",
-    "_extract_plan_file_paths",
     "_has_commit_evidence",
     "_has_commit_evidence_after_last_mutation",
     "_has_evidence",
@@ -162,10 +154,8 @@ def _record_touched_paths(
     record: ToolCallRecord,
     tool_name: str,
     project_path: str,
-    *,
-    include_shell_inference: bool,
 ) -> set[str]:
-    """Collect repo-relative paths touched by a single tool call record."""
+    """Collect repo-relative mutation paths from a tool record's structured fields."""
     touched: set[str] = set()
     for key in ("file_path", "path", "filepath", "target_file"):
         value = record.input_data.get(key)
@@ -186,10 +176,6 @@ def _record_touched_paths(
             value = record.input_data.get(key)
             if isinstance(value, str):
                 touched.update(_extract_apply_patch_paths(value, project_path))
-    if include_shell_inference and tool_name in _SHELL_TOOLS:
-        command = _extract_shell_command(record.input_data)
-        if _command_likely_mutates_files(command):
-            touched.update(_extract_shell_touched_paths(command, project_path))
     return touched
 
 
@@ -207,7 +193,7 @@ def _last_scope_mutation_index(
         tool_name = _canonical_tool_name(record.tool_name)
         if tool_name not in _MUTATOR_TOOLS:
             continue
-        touched = _record_touched_paths(record, tool_name, project_path, include_shell_inference=False)
+        touched = _record_touched_paths(record, tool_name, project_path)
         if any(scope_matches(path, scope) for path in touched for scope in scopes):
             last_index = idx
 
@@ -237,7 +223,7 @@ def _last_git_file_mutation_index(
             if _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
                 # A commit is not a mutation of the files it commits.
                 continue
-        touched = _record_touched_paths(record, tool_name, project_path, include_shell_inference=True)
+        touched = _record_touched_paths(record, tool_name, project_path)
         if touched & effective_files:
             last_index = idx
 
@@ -354,64 +340,6 @@ def _pending_companions(parent_path: Path) -> list[Path]:
         for candidate in parent_path.parent.glob(f"{parent_path.stem}.*.md")
         if is_companion(candidate) and companion_parent(candidate) == parent_path
     )
-
-
-# ---------------------------------------------------------------------------
-# Working slug alignment (R7)
-# ---------------------------------------------------------------------------
-
-
-def _check_slug_alignment(
-    git_files: list[str],
-    context: CheckpointContext,
-) -> list[str]:
-    """Check if changes align with the active working slug's implementation plan."""
-    observations: list[str] = []
-    if not context.working_slug:
-        return observations
-
-    db = get_todos_db_sync(context.project_path)
-    plan_text = db.read_artifact_sync(context.working_slug, ARTIFACT_IMPLEMENTATION_PLAN)
-    if not plan_text:
-        return observations
-
-    # Extract file paths from "Files to Change" table
-    expected_files = _extract_plan_file_paths(plan_text)
-    if not expected_files:
-        return observations
-
-    # Check for overlap
-    overlap = set(git_files) & expected_files
-    if not overlap:
-        observations.append(
-            f"Active work item `{context.working_slug}` expects changes in different files"
-            " — verify you are working on the right task"
-        )
-
-    return observations
-
-
-def _extract_plan_file_paths(plan_text: str) -> set[str]:
-    """Extract file paths from implementation plan's Files to Change table."""
-    paths: set[str] = set()
-    in_table = False
-    for line in plan_text.splitlines():
-        if "Files to Change" in line or ("File" in line and "Change" in line):
-            in_table = True
-            continue
-        if in_table:
-            if line.startswith("|") and not line.startswith("| ---"):
-                # Extract first column (file path)
-                cells = [c.strip() for c in line.split("|")]
-                if len(cells) >= 2:
-                    path_cell = cells[1]
-                    match = re.search(r"`([^`]+)`", path_cell)
-                    path = match.group(1).strip() if match else path_cell.strip("`").strip()
-                    if path and not path.startswith("---"):
-                        paths.add(path)
-            elif not line.strip().startswith("|"):
-                in_table = False
-    return paths
 
 
 def _dedupe_strings(items: list[str]) -> list[str]:

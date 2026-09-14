@@ -26,11 +26,9 @@ from teleclaude.core.injected_text import checkpoint_text
 from teleclaude.hooks.checkpoint._evidence import (
     _check_blast_radius,
     _check_companion_drift,
-    _check_slug_alignment,
     _command_has_evidence,
     _compute_log_since_window,
     _dedupe_strings,
-    _extract_plan_file_paths,
     _has_commit_evidence,
     _has_commit_evidence_after_last_mutation,
     _has_evidence,
@@ -43,17 +41,14 @@ from teleclaude.hooks.checkpoint._evidence import (
 from teleclaude.hooks.checkpoint._git import (
     WorktreeStatus,
     _canonical_tool_name,
-    _command_likely_mutates_files,
     _current_branch,
     _extract_apply_patch_paths,
     _extract_shell_command,
-    _extract_shell_touched_paths,
     _extract_turn_file_signals,
     _git_diff_names,
     _is_checkpoint_project_supported,
     _is_docs_only,
     _is_no_action_only,
-    _looks_like_path_token,
     _normalize_repo_path,
     _scope_git_files_to_current_turn,
     _segment_tokens,
@@ -98,18 +93,14 @@ __all__ = [
     "_canonical_tool_name",
     "_check_blast_radius",
     "_check_companion_drift",
-    "_check_slug_alignment",
     "_command_has_evidence",
-    "_command_likely_mutates_files",
     "_commit_instruction",
     "_compose_checkpoint_message",
     "_compute_log_since_window",
     "_current_branch",
     "_dedupe_strings",
     "_extract_apply_patch_paths",
-    "_extract_plan_file_paths",
     "_extract_shell_command",
-    "_extract_shell_touched_paths",
     "_extract_turn_file_signals",
     "_git_diff_names",
     "_has_commit_evidence",
@@ -120,7 +111,6 @@ __all__ = [
     "_is_no_action_only",
     "_iter_shell_command_records",
     "_last_scope_mutation_index",
-    "_looks_like_path_token",
     "_normalize_repo_path",
     "_post_commit_review_instruction",
     "_scope_git_files_to_current_turn",
@@ -274,9 +264,6 @@ def run_heuristics(
     result.observations.extend(_check_blast_radius(git_files))
     for action_str in _check_companion_drift(git_files, context.project_path):
         append_required_action(action_str)
-
-    # 4. Working slug alignment
-    result.observations.extend(_check_slug_alignment(git_files, context))
 
     # Keep observations signal-rich and non-repetitive.
     result.observations = _dedupe_strings(result.observations)

@@ -12,10 +12,7 @@ from teleclaude.config.schema import CheckpointConfig
 from teleclaude.constants import CheckpointModel
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
-from teleclaude.shell_path_parser import command_likely_mutates_files as _shared_command_likely_mutates_files
 from teleclaude.shell_path_parser import extract_shell_command as _shared_extract_shell_command
-from teleclaude.shell_path_parser import extract_shell_touched_paths as _shared_extract_shell_touched_paths
-from teleclaude.shell_path_parser import looks_like_path_token as _shared_looks_like_path_token
 from teleclaude.shell_path_parser import segment_tokens as _shared_segment_tokens
 from teleclaude.shell_path_parser import split_shell_segments as _shared_split_shell_segments
 from teleclaude.utils.transcript import TurnTimeline
@@ -38,18 +35,15 @@ class WorktreeStatus(StrEnum):
 __all__ = [
     "WorktreeStatus",
     "_canonical_tool_name",
-    "_command_likely_mutates_files",
     "_current_branch",
     "_extract_apply_patch_paths",
     "_extract_shell_command",
-    "_extract_shell_touched_paths",
     "_extract_turn_file_signals",
     "_get_uncommitted_files",
     "_git_diff_names",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
     "_is_no_action_only",
-    "_looks_like_path_token",
     "_normalize_repo_path",
     "_scope_git_files_to_current_turn",
     "_segment_tokens",
@@ -196,19 +190,9 @@ def _normalize_repo_path(path: str, project_path: str) -> str:
         return ""
 
 
-def _command_likely_mutates_files(command: str) -> bool:
-    """Best-effort shell command classifier for file-mutating intent."""
-    return _shared_command_likely_mutates_files(command)
-
-
 def _extract_shell_command(input_data: Mapping[str, object]) -> str:
     """Extract command text from tool input payloads across adapters."""
     return _shared_extract_shell_command(input_data)
-
-
-def _looks_like_path_token(token: str) -> bool:
-    """Heuristic for shell tokens that are likely file paths."""
-    return _shared_looks_like_path_token(token)
 
 
 def _split_shell_segments(command: str) -> list[str]:
@@ -219,11 +203,6 @@ def _split_shell_segments(command: str) -> list[str]:
 def _segment_tokens(segment: str) -> list[str]:
     """Best-effort tokenization for a command segment."""
     return _shared_segment_tokens(segment)
-
-
-def _extract_shell_touched_paths(command: str, project_path: str) -> set[str]:
-    """Best-effort extraction of mutated file paths from shell commands."""
-    return _shared_extract_shell_touched_paths(command, lambda path: _normalize_repo_path(path, project_path))
 
 
 def _extract_apply_patch_paths(patch_text: str, project_path: str) -> set[str]:

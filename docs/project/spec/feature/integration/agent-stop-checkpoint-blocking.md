@@ -242,19 +242,15 @@ Then it composes the project path with the worktree subdirectory into a single w
 And the heuristic engine runs branch detection against the worktree, not the repo root
 ```
 
-#### UC-CP9: Uncommitted no-action changes still flag a commit
+#### UC-CP9: Recorded edits with pending commit evidence require the commit step
 
 ```gherkin
-Given the only turn-local changes are bare no-action files (*.md, *.txt, *.rst outside docs/**) and none are categorized as code
-And those changes have not been committed this turn
-When the heuristic engine evaluates the turn window
-Then a checkpoint is produced (not skipped)
-And it includes the `telec code commit` instruction so the uncommitted change is not silently dropped
-
-Given the only turn-local changes are bare no-action files
-And they were already committed this turn (commit evidence follows the last mutation)
-When the heuristic engine evaluates the turn window
-Then no checkpoint is produced
+Given an agent session has turn-local file changes that owe no maintenance actions
+And the runtime records edits to those files in the current checkpoint cycle
+And the working tree carries uncommitted changes
+And the cycle contains no commit evidence after the last recorded edit
+When the checkpoint evaluates the agent-stop boundary
+Then the agent receives a checkpoint requiring the commit step
 ```
 
 <!-- planned-change:commit-gate-owns-source-validation -->
@@ -702,10 +698,11 @@ And no bracket checkpoint envelope is emitted on the hook boundary
   the receiver it composes with.
 - Reads session row state owned by `agent_runtime`: last user message
   timestamp, last checkpoint timestamp, native log file, working
-  subdirectory, project path, turn anchor SHA, working slug,
+  subdirectory, project path, turn anchor SHA,
   native session id, and `system_role` (e.g. `"integrator"`) — the role
   is passed to `get_checkpoint_content` and stored in `CheckpointContext`
   to gate the integrator-maintenance force-fire path.
+- Reads the session's working slug for structured checkpoint diagnostics.
 - Consumes the commit-obligation ledger written by the sealed `telec code commit`
   path for any session, and the integrator-maintenance marker written by the
   integration state machine (`project/spec/feature/workflow/integration-state-machine`)
