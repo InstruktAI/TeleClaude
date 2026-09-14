@@ -1,5 +1,5 @@
 ---
-description: "Convergence of a project's installed git plumbing — TeleClaude-owned hooks, the docs filter driver, and the project registry entry — to the capability declaration, performed at project initialization and by no synchronization path."
+description: "Convergence of a project's installed git plumbing — the TeleClaude-owned hooks and the docs filter driver — to its capability declaration, performed at project initialization and by no synchronization path."
 visibility: 'internal'
 delivered_by: ['sync-stops-converging-project-setup']
 ---
@@ -9,10 +9,9 @@ delivered_by: ['sync-stops-converging-project-setup']
 ## What it is
 
 A project's installed git plumbing is machine state: the TeleClaude-owned
-`pre-commit`, `post-merge` and `pre-push` hooks under the git directory, the
-`teleclaude-docs` filter driver in the repository's own git config, and the
-project's entry in the durable project registry. None of it is tracked by the
-project, so a clone carries none of it.
+`pre-commit`, `post-merge` and `pre-push` hooks under the git directory and the
+`teleclaude-docs` filter driver in the repository's own git config. Neither is
+tracked by the project, so a clone carries neither.
 
 Convergence is the act of comparing that observed machine state against the
 project's capability declaration and performing the sanctioned actions that
@@ -40,10 +39,6 @@ read-only gate touches nothing.
   a prior filter pattern's residue, are re-checked out so the smudge filter
   applies to them. A locally modified file is left untouched. Repair resolves a
   file's filter attribute, so it runs after the filter attributes are written.
-- **Registry.** The project's durable main checkout is the path recorded in the
-  project registry. Invoked from a linked worktree, convergence resolves back to
-  the owning checkout, so an ephemeral worktree path never enters the registry.
-  Registration is idempotent.
 - **No tracked file is written.** Convergence writes only untracked machine
   state. The one project-tracked file TeleClaude ever writes is the
   `.gitattributes` docs-filter line, written additively at adoption by its own
@@ -68,8 +63,8 @@ Given a project subscribing docs whose filter attributes are written
 And whose tracked documentation still holds unexpanded portable references
 When an agent runs project initialization for that project
 Then the docs filter driver is configured in the project's git config
-And the unexpanded tracked files are re-checked out through the smudge filter
-And a file carrying local modifications is left untouched
+And those documentation files read as absolute home paths in the working copy
+And a file carrying local modifications keeps its local content
 ```
 
 #### UC-RPC3: Convergence refreshes TeleClaude's hooks and preserves the project's own
@@ -91,24 +86,13 @@ Then no TeleClaude-owned git hook is installed for it
 And no docs filter driver is configured for it
 ```
 
-#### UC-RPC5: Convergence registers the durable main checkout
-
-```gherkin
-Given a project whose linked worktree is checked out alongside its main checkout
-When an agent runs project initialization from inside that worktree
-Then the project's main checkout is the path recorded in the project registry
-And the worktree's own path is absent from the registry
-And running initialization again adds no duplicate entry
-```
-
 #### UC-RPC6: No synchronization path converges project plumbing
 
 ```gherkin
-Given a project whose git hooks, docs filter driver, and registry entry are all out of date
+Given a project whose git hooks and docs filter driver are both out of date
 When an agent invokes a deploy-mode synchronization for that project
 Then no git hook is installed or refreshed
 And the docs filter driver is neither configured nor removed
-And the project registry is left unchanged
 ```
 
 ## Known caveats

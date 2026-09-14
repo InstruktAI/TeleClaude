@@ -239,6 +239,8 @@ And no capability state is written outside the project's declaration
 ```
 
 <!-- change:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-10:
+
 <!-- /planned-change:sync-stops-converging-project-setup -->
 <!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-11: Disabling docs never edits the tracked .gitattributes file
@@ -251,6 +253,8 @@ And the docs filter driver is removed from the git config
 And the inert filter line is left in place
 ```
 <!-- change:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-11:
+
 <!-- /planned-change:sync-stops-converging-project-setup -->
 <!-- planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-12: A capability toggle never edits a project-tracked file
@@ -283,6 +287,8 @@ Then the project's existing hook is preserved rather than overwritten
 ```
 
 <!-- change:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-13:
+
 <!-- /planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-14: A non-adopting path never touches a manifest-less repository
 
@@ -369,6 +375,8 @@ And the declaration is written before any capability-gated plumbing would run
 ```
 
 <!-- change:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-19:
+
 <!-- /planned-change:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-20: A fresh clone honors the declaration before any TeleClaude command runs
 
@@ -400,7 +408,21 @@ Then its TeleClaude-owned hooks are refreshed to read the declaration
 And a hook the project authored itself is left in place
 ```
 <!-- change:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-22:
+
 <!-- /planned-change:sync-stops-converging-project-setup -->
+<!-- planned:sync-stops-converging-project-setup -->
+#### UC-CFG-CAP-27: The registry records a project's durable main checkout
+
+```gherkin
+Given a project whose linked worktree is checked out alongside its main checkout
+When an agent adopts that project from inside the worktree
+Then the registry lists the project once, by its main checkout
+And the worktree is absent from the registry
+And adopting it again leaves the registry unchanged
+```
+
+<!-- /planned:sync-stops-converging-project-setup -->
 #### UC-CFG-CAP-24: An unreadable capability block refuses the git invocation
 
 ```

@@ -242,12 +242,12 @@ Scenario: UC-SPO5 A global skill folder registers its publisher by existence
 #### UC-SPO16: Deploy-mode sync performs only its own phases
 
 ```gherkin
-Given a provenance back-end is configured and holds no membership for a snippet delivered_by slug at the current HEAD
-And at least one reachable project root carries a pending configuration advancement
+Given documentation provenance for the current source state is not yet durably recorded
+And a reachable project's configuration document is not yet at the current schema
 When an agent invokes a deploy-mode synchronization for that project
-Then the membership is recorded for that snippet at the run's HEAD
-And the index files are rebuilt and the runtime artifacts distributed
-And the reachable root's pending configuration advancement is still pending after the run
+Then that provenance becomes durably recorded
+And the derived indexes and runtime artifacts are republished
+And the reachable project's configuration document is still not at the current schema
 ```
 
 <!-- /planned-change:sync-stops-converging-project-setup -->
