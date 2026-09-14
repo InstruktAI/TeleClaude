@@ -16,11 +16,7 @@ visibility: 'public'
 <!-- /planned-change:agent-artifact-source-layout -->
 
 
-<!-- planned-change:retire-native-artifact-deployment -->
-- **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts (commands, skills, agents) are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision converged — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. Human presence supplies context, not permission to edit: an original explicit authoring request, or agreement by every active participant followed by the human's release, opens the tracked write. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; after the complete artifact is stable, `telec sync` deploys it and the commits policy governs its commit.
-<!-- change:retire-native-artifact-deployment -->
 - **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts — commands and skills — are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision converged — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. Human presence supplies context, not permission to edit: an original explicit authoring request, or agreement by every active participant followed by the human's release, opens the tracked write. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; after the complete artifact is stable, `telec sync` deploys it and the commits policy governs its commit.
-<!-- /planned-change:retire-native-artifact-deployment -->
 - Any `AGENTS.master.md` in a project is inflated by `telec sync` into an adjacent `AGENTS.md`.
 
 

@@ -83,13 +83,6 @@ catalog stays lazy. Tier-local skills are the ones that reach native CLI
 directories, eager-indexed in their context's generated entrypoint.
 <!-- /planned-change:agent-artifact-source-layout -->
 
-<!-- planned-change:retire-native-artifact-deployment -->
-
-Codex commands are an exception: they route to
-`~/.teleclaude/commands/` (NOT `~/.codex/commands/`) so commands are
-reusable across projects.
-
-<!-- change:retire-native-artifact-deployment -->
 
 TeleClaude command artifacts are not runtime artifacts at all: command
 documents deploy to `~/.teleclaude/commands/` from the global phase alone,
@@ -114,7 +107,6 @@ legacy Node Gemini CLI layout — `~/.gemini/commands/`, `~/.gemini/skills/`,
 provisioned. Content in any runtime home that this pipeline did not produce is
 left untouched.
 
-<!-- /planned-change:retire-native-artifact-deployment -->
 
 After both phases, the global documentation tree is exposed at
 `~/.teleclaude/docs/` as a complete materialized snapshot. Each published domain
@@ -195,16 +187,10 @@ Scenario: UC-ARD1 Mother project full sync with deploy
   Given the project is the Mother project
   And sync is invoked in deploy mode
   When the distribution pipeline runs
-<!-- planned-change:retire-native-artifact-deployment -->
-  Then global sources from agents/ deploy to ~/.claude/, ~/.gemini/, and ~/.codex/
-  And local sources from .agents/ deploy to the project root
-  And Codex commands deploy to ~/.teleclaude/commands/
-<!-- change:retire-native-artifact-deployment -->
   Then the entrypoint master deploys to each enabled runtime's home
   And the repository's global command artifacts deploy to the global command corpus
   And global skill packages compose to ~/.teleclaude/skills/
   And no command, global skill, or subagent artifact is written into any runtime home
-<!-- /planned-change:retire-native-artifact-deployment -->
   And AGENTS.override.md is written to the project root for Codex override detection
   And docs/global/ is composed per domain into the ~/.teleclaude/docs/ root
 ```
@@ -214,15 +200,9 @@ Scenario: UC-ARD2 Non-mother project sync skips global agent-artifact phase
   Given the project is not the Mother project
   And sync is invoked in deploy mode
   When the distribution pipeline runs
-<!-- planned-change:retire-native-artifact-deployment -->
-  Then the global phase produces no agent-home artifact writes
-  And the local phase deploys .agents/ to the project root
-  And Codex commands still route to ~/.teleclaude/commands/
-<!-- change:retire-native-artifact-deployment -->
   Then the global phase produces no agent-home artifact writes
   And the local phase materializes the repository's own skill packages into the project-root CLI skill directories
   And the local phase writes no command artifact and no subagent definition into any runtime home
-<!-- /planned-change:retire-native-artifact-deployment -->
   And each domain the project owns in business.publishes is materialized into the deployed documentation snapshot
 ```
 
@@ -375,7 +355,6 @@ Scenario: UC-ARD33 Both entry points read the corpus through the composed loader
 ```
 
 
-<!-- planned:retire-native-artifact-deployment -->
 
 #### UC-ARD10: Command documents deploy to the corpus and to no runtime home
 
@@ -411,7 +390,6 @@ Scenario: UC-ARD34 Retraction removes what the pipeline deployed and keeps what 
   And a second deploy-mode sync removes nothing further
 ```
 
-<!-- /planned:retire-native-artifact-deployment -->
 
 <!-- planned:agent-artifact-source-layout -->
 
@@ -624,14 +602,6 @@ Scenario: UC-ARD30 A reference validates against its source, never against the d
 
 ## Known caveats
 
-<!-- planned-change:retire-native-artifact-deployment -->
-
-- Codex commands routing to `~/.teleclaude/commands/` (rather than
-  `~/.codex/commands/`) is deliberate cross-project sharing. It
-  surprises operators who expect symmetry with `~/.claude/` and
-  `~/.gemini/`. The decision is intentional, not a bug.
-
-<!-- change:retire-native-artifact-deployment -->
 
 - TeleClaude command artifacts route to `~/.teleclaude/commands/` rather
   than per-agent native command directories. This is deliberate cross-project
@@ -639,7 +609,6 @@ Scenario: UC-ARD30 A reference validates against its source, never against the d
   `telec sessions run` preloads it into a new session, and machine-emitted
   procedure loads carry it into a running one.
 
-<!-- /planned-change:retire-native-artifact-deployment -->
 
 - Deployed documentation is read-only. It is a materialized snapshot; authored
   documentation changes only in its owning source tree and becomes visible after

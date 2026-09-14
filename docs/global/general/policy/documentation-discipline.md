@@ -115,19 +115,11 @@ visibility: public
   follows the taxonomy and `general/policy/artifact-scope`, which admit a feature
   spec at any scope its owning context sits at.
 
-<!-- planned-change:retire-native-artifact-deployment -->
-- **Agent artifacts (commands, skills, agents) are not doc snippets** — they have
-  no code to be pending against, so they carry no planned markers and no
-  `delivered_by`. Their authoring lifecycle (human-decided, authored on `main`,
-  never routed through a todo) is governed by
-  `general/policy/agent-artifact-governance`.
-<!-- change:retire-native-artifact-deployment -->
 - **Agent artifacts — commands and skills — are not doc snippets** — they have
   no code to be pending against, so they carry no planned markers and no
   `delivered_by`. Their authoring lifecycle (human-decided, authored on `main`,
   never routed through a todo) is governed by
   `general/policy/agent-artifact-governance`.
-<!-- /planned-change:retire-native-artifact-deployment -->
 - **When authoring or editing any doc snippet, load and follow**
   `general/procedure/doc-snippet-authoring` (how) and
   `general/spec/snippet-authoring-schema` (shapes).
