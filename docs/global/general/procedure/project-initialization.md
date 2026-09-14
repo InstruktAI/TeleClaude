@@ -77,10 +77,6 @@ Adds filter patterns so that `docs/**/*.md` and `agents/docs/**/*.md` use the
 one project-tracked file TeleClaude writes, and it is written additively at adoption
 only; no later capability change edits it.
 
-This step precedes driver convergence, because the repair pass below admits a file
-only when its resolved filter attribute names the `teleclaude-docs` filter. A first
-adoption whose attributes were not yet installed would otherwise repair nothing.
-
 Source: `teleclaude/project_setup/gitattributes.py:update_gitattributes()`
 
 ### 4. Converge the git smudge/clean filter driver
