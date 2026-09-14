@@ -608,7 +608,7 @@ tts:
     openai: { enabled: boolean, api_key: string | null } # API key normally ${OPENAI_API_KEY}
     elevenlabs: { enabled: boolean, api_key: string | null } # API key normally ${ELEVENLABS_API_KEY}
 <!-- planned:discord-personal-voice-conversation -->
-    <service>: { ..., voices: [{ name, voice_id? }], discord_voice: string } # discord_voice is one name from that service's own voices list; defaults to the first entry and is absent when the service declares no voices; a name outside the list fails validation naming the service
+    <service>: { ..., voices: [{ name, voice_id? }], discord_voice: string } # discord_voice is one name from that service's own voices list; defaults to the first entry, and is absent when the service declares no voices (the room then uses that backend's default voice); a name outside the list fails validation naming the service
 <!-- /planned:discord-personal-voice-conversation -->
 ```
 

@@ -117,6 +117,25 @@ Then the owning daemon restores the voice connection and selected-session behavi
 And no fleet peer creates a competing voice connection
 ```
 
+#### UC-DPVC-10
+
+```gherkin
+Given a session's reply has already been synthesized for the voice room
+And that session has produced no newer reply
+When the human selects that session again
+Then the room plays the already-rendered audio
+And no new synthesis is performed
+```
+
+#### UC-DPVC-11
+
+```gherkin
+Given a person other than the configured human is in the personal voice room
+When that person speaks
+Then no utterance is opened for their audio
+And nothing from their audio reaches any session
+```
+
 ## Known caveats
 
 - Discord message components remain attached to messages and scroll with their thread; Discord provides no fixed thread-footer control for bots.

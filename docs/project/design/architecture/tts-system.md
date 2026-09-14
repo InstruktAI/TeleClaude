@@ -99,10 +99,10 @@ visibility: 'public'
 10. **The Discord room speaks the complete reply, in one configured voice.**
     Each service declares one `discord_voice`, a name from its own `voices`
     list, defaulting to the first entry; the template carries that default,
-    and a service without voices carries none. A Discord delivery resolves
-    its chain from `service_priority` filtered to services that can render
-    and carry a `discord_voice`, and renders with the backend identifier that
-    voice entry already names.
+    and a service without voices carries none and renders the room with its
+    backend's default voice. A Discord delivery resolves its chain from
+    `service_priority` filtered to services that can render, and renders with
+    the backend identifier that voice entry already names.
     Per-session voice assignment, its fallback promotion, and the summary
     spoken on host speakers are untouched by this destination: the room is a
     one-to-one conversation and hears the whole answer, while local playback
