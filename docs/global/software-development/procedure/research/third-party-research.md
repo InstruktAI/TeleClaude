@@ -34,10 +34,6 @@ than a standalone snippet; publish a reusable snippet only when the research ear
 3. **Summarize & Sync**
    - Create a concise markdown summary as an internal snippet.
    - Add a **Sources** section listing web links or Context7 snippet IDs.
-<!-- planned-change:commit-gate-owns-source-validation -->
-   - After any doc change, run `telec sync`.
-<!-- change:commit-gate-owns-source-validation -->
-<!-- /planned-change:commit-gate-owns-source-validation -->
 
 4. **Verify**
    - Read the summary for correctness and clarity.
@@ -49,10 +45,6 @@ than a standalone snippet; publish a reusable snippet only when the research ear
 - Sources are listed under a **Sources** section as web links or Context7 snippet IDs.
 
 
-<!-- planned-change:commit-gate-owns-source-validation -->
-- `telec sync` run after changes.
-<!-- change:commit-gate-owns-source-validation -->
-<!-- /planned-change:commit-gate-owns-source-validation -->
 
 
 ## Preconditions
@@ -66,10 +58,6 @@ than a standalone snippet; publish a reusable snippet only when the research ear
 - Draft an internal snippet that captures only validated facts.
 
 
-<!-- planned-change:commit-gate-owns-source-validation -->
-- Run `telec sync`.
-<!-- change:commit-gate-owns-source-validation -->
-<!-- /planned-change:commit-gate-owns-source-validation -->
 
 
 - Add sources to a **Sources** section.

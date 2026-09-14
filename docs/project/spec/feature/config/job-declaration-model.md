@@ -267,7 +267,6 @@ And an aggregate dispatch result does not become a successful project run
 And history that cannot be attributed remains recoverable without closing another project's run
 ```
 
-<!-- planned:commit-gate-owns-source-validation -->
 
 #### UC-JDM-21: The commit gate validates a project's jobs declaration
 
@@ -278,7 +277,6 @@ Then the effective job set for that project is validated
 And a declaration whose schedule, execution pointer, or procedure reference is invalid refuses the commit
 And a commit whose pathspec does not carry that declaration does not run the jobs validator
 ```
-<!-- /planned:commit-gate-owns-source-validation -->
 
 ## Known caveats
 

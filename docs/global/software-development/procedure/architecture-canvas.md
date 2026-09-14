@@ -198,10 +198,5 @@ using it.
 - **Remote-device access is unavailable.** Continue locally or establish an
   authenticated private route. Do not expose an unauthenticated canvas service
   publicly.
-<!-- planned-change:commit-gate-owns-source-validation -->
-- **Durable promotion fails validation.** Leave the exported source in the
-  scratch workspace, correct the documentation shape, and rerun `telec sync`.
-<!-- change:commit-gate-owns-source-validation -->
 - **Durable promotion fails validation.** Leave the exported source in the
   scratch workspace, correct the documentation shape, and rerun `telec code commit`.
-<!-- /planned-change:commit-gate-owns-source-validation -->

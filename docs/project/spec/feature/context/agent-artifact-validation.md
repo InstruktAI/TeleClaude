@@ -159,7 +159,6 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
 <!-- /planned-change:agent-artifact-source-layout -->
 
 
-<!-- planned:commit-gate-owns-source-validation -->
 #### UC-AAV3: Scoped validation grades the artifacts in its path set
 
 ```
@@ -188,7 +187,6 @@ Scenario: The cross-publisher skill-name collision check runs on a full validati
   When a full artifact validation run executes
   Then the collision is reported naming both publisher roots
 ```
-<!-- /planned:commit-gate-owns-source-validation -->
 
 ### Cross-context references
 
