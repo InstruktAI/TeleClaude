@@ -315,6 +315,23 @@ Then the session is not treated as terminal (a stuck or in-flight close must sti
 And the close command is dispatched and the request is accepted as usual
 ```
 
+<!-- planned:fix-session-coordination-cannot-correlate-ac -->
+#### UC-SL37: Manual close distinguishes lifecycle-driver relationships
+
+```gherkin
+Given an agent observes a human-originated close for a session in a project
+When the session is the current lifecycle driver
+Then its todo is held before the close continues
+When the session is a non-driver worker whose current driver is known
+Or the session is a former driver whose release is recorded
+Then the close continues without changing todo state
+And the driver relationship is reported as an explained no-op
+When no current or recorded relationship explains the session
+Then the close continues without changing todo state
+And the unexplained correlation is reported
+```
+<!-- /planned:fix-session-coordination-cannot-correlate-ac -->
+
 #### UC-SL30: Caller-scoped termination closes every direct child and nothing else
 
 ```gherkin
