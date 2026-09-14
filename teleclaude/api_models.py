@@ -427,7 +427,7 @@ class ModelAvailabilityDeltaDTO(BaseModel):
 
     model: str
     status: AgentAvailabilityStatus
-    status_until: str | None
+    status_until: str | None = None
     active: bool
     unavailable_until: str | None = None
     reason: str | None = None
