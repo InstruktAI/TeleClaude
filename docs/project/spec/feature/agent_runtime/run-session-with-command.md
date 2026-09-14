@@ -315,7 +315,7 @@ And this holds whether the request supplies command arguments or none
 
 <!-- planned:agent-artifact-source-layout -->
 
-#### UC-CLR11: The loader resolves a domain-qualified name directly and a bare token to its unique corpus match
+#### UC-CLR12: The loader resolves a domain-qualified name directly and a bare token to its unique corpus match
 
 ```
 Given the command corpus carries global commands under <domain>/ and project commands at its root
