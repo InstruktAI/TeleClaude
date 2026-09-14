@@ -15,35 +15,6 @@ For non-terminal input, the successful enqueue boundary is also the accepted-inp
 
 ### Table Schema
 
-<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
-```sql
-CREATE TABLE IF NOT EXISTS inbound_queue (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT NOT NULL,
-    origin TEXT NOT NULL,
-    message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'voice', 'file')),
-    content TEXT NOT NULL DEFAULT '',
-    payload_json TEXT,
-    actor_id TEXT,
-    actor_name TEXT,
-    actor_avatar_url TEXT,
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending', 'processing', 'delivered', 'failed', 'expired')),
-    created_at TEXT NOT NULL,
-    processed_at TEXT,
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    next_retry_at TEXT,
-    last_error TEXT,
-    locked_at TEXT,
-    source_message_id TEXT,
-    source_channel_id TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status
-    ON inbound_queue(session_id, status, next_retry_at);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_queue_source_dedup
-    ON inbound_queue(origin, source_message_id) WHERE source_message_id IS NOT NULL;
-```
-<!-- change:fix-user-turn-reflection-identity-segments-r -->
 ```sql
 CREATE TABLE IF NOT EXISTS inbound_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,9 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session
 CREATE INDEX IF NOT EXISTS idx_turn_receipt_envelopes_inbound
     ON turn_receipt_envelopes(inbound_queue_id);
 ```
-<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 
-<!-- planned:fix-user-turn-reflection-identity-segments-r -->
 ### Accepted-turn binding state
 
 Caller-origin conversational rows carry a closed binding disposition with two
@@ -165,22 +134,14 @@ accepted text kind, envelope and body spans, and authored-part id. A native
 entry and an accepted occurrence each bind at most once. Binding conflicts keep
 their exact native-entry candidates as durable evidence and never acquire a
 guessed author.
-<!-- /planned:fix-user-turn-reflection-identity-segments-r -->
 
 ### Reminder machine input
 
-<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
-Reminder firings use the control-delivery surface and never enter this queue.
-The inbound queue therefore owns conversational text, voice, and file input
-only; it defines no reminder origin, message type, retry path, or turn-part
-classification.
-<!-- change:fix-user-turn-reflection-identity-segments-r -->
 Reminder firings use the control-delivery surface and never enter this queue.
 The inbound schema retains historical `reminder` message/classification members
 so owned existing rows remain readable, but no active reminder producer writes
 them and no reminder retry path is defined here. Conversational text, voice, and
 file input are the queue's active message types.
-<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 
 ### Status Lifecycle
 
@@ -271,16 +232,12 @@ Adapters that provide stable message IDs (Discord, Telegram, WhatsApp) must pass
 
 ### Cleanup
 
-<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
-`cleanup_inbound(older_than_iso)` deletes rows with `status IN ('delivered', 'expired')` older than the threshold. Scheduled periodically by the maintenance service.
-<!-- change:fix-user-turn-reflection-identity-segments-r -->
 `cleanup_inbound(older_than_iso)` deletes expired rows older than the threshold.
 A delivered row becomes cleanup-eligible only after its accepted occurrence is
 bound to a runtime-qualified native entry or it carries a terminal binding
 disposition. Delivered post-cutover rows with neither survive cleanup so later
 projection or recovery can bind them. The maintenance service schedules the
 cleanup periodically.
-<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 
 ### Adapter Contract
 

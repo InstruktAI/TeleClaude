@@ -93,15 +93,6 @@ for machine text.
 | `[TeleClaude Restart Continuation]`                    | historical restart entries    | control  | paired      | no               | no                         |
 | `[TeleClaude Checkpoint]`                              | checkpoint surface            | control  | paired      | no               | no                         |
 | `[Peer (session · author-token · utc-minute)]`         | peer segment header           | identity | paired      | yes              | yes                        |
-<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
-| `[Orchestrator (session) on computer · utc-minute]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Integrator (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[System (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Worker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Tasker (session) on computer · utc-minute]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Job Runner (session) on computer · utc-minute]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
-| `[Agent - <agent> (session) on computer · utc-minute]` | caller-origin identity header | identity | paired      | yes              | yes                        |
-<!-- change:fix-user-turn-reflection-identity-segments-r -->
 | `[Orchestrator (session) on computer · utc-minute · occurrence-key]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Integrator (session) on computer · utc-minute · occurrence-key]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[System (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
@@ -109,7 +100,6 @@ for machine text.
 | `[Tasker (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Job Runner (session) on computer · utc-minute · occurrence-key]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Agent - <agent> (session) on computer · utc-minute · occurrence-key]` | caller-origin identity header | identity | paired      | yes              | yes                        |
-<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 
 Restart continuation is a semantic control envelope at the runtime hook
 boundary. Its paired bracket form is recognized for historical transcript
@@ -117,14 +107,6 @@ entries only. A resumed session receives `[TeleClaude Wake]` as the sole
 foreground marker, and the prompt-submission boundary carries the continuation
 body to the agent through the runtime's context-injection codec.
 
-<!-- planned-change:fix-user-turn-reflection-identity-segments-r -->
-A caller-origin identity header may carry an optional category segment, rendered
-as `[<role> - <category> (session) on computer · utc-minute]`; the agent form uses
-that segment to name the authoring agent. `utc-minute` is the send-moment
-occurrence time truncated to the minute in UTC — the same shared element the peer
-and action envelopes carry. It is rendered once into the opening and the paired
-close is derived from it, so the two never disagree.
-<!-- change:fix-user-turn-reflection-identity-segments-r -->
 A caller-origin identity header may carry an optional category segment, rendered
 as `[<role> - <category> (session) on computer · utc-minute · occurrence-key]`;
 the agent form uses that segment to name the authoring agent. `utc-minute` is the
@@ -133,9 +115,7 @@ the opaque durable key already owned by the accepted input row; it correlates th
 envelope to that occurrence and carries no author fields or attribution authority.
 Both values are rendered once into the opening and the paired close is derived
 from it, so the two never disagree.
-<!-- /planned-change:fix-user-turn-reflection-identity-segments-r -->
 
-<!-- planned:fix-user-turn-reflection-identity-segments-r -->
 During mixed-version operation, the caller opening recognizer accepts both the
 keyed and preceding keyless shape. An upgraded target canonicalizes a keyless
 live caller envelope from the command's structured caller metadata and durable
@@ -144,7 +124,6 @@ the keyless header for author identity. An older target treats the added final
 field as part of the already-open caller delimiter and derives its matching
 close from that complete opening. The keyless transition remains a compatibility
 reader only; upgraded writers emit the keyed shape.
-<!-- /planned:fix-user-turn-reflection-identity-segments-r -->
 
 ### One model, two codecs
 
