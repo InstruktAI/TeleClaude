@@ -64,7 +64,6 @@ Derivation rules:
   today; extending it to non-tmux agent sessions is separate work and does not
   change this contract.)
 
-
 - The declaration is the only home of capability state. The installed plumbing —
   the git hooks and the git wrapper — reads the toggles directly from the
   project's `teleclaude.yml`, the same file the runtime resolves, so the shell
@@ -82,19 +81,11 @@ Derivation rules:
   capability state is substituted for it — the direction the runtime takes for a
   declaration it cannot read (UC-CFG-CAP-3). The plumbing never falls open and
   never falls closed on such a block, and it claims nothing about the rest of
-<!-- planned-change:commit-gate-owns-source-validation -->
   the file: overlay validation belongs to the runtime. A global or person
   declaration carries no capability blocks; what the plumbing decides at such a
   repository root is the seal, per `project/design/code-commit`. Because the
-<!-- change:commit-gate-owns-source-validation -->
-  the file: overlay validation belongs to the runtime. A global, person, or
-  company declaration carries no capability blocks; what the plumbing decides at
-  such a repository root is the seal, per `project/design/code-commit`. Because the
-<!-- /planned-change:commit-gate-owns-source-validation -->
   declaration is a file the project tracks, a clone carries the project's real
   capability state before any TeleClaude command has run against it.
-
-
 
 - A capability toggle never edits, removes from, or truncates a file the project
   tracks. The only capability plumbing in the project's tracked tree is the
@@ -218,7 +209,6 @@ And telec code commit and telec code add remain available because docs is subscr
 
 #### UC-CFG-CAP-10: Onboard installs plumbing for a subscribed capability
 
-
 ```
 Given a project subscribing docs and code being onboarded
 When onboarding installs its capability plumbing
@@ -226,7 +216,6 @@ Then the git hooks TeleClaude owns are installed under the git directory
 And the docs filter driver is configured
 And no capability state is written outside the project's declaration
 ```
-
 
 #### UC-CFG-CAP-11: Disabling docs never edits the tracked .gitattributes file
 
@@ -240,14 +229,12 @@ And the inert filter line is left in place
 
 #### UC-CFG-CAP-12: A capability toggle never edits a project-tracked file
 
-
 ```
 Given a project with git-tracked files
 When any capability toggle is changed
 Then no file the project tracks is edited, removed from, or truncated apart from the declaration carrying the toggle
 And no capability state is written anywhere outside that declaration
 ```
-
 
 #### UC-CFG-CAP-13: Onboard does not clobber a hook the project already authored
 
@@ -266,7 +253,6 @@ Then no hook, marker, or filter is written or read for it
 And the repository is left byte-for-byte unchanged
 ```
 
-
 #### UC-CFG-CAP-15: A changed declaration takes effect with no projection pass
 
 ```
@@ -284,7 +270,6 @@ When the git wrapper runs on a git invocation
 Then it decides by reading the capability toggles from the project's teleclaude.yml
 And it spawns no interpreter to read them
 ```
-
 
 #### UC-CFG-CAP-17: An unsubscribed docs capability leaves the snippet pipeline idle
 
@@ -315,7 +300,6 @@ Then its teleclaude.yml records code, docs, and agents all unsubscribed
 And no git hook, docs filter driver, or .gitattributes docs line is installed for it
 And the declaration is written before any capability-gated plumbing would run
 ```
-
 
 #### UC-CFG-CAP-20: A fresh clone honors the declaration before any TeleClaude command runs
 
@@ -364,19 +348,6 @@ When the capabilities are resolved by the runtime or by the installed plumbing
 Then the code capability resolves to subscribed on both readers
 ```
 
-<!-- planned:commit-gate-owns-source-validation -->
-#### UC-CFG-CAP-26: A non-project tier root reaches the sealed-commit surface
-
-```
-Given a repository root whose declaration carries a non-project tier
-When telec code changed or telec code commit runs at that root
-Then the command operates on that root
-And the commit is made through the sealed-commit surface
-And the commit is scoped to the acting context root rather than the whole repository
-```
-<!-- /planned:commit-gate-owns-source-validation -->
-
-
 ## Known caveats
 
 - A project manifest key must be declared by the project overlay schema before
@@ -386,7 +357,6 @@ And the commit is scoped to the acting context root rather than the whole reposi
   repo that still contains snippet frontmatter leaves those files unsynced and
   is surfaced as drift by `telec projects assess`.
 
-
 - The runtime and the installed plumbing agree on every declaration whose
   capability blocks carry unquoted boolean values. They part on two inputs, in
   opposite directions. A block whose `enabled` value the runtime coerces from a
@@ -395,7 +365,6 @@ And the commit is scoped to the acting context root rather than the whole reposi
   which fails validation elsewhere in the overlay is refused by the runtime and
   honoured by the plumbing, which reads only the tier and the capability blocks
   and claims nothing about the rest of the file.
-
 
 ## See Also
 
