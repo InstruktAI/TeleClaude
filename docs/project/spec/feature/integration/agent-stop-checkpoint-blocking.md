@@ -1,7 +1,6 @@
 ---
-description: Heuristic checkpoint engine that may block an agent_stop hook with an
-  adapter-formatted instruction nudging the agent to commit, run tests, fix lint,
-  run telec sync, or surface post-merge maintenance to the integrator.
+description: Transcript (and other) evidence based checkpoint engine that may block an agent_stop hook with an
+  adapter-formatted instruction nudging the agent to do obligated tasks/maintenance.
 visibility: public
 ---
 
@@ -13,7 +12,17 @@ A deterministic, zero-LLM heuristic engine invoked from the hook receiver
 on agent-stop events. It reads the current turn's transcript, the working
 tree's version-control state scoped to the turn window, and a session's
 project context, then classifies changed files into categories (code,
+
+<!-- planned-change:commit-gate-owns-source-validation -->
+
 tests, docs, configs, infra, sync-validation) and produces a checkpoint
+
+<!-- change:commit-gate-owns-source-validation -->
+
+tests, docs, configs, infra) and produces a checkpoint
+
+<!-- /planned-change:commit-gate-owns-source-validation -->
+
 result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
 re-prompt itself with the checkpoint instruction.
@@ -248,6 +257,8 @@ When the heuristic engine evaluates the turn window
 Then no checkpoint is produced
 ```
 
+<!-- planned-change:commit-gate-owns-source-validation -->
+
 #### UC-CP10: telec sync validation category for agents/commands/docs
 
 ```gherkin
@@ -298,9 +309,41 @@ And no action is surfaced, because its evidence was observed
 (The changed-category summary reports the branch-eligible category set, independent of evidence suppression. Off-main deferrals are separate affirmative decisions and never appear as required actions.)
 ```
 
+<!-- change:commit-gate-owns-source-validation -->
+
+#### UC-CP10: Code categories with no per-category action
+
+```gherkin
+Given the turn-local changes touch a code category with no per-category action (e.g. teleclaude/hooks/**, which auto-applies on next invocation) and no restart obligation
+And the session is on main
+And no log-check or test evidence appears in the timeline yet
+When the heuristic engine evaluates the turn window
+Then the log-check and test categories appear in the changed-category summary
+And the log-check and test actions are surfaced
+
+Given the same code category change
+And the session is on a non-main branch
+And no log-check or test evidence appears in the timeline yet
+When the heuristic engine evaluates the turn window
+Then the log-check action is affirmatively recorded as deferred off-main
+And the log-check category and action are omitted from the checkpoint
+And the test category remains in the changed-category summary
+And the test action is surfaced
+
+Given the same code category change
+And the available evidence satisfies every branch-eligible action
+When the heuristic engine evaluates the turn window
+Then every branch-eligible category still appears in the changed-category summary
+And no action is surfaced, because its evidence was observed
+(The changed-category summary reports the branch-eligible category set, independent of evidence suppression. Off-main deferrals are separate affirmative decisions and never appear as required actions.)
+```
+
+<!-- /planned-change:commit-gate-owns-source-validation -->
+
 #### UC-CP11: Integrator post-merge maintenance force-fire
 
 ```gherkin
+<!-- planned-change:commit-gate-owns-source-validation -->
 Given a session whose role is integrator
 And the integration state machine advanced repo-root main this turn and recorded the integrator-maintenance marker carrying the delivered merge range
 When the heuristic engine evaluates the turn window
@@ -320,8 +363,32 @@ self-attributable, so only the lease-guarded integrator singleton — the record
 marker's owner — receives post-merge maintenance.)
 ```
 
+<!-- change:commit-gate-owns-source-validation -->
+
+Given a session whose role is integrator
+And the integration state machine advanced repo-root main this turn and recorded the integrator-maintenance marker carrying the delivered merge range
+When the heuristic engine evaluates the turn window
+Then the checkpoint force-fires even though no turn-local Edit/Write changes exist
+And effective files are sourced from the merge delta over the recorded range
+And only the main-only maintenance actions implied by that delta are surfaced (make install / uv sync / make restart)
+And no post-commit review action, no commit reminder, and no test or log-check actions are surfaced
+And every surfaced action remains recorded on the integrator-maintenance marker
+
+Given a session whose role is NOT integrator
+And repo-root main advanced this turn for any reason
+And no integrator-maintenance marker is present for this checkout
+When the heuristic engine evaluates the turn window
+Then no maintenance checkpoint is force-fired on account of the moved main HEAD
+(Repo-root main is a shared working copy; raw HEAD movement is not
+self-attributable, so only the lease-guarded integrator singleton — the recorded
+marker's owner — receives post-merge maintenance.)
+
+````
+
+<!-- /planned-change:commit-gate-owns-source-validation -->
 #### UC-CP12: Committed code surfaces discharging maintenance obligations
 
+<!-- planned-change:commit-gate-owns-source-validation -->
 ```gherkin
 Given a session commits daemon code through the sealed `telec code commit` path this turn
 And the commit handler categorizes the committed pathspec and records the owed main_only maintenance obligations (make install / uv sync / make restart / telec sync) into the commit-obligation ledger
@@ -353,7 +420,36 @@ When the heuristic engine evaluates the turn window
 Then that committed file's maintenance obligations are still recorded from the commit
 And its implied maintenance action is surfaced
 (The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
+````
+
+<!-- change:commit-gate-owns-source-validation -->
+
+```gherkin
+Given a session commits daemon code through the sealed `telec code commit` path this turn
+And the commit handler categorizes the committed pathspec and records the owed main_only maintenance obligations (make install / uv sync / make restart) into the commit-obligation ledger
+And `git diff HEAD` is now empty because the commit moved HEAD
+When the heuristic engine evaluates the turn window
+Then the outstanding obligations are unioned into the turn's effective actions before the no-change early-exit
+And the engine surfaces the maintenance actions those obligations imply (Run `make restart`)
+And, on main with code committed, the post-commit review-gate action is surfaced in addition (per UC-CP5A)
+And the test and log-check actions are NOT recorded as commit obligations — they remain cycle-local advisories on the dirty tree only
+And the unsatisfied obligation persists into later checkpoint cycles until its evidence is observed or user-prompt-submit clears the ledger
+
+Given a turn recorded a make-restart obligation and surfaced it
+And the agent then runs `make restart` in the same turn
+When the next agent-stop evaluates the turn window
+Then the make-restart evidence in the timeline discharges the obligation, removing it from the ledger
+And no make-restart action is surfaced
+And the obligation does not reappear in any subsequent cycle of this turn
+
+Given a session commits a file the agent did not itself Edit or Write this turn (a human-staged change the agent committed on request)
+When the heuristic engine evaluates the turn window
+Then that committed file's maintenance obligations are still recorded from the commit
+And its implied maintenance action is surfaced
+(The commit is the agent action that attributes the file to the turn; timeline mutation signals are not required for committed files.)
 ```
+
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 #### UC-CP13: Parent snippet edited without its pending companion
 
@@ -404,6 +500,8 @@ And no `make restart` obligation is surfaced for it
 (The boundary is daemon-import membership, not directory: only CLI modules the daemon holds at runtime require a restart.)
 ```
 
+<!-- planned-change:commit-gate-owns-source-validation -->
+
 #### UC-CP15: Committed-and-satisfied doc/no-action turn fires no checkpoint
 
 ```gherkin
@@ -420,6 +518,9 @@ And no `telec sync` evidence appears in the checkpoint-cycle tool call timeline
 When the heuristic engine evaluates the turn window
 Then a checkpoint is produced surfacing the `telec sync` validation action (per UC-CP10), because the doc turn is not yet satisfied
 ```
+
+<!-- change:commit-gate-owns-source-validation -->
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 #### UC-CP16: Shell command text attributes no path to a turn
 
@@ -485,6 +586,8 @@ And the commit action is not required
 
 #### UC-CP20: Post-merge maintenance persists per action until its evidence is observed
 
+<!-- planned-change:commit-gate-owns-source-validation -->
+
 ```gherkin
 Given the integration state machine confirms a delivery whose merge delta owes make restart and telec sync
 When it records the integrator-maintenance marker for this checkout
@@ -517,6 +620,43 @@ When the heuristic engine evaluates that session's turn window
 Then the outstanding make-restart action is surfaced to the successor
 (The obligation describes the checkout and the daemon deployed from it, so it is addressed by the checkout and reaches whichever integrator holds the lease.)
 ```
+
+<!-- change:commit-gate-owns-source-validation -->
+
+```gherkin
+Given the integration state machine confirms a delivery whose merge delta owes make restart and make install
+When it records the integrator-maintenance marker for this checkout
+Then the range and both owed main-only action ids are recorded together
+(The owed actions are resolved at delivery through the same merged model and single matcher every other consumer uses, so a delivered path owes the equivalent action in each of them.)
+
+Given an integrator-maintenance marker for this checkout already owes make install
+And a further candidate is delivered in the same drain whose delta owes make restart
+When the state machine records that candidate's range
+Then the marker's outstanding set is the union of both deliveries' owed actions
+
+Given an integrator-maintenance marker recorded for this checkout owes make restart and make install
+And an earlier checkpoint cycle surfaced both
+And the agent ran make restart in that cycle and nothing since
+When a later agent-stop evaluates the turn window
+Then the make-restart action is discharged from the marker and is not surfaced again
+And the make-install action is still surfaced
+And the marker is retained
+(Evidence is read from the checkpoint-cycle timeline, which carries only the current cycle. Discharge is therefore recorded on the marker as it is observed; re-deriving it from the timeline each cycle would lose every action satisfied in an earlier one.)
+
+Given the marker's last outstanding action is discharged
+When the agent-stop cycle that observes its evidence completes
+Then the marker is removed
+And no post-merge maintenance checkpoint force-fires for that delivery again
+
+Given an integrator-maintenance marker recorded for this checkout still owes make restart
+And the integrator session that incurred it has ended
+And a different integrator session acquires the lease on the same checkout
+When the heuristic engine evaluates that session's turn window
+Then the outstanding make-restart action is surfaced to the successor
+(The obligation describes the checkout and the daemon deployed from it, so it is addressed by the checkout and reaches whichever integrator holds the lease.)
+```
+
+<!-- /planned-change:commit-gate-owns-source-validation -->
 
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
 
