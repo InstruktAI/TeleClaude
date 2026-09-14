@@ -243,16 +243,15 @@ Scenario: UC-SPO5 A global skill folder registers its publisher by existence
 ```
 
 <!-- change:sync-stops-converging-project-setup -->
-#### UC-SPO16: Deploy-mode sync converges no project setup
+#### UC-SPO16: Deploy-mode sync performs only its own phases
 
 ```gherkin
-Given a project whose git hooks, docs filter driver, and manifest registration are all out of date
+Given a provenance back-end is configured and holds no membership for a snippet delivered_by slug at the current HEAD
+And at least one reachable project root carries a pending configuration advancement
 When an agent invokes a deploy-mode synchronization for that project
-Then no git hook is installed or refreshed
-And the docs filter driver is neither configured nor removed
-And the project registry is left unchanged
-And no reachable project's configuration file is advanced by the run
-And the run still records snippet provenance, builds indexes, and distributes artifacts
+Then the membership is recorded for that snippet at the run's HEAD
+And the index files are rebuilt and the runtime artifacts distributed
+And the reachable root's pending configuration advancement is still pending after the run
 ```
 
 <!-- /planned-change:sync-stops-converging-project-setup -->
