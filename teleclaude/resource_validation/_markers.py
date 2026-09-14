@@ -13,7 +13,6 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from teleclaude.constants import TodoStatus
-from teleclaude.doc_body import PLANNED_CHANGE_BLOCK_RE
 from teleclaude.resource_validation._models import _CODE_FENCE_LINE, _INLINE_CODE_SPAN, _error
 
 _PLANNED_CHANGE_MARKER_RE = re.compile(
@@ -32,10 +31,6 @@ _MARKER_RE = re.compile(r"<!--[ \t]*(?P<closing>/)?(?P<kind>planned-change|plann
 # from the local store is expected and skipped, since todos are machine-local and a
 # git-carried snippet routinely names a todo that lives on another computer.
 _RESOLVABLE_TODO_STATUSES = frozenset({TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value, TodoStatus.REMOVED.value})
-
-
-def _inside_any_span(position: int, spans: list[tuple[int, int]]) -> bool:
-    return any(start <= position < end for start, end in spans)
 
 
 def _planned_change_marker_error(path: Path, marker: re.Match[str], reason: str) -> None:
@@ -99,12 +94,7 @@ def validate_planned_change_markers(
     body = _mask_marker_examples(body)
     if todo_status_map is not None:
         _validate_planned_marker_liveness(path, body, todo_status_map)
-    valid_spans = [match.span() for match in PLANNED_CHANGE_BLOCK_RE.finditer(body)]
-    markers = [
-        marker
-        for marker in _PLANNED_CHANGE_MARKER_RE.finditer(body)
-        if not _inside_any_span(marker.start(), valid_spans)
-    ]
+    markers = list(_PLANNED_CHANGE_MARKER_RE.finditer(body))
     idx = 0
     while idx < len(markers):
         open_marker = markers[idx]
