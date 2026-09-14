@@ -7,6 +7,11 @@ delivered_by:
 
 # Agent Artifact Distribution — Design
 
+## Required reads
+
+- @docs/project/spec/domain/context.md
+- @docs/project/spec/feature/context/agent-runtime-deployment.md
+
 ## Purpose
 
 Realize `@prd#authorized-horizon` across four bounded contexts without letting
@@ -37,12 +42,10 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   untiered master and addenda at the artifact root.
 - The repository's publishing declaration (`business.publishes`), read through
   `config`'s existing `publishes_for_root` contract, and the registered-root set.
-- The Context-owned artifact-source registry published by
-  `migrate-agent-artifact-consumers-to-shared-registry` in
-  `teleclaude/agent_artifacts.py`: one frozen record per source directory
-  carrying relative directory, artifact kind, authorship, and scope. This
-  delivery re-points those records to the tiered directories and adds the
-  reach each record carries.
+- The Context-owned artifact-source registry in `teleclaude/agent_artifacts.py`:
+  one frozen record per source directory carrying relative directory, artifact
+  kind, authorship, tier, and reach. The records name the tiered directories;
+  the domain spec that owns the registry is listed under Required reads.
 - The canonical command-name vocabulary in `teleclaude/constants.py`
   (`SlashCommand`), owned by `workflow`.
 
@@ -104,9 +107,9 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 - A kind directory under `agents/global/` or `agents/project/` other than
   `commands/` or `skills/` is refused as outside the artifact model.
 - Nothing under `.agents/` is ever enumerated as a source by any consumer.
-- The reach gate replaces the mother-only silent skip in
-  `scripts/distribute.py` (`is_mother_project` selecting an empty global source
-  list) with a finding.
+- A global source outside a repository's reach is a finding, never a silent
+  skip: the global phase in `scripts/distribute.py` composes from every
+  publisher root's admitted sources and refuses the rest by name.
 
 ### Corpus layout and names
 
@@ -131,9 +134,9 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   retired when empty. A sync run at any point during the relocation therefore
   stages the union and retracts nothing that moved.
 - Landing order: the code that reads both roots and keys the manifest by
-  relative path lands first; the human-present relocation on `main` follows;
-  the legacy record is retired in a later ordinary change once the flat root is
-  empty. `@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`
+  relative path lands first; the human-present relocation on `main` follows.
+  The legacy record exists exactly as long as the flat root carries an
+  artifact; a flat root that carries none is not a source. `@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`
   binds the outcome; this section is the mechanism.
 
 ## Primary flows
@@ -165,7 +168,7 @@ sequenceDiagram
     Sync->>Sync: stages union, retracts nothing
     Human->>Sync: relocates agents/commands → agents/global/commands/<domain>/
     Sync->>Sync: same run: old key retracted, new key deployed
-    Code->>Sync: later change retires the legacy record once the flat root is empty
+    Sync->>Sync: flat root empty: legacy record is no longer a source
 ```
 
 ## Failure modes
