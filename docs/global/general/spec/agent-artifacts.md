@@ -26,6 +26,9 @@ and where those outputs land.
 
 - `description`: short, imperative summary.
 - `argument-hint`: optional string for CLI argument hints (commands).
+- `hooks`: optional (commands). Passed through verbatim to Claude Code outputs and
+  omitted from every other runtime's output; its shape is the target runtime's hook
+  schema and TeleClaude does not validate it.
 - `name`: identifier used for artifact lookup. A skill's folder is its runtime
   identity, so its required source `name` must equal that folder.
 

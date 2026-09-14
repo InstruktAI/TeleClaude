@@ -1,5 +1,5 @@
 ---
-description: 'Schema, section, and Required-reads-order validation for agents, commands, and skills source artifacts.'
+description: 'Schema, section, and Required-reads-order validation for command source artifacts, plus the identity contract every skill entrypoint keeps.'
 visibility: 'public'
 ---
 
