@@ -49,16 +49,20 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
     origin TEXT NOT NULL,
-    message_type TEXT NOT NULL DEFAULT 'text',
-    text_kind TEXT NOT NULL DEFAULT 'ordinary',
-    source_feature TEXT NOT NULL DEFAULT '',
+    message_type TEXT NOT NULL DEFAULT 'text'
+        CHECK(message_type IN ('text', 'voice', 'file', 'reminder')),
+    text_kind TEXT NOT NULL DEFAULT 'ordinary'
+        CHECK(text_kind IN ('platform_control', 'identity_content', 'reminder', 'ordinary')),
+    source_feature TEXT NOT NULL DEFAULT ''
+        CHECK(source_feature IN ('', 'telegram', 'discord', 'whatsapp', 'web', 'voice', 'relay', 'caller_send', 'peer_bundle', 'listener', 'agent_restart', 'reminder')),
     occurrence_key TEXT,
     content TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
     actor_id TEXT,
     actor_name TEXT,
     actor_avatar_url TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'processing', 'delivered', 'failed', 'expired')),
     created_at TEXT NOT NULL,
     processed_at TEXT,
     reflected_at TEXT,
