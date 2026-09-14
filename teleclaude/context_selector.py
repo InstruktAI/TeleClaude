@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
 
@@ -21,6 +22,11 @@ from teleclaude.doc_body import (
     split_frontmatter,
 )
 from teleclaude.docs_index import extract_required_reads, get_project_slug
+from teleclaude.docs_publishers import (
+    _PUBLISHER_REGISTRY,
+    DocsPublisherResolutionError,
+    resolve_global_doc_source,
+)
 from teleclaude.docs_publishers import project_slug as publisher_project_slug
 from teleclaude.domains import valid_domains
 from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, REPO_ROOT
@@ -28,7 +34,14 @@ from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import strip_required_reads_section
 from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
-from teleclaude.snippet_validation import SnippetScope, companion_slug
+from teleclaude.snippet_roots import iter_snippet_roots
+from teleclaude.snippet_validation import (
+    SnippetClassification,
+    SnippetScope,
+    companion_slug,
+    derive_snippet_classification,
+    load_domains,
+)
 from teleclaude.third_party_index import ThirdPartyMeta, load_third_party_index
 
 logger = get_logger(__name__)
@@ -774,35 +787,128 @@ def _validate_activation_closure_request(
         raise ActivationClosureError(ACTIVATION_CLOSURE_ROOT_ERROR)
 
 
-def resolve_snippet_meta(snippet_id: str, *, project_root: Path) -> SnippetMeta | None:
-    """Resolve one taxonomy snippet ID the way `telec docs get` does from this project root.
+def _owning_project_root(resolved_path: Path, *, relative_tail: Path) -> Path:
+    """Recover a publisher's project root from a resolved global-doc source path.
 
-    Global, current-project, and slug-prefixed cross-project IDs all resolve;
-    third-party IDs are outside the taxonomy and never resolve here.
+    ``resolve_global_doc_source`` returns ``owner.docs_global / relative_tail``;
+    stripping the tail and the trailing ``docs/global`` pair yields the same
+    root ``docs_global.parent.parent`` derives elsewhere (``docs_publishers.py``).
+    """
+    ancestor_parts = len(relative_tail.parts) + 2
+    return Path(*resolved_path.parts[:-ancestor_parts])
+
+
+def _snippet_meta_from_file(
+    snippet_id: str,
+    path: Path,
+    *,
+    classification: SnippetClassification,
+    project_root: Path,
+) -> SnippetMeta:
+    post = frontmatter.load(path)
+    metadata: Mapping[str, object] = post.metadata or {}
+    description = metadata.get("description")
+    activation_trigger = metadata.get("activation_trigger")
+    raw_visibility = metadata.get("visibility")
+    raw_delivered_by = metadata.get("delivered_by")
+    delivered_by = (
+        tuple(raw_delivered_by)
+        if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by)
+        else ()
+    )
+    return SnippetMeta(
+        snippet_id=snippet_id,
+        description=description if isinstance(description, str) else "",
+        snippet_type=classification.type.value,
+        scope=classification.scope.value,
+        domain=classification.domain,
+        path=path,
+        source_project=get_project_slug(project_root),
+        project_root=project_root,
+        visibility=raw_visibility if isinstance(raw_visibility, str) else SNIPPET_VISIBILITY_INTERNAL,
+        activation_trigger=activation_trigger if isinstance(activation_trigger, str) else None,
+        delivered_by=delivered_by,
+    )
+
+
+def _resolve_project_scope_meta(
+    requested: str,
+    taxonomy: str,
+    rest: str,
+    *,
+    project_root: Path,
+) -> SnippetMeta | None:
+    project_docs_root = project_root / "docs" / "project"
+    if project_docs_root not in iter_snippet_roots(project_root):
+        return None
+    candidate = project_docs_root / taxonomy / f"{rest}.md"
+    if not candidate.is_file():
+        return None
+    classification, _ = derive_snippet_classification(
+        candidate, project_root=project_root, domains=load_domains(project_root)
+    )
+    if classification is None:
+        return None
+    return _snippet_meta_from_file(requested, candidate, classification=classification, project_root=project_root)
+
+
+def _resolve_global_scope_meta(
+    requested: str,
+    scope_segment: str,
+    taxonomy: str,
+    rest: str,
+    *,
+    project_root: Path,
+) -> SnippetMeta | None:
+    candidate = GLOBAL_DOCS_DIR / scope_segment / taxonomy / f"{rest}.md"
+    relative_tail = candidate.relative_to(GLOBAL_DOCS_DIR)
+    try:
+        resolved = resolve_global_doc_source(project_root, candidate)
+    except DocsPublisherResolutionError:
+        return None
+    if resolved == candidate or not resolved.is_file():
+        return None
+    owner_root = _owning_project_root(resolved, relative_tail=relative_tail)
+    classification, _ = derive_snippet_classification(
+        resolved, project_root=owner_root, domains=load_domains(owner_root)
+    )
+    if classification is None:
+        return None
+    return _snippet_meta_from_file(requested, resolved, classification=classification, project_root=owner_root)
+
+
+def resolve_snippet_meta(snippet_id: str, *, project_root: Path) -> SnippetMeta | None:
+    """Resolve one taxonomy snippet ID from its publisher source tree.
+
+    Global, current-project, and slug-prefixed cross-project IDs all resolve
+    against the sources that would produce them — never the deployed index —
+    so resolution never depends on a documentation deployment having run yet.
+    Third-party IDs are outside the taxonomy and never resolve here.
     """
     requested = snippet_id.strip()
     if not requested:
         return None
-    manifest_projects = _load_manifest_by_name()
-    snippets = _load_selected_snippets(
-        project_root=project_root,
-        projects=None,
-        project_index=project_root / "docs" / "project" / "index.yaml",
-        global_index=GLOBAL_DOCS_DIR / "index.yaml",
-        global_root=GLOBAL_DOCS_DIR.parent.parent,
-        current_project_slug=get_project_slug(project_root),
-        manifest_projects=manifest_projects,
-        include_registered_projects=False,
-    )
-    snippets_by_path = {str(snippet.path): snippet for snippet in snippets}
-    _load_cross_project_snippets(
-        snippets=snippets,
-        snippet_ids=[requested],
-        domain_prefixes={domain.lower() for domain in valid_domains()},
-        manifest_projects=manifest_projects,
-        snippets_by_path=snippets_by_path,
-    )
-    return next((snippet for snippet in snippets if snippet.snippet_id == requested), None)
+    segments = requested.split("/")
+    if len(segments) < 3:
+        return None
+    scope_segment, taxonomy, *rest_parts = segments
+    if not taxonomy or not rest_parts or not all(rest_parts):
+        return None
+    rest = "/".join(rest_parts)
+
+    if scope_segment == "project":
+        return _resolve_project_scope_meta(requested, taxonomy, rest, project_root=project_root)
+
+    registry = _PUBLISHER_REGISTRY.get()
+    registered_domains = set(registry.owners.keys()) if registry is not None else set()
+    domain_prefixes = {domain.lower() for domain in (load_domains(project_root) | registered_domains)}
+    if _is_cross_project_snippet_id(requested, domain_prefixes=domain_prefixes):
+        manifest_entry = _load_manifest_by_name().get(scope_segment.strip().lower())
+        if manifest_entry is None:
+            return None
+        return _resolve_project_scope_meta(requested, taxonomy, rest, project_root=manifest_entry[1])
+
+    return _resolve_global_scope_meta(requested, scope_segment, taxonomy, rest, project_root=project_root)
 
 
 def _render_phase2_taxonomy_bodies(
