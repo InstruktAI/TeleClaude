@@ -287,7 +287,8 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                     "fast": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5[1m]' --effort low"}],
                     "med": [{"model": "sonnet", "flags": "--model 'claude-sonnet-5[1m]' --effort high"}],
                     "slow": [
-                        {"model": "fable", "flags": "--model 'claude-fable-5-1[1m]' --effort high"},
+                        # disabled as too expensive and reserved for manual invocation:
+                        # {"model": "fable", "flags": "--model 'claude-fable-5-1[1m]' --effort high"},
                         {"model": "opus", "flags": "--model 'claude-opus-5[1m]' --effort high"},
                     ],
                     "default": [],
@@ -367,13 +368,14 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                         }
                     ],
                     "slow": [
-                        {
-                            "model": "astra",
-                            "flags": (
-                                "-m gpt-6-astra -c model_reasoning_effort='high'"
-                                " -c model_auto_compact_token_limit=900000 -c model_context_window=1000000"
-                            ),
-                        },
+                        # disabled as too expensive and reserved for manual invocation:
+                        # {
+                        #     "model": "astra",
+                        #     "flags": (
+                        #         "-m gpt-6-astra -c model_reasoning_effort='high'"
+                        #         " -c model_auto_compact_token_limit=900000 -c model_context_window=1000000"
+                        #     ),
+                        # },
                         {
                             "model": "sol",
                             "flags": (
