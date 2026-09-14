@@ -108,23 +108,25 @@ Derivation rules:
   rewrites a project-owned file on a toggle — holds by construction, not by a
   runtime guard.
 <!-- /planned-change:sync-stops-converging-project-setup -->
+<!-- planned-change:sync-stops-converging-project-setup -->
 - Onboard is the one-time additive install: it writes the `.gitattributes` line,
   installs the git hooks under the git directory, and configures the filter
-<!-- planned-change:sync-stops-converging-project-setup -->
   driver. It preserves any hook the project already authored rather than
   overwriting it. After onboard, a toggle takes effect on the plumbing's next
   invocation because the plumbing reads the declaration itself; a mutating
   `telec sync` separately refreshes the TeleClaude-owned hooks and reconciles the
   filter driver. Neither path ever rewrites a project-tracked file.
-<!-- change:sync-stops-converging-project-setup -->
-  driver. It preserves any hook the project already authored rather than
-  overwriting it. After onboard, a toggle takes effect on the plumbing's next
-  invocation because the plumbing reads the declaration itself; bringing
-  already-installed plumbing back in line with a changed declaration is
-  reconciliation's act, under the contract referenced above. Neither path ever
-  rewrites a project-tracked file.
-<!-- /planned-change:sync-stops-converging-project-setup -->
 
+<!-- change:sync-stops-converging-project-setup -->
+- Onboard is the one-time additive install: it writes the `.gitattributes` line,
+  then converges the project's plumbing to the declaration it has just written.
+  After onboard, a toggle takes effect on the plumbing's next invocation because
+  the plumbing reads the declaration itself; what that convergence installs,
+  withdraws, or refreshes is contracted in
+  `project/spec/feature/reconciliation/project-plumbing-convergence`. Neither path
+  ever rewrites a project-tracked file.
+
+<!-- /planned-change:sync-stops-converging-project-setup -->
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
   non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
   or reads anything for it, and it is left byte-for-byte untouched. The sole

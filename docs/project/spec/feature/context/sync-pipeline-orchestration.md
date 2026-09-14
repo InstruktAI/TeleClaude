@@ -95,12 +95,8 @@ installed plumbing reads the declaration on each invocation
 read-only — it installs or withdraws no hooks or `.gitattributes` lines and does
 not touch the driver.
 <!-- change:sync-stops-converging-project-setup -->
-Project-setup convergence is not a sync phase. The docs filter driver and the
-TeleClaude-owned git hooks are installed and reconciled by project
-initialization, and the project manifest is written there
-(`general/procedure/project-initialization`). No sync path — deploying or
-read-only — installs, refreshes, or withdraws a hook, a filter driver, or a
-manifest entry.
+Project-setup convergence is not a sync phase; it is contracted in
+`project/spec/feature/reconciliation/project-plumbing-convergence`.
 <!-- /planned-change:sync-stops-converging-project-setup -->
 
 
