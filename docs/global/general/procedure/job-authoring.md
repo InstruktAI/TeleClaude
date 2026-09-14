@@ -41,7 +41,11 @@ Place it by the job's nature:
 - Project-only jobs: `docs/project/procedure/{job-slug}.md`
 
 Define the job-specific artifacts and report under Outputs, including any history
+<!-- planned-change:agent-artifact-source-layout -->
 the next run consumes. The `next-run-job` brief supplies the role boundary and
+<!-- change:agent-artifact-source-layout -->
+the next run consumes. The `software-development/next-run-job` brief supplies the role boundary and
+<!-- /planned-change:agent-artifact-source-layout -->
 structured outcome submission. A job procedure carries no `activation_trigger`:
 triggers belong to procedures an agent may invoke on its own judgment, and a job
 procedure is executed by the runner.

@@ -50,9 +50,15 @@ workflow state reaches `finalize_ready`.
 ### Stage B — Work orchestrator: record handoff and end
 
 The work orchestrator's authority ends here. It records the handoff — it does not
+<!-- planned-change:agent-artifact-source-layout -->
 perform integration. Integration is a separate singleton role (`/next-integrate`)
 with its own lease, worktree (`trees/_integration/`), and dispatch path. The work
 orchestrator must never dispatch `/next-integrate` or call `telec todo integrate`.
+<!-- change:agent-artifact-source-layout -->
+perform integration. Integration is a separate singleton role (`/software-development/next-integrate`)
+with its own lease, worktree (`trees/_integration/`), and dispatch path. The work
+orchestrator must never dispatch `/software-development/next-integrate` or call `telec todo integrate`.
+<!-- /planned-change:agent-artifact-source-layout -->
 
 1. Re-run the work state machine for the same slug:
 

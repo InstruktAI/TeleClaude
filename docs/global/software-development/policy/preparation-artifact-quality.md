@@ -351,7 +351,11 @@ before stamping. The report records the bounded replacement, the closure
 rationale, and the authenticated transcript that carries the human's authority;
 it does not claim that an independent reviewer ran. The claimant may then stamp
 `prd_review=approve` against the new PRD and report digests without dispatching
+<!-- planned-change:agent-artifact-source-layout -->
 `/next-review-prd`. The stamp's caller remains the claimant and never
+<!-- change:agent-artifact-source-layout -->
+`/software-development/next-review-prd`. The stamp's caller remains the claimant and never
+<!-- /planned-change:agent-artifact-source-layout -->
 impersonates or names the human. If applying the correction requires synthesis,
 reconciliation, or judgment beyond the exact replacement, the exception does
 not apply and normal independent review remains mandatory.

@@ -64,7 +64,11 @@ repo actually holds (`project/spec/feature/config/project-capability-manifest`):
   and the whole code pipeline stays off: no sealed-commit surface, no quality
   lanes, no git hooks, no toolchain or test maintenance.
 - **`docs`** — snippet frontmatter exists under `docs/`.
+<!-- planned-change:agent-artifact-source-layout -->
 - **`agents`** — agent artifacts exist under `agents/` or `.agents/`.
+<!-- change:agent-artifact-source-layout -->
+- **`agents`** — authored agent artifacts exist under `agents/`; `.agents/` is delivery output and never counts.
+<!-- /planned-change:agent-artifact-source-layout -->
 
 Task tracking carries no toggle: a project holding a `teleclaude.yml` subscribes
 it by that fact alone.

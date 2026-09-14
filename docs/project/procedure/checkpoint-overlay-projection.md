@@ -52,7 +52,11 @@ project.
 Assessment also writes the project's three capability toggles
 (`project/spec/feature/config/project-capability-manifest`) inferred from repo
 shape: a make contract or language trees → `code`; snippet frontmatter under
+<!-- planned-change:agent-artifact-source-layout -->
 `docs/` → `docs`; artifacts under `agents/` / `.agents/` → `agents`. The initial
+<!-- change:agent-artifact-source-layout -->
+`docs/` → `docs`; authored artifacts under `agents/` → `agents`, never `.agents/`. The initial
+<!-- /planned-change:agent-artifact-source-layout -->
 toggles are written at onboard by `telec projects init` before any
 capability-gated plumbing runs; this step refines them. Task tracking carries no
 toggle — the manifest's existence is that subscription.

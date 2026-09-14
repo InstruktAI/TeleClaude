@@ -143,7 +143,11 @@ Two cases determine who plays the PO role:
   is rich enough to write the PRD directly without elicitation — if the intent,
   scope, and success criteria are already clear, skip to step 5. If it is sparse
   or ambiguous, dispatch the PO emulator via `telec sessions run --command
+<!-- planned-change:agent-artifact-source-layout -->
 /next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
+<!-- change:agent-artifact-source-layout -->
+/software-development/next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
+<!-- /planned-change:agent-artifact-source-layout -->
   preferred). The brief must end with the exact instruction:
   `telec sessions send <this_session_id> "<your response>" --direct`.
   The orchestrator substitutes its own session id. Conduct elicitation with the
@@ -389,7 +393,11 @@ correction satisfying
 ### 6. PRD review and approval
 
 After writing the PRD, call `telec todo prepare {slug}`. The state machine
+<!-- planned-change:agent-artifact-source-layout -->
 routes to a dispatched `/next-review-prd` worker before human approval.
+<!-- change:agent-artifact-source-layout -->
+routes to a dispatched `/software-development/next-review-prd` worker before human approval.
+<!-- /planned-change:agent-artifact-source-layout -->
 
 The reviewer reads the input and PRD. It checks that the PRD's product and
 business scope stays within what the input carries rather than inflating beyond
@@ -410,7 +418,11 @@ output. The human remains the sole authority for `prd_approved`.
 When the human owner supplies an exact literal correction and explicitly
 directs approval under the policy exception, the active prepare claimant writes
 only that replacement and stamps `prd_review=approve` against the corrected
+<!-- planned-change:agent-artifact-source-layout -->
 digest. It does not dispatch `/next-review-prd`. If the human also approves the
+<!-- change:agent-artifact-source-layout -->
+digest. It does not dispatch `/software-development/next-review-prd`. If the human also approves the
+<!-- /planned-change:agent-artifact-source-layout -->
 corrected PRD, the claimant records `prd_approved` and advances normally.
 
 ### 7. Final step — advance

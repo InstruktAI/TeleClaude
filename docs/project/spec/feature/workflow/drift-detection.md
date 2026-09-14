@@ -29,7 +29,11 @@ converge. The feature names each
 
 class explicitly, records the provenance needed to detect it, derives a
 status per class on every `telec todo prepare` call, and routes a
+<!-- planned-change:agent-artifact-source-layout -->
 `/next-drift-analyze` worker when classification cannot be made
+<!-- change:agent-artifact-source-layout -->
+`/software-development/next-drift-analyze` worker when classification cannot be made
+<!-- /planned-change:agent-artifact-source-layout -->
 deterministically from evidence alone.
 
 Drift detection is **fail-safe by design**: when provenance is missing,
@@ -46,10 +50,18 @@ cleared by the existing `--drift-reviewed` stamp surface. It also
 participates at the work-entry boundary: `telec todo work` calls the same
 shared derivation function before its `prepared → build_started` handoff. The
 work state machine owns the work-entry continuation — on a `pending` collapsed
+<!-- planned-change:agent-artifact-source-layout -->
 status it dispatches the `next-drift-analyze` worker and the orchestrator
+<!-- change:agent-artifact-source-layout -->
+status it dispatches the `software-development/next-drift-analyze` worker and the orchestrator
+<!-- /planned-change:agent-artifact-source-layout -->
 re-enters `telec todo work {slug}`; on the re-entered `substantive` status it
 promotes the claim-holder in place to `prepare-orchestrator` and hands that
+<!-- planned-change:agent-artifact-source-layout -->
 session off to drive `/next-prepare {slug}`; on `cosmetic` (valid anchor) it
+<!-- change:agent-artifact-source-layout -->
+session off to drive `/software-development/next-prepare {slug}`; on `cosmetic` (valid anchor) it
+<!-- /planned-change:agent-artifact-source-layout -->
 proceeds. The work orchestrator never calls `telec todo prepare`. Autonomous
 continuation needs no human gate on either verdict: the promoted session
 re-derives and self-ends through the prepare terminal, and work resumes only
@@ -198,7 +210,11 @@ new phase:
   derivation, the machine computes drift status for every present tracked
   artifact in the coverage matrix across every applicable class.
 - If any artifact's overall drift status is `pending`, the machine routes
+<!-- planned-change:agent-artifact-source-layout -->
   to the BLOCKED branch and emits a `/next-drift-analyze` dispatch
+<!-- change:agent-artifact-source-layout -->
+  to the BLOCKED branch and emits a `/software-development/next-drift-analyze` dispatch
+<!-- /planned-change:agent-artifact-source-layout -->
   instruction, listing the artifacts and classes pending review.
 - If any re-derivable artifact's drift status is `substantive`, the machine
   clears the artifact's review verdict (and every downstream artifact's review
@@ -213,7 +229,11 @@ new phase:
 - If every artifact's drift status is `fresh` or `cosmetic`, the machine
   derives `PREPARED` (subject to the other gates) and the chain proceeds.
 
+<!-- planned-change:agent-artifact-source-layout -->
 The `/next-drift-analyze` worker reads the pending classes per artifact,
+<!-- change:agent-artifact-source-layout -->
+The `/software-development/next-drift-analyze` worker reads the pending classes per artifact,
+<!-- /planned-change:agent-artifact-source-layout -->
 inspects the appropriate evidence for every pending class, and stamps
 **one verdict per artifact** (the per-artifact stamp shape with multi-
 dimensional evidence anchor; the CLI signature
@@ -242,9 +262,17 @@ order in work entry becomes:
    any worktree** (drift derivation compares against `origin/main` HEAD and
    persisted provenance; no worktree is required).
 5. If a collapsed drift status is `pending`, dispatch the
+<!-- planned-change:agent-artifact-source-layout -->
    `next-drift-analyze` worker and have the orchestrator re-enter on
+<!-- change:agent-artifact-source-layout -->
+   `software-development/next-drift-analyze` worker and have the orchestrator re-enter on
+<!-- /planned-change:agent-artifact-source-layout -->
    `telec todo work`; if it is `substantive`, promote the claim-holder in
+<!-- planned-change:agent-artifact-source-layout -->
    place and hand that session off to drive `/next-prepare {slug}`. **No
+<!-- change:agent-artifact-source-layout -->
+   place and hand that session off to drive `/software-development/next-prepare {slug}`. **No
+<!-- /planned-change:agent-artifact-source-layout -->
    worktree created. No state mutated.**
 6. Only when every artifact's collapsed drift status is `fresh` or
    `cosmetic` (with a valid anchor): proceed with worktree preparation,
@@ -266,10 +294,18 @@ Detail of the call itself:
 - When the shared derivation reports a tracked artifact's collapsed
   status as `pending` or `substantive`, work does NOT advance
   `lifecycle_phase` and does NOT create or touch the worktree. On `pending`
+<!-- planned-change:agent-artifact-source-layout -->
   it dispatches the `next-drift-analyze` worker and the orchestrator
+<!-- change:agent-artifact-source-layout -->
+  it dispatches the `software-development/next-drift-analyze` worker and the orchestrator
+<!-- /planned-change:agent-artifact-source-layout -->
   re-enters `telec todo work {slug}`; on `substantive` it promotes the
   claim-holder in place to `prepare-orchestrator` and hands that session off
+<!-- planned-change:agent-artifact-source-layout -->
   to drive `/next-prepare {slug}`. The work orchestrator never calls
+<!-- change:agent-artifact-source-layout -->
+  to drive `/software-development/next-prepare {slug}`. The work orchestrator never calls
+<!-- /planned-change:agent-artifact-source-layout -->
   `telec todo prepare`.
 - When every tracked artifact's collapsed status is `fresh` or `cosmetic`
   (with a valid evidence anchor), work proceeds with the existing
@@ -564,14 +600,22 @@ Scenario: work entry bounces to prepare on pending drift, then resumes autonomou
   And the work machine does NOT advance lifecycle_phase
   And the work machine does NOT create or touch the worktree
   And the orchestrator follows the script and calls "telec todo prepare my-feature"
+<!-- planned-change:agent-artifact-source-layout -->
   And the prepare BLOCKED branch dispatches the next-drift-analyze worker
+<!-- change:agent-artifact-source-layout -->
+  And the prepare BLOCKED branch dispatches the software-development/next-drift-analyze worker
+<!-- /planned-change:agent-artifact-source-layout -->
   And the analyzer stamps "--drift-reviewed implementation-plan cosmetic '<reason>'"
   And the cosmetic stamp records the current evidence anchor
   And the next "telec todo prepare my-feature" call derives PREPARED
   And the PREPARED terminal's lineage-conditioned reminder resumes the bounced work orchestrator at "telec todo work my-feature"
   And the orchestrator follows that script
   And work re-runs drift derivation, observes fresh/valid-anchor status
+<!-- planned-change:agent-artifact-source-layout -->
   And proceeds with worktree creation and next-build dispatch
+<!-- change:agent-artifact-source-layout -->
+  And proceeds with worktree creation and software-development/next-build dispatch
+<!-- /planned-change:agent-artifact-source-layout -->
   And no human gate fires anywhere in the round-trip
 ```
 
@@ -634,7 +678,11 @@ Scenario: provenance captures owned snippets for a project other than the daemon
 
 ### Cross-context references
 
+<!-- planned-change:agent-artifact-source-layout -->
 - `agent_runtime` — the `/next-drift-analyze` worker session is dispatched
+<!-- change:agent-artifact-source-layout -->
+- `agent_runtime` — the `/software-development/next-drift-analyze` worker session is dispatched
+<!-- /planned-change:agent-artifact-source-layout -->
   via the same `agent_runtime.session.started` event shape as
   architecture/plan reviewers. Reuse-or-spawn matching applies per
   `prepare-state-machine#reviewer-reuse`.

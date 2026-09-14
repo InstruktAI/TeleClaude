@@ -76,6 +76,7 @@ Read step 5 before reaching for a project destination.
    on demand without any project doing anything.
 <!-- /planned-change:split-review-routing-from-sync-scope -->
 
+<!-- planned-change:agent-artifact-source-layout -->
 5. **Adopt project-locally — only for these two reasons.** Copy the complete package
    into the project's `.agents/skills/<name>/`:
    - the skill must fire without an agent first consulting the index, because a
@@ -111,6 +112,44 @@ Read step 5 before reaching for a project destination.
    TeleClaude repository and committing. Never delete a catalog entry or an immutable
    store snapshot through a project path.
 
+<!-- change:agent-artifact-source-layout -->
+5. **Adopt project-locally — only for these two reasons.** Copy the complete package
+   into the project's `agents/project/skills/<name>/`; sync delivers it into `.agents/skills/<name>/`:
+   - the skill must fire without an agent first consulting the index, because a
+     project-local skill is deployed into the agent runtime's own skill folder and is
+     therefore preloaded; or
+   - the skill must not be global — project-private, licence-bound, or too narrow to
+     earn a line in the shared catalog.
+
+   Absent one of those, step 4 is the destination. "Install" does not mean "install into
+   a project"; an agent that reaches for `agents/project/skills/` because a human said
+   "install" has misread the request.
+
+6. **Link an already-curated skill into a project.** When an indexed skill must be
+   always-on in one project, resolve `~/.teleclaude/skills/<name>` to its exact
+   `~/.teleclaude/skill-store/<digest>/<name>` target and symlink that immutable
+   snapshot from a pin declared under `agents/project/skills/<name>`; sync writes the link
+   into `.agents/skills/<name>`. Never link through the floating catalog name —
+   the symlink target is the installed-state record. The new link is not retroactively
+   added to the current session's preloaded context; read the installed package directly
+   for the remainder of the session.
+
+7. **Update deliberately.** Compare the installed package against its current upstream
+   or catalog snapshot and assess the behavioral impact from the actual diff. A selected
+   package differs from upstream only in its normalized `name`, so it diffs directly. A
+   consolidated package has no single upstream to diff against; compare each source
+   package it drew from, and re-consolidate rather than overwrite. For a
+   global package, replace the contents of `agents/global/skills/<name>/` and commit. For a
+   project link, repoint it at the exact current snapshot. No semver, compatibility
+   range, or machine-authored breaking-change classification participates in the
+   decision.
+
+8. **Remove cleanly.** Removing from a project means deleting that project's symlink or
+   package directory. Removing globally means deleting `agents/global/skills/<name>/` in the
+   TeleClaude repository and committing. Never delete a catalog entry or an immutable
+   store snapshot through a project path.
+
+<!-- /planned-change:agent-artifact-source-layout -->
 9. **Verify.** Confirm the package reached its intended scope: a global adoption
    appears in the `general/procedure/skill-use` listing, a project adoption or link
    appears in that project's rendered runtime artifacts.
@@ -128,6 +167,10 @@ Read step 5 before reaching for a project destination.
 - If upstream content was rewritten or given TeleClaude taxonomy metadata, restore the
   upstream package and repeat incorporation without modification.
 - If a package was adopted project-locally without one of step 5's two reasons, move it
+<!-- planned-change:agent-artifact-source-layout -->
   to `agents/skills/<name>/` and remove the project copy.
+<!-- change:agent-artifact-source-layout -->
+  to `agents/global/skills/<name>/` and remove the project copy.
+<!-- /planned-change:agent-artifact-source-layout -->
 - If validation fails, leave the prior state in place, correct the reported source
   problem, and rerun the operation.

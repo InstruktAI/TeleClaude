@@ -7,7 +7,11 @@ visibility: 'public'
 
 ## Rules
 
+<!-- planned-change:agent-artifact-source-layout -->
 - Every authored artifact — doc snippet, skill, command, or agent — must have its scope determined before creation.
+<!-- change:agent-artifact-source-layout -->
+- Every authored artifact — doc snippet, skill, or command — must have its scope determined before creation.
+<!-- /planned-change:agent-artifact-source-layout -->
 <!-- planned-change:agent-artifact-source-layout -->
 - **Global** (`docs/global/`, `agents/`): the knowledge or tooling applies across all projects. Examples: general procedures, cross-project policies, shared CLI tooling.
 - **Project** (`docs/project/`, `.agents/`): the knowledge or tooling is specific to this repository. Examples: project architecture, repo-specific workflows, local commands.
