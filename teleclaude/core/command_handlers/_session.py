@@ -136,7 +136,6 @@ async def _resolve_launch_intent(
         todo_kind=None,
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
-        producer_agent=cmd.producer_agent,
         candidate_order=intent.candidate_order,
     )
     if not intent.accepted_at_origin:
@@ -155,7 +154,6 @@ async def _resolve_launch_intent(
             decision_basis_digest=basis_digest,
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
-            producer_agent=cmd.producer_agent,
             command_kind=command_kind,
             thinking_mode=intent.thinking_mode,
         )
@@ -167,7 +165,6 @@ async def _resolve_launch_intent(
             todo_kind=todo_kind,
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
-            producer_agent=cmd.producer_agent,
             candidate_order=intent.candidate_order,
             entry_point=cmd.entry_point,
         )
@@ -187,7 +184,6 @@ async def _resolve_launch_intent(
             decision_basis_digest=basis_digest,
             preferred_agent=preferred_agent,
             fixed_agent=fixed_agent,
-            producer_agent=cmd.producer_agent,
             command_kind=command_kind,
             thinking_mode=intent.thinking_mode,
         )
@@ -199,7 +195,6 @@ async def _resolve_launch_intent(
     intent.job_role = cmd.job
     intent.preferred_agent = preferred_agent
     intent.fixed_agent = fixed_agent
-    intent.producer_agent = cmd.producer_agent
     intent.decision_basis_digest = basis_digest
     if intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE and intent.message is not None:
         raw_startup_message = intent.message
@@ -228,7 +223,6 @@ async def _resolve_launch_intent(
         decision_basis_digest=basis_digest,
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
-        producer_agent=cmd.producer_agent,
         command_kind=command_kind,
         thinking_mode=intent.thinking_mode,
         candidate_order=decision.candidate_order,
@@ -250,7 +244,6 @@ async def _resolve_launch_intent(
         decision_basis_digest=basis_digest,
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
-        producer_agent=cmd.producer_agent,
         command_kind=command_kind,
         thinking_mode=intent.thinking_mode,
         routing_explanation_included=False,
@@ -359,8 +352,6 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             working_slug = None
     project_path = os.path.expanduser(os.path.expandvars(project_path))
 
-    if cmd.job == "reviewer" and not cmd.producer_agent and parent_session:
-        cmd.producer_agent = parent_session.active_agent
     decision = await _resolve_launch_intent(cmd, project_path, working_slug)
     launch = cmd.launch_intent
     if launch and launch.kind in {SessionLaunchKind.AGENT, SessionLaunchKind.AGENT_THEN_MESSAGE}:
@@ -509,7 +500,6 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             job_role=cmd.job,
             preferred_agent=launch.preferred_agent if launch else None,
             fixed_agent=launch.fixed_agent if launch else None,
-            producer_agent=launch.producer_agent if launch else cmd.producer_agent,
             decision_basis_digest=launch.decision_basis_digest if launch else None,
             command_kind=cmd.initial_input.lstrip("/").split(maxsplit=1)[0] if cmd.initial_input else None,
             thinking_mode=launch.thinking_mode if launch else None,

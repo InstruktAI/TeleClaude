@@ -720,21 +720,12 @@ async def _run_session(
     request_id = str(uuid.uuid4())
     normalized_command = request.command.lstrip("/") if request.command.startswith("/") else None
     command_kind = "prepare" if normalized_command == SlashCommand.NEXT_PREPARE.value else normalized_command
-    producer_agent: str | None = None
     try:
         requested_command = SlashCommand(normalized_command) if normalized_command else None
     except ValueError:
         requested_command = None
     request_entry_point = SessionEntryPoint.CRON if requested_command is SlashCommand.NEXT_RUN_JOB else entry_point
     role_info = COMMAND_ROLE_MAP.get(requested_command) if requested_command else None
-    if (
-        role_info
-        and role_info[1].value == "reviewer"
-        and identity.session_id
-        and not identity.session_id.startswith("web:")
-    ):
-        producer = await db.get_session(identity.session_id)
-        producer_agent = producer.active_agent if producer is not None else None
     agent_supplied = "agent" in request.model_fields_set
     requested_agent = request.agent if agent_supplied else None
     dispatch_mode, preferred_agent = classify_fresh_agent_preference(
@@ -748,7 +739,6 @@ async def _run_session(
         todo_kind=None,
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
-        producer_agent=producer_agent,
     )
     emit_run_accepted(
         request_id=request_id,
@@ -758,7 +748,6 @@ async def _run_session(
         command_kind=command_kind,
         working_slug_present=bool(normalized_command and infer_working_slug(normalized_command, request.args.strip())),
         caller_kind_present=False,
-        producer_agent=producer_agent,
         preferred_agent=preferred_agent,
         fixed_agent=fixed_agent,
         decision_basis_digest=basis_digest,
@@ -821,7 +810,6 @@ async def _run_session(
         cmd.request_id = request_id
         if cmd.launch_intent is not None:
             cmd.launch_intent.accepted_at_origin = True
-        cmd.producer_agent = producer_agent
     try:
         guard_result = await enforce_driver_start_guard(
             project_path=request.project,

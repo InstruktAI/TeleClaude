@@ -101,7 +101,6 @@ class SessionLaunchIntent:
     job_role: str | None = None
     preferred_agent: str | None = None
     fixed_agent: str | None = None
-    producer_agent: str | None = None
     candidate_order: tuple[str, ...] | None = None
     decision_basis_digest: str | None = None
     accepted_at_origin: bool = False
@@ -124,7 +123,6 @@ class SessionLaunchIntent:
             "job_role": self.job_role,
             "preferred_agent": self.preferred_agent,
             "fixed_agent": self.fixed_agent,
-            "producer_agent": self.producer_agent,
             "candidate_order": list(self.candidate_order) if self.candidate_order is not None else None,
             "decision_basis_digest": self.decision_basis_digest,
             "accepted_at_origin": self.accepted_at_origin,
@@ -151,7 +149,6 @@ class SessionLaunchIntent:
             job_role=cast(str | None, data.get("job_role")),
             preferred_agent=cast(str | None, data.get("preferred_agent")),
             fixed_agent=cast(str | None, data.get("fixed_agent")),
-            producer_agent=cast(str | None, data.get("producer_agent")),
             candidate_order=(
                 tuple(cast(list[str], data["candidate_order"])) if data.get("candidate_order") is not None else None
             ),

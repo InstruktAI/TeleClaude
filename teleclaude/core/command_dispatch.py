@@ -265,7 +265,6 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
                 dispatch_mode=intent.dispatch_mode,
                 entry_point=command.entry_point,
                 job_role=command.job,
-                producer_agent=command.producer_agent,
             )
         elif intent is not None and intent.dispatch_mode is AgentDispatchMode.FIXED:
             emit_agent_dispatch_decision(
@@ -277,7 +276,6 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
                 dispatch_mode=intent.dispatch_mode,
                 entry_point=command.entry_point,
                 job_role=command.job,
-                producer_agent=command.producer_agent,
             )
 
     message_id = await client.send_request(

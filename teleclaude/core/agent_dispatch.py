@@ -46,12 +46,10 @@ class AgentDispatchReason(StrEnum):
     MANUAL_PREFERENCE_DEGRADED = "manual_preference_degraded"
     MANUAL_PREFERENCE_UNAVAILABLE = "manual_preference_unavailable"
     DETERMINISTIC_INELIGIBILITY = "deterministic_ineligibility"
-    REVIEWER_INDEPENDENCE = "reviewer_independence"
     UNKNOWN_AGENT = "unknown_agent"
     DISABLED_AGENT = "disabled_agent"
     AVAILABILITY_READ_FAILED = "availability_read_failed"
     NO_ELIGIBLE_CANDIDATE = "no_eligible_candidate"
-    NO_INDEPENDENT_CANDIDATE = "no_independent_candidate"
     TARGET_CAPABILITY_PRESENT = "target_capability_present"
     TARGET_CAPABILITY_MISSING = "target_capability_missing"
     FIXED_INTENT = "fixed_intent"
@@ -428,7 +426,6 @@ async def resolve_agent_dispatch(
     todo_kind: str | None,
     preferred_agent: str | None,
     fixed_agent: str | None,
-    producer_agent: str | None,
     candidate_order: tuple[str, ...] | None,
     entry_point: SessionEntryPoint | None,
 ) -> AgentDispatchDecision:
@@ -486,28 +483,6 @@ async def resolve_agent_dispatch(
             "No configured and available agent can run this session",
         )
 
-    if role == "reviewer" and producer_agent:
-        independent = [agent for agent in eligible if agent != producer_agent]
-        if independent:
-            fallback = (
-                AgentDispatchReason.REVIEWER_INDEPENDENCE
-                if preferred_agent == eligible[0] and independent[0] != preferred_agent
-                else None
-            )
-            return AgentDispatchDecision(
-                agent=independent[0],
-                reason=reason,
-                fallback_reason=fallback,
-                candidate_order=policy_order,
-                order_branch=order_branch,
-            )
-        return AgentDispatchDecision(
-            agent=eligible[0],
-            reason=AgentDispatchReason.NO_INDEPENDENT_CANDIDATE,
-            candidate_order=policy_order,
-            order_branch=order_branch,
-        )
-
     fallback = AgentDispatchReason.DETERMINISTIC_INELIGIBILITY if eligible[0] != order[0] else None
     return AgentDispatchDecision(
         agent=eligible[0],
@@ -533,7 +508,6 @@ def emit_agent_dispatch_decision(
     fallback_reason: AgentDispatchReason | None = None,
     preferred_agent: str | None = None,
     fixed_agent: str | None = None,
-    producer_agent: str | None = None,
     policy: AgentDispatchPolicy = AgentDispatchPolicy.EACH_OPPORTUNITY,
     revision: int = 1,
     agent_supplied: bool | None = None,
@@ -560,7 +534,7 @@ def emit_agent_dispatch_decision(
         "agent_runtime.agent_dispatch.decision stage=%s outcome=%s reason=%s selected_agent=%s "
         "request_id=%s session_id=%s dispatch_mode=%s entry_point=%s job_role=%s todo_kind=%s "
         "fallback_reason_present=%s policy=%s revision=%s agent_supplied=%s working_slug_present=%s "
-        "kind_source=%s decision_basis_digest=%s preferred_agent=%s fixed_agent=%s producer_agent=%s "
+        "kind_source=%s decision_basis_digest=%s preferred_agent=%s fixed_agent=%s "
         "command_kind=%s thinking_mode=%s caller_kind_present=%s "
         "routing_explanation_included=%s candidate_order=%s order_branch=%s",
         stage,
@@ -582,7 +556,6 @@ def emit_agent_dispatch_decision(
         decision_basis_digest,
         preferred_agent,
         fixed_agent,
-        producer_agent,
         command_kind,
         thinking_mode,
         caller_kind_present,
@@ -615,7 +588,6 @@ def decision_basis_digest(
     todo_kind: str | None,
     preferred_agent: str | None,
     fixed_agent: str | None,
-    producer_agent: str | None,
     candidate_order: tuple[str, ...] | None = None,
 ) -> str:
     """Create a stable privacy-safe correlation basis for equivalent decisions."""
@@ -624,7 +596,6 @@ def decision_basis_digest(
             "fixed_agent": fixed_agent,
             "mode": mode.value,
             "preferred_agent": preferred_agent,
-            "producer_agent": producer_agent,
             "candidate_order": candidate_order,
             "role": role,
             "todo_kind": todo_kind,

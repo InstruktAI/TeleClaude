@@ -460,9 +460,6 @@ async def _create_session_response(
         cmd.entry_point = command_entry_point
         if cmd.launch_intent is not None:
             cmd.launch_intent.entry_point = cmd.entry_point
-        if cmd.job == "reviewer" and initiator_session_id:
-            producer = await db.get_session(initiator_session_id)
-            cmd.producer_agent = producer.active_agent if producer is not None else None
     # Fail fast before a session is spawned. The authoritative check runs under
     # the endpoint locks inside link creation; this only spares the caller a
     # session it could not have linked.
