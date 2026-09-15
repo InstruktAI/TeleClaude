@@ -235,8 +235,6 @@ Tier catalogs and sources are published like every other publisher's: they
 enter the staged documentation generation and the merged index, each tier's own
 catalog is deployed beside its material whether or not it has entries, and
 every reader reads the deployed corpus. Nothing reads a tier's authoring home.
-Publication is triggered at the commit boundary of the home repository the tier
-lives in, never by a watcher.
 
 Discovery names every tier in the caller's read set with the entries it
 contributes, so a participating tier that holds nothing is visible as a tier
