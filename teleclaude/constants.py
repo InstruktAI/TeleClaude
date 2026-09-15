@@ -511,6 +511,7 @@ class CheckpointAction:
     off_main_eligible: bool = True
     precedence: int = 0
     evidence_must_follow_last_mutation: bool = False
+    command: tuple[str, ...] = ()
 
     def effective_evidence(self) -> tuple[str, ...]:
         """Evidence substrings proving the action ran; defaults to ``[run]``."""
@@ -561,6 +562,7 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
         evidence=("make install",),
         main_only=True,
         precedence=10,
+        command=("make", "install"),
     ),
     "sync": CheckpointAction(
         id="sync",
@@ -568,11 +570,13 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
         evidence=("telec sync",),
         main_only=True,
         precedence=55,
+        command=("telec", "sync", "--skip-deploy"),
     ),
     "log-check": CheckpointAction(
         id="log-check",
         run="Check logs: `instrukt-ai-logs {slug} --since {window} --exclude git-wrapper`",
         evidence=("instrukt-ai-logs",),
+        main_only=True,
         off_main_eligible=False,
         precedence=58,
     ),
@@ -587,10 +591,10 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
 # Universal base bindings preserve their scopes for project overlays. Platform
 # defaults bind no action; `test` and `log-check` attach to a project-declared
 # `code` scope (code is an allowlist; an unmatched file is silent).
-CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=())
+CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
 CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("agents/**", ".agents/**", "**/AGENTS.master.md")),
-    actions=(),
+    actions=("sync",),
 )
 CHECKPOINT_BASE_CODE_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("Makefile", ".pre-commit-config.yaml", ".gitattributes", ".husky/pre-commit")),

@@ -17,6 +17,7 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV, WORKTREE_DIR
+from teleclaude.core.integration.post_commit_maintenance import run_post_commit_maintenance
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo, no_autostash_env
 from teleclaude.git_lock import main_branch_lock
 
@@ -27,6 +28,7 @@ _GIT_REV_LIST_COUNTS_ARGS = ("rev-list", "--left-right", "--count", "HEAD...orig
 _GIT_INCOMING_PATHS_ARGS = ("diff", "--name-only", "-z", "HEAD...origin/main")
 _GIT_DIRTY_PATHS_ARGS = ("status", "--porcelain=v1", "-z")
 _GIT_FAST_FORWARD_ARGS = ("merge", "--ff-only", "origin/main")
+_GIT_RANGE_SEPARATOR = ".."
 _GIT_PUSH_ORIGIN_MAIN_ARGS = ("push", "origin", "main")
 _GIT_PATH_SEPARATOR = "\0"
 _GIT_STATUS_PATH_OFFSET = 3
@@ -319,8 +321,13 @@ def _synchronize_repo_root(*, cwd: str, session_id: str, stage: RepoRootSyncStag
             dirty_overlap_paths=dirty_overlap_paths,
         )
 
+    previous_head = _get_head_sha(cwd)
     fast_forward_rc, _, fast_forward_stderr = _run_git(list(_GIT_FAST_FORWARD_ARGS), cwd=cwd, env=env)
     outcome = RepoRootSyncOutcome.FAST_FORWARDED if fast_forward_rc == 0 else RepoRootSyncOutcome.FAST_FORWARD_FAILED
+    if outcome is RepoRootSyncOutcome.FAST_FORWARDED and previous_head is not None:
+        current_head = _get_head_sha(cwd)
+        if current_head is not None and current_head != previous_head:
+            run_post_commit_maintenance(Path(cwd), previous_head + _GIT_RANGE_SEPARATOR + current_head)
     return _sync_result(
         stage=stage,
         outcome=outcome,

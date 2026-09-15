@@ -6,9 +6,11 @@ from teleclaude.git import GitCommandError, Repo
 
 _HOOK_TEMPLATE_DIRECTORY = Path(__file__).resolve().parents[2] / "templates" / "quality" / "githooks"
 _PRECOMMIT_NAME = "pre-commit"
+_POSTCOMMIT_NAME = "post-commit"
 _POSTMERGE_NAME = "post-merge"
 _PREPUSH_NAME = "pre-push"
 _PRECOMMIT_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _PRECOMMIT_NAME
+_POSTCOMMIT_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _POSTCOMMIT_NAME
 _POSTMERGE_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _POSTMERGE_NAME
 _PREPUSH_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _PREPUSH_NAME
 _TELECLAUDE_SENTINEL = b"# teleclaude:"
@@ -67,6 +69,7 @@ def install_code_hooks(project_root: Path) -> None:
     """Install the capability-owned hook set from its canonical templates."""
     for hook_name, source_path in (
         (_PRECOMMIT_NAME, _PRECOMMIT_SOURCE),
+        (_POSTCOMMIT_NAME, _POSTCOMMIT_SOURCE),
         (_POSTMERGE_NAME, _POSTMERGE_SOURCE),
         (_PREPUSH_NAME, _PREPUSH_SOURCE),
     ):

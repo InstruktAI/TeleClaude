@@ -1,8 +1,8 @@
 ---
-description: Deterministic maintenance runs automatically at the commit boundary, for every committer, performing the actions a commit's changed paths owe and reporting each through the structured logging boundary.
+description: Deterministic maintenance runs automatically at the commit boundary,
+  for every committer, performing the actions a commit's changed paths owe and reporting
+  each through the structured logging boundary.
 visibility: internal
-delivered_by:
-  - post-commit-hook-runs-mechanical-maintenance
 ---
 
 # Post-Commit Maintenance — Spec

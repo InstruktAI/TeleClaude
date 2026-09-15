@@ -997,69 +997,26 @@ install_python_deps() {
     print_success "Python dependencies installed"
 }
 
-install_precommit_hook() {
+install_hook() {
+    local hook_name="$1"
     local hook_dest hook_src
-    if hook_dest=$(git -C "$INSTALL_DIR" rev-parse --git-path hooks/pre-commit 2>/dev/null); then
+    if hook_dest=$(git -C "$INSTALL_DIR" rev-parse --git-path "hooks/$hook_name" 2>/dev/null); then
         case "$hook_dest" in
             /*) ;;
             *) hook_dest="$INSTALL_DIR/$hook_dest" ;;
         esac
     else
-        hook_dest="$INSTALL_DIR/.git/hooks/pre-commit"
+        hook_dest="$INSTALL_DIR/.git/hooks/$hook_name"
     fi
 
     mkdir -p "$(dirname "$hook_dest")"
-    hook_src="$INSTALL_DIR/templates/quality/githooks/pre-commit"
+    hook_src="$INSTALL_DIR/templates/quality/githooks/$hook_name"
     if [ -f "$hook_src" ]; then
         cp "$hook_src" "$hook_dest"
         chmod +x "$hook_dest"
-        print_success "Pre-commit hook installed"
+        print_success "$hook_name hook installed"
     else
-        print_warning "Pre-commit hook source not found; skipping"
-    fi
-}
-
-install_postmerge_hook() {
-    local hook_dest hook_src
-    if hook_dest=$(git -C "$INSTALL_DIR" rev-parse --git-path hooks/post-merge 2>/dev/null); then
-        case "$hook_dest" in
-            /*) ;;
-            *) hook_dest="$INSTALL_DIR/$hook_dest" ;;
-        esac
-    else
-        hook_dest="$INSTALL_DIR/.git/hooks/post-merge"
-    fi
-
-    mkdir -p "$(dirname "$hook_dest")"
-    hook_src="$INSTALL_DIR/templates/quality/githooks/post-merge"
-    if [ -f "$hook_src" ]; then
-        cp "$hook_src" "$hook_dest"
-        chmod +x "$hook_dest"
-        print_success "Post-merge hook installed"
-    else
-        print_warning "Post-merge hook source not found; skipping"
-    fi
-}
-
-install_prepush_hook() {
-    local hook_dest hook_src
-    if hook_dest=$(git -C "$INSTALL_DIR" rev-parse --git-path hooks/pre-push 2>/dev/null); then
-        case "$hook_dest" in
-            /*) ;;
-            *) hook_dest="$INSTALL_DIR/$hook_dest" ;;
-        esac
-    else
-        hook_dest="$INSTALL_DIR/.git/hooks/pre-push"
-    fi
-
-    mkdir -p "$(dirname "$hook_dest")"
-    hook_src="$INSTALL_DIR/templates/quality/githooks/pre-push"
-    if [ -f "$hook_src" ]; then
-        cp "$hook_src" "$hook_dest"
-        chmod +x "$hook_dest"
-        print_success "Pre-push hook installed"
-    else
-        print_warning "Pre-push hook source not found; skipping"
+        print_warning "$hook_name hook source not found; skipping"
     fi
 }
 
@@ -1073,9 +1030,10 @@ install_deps_only() {
 
     (cd "$INSTALL_DIR" && uv run --group dev python -c "print(\"Python environment ready\")")
 
-    install_precommit_hook
-    install_postmerge_hook
-    install_prepush_hook
+    install_hook pre-commit
+    install_hook post-commit
+    install_hook post-merge
+    install_hook pre-push
     print_success "Project dependencies installed"
 }
 
@@ -1552,8 +1510,9 @@ main() {
 
     install_system_deps
     install_python_deps
-    install_precommit_hook
-    install_postmerge_hook
+    install_hook pre-commit
+    install_hook post-commit
+    install_hook post-merge
     install_blueprint_engine
     if [ "$CI_MODE" = false ]; then
         install_log_runtime

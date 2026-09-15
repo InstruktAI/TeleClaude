@@ -33,17 +33,20 @@ checkpoint:
       evidence: [make restart]
       main_only: true
       precedence: 30
+      command: [make, restart]
     deps:
       run: 'Install updated dependencies: `uv sync`'
       evidence: [uv sync, make install]
       main_only: true
       precedence: 20
+      command: [uv, sync]
     tui-reload:
       run: Run `telec reload`
       evidence: [telec reload]
       evidence_must_follow_last_mutation: true
       main_only: true
       precedence: 40
+      command: [telec, reload]
   bindings:
     # Log-check covers all daemon source. The `code` overlay block is deliberately
     # absent: declaring it would bind `test`, which docs/project/policy/test-moratorium.md
@@ -87,13 +90,7 @@ checkpoint:
         include: [pyproject.toml, requirements*.txt]
       actions: [deps]
     - scope:
-        include:
-          [
-            teleclaude/install/**,
-            teleclaude/project_setup/**,
-            teleclaude/hooks/adapters/**,
-            templates/**,
-          ]
+        include: [teleclaude/install/**, teleclaude/project_setup/**, teleclaude/hooks/adapters/**, templates/**]
       actions: [install]
     - scope:
         include: [teleclaude/cli/tui/**]

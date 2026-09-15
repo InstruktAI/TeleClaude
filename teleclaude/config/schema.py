@@ -453,6 +453,7 @@ class CheckpointActionConfig(BaseModel):
     main_only: bool = False
     precedence: int = 0
     evidence_must_follow_last_mutation: bool = False
+    command: list[str] = Field(default_factory=list)
 
 
 class CheckpointScopeConfig(BaseModel):
