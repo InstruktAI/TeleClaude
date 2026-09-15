@@ -220,8 +220,9 @@ Someone with no relationship to a company is not shut out of it — they meet th
 snippet's own declaration and read what is public, which is how a help desk
 running inside a project registered to a company answers public questions for
 people who do not belong to it. Explicit selectors naming a person, a company, or
-a project override the derived scope and are available to platform admins only,
-whatever relationship the caller holds to the tier they name.
+a project narrow the read to that tier and never widen it: the named tier is read
+at the depth the caller's relationship grants, and a platform admin reads any
+named tier in full.
 <!-- /planned:docs-tier-layering -->
 
 ## Failure modes

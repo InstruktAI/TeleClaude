@@ -184,29 +184,22 @@ environment, or an identity service to discover who is calling — has taken bot
 a decision and an ownership that are not its own. A surface that inspects a
 relationship to choose what to load has taken the reach decision.
 
-**Selector authorization.** One rule covers every selector that names a tier —
-a person, a company, or a project: naming a tier explicitly is reserved to
-platform administrators. A caller who is not one reads their derived scope,
-narrowed by the filters that name no tier.
+**Selector reach.** One rule covers every selector that names a tier — a
+person, a company, or a project: naming a tier narrows the read to that tier and
+never widens what the caller may read. The named tier is read at the depth the
+caller's relationship to it grants — in full where a relationship exists, at what
+its snippets declare public where none does — and a platform administrator reads
+any named tier in full. A tier that yields nothing at the caller's depth returns
+the same empty answer as a tier that does not exist, so naming discloses nothing.
 
-Retrieving a snippet by an identity already present in the caller's assembled
-catalogs is not naming a tier: it is the second phase of the discovery the caller
-was already permitted, and it stays open to everyone. Using an identity to pull
-in a tier the caller's derived scope does not contain is the reach the rule
-governs, and it meets the rule.
+Retrieving a snippet by identity follows the same rule: an identity in a tier the
+caller's assembled catalogs do not contain loads that tier at the caller's depth.
+The selector and the identity are two ways of naming; neither is a grant.
 
-Authorization precedes lookup. A caller who may not name a tier is refused
-without the request being resolved, so refusal never reports whether the named
-tier exists. Only for a caller who may name tiers does an unknown name return
-nothing.
-
-The refusal is a refusal rather than a silent narrowing — a caller who may not
-name a tier is told so instead of receiving a smaller answer that looks like the
-tier is empty. Naming a tier that does not exist returns nothing, which is not a
-refusal and discloses nothing about a tier's existence.
-
-This gate lives here rather than with command clearance. Clearance authorizes a
-verb; this authorizes what one argument to that verb may reach.
+Authorization therefore lives in one place — the depth the resolution stage
+assigns — and no selector carries a gate of its own. Command clearance authorizes
+the verb; what one argument to that verb returns is decided by the same
+resolution every unselected read goes through.
 
 ### 6. Tier-Qualified Identity
 

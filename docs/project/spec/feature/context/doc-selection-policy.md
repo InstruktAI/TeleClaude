@@ -148,12 +148,10 @@ And visibility gating still applies
 #### UC-DSP18: Reaching a tier by snippet identity meets the selector rule
 
 ```
-Given a snippet ID whose prefix matches a known project slug in the cross-project catalog
-And that Source is not already in the caller's assembled catalogs
-And the caller is authorized to name a tier explicitly
+Given a snippet ID whose prefix names a tier the caller's assembled catalogs do not contain — a project slug, company/<slug>, or person/<slug>
 When the caller references that ID without a selector
-Then the cross-project Source is loaded
-And visibility gating still applies
+Then that tier's Source is loaded
+And visibility gating applies at the depth the caller's relationship to that tier grants
 ```
 <!-- /planned-change:docs-tier-layering -->
 
@@ -177,7 +175,6 @@ And global-scoped snippets are excluded
 
 #### UC-DSP3: Project filter keeps only the queried project's snippets
 
-<!-- planned-change:docs-tier-layering -->
 ```
 Given --project <slug> matching a registered project in the cross-project catalog
 When the Selection policy applies the project filter
@@ -185,33 +182,14 @@ Then only snippets whose source project is <slug> are returned
 And global snippets and the current project's snippets are excluded
 And the filter composes with --areas, --domains, --baseline-only, --scope, and --target
 ```
-<!-- change:docs-tier-layering -->
-```
-Given --project <slug> matching a registered project in the cross-project catalog
-And the caller is authorized to name a tier explicitly
-When the Selection policy applies the project filter
-Then only snippets whose source project is <slug> are returned
-And global snippets and the current project's snippets are excluded
-And the filter composes with --areas, --domains, --baseline-only, --scope, and --target
-```
-<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP4: Project filter on an unknown slug returns nothing
 
-<!-- planned-change:docs-tier-layering -->
 ```
 Given --project <slug> matching no project in the cross-project catalog
 When the Selection policy applies the project filter
 Then no snippets are returned
 ```
-<!-- change:docs-tier-layering -->
-```
-Given --project <slug> matching no project in the cross-project catalog
-And the caller is authorized to name a tier explicitly
-When the Selection policy applies the project filter
-Then no snippets are returned
-```
-<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP5: Domains filter keeps only snippets in the requested published domains
 
@@ -302,26 +280,25 @@ When the Selection policy resolves the request
 Then that named tier is returned in full
 ```
 
-#### UC-DSP17: A non-administrator is refused every tier selector
+#### UC-DSP17: A selector never widens a non-administrator's reach
 
 ```
 Given an agent session running under the identity of a person who is not a platform administrator
 And the session names a person, a company, or a project tier explicitly by selector
+And that identity holds no declared relationship to the named tier
 When the Selection policy resolves the request
-Then the reach is refused before the named tier is looked up
-And the refusal stands whether or not that identity holds a declared relationship to the named tier
-And the refusal does not fall back to a narrower read of that tier
-And the refusal is identical whether or not the named tier exists
+Then only snippets of that tier declaring themselves public are returned
+And the answer is identical whether the tier holds no public material or does not exist
 ```
 
-#### UC-DSP27: A non-administrator is refused an identity outside its assembled catalogs
+#### UC-DSP29: Naming a related tier reads it in full
 
 ```
 Given an agent session running under the identity of a person who is not a platform administrator
-And the session references a snippet identity that its assembled catalogs do not contain
+And the session names a company the person belongs to, a project the person reaches, or the person's own tier
 When the Selection policy resolves the request
-Then the reach is refused before that identity is looked up
-And the refusal is identical whether or not the identity exists
+Then that named tier is returned in full
+And no other tier is returned
 ```
 
 #### UC-DSP14: Membership in several companies stays unambiguous
