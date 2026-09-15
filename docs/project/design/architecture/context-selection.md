@@ -147,11 +147,11 @@ snippet, not a scope of its own, and the ordering never treats it as one.
 <!-- planned:docs-tier-layering -->
 ### 5. Caller-Scope Resolution
 
-Source assembly is preceded by resolving the caller into a set of reachable
-tiers. The stage takes the resolved person and the resolved organizational
-membership from identity, and a project's declared owning company from
-configuration, and returns the tiers in reach paired with the depth each is read
-at. The membership facts are read where they are resolved, not where they are
+Source assembly is preceded by resolving the caller. The stage takes the
+resolved person and the resolved organizational membership from identity, and a
+project's declared owning company from configuration, and answers two things:
+the depth the caller reads any tier at, and the default read set — the tiers
+assembled when the caller names none, each paired with its depth. The membership facts are read where they are resolved, not where they are
 declared: configuration owns the declarations and publishes them to identity,
 which owns what they mean. Nothing downstream re-derives reach: assembly loads the
 tiers the stage named, and the include predicate applies the depth it assigned.
@@ -167,10 +167,14 @@ result.
 
 Reach and depth are separate answers and are never traded for one another. Reach
 decides which tiers are assembled; depth decides how much of an assembled tier is
-read. A caller with no declared relationship to a tier may still meet that tier
-because the invocation offers it — the project being worked in, and the company
-that project declares as its owner — and meets it at public-only depth. A caller
-with no resolvable identity gains no tier from a relationship it does not have.
+read. The default read set is the relationship-derived tiers, global, and what
+the invocation offers — the project being worked in and the company that project
+declares as its owner — the last two met at whatever depth the caller's
+relationship grants, public-only where there is none. Naming a tier, by selector
+or by snippet identity, changes reach: the named tier is assembled instead of
+the default set, at the depth this stage grants the caller for it. Naming never
+changes depth. A caller with no resolvable identity gains no tier from a
+relationship it does not have.
 
 **Layer placement.** The caller arrives already resolved. Identity resolution
 belongs to the boundary that owns injection, and the resolved caller reaches the
@@ -184,17 +188,14 @@ environment, or an identity service to discover who is calling — has taken bot
 a decision and an ownership that are not its own. A surface that inspects a
 relationship to choose what to load has taken the reach decision.
 
-**Selector reach.** One rule covers every selector that names a tier — a
-person, a company, or a project: naming a tier narrows the read to that tier and
-never widens what the caller may read. The named tier is read at the depth the
-caller's relationship to it grants — in full where a relationship exists, at what
-its snippets declare public where none does — and a platform administrator reads
-any named tier in full. A tier that yields nothing at the caller's depth returns
-the same empty answer as a tier that does not exist, so naming discloses nothing.
-
-Retrieving a snippet by identity follows the same rule: an identity in a tier the
-caller's assembled catalogs do not contain loads that tier at the caller's depth.
-The selector and the identity are two ways of naming; neither is a grant.
+**Naming a tier.** One rule covers every selector that names a tier — a person,
+a company, or a project — and every snippet identity that names one: the named
+tier is assembled at the depth the caller's relationship to it grants — in full
+where a relationship exists, at what its snippets declare public where none does
+— and a platform administrator reads any named tier in full. Naming adds the
+tier to what is assembled; it grants nothing about how deeply it is read. A tier
+that yields nothing at the caller's depth returns the same empty answer as a
+tier that does not exist, so naming discloses nothing.
 
 Authorization therefore lives in one place — the depth the resolution stage
 assigns — and no selector carries a gate of its own. Command clearance authorizes

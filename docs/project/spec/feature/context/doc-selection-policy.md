@@ -280,7 +280,7 @@ When the Selection policy resolves the request
 Then that named tier is returned in full
 ```
 
-#### UC-DSP17: A selector never widens a non-administrator's reach
+#### UC-DSP17: Naming a tier never widens a non-administrator's depth
 
 ```
 Given an agent session running under the identity of a person who is not a platform administrator
