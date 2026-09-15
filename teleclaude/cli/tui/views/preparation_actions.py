@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Callable
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 from urllib.parse import quote
 
@@ -90,6 +92,12 @@ _RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE = "Released hold on '{slug}'"
 _UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE = "Unexpected response: {response}"
 
 
+class PreparationAction(StrEnum):
+    """Closed vocabulary for Preparation view actions added after the legacy bindings."""
+
+    FLASH_DEPENDENCIES = "flash_dependencies"
+
+
 class _ApprovalGateState(TypedDict, total=False):
     kind: str | None
     lifecycle_phase: str | None
@@ -143,6 +151,10 @@ class PreparationViewActionsMixin:
         app: Any
         _projects_with_todos: list[ProjectWithTodosDTO]
 
+        def _clear_dependency_flash(self) -> None: ...
+
+        def _flash_dependencies(self) -> None: ...
+
     @staticmethod
     def _next_command(base: str, slug: str | None) -> str:
         """Build /next-* command with optional slug."""
@@ -189,6 +201,7 @@ class PreparationViewActionsMixin:
             "reactivate_selected",
             "toggle_delivered",
             "toggle_icebox",
+            PreparationAction.FLASH_DEPENDENCIES,
         }
         project_disallowed = {
             "remove_artifact",
@@ -201,6 +214,7 @@ class PreparationViewActionsMixin:
             "unfreeze",
             "approve_gate",
             "hold",
+            PreparationAction.FLASH_DEPENDENCIES,
         }
         file_disallowed = {
             "new_todo",
@@ -210,6 +224,7 @@ class PreparationViewActionsMixin:
             "unfreeze",
             "approve_gate",
             "hold",
+            PreparationAction.FLASH_DEPENDENCIES,
         }
 
         if isinstance(item, ComputerHeader):
@@ -244,9 +259,14 @@ class PreparationViewActionsMixin:
 
     def watch_cursor_index(self, _index: int) -> None:
         """Refresh key bindings when node context changes."""
+        self._clear_dependency_flash()
         if self.is_attached:  # type: ignore[attr-defined]
             self.app.refresh_bindings()  # type: ignore[attr-defined]
             self.call_after_refresh(self._sync_default_footer_action)  # type: ignore[attr-defined]
+
+    def action_flash_dependencies(self) -> None:
+        """Flash the selected todo's displayed dependencies."""
+        PREPARATION_ACTION_HANDLERS[PreparationAction.FLASH_DEPENDENCIES](self)
 
     def _default_footer_action(self) -> str | None:
         """Return the primary action for the selected node."""
@@ -1049,3 +1069,13 @@ class PreparationViewActionsMixin:
                 self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
         except Exception as exc:
             self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+
+
+def _handle_flash_dependencies(view: PreparationViewActionsMixin) -> None:
+    """Dispatch the dependency flash through its declared view capability."""
+    view._flash_dependencies()
+
+
+PREPARATION_ACTION_HANDLERS: dict[PreparationAction, Callable[[PreparationViewActionsMixin], None]] = {
+    PreparationAction.FLASH_DEPENDENCIES: _handle_flash_dependencies,
+}

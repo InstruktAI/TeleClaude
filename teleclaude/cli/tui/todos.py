@@ -16,6 +16,7 @@ class TodoItem:
     description: str | None
     has_requirements: bool
     has_impl_plan: bool
+    project_path: str
     build_status: str | None = None
     review_status: str | None = None
     prepare_review_verdict: str | None = None
@@ -35,7 +36,8 @@ class TodoItem:
     schedule: str | None = None
     task_plan_digest: str | None = None
     task_approved_digest: str | None = None
-    project_path: str | None = None
+    computer: str | None = None
+    visual_dependency_parent_id: str | None = None
     is_holder: bool = False
     todo_id: str | None = None
     removed_at: str | None = None

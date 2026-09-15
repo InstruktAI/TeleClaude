@@ -38,6 +38,8 @@ class TodoNode:
     a dep-parent has its own status and must render it. Only real holders
     (todos that other todos point at via ``group_id``) suppress status.
     """
+    visual_dependency_parent_id: str | None = None
+    """Durable id of the dependency chosen as this row's visual tree parent."""
 
 
 @dataclass
@@ -59,6 +61,7 @@ class FlatRow:
     is_last: bool
     tree_lines: list[bool]
     is_holder: bool
+    visual_dependency_parent_id: str | None = None
 
 
 def _has_cycle_to(parent_map: dict[str, str | None], node_id: str, target_id: str) -> bool:
@@ -228,10 +231,15 @@ def _build_tree(todos: list[TodoDTO], *, sibling_key: SiblingKey | None = None) 
     ordered_roots = _topo_sort_siblings(roots, root_after, by_id=by_id, sibling_key=sibling_key)
 
     def _node(node_id: str) -> TodoNode:
+        parent_id = parent_map[node_id]
+        visual_dependency_parent_id = (
+            parent_id if parent_id is not None and by_id[parent_id].slug in by_id[node_id].after else None
+        )
         return TodoNode(
             todo=by_id[node_id],
             children=[_node(child) for child in children_map.get(node_id, [])],
             is_holder=node_id in holder_ids,
+            visual_dependency_parent_id=visual_dependency_parent_id,
         )
 
     return [_node(root) for root in ordered_roots]
@@ -302,6 +310,7 @@ def flatten(
                 is_last=row_is_last,
                 tree_lines=tree_lines,
                 is_holder=node.is_holder,
+                visual_dependency_parent_id=node.visual_dependency_parent_id,
             )
         )
         if node.children:
