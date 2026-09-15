@@ -36,14 +36,12 @@ abandoned slug. Every operation is slug-scoped: unrelated pending material stays
 byte-identical, and repeating a completed reconciliation makes no further
 change.
 
-<!-- planned:fix-delivered-todos-attribution-by-declarati -->
 For integrated candidates, repository-root main is the sole documentation
 reconciliation surface. The integration worktree publishes candidate code but
 does not fold pending documentation. After that candidate commit is confirmed on
 origin/main, candidate finalization synchronizes repository-root main, folds the
 candidate slug there, publishes the folded root, and records only that final
 confirmed SHA as delivered.
-<!-- /planned:fix-delivered-todos-attribution-by-declarati -->
 
 A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
 detects settled-slug/live-marker divergence wherever documentation material
@@ -146,15 +144,6 @@ And unrelated live and pending material is not rewritten
 
 #### UC-LMR8: Integration pre-applies candidate delivery before bookkeeping
 
-<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
-```gherkin
-Given a snippet has pending material owned by the current integration candidate
-And delivery bookkeeping has not yet recorded the candidate as delivered
-When the candidate merge is prepared in the integration worktree
-Then reconciliation treats the current candidate as delivered
-And stages the reconciled snippet paths before the commit prompt is returned
-```
-<!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given repository-root main contains pending material owned by an integration candidate
 And the candidate commit has been published from the integration worktree and confirmed on origin/main
@@ -163,7 +152,6 @@ Then it synchronizes repository-root main with the confirmed candidate
 And it reconciles that slug against the repository-root documentation set
 And it publishes and confirms the folded repository-root head before delivery is recorded
 ```
-<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-LMR9: Partial ownership remains pending after delivery
 
@@ -177,16 +165,6 @@ And the material does not become current until its remaining owners resolve
 
 #### UC-LMR10: Conflict resolution repeats candidate-scoped reconciliation
 
-<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
-```gherkin
-Given an integration candidate merge was conflicted
-And the operator has resolved the conflicts but not committed them
-When the integration flow prepares the conflict-resolution commit
-Then candidate-scoped reconciliation runs again
-And the reconciled paths are staged before the commit prompt is returned
-And unrelated stale material is not folded into the candidate commit
-```
-<!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given an integration candidate required conflict resolution before its commit was published
 And the resolved candidate commit is confirmed on origin/main
@@ -195,7 +173,6 @@ Then candidate-scoped reconciliation runs against repository-root main
 And unrelated pending material remains unchanged
 And the folded repository-root head is published and confirmed before delivery is recorded
 ```
-<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 ### Cross-context references
 
@@ -219,8 +196,4 @@ And the folded repository-root head is published and confirmed before delivery i
 
 ## See Also
 
-<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
-- docs/project/adr/0085-canonical-doc-state-before-delivery.md — why normal delivery publishes repo-root documentation state before candidate selection and reserves repo-root reconciliation for explicit divergence recovery.
-<!-- change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0090-root-fold-finalizes-a-pushed-candidate.md — why repository-root folding follows the confirmed candidate push and precedes delivery recording.
-<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
