@@ -618,9 +618,6 @@ And the session disclaimed every one of them
 When the session reaches a further agent-stop checkpoint boundary
 Then those paths are not reported again
 And a checkpoint decision is produced only for paths unaccounted for since
-Given a disclaimed path is committed, becomes clean, or the session receives new user input
-When checkpoint evaluation next runs
-Then the disclaimer no longer applies to that path
 ```
 <!-- /planned:unknown-scope-is-not-empty-scope -->
 
