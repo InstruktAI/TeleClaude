@@ -45,7 +45,7 @@ project.
    `run` and no `evidence`, because nothing asks an agent to do it and nothing reads a
    transcript to find out whether it happened. An action whose substance is a judgment an
    agent makes and acts on cannot, and is written into the checkpoint registry as `run`, the
-   `evidence` substrings that prove it ran (defaulting to the command), `main_only`,
+   `evidence` substrings that prove it ran (defaulting to `run`), `main_only`,
    `precedence`, and `evidence_must_follow_last_mutation` where ordering matters. An action
    id belongs to exactly one of the two registries; declaring the same id in both is
    rejected when the declaration is validated. The assessor then binds path scopes to action
