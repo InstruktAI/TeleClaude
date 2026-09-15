@@ -140,12 +140,21 @@ And when the folded repository-root head is later pushed, its SHA replaces the c
 
 #### UC-WISM13: A confirmed frozen commit records delivery exactly once
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given the frozen pushed commit is confirmed present on origin/main after a re-fetch
 When the PUSH_SUCCEEDED confirmation gate runs
 Then the delivery record is written exactly once
 And the recorded delivered commit is the frozen pushed commit
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given the folded repository-root SHA is frozen and confirmed present on origin/main
+When the final confirmation gate records delivery
+Then the delivery record is written exactly once
+And the recorded delivered commit is that final repository-root SHA
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM14: Push-rejection recovery freezes the recovered commit
 
