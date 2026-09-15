@@ -559,7 +559,7 @@ whatsapp:
   template_name: string | null # normally ${WHATSAPP_TEMPLATE_NAME}
   template_language: string
   business_number: string | null # normally ${WHATSAPP_BUSINESS_NUMBER}
-database_url: string | null # optional snippet-provenance database; normally ${DATABASE_URL}
+database_url: string | null # no current consumer; normally ${DATABASE_URL}
 email:
   enabled: boolean # outbound SMTP; disabled or incomplete config is unavailable
   smtp_username: string | null # normally ${SMTP_USERNAME}
