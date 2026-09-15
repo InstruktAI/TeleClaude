@@ -79,10 +79,11 @@ design feels wrong" is not a finding.
 
 The steward absorbs the human's input into the artifact it owns; downstream
 reads that artifact, never the human's words, and returns to the human only for
-the closed list. The human audits one thing: which artifacts and commits were
-produced with them present, read from the involvement record
-(`general/policy/human-involvement-recording`), which is orthogonal to
-authorization.
+the closed list. The human audits one thing: which acts were performed with
+them present, read from the involvement record where one exists — commits and
+todo records (`general/policy/human-involvement-recording`), orthogonal to
+authorization. Documentation snippets and agent artifacts carry no involvement
+record; independent review and lint cover them.
 
 ### Process changes happen with the human present
 
@@ -121,7 +122,8 @@ functional, snippet versus code — decides only where the work executes, per
 - A rewrite of what agents do is the one change no downstream gate catches, so it
   is kept where the human watches it being made. Binding the sender rather than
   the receiver keeps agents trusting each other and keeps the human's audit
-  cheap: the involvement record enumerates every act performed with them present.
+  cheap: the involvement record enumerates every recorded act performed with
+  them present, and independent review covers what carries no record.
 
 ## Scope
 
@@ -147,6 +149,6 @@ functional, snippet versus code — decides only where the work executes, per
 
 - ~/.teleclaude/docs/general/principle/autonomy.md — the disposition this policy draws the lane for.
 - ~/.teleclaude/docs/general/policy/leadership.md — act, guide, or ask, turn by turn, inside the lane.
-- ~/.teleclaude/docs/general/policy/grounding.md — a marked relay is taken as given, never verified.
+- ~/.teleclaude/docs/general/policy/grounding.md — intent past the human's session grounds in the artifact its steward authored; no agent inspects another session's transcript.
 - ~/.teleclaude/docs/software-development/policy/process-change-authority.md — what counts as a process change and how it is escalated.
 - ~/.teleclaude/docs/general/policy/documentation-discipline.md — where doc and functionality work executes.
