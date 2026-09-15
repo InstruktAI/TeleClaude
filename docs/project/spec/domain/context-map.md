@@ -75,8 +75,9 @@ contracts and never creates shared ownership.
   asks, and neither decides membership nor substitutes an answer where none is
   published.
 <!-- planned:agent-artifact-source-layout -->
-- `workflow` owns the canonical command-name vocabulary and emits every name
-  domain-qualified; `context` owns the corpus those names are laid out in and
+- A command's name belongs to the context that owns the command, and that
+  context emits it domain-qualified; the shared name table holds the values
+  without owning them. `context` owns the corpus those names are laid out in and
   the reach that admits a source into it, read from `config`'s publishing
   declaration; `agent_runtime` owns resolving an emitted name to one corpus
   document at dispatch, and owns the session record, title, and live-session

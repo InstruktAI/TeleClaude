@@ -388,7 +388,7 @@ And non-terminal handoffs, retries, reviews, kickbacks that preserve work, and p
 ```gherkin
 Given the work machine composes a build, review, fix, finalize, or drift dispatch
 When it names a command in that script
-Then the name is the canonical domain-qualified value from the command vocabulary
+Then the name is that command's canonical domain-qualified value
 And the dispatch request handed to agent runtime carries that same value
 ```
 

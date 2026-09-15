@@ -14,15 +14,17 @@ delivered_by:
 
 ## Purpose
 
-Realize `@prd#authorized-horizon` across four bounded contexts without letting
-any of them absorb another's rule. `context` owns the authored-source registry,
-reach validation, composition, and deployment of commands and skills. `config`
-owns the publishing declaration that bounds a repository's global reach.
-`workflow` owns the canonical command-name vocabulary the lifecycle machinery
-emits. `agent_runtime` owns resolving a name to a corpus document at dispatch.
-This document owns only the relationships among those contracts and the order
-in which the mother's sources migrate; every behavior resolves to one of the
-four contexts' own specs.
+Realize `@prd#authorized-horizon` across several bounded contexts without
+letting any of them absorb another's rule. `context` owns the authored-source
+registry, reach validation, composition, and deployment of commands and skills.
+`config` owns the publishing declaration that bounds a repository's global
+reach. Each command's name, and every emission of it, belongs to the context
+that owns that command's meaning — `workflow` for the todo-lifecycle commands,
+and other contexts for the commands whose reason to change is theirs.
+`agent_runtime` owns resolving a name to a corpus document at dispatch. This
+document owns only the relationships among those contracts and the order in
+which the mother's sources migrate; every behavior resolves to one context's
+own spec.
 
 The approved target it preserves: one tiered source shape at every repository
 root (`@prd#included`), global commands partitioned by declared domain and
@@ -92,10 +94,16 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   The one-owner-per-domain resolution reuses the docs publisher registry
   (`teleclaude/docs_publishers.py`, `PublisherRegistry`): a domain has exactly
   one owning publisher for documentation and for commands, resolved once.
-- **`workflow` owns the name vocabulary and every emission of it.** The rule
-  is stated in the workflow domain spec and bound by the prepare and work
-  state-machine specs; this document only records that the vocabulary is the
-  contract `context` lays the corpus out against.
+- **A command's name is owned by the context that owns the command.** The
+  domain a command publishes under states whose rule it is, so the name and
+  every emission of it resolve to that context: the todo-lifecycle commands to
+  `workflow`, stated in its domain spec and bound by the prepare and work
+  state-machine specs; a scheduled-job, creative, or personal command to the
+  context that owns its meaning, stated there. The shared name table in the
+  codebase is a mechanical cross-context registry — it holds every value in one
+  place so emitters compose rather than spell, and hosting confers no authority
+  (`software-development/policy/domain-ownership`). `context` lays the corpus
+  out against those names and owns none of them.
 - **`agent_runtime` owns resolution within the global corpus, and the
   session metadata that carries the name.** The rule is stated in the agent
   runtime domain spec and bound by the run-session-with-command spec; this
@@ -154,14 +162,17 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   written — so no inventory is orphaned and no file is left unretractable. A later sync that stages `<domain>/<name>.md` for a
   relocated command retracts the root entry and records the partitioned one in
   the same run.
-- Domain assignment of the mother's existing commands follows the governing
-  procedure's domain (`@prd#premises-and-assumptions`): every lifecycle,
-  review, run, drift, defer, emulate, coordinate, integrate, work, prepare, and
-  todo-analysis command → `software-development`; `next-create`,
-  `next-create-art`, `next-create-html` → `creative`; `sweep-email` →
-  `personal`; `next-research`, `author-knowledge`, `projects-analyze`,
-  `projects-assess-config`, `projects-onboard`, `companies-analyze`,
-  `next-assist` → `general`.
+- Domain assignment of the mother's existing commands is read from each
+  command's own governing contract, never assumed from its name
+  (`@prd#premises-and-assumptions`): a command publishes under the domain that
+  owns the contract it executes, and a command whose contract is domain-agnostic
+  publishes under `general`, which is the mother's alone. Two cases are named
+  here because the name misleads: `next-assist` executes a software-development
+  lifecycle procedure and publishes under `software-development`, not `general`;
+  `next-run-job` executes a scheduled job whose declaration belongs to `config`
+  and whose session execution belongs to `agent_runtime`, neither of which is
+  the todo lifecycle, so it publishes under `general`, not
+  `software-development`.
 
 ### Migration without a retraction gap
 

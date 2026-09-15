@@ -334,7 +334,7 @@ And no claim held by a different live session is changed
 ```gherkin
 Given the prepare machine composes a dispatch, re-dispatch, or procedure-load script
 When it names a command in that script
-Then the name is the canonical domain-qualified value from the command vocabulary
+Then the name is that command's canonical domain-qualified value
 And no script carries a bare command token
 ```
 
