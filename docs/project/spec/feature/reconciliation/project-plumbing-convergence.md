@@ -9,17 +9,10 @@ visibility: internal
 
 ## What it is
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-A project's installed git plumbing is machine state: the TeleClaude-owned
-`pre-commit`, `post-merge` and `pre-push` hooks under the git directory and the
-`teleclaude-docs` filter driver in the repository's own git config. Neither is
-tracked by the project, so a clone carries neither.
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 A project's installed git plumbing is machine state: the TeleClaude-owned
 `pre-commit`, `post-commit`, `post-merge` and `pre-push` hooks under the git
 directory and the `teleclaude-docs` filter driver in the repository's own git
 config. Neither is tracked by the project, so a clone carries neither.
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 Convergence is the act of comparing that observed machine state against the
 project's capability declaration and performing the sanctioned actions that
