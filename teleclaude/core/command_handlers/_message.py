@@ -13,6 +13,12 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agents import AgentName
+from teleclaude.core.command_input import (
+    CommandInputError,
+    RefusedCommandInput,
+    ResolvedCommandInput,
+    admit_command_input,
+)
 from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.event_bus import event_bus
@@ -38,6 +44,7 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_startup_message import compose_command_loader, resolve_command_input
 from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.events.envelope import EventVisibility
@@ -49,6 +56,11 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+_INBOUND_ORIGIN_METADATA_KEY = "origin_metadata"
+_INBOUND_COMMAND_INPUT_KEY = "command_input"
+_COMMAND_INPUT_SOURCE_TEXT_KEY = "source_text"
+_COMMAND_INPUT_COMMAND_KEY = "command"
+_COMMAND_INPUT_ARGS_KEY = "args"
 _CONTINUATION_DELIVERY_FAILURE_NOTICE = (
     "Restart continuation stimulus could not be confirmed delivered. Session kept alive for inspection."
 )
@@ -73,6 +85,21 @@ class _CallerSendDeliveryExhaustedOutcome(StrEnum):
     CALLER_NOTIFIED = "caller_notified"
     UNADDRESSABLE = "unaddressable"
     NOTIFICATION_FAILED = "notification_failed"
+
+
+class _InboundCommandInput(TypedDict):
+    """The human source and resolved command frozen beside accepted queue content."""
+
+    source_text: str
+    command: str
+    args: str
+
+
+class _InboundPayload(TypedDict, total=False):
+    """Structured supplemental state stored beside one inbound queue row."""
+
+    origin_metadata: Mapping[str, object]
+    command_input: _InboundCommandInput
 
 
 class _CallerSendDeliveryExhaustedReason(StrEnum):
@@ -212,14 +239,21 @@ async def _handoff_peer_attention(
     logger.info(_PEER_ATTENTION_HANDOFF_DECIDED_EVENT, **fields)
 
 
-def _encode_inbound_payload(origin_metadata: Mapping[str, object] | None) -> str | None:
+def _encode_inbound_payload(
+    origin_metadata: Mapping[str, object] | None,
+    command_input: _InboundCommandInput | None,
+) -> str | None:
     """Serialize queue-side metadata needed at delivery time."""
-    if origin_metadata is None:
+    if origin_metadata is None and command_input is None:
         return None
-    payload = dict(origin_metadata)
+    payload: _InboundPayload = {}
+    if origin_metadata:
+        payload["origin_metadata"] = dict(origin_metadata)
+    if command_input is not None:
+        payload["command_input"] = command_input
     if not payload:
         return None
-    return json.dumps({"origin_metadata": payload})
+    return json.dumps(payload)
 
 
 def _decode_inbound_origin_metadata(row: InboundQueueRow) -> Mapping[str, object] | None:
@@ -234,10 +268,32 @@ def _decode_inbound_origin_metadata(row: InboundQueueRow) -> Mapping[str, object
         return None
     if not isinstance(payload, dict):
         return None
-    origin_metadata = payload.get("origin_metadata")
+    origin_metadata = payload.get(_INBOUND_ORIGIN_METADATA_KEY)
     if not isinstance(origin_metadata, dict) or not origin_metadata:
         return None
     return origin_metadata
+
+
+def _decode_inbound_command_input(row: InboundQueueRow) -> _InboundCommandInput | None:
+    """Read durable command-source evidence without re-running command recognition."""
+    payload_json = row["payload_json"]
+    if not payload_json:
+        return None
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    command_input = payload.get(_INBOUND_COMMAND_INPUT_KEY)
+    if not isinstance(command_input, dict):
+        return None
+    source_text = command_input.get(_COMMAND_INPUT_SOURCE_TEXT_KEY)
+    command = command_input.get(_COMMAND_INPUT_COMMAND_KEY)
+    args = command_input.get(_COMMAND_INPUT_ARGS_KEY)
+    if not isinstance(source_text, str) or not isinstance(command, str) or not isinstance(args, str):
+        return None
+    return {"source_text": source_text, "command": command, "args": args}
 
 
 async def _record_accepted_input_metadata(
@@ -246,12 +302,16 @@ async def _record_accepted_input_metadata(
     origin: str,
     message_text: str,
     origin_metadata: Mapping[str, object] | None,
+    command_input: _InboundCommandInput | None,
 ) -> None:
     """Persist the accepted-input fields owned by the core acceptance boundary."""
     await db.update_session(
         session_id,
         last_message_sent=message_text[:200],
-        **visible_input_update(message_text),
+        **visible_input_update(
+            message_text,
+            visible_source_text=(command_input["source_text"] if command_input else None),
+        ),
         last_message_sent_at=datetime.now(UTC).isoformat(),
         last_input_origin=origin,
     )
@@ -285,6 +345,7 @@ async def _ensure_inbound_acceptance_metadata(
     session: Session,
     row: InboundQueueRow,
     origin_metadata: Mapping[str, object] | None,
+    command_input: _InboundCommandInput | None,
 ) -> None:
     """Backfill accepted metadata for rows queued before enqueue-time writes existed."""
     session_id = row["session_id"]
@@ -297,6 +358,7 @@ async def _ensure_inbound_acceptance_metadata(
             origin=origin,
             message_text=message_text,
             origin_metadata=origin_metadata,
+            command_input=command_input,
         )
         return
 
@@ -539,6 +601,7 @@ async def deliver_inbound(
     message_text = row["content"]
     logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id, message_text[:50])
     origin_metadata = _decode_inbound_origin_metadata(row)
+    command_input = _decode_inbound_command_input(row)
 
     session = await db.get_session(session_id)
     if not session:
@@ -555,7 +618,7 @@ async def deliver_inbound(
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
-    await _ensure_inbound_acceptance_metadata(session, row, origin_metadata)
+    await _ensure_inbound_acceptance_metadata(session, row, origin_metadata, command_input)
 
     active_agent = session.active_agent
 
@@ -829,6 +892,25 @@ async def process_message(
 
     origin = cmd.origin or ""
     content, caller_prefix_len, caller_suffix_len = _canonical_caller_content(cmd)
+    command_input: _InboundCommandInput | None = None
+    resolved_input = resolve_command_input(cmd.text, cmd.command_input_mode)
+    if isinstance(resolved_input, RefusedCommandInput):
+        raise SessionMessageRejectedError(
+            session_id=session_id,
+            reason="admission_refused",
+            detail=resolved_input.detail,
+        )
+    if isinstance(resolved_input, ResolvedCommandInput):
+        try:
+            admit_command_input(resolved_input.command, resolved_input.args, cmd.sender_human_role)
+        except CommandInputError as exc:
+            raise SessionMessageRejectedError(
+                session_id=session_id,
+                reason="admission_refused",
+                detail=str(exc),
+            ) from exc
+        content = compose_command_loader(resolved_input.command, resolved_input.args)
+        command_input = {"source_text": cmd.text, "command": resolved_input.command, "args": resolved_input.args}
 
     async def _record_after_insert(_row_id: int) -> None:
         await _record_accepted_input_metadata(
@@ -836,6 +918,7 @@ async def process_message(
             origin=origin,
             message_text=content,
             origin_metadata=cmd.origin_metadata,
+            command_input=command_input,
         )
 
     row_id = await get_inbound_queue_manager().enqueue(
@@ -845,7 +928,7 @@ async def process_message(
         text_kind=cmd.text_kind,
         source_feature=cmd.source_feature,
         occurrence_key=cmd.occurrence_key,
-        payload_json=_encode_inbound_payload(cmd.origin_metadata),
+        payload_json=_encode_inbound_payload(cmd.origin_metadata, command_input),
         actor_id=cmd.actor_id,
         actor_name=cmd.actor_name,
         actor_avatar_url=cmd.actor_avatar_url,

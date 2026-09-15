@@ -5,6 +5,7 @@ from typing import cast
 from teleclaude.config import config
 from teleclaude.constants import EVENT_NEW_SESSION
 from teleclaude.core.agents import get_default_agent
+from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
@@ -94,6 +95,12 @@ class CommandMapper:
             working_slug = str(working_slug_raw) if working_slug_raw is not None else None
             command_raw = payload.get("command")
             command = str(command_raw) if command_raw is not None else None
+            raw_command_input_mode = payload.get("command_input_mode", CommandInputMode.ORDINARY)
+            command_input_mode = CommandInputMode(str(raw_command_input_mode))
+            command_input_source_text_raw = payload.get("command_input_source_text")
+            command_input_source_text = (
+                str(command_input_source_text_raw) if command_input_source_text_raw is not None else None
+            )
             return _with_computer(
                 CreateSessionCommand(
                     project_path=metadata.project_path or "",
@@ -112,6 +119,8 @@ class CommandMapper:
                     initiator_computer=config.computer.name if initiator_session_id else None,
                     command=command,
                     working_slug=working_slug,
+                    command_input_mode=command_input_mode,
+                    command_input_source_text=command_input_source_text,
                 ),
                 computer,
             )
@@ -133,6 +142,10 @@ class CommandMapper:
                 )
             )
             raw_source_feature = payload.get("source_feature")
+            raw_command_input_mode = payload.get("command_input_mode", CommandInputMode.ORDINARY)
+            command_input_mode = CommandInputMode(str(raw_command_input_mode))
+            sender_human_role_raw = payload.get("sender_human_role")
+            sender_human_role = str(sender_human_role_raw) if sender_human_role_raw is not None else None
             source_feature = (
                 InjectedTextSourceFeature(str(raw_source_feature))
                 if raw_source_feature is not None
@@ -166,6 +179,8 @@ class CommandMapper:
                     caller_origin_suffix_len=metadata.caller_origin_suffix_len,
                     source_message_id=cast(str | None, payload.get("source_message_id")),
                     source_channel_id=cast(str | None, payload.get("source_channel_id")),
+                    command_input_mode=command_input_mode,
+                    sender_human_role=sender_human_role,
                 ),
                 computer,
             )

@@ -583,7 +583,11 @@ INPUT_PREVIEW_LIMIT = 200
 """Stored length of a visible-span preview — a row of session list, not a document."""
 
 
-def visible_input_update(text: str, accepted_at: datetime | str | None = None) -> dict[str, str]:
+def visible_input_update(
+    text: str,
+    accepted_at: datetime | str | None = None,
+    visible_source_text: str | None = None,
+) -> dict[str, str]:
     """The ``last_input`` field update for one accepted turn.
 
     Empty when the turn carries nothing a person sent — a wake, a
@@ -594,7 +598,7 @@ def visible_input_update(text: str, accepted_at: datetime | str | None = None) -
     Acceptance writers merge this into their update rather than assigning
     the fields directly.
     """
-    preview = visible_input_preview(text)
+    preview = visible_input_preview(visible_source_text if visible_source_text is not None else text)
     if not preview:
         return {}
     if isinstance(accepted_at, datetime):

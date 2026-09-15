@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude import __version__
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR, SlashCommand
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -31,6 +31,12 @@ from teleclaude.core.agent_dispatch import (
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_dispatch import forward_command_to_peer
+from teleclaude.core.command_input import (
+    WORKTREE_BOUND_WORKER_COMMANDS,
+    RefusedCommandInput,
+    ResolvedCommandInput,
+    admit_command_input,
+)
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionCloseCompletedPayload, SessionLifecycleContext, TeleClaudeEvents
@@ -39,7 +45,7 @@ from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionLa
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
-from teleclaude.core.session_startup_message import prepare_startup_message
+from teleclaude.core.session_startup_message import prepare_startup_message, resolve_command_input
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
@@ -64,6 +70,8 @@ _UNBOUND_TMUX_NAME = ""
 
 _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
+_WORKTREE_SUBDIR_TEMPLATE = "{worktree_dir}/{slug}"
+_WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
 
 
 def resolve_working_slug_from_subdir(subdir: str | None) -> str | None:
@@ -250,6 +258,35 @@ async def _resolve_launch_intent(
     return decision
 
 
+def prepare_interactive_create_command(cmd: CreateSessionCommand, human_role: str | None) -> None:
+    """Resolve one target-local command input before session creation observes it."""
+    source_text = cmd.command_input_source_text or cmd.initial_input
+    result = resolve_command_input(cmd.initial_input, cmd.command_input_mode)
+    if isinstance(result, RefusedCommandInput):
+        raise ValueError(result.detail)
+    if not isinstance(result, ResolvedCommandInput):
+        return
+    metadata = admit_command_input(result.command, result.args, human_role)
+    try:
+        slash_command = SlashCommand(result.command)
+    except ValueError:
+        slash_command = None
+    if slash_command in WORKTREE_BOUND_WORKER_COMMANDS:
+        subdir = _WORKTREE_SUBDIR_TEMPLATE.format(worktree_dir=WORKTREE_DIR, slug=metadata.working_slug)
+        worktree_dir = Path(resolve_working_dir(cmd.project_path, subdir))
+        if not worktree_dir.is_dir():
+            raise ValueError(_WORKTREE_DIRECTORY_MISSING_TEMPLATE.format(worktree_dir=worktree_dir))
+        cmd.subdir = subdir
+    cmd.initial_input = result.normalized_message
+    cmd.command = result.command
+    cmd.system_role = metadata.system_role
+    cmd.job = metadata.job
+    cmd.working_slug = metadata.working_slug
+    if cmd.launch_intent is not None and cmd.launch_intent.message is not None:
+        cmd.launch_intent.message = result.normalized_message
+        cmd.launch_intent.command_input_source_text = source_text
+
+
 async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     cmd: CreateSessionCommand,
     client: "AdapterClient",
@@ -276,19 +313,10 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         cmd.launch_intent.kind.value if cmd.launch_intent else None,
     )
 
-    computer_name = config.computer.name
-    session_id = cmd.session_id or str(uuid.uuid4())
-    tmux_name = "" if cmd.headless else f"{TMUX_SESSION_PREFIX}{session_id}"
-
-    subfolder = cmd.subdir
-    working_slug: str | None = resolve_working_slug_from_subdir(subfolder) or cmd.working_slug
-    initiator_session_id = cmd.initiator_session_id
-    cmd_system_role = cmd.system_role
-    cmd_job = cmd.job
-
     # Origin provenance must reflect the actual source of this session creation.
     # Do not inherit origin from parent sessions.
     last_input_origin = origin
+    initiator_session_id = cmd.initiator_session_id
     parent_session = None
     if initiator_session_id:
         parent_session = await db.get_session(initiator_session_id)
@@ -315,6 +343,17 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             human_role = parent_session.human_role
         if not principal and parent_session.principal:
             principal = parent_session.principal
+
+    prepare_interactive_create_command(cmd, human_role)
+
+    computer_name = config.computer.name
+    session_id = cmd.session_id or str(uuid.uuid4())
+    tmux_name = "" if cmd.headless else f"{TMUX_SESSION_PREFIX}{session_id}"
+    subfolder = cmd.subdir
+    working_slug: str | None = resolve_working_slug_from_subdir(subfolder) or cmd.working_slug
+    initiator_session_id = cmd.initiator_session_id
+    cmd_system_role = cmd.system_role
+    cmd_job = cmd.job
 
     if not human_role and not cmd_system_role:
         raise ValueError(f"Session creation failed: no identity resolved and no system_role (origin={origin})")

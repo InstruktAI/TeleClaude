@@ -7,6 +7,7 @@ from inspect import signature
 from typing import Any, Optional, cast
 from uuid import uuid4
 
+from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptEntryKind
 from teleclaude.core.models import SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._types import JsonDict, JsonValue
@@ -122,6 +123,8 @@ class CreateSessionCommand(InternalCommand):
     command: str | None = None
     working_slug: str | None = None
     entry_point: SessionEntryPoint | None = None
+    command_input_mode: CommandInputMode = CommandInputMode.ORDINARY
+    command_input_source_text: str | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -143,6 +146,7 @@ class StartAgentCommand(InternalCommand):
     args: list[str] = field(default_factory=list)
     origin: str | None = None
     resolved_model_flags: str | None = None
+    visible_input_source_text: str | None = None
 
     def __init__(
         self,
@@ -153,6 +157,7 @@ class StartAgentCommand(InternalCommand):
         args: list[str] | None = None,
         origin: str | None = None,
         resolved_model_flags: str | None = None,
+        visible_input_source_text: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.START_AGENT, request_id=request_id)
@@ -162,6 +167,7 @@ class StartAgentCommand(InternalCommand):
         self.args = args or []
         self.origin = origin
         self.resolved_model_flags = resolved_model_flags
+        self.visible_input_source_text = visible_input_source_text
 
     def to_payload(self) -> dict[str, object]:
         args = [self.agent_name] + list(self.args)
@@ -242,6 +248,8 @@ class ProcessMessageCommand(InternalCommand):
     caller_job_role: str | None = None
     caller_origin_prefix_len: int | None = None
     caller_origin_suffix_len: int | None = None
+    command_input_mode: CommandInputMode = CommandInputMode.ORDINARY
+    sender_human_role: str | None = None
 
     def __init__(
         self,
@@ -268,6 +276,8 @@ class ProcessMessageCommand(InternalCommand):
         caller_job_role: str | None = None,
         caller_origin_prefix_len: int | None = None,
         caller_origin_suffix_len: int | None = None,
+        command_input_mode: CommandInputMode = CommandInputMode.ORDINARY,
+        sender_human_role: str | None = None,
     ):
         super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
@@ -291,6 +301,8 @@ class ProcessMessageCommand(InternalCommand):
         self.caller_job_role = caller_job_role
         self.caller_origin_prefix_len = caller_origin_prefix_len
         self.caller_origin_suffix_len = caller_origin_suffix_len
+        self.command_input_mode = command_input_mode
+        self.sender_human_role = sender_human_role
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -686,6 +698,8 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
             value = SessionLaunchIntent.from_dict(raw_value)
         elif name == "entry_point" and isinstance(raw_value, str):
             value = SessionEntryPoint(raw_value)
+        elif name == "command_input_mode" and isinstance(raw_value, str):
+            value = CommandInputMode(raw_value)
         elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
             value = dict(raw_value)
         kwargs[name] = value

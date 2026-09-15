@@ -39,6 +39,7 @@ from teleclaude.api_models import (
 from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.history.service import HistorySearchPayload
 from teleclaude.session_identity import get_session_id, get_session_token
@@ -118,6 +119,8 @@ class CreateSessionArgs(TypedDict, total=False):
     human_role: NotRequired[str | None]
     skip_listener_registration: NotRequired[bool]
     metadata: NotRequired[dict[str, object] | None]  # guard: loose-dict - dynamic payload
+    command_input_mode: NotRequired[CommandInputMode]
+    command_input_source_text: NotRequired[str | None]
 
 
 class RunSessionArgs(TypedDict, total=False):
@@ -607,6 +610,8 @@ class _TelecSessionAPI:
             "human_email": kwargs.get("human_email"),
             "human_role": kwargs.get("human_role"),
             "metadata": kwargs.get("metadata"),
+            "command_input_mode": kwargs.get("command_input_mode", CommandInputMode.ORDINARY),
+            "command_input_source_text": kwargs.get("command_input_source_text"),
         }
         agent = kwargs.get("agent")
         if agent is not None:

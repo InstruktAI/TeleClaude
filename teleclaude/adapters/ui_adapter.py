@@ -22,6 +22,7 @@ from teleclaude.adapters.ui.delivery_mixin import OutputDeliveryMixin
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript._utils import _parse_timestamp
@@ -404,7 +405,12 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         if message_id:
             await self.client.pre_handle_command(session, metadata.origin)
 
-        result = await handler()
+        try:
+            result = await handler()
+        except SessionMessageRejectedError as exc:
+            if exc.reason == "admission_refused":
+                await self.send_error_feedback(session.session_id, str(exc))
+            raise
 
         if message_id:
             await self.client.post_handle_command(session, message_id, metadata.origin)

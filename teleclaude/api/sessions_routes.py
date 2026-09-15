@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -58,10 +59,17 @@ from teleclaude.api_models import (
     SessionDTO,
 )
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.constants import HUMAN_ROLE_ADMIN, SlashCommand
 from teleclaude.core import command_handlers
 from teleclaude.core.agent_dispatch import AgentDispatchReason
 from teleclaude.core.command_dispatch import dispatch_command
+from teleclaude.core.command_input import (
+    WORKTREE_BOUND_WORKER_COMMANDS,
+    CommandInputMode,
+    RefusedCommandInput,
+    ResolvedCommandInput,
+    infer_command_input_metadata,
+)
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.conversation_messages import (
     MACHINE_ROLE_LABELS as _MACHINE_ROLE_LABELS,
@@ -95,7 +103,9 @@ from teleclaude.core.session_listeners import (
     register_listener,
     resolve_link_for_sender_target,
 )
+from teleclaude.core.session_startup_message import resolve_command_input
 from teleclaude.core.session_status import is_session_terminal as _terminal
+from teleclaude.core.session_utils import resolve_working_dir
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -116,6 +126,8 @@ _EXCLUSIVE_DIRECT_LINK_DETAIL = (
     "Direct conversation is exclusive to two peers; close it before starting another."
 )
 _EMPTY_MESSAGE_TEXT = ""
+_WORKTREE_SUBDIR_TEMPLATE = "trees/{slug}"
+_WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
 
 
 @dataclass(frozen=True)
@@ -324,6 +336,38 @@ async def _prepare_create_session(
     return metadata, initiator_session_id, initial_input, launch_intent, direct_caller_session
 
 
+def _prepare_interactive_create_request(request: CreateSessionRequest) -> CreateSessionRequest:
+    """Resolve local TUI command input before generic-create metadata and guards."""
+    result = resolve_command_input(request.message, request.command_input_mode)
+    if isinstance(result, RefusedCommandInput):
+        raise RunSessionRefusal(
+            status_code=400,
+            detail=result.detail,
+            reason=AgentDispatchReason.COMMAND_INVALID,
+        )
+    if not isinstance(result, ResolvedCommandInput):
+        return request
+    metadata = infer_command_input_metadata(result.command, result.args)
+    normalized_request = request.model_copy(
+        update={"message": result.normalized_message, "command_input_source_text": request.message}
+    )
+    try:
+        slash_command = SlashCommand(result.command)
+    except ValueError:
+        slash_command = None
+    if slash_command in WORKTREE_BOUND_WORKER_COMMANDS and metadata.working_slug:
+        subdir = _WORKTREE_SUBDIR_TEMPLATE.format(slug=metadata.working_slug)
+        worktree_dir = Path(resolve_working_dir(normalized_request.project_path, subdir))
+        if not worktree_dir.is_dir():
+            raise RunSessionRefusal(
+                status_code=400,
+                detail=_WORKTREE_DIRECTORY_MISSING_TEMPLATE.format(worktree_dir=worktree_dir),
+                reason=AgentDispatchReason.WORKTREE_MISMATCH,
+            )
+        normalized_request = normalized_request.model_copy(update={"subdir": subdir})
+    return normalized_request
+
+
 @router.get("/sessions")
 async def list_sessions(
     request: Request,
@@ -398,6 +442,11 @@ async def _create_session_response(
     identity: CallerIdentity,
 ) -> CreateSessionResponseDTO:
     """Create a session after the caller path has established routing authority."""
+    if request.command_input_mode is CommandInputMode.INTERACTIVE_SHORTHAND and not is_remote_create_target(
+        request.computer, config.computer.name
+    ):
+        request = _prepare_interactive_create_request(request)
+
     logger.info(
         "create_session request: computer=%s project=%s agent=%s thinking_mode=%s launch_kind=%s native_session_id=%s",
         request.computer,
@@ -433,6 +482,8 @@ async def _create_session_response(
             "title": request.title,
             "command": infer_command_from_message(request.message),
             "working_slug": infer_role_and_slug_from_message(request.message)[2],
+            "command_input_mode": request.command_input_mode,
+            "command_input_source_text": request.command_input_source_text,
         },
         metadata,
         computer=request.computer,

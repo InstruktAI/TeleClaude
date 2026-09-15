@@ -27,6 +27,7 @@ from teleclaude.adapters.discord.session_launcher import (
     LauncherOwnershipOutcome,
     LauncherOwnershipReason,
 )
+from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.delivery import Destination
@@ -613,6 +614,7 @@ class InputHandlersMixin:
                 dispatch_mode=AgentDispatchMode.MANUAL_PREFERENCE,
             ),
             entry_point=SessionEntryPoint.DISCORD,
+            command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
         )
         try:
             result = await get_command_service().create_session(create_cmd)

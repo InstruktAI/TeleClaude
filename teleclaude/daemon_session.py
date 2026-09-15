@@ -376,7 +376,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         await db.update_session(
             session_id,
             last_message_sent=message[:200],
-            **visible_input_update(message),
+            **visible_input_update(message, visible_source_text=launch_intent.command_input_source_text),
             last_message_sent_at=datetime.now(UTC).isoformat(),
         )
 
@@ -403,6 +403,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                     thinking_mode=thinking_mode,
                     args=start_args,
                     resolved_model_flags=launch_intent.resolved_model_flags,
+                    visible_input_source_text=launch_intent.command_input_source_text,
                 )
             )
             if not starts_with_prompt:

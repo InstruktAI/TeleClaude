@@ -320,7 +320,7 @@ async def start_agent(
         # Resolved from the prompt as written, never from its truncated
         # fingerprint: a cut entry cannot be recognized as an envelope and
         # would carry its framing into the row.
-        updates.update(visible_input_update(initial_prompt or ""))
+        updates.update(visible_input_update(initial_prompt or "", visible_source_text=cmd.visible_input_source_text))
         updates["last_message_sent_at"] = datetime.now(UTC).isoformat()
     if cmd.origin:
         updates["last_input_origin"] = cmd.origin

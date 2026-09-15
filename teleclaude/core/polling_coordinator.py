@@ -551,13 +551,13 @@ async def _project_user_reflection(
             last_message_sent=user_text[:200],
             last_message_sent_at=transcript_dt,
             last_projected_at=transcript_dt,
-            **visible_input_update(user_text, accepted_at=transcript_dt),
+            **visible_input_update(user_text, accepted_at=transcript_dt, visible_source_text=session.last_input),
         )
     else:
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
-            **visible_input_update(user_text),
+            **visible_input_update(user_text, visible_source_text=session.last_input),
         )
     refreshed = await db.get_session(session.session_id)
     return refreshed or session, True, False

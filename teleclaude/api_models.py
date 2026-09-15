@@ -8,6 +8,7 @@ from teleclaude.agent_registry import AgentName
 from teleclaude.api_session_readiness import SessionReadinessDTOFields
 from teleclaude.config.schema import MessagingChannel
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
+from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.session_status import AgentStatusValue
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TodoDumpKind
@@ -37,6 +38,8 @@ class CreateSessionRequest(BaseModel):
     metadata: dict[str, object] | None = None  # guard: loose-dict
     origin: str | None = None
     origin_metadata: dict[str, object] | None = None  # guard: loose-dict
+    command_input_mode: CommandInputMode = CommandInputMode.ORDINARY
+    command_input_source_text: str | None = None
 
 
 class CreateSessionResponseDTO(BaseModel):

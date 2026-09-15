@@ -39,12 +39,7 @@ from teleclaude.api.run_session_refusals import (
     normalize_run_session_command,
     resolve_run_session_agent,
 )
-from teleclaude.api.run_session_shapes import (
-    REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS,
-    RunSessionPlan,
-    infer_working_slug,
-    leading_command_args,
-)
+from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
 from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
@@ -86,6 +81,7 @@ from teleclaude.core.command_dispatch import (
     parse_remote_dispatch_data_diagnosed,
 )
 from teleclaude.core.command_handlers import resolve_working_slug_from_subdir
+from teleclaude.core.command_input import REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.command_service import DISPATCH_ALLOWED, classify_driver_launch

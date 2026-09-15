@@ -14,14 +14,22 @@ from teleclaude.core.agent_dispatch import (
     AgentDispatchStage,
     emit_agent_dispatch_decision,
 )
+from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.models import AgentDispatchMode, JsonDict, JsonValue, MessageMetadata
 from teleclaude.core.reconciliation import (
     DEFAULT_FEATURE_ID_REGISTRY,
     DETERMINISTIC_AGENT_ROUTING_FEATURE_ID,
+    INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
     decode_capability_set,
 )
-from teleclaude.types.commands import CommandType, CreateSessionCommand, InternalCommand, ResponseMode
+from teleclaude.types.commands import (
+    CommandType,
+    CreateSessionCommand,
+    InternalCommand,
+    ProcessMessageCommand,
+    ResponseMode,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -228,6 +236,27 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
     target_computer = command.computer
     if not target_computer:
         raise ValueError("command.computer is required for peer forwarding")
+
+    carries_interactive_command_input = isinstance(command, (CreateSessionCommand, ProcessMessageCommand)) and (
+        command.command_input_mode is CommandInputMode.INTERACTIVE_SHORTHAND
+    )
+    if carries_interactive_command_input:
+        peer = next(
+            (item for item in await client.discover_peers() if item.get(PEER_NAME_FIELD) == target_computer),
+            None,
+        )
+        capabilities = frozenset(decode_capability_set(peer.get(PEER_CAPABILITY_SET_FIELD))) if peer else frozenset()
+        if INTERACTIVE_COMMAND_INPUT_FEATURE_ID not in capabilities:
+            emit_agent_dispatch_decision(
+                stage=AgentDispatchStage.TRANSPORT,
+                outcome=AgentDispatchOutcome.REFUSED,
+                reason=AgentDispatchReason.TARGET_CAPABILITY_MISSING,
+                request_id=command.request_id,
+            )
+            raise RemoteDispatchError(
+                "Target computer must support interactive command input",
+                reason=RemoteDispatchReason.TARGET_DISPATCH_CAPABILITY_REQUIRED,
+            )
 
     if isinstance(command, CreateSessionCommand):
         intent = command.launch_intent

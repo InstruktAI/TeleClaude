@@ -9,6 +9,7 @@ from enum import StrEnum
 FLEET_CROSS_VERSION_INTEROP_FEATURE_ID = "project/spec/feature/reconciliation/fleet-cross-version-interop"
 WEBHOOK_INGRESS_FEATURE_ID = "project/spec/feature/integration/single-ingress-webhook-termination"
 DETERMINISTIC_AGENT_ROUTING_FEATURE_ID = "project/spec/feature/agent_runtime/deterministic-agent-routing"
+INTERACTIVE_COMMAND_INPUT_FEATURE_ID = "project/spec/feature/agent_runtime/interactive-command-input"
 
 
 class FeatureMark(StrEnum):
@@ -99,6 +100,10 @@ DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
         ),
         FeatureID(
             identifier=DETERMINISTIC_AGENT_ROUTING_FEATURE_ID,
+            mark=FeatureMark.MUST_NEGOTIATE,
+        ),
+        FeatureID(
+            identifier=INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
             mark=FeatureMark.MUST_NEGOTIATE,
         ),
     )

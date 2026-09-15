@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from teleclaude.core.command_input import (
+    CommandInputError,
+    CommandInputMode,
+    CommandInputResult,
+    NoCommandInput,
+    RefusedCommandInput,
+    ResolvedCommandInput,
+    normalize_command_input_token,
+)
 from teleclaude.paths import COMMANDS_DIR
 
 _COMMAND_PREFIX = "/"
@@ -12,6 +21,8 @@ _COMMANDS_ROOT = COMMANDS_DIR.resolve()
 _COMMAND_MARKER_TEMPLATE = "TELECLAUDE COMMAND: {command}{args}"
 _MARKER_ARGUMENT_PREFIX = " "
 _LOADER_SECTION_SEPARATOR = "\n\n"
+_LINE_SEPARATOR = "\n"
+_COMMAND_ARGUMENT_SEPARATOR = " "
 _LOADER_MESSAGE_TEMPLATE = (
     "Read {prompt_path} verbatim and follow it exactly as the active instruction set for this session.\n\n"
     "Treat the following as provided inputs to that instruction set:\n"
@@ -49,6 +60,25 @@ def compose_command_loader(command_name: str, args: str) -> str:
             _LOADER_MESSAGE_TEMPLATE.format(prompt_path=prompt_path, args=args),
         )
     )
+
+
+def resolve_command_input(message: str | None, mode: CommandInputMode) -> CommandInputResult:
+    """Resolve opt-in interactive shorthand without changing ordinary chat parsing."""
+    if mode is CommandInputMode.ORDINARY or not message:
+        return NoCommandInput()
+    first_line = message.partition(_LINE_SEPARATOR)[0]
+    command_token, _, raw_args = first_line.partition(_COMMAND_ARGUMENT_SEPARATOR)
+    if not command_token:
+        return NoCommandInput()
+    try:
+        command_name = normalize_command_input_token(command_token)
+    except CommandInputError as exc:
+        if command_token.startswith(_COMMAND_PREFIX):
+            return RefusedCommandInput(detail=str(exc))
+        return NoCommandInput()
+    if resolve_command_document(command_name) is None:
+        return NoCommandInput()
+    return ResolvedCommandInput(command=command_name, args=raw_args.strip())
 
 
 def prepare_startup_message(startup_message: str, declared_command: str | None) -> str:

@@ -108,6 +108,7 @@ class SessionLaunchIntent:
     # consumed during bootstrap. It is deliberately excluded from the wire
     # representation: a remote target resolves its own model availability.
     resolved_model_flags: str | None = None
+    command_input_source_text: str | None = None
 
     def to_dict(self) -> JsonDict:
         """Serialize launch intent into a JSON-compatible dictionary."""
@@ -126,6 +127,7 @@ class SessionLaunchIntent:
             "candidate_order": list(self.candidate_order) if self.candidate_order is not None else None,
             "decision_basis_digest": self.decision_basis_digest,
             "accepted_at_origin": self.accepted_at_origin,
+            "command_input_source_text": self.command_input_source_text,
         }
 
     @classmethod
@@ -154,6 +156,7 @@ class SessionLaunchIntent:
             ),
             decision_basis_digest=cast(str | None, data.get("decision_basis_digest")),
             accepted_at_origin=bool(data.get("accepted_at_origin", False)),
+            command_input_source_text=cast(str | None, data.get("command_input_source_text")),
         )
 
 

@@ -52,6 +52,7 @@ import asyncio
 from datetime import datetime
 
 from teleclaude.cli.config_handlers import find_person_by_invite_token, get_global_config
+from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.identity import (
@@ -500,6 +501,7 @@ class GatewayHandlersMixin:
                     dispatch_mode=AgentDispatchMode.AUTOMATIC,
                 ),
                 entry_point=SessionEntryPoint.DISCORD,
+                command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
             )
             result = await get_command_service().create_session(create_cmd)
             session_id = str(result.get("session_id", ""))
@@ -529,6 +531,7 @@ class GatewayHandlersMixin:
             actor_id = resolve_binding_key("discord", {"user_id": user_id})
             actor_name = (person_name or "").strip() or self._discord_actor_name(author, user_id)
             actor_avatar_url = self._discord_actor_avatar_url(author)
+            sender_identity = get_identity_resolver().resolve("discord", {"user_id": user_id})
             message_id = str(getattr(message, "id", "")).strip()
             channel_id_str = str(dm_channel_id) if dm_channel_id is not None else None
             cmd = ProcessMessageCommand(
@@ -543,6 +546,8 @@ class GatewayHandlersMixin:
                 actor_avatar_url=actor_avatar_url,
                 source_message_id=message_id or None,
                 source_channel_id=channel_id_str,
+                command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
+                sender_human_role=sender_identity.person_role if sender_identity else None,
             )
             metadata = self._metadata(  # type: ignore[attr-defined]
                 platform_message_id=message_id or None,
@@ -663,6 +668,7 @@ class GatewayHandlersMixin:
         actor_id = resolve_binding_key("discord", {"user_id": actor_user_id})
         actor_name = self._discord_actor_name(author_obj, actor_user_id)
         actor_avatar_url = self._discord_actor_avatar_url(author_obj)
+        sender_identity = get_identity_resolver().resolve("discord", {"user_id": actor_user_id})
         metadata = self._metadata(  # type: ignore[attr-defined]
             platform_message_id=message_id or None,
             actor_id=actor_id,
@@ -682,6 +688,8 @@ class GatewayHandlersMixin:
             actor_avatar_url=actor_avatar_url,
             source_message_id=message_id or None,
             source_channel_id=channel_id_str,
+            command_input_mode=CommandInputMode.INTERACTIVE_SHORTHAND,
+            sender_human_role=sender_identity.person_role if sender_identity else None,
         )
         await self._dispatch_command(  # type: ignore[attr-defined]
             session,

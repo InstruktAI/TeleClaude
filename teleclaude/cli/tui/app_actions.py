@@ -27,6 +27,7 @@ from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
+from teleclaude.core.command_input import CommandInputMode
 
 logger = get_logger(__name__)
 APP_ACTION_ERRORS = (APIError, AttributeError, OSError, RuntimeError, TypeError, ValueError)
@@ -146,6 +147,7 @@ class TelecAppActionsMixin:
                 "project_path": message.project_path,
                 "thinking_mode": message.thinking_mode or "slow",
                 "message": message.message,
+                "command_input_mode": CommandInputMode.INTERACTIVE_SHORTHAND,
             }
             if message.agent:
                 request_args["agent"] = message.agent
