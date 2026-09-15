@@ -199,24 +199,21 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 
 ### Migration by expansion before contraction
 
-- The migration expands first: the mother's commands exist under both the flat
-  root and the tiered root simultaneously, and contraction — deleting the flat
-  root — is the last step. The expansion has already landed on `main`; the
-  contraction happens after this delivery folds.
-- The safety this buys is structural, not designed. Retraction removes what an
-  owner staged before and does not stage now, so the hazard is a staged set
-  that shrinks. While both roots are present, every command the flat root
-  carried is still staged, so no publication run observes a source as absent
-  and no retraction of a live command is reachable. No compatibility mechanism
-  is required and none is designed:
+- The mother's commands exist under both the flat root and the tiered root, and
+  both are declared artifact sources while both carry commands. Contraction —
+  deleting the flat root — is the migration's last step.
+- Retraction removes what an owner staged before and does not stage now, so the
+  hazard it poses is a staged set that shrinks. While both roots carry a
+  command, every command the flat root carries is staged, so no publication run
+  observes a source as absent and no retraction of a live command is reachable.
   `@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`
-  is satisfied by the shape of the migration.
-- Landing order is unconstrained. The reader may read the tiered root before or
-  after the expansion landed, because the flat root it already reads never
-  stopped carrying anything.
-- Both roots being authored sources for the length of the cutover is what makes
-  the contraction a plain deletion: the existing reconciler retracts the flat
-  root's keys on the next publication, needing no new mechanism.
+  holds by the shape of the migration, so no compatibility mechanism exists in
+  this design.
+- The order in which the tiered root and its reader appear is unconstrained,
+  because the flat root carries every command throughout.
+- Contraction is a plain deletion: the existing reconciler retracts the flat
+  root's keys on the next publication, and this design adds no mechanism for
+  it.
 
 ## Primary flows
 
@@ -244,10 +241,10 @@ sequenceDiagram
     participant Code as this delivery
     participant Sync as publication
     Human->>Sync: expansion: commands copied to the tiered root, flat root kept
-    Sync->>Sync: both roots staged; staged set never shrinks
+    Sync->>Sync: both roots staged; the staged set never shrinks
     Code->>Sync: registry declares both roots; manifest keyed by relative path
     Sync->>Sync: corpus carries each command at its root key and its domain key
-    Human->>Sync: contraction after the fold: flat root deleted
+    Human->>Sync: contraction: flat root deleted
     Sync->>Sync: existing reconciler retracts the root keys
 ```
 
