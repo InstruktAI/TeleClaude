@@ -49,9 +49,8 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   kind, authorship, tier, and reach. The records name the tiered directories;
   the domain spec that owns the registry is listed under Required reads.
 - The command-name table in `teleclaude/constants.py` (`SlashCommand`): a
-  mechanical registry holding every command's canonical value in one place so
-  emitters compose rather than spell. Each value is owned by the context that
-  owns its command; the table owns none of them.
+  mechanical registry holding every command's canonical value. Each value is
+  owned by the context that owns its command; the table owns none of them.
 
 **Outputs**
 
@@ -103,7 +102,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   state-machine specs; a scheduled-job, creative, or personal command to the
   context that owns its meaning, stated there. The shared name table in the
   codebase is a mechanical cross-context registry — it holds every value in one
-  place so emitters compose rather than spell, and hosting confers no authority
+  place, and hosting confers no authority
   (`software-development/policy/domain-ownership`). `context` lays the corpus
   out against those names and owns none of them.
 - **`agent_runtime` owns resolution within the global corpus, and the
@@ -174,9 +173,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   `next-run-job` executes a configured job, and the job model is `config`'s —
   the declaration, the schedule contract, and the operator surface all resolve
   there, while `agent_runtime` dispatches a scheduled job into a session as it
-  dispatches any command. `config` therefore owns this command's name. Its
-  domain is `general` because a job is a platform capability available to every
-  project rather than the subject matter of one domain.
+  dispatches any command. `config` owns this command's name, and its domain is `general`.
 
 ### Migration without a retraction gap
 
