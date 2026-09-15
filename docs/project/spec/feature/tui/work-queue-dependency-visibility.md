@@ -18,9 +18,9 @@ The Preparation view keeps its existing dependency-tree projection: one dependen
 
 With a todo row selected, uppercase `D` starts a 1.5-second dependency flash. Every currently rendered row in the same project that represents one of the selected todo's dependencies takes the selected row's slug highlight, except for the dependency already expressed by the selected row's tree parent. That tree parent remains visually unchanged because its connector already exposes the relationship.
 
-The flash marks the row's slug span only. Owner-chip weight continues to track selection and preview alone, so a flashed row that is not selected keeps its ordinary chip weight. Weight distinguishes which row the cursor owns; the flash answers a different question and never competes with it.
+The flash marks the row's slug span only. Owner-chip weight continues to track selection and preview alone, so a flashed row that is not selected keeps its ordinary chip weight.
 
-A project is identified by its computer and path together, because the same path can exist on more than one computer. A row that is mounted but not displayed — filtered out of view — is not a rendered row.
+A project is identified by its computer and path together. A row that is mounted but not displayed is not a rendered row.
 
 The flash is transient view state. It changes no todo data, grouping, dependency order, section visibility, collapse state, cursor selection, or persisted TUI state.
 
