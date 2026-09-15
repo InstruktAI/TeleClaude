@@ -237,15 +237,17 @@ Migration sequence:
 
 ```mermaid
 sequenceDiagram
-    participant Human as human-present session on main
-    participant Code as this delivery
-    participant Sync as publication
-    Human->>Sync: expansion: commands copied to the tiered root, flat root kept
-    Sync->>Sync: both roots staged; the staged set never shrinks
-    Code->>Sync: registry declares both roots; manifest keyed by relative path
-    Sync->>Sync: corpus carries each command at its root key and its domain key
-    Human->>Sync: contraction: flat root deleted
-    Sync->>Sync: existing reconciler retracts the root keys
+    participant Author as artifact author
+    participant Registry as artifact-source registry
+    participant Pub as publication
+    participant Corpus as global command corpus
+    Author->>Registry: a command is present at both the flat and the tiered root
+    Registry->>Pub: both roots are declared sources
+    Pub->>Corpus: the command is staged at its root key and at its domain key
+    Note over Pub,Corpus: the staged set never shrinks, so no live command is retracted
+    Author->>Registry: the flat root is deleted
+    Registry->>Pub: the tiered root alone is a source
+    Pub->>Corpus: the root keys are retracted
 ```
 
 ## Failure modes
