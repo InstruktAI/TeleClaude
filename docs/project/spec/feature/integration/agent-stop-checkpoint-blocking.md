@@ -577,33 +577,6 @@ Then the reason is framed by the canonical XML checkpoint control envelope
 And no bracket checkpoint envelope is emitted on the hook boundary
 ```
 
-<!-- planned:unknown-scope-is-not-empty-scope -->
-#### UC-CP26: An unattributable dirty tree surfaces the declaration advisory
-
-```gherkin
-Given an agent session reaches an agent-stop checkpoint boundary
-And the working tree is dirty
-And no path is attributed to that session for the turn
-And the session neither declared a path nor committed during the turn
-When checkpoint evaluation completes
-Then a checkpoint decision is produced rather than skipped as having no changes
-And its required action instructs the agent to compare its own registered scope against what it wrote and declare the difference
-And the decision names no path and resolves no ownership
-And the agent stop is not blocked
-```
-
-#### UC-CP27: A turn that used the declaration channel is not advised again
-
-```gherkin
-Given an agent session reaches an agent-stop checkpoint boundary
-And the working tree is dirty
-And the session declared a path or committed during the turn
-When checkpoint evaluation completes
-Then no declaration advisory is produced
-```
-
-<!-- /planned:unknown-scope-is-not-empty-scope -->
-
 <!-- planned:checkpoint-keeps-only-judgment-actions -->
 #### UC-CP28: Maintenance the commit boundary performs is not an agent obligation
 
