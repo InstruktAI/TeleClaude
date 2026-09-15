@@ -4,7 +4,7 @@ type: 'spec'
 domain: 'software-development'
 scope: 'project'
 visibility: 'public'
-description: 'Schema-driven TUI config surface for every typed TeleClaude config layer, replacing hand-patched form models and field maps.'
+description: 'Schema-driven TUI config surface rendered from the canonical config schemas the wizard owns, replacing hand-patched form models and field maps.'
 ---
 
 # Schema Driven Config TUI — Spec
