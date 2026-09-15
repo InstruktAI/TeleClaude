@@ -83,9 +83,15 @@ judgment; the runtime reads only the written declaration.
 
 
 
+<!-- planned-change:retire-docs-watcher -->
 After writing the toggles, run `telec sync`: its mutating path (after the
 read-only `--skip-deploy` early return) sets the docs filter driver present iff
 `docs` is subscribed and refreshes the TeleClaude-owned git hooks of a project
+<!-- change:retire-docs-watcher -->
+After writing the toggles, run `telec sync`: its mutating path sets the docs
+filter driver present iff `docs` is subscribed and refreshes the
+TeleClaude-owned git hooks of a project
+<!-- /planned-change:retire-docs-watcher -->
 subscribing `code`. The toggle write is the whole of the capability change: the
 installed plumbing reads the declaration on its next invocation, and no
 capability state is written anywhere else. Never edit a project-tracked file to

@@ -14,22 +14,19 @@ visibility: 'public'
 
 `telec sync` is the operator-facing command that promotes git-tracked Source
 into Deployed agent runtime outputs. Its responsibility is synchronization:
-validate authored source shape, record best-effort provenance, rebuild derived
-indexes, and distribute runtime artifacts. It does not mutate doc snippets in
-response to todo delivery state; delivery-driven `delivered_by` reconciliation
-belongs to the integration lifecycle before the delivery commit is made.
+validate authored source shape, rebuild derived indexes, and distribute
+runtime artifacts. It does not mutate doc snippets in response to todo
+delivery state; delivery-driven `delivered_by` reconciliation belongs to the
+integration lifecycle before the delivery commit is made.
 
 The sync pipeline is:
 
 1. **Validate** — run snippet, artifact, and jobs-config validators.
-2. **Record provenance** _(best-effort)_ — when a provenance back-end is
-   configured, insert `delivered_by` memberships for audit. Back-end
-   unavailability is caught and logged as a warning. This step never blocks
-   phases 3–4.
-3. **Build indexes** — write fresh derived doc indexes from source snippets.
-4. **Distribute** — invoke the distribution step in deploy mode.
+2. **Build indexes** — write fresh derived doc indexes from source snippets.
+3. **Distribute** — invoke the distribution step in deploy mode.
 
 
+<!-- planned-change:retire-docs-watcher -->
 Validation always blocks: any finding stops the pipeline and `telec sync` exits
 non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 
@@ -39,6 +36,17 @@ non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 - `--skip-validation` — skip validation entirely and deploy without blocking.
   Hidden and role-gated to the docs watcher (live reload must never stall on a
   mid-edit state); the commit gate is the real validation contract. Not for agents.
+<!-- change:retire-docs-watcher -->
+Validation always blocks: any finding stops the pipeline and `telec sync` exits
+non-zero — there is no warn-and-pass mode, and no flag skips a phase. Every
+invocation validates, then deploys.
+
+`telec sync` has no ambient caller. Deployment reaches the same artifacts at the
+commit boundary, and the command stays directly invocable for the runs no commit
+triggers: a fresh clone, a newly registered project, or recovery after a failed
+run. Its callers are the post-commit hook, project bootstrap, and deliberate
+invocation.
+<!-- /planned-change:retire-docs-watcher -->
 
 
 Validation findings are stdout text grouped by error code and reason; there is
@@ -79,6 +87,7 @@ And the run exits zero
 
 
 
+<!-- planned-change:retire-docs-watcher -->
 ```
 Scenario: --skip-deploy validates but produces no derived outputs
   Given the operator wants to validate without deploying
@@ -87,9 +96,12 @@ Scenario: --skip-deploy validates but produces no derived outputs
   And no index build, symlink repair, or distribution step runs
 And the run exits zero only when validation is clean
 ```
+<!-- change:retire-docs-watcher -->
+<!-- /planned-change:retire-docs-watcher -->
 
 
 
+<!-- planned-change:retire-docs-watcher -->
 ```
 Scenario: Validation findings always block
   Given snippet, artifact, or jobs-config validation reports a finding
@@ -98,18 +110,34 @@ Scenario: Validation findings always block
   And the pipeline aborts before any deploy
 And the run exits non-zero
 ```
+<!-- change:retire-docs-watcher -->
+#### UC-SPO19: Validation findings always block
 
-
-
+```gherkin
+Given snippet, artifact, or jobs-config validation reports a finding
+When telec sync is invoked
+Then the findings are printed grouped by error code and reason
+And the pipeline aborts before any deploy
+And the run exits non-zero
 ```
-Scenario: The docs watcher bypasses validation to live-reload
-  Given the docs watcher authorizes the hidden --skip-validation flag
-  When telec sync --skip-validation is invoked
-  Then validation is skipped entirely
-  And the pipeline records provenance, builds indexes, and distributes
-  And the run never blocks on source validity
-```
+<!-- /planned-change:retire-docs-watcher -->
 
+
+
+<!-- planned-change:retire-docs-watcher -->
+#### UC-SPO18: The docs watcher bypasses validation to live-reload
+
+```gherkin
+Given the docs watcher authorizes the hidden --skip-validation flag
+When telec sync --skip-validation is invoked
+Then validation is skipped entirely
+And the pipeline builds indexes and distributes
+And the run never blocks on source validity
+```
+<!-- change:retire-docs-watcher -->
+<!-- /planned-change:retire-docs-watcher -->
+
+<!-- planned-change:retire-docs-watcher -->
 ```
 Scenario: A non-watcher caller is rejected from bypassing validation
   Given a caller that is not the docs watcher
@@ -117,17 +145,19 @@ Scenario: A non-watcher caller is rejected from bypassing validation
   Then the command is rejected and exits non-zero
 And no deploy occurs
 ```
+<!-- change:retire-docs-watcher -->
+#### UC-SPO20: An unknown flag is rejected
+
+```gherkin
+Given an operator invokes telec sync with a flag the command does not declare
+When the command parses its arguments
+Then the invocation is rejected with the command's usage
+And the run exits non-zero
+And no validation, index build, or distribution step runs
+```
+<!-- /planned-change:retire-docs-watcher -->
 
 
-```
-Scenario: Provenance back-end is unavailable
-  Given a provenance back-end is configured
-  And the back-end is unreachable, misauthenticated, or out of date
-  When telec sync --deploy runs
-  Then the provenance recording step logs a warning
-  And the pipeline continues to build indexes and distribute artifacts
-  And sync returns success
-```
 
 ```
 Scenario: Delivery completes before sync
@@ -140,11 +170,10 @@ Scenario: Delivery completes before sync
 #### UC-SPO16: Deploy-mode sync performs only its own phases
 
 ```gherkin
-Given documentation provenance for the current source state is not yet durably recorded
-And a reachable project's configuration document is not yet at the current schema
+Given a reachable project's derived indexes and runtime artifacts are not current for the source state
+And that project's configuration document is not yet at the current schema
 When an agent invokes a deploy-mode synchronization for that project
-Then that provenance becomes durably recorded
-And the derived indexes and runtime artifacts are republished
+Then the derived indexes and runtime artifacts are republished
 And the reachable project's configuration document is still not at the current schema
 ```
 
@@ -155,13 +184,13 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
   Given an agent invokes telec sync in deploy mode from a slug worktree (trees/<slug>, not trees/_integration)
   When the pipeline starts
   Then it exits non-zero with an error that docs deployment is not allowed from a slug worktree
-<!-- planned-change:sync-validation-moves-to-lint -->
+<!-- planned-change:retire-docs-watcher -->
   And no validation, index build, symlink repair, or distribution step runs
   And a --skip-deploy run, and deploy-mode sync from the main checkout or the integration worktree, are unaffected
-<!-- change:sync-validation-moves-to-lint -->
-  And no index build, symlink repair, or distribution step runs
+<!-- change:retire-docs-watcher -->
+  And no validation, index build, symlink repair, or distribution step runs
   And deploy-mode sync from the main checkout or the integration worktree is unaffected
-<!-- /planned-change:sync-validation-moves-to-lint -->
+<!-- /planned-change:retire-docs-watcher -->
 ```
 
 <!-- planned:docs-tier-layering -->
@@ -225,7 +254,7 @@ And validation reports a finding only when that source target is missing
   `delivered_by` reconciliation.
 - **config** — supplies project root and Mother-project resolution consumed by
   the distribution step.
-- **agent_runtime** — phase 4's distribution step deploys to the agent runtime
+- **agent_runtime** — phase 3's distribution step deploys to the agent runtime
   boundary.
 
 ## Known caveats
@@ -235,16 +264,17 @@ And validation reports a finding only when that source target is missing
   domain's `domain-baseline-bundle.md` into the deployed root
   `~/.teleclaude/docs/<domain>/` (not the source tree), but it must not mutate
   authored `docs/**/*.md` snippets.
-- Provenance recording is best-effort: back-end availability is not required
-  for sync to complete. When the back-end is unavailable, provenance rows are
-  skipped and a warning is emitted. Drift between sync runs and the
-  provenance store is expected until the back-end is healthy again.
 
 
+<!-- planned-change:retire-docs-watcher -->
 - `--skip-deploy` exits before index build and symlink repair. Broken tracked
   symlinks may therefore remain broken until a full sync runs.
 - `--skip-validation` deploys unvalidated source; it is reserved for the docs
   watcher's live reload, where the commit gate remains the validation contract.
+<!-- change:retire-docs-watcher -->
+- Deployed artifacts reflect committed state. Between a save and its commit, the
+  deployed tree is the previous commit's.
+<!-- /planned-change:retire-docs-watcher -->
 
 
 - Project bootstrap (`telec projects init` / `onboard`, via `sync_bootstrap`)
@@ -252,5 +282,5 @@ And validation reports a finding only when that source target is missing
   one-time setup path distinct from the always-blocking `telec sync` command.
   The commit gate remains the validation contract for ongoing work.
 - The distribution step is optional in stripped-down deployments because a
-  missing distribution entrypoint silently skips phase 4.
+  missing distribution entrypoint silently skips phase 3.
 - The v1 CLI namespace is `telec sync`. The v2 target is `telec context sync`.

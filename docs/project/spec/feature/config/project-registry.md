@@ -10,9 +10,15 @@ visibility: internal
 
 The project registry is the machine's durable list of adopted project roots. It
 is what every consumer enumerates to answer "which projects exist here" —
+<!-- planned-change:retire-docs-watcher -->
 documentation publisher resolution, the valid-domain set, global skill
 composition, configuration advancement, the docs watcher's watch set, and the
 project catalog. Its shape and location are config's, stated in
+<!-- change:retire-docs-watcher -->
+documentation publisher resolution, the valid-domain set, global skill
+composition, configuration advancement, and the project catalog. Its shape and
+location are config's, stated in
+<!-- /planned-change:retire-docs-watcher -->
 `project/spec/teleclaude-config`.
 
 Adoption is what writes it. A project is recorded when it is initialized or

@@ -75,9 +75,14 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   directories are sources, of which kind, at which tier, with which reach. Every
   consumer — validation (`teleclaude/resource_validation/_artifacts.py`), global
   skill discovery (`teleclaude/global_skills.py`), distribution
+<!-- planned-change:retire-docs-watcher -->
   (`scripts/distribute.py`), the sync watcher's top-level scope
   (`teleclaude/cli/watch.py`), the checkpoint sync scope
   (`teleclaude/constants.py`), and onboarding inference
+<!-- change:retire-docs-watcher -->
+  (`scripts/distribute.py`), the checkpoint sync scope
+  (`teleclaude/constants.py`), and onboarding inference
+<!-- /planned-change:retire-docs-watcher -->
   (`teleclaude/project_setup/init_flow.py`) — derives its directory set from the
   registry and restates nothing.
 - **Reach is a registry attribute, resolved against `config`'s declaration.** A

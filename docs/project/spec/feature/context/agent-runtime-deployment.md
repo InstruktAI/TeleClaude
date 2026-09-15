@@ -636,6 +636,20 @@ Scenario: UC-ARD30 A reference validates against its source, never against the d
 
 <!-- /planned:fleet-artifact-sync -->
 
+<!-- planned:retire-docs-watcher -->
+#### UC-ARD31: A saved source deploys nothing; its commit deploys it
+
+```gherkin
+Given an agent has saved a documentation or agent-artifact source in a registered project
+And that change is not yet committed
+When the agent reads the deployed tree for that project
+Then the deployed tree still carries the content of the previous commit
+When the agent commits that change
+Then the commit-boundary maintenance records that the deployed tree was republished
+And the agent reads the committed content from the deployed tree
+```
+<!-- /planned:retire-docs-watcher -->
+
 ### Cross-context references
 
 - **agent_runtime** — each agent CLI reads its `~/.<agent>/` tree at
@@ -678,11 +692,19 @@ Scenario: UC-ARD30 A reference validates against its source, never against the d
   sources the Mother's canonical checkout. The main checkout and the integration
   worktree are the only contexts that deploy the doc layer.
 
+<!-- planned-change:retire-docs-watcher -->
 - The distribution step is always fatal: a non-zero distribution exit propagates
   and fails the sync (there is no suppress-on-warn mode). A split domain
   ownership declaration and a bundle-inflation failure both abort the deploy this
   way. The docs watcher, which must not block, catches that failure at its own
   subprocess boundary instead.
+<!-- change:retire-docs-watcher -->
+- The distribution step is always fatal: a non-zero distribution exit propagates
+  and fails the sync (there is no suppress-on-warn mode). A split domain
+  ownership declaration and a bundle-inflation failure both abort the deploy this
+  way. The post-commit hook, which must not fail a commit that already passed the
+  gate, reports that failure instead of propagating it.
+<!-- /planned-change:retire-docs-watcher -->
 - The deployed `index.yaml` is the union of every owner's source per-domain
   `index.yaml`; each source index already carries `~/.teleclaude` paths, so the
   merge is a union of entries with no path rewrite. With one owner per domain the
