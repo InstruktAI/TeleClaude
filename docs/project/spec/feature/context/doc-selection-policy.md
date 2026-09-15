@@ -301,6 +301,16 @@ Then that named tier is returned in full
 And no other tier is returned
 ```
 
+#### UC-DSP30: Discovery names every tier in the caller's read set, an empty one included
+
+```
+Given an agent session whose read set contains a participating person or company tier that holds no snippets
+When the session runs documentation discovery
+Then the discovery output names each tier in the read set with the number of entries it contributes
+And the empty participating tier is named with zero entries
+And a tier outside the caller's read set is not named
+```
+
 #### UC-DSP14: Membership in several companies stays unambiguous
 
 ```

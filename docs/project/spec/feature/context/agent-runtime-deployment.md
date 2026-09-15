@@ -497,6 +497,7 @@ And that tier's home holds authored documentation sources
 When a deploy-mode sync publishes the documentation snapshot
 Then that tier's sources are copied into the staged generation under companies/<slug>/ or people/<slug>/
 And the merged index carries every entry of that tier's catalog under its tier-qualified identity
+And the tier's own catalog is deployed beside its material, whether or not it has entries
 And the staged generation replaces the deployed root atomically, tier material included
 And no reader is served the tier's material from its authoring home
 ```

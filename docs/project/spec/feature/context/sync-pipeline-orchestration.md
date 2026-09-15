@@ -194,15 +194,15 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
 ```
 
 <!-- planned:docs-tier-layering -->
-#### UC-SPO17: A change under a participating tier's documentation tree triggers publication
+#### UC-SPO17: A commit under a participating tier's documentation home publishes it
 
 ```
 Given a company or person tier whose declaration records participation in the documentation surface
-And the docs watcher is running
-When a documentation source under that tier's home changes
-Then the watcher admits the path as sync-relevant
-And the home resolves as a synchronization target for its tier material
-And the same deploy-mode publication runs that a registered project's change triggers
+And that tier's home lives in the platform home repository, which carries the commit-boundary maintenance
+When a documentation source under that tier's home is committed
+Then the commit-boundary maintenance republishes the deployed documentation snapshot
+And the tier's committed material is in that snapshot, exactly as a registered project's would be
+And a saved but uncommitted change under the tier's home deploys nothing
 And no global agent-artifact publication path opens from the tier's home
 ```
 <!-- /planned:docs-tier-layering -->
