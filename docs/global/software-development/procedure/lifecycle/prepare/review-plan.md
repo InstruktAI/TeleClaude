@@ -413,10 +413,8 @@ produces it; the key ones to pre-satisfy:
   every behavior the task implements. A task that exceeds that contract is a
   Requirement-Violation (blocking): remove it from the todo and surface the
   exact missing snippet delta for decision and authoring in a human-present
-  session. A `HUMAN-DECISION:` marker in the input or plan is not process
-  authority and does not close the finding; process changes never travel under
-  the marker or through a todo. Code implementing the current contract is
-  ordinary functionality work and requires no marker.
+  session. Process changes never travel through a todo. Code implementing the
+  current contract is ordinary functionality work.
   Descriptive doc edits and restoring code to the current contract do not
   trigger this gate.
 - **Config surface**: name the config key, the wizard entry, the sample line,

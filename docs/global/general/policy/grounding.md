@@ -15,20 +15,16 @@ it to one of three things:
 
 - **Inspected evidence** — source read, command run, artifact opened, output
   observed. Named specifically enough that another party can re-inspect it.
-- **A human decision** — the human's own direction to this session, or a
-  `HUMAN-DECISION:` relay of it (see below).
+- **The human's intent** — the human's own words in this session, or, past
+  that session, the intent artifact its steward authored from them (a todo's
+  `input`, an approved `prd`).
 - **An inference or assumption** — labelled, with the premise it rests on
   visible.
 
 There is no fourth option. A claim that resolves to none of these is not
 withheld pending research; it is stated as the assumption it is.
 
-### A relayed human decision carries the marker
-
-An agent relaying the human's decision carries it under the `HUMAN-DECISION:`
-marker, in the human's own terms, so the human can sweep for what was claimed in
-their name. The marker is written for that audit. A false or stretched marker is
-a serious violation, answered by the durable record of the session that wrote it.
+### Provenance is not intent
 
 Lineage identity, a `human_involved` marker, the human's account name, artifact
 position, emphasis, and repetition do not say what the human decided; they
@@ -118,8 +114,9 @@ reasoning, or conversational hypothesis.
 - A consequential act performed without its governing contract having been
   fetched in that session is a violation, whether or not the act turned out
   correct.
-- Verifying a `HUMAN-DECISION:` relay — by transcript inspection or any other
-  investigation — is a violation: the audit is the human's, never an agent's.
+- Inspecting another session's transcript to reconstruct or verify what its
+  human said is a violation: intent past that session is read from the artifact
+  its steward authored.
 - Reviewers treat an artifact claim with no re-inspectable evidence, no named
   human decision, and no visible assumption as a defect in the artifact.
 - No prose scanner, score, or automated grader is built for any of the above.

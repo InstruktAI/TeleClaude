@@ -77,19 +77,21 @@ challenges a decision by citing the applicable principle and proving the
 conflict; absence of a specific prohibition is never authorization, and "the
 design feels wrong" is not a finding.
 
-The human audits exactly one thing: their own voice, by sweeping for the
-`HUMAN-DECISION:` marker. The commit footer's human-involved declaration is
-orthogonal to authorization and traces nothing.
+The steward absorbs the human's input into the artifact it owns; downstream
+reads that artifact, never the human's words, and returns to the human only for
+the closed list. The human audits one thing: which artifacts and commits were
+produced with them present, read from the involvement record
+(`general/policy/human-involvement-recording`), which is orthogonal to
+authorization.
 
 ### Process changes happen with the human present
 
 A process-level change is decided, and its doc contract authored, in the session
 where the human is present. It is never relayed to another session and never
 delegated through a todo. The rule binds the sender, never the receiver: a
-receiver accepts a marked declaration's truth and checks only whether it applies
-to its current work and whether later input it actually received has superseded
-it; it never inspects the sender's transcript. A sender that carries a process
-change under the marker is the one in violation, found by the human's sweep.
+receiving agent checks only whether an artifact applies to its current work and
+whether later input it actually received has superseded it; it never inspects
+another session's transcript.
 
 ### Decision class decides authority; artifact class decides only execution
 
@@ -119,7 +121,7 @@ functional, snippet versus code — decides only where the work executes, per
 - A rewrite of what agents do is the one change no downstream gate catches, so it
   is kept where the human watches it being made. Binding the sender rather than
   the receiver keeps agents trusting each other and keeps the human's audit
-  cheap: the marker enumerates every relayed decision.
+  cheap: the involvement record enumerates every act performed with them present.
 
 ## Scope
 
@@ -133,9 +135,9 @@ functional, snippet versus code — decides only where the work executes, per
   earliest gate that sees it, and **Critical** at any later gate.
 - A material decision without a recorded reason on the change description or RFC
   is a finding.
-- A process change relayed under the marker is the sender's violation, answered
-  by that session's durable record; the receiver is not at fault for acting on
-  it.
+- A process change carried to another session or delegated through a todo is
+  the sender's violation, answered by that session's durable record; the
+  receiver is not at fault for acting on it.
 
 ## Exceptions
 

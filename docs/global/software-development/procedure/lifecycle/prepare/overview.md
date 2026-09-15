@@ -198,11 +198,10 @@ or workflow specs, the review-lane catalog, or gate composition)?
   code to the current contract) → proceed to Step 2.
 - **The current process-layer doc contract already binds every implied
   behavior** → proceed to Step 2. The input may point to that contract as
-  implementation scope; a `HUMAN-DECISION:` marker is neither required nor
-  process authority.
+  implementation scope.
 - **Delivering the input requires process behavior beyond the current doc
   contract** → **refuse to prepare.** Do not advance the state machine or carry
-  the change through the todo under a marker. Surface the exact missing snippet
+  the change through the todo. Surface the exact missing snippet
   delta under the policy's escalation shape so it can be decided and authored
   in a human-present session; resume only after that contract is live.
 

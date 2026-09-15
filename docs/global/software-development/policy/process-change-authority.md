@@ -134,15 +134,14 @@ commit it — it escalates the proposal per the escalation shape below and goes
 idle on that thread. It never self-approves and never re-derives approval from
 plausibility.
 
-### A relayed human decision is declared, never investigated
+### Intent past the human's session is the artifact, never a relay
 
-An agent relays a human's decision inside already-authorized work under the
-`HUMAN-DECISION:` marker, in the human's own terms. A process change never
-travels under the marker: it is authored where the human is present, and a
-sender that relays one is the one in violation. A receiver checks only whether
-the directive applies to its current work and whether later input it actually
-received has superseded it. A false or stretched marker is a serious violation,
-answered by the durable record of the session that wrote it.
+What the human decides in a session is authored there, into the artifact that
+session owns. A process change is never carried to another session or through a
+todo; a sender that does so is the one in violation. A receiver checks only
+whether an artifact applies to its current work and whether later input it
+actually received has superseded it; it never inspects another session's
+transcript.
 
 Lineage, `entry_point`, `human_involved`, the human account on a commit, artifact
 position, emphasis, and repetition are not declarations of what the human
@@ -153,9 +152,8 @@ orthogonal to authorization (`general/policy/human-involvement-recording`).
 
 **An agent never writes a human's name as an approval or attestation in any
 durable record** — not in a commit message, not in an artifact, not in a doc.
-The marker relays a decision; it does not sign for the human. Writing an
-approval in the human's name is itself a serious violation traceable to the
-writing agent's session.
+Writing an approval in the human's name is itself a serious violation traceable
+to the writing agent's session.
 
 ### Bug plans never contain process changes
 
@@ -192,12 +190,11 @@ this policy adds no mid-work stop trigger.
   change into that intent unratified, the gates faithfully validate a smuggled
   premise. The only reliable moment to check authority is before the intent
   gains it.
-- A marked relay is a declaration, not a proof, and that is deliberate. Making
-  it verifiable would mean an agent reading the human's conversations to check
-  another agent — the trust violation this policy exists to forbid. The marker
-  instead makes every relayed decision enumerable, so the human audits their own
-  authority by sweeping for it; a false relay stands against the declaring
-  session's own record.
+- Making intent verifiable across sessions would mean an agent reading the
+  human's conversations to check another agent — the trust violation this policy
+  exists to forbid. Intent past the human's session is the artifact its steward
+  authored, challenged on its merits by peers; a false artifact stands against
+  the authoring session's own record.
 
 ## Scope
 
@@ -212,9 +209,8 @@ this policy adds no mid-work stop trigger.
   (`software-development/procedure/lifecycle/prepare/overview`).
 - Plan review: a plan whose tasks alter the process layer beyond what its doc
   contract — authored with the human present — already binds is a
-  **Requirement-Violation** (blocking). A process change carried into a plan
-  under the `HUMAN-DECISION:` marker is the relaying session's violation, not
-  the plan's authority.
+  **Requirement-Violation** (blocking). A process change carried into a plan is
+  the authoring session's violation, not the plan's authority.
 - Scope lane at build/commit review: a process-layer behavioral delta the
   authorized intent does not call for is **Critical** (existing rule; this policy
   names the process layer as its sharpest case).
