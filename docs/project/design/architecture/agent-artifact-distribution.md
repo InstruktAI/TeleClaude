@@ -48,8 +48,10 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   one frozen record per source directory carrying relative directory, artifact
   kind, authorship, tier, and reach. The records name the tiered directories;
   the domain spec that owns the registry is listed under Required reads.
-- The canonical command-name vocabulary in `teleclaude/constants.py`
-  (`SlashCommand`), owned by `workflow`.
+- The command-name table in `teleclaude/constants.py` (`SlashCommand`): a
+  mechanical registry holding every command's canonical value in one place so
+  emitters compose rather than spell. Each value is owned by the context that
+  owns its command; the table owns none of them.
 
 **Outputs**
 
@@ -169,10 +171,12 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   publishes under `general`, which is the mother's alone. Two cases are named
   here because the name misleads: `next-assist` executes a software-development
   lifecycle procedure and publishes under `software-development`, not `general`;
-  `next-run-job` executes a scheduled job whose declaration belongs to `config`
-  and whose session execution belongs to `agent_runtime`, neither of which is
-  the todo lifecycle, so it publishes under `general`, not
-  `software-development`.
+  `next-run-job` executes a configured job, and the job model is `config`'s —
+  the declaration, the schedule contract, and the operator surface all resolve
+  there, while `agent_runtime` dispatches a scheduled job into a session as it
+  dispatches any command. `config` therefore owns this command's name. Its
+  domain is `general` because a job is a platform capability available to every
+  project rather than the subject matter of one domain.
 
 ### Migration without a retraction gap
 
