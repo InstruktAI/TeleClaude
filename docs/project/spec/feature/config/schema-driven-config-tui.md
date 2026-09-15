@@ -367,10 +367,18 @@ blacklist is retired as the authority.
 - Overlay models reject undeclared keys at their file-backed load boundary. The
   TUI edits only schema-declared fields and never preserves arbitrary unknown
   subtrees.
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 - Masking is keyed on value provenance, not on field-name heuristics: a value
   resolved from an environment variable (`${VAR}` reference) is masked unless the
   field is being edited (UC-CFG-TUI-SCHEMA-11). Masking is a rendering rule layered
   over the same editable field and does not change the persistence contract.
+<!-- change:config-sample-regeneration-leaves-sync -->
+- Non-display is keyed on the schema's sensitivity declaration, not on
+  field-name heuristics: a field declared sensitive shows whether it is set and
+  never its value, in display and in editing alike (UC-CFG-TUI-SCHEMA-11).
+  Non-display is a rendering rule layered over the same editable field and does
+  not change the persistence contract.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 - `invite_token` is relocated out of `PersonConfig` into an ephemeral
   invitations store under `~/.teleclaude/state/` by this delivery. The config
   delta is the field's removal from the `PersonConfig` overlay; the invitation

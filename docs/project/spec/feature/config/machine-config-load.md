@@ -55,15 +55,17 @@ And the machine config is rewritten only when that merge changed it
 And the blueprint file itself is never written
 ```
 <!-- change:config-sample-regeneration-leaves-sync -->
-#### UC-CFG-LOAD-1b: The schema produces a machine config that does not yet exist
+#### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
+
+#### UC-CFG-LOAD-10: Installation produces a machine configuration from the schema
 
 ```
-Given no machine configuration exists at <RuntimeConfig.home>/config.yml
-When the machine config path is resolved at process start
+Given a host carrying no machine configuration at <RuntimeConfig.home>/config.yml
+When installation runs
 Then the machine configuration is produced from the configuration schema
 And each field declared sensitive is written as its derived environment reference
 And no field's resolved secret value is written
-And an existing machine configuration is left as it is
+And a host that already carries a machine configuration keeps it unchanged
 ```
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 

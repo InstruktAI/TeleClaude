@@ -33,7 +33,7 @@ visibility: 'public'
 4. Register adapter env vars in `_ADAPTER_ENV_VARS` in `teleclaude/cli/config_handlers.py`.
 5. Register adapter field guidance in `GuidanceRegistry` in `teleclaude/cli/tui/config_components/guidance.py`.
 <!-- change:config-sample-regeneration-leaves-sync -->
-4. Nothing further: the adapter's environment variables and their presence in the config TUI follow from the field declarations in step 3.
+4. Mark credential fields sensitive so their environment variables derive from the field paths; mark fields `tui` to admit them to the config TUI. The two markers are independent.
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 6. Verify the config wizard discovers and exposes the new adapter area.
 7. Update `docs/project/spec/teleclaude-config.md` with the new config keys and env vars.

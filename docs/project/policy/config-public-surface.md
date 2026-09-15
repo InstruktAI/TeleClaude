@@ -29,14 +29,17 @@ visibility: internal
   directly.
 - **`tui`** is the operator-facing render set: the only tier the config wizard
   renders.
-- **A field may additionally be declared sensitive.** A sensitive field is
-  written into a generated machine configuration as its environment reference
-  and never as its value, and the config TUI reports only whether it is set.
-- **A field's environment variable is derived from its path**, upper-cased and
-  joined with a single underscore. The derivation runs one way, from schema to
-  name; no nesting separator is introduced for a reverse mapping nothing performs.
-  A reference inside a body declared `ungoverned_body` is operator-authored,
-  because no marker can name a member the schema does not enumerate.
+- **A field may additionally be declared sensitive.** Sensitivity and tier are
+  independent declarations: sensitivity decides how a value is carried, tier
+  decides whether the field is rendered at all. A sensitive field is written into
+  a generated machine configuration as its environment reference and never as its
+  value. A sensitive field that is also in the TUI render set reports whether it
+  is set and never its value.
+- **A sensitive field's environment variable is its dotted path, upper-cased,
+  with each separator replaced by a single underscore.** The mapping is defined
+  from schema to name only.
+- **A field inside a body declared `ungoverned_body` carries no derived
+  reference.** Any reference in such a body is operator-authored.
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 - A field reaches humans only by a deliberate tier declaration. A new field with
   no marker stays internal.
@@ -69,8 +72,19 @@ visibility: internal
 
 - Default-internal editability prevents accidental human exposure: a field is
   invisible until declared.
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 - One authority (the field tier) keeps the defaults blob, the generated sample,
   and the TUI render set aligned.
+<!-- change:config-sample-regeneration-leaves-sync -->
+- One authority (the field markers) keeps the defaults blob, the TUI render set,
+  and the environment surface aligned.
+- No nesting separator is introduced because the mapping is never inverted: the
+  schema names the variable, and nothing derives a field from a name.
+- A member the schema does not enumerate cannot carry a derived reference, which
+  is why an `ungoverned_body` keeps its references authored.
+- A deployment command that writes a git-tracked file leaves the working tree
+  dirty and makes a repository edit nobody asked for.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 ## Scope
 

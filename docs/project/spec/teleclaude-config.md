@@ -11,11 +11,10 @@ The Teleclaude Config surface defines how TeleClaude configuration is initialize
 
 1. User-facing `teleclaude.yml` files (`GlobalConfig`, `ProjectConfig`, `PersonConfig`)
 2. Daemon runtime `config.yml` loaded by `teleclaude.config`
-
 <!-- planned-change:config-sample-regeneration-leaves-sync -->
 These surfaces are related but not interchangeable. The config wizard, `_ADAPTER_ENV_VARS`, and `GuidanceRegistry` cover the user-facing `teleclaude.yml` / environment-variable surface. Daemon-only `config.yml` keys are documented here for runtime correctness, but they do not automatically imply new wizard steps or env-var registry entries.
 <!-- change:config-sample-regeneration-leaves-sync -->
-These surfaces are related but not interchangeable. The environment variables an operator sets are derived from the machine-config schema's sensitive declarations, so the config TUI's environment list follows the schema rather than a separately maintained registry.
+These surfaces are related but not interchangeable. Every environment variable backing a machine-config field derives from that field's path, so the config TUI's environment list for those fields follows the schema rather than a separately maintained registry. Variables outside the machine-config schema — the deployment-time home location, and requirements declared by MCP servers or by operator-authored `ungoverned_body` entries — keep their own sources and are still recorded here.
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 ### One filename, four tiers
@@ -451,6 +450,7 @@ placeholders in machine `config.yml`. Generic YAML expansion resolves them at
 config load; runtime consumers read only the resulting typed fields and never
 consult the process environment directly.
 
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 ```yaml
 environment_variables:
   # Telegram adapter — wizard-managed via _ADAPTER_ENV_VARS["telegram"]
@@ -499,6 +499,57 @@ environment_variables:
   - TELECLAUDE_BACKUP_PREFIX
   - FIRECRAWL_API_KEY
 ```
+<!-- change:config-sample-regeneration-leaves-sync -->
+```yaml
+# Every name below derives from its machine-config field path.
+environment_variables:
+  # Telegram adapter
+  - TELEGRAM_BOT_TOKEN
+  # Discord adapter
+  - DISCORD_BOT_TOKEN
+  - DISCORD_GUILD_ID
+  # WhatsApp adapter
+  - WHATSAPP_PHONE_NUMBER_ID
+  - WHATSAPP_ACCESS_TOKEN
+  - WHATSAPP_WEBHOOK_SECRET
+  - WHATSAPP_VERIFY_TOKEN
+  - WHATSAPP_TEMPLATE_NAME
+  - WHATSAPP_TEMPLATE_LANGUAGE
+  - WHATSAPP_BUSINESS_NUMBER
+  # AI keys; also editable in the Providers subtab (AI section)
+  - ANTHROPIC_API_KEY
+  - OPENAI_API_KEY
+  - GOOGLE_API_KEY
+  - SUMMARIZER_LLM_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
+  - SUMMARIZER_LLM_MODEL # model id loaded in the local server
+  # Voice / TTS
+  - ELEVENLABS_API_KEY
+  # Redis transport — essential infrastructure. Editable in the Infra subtab (Redis section)
+  # as ${VAR}-backed fields, and a mandatory guided-wizard step (the Infra step is not
+  # complete until REDIS_URL is set). Also listed in the config TUI's environment section.
+  - REDIS_URL
+  - REDIS_PASSWORD
+  # RuntimeConfig one-shot path control. RuntimeConfig reads this once at
+  # process startup and freezes it; it is the only env var that moves a
+  # TeleClaude-owned path.
+  - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
+  # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
+  # commented out in .env / .env.sample and is NOT part of make install yet.
+  # AI keys / Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields, saved to .env)
+  - EMAIL_FROM
+  - EMAIL_REPLYTO
+  - SMTP_USERNAME
+  - SMTP_KEY
+  - SMTP_RELAY # host:port
+  - AWS_ACCESS_KEY_ID
+  - AWS_SECRET_ACCESS_KEY
+  - AWS_S3_HOST
+  - AWS_S3_REGION
+  - AWS_S3_BUCKET
+  - TELECLAUDE_BACKUP_PREFIX
+  - FIRECRAWL_API_KEY
+```
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 `teleclaude.runtime.config` is the one-shot owner for the controlled path env
 surface. It reads `TELECLAUDE_HOME` once at module import and freezes it into
@@ -521,10 +572,17 @@ locally, so every consumer resolves to one declaring node.
 ### Daemon runtime config keys (`config.yml`)
 
 The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 The bundled `templates/config.yml` is the read-only blueprint: `make install` seeds the
 runtime file from it on first run, and the daemon bootstrap (`teleclaude.config._bootstrap`)
 merges any blueprint keys missing from the runtime file (runtime values win, `${VAR}`
 placeholders preserved). The TUI, daemon, and installer read and write only the runtime
+<!-- change:config-sample-regeneration-leaves-sync -->
+Installation produces the runtime file from the configuration schema when the host
+carries none, writing each sensitive field as its derived environment reference. A host
+that already carries a runtime file keeps it unchanged. The TUI, daemon, and installer
+read and write only the runtime
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 file; the blueprint is never mutated. `make install` writes opted-in agents' `enabled`
 
 state into the runtime file. The runtime file's path is

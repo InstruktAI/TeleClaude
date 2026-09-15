@@ -64,8 +64,14 @@ atomic-config-write infrastructure. Persistence flows through five
 distinct surfaces (see "Persistence surfaces and writers" below): YAML
 overlays are typed by the config bounded context's overlay schemas
 (global, project, per-person), the machine `config.yml` is typed by the
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 runtime configuration aggregate, and adapter / API credentials persist
 through the documented env-var registry and the env-file writer. Every
+<!-- change:config-sample-regeneration-leaves-sync -->
+runtime configuration aggregate, and adapter / API credentials persist
+through the env-file writer under the environment variables the machine-config
+schema's sensitivity declarations derive. Every
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 persisted surface the wizard writes is documented in
 `project/spec/teleclaude-config`.
 
