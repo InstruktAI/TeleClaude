@@ -163,21 +163,17 @@ person-shaped because that is how an administrator thinks about it; the storage
 is company-side because that is where the human placed it. Surface shape and
 storage shape need not match, and here they deliberately do not.
 
-**The structured roster stays out of the reflected editor.** Company
-configuration is rendered schema-driven in the configuration TUI's companies
-tab, so a new structured field acquires an editing surface by reflection alone.
-An empty roster would reflect as a single generic leaf and a populated one as
-indexed fields the company save path cannot traverse safely — an accidental
-mutation surface nobody designed. The roster is therefore excluded from that
-reflection by the per-field tier marker the schema already uses for
-non-wizard fields — the same marker that hides the person tier's subscriptions
-and the global tier's checkout root — and is written only through the designed
-maintenance command. A
-member-by-member editor is a later change with its own write semantics, not a
-side effect of adding a field. The People tab's former company multi-reference
-field goes with the per-person list it reflected: it edited a declaration
-nothing read, on the side of the relationship the declaration does not live on,
-and the configuration TUI contract is amended to match.
+**The wizard does not edit company configuration.** Company configuration was
+rendered schema-driven in the configuration wizard's Companies tab, and a new
+structured field would acquire an editing surface there by reflection alone —
+an empty roster as a generic leaf, a populated one as indexed fields the company
+save path cannot traverse safely. Rather than exclude one field from a tab that
+renders nothing an operator can use, the tab is removed. The roster, like the
+rest of company configuration, is written only through the designed
+maintenance command; a company-scoped wizard editor is separate work. The
+People tab's former company multi-reference field goes with the per-person list
+it reflected: it edited a declaration nothing read, on the side of the
+relationship the declaration does not live on.
 
 **A membership entry owns what is nested in it.** Withdrawing a membership
 removes the assignments it carried; removing a registered person removes their
