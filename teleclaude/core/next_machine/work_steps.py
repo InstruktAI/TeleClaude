@@ -325,6 +325,69 @@ def _log_build_reconcile_route(
     )
 
 
+async def _consume_build_review_verdict(
+    *,
+    todos_db: TodosDb,
+    slug: str,
+    worktree_cwd: str,
+    state: dict[str, StateValue],
+    clear_when_stale: bool,
+) -> bool:
+    """Fire the lifecycle signal for a stamped build_review verdict.
+
+    Stamps record facts; the machine derives the phase from them. Runs from
+    every pre-finalize review phase so a verdict that reverses an earlier one
+    re-derives the phase instead of resting unread beside it. Derives
+    ``baseline_commit`` on first consumption so re-review rounds scope their
+    diff. Returns True when the caller must re-derive the phase.
+
+    ``clear_when_stale`` discards evidence that no longer binds the current
+    target and report, which sends BUILD_COMPLETE back to a fresh review. The
+    settled review phases pass False: their stale evidence is spent, not
+    pending, and clearing it would reopen a review nobody asked for.
+    """
+    writer = StateWriter(state)
+    br_writer = writer.state.build_review
+    if br_writer.verdict not in ("approve", "changes_requested"):
+        return False
+
+    current_head = await asyncio.to_thread(get_head_commit, worktree_cwd)
+    current_report_digest = await todos_db.artifact_digest(slug, ARTIFACT_REVIEW_FINDINGS)
+    is_current = (
+        bool(br_writer.reviewed_target_digest)
+        and bool(br_writer.review_report_digest)
+        and br_writer.reviewed_target_digest == current_head
+        and br_writer.review_report_digest == current_report_digest
+    )
+    logger.info(
+        "workflow.review_evidence_evaluated",
+        slug=slug,
+        phase="build_review",
+        outcome="current" if is_current else "stale",
+        bound_target_digest=br_writer.reviewed_target_digest,
+        current_target_digest=current_head,
+        bound_report_digest=br_writer.review_report_digest,
+        current_report_digest=current_report_digest,
+        caller_session_id=br_writer.caller_session_id,
+        reviewed_at=br_writer.reviewed_at,
+    )
+    if not is_current:
+        if not clear_when_stale:
+            return False
+        _clear_build_review(writer.state)
+        await _commit_writer(writer, todos_db, slug, state)
+        return True
+
+    if not br_writer.baseline_commit:
+        br_writer.baseline_commit = current_head
+    before_phase = writer.state.lifecycle_phase
+    apply_authoritative_signal(writer.state, "verdict", phase="build_review")
+    if writer.state.lifecycle_phase == before_phase:
+        return False
+    await _commit_writer(writer, todos_db, slug, state)
+    return True
+
+
 async def _work_step_build_complete(
     *,
     db: Db,
@@ -342,43 +405,15 @@ async def _work_step_build_complete(
     detects ground shifts from merge, tracks dispatch HEAD, and reuses active
     reviewer sessions across rounds.
     """
-    # Consume a stamped build_review verdict — stamps record facts, the
-    # machine fires the lifecycle signal. Derive baseline_commit on first
-    # consumption so re-review rounds can scope their diff.
-    writer = StateWriter(state)
-    br_writer = writer.state.build_review
-    if br_writer.verdict in ("approve", "changes_requested"):
-        current_head = await asyncio.to_thread(get_head_commit, worktree_cwd)
-        current_report_digest = await todos_db.artifact_digest(slug, ARTIFACT_REVIEW_FINDINGS)
-        is_current = (
-            bool(br_writer.reviewed_target_digest)
-            and bool(br_writer.review_report_digest)
-            and br_writer.reviewed_target_digest == current_head
-            and br_writer.review_report_digest == current_report_digest
-        )
-        logger.info(
-            "workflow.review_evidence_evaluated",
-            slug=slug,
-            phase="build_review",
-            outcome="current" if is_current else "stale",
-            bound_target_digest=br_writer.reviewed_target_digest,
-            current_target_digest=current_head,
-            bound_report_digest=br_writer.review_report_digest,
-            current_report_digest=current_report_digest,
-            caller_session_id=br_writer.caller_session_id,
-            reviewed_at=br_writer.reviewed_at,
-        )
-        if not is_current:
-            _clear_build_review(writer.state)
-            await _commit_writer(writer, todos_db, slug, state)
-            return True, ""
-        if not br_writer.baseline_commit:
-            br_writer.baseline_commit = current_head
-        before_phase = writer.state.lifecycle_phase
-        apply_authoritative_signal(writer.state, "verdict", phase="build_review")
-        if writer.state.lifecycle_phase != before_phase:
-            await _commit_writer(writer, todos_db, slug, state)
-            return True, ""
+    consumed = await _consume_build_review_verdict(
+        todos_db=todos_db,
+        slug=slug,
+        worktree_cwd=worktree_cwd,
+        state=state,
+        clear_when_stale=True,
+    )
+    if consumed:
+        return True, ""
 
     admission = build_review_admission(state)
     report = format_review_threshold_report(slug, admission)
@@ -736,6 +771,19 @@ async def _work_dispatch(
             head_before_merge=head_before_merge,
             head_after_merge=head_after_merge,
         )
+
+    if phase in (WorkPhase.REVIEW_APPROVED, WorkPhase.REVIEW_CHANGES_REQUESTED):
+        # A settled review phase still consumes a newer verdict: a reviewer may
+        # reverse itself before finalization, and the phase follows the verdict.
+        reversed_phase = await _consume_build_review_verdict(
+            todos_db=todos_db,
+            slug=slug,
+            worktree_cwd=worktree_cwd,
+            state=state,
+            clear_when_stale=False,
+        )
+        if reversed_phase:
+            return True, ""
 
     handlers = {
         WorkPhase.BUILD_STARTED: _work_step_build_started,

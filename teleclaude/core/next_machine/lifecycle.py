@@ -94,6 +94,15 @@ __all__ = [
 _ArtifactPresence = Mapping[str, bool]
 _FEATURE_KINDS = FEATURE_PREPARE_KINDS
 _EMPTY_TEXT = ""
+
+# Pre-finalize phases from which a build_review verdict re-derives the phase.
+# FINALIZE_READY and later are absent: finalized work is handed to the
+# integrator and is never reopened by a later verdict.
+_BUILD_REVIEW_VERDICT_PHASES = (
+    LifecyclePhase.BUILD_COMPLETE,
+    LifecyclePhase.REVIEW_APPROVED,
+    LifecyclePhase.REVIEW_CHANGES_REQUESTED,
+)
 READY_BAND_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
         LifecyclePhase.PREPARED,
@@ -809,7 +818,7 @@ def apply_authoritative_signal(
         return _move_to(model, adopt_prepare_handoff_phase(model, report_digests={}))
 
     if signal == "verdict":
-        if phase == "build_review" and current == LifecyclePhase.BUILD_COMPLETE:
+        if phase == "build_review" and current in _BUILD_REVIEW_VERDICT_PHASES:
             if model.build_review.verdict == "approve":
                 return _move_to(model, LifecyclePhase.REVIEW_APPROVED)
             if model.build_review.verdict == "changes_requested":
