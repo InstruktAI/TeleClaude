@@ -14,10 +14,11 @@ installing the toolchain, reconciling dependencies, restarting the daemon,
 reloading the terminal interface, and running the documentation and artifact
 pipeline. Those actions carry no decision: each either ran or it did not.
 
-Maintenance runs at the commit boundary, automatically, on every commit
-recorded in the repository. It is not addressed to a session and does not
-depend on one existing, so a person committing by hand receives the same
-maintenance a session does.
+Maintenance runs automatically at each boundary that advances the canonical
+checkout: a commit recorded there, or an integration delivery that
+fast-forwards canonical main. It is not addressed to a session and does not
+depend on one existing, so a person committing by hand and an integrator
+delivery receive the same maintenance.
 
 The owed set is resolved by the checkpoint scope matcher from the merged
 action registry and bindings
@@ -31,17 +32,17 @@ contract governs only what happens when maintenance runs.
 
 ## Canonical fields
 
-- **Trigger.** A recorded commit. Maintenance is not conditioned on who or
-  what made the commit, nor on whether a session is present.
+- **Trigger.** A recorded commit on canonical main, or an integration delivery
+  that advances canonical main. Maintenance is not conditioned on who or what
+  made the commit, nor on whether a session is present.
 - **Owed set.** The `main_only` maintenance actions the committed paths
   resolve to under the merged registry and bindings, performed in the
   registry's declared precedence order. An action the registry does not mark
   executable is not performed here and remains an agent obligation.
-- **Location.** Maintenance performs the owed `main_only` actions only where
-  those actions are valid: the canonical checkout on the main branch, and the
-  integration worktree. A commit recorded anywhere else performs none, so a
-  boundary another contract already draws is honored rather than discovered
-  as a failure.
+- **Location.** Maintenance performs the owed `main_only` actions only from the
+  canonical checkout on the main branch. The integration worktree supplies the
+  delivered range but never executes maintenance; a commit recorded anywhere
+  else performs none.
 - **Reporting.** Every attempt and every outcome is emitted through the
   structured logging boundary, carrying the commit, the resolved action set,
   and each action's result. The record, not an inference over a transcript, is
@@ -106,6 +107,18 @@ When the commit is recorded
 Then no main-only maintenance action is performed
 And the documentation and artifact pipeline is not run from that worktree
 And an agent reading the structured records observes that maintenance was skipped, and the location that made it ineligible
+```
+
+#### UC-PCM6: An integration delivery performs maintenance from canonical main
+
+```gherkin
+Given an integration delivery advances canonical main by fast-forward
+And the delivered range resolves deterministic maintenance actions
+When the delivery is recorded
+Then the actions execute from the canonical checkout without an agent instruction
+And independent actions proceed despite another action failing
+And the structured records contain a terminal outcome for every action
+But the integration worktree performs no maintenance action
 ```
 
 ## See Also
