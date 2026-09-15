@@ -165,12 +165,9 @@ storage shape need not match, and here they deliberately do not.
 
 **The wizard does not edit company configuration.** The configuration wizard
 has no Companies tab. Company configuration, the roster included, is written
-only through the designed maintenance command, and the People tab carries no
-company membership field. A schema-reflected editor over a nested roster would
-render an empty roster as a generic leaf and a populated one as indexed fields
-the company save path cannot traverse safely; keeping the roster out of every
-reflected surface is what makes the maintenance command the single write path.
-A company-scoped wizard editor is separate work.
+only through the designed maintenance command, which is the single write path;
+no schema-reflected surface renders the roster. The People tab carries no
+company membership field. A company-scoped wizard editor is separate work.
 
 **A membership entry owns what is nested in it.** Withdrawing a membership
 removes the assignments it carried; removing a registered person removes their
