@@ -114,6 +114,7 @@ And an agent reading the structured records observes that maintenance was skippe
 ```gherkin
 Given an integration delivery advances canonical main by fast-forward
 And the delivered range resolves deterministic maintenance actions
+And one owed action fails after starting
 When the delivery is recorded
 Then the actions execute from the canonical checkout without an agent instruction
 And independent actions proceed despite another action failing
