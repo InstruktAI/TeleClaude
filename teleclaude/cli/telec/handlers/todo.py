@@ -41,6 +41,7 @@ from teleclaude.core.next_machine.git_ops import get_head_commit
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.todo_dependency_warnings import freeze_dependent_warnings, unfreeze_frozen_dep_warnings
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._errors import DeliveryProvenanceRefused
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import validate_slug
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_USAGE, TodoDumpKind
@@ -257,14 +258,20 @@ def _handle_todo_deliver(args: list[str]) -> None:
     if not receipt.succeeded:
         print(f"Delivery reconciliation failed for {slug}: {receipt.reason}")
         raise SystemExit(1)
-    if not _run_db(
-        project_root,
-        slug,
-        "deliver",
-        reconciliation_receipt=receipt,
-        reconciliation_root=project_root,
-        commit=commit,
-    ):
+    try:
+        delivered = _run_db(
+            project_root,
+            slug,
+            "deliver",
+            reconciliation_receipt=receipt,
+            reconciliation_root=project_root,
+            commit=commit,
+        )
+    except DeliveryProvenanceRefused as exc:
+        kind = exc.kind or "unknown"
+        print(f"Delivery refused for {exc.slug}: --commit is required for {kind} todos.")
+        raise SystemExit(1) from exc
+    if not delivered:
         print(SLUG_NOT_FOUND_DETAIL.format(slug=slug))
         raise SystemExit(1)
 

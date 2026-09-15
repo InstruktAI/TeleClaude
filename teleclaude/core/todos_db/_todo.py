@@ -27,7 +27,11 @@ from teleclaude.core.next_machine.marker_reconciliation import (
     restore_lifecycle_markers,
 )
 from teleclaude.core.todos_db._base import _generate_id
-from teleclaude.core.todos_db._errors import HolderReconciliationRefused, HolderTransitionRefused
+from teleclaude.core.todos_db._errors import (
+    DeliveryProvenanceRefused,
+    HolderReconciliationRefused,
+    HolderTransitionRefused,
+)
 from teleclaude.core.todos_db._models import (
     TODO_DEPS_TABLE,
     TODO_TABLE,
@@ -39,6 +43,7 @@ from teleclaude.core.todos_db._rows import TodoRow
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage, upcycle_state_dict
 from teleclaude.types.lifecycle import LIFECYCLE_PHASE_ORDER, LifecyclePhase
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todo_kind import TODO_KIND_TASK
 from teleclaude.types.todos import DependencyEntry, TodoState
 
 _ACTIVE_TODO_STATUS = "active"
@@ -48,6 +53,18 @@ def _require_delivery_receipt(receipt: MarkerReceipt | None) -> None:
     """Prevent persistence callers from bypassing marker reconciliation."""
     if receipt is None or receipt.moment is not MarkerMoment.DELIVER or not receipt.succeeded:
         raise ValueError("delivery requires a successful marker reconciliation receipt")
+
+
+def _require_delivery_provenance(slug: str, state_model: TodoStateModel | None, commit: str | None) -> None:
+    """Require commit provenance for every delivery except a task terminal."""
+    if commit and commit.strip():
+        return
+    try:
+        kind = TodoState.model_validate(json.loads(state_model.state)).kind if state_model is not None else None
+    except (TypeError, ValueError):
+        kind = None
+    if kind != TODO_KIND_TASK:
+        raise DeliveryProvenanceRefused(slug, kind)
 
 
 def _delivered_state(raw_state: str) -> str:
@@ -457,6 +474,9 @@ class TodosDbTodoMixin:
                     restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)
                 return False
 
+            state_model = await db_session.get(TodoStateModel, entry.id)
+            _require_delivery_provenance(slug, state_model, commit)
+
             now = delivered_at or datetime.now(UTC).isoformat()
             entry.status = "delivered"
             entry.delivered_at = now
@@ -466,7 +486,6 @@ class TodosDbTodoMixin:
             entry.updated_at = now
             db_session.add(entry)
 
-            state_model = await db_session.get(TodoStateModel, entry.id)
             if state_model is not None:
                 state_model.state = _delivered_state(state_model.state)
                 state_model.updated_at = now
@@ -491,6 +510,12 @@ class TodosDbTodoMixin:
                 self._on_mutation("todo_updated", None)
                 self._on_delivered(slug, commit, now)
             return True
+        except DeliveryProvenanceRefused:
+            if owns_session:
+                await db_session.rollback()
+            if reconciliation_receipt is not None and reconciliation_receipt.plan is not None:
+                restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)
+            raise
         except Exception:
             if (
                 owns_session
@@ -915,6 +940,9 @@ class TodosDbTodoMixin:
                         restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)
                     return False
 
+                state_model = session.get(TodoStateModel, entry.id)
+                _require_delivery_provenance(slug, state_model, commit)
+
                 now = datetime.now(UTC).isoformat()
                 entry.status = "delivered"
                 entry.delivered_at = now
@@ -924,7 +952,6 @@ class TodosDbTodoMixin:
                 entry.updated_at = now
                 session.add(entry)
 
-                state_model = session.get(TodoStateModel, entry.id)
                 if state_model is not None:
                     state_model.state = _delivered_state(state_model.state)
                     state_model.updated_at = now
@@ -946,6 +973,10 @@ class TodosDbTodoMixin:
                 session.commit()
                 db_commit_landed = True
 
+        except DeliveryProvenanceRefused:
+            if reconciliation_receipt is not None and reconciliation_receipt.plan is not None:
+                restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)
+            raise
         except Exception:
             if not db_commit_landed and reconciliation_receipt is not None and reconciliation_receipt.plan is not None:
                 restore_lifecycle_markers(reconciliation_root, slug, reconciliation_receipt.plan)

@@ -33,3 +33,12 @@ class HolderReconciliationRefused(ValueError):
     working, while the API layer can catch this specific type and surface a
     clean 409.
     """
+
+
+class DeliveryProvenanceRefused(ValueError):
+    """A non-task todo delivery omitted its required delivery commit."""
+
+    def __init__(self, slug: str, kind: str | None) -> None:
+        self.slug = slug
+        self.kind = kind
+        super().__init__(f"delivery for {kind or 'unknown'} todo {slug!r} requires commit provenance")
