@@ -242,7 +242,7 @@ a **non-sticky** session sets/swaps the preview.
 - `=`/`-`: `ExpandAll()` / `CollapseAll()` — leaf fold of every todo's file list.
 - `+`/`_` (shift): collapse/expand every computer and project (structural fold); todo file lists are untouched.
 <!-- planned:highlight-hidden-todo-dependencies -->
-- `D` on a selected todo row: start a 1.5-second dependency flash. Every currently rendered dependency row in the same project receives the normal selected-todo highlight except the dependency already represented by the selected todo's tree parent. The cursor stays on the selected todo; no row, badge, connector, section, or persisted state is added. Cursor movement clears the flash immediately, and another `D` starts a fresh interval.
+- `D` on a selected todo row: start a 1.5-second dependency flash. Every displayed dependency row in the same project — identified by computer and path together — takes the selected row's slug highlight, except the dependency already represented by the selected todo's tree parent. Owner-chip weight stays bound to selection and preview, so an unselected flashed row keeps its ordinary chip weight. The cursor stays on the selected todo; no row, badge, connector, section, or persisted state is added. Cursor movement clears the flash immediately, and another `D` starts a fresh interval.
 <!-- /planned:highlight-hidden-todo-dependencies -->
 - `d` on project: `ToggleProjectDelivered(project_path)` — reveals/hides the project's recent delivery history.
 - `i` on project: `ToggleProjectIcebox(project_path)` — reveals/hides the project's iceboxed entries.
