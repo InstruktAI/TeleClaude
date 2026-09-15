@@ -118,6 +118,8 @@ Then the snippet is surfaced in the output with an "Insufficient role" / "access
 And the content body is withheld
 ```
 <!-- change:docs-tier-layering -->
+#### UC-3PR11: A snippet the caller's depth does not admit is withheld
+
 ```
 Given a snippet whose visibility the caller's resolved depth on its tier does not admit
 When the caller runs telec docs get on that ID
@@ -229,10 +231,18 @@ And the eligible global documentation and documentation published by registered 
   invoke on its own judgment, while a job procedure is executed by the runner. Third-party IDs stay outside Required-reads resolution; a dependency
   whose visibility excludes the caller's role or whose pending state excludes it
   from the current contract is absent from the included closure.
+<!-- planned-change:docs-tier-layering -->
 - Denied IDs are surfaced rather than hidden. An anonymous caller can confirm
   the existence of an `internal` snippet even though they cannot read it. This
   leaks identity information by design (so callers know to request a role
   lift) but is a real disclosure surface.
+<!-- change:docs-tier-layering -->
+- Withheld IDs are surfaced rather than hidden. A caller whose depth on a tier
+  does not admit an `internal` snippet can still confirm that the identity
+  exists. This is a deliberate disclosure surface for direct identities — the
+  caller learns that a relationship to that tier would open it — and is
+  confined to identities the caller names; the tier selectors disclose nothing.
+<!-- /planned-change:docs-tier-layering -->
 - Phase 1 third-party output ignores `--baseline-only` and `--target` (third-party
   renders on a separate track), but `--scope` and `--project` do apply to it:
   `--scope` keeps only third-party entries of that scope, and `--project <slug>`

@@ -1,5 +1,5 @@
 ---
-description: 'Pure-function curation of doc snippets by role visibility, taxonomy areas/domains, scope, baseline manifest anchoring, and target-slug filter.'
+description: 'Pure-function curation of doc snippets by what the caller may see, taxonomy areas/domains, scope, baseline manifest anchoring, and target-slug filter.'
 visibility: 'public'
 ---
 
