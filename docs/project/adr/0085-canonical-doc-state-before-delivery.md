@@ -68,3 +68,7 @@ withhold delivery.
 Keeping maintenance detection-only was rejected because it identifies an
 impossible settled state while leaving every supported reconciliation door
 closed.
+
+## Status
+
+Superseded by ADR-0089.

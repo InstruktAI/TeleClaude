@@ -8,7 +8,11 @@ visibility: public
 
 ## What it is
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton (one active integrator per project, enforced by a lease keyed on `integration/main`) and consumes finalize-ready Todos in FIFO order. Each call resumes from a durable checkpoint, executes the next deterministic step, and either loops internally or returns a structured instruction block that asks the calling agent to do the one thing only intelligence can do: compose a squash commit message, resolve a merge conflict, or recover from a rejected push. Candidate git mutations happen inside an isolated integration worktree at `trees/_integration/`. Repo-root mutation is limited to publishing already-committed ahead-only state before candidate selection, fast-forward synchronization after delivery, and slug-scoped settled-marker recovery after a maintenance fault. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton and consumes finalize-ready Todos in FIFO order under the `integration/main` lease. The integration worktree prepares each candidate commit in isolation. Repository-root main remains the authoritative documentation and final-assembly tree: the integrator synchronizes it, applies the prepared candidate, folds that slug's pending documentation, runs the final gates, pushes the combined head, and records delivery only after confirming that push. When repository-root main is unsafe to mutate, delivery waits with the blocking evidence. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 ## Canonical fields
 
@@ -53,6 +57,7 @@ And integration.candidate.already_merged is emitted
 And any leftover squash-merge bookkeeping is cleaned up
 ```
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```
 Given the squash commit is committed in the integration worktree
 When the push to main is rejected because the remote moved (a non-fast-forward race)
@@ -61,6 +66,16 @@ And returns an instruction asking the agent to rebase onto origin/main and push 
 And the next call computes local HEAD vs remote main; if they match, recovery is detected and phase advances to PUSH_SUCCEEDED
 And integration.push.rejected is emitted at rejection and integration.push.succeeded on recovery
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```
+Given repository-root main contains the prepared candidate and its folded documentation
+When the final push is rejected because origin/main moved
+Then the state machine records the rejected push and preserves the candidate as pending
+And the integrator synchronizes repository-root main with the new origin/main without overwriting uncommitted work
+And it reruns candidate-scoped reconciliation and the final gates before retrying the push
+And delivery remains withheld until the retried final head is confirmed on origin/main
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 Push rejection is classified by cause. A rejection whose output carries the pre-push
 content-gate marker (`telec code lint --all` failed on the squash content) is a
@@ -70,6 +85,7 @@ by the rebase-and-re-push instruction above.
 
 #### UC-WISM1: Integrator-maintenance marker emission at delivery
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given the push to main succeeded and the integrator best-effort sync advanced repo-root main
 When the PUSH_SUCCEEDED step runs, before the per-candidate pre_merge_head is cleared at CANDIDATE_DELIVERED
@@ -77,23 +93,49 @@ Then the state machine records a session-scoped integrator-maintenance marker fo
 And the marker carries the delivered merge range (pre_merge_head..advanced repo-root HEAD)
 And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given the integrator has confirmed the final repository-root head on origin/main
+When the PUSH_SUCCEEDED step runs before the candidate checkpoint is cleared
+Then the state machine records an integrator-maintenance marker for the integrator session
+And the marker carries the delivered range ending at the confirmed repository-root head
+And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM2: Push rejection withholds delivery
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given a candidate is squash-merged and committed in the integration worktree
 When the push to origin/main is rejected
 Then no delivery record is written and the todo status stays non-delivered
 And the phase is PUSH_REJECTED
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given a prepared candidate has been applied and reconciled on repository-root main
+When the final push to origin/main is rejected
+Then no delivery record is written and the todo stays non-delivered
+And the phase records the rejected push for recovery
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM12: The pushed commit SHA is frozen at push time
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given a push of the squash to origin/main succeeds
 When the state machine records the push result
 Then the pushed commit SHA is frozen into the durable checkpoint at push time
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given the final repository-root head is pushed to origin/main
+When the state machine records the push result
+Then that pushed commit SHA is frozen into the durable checkpoint
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM13: A confirmed frozen commit records delivery exactly once
 
@@ -106,11 +148,19 @@ And the recorded delivered commit is the frozen pushed commit
 
 #### UC-WISM14: Push-rejection recovery freezes the recovered commit
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given the push to origin/main is rejected and the operator recovers so the worktree HEAD matches origin/main
 When the recovery transition freezes local HEAD as the pushed commit and the PUSH_SUCCEEDED confirmation gate confirms it on origin/main
 Then the delivery record is written exactly once
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given the final repository-root push was rejected and the integrator has synchronized, reconciled, and successfully retried it
+When the recovery transition freezes the retried repository-root head and confirms it on origin/main
+Then the delivery record is written exactly once
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM15: A transformed delivery still confirms
 
@@ -145,6 +195,7 @@ When the PUSH_SUCCEEDED confirmation gate runs
 Then no delivery record is written and the candidate returns to PUSH_REJECTED
 ```
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 The confirmation gate verifies that the **commit the integrator actually pushed**
 is present on origin/main — a ref check against the SHA frozen at push time.
 Freezing the SHA at push time is what closes the false-deliver gap: a worktree
@@ -155,9 +206,19 @@ delivered-snippet fold, integrator conflict-resolution commits), so the gate
 performs no squash-merge re-derivation. The integrator's authority ends at the
 push: post-push steps confirm, record, and clean up; they exercise no content
 judgment.
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+The confirmation gate verifies that the final repository-root commit the
+integrator pushed is present on origin/main. The frozen pushed SHA remains the
+sole confirmation target even though the final head differs from the candidate
+branch tip through candidate application, conflict resolution, documentation
+reconciliation, or an integrator-owned invariant fix. All content decisions and
+mutations finish before that push; post-push steps only confirm, record, and
+clean up.
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM3: Delivered-snippet fold re-asserted across every delivery path
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given a candidate is committed in the integration worktree via any path — clean merge, conflict resolution, or crash-resume
 When the state machine reaches delivery bookkeeping before pushing to origin/main
@@ -171,9 +232,26 @@ Then the push to origin/main does not happen
 And the candidate stays at delivery bookkeeping with an error naming the slug
 And no delivery record is written
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given a candidate commit is prepared in the integration worktree through a clean merge, conflict resolution, or crash recovery
+When the state machine reaches delivery finalization
+Then it synchronizes repository-root main without including uncommitted work
+And it applies the prepared candidate to repository-root main
+And it runs one idempotent delivered-snippet fold for the candidate slug on repository-root main
+And it commits the candidate and folded documentation into the final delivery head
+And it pushes that head to origin/main only after the final content gate passes
+
+Given synchronization, candidate application, marker reconciliation, staging, commit, or the final content gate fails
+When delivery finalization handles that failure
+Then no delivery push or delivery record is produced
+And the candidate remains pending with the blocking evidence
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM4: Pre-push residual-marker gate fails closed
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given the delivered slug's snippets would still carry a planned-change or planned marker for that slug after the fold
 When the delivery-bookkeeping residual-marker gate runs before the push
@@ -181,9 +259,19 @@ Then the push to origin/main does not happen
 And the candidate stays at delivery bookkeeping with a residual-marker error naming the file, line, and slug
 And a delivered slug never reaches origin/main carrying its own live markers
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given repository-root main would still carry pending documentation material for the candidate slug after reconciliation
+When the final residual-marker gate runs against repository-root main
+Then the push to origin/main does not happen
+And the candidate remains pending with an error naming the file, line, slug, and carrier
+And no delivered slug reaches origin/main while its authoritative documentation remains pending
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM5: A pre-push gate rejection is resolved or parked; the gate is never bypassed
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given a candidate's squash is pushed and the push is rejected by the pre-push gate (telec code lint --all failed on the squash content)
 When the state machine classifies the rejection from the content-gate marker
@@ -194,6 +282,18 @@ And a finding it cannot ground confidently parks the candidate with a recorded r
 And no sentinel, flag, or integrator-authored exception permits the failed candidate to pass the gate
 And no delivery record is written for the candidate until its own squash content is confirmed on origin/main
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given the final repository-root delivery head is rejected by the pre-push content gate
+When the state machine classifies the rejection
+Then the candidate does not enter fast-forward-race recovery
+And the integrator owns the finding because the candidate is already in the integration pipeline
+And a finding it can mechanically ground is resolved on the final repository-root delivery state before the gates rerun
+And a finding it cannot ground confidently parks the candidate with a recorded reason while the drain continues through independent candidates
+And no exception permits the failed candidate to bypass the gate
+And no delivery record is written until that candidate's final head is confirmed on origin/main
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM6: Held or kicked-back candidates are excluded from the integration pool
 
@@ -248,6 +348,7 @@ Then the marker accumulates the union of the delivered ranges across candidates 
 
 #### UC-WISM9: The pre-push quality gate remains authoritative and blocking
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given a candidate is squash-merged and the integrator commits in the integration worktree
 When the integration commit runs its format-fix and the push runs the pre-push gate
@@ -257,6 +358,17 @@ And the pre-push telec code lint --all remains the single authoritative content 
 And every failure blocks delivery until the integrator resolves it in the integration worktree or parks the candidate
 And the integration path provides no candidate-specific quality override
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given a candidate has been applied and reconciled on repository-root main
+When the integrator prepares the final delivery commit and push
+Then the format-fix step runs over the candidate-owned content before the commit
+And scope-sensitive checks meaningful only over the whole repository do not gate the scoped commit
+And the pre-push full-repository lint remains the authoritative content gate over the final head
+And every failure blocks delivery until the integrator resolves it on the final delivery state or parks the candidate
+And the integration path provides no candidate-specific quality override
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM10: The integrator resumes only a candidate that belongs to the current project
 
@@ -329,6 +441,7 @@ And the previously parked candidate is re-attempted as an ordinary finalize-read
 
 #### UC-WISM24: An unsynced post-delivery repo root still regenerates the Blueprint
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given a finalize-ready candidate is confirmed contained on origin/main and its delivery is recorded
 And the post-delivery repo-root sync leaves repo-root main behind the delivered commit
@@ -337,9 +450,18 @@ Then the Blueprint graph and manifest are regenerated at the delivered commit fr
 And the manifest baseline_sha is the delivered origin/main commit
 And the delivery completes without being blocked by the unsynced repo root
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given repository-root main contains the prepared candidate and its folded documentation
+When the integrator confirms that final head on origin/main and records delivery
+Then the Blueprint graph and manifest are regenerated at that confirmed commit
+And the manifest baseline_sha is the delivered origin/main commit
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM32: Delivery reconciles the candidate's pending documentation exactly once
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given a candidate's delivered-snippet fold has been committed into the delivery and pushed to origin/main
 When the confirmation gate records the delivery
@@ -349,9 +471,21 @@ And the delivery leaves repo-root main with no commit the delivery itself author
 And the repo root reaches the delivered content by publishing committed ahead-only state before candidate selection and synchronizing with origin/main after delivery
 And the recorded delivered commit is the frozen pushed commit
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given the integration worktree has prepared a candidate commit without reconciling documentation
+When the integrator finalizes that candidate
+Then it applies the candidate to repository-root main
+And it reconciles the candidate slug exactly once against repository-root main
+And it runs no candidate-delivery reconciliation in the integration worktree
+And it pushes the candidate and folded documentation as one final head
+And the recorded delivered commit is that confirmed repository-root head
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM33: Idle integration publishes ahead-only repo-root state before candidate selection
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given the integration checkpoint is idle
 And repo-root main contains committed work ahead of origin/main and is not behind it
@@ -361,6 +495,8 @@ And it confirms the published commit on origin/main before selecting a candidate
 And the integration worktree is based on that updated origin/main
 And a publication or confirmation failure prevents candidate dequeue without rewriting the local commits
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM34: Settled marker divergence is repaired outside candidate delivery
 
@@ -377,6 +513,7 @@ And unrelated pending documentation remains byte-identical
 
 #### UC-WISM27: The repo-root sync classifies its state instead of probing with a pull that cannot succeed
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given repo-root main and origin/main are not at the same commit when a "telec todo integrate" call begins
 When the integrator classifies repo-root main against origin
@@ -387,6 +524,16 @@ And the report carries the intersection of the incoming file list with the repo-
 And the integrator owns the merge — the state machine never merges repo-root main
 And no candidate is dequeued for that call until repo-root main is synced
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given repository-root main and origin/main are not at the same commit when an integration call begins
+When the integrator classifies repository-root main against origin
+Then a repository root that is only behind is fast-forwarded when its dirty paths permit it
+And a repository root that is only ahead remains the authoritative final-assembly base without rewriting its commits
+And split history or a dirty state that prevents safe synchronization blocks candidate delivery with the exact paths and graph state
+And the integrator resolves repository-root synchronization before applying and publishing a candidate there
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM31: A batch dirty-path query attributes the earliest live uncommitted claimant
 
@@ -455,8 +602,13 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 
 - The integrator is the only writer authorized to push `origin/main`. Worker sessions on per-slug branches push their feature branches only; main is reachable solely through this state machine.
 - Two already-merged guards exist because squash merges do **not** create ancestry edges between the source branch and the merge commit. The ancestry check catches non-squash re-queues; the empty-staged-diff check catches squash re-queues. Both are required.
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 - Delivery bookkeeping runs inside `trees/_integration/`, not on repo root. The squash commit is pushed; the todo delivery stamp and dependency-reference cleanup are `todos.db` writes — untracked local state, never staged — applied only after the push is confirmed on `origin/main`.
 - After a successful push, the integrator classifies repo root and fast-forwards it only when safe, then pushes any ahead-only repo-root bookkeeping. A non-ready classification or bookkeeping-push failure does not undo confirmed delivery: maintenance marking, Blueprint regeneration from the confirmed integration-worktree commit, and cleanup still complete, after which the call returns the sync instruction before another candidate can be dequeued.
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+- The integration worktree prepares the candidate commit. Repository-root main owns delivery finalization, the sole documentation fold, the final content gate, and the canonical push.
+- Repository-root main may contain committed work ahead of origin/main. That committed state remains part of final assembly. Any graph or dirty-path condition that prevents safe candidate application or reconciliation blocks the candidate before the final push and leaves uncommitted work untouched.
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 - When the idle step is called with an explicit slug, only that slug is verified as ready; the FIFO scan is bypassed but ancestry and remote-branch existence checks still apply.
 - The normal enqueue path is event-triggered: `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) invokes the integration trigger cartridge, which spawns the singleton integrator only when no integrator session is open. Open integrators are left undisturbed and consume queued candidates on their next state-machine pass. The scanner remains the recovery path for missed events.
 - Legacy entries are normalized so older persisted `finalize.status="handed_off"` reads back as `finalize.status="ready"` and is picked up by the same rule.
@@ -473,6 +625,10 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 
 ## See Also
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0085-canonical-doc-state-before-delivery.md — why repo-root documentation is published before candidate selection and terminal divergence repair is a separate operation.
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+- docs/project/adr/0089-delivery-folds-on-repository-root-main.md — why repository-root main is the sole documentation-fold and final-push surface.
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0082-candidate-span-ownership-inspection-is-withdrawn.md — why span-ownership inspection was removed rather than corrected.
 - docs/project/adr/0076-integrator-parks-blockers-and-keeps-quality-gating.md — the park-and-drain decision, whose conflict and content-gate paths are unchanged.

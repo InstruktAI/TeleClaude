@@ -36,6 +36,14 @@ abandoned slug. Every operation is slug-scoped: unrelated pending material stays
 byte-identical, and repeating a completed reconciliation makes no further
 change.
 
+<!-- planned:fix-delivered-todos-attribution-by-declarati -->
+For integrated candidates, repository-root main is the sole documentation
+reconciliation surface. The integration worktree prepares candidate code but
+does not fold pending documentation. Candidate finalization applies the prepared
+candidate to repository-root main, folds the candidate slug there, and publishes
+that combined state before recording delivery.
+<!-- /planned:fix-delivered-todos-attribution-by-declarati -->
+
 A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
 detects settled-slug/live-marker divergence wherever documentation material
 lives, including repository-root snippets outside a candidate branch, and
@@ -137,6 +145,7 @@ And unrelated live and pending material is not rewritten
 
 #### UC-LMR8: Integration pre-applies candidate delivery before bookkeeping
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given a snippet has pending material owned by the current integration candidate
 And delivery bookkeeping has not yet recorded the candidate as delivered
@@ -144,6 +153,15 @@ When the candidate merge is prepared in the integration worktree
 Then reconciliation treats the current candidate as delivered
 And stages the reconciled snippet paths before the commit prompt is returned
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given repository-root main contains pending material owned by an integration candidate
+And the candidate commit has been prepared in the integration worktree
+When the integrator finalizes the candidate on repository-root main
+Then it applies the candidate and reconciles that slug against the repository-root documentation set
+And the folded documentation and candidate code are published together before delivery is recorded
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-LMR9: Partial ownership remains pending after delivery
 
@@ -157,6 +175,7 @@ And the material does not become current until its remaining owners resolve
 
 #### UC-LMR10: Conflict resolution repeats candidate-scoped reconciliation
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given an integration candidate merge was conflicted
 And the operator has resolved the conflicts but not committed them
@@ -165,6 +184,16 @@ Then candidate-scoped reconciliation runs again
 And the reconciled paths are staged before the commit prompt is returned
 And unrelated stale material is not folded into the candidate commit
 ```
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+```gherkin
+Given an integration candidate required conflict resolution before its commit was prepared
+And the resolved candidate is ready for finalization
+When the integrator applies that candidate to repository-root main
+Then candidate-scoped reconciliation runs once against repository-root main
+And unrelated pending material remains unchanged
+And the resolved candidate and folded documentation are published together
+```
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 ### Cross-context references
 
@@ -188,4 +217,8 @@ And unrelated stale material is not folded into the candidate commit
 
 ## See Also
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0085-canonical-doc-state-before-delivery.md — why normal delivery publishes repo-root documentation state before candidate selection and reserves repo-root reconciliation for explicit divergence recovery.
+<!-- change:fix-delivered-todos-attribution-by-declarati -->
+- docs/project/adr/0089-delivery-folds-on-repository-root-main.md — why integrated delivery folds only on repository-root main.
+<!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
