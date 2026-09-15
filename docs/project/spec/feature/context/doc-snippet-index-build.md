@@ -181,6 +181,17 @@ Then an index with no entries is written at the tier's documentation home
 And the catalog is not deleted for being empty
 And its existence answers participation while its entries answer content
 ```
+
+#### UC-DIB15: Tier snippet sources are validated like every other publisher's
+
+```
+Given a company or person tier whose declaration records participation in the documentation surface
+And a snippet source under that tier's documentation home
+When source validation runs, scoped to that file or over the whole tree
+Then the tier's documentation home is among the roots validation walks
+And the source is validated under the same structural and classification rules as a project's or the global tree's
+And a source under a tier that does not participate is not walked
+```
 <!-- /planned:docs-tier-layering -->
 
 ### Cross-context references

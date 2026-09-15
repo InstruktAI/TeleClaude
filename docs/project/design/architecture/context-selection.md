@@ -199,9 +199,12 @@ a company, or a project — and every snippet identity that names one: the named
 tier is assembled at the depth the caller's relationship to it grants — in full
 where a relationship exists, at what its snippets declare public where none does
 — and a platform administrator reads any named tier in full. Naming adds the
-tier to what is assembled; it grants nothing about how deeply it is read. A tier
-that yields nothing at the caller's depth returns the same empty answer as a
-tier that does not exist, so naming discloses nothing.
+tier to what is assembled; it grants nothing about how deeply it is read. A
+selector naming a tier that yields nothing at the caller's depth returns the
+same empty answer as one naming a tier that does not exist, so a selector
+discloses nothing. A direct snippet identity keeps the retrieval contract's
+per-identity answer: content where the caller's depth admits it, a withheld
+notice where it does not, and an unknown-identity error where nothing exists.
 
 Authorization therefore lives in one place — the depth the resolution stage
 assigns — and no selector carries a gate of its own. Command clearance authorizes
