@@ -38,11 +38,15 @@ The engine is gated by flag markers, session-scoped unless stated otherwise:
 a turn-scoped **clear flag** skips checkpoints for the current turn and is
 hard-cleared at the next user-prompt-submit; turn scoping prevents ordinary
 file-change checkpoints from re-firing after a checkpoint has been delivered;
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 a **commit-obligation ledger**, carrying outstanding `main_only` maintenance
 actions derived from every sealed `telec code commit` in the turn, sources
 those actions into the action ledger so committing does not empty it; each
 obligation discharges when its evidence is observed, and the ledger is
 hard-cleared at user-prompt-submit; a fixed-name **authored main commit
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+a fixed-name **authored main commit
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 marker** is recorded when this session commits **code** on `main` through
 the sealed `telec code commit` path and triggers only the post-commit
 review gate. The review gate defers while the working tree still carries an
@@ -60,10 +64,16 @@ not caught up — belongs to the checkout and outlives any one integrator.
 Each recorded action discharges when its evidence is observed in any
 checkpoint cycle, and the marker is removed once the last one discharges.
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and includes
 outstanding commit obligations; each obligation is hard-cleared when evidence
 discharges it, and the ledger is wholesale-cleared at user-prompt-submit.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+The action and evidence ledger — what needs doing and what was done since
+the turn started — is time-anchored to the turn window and is
+wholesale-cleared at user-prompt-submit.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 Version control is consulted only as the category oracle (which file maps
 to which category), never as the arbiter of what is in-scope or done.
@@ -116,7 +126,10 @@ And the receiver proceeds to enqueue the agent-stop event
 
 ```gherkin
 Given the heuristic engine returns an empty checkpoint result (no required actions)
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 And no commit-obligation ledger entry is present
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 And no integrator-maintenance marker is present
 When the checkpoint pre-emit step runs
 Then a debug log records "checkpoint skipped: no turn-local changes"
@@ -127,6 +140,7 @@ And the agent-stop event enqueues normally
 
 #### UC-CP5: Turn-scoped markers cleared on new user prompt
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 ```gherkin
 Given a checkpoint fired earlier in this turn and set the per-turn recheck flag
 And the turn may carry a set clear flag and commit-obligation ledger entries
@@ -136,6 +150,16 @@ And the turn-scoped clear flag is consumed
 And the commit-obligation ledger is consumed
 And the next agent-stop in the new turn may fire a fresh checkpoint
 ```
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+```gherkin
+Given a checkpoint fired earlier in this turn and set the per-turn recheck flag
+And the turn may carry a set clear flag
+When a new user-prompt-submit hook arrives that is NOT system-injected
+Then the per-turn recheck flag is consumed
+And the turn-scoped clear flag is consumed
+And the next agent-stop in the new turn may fire a fresh checkpoint
+```
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 #### UC-CP5A: Main-branch post-commit review action follows code authorship
 
@@ -150,7 +174,11 @@ And that action instructs the authoring session to dispatch the commit(s) to ind
 And waits for REVIEW COMPLETE before reporting completion
 And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `software-development/policy/commits`
 And the authored-main-commit marker is consumed
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 (The authored-main-commit marker triggers only the review gate; commit-derived maintenance flows through the commit-obligation ledger — see UC-CP12.)
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+(The authored-main-commit marker triggers only the review gate; the maintenance a commit's paths owe is performed at the commit boundary — see `project/spec/feature/integration/post-commit-maintenance`.)
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path
@@ -163,7 +191,10 @@ And the next agent-stop produces no post-commit review-gate surfacing action for
 Given the current branch is main
 And HEAD moved because of a peer commit, `git pull --rebase`, merge, or other commit not authored by this session through the sealed path
 And the session-scoped authored-main-commit marker is absent
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 And no commit-obligation ledger entry is present
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 And there are no turn-local dirty files
 When the heuristic engine evaluates the turn window
 Then it produces no checkpoint
@@ -251,7 +282,11 @@ Then the agent receives a checkpoint requiring the commit step
 #### UC-CP10: Code categories with no per-category action
 
 ```gherkin
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 Given the turn-local changes touch a code category with no per-category action (e.g. teleclaude/hooks/**, which auto-applies on next invocation) and no restart obligation
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+Given the turn-local changes touch a code category with no per-category action (e.g. teleclaude/hooks/**, which auto-applies on next invocation)
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 And the session is on main
 And no log-check or test evidence appears in the timeline yet
 When the heuristic engine evaluates the turn window
@@ -300,6 +335,7 @@ marker's owner — receives post-merge maintenance.)
 ```
 
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 #### UC-CP12: Committed code surfaces discharging maintenance obligations
 
 
@@ -329,6 +365,8 @@ And its implied maintenance action is surfaced
 ```
 
 
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 #### UC-CP13: Parent snippet edited without its pending companion
 
 ```gherkin
@@ -358,6 +396,7 @@ checkpoint's.)
 
 #### UC-CP14: Daemon-code categorization covers top-level and daemon-imported modules
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 ```gherkin
 Given a session commits a top-level daemon module directly under `teleclaude/` (e.g. `teleclaude/constants.py`, `teleclaude/daemon.py`) through the sealed `telec code commit` path
 When the heuristic engine evaluates the turn window
@@ -377,6 +416,27 @@ Then the file is not categorized as daemon code
 And no `make restart` obligation is surfaced for it
 (The boundary is daemon-import membership, not directory: only CLI modules the daemon holds at runtime require a restart.)
 ```
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+```gherkin
+Given a session commits a top-level daemon module directly under `teleclaude/` (e.g. `teleclaude/constants.py`, `teleclaude/daemon.py`) through the sealed `telec code commit` path
+When the merged model resolves what that path owes
+Then the file is categorized as daemon code
+And the restart maintenance action is among the actions it owes
+(Daemon-code categorization covers every daemon Python module at any depth under `teleclaude/`, top-level files included — not only nested ones.)
+
+Given a session commits a CLI module the daemon imports at load (e.g. `teleclaude/cli/telec/surface.py`, held by `teleclaude/core/tool_access.py`)
+When the merged model resolves what that path owes
+Then the file is categorized as daemon code
+And the restart maintenance action is among the actions it owes
+(A CLI module the daemon imports at startup changes daemon runtime behavior, so the daemon-code category includes it despite the general CLI-subprocess exclusion.)
+
+Given a session commits a CLI module that runs only as a per-invocation subprocess and is not imported by the daemon
+When the merged model resolves what that path owes
+Then the file is not categorized as daemon code
+And the restart maintenance action is not among the actions it owes
+(The boundary is daemon-import membership, not directory: only CLI modules the daemon holds at runtime require a restart.)
+```
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 
 #### UC-CP16: Shell command text attributes no path to a turn
@@ -391,6 +451,7 @@ And the pre-existing dirty file is not attributed to this turn
 And no checkpoint is produced for that file
 ```
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 #### UC-CP17: A sealed commit outside the deployed source records no maintenance obligation
 
 ```gherkin
@@ -401,6 +462,8 @@ And a later agent-stop cycle for that session surfaces no `make restart` action,
 (The commit's own location decides what maintenance it owes; the location of the session that issued it does not. A commit from the main checkout records its obligations per UC-CP12.)
 ```
 
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 #### UC-CP18: A clean working tree raises no commit action
 
 ```gherkin
@@ -514,6 +577,53 @@ Then the reason is framed by the canonical XML checkpoint control envelope
 And no bracket checkpoint envelope is emitted on the hook boundary
 ```
 
+<!-- planned:unknown-scope-is-not-empty-scope -->
+#### UC-CP26: An unattributable dirty tree surfaces the declaration advisory
+
+```gherkin
+Given an agent session reaches an agent-stop checkpoint boundary
+And the working tree is dirty
+And no path is attributed to that session for the turn
+And the session neither declared a path nor committed during the turn
+When checkpoint evaluation completes
+Then a checkpoint decision is produced rather than skipped as having no changes
+And its required action instructs the agent to compare its own registered scope against what it wrote and declare the difference
+And the decision names no path and resolves no ownership
+And the agent stop is not blocked
+```
+
+#### UC-CP27: A turn that used the declaration channel is not advised again
+
+```gherkin
+Given an agent session reaches an agent-stop checkpoint boundary
+And the working tree is dirty
+And the session declared a path or committed during the turn
+When checkpoint evaluation completes
+Then no declaration advisory is produced
+```
+
+<!-- /planned:unknown-scope-is-not-empty-scope -->
+
+<!-- planned:checkpoint-keeps-only-judgment-actions -->
+#### UC-CP26: Maintenance the commit boundary performs is not an agent obligation
+
+```gherkin
+Given a session commits daemon code through the sealed `telec code commit` path on the canonical checkout's main branch
+And the committed paths resolve a non-empty set of main-only maintenance actions
+When the heuristic engine evaluates the turn window
+Then no maintenance action is surfaced for that commit
+And no maintenance obligation persists into a later checkpoint cycle of that turn
+And the post-commit review-gate action is still surfaced for the committed code (per UC-CP5A)
+(The maintenance ran at the commit boundary; asking the agent to repeat it would ask for work already done, on evidence the transcript cannot carry.)
+
+Given the same turn also changed paths owing a judgment action
+And no evidence for that judgment action appears in the timeline
+When the heuristic engine evaluates the turn window
+Then the judgment action is surfaced
+(Only actions a mechanism performs at this boundary are withheld; log-check and test remain the agent's.)
+```
+<!-- /planned:checkpoint-keeps-only-judgment-actions -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
@@ -525,10 +635,16 @@ And no bracket checkpoint envelope is emitted on the hook boundary
   is passed to `get_checkpoint_content` and stored in `CheckpointContext`
   to gate the integrator-maintenance force-fire path.
 - Reads the session's working slug for structured checkpoint diagnostics.
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 - Consumes the commit-obligation ledger written by the sealed `telec code commit`
   path for any session, and the integrator-maintenance marker written by the
   integration state machine (`project/spec/feature/workflow/integration-state-machine`)
   at delivery, before the per-candidate `pre_merge_head` is cleared.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+- Consumes the integrator-maintenance marker written by the
+  integration state machine (`project/spec/feature/workflow/integration-state-machine`)
+  at delivery, before the per-candidate `pre_merge_head` is cleared.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 - Writes checkpoint-seen entries that `session-state-mutation-via-outbox`
   consumes to update last-checkpoint timestamp.
 
@@ -541,6 +657,7 @@ And no bracket checkpoint envelope is emitted on the hook boundary
   under a checkout-derived component and is reachable by every session
   working from that checkout.
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 - The clear flag is turn-scoped: it skips checkpoints for the current turn
   and is hard-cleared at the next non-system user-prompt-submit, alongside
   the commit-obligation ledger. A checkpoint that recurs across turns is a
@@ -554,6 +671,14 @@ And no bracket checkpoint envelope is emitted on the hook boundary
   evidence discharges each obligation once its command runs. The ledger is
   hard-cleared at the next user-prompt-submit. Raw `git commit` outside the
   sealed path does not record it.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+- The clear flag is turn-scoped: it skips checkpoints for the current turn
+  and is hard-cleared at the next non-system user-prompt-submit. A checkpoint
+  that recurs across turns is a
+  signal that the heuristics are over-tight — the agent surfaces it to the
+  human rather than re-setting the flag. The recheck loop-guard is the
+  involuntary backstop against an evidence-miss spinning forever.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 - The main-branch post-commit review gate is driven by a session-scoped
   authored-main-commit latch recorded by `telec code commit` only for
   commits whose pathspec includes code, then consumed when the review
@@ -562,12 +687,22 @@ And no bracket checkpoint envelope is emitted on the hook boundary
   movement do not re-arm it; doc-only commits do not arm it; raw
   `git commit` does not mark authorship.
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 - The integrator's raw-git merge does not flow through `telec code commit`
   and so does not arm the authorship latch or the commit-obligation ledger;
   instead the integration state machine records the integrator-maintenance
   marker carrying the delivered merge range and the actions it owes, which
   the engine reads to force-fire post-merge maintenance for the integrator
   session holding the lease on that checkout.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+- The integrator's raw-git merge does not flow through `telec code commit`
+  and so does not arm the authorship latch; instead the integration state
+  machine records the integrator-maintenance marker carrying the delivered
+  merge range and the actions it owes, which the engine reads to force-fire
+  post-merge maintenance for the integrator session holding the lease on that
+  checkout. That boundary is the one commit-boundary maintenance does not
+  reach: repo-root `main` advances by fast-forward rather than by a commit.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
