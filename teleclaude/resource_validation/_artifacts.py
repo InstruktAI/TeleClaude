@@ -156,7 +156,7 @@ def _validate_artifact_role_activation(
     lines: list[str], path: str, *, kind: str, h1_idx: int, first_section_idx: int
 ) -> None:
     role_lines = [line.strip() for line in lines]
-    if kind in {"command", "agent"}:
+    if kind == "command":
         has_role = any(line.startswith("You are now the ") for line in role_lines[h1_idx + 1 : first_section_idx])
         if not has_role:
             raise ValueError(f"{path} must include a role activation line before the first section")
@@ -226,7 +226,7 @@ def _validate_artifact_section_order(lines: list[str], path: str, *, kind: str, 
 
 
 def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> None:
-    """Validate body structure of a command or agent artifact."""
+    """Validate body structure of a command artifact."""
     if kind == _SKILL_KIND:
         return
     _validate_artifact_argument_hint(post, path, kind=kind)

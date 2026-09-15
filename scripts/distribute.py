@@ -237,7 +237,7 @@ class FileArtifactType(NamedTuple):
     dest_dir_key: str
     ext_key: str
     kind: Literal["file", "skill"]
-    artifact_kind: str  # "agent", "command", or "skill" — passed to validate_artifact
+    artifact_kind: str  # "command" or "skill" — passed to validate_artifact
 
 
 def _deploy_agent(
