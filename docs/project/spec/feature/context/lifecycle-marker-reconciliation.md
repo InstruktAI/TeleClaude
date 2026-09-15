@@ -38,10 +38,11 @@ change.
 
 <!-- planned:fix-delivered-todos-attribution-by-declarati -->
 For integrated candidates, repository-root main is the sole documentation
-reconciliation surface. The integration worktree prepares candidate code but
-does not fold pending documentation. Candidate finalization applies the prepared
-candidate to repository-root main, folds the candidate slug there, and publishes
-that combined state before recording delivery.
+reconciliation surface. The integration worktree publishes candidate code but
+does not fold pending documentation. After that candidate commit is confirmed on
+origin/main, candidate finalization synchronizes repository-root main, folds the
+candidate slug there, publishes the folded root, and records only that final
+confirmed SHA as delivered.
 <!-- /planned:fix-delivered-todos-attribution-by-declarati -->
 
 A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
@@ -156,10 +157,11 @@ And stages the reconciled snippet paths before the commit prompt is returned
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given repository-root main contains pending material owned by an integration candidate
-And the candidate commit has been prepared in the integration worktree
+And the candidate commit has been published from the integration worktree and confirmed on origin/main
 When the integrator finalizes the candidate on repository-root main
-Then it applies the candidate and reconciles that slug against the repository-root documentation set
-And the folded documentation and candidate code are published together before delivery is recorded
+Then it synchronizes repository-root main with the confirmed candidate
+And it reconciles that slug against the repository-root documentation set
+And it publishes and confirms the folded repository-root head before delivery is recorded
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -186,12 +188,12 @@ And unrelated stale material is not folded into the candidate commit
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
-Given an integration candidate required conflict resolution before its commit was prepared
-And the resolved candidate is ready for finalization
-When the integrator applies that candidate to repository-root main
-Then candidate-scoped reconciliation runs once against repository-root main
+Given an integration candidate required conflict resolution before its commit was published
+And the resolved candidate commit is confirmed on origin/main
+When repository-root main synchronizes that candidate for finalization
+Then candidate-scoped reconciliation runs against repository-root main
 And unrelated pending material remains unchanged
-And the resolved candidate and folded documentation are published together
+And the folded repository-root head is published and confirmed before delivery is recorded
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -220,5 +222,5 @@ And the resolved candidate and folded documentation are published together
 <!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0085-canonical-doc-state-before-delivery.md — why normal delivery publishes repo-root documentation state before candidate selection and reserves repo-root reconciliation for explicit divergence recovery.
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
-- docs/project/adr/0089-delivery-folds-on-repository-root-main.md — why integrated delivery folds only on repository-root main.
+- docs/project/adr/0090-root-fold-finalizes-a-pushed-candidate.md — why repository-root folding follows the confirmed candidate push and precedes delivery recording.
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->

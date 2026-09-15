@@ -72,3 +72,7 @@ Copying or independently reconstructing repository-root marker state inside the
 integration worktree was rejected because it creates a second documentation
 authority and requires completeness checks that disappear when one authoritative
 tree performs the fold.
+
+## Status
+
+Superseded by ADR-0090.

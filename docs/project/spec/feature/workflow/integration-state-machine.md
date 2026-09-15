@@ -11,7 +11,7 @@ visibility: public
 <!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton (one active integrator per project, enforced by a lease keyed on `integration/main`) and consumes finalize-ready Todos in FIFO order. Each call resumes from a durable checkpoint, executes the next deterministic step, and either loops internally or returns a structured instruction block that asks the calling agent to do the one thing only intelligence can do: compose a squash commit message, resolve a merge conflict, or recover from a rejected push. Candidate git mutations happen inside an isolated integration worktree at `trees/_integration/`. Repo-root mutation is limited to publishing already-committed ahead-only state before candidate selection, fast-forward synchronization after delivery, and slug-scoped settled-marker recovery after a maintenance fault. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
-The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton and consumes finalize-ready Todos in FIFO order under the `integration/main` lease. The integration worktree prepares each candidate commit in isolation. Repository-root main remains the authoritative documentation and final-assembly tree: the integrator synchronizes it, applies the prepared candidate, folds that slug's pending documentation, runs the final gates, pushes the combined head, and records delivery only after confirming that push. When repository-root main is unsafe to mutate, delivery waits with the blocking evidence. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
+The integration state machine is Phase C of the todo lifecycle — the only authorized writer of canonical `origin/main`. It runs as a singleton and consumes finalize-ready Todos in FIFO order under the `integration/main` lease. The integration worktree prepares and publishes each candidate commit without reconciling documentation. After confirming that candidate push, the machine synchronizes repository-root main, folds the candidate slug there, runs the final gates, publishes the resulting root head, and records delivery only after confirming that final push. When repository-root main is unsafe to mutate, delivery waits with the blocking evidence. When the queue drains, the integrator emits `workflow.todo.delivered` per slug, removes per-slug worktrees and branches, archives binary artifacts, and ends.
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 ## Canonical fields
@@ -68,12 +68,12 @@ And integration.push.rejected is emitted at rejection and integration.push.succe
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```
-Given repository-root main contains the prepared candidate and its folded documentation
-When the final push is rejected because origin/main moved
-Then the state machine records the rejected push and preserves the candidate as pending
-And the integrator synchronizes repository-root main with the new origin/main without overwriting uncommitted work
-And it reruns candidate-scoped reconciliation and the final gates before retrying the push
-And delivery remains withheld until the retried final head is confirmed on origin/main
+Given either the integration-worktree candidate push or the later folded repository-root push is rejected
+When the state machine records the rejected push
+Then it preserves the candidate as non-delivered and identifies the rejected stage
+And candidate-push recovery remains scoped to the integration worktree
+And finalization-push recovery synchronizes and retries repository-root main without overwriting uncommitted work
+And delivery remains withheld until the folded repository-root head is confirmed on origin/main
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -114,10 +114,10 @@ And the phase is PUSH_REJECTED
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
-Given a prepared candidate has been applied and reconciled on repository-root main
-When the final push to origin/main is rejected
+Given either candidate publication or folded-root publication is rejected
+When the corresponding push to origin/main fails
 Then no delivery record is written and the todo stays non-delivered
-And the phase records the rejected push for recovery
+And the phase records which publication requires recovery
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -131,9 +131,10 @@ Then the pushed commit SHA is frozen into the durable checkpoint at push time
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
-Given the final repository-root head is pushed to origin/main
-When the state machine records the push result
-Then that pushed commit SHA is frozen into the durable checkpoint
+Given the prepared candidate is pushed from the integration worktree
+When the state machine records that result
+Then the candidate SHA is frozen for confirmation and repository-root synchronization
+And when the folded repository-root head is later pushed, its SHA replaces the candidate SHA as the final delivery evidence
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -156,9 +157,10 @@ Then the delivery record is written exactly once
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
-Given the final repository-root push was rejected and the integrator has synchronized, reconciled, and successfully retried it
-When the recovery transition freezes the retried repository-root head and confirms it on origin/main
-Then the delivery record is written exactly once
+Given either publication stage was rejected and the integrator completed its stage-specific recovery
+When the candidate push is confirmed and the folded repository-root push is subsequently confirmed
+Then the final repository-root SHA is frozen as delivery evidence
+And the delivery record is written exactly once
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -207,13 +209,13 @@ performs no squash-merge re-derivation. The integrator's authority ends at the
 push: post-push steps confirm, record, and clean up; they exercise no content
 judgment.
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
-The confirmation gate verifies that the final repository-root commit the
-integrator pushed is present on origin/main. The frozen pushed SHA remains the
-sole confirmation target even though the final head differs from the candidate
-branch tip through candidate application, conflict resolution, documentation
-reconciliation, or an integrator-owned invariant fix. All content decisions and
-mutations finish before that push; post-push steps only confirm, record, and
-clean up.
+The first confirmation gate verifies that the prepared integration-worktree
+candidate reached origin/main before repository-root finalization begins. The
+machine then synchronizes and folds repository-root main. The second confirmation
+gate verifies that folded root head and replaces the intermediate candidate SHA
+with the final delivery SHA. All documentation mutation finishes before the
+second push; after its confirmation the machine only records delivery and cleans
+up.
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
 #### UC-WISM3: Delivered-snippet fold re-asserted across every delivery path
@@ -236,15 +238,15 @@ And no delivery record is written
 ```gherkin
 Given a candidate commit is prepared in the integration worktree through a clean merge, conflict resolution, or crash recovery
 When the state machine reaches delivery finalization
-Then it synchronizes repository-root main without including uncommitted work
-And it applies the prepared candidate to repository-root main
-And it runs one idempotent delivered-snippet fold for the candidate slug on repository-root main
-And it commits the candidate and folded documentation into the final delivery head
-And it pushes that head to origin/main only after the final content gate passes
+Then it publishes and confirms that candidate commit on origin/main without folding documentation
+And it synchronizes repository-root main with the confirmed candidate without including uncommitted work
+And it runs one applied delivered-snippet fold for the candidate slug on repository-root main
+And it runs the residual and content gates against repository-root main
+And it publishes and confirms the folded repository-root head before recording delivery
 
-Given synchronization, candidate application, marker reconciliation, staging, commit, or the final content gate fails
+Given candidate publication, repository-root synchronization, marker reconciliation, staging, commit, or the final content gate fails
 When delivery finalization handles that failure
-Then no delivery push or delivery record is produced
+Then no delivery record is produced
 And the candidate remains pending with the blocking evidence
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
@@ -473,13 +475,14 @@ And the recorded delivered commit is the frozen pushed commit
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
-Given the integration worktree has prepared a candidate commit without reconciling documentation
-When the integrator finalizes that candidate
-Then it applies the candidate to repository-root main
-And it reconciles the candidate slug exactly once against repository-root main
+Given the integration worktree has published a candidate commit without reconciling documentation
+When the integrator confirms that candidate and finalizes it
+Then it synchronizes repository-root main with the candidate
+And it applies candidate-delivery reconciliation only against repository-root main
 And it runs no candidate-delivery reconciliation in the integration worktree
-And it pushes the candidate and folded documentation as one final head
-And the recorded delivered commit is that confirmed repository-root head
+And crash recovery may repeat a completed reconciliation only as an idempotent no-op
+And it publishes the folded repository-root head
+And the recorded delivered commit is that final confirmed SHA
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -526,12 +529,12 @@ And no candidate is dequeued for that call until repo-root main is synced
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
-Given repository-root main and origin/main are not at the same commit when an integration call begins
-When the integrator classifies repository-root main against origin
+Given the integration-worktree candidate push is confirmed on origin/main
+When the integrator synchronizes repository-root main for documentation finalization
 Then a repository root that is only behind is fast-forwarded when its dirty paths permit it
-And a repository root that is only ahead remains the authoritative final-assembly base without rewriting its commits
-And split history or a dirty state that prevents safe synchronization blocks candidate delivery with the exact paths and graph state
-And the integrator resolves repository-root synchronization before applying and publishing a candidate there
+And a repository root that is only ahead or split preserves its committed documentation while incorporating the confirmed candidate
+And a dirty state or conflict that prevents safe synchronization blocks delivery with the exact paths and graph state
+And no marker fold or final push runs until repository-root synchronization is complete
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -606,8 +609,8 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 - Delivery bookkeeping runs inside `trees/_integration/`, not on repo root. The squash commit is pushed; the todo delivery stamp and dependency-reference cleanup are `todos.db` writes — untracked local state, never staged — applied only after the push is confirmed on `origin/main`.
 - After a successful push, the integrator classifies repo root and fast-forwards it only when safe, then pushes any ahead-only repo-root bookkeeping. A non-ready classification or bookkeeping-push failure does not undo confirmed delivery: maintenance marking, Blueprint regeneration from the confirmed integration-worktree commit, and cleanup still complete, after which the call returns the sync instruction before another candidate can be dequeued.
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
-- The integration worktree prepares the candidate commit. Repository-root main owns delivery finalization, the sole documentation fold, the final content gate, and the canonical push.
-- Repository-root main may contain committed work ahead of origin/main. That committed state remains part of final assembly. Any graph or dirty-path condition that prevents safe candidate application or reconciliation blocks the candidate before the final push and leaves uncommitted work untouched.
+- The integration worktree prepares and publishes the candidate commit. That confirmed push is intermediate evidence and does not release dependencies. Repository-root main owns the sole documentation fold, the final content gate, the final push, and the recorded delivery SHA.
+- Repository-root main may contain committed work ahead of the intermediate candidate push. That committed state remains part of finalization. Any graph, conflict, or dirty-path condition that prevents safe synchronization or reconciliation blocks delivery and leaves uncommitted work untouched.
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 - When the idle step is called with an explicit slug, only that slug is verified as ready; the FIFO scan is bypassed but ancestry and remote-branch existence checks still apply.
 - The normal enqueue path is event-triggered: `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) invokes the integration trigger cartridge, which spawns the singleton integrator only when no integrator session is open. Open integrators are left undisturbed and consume queued candidates on their next state-machine pass. The scanner remains the recovery path for missed events.
@@ -628,7 +631,7 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 <!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0085-canonical-doc-state-before-delivery.md — why repo-root documentation is published before candidate selection and terminal divergence repair is a separate operation.
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
-- docs/project/adr/0089-delivery-folds-on-repository-root-main.md — why repository-root main is the sole documentation-fold and final-push surface.
+- docs/project/adr/0090-root-fold-finalizes-a-pushed-candidate.md — why a confirmed candidate push precedes repository-root folding and the final delivery push.
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0082-candidate-span-ownership-inspection-is-withdrawn.md — why span-ownership inspection was removed rather than corrected.
 - docs/project/adr/0076-integrator-parks-blockers-and-keeps-quality-gating.md — the park-and-drain decision, whose conflict and content-gate paths are unchanged.
