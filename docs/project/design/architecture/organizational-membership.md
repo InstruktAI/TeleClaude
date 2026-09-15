@@ -35,9 +35,11 @@ about it.
 **Outputs.**
 
 - For a person: the companies they belong to with the role held in each, the
-  projects they are assigned to, and — for an administrative role — the projects
-  that role covers. Explicit assignments and derived coverage are separate fields
-  of that answer, never merged.
+  projects they are assigned to, — for an administrative role — the projects
+  that role covers, and any stale assignments: entries recorded in a company's
+  roster whose project that company no longer owns. Explicit assignments,
+  derived coverage, and stale assignments are three separate fields of that
+  answer, never merged; a stale assignment is never counted as an assignment.
 - For an operator: acceptance or a refusal naming what could not be resolved.
 
 **The agent-facing surface is a CLI query.** An agent asks for a named person's
@@ -84,9 +86,10 @@ A project's owner is its own declaration in its own file, and changing it is a
 routine edit that cannot reach into company rosters. An assignment left behind
 by such a change is never reported as access, never blocks the company's
 configuration from loading — that would break every session in every project
-the company still owns — and is surfaced as stale by the load log, the
-resolution query, and the wizard, until an administrator removes it through the
-maintenance surface. Silent dropping is the failure this guards against: the
+the company still owns — and is surfaced as stale by the load log and by the
+resolution query's stale-assignments field, until an administrator removes it
+through the maintenance surface — the same withdrawal that removes any
+assignment, since a stale entry is still an entry in the roster. Silent dropping is the failure this guards against: the
 stale entry stays visible precisely so that the dissolved relation is seen.
 
 **One home per fact.** The company tier is the only place a membership or
@@ -119,13 +122,11 @@ enforcing the declared human band, while preserving the agent band the surface
 already admits. Reusing a surface is not inheriting the boundary it advertises.
 
 **The two inert declarations are deleted, not migrated.** `PersonConfig.companies`
-and `CompanyConfig.owner` are removed from the schema outright. No file on any
-installation carries either key, so there is no owned data to bring forward and
-the owned-data migration rule has nothing to act on; a key that appears in a
-file after this change fails at load under the closed-overlay rule like any
-other undeclared key. This is deliberate simplicity over file-backed
-migration machinery the human declined: proper CLI create, read, update, and
-delete is the contract, and a file edited into an invalid state does not load.
+and `CompanyConfig.owner` are removed from the schema outright. Nothing is
+converted and no migration runs: a file that still carries either key fails at
+load naming it, under the closed-overlay rule, and the operator removes the
+key. Proper CLI create, read, update, and delete is the contract for the roster,
+and a file edited into an invalid state does not load.
 
 ## Primary flows
 
@@ -145,6 +146,9 @@ flowchart TD
 
     I[agent resolves a person] --> J[read every company roster]
     J --> K[collect memberships and explicit assignments]
+    K --> S{each assignment's project<br/>still owned by this company?}
+    S -- no --> T[report it under stale assignments, not assignments]
+    S -- yes --> K2[keep it as an assignment]
     K --> L{any membership holds the administrative role?}
     L -- no --> M[report memberships and assignments]
     L -- yes --> N[read project registry for that company's projects]

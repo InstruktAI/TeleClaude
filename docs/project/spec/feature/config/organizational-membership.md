@@ -149,7 +149,7 @@ And no roster entry remains that references an unregistered person
   per-person company-membership list and a per-company owner reference. Neither
   has a resolver and neither is populated. This contract is the single home for
   the owner relationship; the owner reference is not a second one, and both
-  legacy declarations are removed from the schema outright; no file carries either key, so nothing is migrated.
+  legacy declarations are removed from the schema outright. Nothing is migrated; a file still carrying either key fails at load naming it.
 - The membership prerequisite is relational: it binds an assignment to the
   company owning the project it names. It places no requirement on a person who
   belongs to no company, and imposes nothing on a platform where no company is
