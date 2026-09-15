@@ -59,11 +59,6 @@ def _direct_skill_dirs(project_root: Path) -> Iterator[Path]:
             yield entry
 
 
-def has_global_skill_contribution(project_root: Path) -> bool:
-    """Whether folder existence declares at least one global skill contribution."""
-    return next(_direct_skill_dirs(project_root), None) is not None
-
-
 def _owning_checkout(root: Path) -> Path:
     """Resolve a linked worktree back to the checkout that owns it.
 

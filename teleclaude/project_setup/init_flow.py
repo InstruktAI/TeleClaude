@@ -21,8 +21,9 @@ from teleclaude.docs_index import ensure_project_config
 from teleclaude.git import Repo
 from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
 from teleclaude.project_manifest import register_root
+from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.domain_seeds import seed_event_domains
-from teleclaude.project_setup.git_filters import setup_git_filters
+from teleclaude.project_setup.git_filters import ensure_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.hooks import install_code_hooks
@@ -307,15 +308,15 @@ def init_project(project_root: Path) -> None:
     ensure_project_config(project_root)
     capabilities = _declare_inferred_capabilities(project_root)
     if capabilities.docs:
-        setup_git_filters(project_root)
         update_gitattributes(project_root)
+    ensure_git_filters(project_root, enabled=capabilities.docs)
     sync_project_artifacts(project_root)
     if not is_mother and capabilities.code:
         deploy_skeleton(project_root)
     if capabilities.code:
         install_code_hooks(project_root)
     _ensure_project_slug(project_root)
-    register_root(project_root=project_root)
+    register_root(project_root=resolve_project_root(project_root))
     advance_reachable_roots()
     seed_event_domains(project_root)
 

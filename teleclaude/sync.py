@@ -17,19 +17,12 @@ from pathlib import Path
 from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.config import config
 from teleclaude.config._blueprint import generate_sample_file
-from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
 from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
-from teleclaude.domains import publishes_for_root
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-from teleclaude.global_skills import has_global_skill_contribution
 from teleclaude.paths import REPO_ROOT, ConfigFileName
-from teleclaude.project_manifest import register_root
-from teleclaude.project_root import resolve_project_root
-from teleclaude.project_setup.git_filters import ensure_git_filters
-from teleclaude.project_setup.hooks import install_code_hooks
 from teleclaude.resource_validation import (
     _error,
     clear_errors,
@@ -108,16 +101,6 @@ def _sync_locked(
     if not skip_validation and _collect_source_findings(project_root, capabilities):
         return False
 
-    if capabilities.code:
-        install_code_hooks(project_root)
-    ensure_git_filters(project_root, enabled=capabilities.docs)
-
-    # Phase 1.5: Register structurally declared publishers into the durable
-    # project manifest. Domain publication is config-declared; global skill
-    # publication is folder-declared. Neither needs a separate init step.
-    _register_publisher_root(project_root)
-    advance_reachable_roots()
-
     # Phase 2: Record provenance
     if capabilities.docs:
         _record_snippet_provenance_from_config(project_root)
@@ -137,19 +120,6 @@ def _sync_locked(
     _run_distribute(project_root, capabilities, lock_descriptor=lock_descriptor)
 
     return True
-
-
-def _register_publisher_root(project_root: Path) -> None:
-    """Idempotently register the invoking project's durable root as a publisher.
-
-    Registration is a consequence of publishing, not a prerequisite: a project
-    is added when it declares a non-empty ``business.publishes`` or contributes
-    a direct ``agents/skills/<name>`` folder. Resolving to the durable main
-    checkout keeps an ephemeral todo-worktree path out of the manifest.
-    """
-    durable_root = resolve_project_root(project_root)
-    if publishes_for_root(durable_root) or has_global_skill_contribution(durable_root):
-        register_root(project_root=durable_root)
 
 
 def _regenerate_config_sample(project_root: Path) -> None:
