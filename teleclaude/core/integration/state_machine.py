@@ -12,8 +12,12 @@ The agent is the authority on intelligence. Neither does the other's job.
 from __future__ import annotations
 
 import asyncio
+import os
+import signal
+import threading
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 from instrukt_ai_logging import get_logger
 
@@ -61,6 +65,11 @@ from teleclaude.core.integration.step_functions import (
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.runtime.command_runner import (
+    ProcessGroupCancellation,
+    ProcessGroupCancellationRequested,
+    process_group_cancellation_scope,
+)
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
@@ -447,14 +456,53 @@ async def next_integrate(
     state_dir = _default_state_dir(cwd)
     state_dir.mkdir(parents=True, exist_ok=True)
     loop = asyncio.get_running_loop()
+    cancellation = ProcessGroupCancellation()
+    previous_handlers: dict[int, Any] = {}
 
-    return await asyncio.to_thread(
-        _dispatch_sync,
-        session_id=session_id,
-        slug=slug,
-        cwd=cwd,
-        state_dir=state_dir,
-        started=started,
-        loop=loop,
-        abandon=abandon,
-    )
+    def _request_cancellation(signum: int, _frame: object) -> None:
+        cancellation.request(signum)
+
+    installable = threading.current_thread() is threading.main_thread()
+    if installable:
+        for signal_value in (signal.SIGINT, signal.SIGTERM):
+            previous_handlers[signal_value] = signal.signal(signal_value, _request_cancellation)
+
+    worker: asyncio.Task[str] | None = None
+    result: str | None = None
+    try:
+        with process_group_cancellation_scope(cancellation):
+            worker = asyncio.create_task(
+                asyncio.to_thread(
+                    _dispatch_sync,
+                    session_id=session_id,
+                    slug=slug,
+                    cwd=cwd,
+                    state_dir=state_dir,
+                    started=started,
+                    loop=loop,
+                    abandon=abandon,
+                )
+            )
+            try:
+                result = await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                cancellation.request()
+                try:
+                    await worker
+                except ProcessGroupCancellationRequested:
+                    pass
+                raise
+            except ProcessGroupCancellationRequested:
+                pass
+    finally:
+        for stored_signal, handler in previous_handlers.items():
+            signal.signal(stored_signal, handler)
+
+    received_signal = cancellation.signum
+    if received_signal is not None:
+        signal.signal(received_signal, signal.SIG_DFL)
+        os.kill(os.getpid(), received_signal)
+        raise SystemExit(128 + received_signal)
+    if result is None:
+        raise ProcessGroupCancellationRequested
+    return result

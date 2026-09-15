@@ -7,7 +7,9 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,54 @@ _PROCESS_GROUP_TERM_GRACE_SECONDS = 2.0
 _PROCESS_GROUP_KILL_GRACE_SECONDS = 2.0
 _PROCESS_POLL_INTERVAL_SECONDS = 0.05
 _COMMAND_START_FAILURE_EXIT_CODE = 127
+_PROCESS_GROUP_CANCELLATION_CONTEXT_NAME = "process_group_cancellation"
+
+
+class ProcessGroupCancellation:
+    """Thread-safe cancellation shared by an async caller and command worker."""
+
+    def __init__(self) -> None:
+        self._requested = threading.Event()
+        self._signum: int | None = None
+        self._lock = threading.RLock()
+
+    @property
+    def requested(self) -> bool:
+        """Whether the owning async operation requested cancellation."""
+        return self._requested.is_set()
+
+    @property
+    def signum(self) -> int | None:
+        """The first termination signal, when cancellation came from a signal."""
+        with self._lock:
+            return self._signum
+
+    def request(self, signum: int | None = None) -> None:
+        """Request cancellation without replacing the first signal received."""
+        with self._lock:
+            if self._signum is None:
+                self._signum = signum
+        self._requested.set()
+
+
+class ProcessGroupCancellationRequested(BaseException):
+    """Stop command execution after every started process group is reaped."""
+
+
+_PROCESS_GROUP_CANCELLATION: ContextVar[ProcessGroupCancellation | None] = ContextVar(
+    _PROCESS_GROUP_CANCELLATION_CONTEXT_NAME,
+    default=None,
+)
+
+
+@contextmanager
+def process_group_cancellation_scope(cancellation: ProcessGroupCancellation) -> Iterator[None]:
+    """Bind cancellation so ``asyncio.to_thread`` carries it into the worker."""
+    token = _PROCESS_GROUP_CANCELLATION.set(cancellation)
+    try:
+        yield
+    finally:
+        _PROCESS_GROUP_CANCELLATION.reset(token)
 
 
 @dataclass(frozen=True)
@@ -39,6 +89,7 @@ def run_process_group_commands(
     processes: list[subprocess.Popen[bytes] | None] = []
     results: list[CommandResult | None] = []
     previous: dict[int, Any] = {}
+    cancellation = _PROCESS_GROUP_CANCELLATION.get()
 
     def _forward(signum: int, _frame: object) -> None:
         raise _SignalReceived(signum)
@@ -48,23 +99,25 @@ def run_process_group_commands(
         if installable:
             for signal_value in (signal.SIGINT, signal.SIGTERM):
                 previous[signal_value] = signal.signal(signal_value, _forward)
-        for command in commands:
-            try:
-                # Declared arbitrary argv requires an external process; no Python-native API can perform the action.
-                process = subprocess.Popen(
-                    list(command),
-                    cwd=str(cwd),
-                    env=dict(child_env) if child_env is not None else None,
-                    start_new_session=True,
-                )
-            except OSError:
-                processes.append(None)
-                results.append(CommandResult(_COMMAND_START_FAILURE_EXIT_CODE))
-                continue
-            processes.append(process)
-            results.append(None)
         try:
+            for command in commands:
+                _raise_if_cancelled(cancellation)
+                try:
+                    # Declared arbitrary argv requires an external process; no Python-native API can perform the action.
+                    process = subprocess.Popen(
+                        list(command),
+                        cwd=str(cwd),
+                        env=dict(child_env) if child_env is not None else None,
+                        start_new_session=True,
+                    )
+                except OSError:
+                    processes.append(None)
+                    results.append(CommandResult(_COMMAND_START_FAILURE_EXIT_CODE))
+                    continue
+                processes.append(process)
+                results.append(None)
             while any(result is None for result in results):
+                _raise_if_cancelled(cancellation)
                 for index, process in enumerate(processes):
                     if process is None or results[index] is not None:
                         continue
@@ -95,6 +148,11 @@ class _SignalReceived(BaseException):
     def __init__(self, signum: int) -> None:
         super().__init__(signum)
         self.signum = signum
+
+
+def _raise_if_cancelled(cancellation: ProcessGroupCancellation | None) -> None:
+    if cancellation is not None and cancellation.requested:
+        raise ProcessGroupCancellationRequested
 
 
 def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
