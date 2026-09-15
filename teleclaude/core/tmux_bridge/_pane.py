@@ -5,6 +5,7 @@ import os
 import pwd
 import time
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 import psutil
@@ -32,6 +33,14 @@ _TMUX_DIAGNOSTIC_ERRORS = (OSError, ValueError, TypeError, psutil.Error, Subproc
 _SNAPSHOT_MARKER = "__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__"
 DEFAULT_CAPTURE_LINES = 200
 FALLBACK_CAPTURE_LINES = 40
+
+
+class _MissingPaneDiagnostic(StrEnum):
+    """tmux diagnostics that represent unavailable host-pane liveness."""
+
+    TARGET_NOT_FOUND = "can't find"
+    TARGET_ABSENT = "no such"
+    SERVER_UNAVAILABLE = "no server running"
 
 
 @dataclass(frozen=True)
@@ -257,7 +266,7 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
             if result.returncode == 127:
                 # Logged (throttled/aggregated) by the poll loop that owns retry cadence, not per tick here.
                 raise TmuxUnavailableError(f"tmux binary unavailable for {session_name}: {stderr_text}")
-            if "can't find" in stderr_text.lower() or "no such" in stderr_text.lower():
+            if any(diagnostic in stderr_text.lower() for diagnostic in _MissingPaneDiagnostic):
                 return PaneSnapshot(session_exists=False, pane_dead=False, output_raw="", output_normalized="")
             logger.warning(
                 "Failed to collect pane snapshot for session %s: returncode=%d, stderr=%s",
