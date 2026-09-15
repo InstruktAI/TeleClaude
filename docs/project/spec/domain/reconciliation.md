@@ -43,12 +43,10 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   consumer's own contract.
 <!-- /planned:discord-personal-voice-conversation -->
 
-<!-- planned:sync-stops-converging-project-setup -->
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/project/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities
 
-<!-- /planned:sync-stops-converging-project-setup -->
 
 ## See Also
 

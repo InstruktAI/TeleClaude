@@ -1,7 +1,7 @@
 ---
-description: 'The durable registry of project roots — which checkout is recorded for a project, who writes it, and which paths never write it.'
-visibility: 'internal'
-delivered_by: ['sync-stops-converging-project-setup']
+description: The durable registry of project roots — which checkout is recorded for
+  a project, who writes it, and which paths never write it.
+visibility: internal
 ---
 
 # Project Registry — Spec

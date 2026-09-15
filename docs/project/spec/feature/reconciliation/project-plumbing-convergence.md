@@ -1,7 +1,8 @@
 ---
-description: "Convergence of a project's installed git plumbing — the TeleClaude-owned hooks and the docs filter driver — to its capability declaration, performed at project initialization and by no synchronization path."
-visibility: 'internal'
-delivered_by: ['sync-stops-converging-project-setup']
+description: Convergence of a project's installed git plumbing — the TeleClaude-owned
+  hooks and the docs filter driver — to its capability declaration, performed at project
+  initialization and by no synchronization path.
+visibility: internal
 ---
 
 # Project Plumbing Convergence — Spec

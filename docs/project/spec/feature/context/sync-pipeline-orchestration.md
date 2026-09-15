@@ -29,17 +29,6 @@ The sync pipeline is:
 3. **Build indexes** — write fresh derived doc indexes from source snippets.
 4. **Distribute** — invoke the distribution step in deploy mode.
 
-<!-- planned-change:sync-stops-converging-project-setup -->
-A deploy-mode run also registers the invoking project's durable root in the
-project manifest when that project declares a non-empty `business.publishes` or
-contains at least one direct `agents/skills/<name>/` folder. The domain
-declaration publishes global docs; the skill folder publishes a global skill and
-is itself the declaration — no separate capability or registration step exists.
-The registered root is the canonical main checkout (a worktree resolves to its
-owning checkout), and registration is idempotent. The read-only `--skip-deploy`
-gate performs no registration.
-<!-- change:sync-stops-converging-project-setup -->
-<!-- /planned-change:sync-stops-converging-project-setup -->
 
 Validation always blocks: any finding stops the pipeline and `telec sync` exits
 non-zero — there is no warn-and-pass mode. Each flag skips one phase:
@@ -61,27 +50,11 @@ Each per-project phase runs only when the project subscribes the capability that
 owns it (`project/spec/feature/config/project-capability-manifest`). Snippet
 validation, index building, and documentation publication run only under a
 subscribed `docs`; agent-artifact transpilation and deployment run only under a
-<!-- planned-change:sync-stops-converging-project-setup -->
-subscribed `agents`. A project subscribing neither still registers and still
-converges its derived plumbing.
-<!-- change:sync-stops-converging-project-setup -->
 subscribed `agents`. A project subscribing neither runs no per-project phase.
-<!-- /planned-change:sync-stops-converging-project-setup -->
 
 
-<!-- planned-change:sync-stops-converging-project-setup -->
-Plumbing reconciliation runs on the mutating sync path only: it reconciles the
-docs filter driver (present iff `docs`) from the declaration and refreshes the
-TeleClaude-owned git hooks of a project subscribing `code`, leaving a hook the
-project authored itself in place. No capability state is written anywhere: the
-installed plumbing reads the declaration on each invocation
-(`project/spec/feature/config/project-capability-manifest`). `--skip-deploy` is
-read-only — it installs or withdraws no hooks or `.gitattributes` lines and does
-not touch the driver.
-<!-- change:sync-stops-converging-project-setup -->
 Project-setup convergence is not a sync phase; it is contracted in
 `project/spec/feature/reconciliation/project-plumbing-convergence`.
-<!-- /planned-change:sync-stops-converging-project-setup -->
 
 
 The behavioral contract for this gating lives in
@@ -164,48 +137,6 @@ Scenario: Delivery completes before sync
   And sync performs no additional source markdown mutations
 ```
 
-<!-- planned-change:sync-stops-converging-project-setup -->
-```
-Scenario: UC-SPO1 A publishing sync registers the publisher so its domain is universally valid
-  Given a project declares a domain in business.publishes in its own teleclaude.yml
-  And that project's root is not yet in the project manifest
-  When the operator runs telec sync in deploy mode
-  Then the project's durable root is registered in the manifest
-  And the declared domain joins the set of valid domains platform-wide without a separate telec projects init
-  And running telec sync again does not add a duplicate manifest entry
-```
-
-```
-Scenario: UC-SPO2 The read-only gate registers no publisher
-  Given a project declares a domain in business.publishes
-  And that project's root is not in the project manifest
-  When telec sync --skip-deploy is invoked
-  Then no manifest registration occurs
-  And the manifest is left unchanged
-```
-
-```
-Scenario: UC-SPO3 A non-publishing project registers no root
-  Given a project declares no domains in business.publishes
-  And contains no direct agents/skills/<name>/ folder
-  And that project's root is not in the project manifest
-  When the operator runs telec sync in deploy mode
-  Then no manifest registration occurs
-  And the manifest is left unchanged
-```
-
-```
-Scenario: UC-SPO5 A global skill folder registers its publisher by existence
-  Given a project declares no domains in business.publishes
-  And contains a direct agents/skills/<name>/ folder
-  And that project's root is not yet in the project manifest
-  When the operator runs telec sync in deploy mode
-  Then the project's durable root is registered in the manifest
-  And the named skill joins global skill composition without a configuration capability
-  And running telec sync again does not add a duplicate manifest entry
-```
-
-<!-- change:sync-stops-converging-project-setup -->
 #### UC-SPO16: Deploy-mode sync performs only its own phases
 
 ```gherkin
@@ -217,25 +148,6 @@ And the derived indexes and runtime artifacts are republished
 And the reachable project's configuration document is still not at the current schema
 ```
 
-<!-- /planned-change:sync-stops-converging-project-setup -->
-<!-- planned-change:sync-stops-converging-project-setup -->
-#### UC-SPO4: Deploy-mode sync is refused from a slug worktree
-
-```
-Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
-  Given telec sync runs in deploy mode from a slug worktree (trees/<slug>, not trees/_integration)
-  When the pipeline starts
-  Then it exits non-zero with an error that docs deployment is not allowed from a slug worktree
-<!-- planned-change:sync-validation-moves-to-lint -->
-  And no validation, index build, symlink repair, or distribution step runs
-  And a --skip-deploy run, and deploy-mode sync from the main checkout or the integration worktree, are unaffected
-<!-- change:sync-validation-moves-to-lint -->
-  And no index build, symlink repair, or distribution step runs
-  And deploy-mode sync from the main checkout or the integration worktree is unaffected
-<!-- /planned-change:sync-validation-moves-to-lint -->
-```
-
-<!-- change:sync-stops-converging-project-setup -->
 #### UC-SPO4: Deploy-mode sync is refused from a slug worktree
 
 ```
@@ -252,7 +164,6 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
 <!-- /planned-change:sync-validation-moves-to-lint -->
 ```
 
-<!-- /planned-change:sync-stops-converging-project-setup -->
 <!-- planned:docs-tier-layering -->
 #### UC-SPO17: A change under a participating tier's documentation tree triggers publication
 
