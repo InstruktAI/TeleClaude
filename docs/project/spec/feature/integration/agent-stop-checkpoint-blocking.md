@@ -617,7 +617,7 @@ Given an agent session was told about dirty paths it had not accounted for
 And the session disclaimed every one of them
 When the session reaches a further agent-stop checkpoint boundary
 Then those paths are not reported again
-And a checkpoint decision is produced only for paths unaccounted for since
+And a decision is still produced when a path becomes unaccounted for after that disclaimer
 ```
 <!-- /planned:unknown-scope-is-not-empty-scope -->
 
