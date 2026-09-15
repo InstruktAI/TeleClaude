@@ -125,6 +125,17 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 - The deployed-commands manifest keys by relative corpus path — `<name>.md` at
   the root or `<domain>/<name>.md`, never deeper — so partitioning and
   migration are ordinary add-and-retract deltas within one sync run.
+- **Ownership is per publishing repository, never per phase.** The corpus is a
+  destination several repositories write into, and retraction removes what a
+  source owned and no longer stages. The owner recorded for a deploy is
+  therefore the repository that ran it, at every phase. A phase-wide owner is
+  correct only while one repository can run that phase: two repositories
+  publishing under one owner subtract each other's commands, because retraction
+  is a set difference inside one owner's inventory and the guard that spares a
+  file another owner claims cannot fire when no other owner exists. Domain
+  partitioning does not substitute: different paths still subtract to the same
+  difference. Reach admits the second publisher, so reach is also what makes the
+  per-repository owner necessary.
 - **Manifest forward migration.** The manifest carries a schema version. The
   first load of an unversioned manifest rewrites it in place before any
   reconciliation reads it: every existing entry is a basename, and a basename is
@@ -132,7 +143,10 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   carried forward unchanged in meaning and the file gains its version. Domain
   code reads only the versioned shape; the unversioned reader exists only inside
   that migration step (`software-development/policy/backward-compatibility-hygiene`,
-  owned internal data). A later sync that stages `<domain>/<name>.md` for a
+  owned internal data). The same step rekeys the one phase-wide owner an
+  unversioned manifest carries to the repository that produced it — the mother,
+  which was the only repository able to publish globally while that shape was
+  written — so no inventory is orphaned and no file is left unretractable. A later sync that stages `<domain>/<name>.md` for a
   relocated command retracts the root entry and records the partitioned one in
   the same run.
 - Domain assignment of the mother's existing commands follows the governing
@@ -204,6 +218,9 @@ sequenceDiagram
 - **A consumer restates its own directory list instead of reading the
   registry.** A second source of truth; reviewers treat it as an ownership
   defect (`software-development/policy/domain-ownership`).
+- **Two repositories publish global commands and one deploy erases the
+  other's.** Prevented by the per-repository owner: each deploy retracts only
+  the paths its own repository last staged.
 
 ## See Also
 

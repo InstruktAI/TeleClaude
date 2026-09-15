@@ -465,6 +465,17 @@ Scenario: UC-ARD24 A global command is deployed under its domain in the corpus
   And two domains may each carry a command of the same bare name without either overwriting the other
 ```
 
+#### UC-ARD37: One repository's deploy never retracts another repository's global commands
+
+```
+Scenario: UC-ARD37 One repository's deploy never retracts another repository's global commands
+  Given the mother and a domain-publishing repository have each deployed their global commands to the corpus
+  When sync runs in deploy mode in either repository
+  Then that repository's own commands are reconciled against what it staged
+  And every command the other repository deployed remains in the corpus
+  And a command that repository itself no longer carries is retracted
+```
+
 #### UC-ARD32: No sync during the mother's artifact migration retracts a deployed artifact
 
 ```
