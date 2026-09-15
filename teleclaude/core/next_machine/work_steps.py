@@ -55,11 +55,13 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_project_root
 from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
+from teleclaude.core.next_machine.state_io import _BUILD_VERDICT_VALUES
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine.review_evidence import BUILD_REVIEW_PHASE, ReviewEvidenceOutcome
 from teleclaude.core.next_machine.review_rounds import (
     admit_build_review,
     build_review_admission,
@@ -331,7 +333,7 @@ async def _consume_build_review_verdict(
     slug: str,
     worktree_cwd: str,
     state: dict[str, StateValue],
-    clear_when_stale: bool,
+    stale_returns_to_review: bool,
 ) -> bool:
     """Fire the lifecycle signal for a stamped build_review verdict.
 
@@ -341,14 +343,17 @@ async def _consume_build_review_verdict(
     ``baseline_commit`` on first consumption so re-review rounds scope their
     diff. Returns True when the caller must re-derive the phase.
 
-    ``clear_when_stale`` discards evidence that no longer binds the current
-    target and report, which sends BUILD_COMPLETE back to a fresh review. The
-    settled review phases pass False: their stale evidence is spent, not
-    pending, and clearing it would reopen a review nobody asked for.
+    ``stale_returns_to_review`` governs a binding that no longer matches the
+    current target and report. Where the todo is waiting to move forward on the
+    strength of a review, the stale binding is discarded and the todo returns
+    to BUILD_COMPLETE for a fresh one, so nothing advances on a review of code
+    that has since changed. REVIEW_CHANGES_REQUESTED passes False: the builder
+    invalidates the binding by committing fixes, which is the loop working, and
+    that step re-enters review through its own build_complete claim.
     """
     writer = StateWriter(state)
     br_writer = writer.state.build_review
-    if br_writer.verdict not in ("approve", "changes_requested"):
+    if br_writer.verdict not in _BUILD_VERDICT_VALUES:
         return False
 
     current_head = await asyncio.to_thread(get_head_commit, worktree_cwd)
@@ -362,8 +367,8 @@ async def _consume_build_review_verdict(
     logger.info(
         "workflow.review_evidence_evaluated",
         slug=slug,
-        phase="build_review",
-        outcome="current" if is_current else "stale",
+        phase=BUILD_REVIEW_PHASE,
+        outcome=(ReviewEvidenceOutcome.CURRENT if is_current else ReviewEvidenceOutcome.STALE).value,
         bound_target_digest=br_writer.reviewed_target_digest,
         current_target_digest=current_head,
         bound_report_digest=br_writer.review_report_digest,
@@ -372,16 +377,20 @@ async def _consume_build_review_verdict(
         reviewed_at=br_writer.reviewed_at,
     )
     if not is_current:
-        if not clear_when_stale:
+        if not stale_returns_to_review:
             return False
         _clear_build_review(writer.state)
+        # A settled approval must not stay finalization-eligible on a binding
+        # the current worktree no longer matches; the build stands, the review
+        # does not, which is exactly BUILD_COMPLETE.
+        apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
         await _commit_writer(writer, todos_db, slug, state)
         return True
 
     if not br_writer.baseline_commit:
         br_writer.baseline_commit = current_head
     before_phase = writer.state.lifecycle_phase
-    apply_authoritative_signal(writer.state, "verdict", phase="build_review")
+    apply_authoritative_signal(writer.state, "verdict", phase=BUILD_REVIEW_PHASE)
     if writer.state.lifecycle_phase == before_phase:
         return False
     await _commit_writer(writer, todos_db, slug, state)
@@ -410,7 +419,7 @@ async def _work_step_build_complete(
         slug=slug,
         worktree_cwd=worktree_cwd,
         state=state,
-        clear_when_stale=True,
+        stale_returns_to_review=True,
     )
     if consumed:
         return True, ""
@@ -775,14 +784,14 @@ async def _work_dispatch(
     if phase in (WorkPhase.REVIEW_APPROVED, WorkPhase.REVIEW_CHANGES_REQUESTED):
         # A settled review phase still consumes a newer verdict: a reviewer may
         # reverse itself before finalization, and the phase follows the verdict.
-        reversed_phase = await _consume_build_review_verdict(
+        rederived = await _consume_build_review_verdict(
             todos_db=todos_db,
             slug=slug,
             worktree_cwd=worktree_cwd,
             state=state,
-            clear_when_stale=False,
+            stale_returns_to_review=phase == WorkPhase.REVIEW_APPROVED,
         )
-        if reversed_phase:
+        if rederived:
             return True, ""
 
     handlers = {

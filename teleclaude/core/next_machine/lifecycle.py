@@ -840,6 +840,7 @@ def apply_authoritative_signal(
     if signal == "build_complete" and current in (
         LifecyclePhase.BUILD_STARTED,
         LifecyclePhase.REVIEW_CHANGES_REQUESTED,
+        LifecyclePhase.REVIEW_APPROVED,
     ):
         model.build_plan_digest = model.artifacts.implementation_plan.digest
         model.build_completed_at = now

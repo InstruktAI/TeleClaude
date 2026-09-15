@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS,
@@ -13,6 +14,13 @@ from teleclaude.constants import (
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_PRD,
 )
+
+
+class ReviewEvidenceOutcome(str, Enum):
+    """Whether a stamped review still binds the current target and report."""
+
+    CURRENT = "current"
+    STALE = "stale"
 
 
 @dataclass(frozen=True)
