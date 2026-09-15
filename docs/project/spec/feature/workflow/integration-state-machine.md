@@ -639,6 +639,7 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 - docs/project/adr/0085-canonical-doc-state-before-delivery.md — why repo-root documentation is published before candidate selection and terminal divergence repair is a separate operation.
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0090-root-fold-finalizes-a-pushed-candidate.md — why a confirmed candidate push precedes repository-root folding and the final delivery push.
+- docs/project/adr/0091-published-candidate-finalization-blocks-the-drain.md — why parking ends once candidate publication is confirmed.
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 - docs/project/adr/0082-candidate-span-ownership-inspection-is-withdrawn.md — why span-ownership inspection was removed rather than corrected.
 - docs/project/adr/0076-integrator-parks-blockers-and-keeps-quality-gating.md — the park-and-drain decision, whose conflict and content-gate paths are unchanged.
