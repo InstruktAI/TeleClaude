@@ -313,7 +313,6 @@ And no action is surfaced, because its evidence was observed
 
 #### UC-CP11: Integrator post-merge maintenance force-fire
 
-
 ```gherkin
 Given a session whose role is integrator
 And the integration state machine advanced repo-root main this turn and recorded the integrator-maintenance marker carrying the delivered merge range
@@ -332,6 +331,21 @@ Then no maintenance checkpoint is force-fired on account of the moved main HEAD
 (Repo-root main is a shared working copy; raw HEAD movement is not
 self-attributable, so only the lease-guarded integrator singleton — the recorded
 marker's owner — receives post-merge maintenance.)
+```
+```gherkin
+Given a session whose role is integrator
+And integration advanced repository-root main and completed deterministic maintenance for the advanced range
+And that range owes a live-runtime log check
+When the heuristic engine evaluates the turn window
+Then the checkpoint force-fires even though no turn-local Edit or Write change exists
+And it surfaces only the log-check action for the accumulated range
+And no install, dependency, restart, reload, sync, review, commit, or test action is surfaced from that marker
+
+Given a session whose role is not integrator
+And repository-root main advanced for any reason
+And no checkout-scoped log-check marker is present
+When the heuristic engine evaluates the turn window
+Then no checkpoint is force-fired on account of the moved main HEAD
 ```
 
 
@@ -506,7 +520,6 @@ And the commit action is not required
 
 #### UC-CP20: Post-merge maintenance persists per action until its evidence is observed
 
-
 ```gherkin
 Given the integration state machine confirms a delivery whose merge delta owes make restart and make install
 When it records the integrator-maintenance marker for this checkout
@@ -538,6 +551,24 @@ And a different integrator session acquires the lease on the same checkout
 When the heuristic engine evaluates that session's turn window
 Then the outstanding make-restart action is surfaced to the successor
 (The obligation describes the checkout and the daemon deployed from it, so it is addressed by the checkout and reaches whichever integrator holds the lease.)
+```
+```gherkin
+Given integration completes deterministic maintenance for a canonical-root advancement whose paths owe log-check
+When it records the checkout-scoped marker
+Then the marker carries the advanced range and no mechanical action id
+
+Given another qualifying advancement occurs before log-check evidence is observed
+When its range is recorded
+Then the marker accumulates both ranges
+
+Given the integrator runs the applicable log check
+When a later agent-stop observes that evidence
+Then the marker is removed and no post-delivery checkpoint force-fires for those ranges again
+
+Given the integrator session ends while the marker remains
+And another integrator acquires the lease for the same checkout
+When the heuristic engine evaluates that session
+Then the accumulated log-check obligation is surfaced to the successor
 ```
 
 
@@ -641,6 +672,9 @@ And a decision is still produced when a path becomes unaccounted for after that 
 - Consumes the integrator-maintenance marker written by the
   integration state machine (`project/spec/feature/workflow/integration-state-machine`)
   at delivery, before the per-candidate `pre_merge_head` is cleared.
+- Consumes the checkout-scoped range marker written after integration completes
+  deterministic maintenance, and surfaces only the remaining live-runtime log
+  judgment.
 <!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 - Writes checkpoint-seen entries that `session-state-mutation-via-outbox`
   consumes to update last-checkpoint timestamp.
@@ -699,6 +733,10 @@ And a decision is still produced when a path becomes unaccounted for after that 
   post-merge maintenance for the integrator session holding the lease on that
   checkout. That boundary is the one commit-boundary maintenance does not
   reach: repo-root `main` advances by fast-forward rather than by a commit.
+- An integration fast-forward that produces no repository-root commit invokes
+  deterministic maintenance directly from canonical root. The checkout-scoped
+  marker carries only ranges awaiting log judgment, so a successor integrator
+  inherits the judgment without repeating maintenance.
 <!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 - Heuristics are zero-LLM and deterministic — pattern matching on
