@@ -91,7 +91,6 @@ And a pathspec after `--` that happens to be named main is not a ref and is unaf
 ```
 
 
-<!-- planned-change:split-review-routing-from-sync-scope -->
 #### Bare telec code commit on main surfaces the commit-first review-routing gate
 
 ```
@@ -103,19 +102,6 @@ And the gate routes review by what the diff touches: functional code/tests → a
 And the gate points at `telec code changed` for scope inspection
 And the gate surfaces `telec code add` and `--include` for new-file declaration
 ```
-<!-- change:split-review-routing-from-sync-scope -->
-#### UC-CGIP-26 — Bare telec code commit on main routes review by artifact authorship
-
-```
-Given an agent on the `main` branch with a non-integrator role
-When the agent invokes `telec code commit` with no message and no flags
-Then the command prints the commit-first review-routing gate to stderr
-And exits 0 — serving the gate is the successful outcome, not a failure
-And the gate routes review by what the diff touches: functional code/tests → agent-judged med code review; doc snippets (docs/**) or authored agent artifacts → required fast doc-hygiene review; incorporated third-party skill packages under */skills/<name>/** → no review; neither → no review
-And the gate points at `telec code changed` for scope inspection
-And the gate surfaces `telec code add` and `--include` for new-file declaration
-```
-<!-- /planned-change:split-review-routing-from-sync-scope -->
 
 #### telec code commit with a message but no --approved is a forgotten gate
 
@@ -126,7 +112,6 @@ Then the command prints the commit-first review-routing gate to stderr without p
 And exits non-zero without producing a commit
 ```
 
-<!-- planned-change:split-review-routing-from-sync-scope -->
 #### Doc-snippet commit on main requires an independent doc-hygiene review
 
 ```
@@ -137,28 +122,6 @@ And the agent reuses the reviewer already open for the patch series, or starts o
 And the authoring agent never reviews a snippet it wrote
 And a config/state/README-only commit with no doc snippet requires no review
 ```
-<!-- change:split-review-routing-from-sync-scope -->
-#### UC-CGIP-27 — Doc-snippet commit on main requires an independent doc-hygiene review
-
-```
-Given an agent on `main` commits a change that touches a doc snippet (docs/**)
-When the commit lands via `telec code commit --approved`
-Then an independent fast-or-medium reviewer runs the doc-hygiene lane over the changed snippets on the commit SHA via `/next-review-commits`
-And the agent reuses the reviewer already open for the patch series, or starts one if none is open — never a second
-And the authoring agent never reviews a snippet it wrote
-And a config/state/README-only commit with no doc snippet requires no review
-```
-<!-- /planned-change:split-review-routing-from-sync-scope -->
-
-<!-- planned-change:split-review-routing-from-sync-scope -->
-```
-Given a live commit reviewer for this project opened by this agent
-When the commit-first review-routing gate prints its reuse instruction
-Then the instruction names that reviewer's session id, so reuse requires no lookup
-But with no such reviewer open the gate prints only the form that starts one
-```
-<!-- change:split-review-routing-from-sync-scope -->
-#### UC-CGIP-28 — A live reviewer is reused for the commit series
 
 ```
 Given a live commit reviewer for this project opened by this agent
@@ -166,7 +129,6 @@ When the commit-first review-routing gate prints its reuse instruction
 Then the instruction names that reviewer's session id, so reuse requires no lookup
 But with no such reviewer open the gate prints only the form that starts one
 ```
-<!-- /planned-change:split-review-routing-from-sync-scope -->
 
 
 #### Approved commit produces a pathspec commit on the resolved scope
