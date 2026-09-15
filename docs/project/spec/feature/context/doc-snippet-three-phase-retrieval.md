@@ -31,8 +31,14 @@ retrieval flow:
    declaration names. Ordinary retrieval keeps the caller in deliberate control
    of its context budget and never exposes or activates the hidden form.
 
+<!-- planned-change:docs-tier-layering -->
 Role gating runs at phases 1 and 2 against the terminal session's
 resolved identity; the same gate applies to any phase-3 follow-up fetch.
+<!-- change:docs-tier-layering -->
+Read depth is resolved at phases 1 and 2 from the caller's resolved identity
+and relationships, per the Selection policy; the same depth applies to any
+phase-3 follow-up fetch.
+<!-- /planned-change:docs-tier-layering -->
 
 ## Canonical fields
 
@@ -188,9 +194,16 @@ And the eligible global documentation and documentation published by registered 
 
 ### Cross-context references
 
+<!-- planned-change:docs-tier-layering -->
 - **identity** — the terminal-session role is resolved against the active
   terminal login to determine which visibility tier the caller may see; that
   role drives gating in both phases.
+<!-- change:docs-tier-layering -->
+- **identity** — the resolved caller: their person identity, platform role,
+  and the company relationships and project reach resolution reports. Both
+  verbs receive the resolved caller from the dispatch boundary and resolve
+  nothing themselves; the Selection policy derives read depth from it.
+<!-- /planned-change:docs-tier-layering -->
 - **selection** — both verbs delegate filter composition (areas, domains,
   baseline, scope, project, target) to the Selection policy.
 

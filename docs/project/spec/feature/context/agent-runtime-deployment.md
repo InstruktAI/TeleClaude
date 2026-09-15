@@ -499,7 +499,7 @@ Then that tier's sources are copied into the staged generation under companies/<
 And the merged index carries every entry of that tier's catalog under its tier-qualified identity
 And the tier's own catalog is deployed beside its material, whether or not it has entries
 And the staged generation replaces the deployed root atomically, tier material included
-And no reader is served the tier's material from its authoring home
+And discovery is served from the deployed corpus, never from the tier's authoring home
 ```
 
 #### UC-ARD36: A tier that does not participate publishes nothing

@@ -232,9 +232,10 @@ A participating tier that holds no snippets keeps an empty catalog. The
 catalog's existence answers participation; its entries answer content.
 
 Tier catalogs and sources are published like every other publisher's: they
-enter the staged documentation generation and the merged index, each tier's own
-catalog is deployed beside its material whether or not it has entries, and
-every reader reads the deployed corpus. Nothing reads a tier's authoring home.
+enter the staged documentation generation and the merged index, and each tier's
+own catalog is deployed beside its material whether or not it has entries.
+Discovery reads the deployed corpus for every tier; a snippet body resolves
+through the same source-tree resolver every other tier uses.
 
 Discovery names every tier in the caller's read set with the entries it
 contributes, so a participating tier that holds nothing is visible as a tier
