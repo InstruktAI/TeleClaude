@@ -197,21 +197,6 @@ And a session within the stall threshold continues to report `active`
 And the authoritative-idle, terminal-lifecycle, and no-activity rules remain unchanged
 ```
 
-<!-- planned:session-bootstrap-strands-initializing -->
-
-#### UC-SL27: Bootstrap failure resolves the session terminally
-
-```
-Given a non-headless session row exists with `lifecycle_status="initializing"`
-And its bootstrap cannot complete — host-pane creation fails, the bootstrap raises, or the bootstrap task is never scheduled
-When the bootstrap outcome is resolved
-Then the session does not remain `initializing`
-And the session is recorded as terminally closed
-And a session bootstrap-failure event is published for that session
-And a caller delivering input to that session is refused rather than left waiting on the startup gate
-```
-
-<!-- /planned:session-bootstrap-strands-initializing -->
 
 <!-- planned:fix-agent-sessions-silently-blocked-on-directory-trust -->
 
