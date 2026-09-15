@@ -70,14 +70,23 @@ only: loading reads `kind` alone, and a file with no modeline resolves
 identically.
 
 `kind` names a file's tier. It is unrelated to the machine-config field
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 exposure levels described below, which govern which `config.yml` fields reach
 the generated sample and the operator surface.
+<!-- change:config-sample-regeneration-leaves-sync -->
+exposure levels described below, which govern which `config.yml` fields reach
+the operator surface.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 Release-channel settings (`deployment.channel`, `deployment.pinned_minor`) are not
 project-level keys. They govern TeleClaude's own self-update — a machine-wide
 concern — and live on the machine runtime `config.yml` (the `TeleclaudeConfig`
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 aggregate), marked `tier=public` (present in the generated sample; wizard
 exposure stays a later refinement).
+<!-- change:config-sample-regeneration-leaves-sync -->
+aggregate), marked `tier=public` (wizard exposure stays a later refinement).
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 ### Configuration tiers — public vs internal
 
@@ -534,7 +543,7 @@ environment_variables:
   # TeleClaude-owned path.
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
   # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
-  # commented out in .env / .env.sample and is NOT part of make install yet.
+  # commented out in .env and is NOT part of make install yet.
   # Email and backup — editable in the Providers subtab, saved to .env.
   # Firecrawl is supplied by the person's own environment for MCP loading.
   - EMAIL_SENDER
@@ -719,8 +728,13 @@ being unavailable) suppress agent-stop TTS and leave generic session titles.
 
 Runtime settings owned by the machine-config aggregate use these additional
 sections. Unless marked otherwise, these fields are internal: they retain the
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 built-in values shown here and remain absent from the generated public template
 and config TUI.
+<!-- change:config-sample-regeneration-leaves-sync -->
+built-in values shown here and remain absent from a generated machine
+configuration and from the config TUI.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 ```yaml
 hook_outbox:

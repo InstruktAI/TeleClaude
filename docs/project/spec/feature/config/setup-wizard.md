@@ -263,7 +263,11 @@ And the wizard reminds the human that existing agent sessions must be restarted
 ```
 Given the human opens `telec config wizard`
 When any config section renders
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 Then fields are derived from the canonical config schema or env-var registry for that section
+<!-- change:config-sample-regeneration-leaves-sync -->
+Then fields are derived from the canonical config schema for that section, environment-backed ones from its sensitivity declarations
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 And TUI-local shadow models do not define the field contract
 And the field's owning source determines the writer used on save
 And sensitive-looking paths remain reachable unless explicitly excluded by documented view metadata
@@ -360,9 +364,15 @@ lands in one of the six surfaces below.
 <!-- /planned-change:person-scoped-mcp-credentials -->
 
 YAML overlays and machine config are typed and validated; the `.env`
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 file path holds adapter and provider credentials and is intentionally
 untyped, with semantics carried by the documented env-var registry and
 `_ADAPTER_ENV_VARS`. UC-WIZ-4's secret-hygiene contract applies
+<!-- change:config-sample-regeneration-leaves-sync -->
+file path holds adapter and provider credentials and is intentionally
+untyped, with semantics carried by the machine-config schema's sensitivity
+declarations and the variable names they derive. UC-WIZ-4's secret-hygiene contract applies
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 uniformly across both typed and env-file persistence.
 
 The machine-config writer does not exist today — `bin/init.sh`
