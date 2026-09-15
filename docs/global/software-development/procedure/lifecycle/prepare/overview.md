@@ -35,15 +35,9 @@ focused procedure and advances through the machine-owned transitions.
    there.
 
 2. **Each phase has its own focus, sharpened by a hat:**
-<!-- planned-change:agent-artifact-source-layout -->
    - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/next-prepare-intake.md`
    - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/next-prepare-architecture.md`
    - **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/next-prepare-plan.md`
-<!-- change:agent-artifact-source-layout -->
-   - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/software-development/next-prepare-intake.md`
-   - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/software-development/next-prepare-architecture.md`
-   - **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/software-development/next-prepare-plan.md`
-<!-- /planned-change:agent-artifact-source-layout -->
 
    Putting on a hat sharpens focus for the current phase; it does not erase
    the lifecycle awareness underneath. The hat comes off when the phase ends
@@ -88,11 +82,7 @@ normal completion or material communication wakes the next action. See
 
 - Slug exists in the todo list, or is created during the session at the moment
   intent is concrete enough.
-<!-- planned-change:agent-artifact-source-layout -->
 - Session was invoked via `/next-prepare [slug]` (direct human invocation) or
-<!-- change:agent-artifact-source-layout -->
-- Session was invoked via `/software-development/next-prepare [slug]` (direct human invocation) or
-<!-- /planned-change:agent-artifact-source-layout -->
   auto-spawned by the daemon (dump-mode entry).
 - Session `additional_context` carries `human_in_loop: true | false`.
   Default `true`.
@@ -243,7 +233,6 @@ and do its focused work. Each procedure ends by calling `telec todo prepare
 
 | Phase               | Kind(s)              | Procedure                                             | Focus                       |
 | ------------------- | -------------------- | ----------------------------------------------------- | --------------------------- |
-<!-- planned-change:agent-artifact-source-layout -->
 | Intake              | Feature              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA                          |
 | PRD review          | Feature              | `~/.teleclaude/commands/next-review-prd.md`           | Reviewer                    |
 | Diagnose            | Bug                  | `~/.teleclaude/commands/next-prepare-diagnose.md`     | Diagnoser (dispatched peer) |
@@ -251,15 +240,6 @@ and do its focused work. Each procedure ends by calling `telec todo prepare
 | Architecture review | Feature              | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer                    |
 | Plan                | Feature, change, bug | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner                     |
 | Plan review         | Feature, change, bug | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer                    |
-<!-- change:agent-artifact-source-layout -->
-| Intake              | Feature              | `~/.teleclaude/commands/software-development/next-prepare-intake.md`       | BA                          |
-| PRD review          | Feature              | `~/.teleclaude/commands/software-development/next-review-prd.md`           | Reviewer                    |
-| Diagnose            | Bug                  | `~/.teleclaude/commands/software-development/next-prepare-diagnose.md`     | Diagnoser (dispatched peer) |
-| Architecture        | Feature              | `~/.teleclaude/commands/software-development/next-prepare-architecture.md` | Architect                   |
-| Architecture review | Feature              | `~/.teleclaude/commands/software-development/next-review-architecture.md`  | Reviewer                    |
-| Plan                | Feature, change, bug | `~/.teleclaude/commands/software-development/next-prepare-plan.md`         | Planner                     |
-| Plan review         | Feature, change, bug | `~/.teleclaude/commands/software-development/next-review-plan.md`          | Reviewer                    |
-<!-- /planned-change:agent-artifact-source-layout -->
 
 Intake's focused work includes situating the premise against the existing todo
 landscape — reconciling overlap and undeclared dependencies with sibling todos
@@ -297,19 +277,11 @@ paths since the artifact was authored), dispatch a lean drift-analysis
 worker:
 
 ```
-<!-- planned-change:agent-artifact-source-layout -->
 telec sessions run --command /next-drift-analyze --agent codex --args {slug}
-<!-- change:agent-artifact-source-layout -->
-telec sessions run --command /software-development/next-drift-analyze --agent codex --args {slug}
-<!-- /planned-change:agent-artifact-source-layout -->
 ```
 
 The worker reads the diffs scoped to referenced paths, assesses impact per
-<!-- planned-change:agent-artifact-source-layout -->
 affected artifact, and reports findings. The `/next-drift-analyze` worker is
-<!-- change:agent-artifact-source-layout -->
-affected artifact, and reports findings. The `/software-development/next-drift-analyze` worker is
-<!-- /planned-change:agent-artifact-source-layout -->
 the sole author of `--drift-reviewed`. Substantive verdicts trigger
 re-derivation of the affected phase; cosmetic verdicts allow the chain to
 continue.

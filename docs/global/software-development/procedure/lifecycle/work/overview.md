@@ -67,11 +67,7 @@ When the state machine instructs a dispatch, select `--mode`:
 
 ### 2. Build
 
-<!-- planned-change:agent-artifact-source-layout -->
 The state machine dispatches a builder worker via `next-build`. The builder:
-<!-- change:agent-artifact-source-layout -->
-The state machine dispatches a builder worker via `software-development/next-build`. The builder:
-<!-- /planned-change:agent-artifact-source-layout -->
 
 - Executes the implementation plan task-by-task
 - Commits per task
@@ -85,11 +81,7 @@ evidence only; they do not advance the phase on their own.
 
 ### 3. Review
 
-<!-- planned-change:agent-artifact-source-layout -->
 After build completes, the state machine dispatches a reviewer via `next-review-build`
-<!-- change:agent-artifact-source-layout -->
-After build completes, the state machine dispatches a reviewer via `software-development/next-review-build`
-<!-- /planned-change:agent-artifact-source-layout -->
 and records the exact HEAD under review. While that reviewer is still alive, the state
 machine must reuse it instead of dispatching a second reviewer. On the next
 `telec todo work` call the machine first checks whether a live reviewer already owns
@@ -129,11 +121,7 @@ live.
 
 ### 5. Finalize
 
-<!-- planned-change:agent-artifact-source-layout -->
 On APPROVE, the state machine dispatches a finalizer via `next-finalize`. The
-<!-- change:agent-artifact-source-layout -->
-On APPROVE, the state machine dispatches a finalizer via `software-development/next-finalize`. The
-<!-- /planned-change:agent-artifact-source-layout -->
 finalizer integrates latest main into the worktree, resolves conflicts, pushes
 the branch, and reports FINALIZE_READY. The state machine then drives the finalize
 handoff, emitting end commands for the slug's workers and then for the work
@@ -144,11 +132,7 @@ orchestrator session.
 After a finalizer reports FINALIZE_READY, re-enter `telec todo work [slug]` to trigger
 the handoff; the state machine records durable finalize state and emits the terminal
 cleanup script.
-<!-- planned-change:agent-artifact-source-layout -->
 Never dispatch `next-integrate`, call `telec todo integrate`, or work around permission
-<!-- change:agent-artifact-source-layout -->
-Never dispatch `software-development/next-integrate`, call `telec todo integrate`, or work around permission
-<!-- /planned-change:agent-artifact-source-layout -->
 denials to reach integration. Integration is a separate singleton role with its own
 lease, worktree, and dispatch path. If the machine does not advance past finalize
 because a child needs recoverable worktree or branch-publication help, guide that
@@ -158,19 +142,11 @@ record the blocker and stop — do not escalate scope.
 ### 6. Deferrals
 
 If `deferrals.md` exists, the state machine dispatches deferral resolution via
-<!-- planned-change:agent-artifact-source-layout -->
 `next-defer` before or after finalize. New todos are created from justified deferrals.
-<!-- change:agent-artifact-source-layout -->
-`software-development/next-defer` before or after finalize. New todos are created from justified deferrals.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ### 7. Bug fix
 
-<!-- planned-change:agent-artifact-source-layout -->
 For bug-type work items, the state machine dispatches `next-build` — the same
-<!-- change:agent-artifact-source-layout -->
-For bug-type work items, the state machine dispatches `software-development/next-build` — the same
-<!-- /planned-change:agent-artifact-source-layout -->
 builder as a change/feature. The bug's mandate is the reviewed
 `implementation-plan` plus the `diagnosis` (code-grounded root cause, fix
 approach, and verification approach produced in the prepare phase); the builder

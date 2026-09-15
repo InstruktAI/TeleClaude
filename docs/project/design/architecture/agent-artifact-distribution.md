@@ -180,12 +180,15 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 - The reader accepts the mother's sources at both the flat root
   (`agents/commands`, `agents/skills`) and the tiered root until the flat root
   carries no artifacts; the flat root is a registry record marked legacy and
-  retired when empty. A sync run at any point during the relocation therefore
-  stages the union and retracts nothing that moved.
+  retired when empty. Publication at any point during the relocation therefore
+  stages the union and retracts nothing that moved, whatever triggered it.
 - Landing order: the code that reads both roots and keys the manifest by
   relative path lands first; the human-present relocation on `main` follows.
   The legacy record exists exactly as long as the flat root carries an
-  artifact; a flat root that carries none is not a source. `@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`
+  artifact; a flat root that carries none is not a source. The relocation need
+  not land as one commit, so a part-way state is published like any other
+  committed state.
+  `@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`
   binds the outcome; this section is the mechanism.
 
 ## Primary flows
@@ -227,8 +230,8 @@ sequenceDiagram
   run.
 - **A bare token names a command in two domains.** The loader refuses, naming
   both. Domain-qualified dispatch is unaffected.
-- **A sync lands mid-relocation.** The union of both roots is staged; no
-  deployed artifact is retracted because its source moved.
+- **The relocation is observed part-way.** The union of both roots is staged;
+  no deployed artifact is retracted because its source moved.
 - **A legacy `.agents/` file a project authored by hand.** Never read, never
   adopted, never deleted by this delivery; it stays until the native-output
   sibling lands ownership records.

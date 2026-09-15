@@ -15,19 +15,11 @@ finalize-ready instruction ends the slug's workers and then ends the
 orchestrator session. Daemon-runner pickup is a separate concern outside this
 per-slug orchestration contract.
 
-<!-- planned-change:agent-artifact-source-layout -->
 Task execution is a separate non-SDLC lane. The lifecycle runner starts `/next-run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `/next-run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `/next-run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
-<!-- change:agent-artifact-source-layout -->
-Task execution is a separate non-SDLC lane. The lifecycle runner starts `/software-development/next-run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `/software-development/next-run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `/software-development/next-run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. `origin/main` is also the only baseline the worktree references afterwards: an agent inside `trees/<slug>` does not name the local `main` branch in any git invocation, for any subcommand. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
-<!-- planned-change:agent-artifact-source-layout -->
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `next-drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict hands the same session off to drive `/next-prepare {slug}` without mutating its `job` or `title` itself — the held `active_runner` claim is unchanged, so no new session is dispatched and the claim raises no conflict. The role transition is not a distinct step: the moment this session calls `telec todo prepare {slug}`, the generic claim-reflection mechanism recognizes the same slug already claimed under a different lane and adopts the session as `prepare-orchestrator` in place, before any artifact write happens — so the re-derivation write satisfies the artifact-write guard. The session re-derives the affected artifact, reaches `prepared`, and its terminal output recognizes it bounced in from work — it resumes work in this same session rather than self-ending. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
-<!-- change:agent-artifact-source-layout -->
-Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `software-development/next-drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict hands the same session off to drive `/software-development/next-prepare {slug}` without mutating its `job` or `title` itself — the held `active_runner` claim is unchanged, so no new session is dispatched and the claim raises no conflict. The role transition is not a distinct step: the moment this session calls `telec todo prepare {slug}`, the generic claim-reflection mechanism recognizes the same slug already claimed under a different lane and adopts the session as `prepare-orchestrator` in place, before any artifact write happens — so the re-derivation write satisfies the artifact-write guard. The session re-derives the affected artifact, reaches `prepared`, and its terminal output recognizes it bounced in from work — it resumes work in this same session rather than self-ending. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ## Canonical fields
 
@@ -44,19 +36,11 @@ And every tracked artifact's collapsed drift status is fresh or cosmetic with a 
 And creates a worktree at trees/my-feature branched from origin/main
 And merges origin/main into the worktree once before dispatch
 And advances lifecycle_phase from prepared to build_started in a machine-owned transition
-<!-- planned-change:agent-artifact-source-layout -->
 And on the same call dispatches the next-build worker session
-<!-- change:agent-artifact-source-layout -->
-And on the same call dispatches the software-development/next-build worker session
-<!-- /planned-change:agent-artifact-source-layout -->
 ```
 
 ```gherkin
-<!-- planned-change:agent-artifact-source-layout -->
 Given a Todo has a live next-build session for its worktree
-<!-- change:agent-artifact-source-layout -->
-Given a Todo has a live software-development/next-build session for its worktree
-<!-- /planned-change:agent-artifact-source-layout -->
 And `telec todo work` merges origin/main into that worktree before dispatch/review
 When the merge fails with conflicts
 Then `telec todo work` returns a recovery handoff for the orchestrator
@@ -82,18 +66,10 @@ When the orchestrator calls "telec todo work my-feature"
 Then drift derivation reports drift.implementation-plan = pending
 And the machine does NOT advance lifecycle_phase
 And the machine does NOT create or touch the worktree
-<!-- planned-change:agent-artifact-source-layout -->
 And the machine returns a script that dispatches the next-drift-analyze worker and tells the orchestrator to re-enter "telec todo work my-feature" once the analyzer idles
-<!-- change:agent-artifact-source-layout -->
-And the machine returns a script that dispatches the software-development/next-drift-analyze worker and tells the orchestrator to re-enter "telec todo work my-feature" once the analyzer idles
-<!-- /planned-change:agent-artifact-source-layout -->
 And the work orchestrator never calls "telec todo prepare my-feature"
 And on re-entry after a cosmetic verdict the machine observes non-blocking drift and proceeds with worktree creation and dispatch
-<!-- planned-change:agent-artifact-source-layout -->
 And on re-entry after a substantive verdict the machine hands the same session off to drive "/next-prepare my-feature" without mutating its job or title itself
-<!-- change:agent-artifact-source-layout -->
-And on re-entry after a substantive verdict the machine hands the same session off to drive "/software-development/next-prepare my-feature" without mutating its job or title itself
-<!-- /planned-change:agent-artifact-source-layout -->
 And calling "telec todo prepare my-feature" next adopts this session as prepare-orchestrator in place — claim ownership is the only gate, there is no distinct promotion step
 And the adopted session re-derives the affected artifact with no 403 write refusal and no 409 claim conflict, reaches prepared, and its terminal output tells it to resume work in this same session rather than self-end
 ```
@@ -111,11 +87,7 @@ And the machine never returns WORK_ENTRY_DRIFT for drift.input or drift.diagnosi
 #### UC-WSM5: A substantive work-entry drift bounce hands off to prepare in place
 
 ```gherkin
-<!-- planned-change:agent-artifact-source-layout -->
 Given a work-entry drift bounce dispatched the next-drift-analyze worker for a held slug whose live active_runner is the calling session
-<!-- change:agent-artifact-source-layout -->
-Given a work-entry drift bounce dispatched the software-development/next-drift-analyze worker for a held slug whose live active_runner is the calling session
-<!-- /planned-change:agent-artifact-source-layout -->
 When the analyzer stamps a substantive --drift-reviewed verdict and ends its turn without instructing the orchestrator to call any machine
 And the claim-holder re-enters "telec todo work my-feature"
 Then the work machine hands off to the prepare orchestrator procedure without mutating this session's job or title itself
@@ -138,21 +110,13 @@ Then the machine refuses to dispatch a second builder
 And returns an instruction to wait for the builder to run "telec todo stamp my-feature --build-complete"
 ```
 
-<!-- planned-change:agent-artifact-source-layout -->
 #### UC-WSM4: Task execution uses next-run-task, not Phase B build
-<!-- change:agent-artifact-source-layout -->
-#### UC-WSM4: Task execution uses software-development/next-run-task, not Phase B build
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ```gherkin
 Given a Todo has kind="task", lifecycle_phase="prepared", a `task-plan`, and a task authorization stamp
 And the task has no schedule, or its schedule's current due instant is at or before the runner evaluation instant
 When the lifecycle runner evaluates eligible work for the project
-<!-- planned-change:agent-artifact-source-layout -->
 Then it starts `/next-run-task <slug>` without creating a worktree
-<!-- change:agent-artifact-source-layout -->
-Then it starts `/software-development/next-run-task <slug>` without creating a worktree
-<!-- /planned-change:agent-artifact-source-layout -->
 And records the spawned task session as the Todo's `active_runner`
 And no reservation, expiry, or other pre-ownership state participates
 And records or preserves lifecycle_phase="task_running" while the task session is live
@@ -161,20 +125,12 @@ And records or preserves lifecycle_phase="task_running" while the task session i
 ```gherkin
 Given a task lacks authorization, lacks a `task-plan`, has a future schedule, is held, or already names a live task session as `active_runner`
 When the lifecycle runner evaluates eligible work for the project
-<!-- planned-change:agent-artifact-source-layout -->
 Then it does not start `/next-run-task`
-<!-- change:agent-artifact-source-layout -->
-Then it does not start `/software-development/next-run-task`
-<!-- /planned-change:agent-artifact-source-layout -->
 And it leaves the SDLC work state machine untouched
 ```
 
 ```gherkin
-<!-- planned-change:agent-artifact-source-layout -->
 Given `/next-run-task` reaches the end of the task-plan
-<!-- change:agent-artifact-source-layout -->
-Given `/software-development/next-run-task` reaches the end of the task-plan
-<!-- /planned-change:agent-artifact-source-layout -->
 When it stamps the firing outcome
 Then a `success` firing ends the session — a one-shot delivers the todo, a recurring records the firing and leaves the todo live for its next instant
 And an `error` firing holds the todo and stays alive as the human-inspection beacon
@@ -182,39 +138,23 @@ And it does not stamp build-complete, dispatch review, or enter finalize-ready
 ```
 
 ```gherkin
-<!-- planned-change:agent-artifact-source-layout -->
 Given a recurring task has a live `/next-run-task` session and its schedule reaches a new due instant
 When the lifecycle runner evaluates eligible work for the project
 Then it does not start a second `/next-run-task`
-<!-- change:agent-artifact-source-layout -->
-Given a recurring task has a live `/software-development/next-run-task` session and its schedule reaches a new due instant
-When the lifecycle runner evaluates eligible work for the project
-Then it does not start a second `/software-development/next-run-task`
-<!-- /planned-change:agent-artifact-source-layout -->
 And it does not signal the live run session
 ```
 
 ```gherkin
-<!-- planned-change:agent-artifact-source-layout -->
 Given a recurring task has no live `/next-run-task` session and its schedule reaches a due instant
 When the lifecycle runner evaluates eligible work for the project
 Then it dispatches a fresh `/next-run-task`, exactly like a one-shot
-<!-- change:agent-artifact-source-layout -->
-Given a recurring task has no live `/software-development/next-run-task` session and its schedule reaches a due instant
-When the lifecycle runner evaluates eligible work for the project
-Then it dispatches a fresh `/software-development/next-run-task`, exactly like a one-shot
-<!-- /planned-change:agent-artifact-source-layout -->
 ```
 
 ```
 Given a Todo whose builder has Stamped build-complete and committed its work
 When the orchestrator calls "telec todo work my-feature"
 Then the machine runs the build gates against the worktree
-<!-- planned-change:agent-artifact-source-layout -->
 And on pass advances lifecycle_phase to build_complete and dispatches the next-review-build worker
-<!-- change:agent-artifact-source-layout -->
-And on pass advances lifecycle_phase to build_complete and dispatches the software-development/next-review-build worker
-<!-- /planned-change:agent-artifact-source-layout -->
 And on fail relays the gate output back to the live builder session via "telec sessions send"
 And does NOT advance the lifecycle_phase until the builder restamps build-complete with a passing gate
 ```
@@ -231,11 +171,7 @@ And on every re-review round the reviewer is re-dispatched against the merge-bas
 ```
 Given a Todo at lifecycle_phase=review_approved with no pending deferrals
 When the orchestrator calls "telec todo work my-feature"
-<!-- planned-change:agent-artifact-source-layout -->
 Then the machine dispatches the next-finalize worker
-<!-- change:agent-artifact-source-layout -->
-Then the machine dispatches the software-development/next-finalize worker
-<!-- /planned-change:agent-artifact-source-layout -->
 And when the finalizer Stamps finalize_ready with a sha matching worktree HEAD, branch ref, and remote ref
 Then the machine advances to lifecycle_phase=finalize_ready through the state-write boundary
 And the phase-transition chokepoint emits the workflow.todo.phase_advanced event (with phase=finalize_ready in payload)
@@ -261,20 +197,12 @@ And the second call observes the prepared worktree and reuses it
 And the same slug called concurrently from a different project root acquires a separate lock and runs in parallel
 ```
 
-<!-- planned-change:agent-artifact-source-layout -->
 #### UC-WSM1: Bug build dispatches the next-build worker with the plan + diagnosis contract
-<!-- change:agent-artifact-source-layout -->
-#### UC-WSM1: Bug build dispatches the software-development/next-build worker with the plan + diagnosis contract
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ```
 Given a bug-kind Todo at lifecycle_phase=build_started
 When the orchestrator calls "telec todo work my-bug"
-<!-- planned-change:agent-artifact-source-layout -->
 Then the machine dispatches the next-build worker (same as change/feature)
-<!-- change:agent-artifact-source-layout -->
-Then the machine dispatches the software-development/next-build worker (same as change/feature)
-<!-- /planned-change:agent-artifact-source-layout -->
 And the artifact contract names the reviewed implementation-plan and the diagnosis as the worker's mandate
 And the lifecycle still requires an explicit "telec todo stamp my-bug --build-complete" before review can dispatch
 ```
@@ -403,11 +331,7 @@ And the dispatch request handed to agent runtime carries that same value
   work orchestrator session. The Phase B orchestrator remains per-slug and
   terminal after finalize-ready cleanup.
 
-<!-- planned-change:agent-artifact-source-layout -->
 - `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector for ready work. It evaluates the project todo set, starts `/next-work --args <slug>` for each selected item, and records the spawned session as that Todo's `active_runner`. The work state machine remains per-slug: a bare `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and never scans the roadmap opportunistically.
-<!-- change:agent-artifact-source-layout -->
-- `workflow.lifecycle_runner` — unattended pickup is the sole automatic selector for ready work. It evaluates the project todo set, starts `/software-development/next-work --args <slug>` for each selected item, and records the spawned session as that Todo's `active_runner`. The work state machine remains per-slug: a bare `telec todo work` call without current slug terminalizes as `NO_CURRENT_WORK_SLUG` and never scans the roadmap opportunistically.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ## Known caveats
 

@@ -32,11 +32,7 @@ visibility: public
   snippet requires an **independent doc-hygiene review**: the authoring agent may
   NOT review text it wrote — it believes its own work is correct, which is no
   review. After the in-context commit, dispatch a **fast** reviewer via
-<!-- planned-change:agent-artifact-source-layout -->
   `/next-review-commits` on the commit SHA. The reviewer applies the security
-<!-- change:agent-artifact-source-layout -->
-  `/software-development/next-review-commits` on the commit SHA. The reviewer applies the security
-<!-- /planned-change:agent-artifact-source-layout -->
   lane's repository-privacy check and the doc-hygiene lane to the changed
   snippet. Both checks are reviewer judgment; neither is implemented as prose
   scanning.

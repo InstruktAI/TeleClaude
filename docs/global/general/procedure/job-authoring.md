@@ -41,11 +41,7 @@ Place it by the job's nature:
 - Project-only jobs: `docs/project/procedure/{job-slug}.md`
 
 Define the job-specific artifacts and report under Outputs, including any history
-<!-- planned-change:agent-artifact-source-layout -->
 the next run consumes. The `next-run-job` brief supplies the role boundary and
-<!-- change:agent-artifact-source-layout -->
-the next run consumes. The `software-development/next-run-job` brief supplies the role boundary and
-<!-- /planned-change:agent-artifact-source-layout -->
 structured outcome submission. A job procedure carries no `activation_trigger`:
 triggers belong to procedures an agent may invoke on its own judgment, and a job
 procedure is executed by the runner.
@@ -55,7 +51,6 @@ source tree, so the procedure file only needs to exist at its taxonomy path
 before the declaration is validated.
 
 ### 3. Register in teleclaude.yml
-
 
 Declare a job as an entry of the `jobs:` list with a `when` schedule and exactly one execution
 pointer — the pointer present is the execution class and the job's identity; there is no name
@@ -76,7 +71,6 @@ the global `~/.teleclaude/teleclaude.yml`. A project gets nothing by default; it
 override any setting for that project — its own `when`, `agent`, `thinking_mode`, `timeout` —
 or set `enabled: false` to unsubscribe. Whatever it leaves unset falls back to the published
 defaults, and the job runs inside the subscribing project.
-
 
 The `job:` value is the procedure's canonical snippet ID and is the agent job's
 identity everywhere: dispatch, run state, the run directory, and the structured

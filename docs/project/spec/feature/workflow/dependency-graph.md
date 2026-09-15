@@ -143,11 +143,7 @@ And the same "child" is still WORK-blocked until "parent" is delivered
 Given a child created with "telec todo create child --kind change --after parent" while parent is not PREPARED
 When the lifecycle router consumes workflow.todo.created for "child"
 Then the router consults the dependency graph and finds the prepare gate unsatisfied
-<!-- planned-change:agent-artifact-source-layout -->
 And the router does not auto-dispatch /next-prepare for "child"
-<!-- change:agent-artifact-source-layout -->
-And the router does not auto-dispatch /software-development/next-prepare for "child"
-<!-- /planned-change:agent-artifact-source-layout -->
 And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
 ```
 

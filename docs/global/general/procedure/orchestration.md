@@ -243,11 +243,7 @@ findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
 When a prepare or work review crosses its threshold, the orchestrator dispatches
-<!-- planned-change:agent-artifact-source-layout -->
 `next-assist` against the slug and sends it a line each time a pass lands. It
-<!-- change:agent-artifact-source-layout -->
-`software-development/next-assist` against the slug and sends it a line each time a pass lands. It
-<!-- /planned-change:agent-artifact-source-layout -->
 stamps no exceptional verdict and emits no unclassified reviewer dispatch. The
 assist admits nothing and decides nothing that the contracts assign elsewhere;
 it reads both sessions and says what it sees, and this orchestrator acts on

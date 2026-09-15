@@ -71,11 +71,7 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
    implies approval.
 
 7. **Hand off to the runner.** Once the human authorizes, the task becomes a
-<!-- planned-change:agent-artifact-source-layout -->
    runner candidate: the lifecycle runner dispatches `/next-run-task` when the
-<!-- change:agent-artifact-source-layout -->
-   runner candidate: the lifecycle runner dispatches `/software-development/next-run-task` when the
-<!-- /planned-change:agent-artifact-source-layout -->
    task is not held and its schedule or dependency gate is satisfied.
 
 ## Outputs

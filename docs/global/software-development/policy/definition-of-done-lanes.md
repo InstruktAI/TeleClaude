@@ -614,11 +614,7 @@ Severity guidance:
 
 **Authority:** `documentation-first-development`.
 
-<!-- planned-change:agent-artifact-source-layout -->
 Conditional lane. Triggers only when the review surface is an ad-hoc commit series with no upstream prepare-phase artifacts (e.g. the Path C inline `/next-review-commits` dispatch flow). For lifecycle work reviews where a PRD, implementation-plan, and feature/domain spec are in context, the prepare phase already enforced the doc-first paradigm — this lane is a no-op there.
-<!-- change:agent-artifact-source-layout -->
-Conditional lane. Triggers only when the review surface is an ad-hoc commit series with no upstream prepare-phase artifacts (e.g. the Path C inline `/software-development/next-review-commits` dispatch flow). For lifecycle work reviews where a PRD, implementation-plan, and feature/domain spec are in context, the prepare phase already enforced the doc-first paradigm — this lane is a no-op there.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 Consult `software-development/principle/documentation-first-development` for the authoritative Category A/B/C classification.
 

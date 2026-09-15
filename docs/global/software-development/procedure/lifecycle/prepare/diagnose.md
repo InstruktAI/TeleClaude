@@ -31,11 +31,7 @@ contract; the peer procedure is the artifact schema's single owner.
 
 Diagnosis grounds the cause and stops there. Neither session opens a worktree, writes
 production code, commits, or **prescribes a fix or verification approach** — the planner
-<!-- planned-change:agent-artifact-source-layout -->
 decides the fix that removes the cause, and the builder writes it during `/next-build`. A
-<!-- change:agent-artifact-source-layout -->
-decides the fix that removes the cause, and the builder writes it during `/software-development/next-build`. A
-<!-- /planned-change:agent-artifact-source-layout -->
 diagnosis that reaches for a fix has shifted its objective from _understand_ to _alleviate_,
 and an objective of alleviation never reliably reaches cause.
 
