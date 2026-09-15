@@ -605,7 +605,7 @@ Then no declaration advisory is produced
 <!-- /planned:unknown-scope-is-not-empty-scope -->
 
 <!-- planned:checkpoint-keeps-only-judgment-actions -->
-#### UC-CP26: Maintenance the commit boundary performs is not an agent obligation
+#### UC-CP28: Maintenance the commit boundary performs is not an agent obligation
 
 ```gherkin
 Given a session commits daemon code through the sealed `telec code commit` path on the canonical checkout's main branch
