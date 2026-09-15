@@ -37,11 +37,11 @@ contract governs only what happens when maintenance runs.
   conditioned on who or what made the commit, nor on whether a session is
   present.
 - **Owed set.** The `main_only` maintenance actions the committed paths resolve
-  to under the merged registry and bindings. Actions with no declared ordering
-  dependency run concurrently; a dependency runs only after its prerequisites
-  complete. The registry precedence orders simultaneously eligible actions but
-  never invents a dependency. An action the registry does not mark executable
-  is not performed here and remains an agent obligation.
+  to under the merged registry and bindings. Actions in the same precedence
+  wave run concurrently; the next precedence wave starts after every action in
+  the prior wave reaches a terminal outcome. A failed action never cancels a
+  later wave. An action the registry does not mark executable is not performed
+  here and remains an agent obligation.
 - **Location.** Maintenance performs the owed `main_only` actions only from the
   canonical checkout on the main branch. The integration worktree supplies the
   delivered range but never executes maintenance; a commit recorded anywhere
