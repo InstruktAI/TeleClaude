@@ -48,6 +48,7 @@ from teleclaude.core.next_machine.provenance import clear_artifact_provenance, s
 from teleclaude.core.next_machine.review_evidence import (
     BUILD_REVIEW_PHASE,
     PREPARE_REVIEW_PHASES,
+    BuildReviewVerdict,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
@@ -161,7 +162,7 @@ _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 
 # Build-review verdict phase and allowed values
 _BUILD_VERDICT_PHASE = BUILD_REVIEW_PHASE
-_BUILD_VERDICT_VALUES = ("approve", "changes_requested")
+_BUILD_VERDICT_VALUES = tuple(BuildReviewVerdict)
 
 _ARTIFACT_STATE_KEYS: dict[str, str] = {
     STATE_KEY_INPUT: ARTIFACT_INPUT,

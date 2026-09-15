@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS,
@@ -16,11 +16,18 @@ from teleclaude.constants import (
 )
 
 
-class ReviewEvidenceOutcome(str, Enum):
+class ReviewEvidenceOutcome(StrEnum):
     """Whether a stamped review still binds the current target and report."""
 
     CURRENT = "current"
     STALE = "stale"
+
+
+class BuildReviewVerdict(StrEnum):
+    """The verdicts a build reviewer may stamp."""
+
+    APPROVE = "approve"
+    CHANGES_REQUESTED = "changes_requested"
 
 
 @dataclass(frozen=True)

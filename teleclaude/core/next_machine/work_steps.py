@@ -55,13 +55,16 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_project_root
 from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
-from teleclaude.core.next_machine.state_io import _BUILD_VERDICT_VALUES
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
-from teleclaude.core.next_machine.review_evidence import BUILD_REVIEW_PHASE, ReviewEvidenceOutcome
+from teleclaude.core.next_machine.review_evidence import (
+    BUILD_REVIEW_PHASE,
+    BuildReviewVerdict,
+    ReviewEvidenceOutcome,
+)
 from teleclaude.core.next_machine.review_rounds import (
     admit_build_review,
     build_review_admission,
@@ -353,7 +356,7 @@ async def _consume_build_review_verdict(
     """
     writer = StateWriter(state)
     br_writer = writer.state.build_review
-    if br_writer.verdict not in _BUILD_VERDICT_VALUES:
+    if br_writer.verdict not in BuildReviewVerdict:
         return False
 
     current_head = await asyncio.to_thread(get_head_commit, worktree_cwd)
@@ -368,7 +371,7 @@ async def _consume_build_review_verdict(
         "workflow.review_evidence_evaluated",
         slug=slug,
         phase=BUILD_REVIEW_PHASE,
-        outcome=(ReviewEvidenceOutcome.CURRENT if is_current else ReviewEvidenceOutcome.STALE).value,
+        outcome=ReviewEvidenceOutcome.CURRENT if is_current else ReviewEvidenceOutcome.STALE,
         bound_target_digest=br_writer.reviewed_target_digest,
         current_target_digest=current_head,
         bound_report_digest=br_writer.review_report_digest,
