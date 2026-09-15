@@ -74,13 +74,8 @@ And the boundary marker partitions stdout into pane output (raw) and pane-dead l
 And if N is omitted or non-positive, N defaults to the configured default; hot poller callers pass their own smaller window
 And the result is a pane snapshot carrying (pane exists, pane dead, output raw, output normalized)
 And output normalized strips ANSI, normalizes CRLF/CR to LF, and right-strips each line
-<!-- planned-change:fix-polling-repeatedly-fails-to-snapshot-ses -->
-And if stderr matches "can't find" or "no such" (case-insensitive), the snapshot reports the pane as absent without raising
-And other nonzero exits raise; subprocess hangs raise subprocess-timeout
-<!-- change:fix-polling-repeatedly-fails-to-snapshot-ses -->
 And if the target pane or its multiplexer server is absent, the snapshot reports the pane as absent without raising
 And other nonzero exits raise; subprocess hangs raise subprocess-timeout
-<!-- /planned-change:fix-polling-repeatedly-fails-to-snapshot-ses -->
 ```
 
 #### `capture-pane` alone returns the raw capture body
@@ -230,7 +225,6 @@ Then the foreground program receives the submitted line, as it would for a live 
 And a host pane that is not in copy-mode receives the same text-and-submit delivery unchanged
 ```
 
-<!-- planned:fix-polling-repeatedly-fails-to-snapshot-ses -->
 #### UC-TPO3: Whole-server loss follows unavailable host-pane liveness
 
 ```gherkin
@@ -241,7 +235,6 @@ Then polling ends without repeated snapshot failures
 And no polling error is delivered to the session owner
 But a different non-transient terminal failure remains explicit
 ```
-<!-- /planned:fix-polling-repeatedly-fails-to-snapshot-ses -->
 
 ### Cross-context references
 
@@ -263,8 +256,4 @@ But a different non-transient terminal failure remains explicit
 - **Pipe-pane wake-signal interpretation is internal.** The pipe attach/detach primitives attach/detach a command to the pane's output stream. This byte-arrival signal is used as the Codex wake mechanism (any bytes set a dirty flag, triggering a snapshot on the next cadence cycle). The plumbing primitives are stable; the semantic interpretation upstream may diverge — the bridge itself merely manages the multiplexer attach/detach.
 - **SIGKILL targets the first child, not the full process tree.** The hard-kill primitive reads the pane shell process id, looks up its children, and sends SIGKILL to the FIRST child returned. If the agent CLI spawned a descendant tree (subprocesses, helpers), only the foreground child is killed. The shell typically reaps the orphans, but a misbehaving descendant chain can survive. The whole-pane kill primitive is the heavier hammer that tears down the entire host pane.
 - **The update primitive only affects NEW processes.** Setting an env var on the host pane updates the multiplexer environment for future child processes; the already-running pane shell and the agent CLI in it do NOT see the update. Callers needing to push env into a live process must restart the session.
-<!-- planned-change:fix-polling-repeatedly-fails-to-snapshot-ses -->
-- **stderr-substring matching for missing-pane detection in the snapshot primitive.** The "session does not exist" path is detected by matching "can't find" or "no such" in stderr (case-insensitive). A future multiplexer version that changes its error wording would silently break this branch and surface as a raised error instead of a "pane absent" snapshot.
-<!-- change:fix-polling-repeatedly-fails-to-snapshot-ses -->
 - **stderr-substring matching for missing-pane detection in the snapshot primitive.** The unavailable-host-pane path recognizes the multiplexer diagnostics for an absent target pane or server. A future multiplexer version that changes those diagnostics would surface as a raised error instead of an unavailable-pane snapshot.
-<!-- /planned-change:fix-polling-repeatedly-fails-to-snapshot-ses -->
