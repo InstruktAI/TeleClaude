@@ -294,8 +294,8 @@ FLAG_TODO_DELIVER_COMMIT = Flag(
     desc=(
         "The commit that delivered the slug. The integrator always supplies its own pushed "
         "commit and withholds delivery until that commit is confirmed on origin/main. Never "
-        "inferred from HEAD, which is routinely an unrelated commit; omitting it therefore "
-        "records a delivery with no provenance."
+        "inferred from HEAD, which is routinely an unrelated commit. It is required for "
+        "feature, change, and bug deliveries; task deliveries may omit it."
     ),
     arity=VALUE,
 )
