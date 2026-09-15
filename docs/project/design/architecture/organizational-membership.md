@@ -163,17 +163,14 @@ person-shaped because that is how an administrator thinks about it; the storage
 is company-side because that is where the human placed it. Surface shape and
 storage shape need not match, and here they deliberately do not.
 
-**The wizard does not edit company configuration.** Company configuration was
-rendered schema-driven in the configuration wizard's Companies tab, and a new
-structured field would acquire an editing surface there by reflection alone —
-an empty roster as a generic leaf, a populated one as indexed fields the company
-save path cannot traverse safely. Rather than exclude one field from a tab that
-renders nothing an operator can use, the tab is removed. The roster, like the
-rest of company configuration, is written only through the designed
-maintenance command; a company-scoped wizard editor is separate work. The
-People tab's former company multi-reference field goes with the per-person list
-it reflected: it edited a declaration nothing read, on the side of the
-relationship the declaration does not live on.
+**The wizard does not edit company configuration.** The configuration wizard
+has no Companies tab. Company configuration, the roster included, is written
+only through the designed maintenance command, and the People tab carries no
+company membership field. A schema-reflected editor over a nested roster would
+render an empty roster as a generic leaf and a populated one as indexed fields
+the company save path cannot traverse safely; keeping the roster out of every
+reflected surface is what makes the maintenance command the single write path.
+A company-scoped wizard editor is separate work.
 
 **A membership entry owns what is nested in it.** Withdrawing a membership
 removes the assignments it carried; removing a registered person removes their
