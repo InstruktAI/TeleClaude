@@ -121,6 +121,13 @@ SNIPPET_VISIBILITY_INTERNAL = "internal"
 SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTERNAL)
 
 
+class ArtifactKind(StrEnum):
+    """Agent-artifact kinds the transpiler emits and the validator grades."""
+
+    COMMAND = "command"
+    SKILL = "skill"
+
+
 class TodoStatus(StrEnum):
     """Todo table `status` column and projected todo status (CLI/API/TUI)."""
 

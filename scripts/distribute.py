@@ -48,6 +48,7 @@ from teleclaude.capabilities import resolve_capabilities
 from teleclaude.config.declaration import schema_filename
 from teleclaude.config.schema import ConfigKind
 from teleclaude.config.schema_export import export_tier_schemas
+from teleclaude.constants import ArtifactKind
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.docs_publication import publish_generation
 from teleclaude.docs_publishers import (
@@ -85,7 +86,6 @@ _COMMANDS_KEY = "commands"
 _CODEX_AGENT_NAME = "codex"
 _GEMINI_AGENT_NAME = "gemini"
 _COMMANDS_STAGING_DIRECTORY = "commands"
-_COMMAND_ARTIFACT_KIND = "command"
 _MARKDOWN_EXTENSION = ".md"
 _UTF8 = "utf-8"
 _NEWLINE = "\n"
@@ -237,7 +237,7 @@ class FileArtifactType(NamedTuple):
     dest_dir_key: str
     ext_key: str
     kind: Literal["file", "skill"]
-    artifact_kind: str  # "command" or "skill" — passed to validate_artifact
+    artifact_kind: ArtifactKind
 
 
 def _deploy_agent(
@@ -1441,7 +1441,7 @@ def main() -> None:  # noqa: C901
             dest_dir_key="skills_dest_dir",
             ext_key="skills_ext",
             kind="skill",
-            artifact_kind="skill",
+            artifact_kind=ArtifactKind.SKILL,
         ),
     ]
 
@@ -1496,7 +1496,7 @@ def main() -> None:  # noqa: C901
                 try:
                     with open(item_path, encoding=_UTF8) as file_obj:
                         post = frontmatter.load(file_obj)
-                    validate_artifact(post, item_path, kind=_COMMAND_ARTIFACT_KIND, project_root=Path(project_root))
+                    validate_artifact(post, item_path, kind=ArtifactKind.COMMAND, project_root=Path(project_root))
                 except (OSError, ValueError, yaml.YAMLError) as exc:
                     errors.append(str(exc))
                 break
@@ -1625,7 +1625,7 @@ def main() -> None:  # noqa: C901
                     continue
                 with open(item_path, encoding=_UTF8) as file_obj:
                     post = frontmatter.load(file_obj)
-                validate_artifact(post, item_path, kind=_COMMAND_ARTIFACT_KIND, project_root=Path(project_root))
+                validate_artifact(post, item_path, kind=ArtifactKind.COMMAND, project_root=Path(project_root))
                 content = process_file(post.content, commands_config["prefix"], _CODEX_AGENT_NAME)
                 content = expand_inline_refs(
                     content,

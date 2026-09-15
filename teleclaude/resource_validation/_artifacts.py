@@ -7,6 +7,7 @@ from pathlib import Path
 
 import frontmatter
 
+from teleclaude.constants import ArtifactKind
 from teleclaude.global_skills import collect_global_skills, global_skill_source_root
 from teleclaude.project_manifest import load_roots
 from teleclaude.resource_validation._models import (
@@ -17,7 +18,6 @@ from teleclaude.resource_validation._models import (
 )
 from teleclaude.resource_validation._snippet import INCLUDE_DIRECTIVE_RE, resolve_ref_path
 
-_SKILL_KIND = "skill"
 _SKILLS_DIRNAME = "skills"
 _SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
 _NAME_FIELD = "name"
@@ -72,12 +72,12 @@ def _next_nonblank(lines: list[str], idx: int) -> tuple[str | None, int]:
     return lines[idx], idx
 
 
-def validate_artifact_frontmatter(post: frontmatter.Post, path: str, *, kind: str) -> None:
+def validate_artifact_frontmatter(post: frontmatter.Post, path: str, *, kind: ArtifactKind) -> None:
     """Validate frontmatter fields for an agent artifact."""
     description = post.metadata.get("description")
     if not isinstance(description, str) or not description.strip():
         raise ValueError(f"{kind.title()} {path} is missing frontmatter 'description'")
-    if kind == _SKILL_KIND:
+    if kind == ArtifactKind.SKILL:
         name = post.metadata.get(_NAME_FIELD)
         if not isinstance(name, str) or not name.strip():
             raise ValueError(f"Skill {path} is missing frontmatter 'name'")
@@ -102,9 +102,9 @@ def _validate_parameters_field(parameters: object, path: str) -> None:
         seen_names.add(name)
 
 
-def _validate_artifact_argument_hint(post: frontmatter.Post, path: str, *, kind: str) -> None:
+def _validate_artifact_argument_hint(post: frontmatter.Post, path: str, *, kind: ArtifactKind) -> None:
     argument_hint = post.metadata.get("argument-hint")
-    if kind == "command" and argument_hint is not None and not isinstance(argument_hint, str):
+    if kind == ArtifactKind.COMMAND and argument_hint is not None and not isinstance(argument_hint, str):
         raise ValueError(f"{path} has invalid frontmatter 'argument-hint' (must be a string)")
 
 
@@ -153,10 +153,10 @@ def _find_first_artifact_section(lines: list[str], h1_idx: int) -> int | None:
 
 
 def _validate_artifact_role_activation(
-    lines: list[str], path: str, *, kind: str, h1_idx: int, first_section_idx: int
+    lines: list[str], path: str, *, kind: ArtifactKind, h1_idx: int, first_section_idx: int
 ) -> None:
     role_lines = [line.strip() for line in lines]
-    if kind == "command":
+    if kind == ArtifactKind.COMMAND:
         has_role = any(line.startswith("You are now the ") for line in role_lines[h1_idx + 1 : first_section_idx])
         if not has_role:
             raise ValueError(f"{path} must include a role activation line before the first section")
@@ -165,8 +165,8 @@ def _validate_artifact_role_activation(
         raise ValueError(f"{path} must not include a role activation line")
 
 
-def _artifact_section_order(kind: str) -> list[str]:
-    if kind == "command":
+def _artifact_section_order(kind: ArtifactKind) -> list[str]:
+    if kind == ArtifactKind.COMMAND:
         return ["Purpose", "Inputs", "Outputs", "Steps", "Discipline"]
     return ["Purpose", "Scope", "Inputs", "Outputs", "Procedure"]
 
@@ -210,7 +210,7 @@ def _is_ordered_subset(headings: list[str], required: list[str]) -> bool:
     return all(heading in cursor for heading in headings)
 
 
-def _validate_artifact_section_order(lines: list[str], path: str, *, kind: str, h1_idx: int) -> None:
+def _validate_artifact_section_order(lines: list[str], path: str, *, kind: ArtifactKind, h1_idx: int) -> None:
     headings = _collect_artifact_headings(lines, path, h1_idx=h1_idx)
     if not headings:
         raise ValueError(f"{path} is missing required section headings")
@@ -218,16 +218,16 @@ def _validate_artifact_section_order(lines: list[str], path: str, *, kind: str, 
     for heading in headings:
         if heading not in required:
             raise ValueError(f"{path} has invalid section heading '{heading}'")
-    if kind == "command":
+    if kind == ArtifactKind.COMMAND:
         if not _is_ordered_subset(headings, required):
             raise ValueError(f"{path} sections must follow the order: {' → '.join(required)}")
     elif headings != required:
         raise ValueError(f"{path} section order must be: {' → '.join(required)}")
 
 
-def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> None:
+def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: ArtifactKind) -> None:
     """Validate body structure of a command artifact."""
-    if kind == _SKILL_KIND:
+    if kind == ArtifactKind.SKILL:
         return
     _validate_artifact_argument_hint(post, path, kind=kind)
     lines = post.content.splitlines()
@@ -267,10 +267,10 @@ def _validate_skill_folder_identity(post: frontmatter.Post, path: str) -> None:
         raise ValueError(_SKILL_NAME_MISMATCH.format(name=name, dirname=dirname))
 
 
-def validate_artifact(post: frontmatter.Post, path: str, *, kind: str, project_root: Path) -> None:
+def validate_artifact(post: frontmatter.Post, path: str, *, kind: ArtifactKind, project_root: Path) -> None:
     """Full validation of an agent artifact."""
     validate_artifact_frontmatter(post, path, kind=kind)
-    if kind == _SKILL_KIND:
+    if kind == ArtifactKind.SKILL:
         _validate_skill_folder_identity(post, path)
         return
     validate_artifact_body(post, path, kind=kind)
@@ -282,27 +282,27 @@ def validate_artifact(post: frontmatter.Post, path: str, *, kind: str, project_r
         validate_artifact_refs_exist(include_refs, path, project_root=project_root)
 
 
-def _source_roots(project_root: Path) -> list[tuple[Path, str]]:
+def _source_roots(project_root: Path) -> list[tuple[Path, ArtifactKind]]:
     root = project_root.resolve()
     sources = [
-        (root / _DOT_AGENTS_DIRNAME / _COMMANDS_DIRNAME, "command"),
-        (root / _DOT_AGENTS_DIRNAME / _SKILLS_DIRNAME, _SKILL_KIND),
+        (root / _DOT_AGENTS_DIRNAME / _COMMANDS_DIRNAME, ArtifactKind.COMMAND),
+        (root / _DOT_AGENTS_DIRNAME / _SKILLS_DIRNAME, ArtifactKind.SKILL),
     ]
     if root == Path(__file__).parents[2].resolve():
         sources.extend(
             [
-                (root / _AGENTS_DIRNAME / _COMMANDS_DIRNAME, "command"),
+                (root / _AGENTS_DIRNAME / _COMMANDS_DIRNAME, ArtifactKind.COMMAND),
             ]
         )
     return sources
 
 
-def _artifact_entrypoint(path: Path, source_root: Path, kind: str) -> Path | None:
+def _artifact_entrypoint(path: Path, source_root: Path, kind: ArtifactKind) -> Path | None:
     try:
         relative = path.resolve(strict=False).relative_to(source_root.resolve())
     except ValueError:
         return None
-    if kind == _SKILL_KIND:
+    if kind == ArtifactKind.SKILL:
         if not relative.parts:
             return None
         return source_root / relative.parts[0] / _SKILL_ENTRYPOINT_FILENAME
@@ -317,8 +317,8 @@ def _scoped_global_skill_roots(project_root: Path) -> list[Path]:
     return list(dict.fromkeys(global_skill_source_root(root) for root in roots))
 
 
-def _selected_artifacts(project_root: Path, paths: Sequence[Path | str]) -> list[tuple[Path, str, Path]]:
-    selected: dict[Path, tuple[str, Path]] = {}
+def _selected_artifacts(project_root: Path, paths: Sequence[Path | str]) -> list[tuple[Path, ArtifactKind, Path]]:
+    selected: dict[Path, tuple[ArtifactKind, Path]] = {}
     for raw_path in paths:
         path = Path(raw_path)
         if not path.is_absolute():
@@ -328,18 +328,18 @@ def _selected_artifacts(project_root: Path, paths: Sequence[Path | str]) -> list
             if entrypoint is not None:
                 selected[entrypoint.resolve(strict=False)] = (kind, project_root)
         for source_root in _scoped_global_skill_roots(project_root):
-            entrypoint = _artifact_entrypoint(path, source_root, _SKILL_KIND)
+            entrypoint = _artifact_entrypoint(path, source_root, ArtifactKind.SKILL)
             if entrypoint is not None:
-                selected[entrypoint.resolve(strict=False)] = (_SKILL_KIND, source_root.parents[1])
+                selected[entrypoint.resolve(strict=False)] = (ArtifactKind.SKILL, source_root.parents[1])
     return [(path, kind, owner) for path, (kind, owner) in selected.items()]
 
 
-def _all_artifacts(project_root: Path) -> list[tuple[Path, str, Path]]:
-    artifacts: list[tuple[Path, str, Path]] = []
+def _all_artifacts(project_root: Path) -> list[tuple[Path, ArtifactKind, Path]]:
+    artifacts: list[tuple[Path, ArtifactKind, Path]] = []
     for source_root, kind in _source_roots(project_root):
         if not source_root.is_dir():
             continue
-        if kind == _SKILL_KIND:
+        if kind == ArtifactKind.SKILL:
             artifacts.extend(
                 (entry / _SKILL_ENTRYPOINT_FILENAME, kind, project_root)
                 for entry in source_root.iterdir()
@@ -350,7 +350,9 @@ def _all_artifacts(project_root: Path) -> list[tuple[Path, str, Path]]:
                 (entry, kind, project_root) for entry in source_root.iterdir() if entry.suffix == _MARKDOWN_SUFFIX
             )
     for contribution in collect_global_skills(project_root, Path(__file__).parents[2]):
-        artifacts.append((contribution.source / _SKILL_ENTRYPOINT_FILENAME, _SKILL_KIND, contribution.publisher_root))
+        artifacts.append(
+            (contribution.source / _SKILL_ENTRYPOINT_FILENAME, ArtifactKind.SKILL, contribution.publisher_root)
+        )
     return artifacts
 
 
