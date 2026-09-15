@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
 from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
+from teleclaude.checkpoint_model import load_checkpoint_model
 from teleclaude.config import config, config_path
 from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.config.declaration import write_declared_config
@@ -43,6 +44,13 @@ _MAKEFILE_NAME = "Makefile"
 _MARKDOWN_SUFFIX = ".md"
 _FRONTMATTER_DELIMITER = "---"
 _ENABLED_KEY = "enabled"
+
+
+def _has_executable_maintenance(project_root: Path, capabilities: Capabilities) -> bool:
+    """Return whether effective bindings resolve an executable action."""
+    _ = capabilities
+    model = load_checkpoint_model(str(project_root))
+    return any(model.actions[action_id].command for binding in model.bindings for action_id in binding.actions)
 
 
 def _is_teleclaude_project(project_root: Path) -> bool:
@@ -313,7 +321,7 @@ def init_project(project_root: Path) -> None:
     sync_project_artifacts(project_root)
     if not is_mother and capabilities.code:
         deploy_skeleton(project_root)
-    if capabilities.code:
+    if _has_executable_maintenance(project_root, capabilities):
         install_code_hooks(project_root)
     _ensure_project_slug(project_root)
     register_root(project_root=resolve_project_root(project_root))

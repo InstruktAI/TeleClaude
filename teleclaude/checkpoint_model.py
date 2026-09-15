@@ -32,6 +32,7 @@ logger = get_logger(__name__)
 
 _DEFAULT_PROJECT_PATH = "."
 _DEFAULT_PROJECT_SLUG = "project"
+_PROJECT_SLUG_PLACEHOLDER = "{slug}"
 
 __all__ = [
     "base_checkpoint_model",
@@ -92,17 +93,22 @@ def scopes_for_action(model: CheckpointModel, action_id: str) -> list[Checkpoint
 
 
 def _fill_slug(action: CheckpointAction, project_slug: str) -> CheckpointAction:
-    """Substitute the ``{slug}`` placeholder in an action's run/evidence strings."""
-    if "{slug}" not in action.run and not any("{slug}" in marker for marker in action.evidence):
+    """Substitute the ``{slug}`` placeholder in the action's dynamic fields."""
+    if (
+        _PROJECT_SLUG_PLACEHOLDER not in action.run
+        and not any(_PROJECT_SLUG_PLACEHOLDER in marker for marker in action.evidence)
+        and not any(_PROJECT_SLUG_PLACEHOLDER in argument for argument in action.command)
+    ):
         return action
     return CheckpointAction(
         id=action.id,
-        run=action.run.replace("{slug}", project_slug),
-        evidence=tuple(marker.replace("{slug}", project_slug) for marker in action.evidence),
+        run=action.run.replace(_PROJECT_SLUG_PLACEHOLDER, project_slug),
+        evidence=tuple(marker.replace(_PROJECT_SLUG_PLACEHOLDER, project_slug) for marker in action.evidence),
         main_only=action.main_only,
         off_main_eligible=action.off_main_eligible,
         precedence=action.precedence,
         evidence_must_follow_last_mutation=action.evidence_must_follow_last_mutation,
+        command=tuple(argument.replace(_PROJECT_SLUG_PLACEHOLDER, project_slug) for argument in action.command),
     )
 
 
@@ -158,6 +164,7 @@ def merge_overlay(
                     main_only=action_cfg.main_only,
                     precedence=action_cfg.precedence,
                     evidence_must_follow_last_mutation=action_cfg.evidence_must_follow_last_mutation,
+                    command=tuple(action_cfg.command),
                 ),
                 project_slug,
             )

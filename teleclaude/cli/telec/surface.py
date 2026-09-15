@@ -1431,6 +1431,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 hidden=True,
             ),
+            "post-commit": CommandDef(
+                desc="Run deterministic post-commit maintenance",
+                flags=[F.FLAG_HELP],
+                hidden=True,
+            ),
         },
     ),
 }

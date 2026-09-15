@@ -15,7 +15,6 @@ from time import perf_counter
 from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import resolve_capabilities
-from teleclaude.checkpoint_model import main_only_action_ids_for_files
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
@@ -89,6 +88,7 @@ _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 _GIT_RANGE_SEPARATOR = ".."
+_LOG_CHECK_ACTION_IDS = ["log-check"]
 _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
 _INTEGRATOR_MAINTENANCE_RECORDING_FAILED = "Failed to {operation} integrator maintenance {target} for range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
@@ -640,8 +640,8 @@ def _step_push_succeeded(
     if checkpoint.pre_merge_head:
         merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{final_sha}"
         try:
-            changed_files = _git_diff_names(cwd, merge_range)
-            actions = main_only_action_ids_for_files(changed_files, Path(cwd))
+            _ = _git_diff_names(cwd, merge_range)
+            actions = _LOG_CHECK_ACTION_IDS
             record_integrator_maintenance_marker(cwd, merge_range, actions)
             logger.info(
                 _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG,

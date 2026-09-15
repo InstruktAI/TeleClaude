@@ -2,28 +2,21 @@
 
 from __future__ import annotations
 
-import os
-import signal
-import subprocess
 import tempfile
-import threading
-import time
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.quality.lint import LintRunner
+from teleclaude.runtime.command_runner import run_process_group_command
 
 logger = get_logger(__name__)
 
-_PROCESS_GROUP_TERM_GRACE_SECONDS = 2.0
-_PROCESS_GROUP_KILL_GRACE_SECONDS = 2.0
 _SUBJECT_MISMATCH_TEMPLATE = "Quality gate refused to evaluate {subject_sha}: execution root HEAD is {execution_head}."
 _HEAD_READ_FAILURES = (BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError)
 
@@ -118,100 +111,10 @@ def run_make_target(
     if variables:
         command.extend(f"{key}={value}" for key, value in variables.items())
     if files is None:
-        return _run_in_process_group(command, cwd=str(execution_root), child_env=child_env)
+        return run_process_group_command(command, execution_root, child_env).exit_code
     with _nul_file(files) as files_from:
         command.append(f"FILES_FROM={files_from}")
-        return _run_in_process_group(command, cwd=str(execution_root), child_env=child_env)
-
-
-def _run_in_process_group(
-    command: list[str],
-    *,
-    cwd: str,
-    child_env: Mapping[str, str] | None,
-) -> int:
-    """Run one native command and terminate its entire process group on exit."""
-    process = subprocess.Popen(
-        command,
-        cwd=cwd,
-        env=dict(child_env) if child_env is not None else None,
-        start_new_session=True,
-    )
-    previous: dict[int, Any] = {}
-
-    def _forward(signum: int, _frame: object) -> None:
-        raise _SignalReceived(signum)
-
-    installable = threading.current_thread() is threading.main_thread()
-    try:
-        if installable:
-            for signal_value in (signal.SIGINT, signal.SIGTERM):
-                previous[signal_value] = signal.signal(signal_value, _forward)
-        try:
-            returncode = process.wait()
-        except _SignalReceived as received:
-            _kill_process_group(process)
-            signal.signal(received.signum, signal.SIG_DFL)
-            os.kill(os.getpid(), received.signum)
-            raise SystemExit(128 + received.signum) from None
-        except BaseException:
-            _kill_process_group(process)
-            raise
-        _kill_process_group(process)
-        return returncode
-    finally:
-        for stored_signal, handler in previous.items():
-            signal.signal(stored_signal, handler)
-
-
-class _SignalReceived(BaseException):
-    """Unwind a blocked child wait after a termination signal."""
-
-    def __init__(self, signum: int) -> None:
-        super().__init__(signum)
-        self.signum = signum
-
-
-def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
-    process_group = process.pid
-    try:
-        process_group = os.getpgid(process.pid)
-    except OSError:
-        pass
-    if not _process_group_exists(process_group):
-        return
-    try:
-        os.killpg(process_group, signal.SIGTERM)
-    except OSError:
-        return
-    if not _wait_process_group(process, process_group, timeout=_PROCESS_GROUP_TERM_GRACE_SECONDS):
-        try:
-            os.killpg(process_group, signal.SIGKILL)
-        except OSError:
-            pass
-        _wait_process_group(process, process_group, timeout=_PROCESS_GROUP_KILL_GRACE_SECONDS)
-
-
-def _process_group_exists(process_group: int) -> bool:
-    try:
-        os.killpg(process_group, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
-def _wait_process_group(process: subprocess.Popen[bytes], process_group: int, *, timeout: float) -> bool:
-    deadline = time.monotonic() + timeout
-    while True:
-        process.poll()
-        if not _process_group_exists(process_group):
-            return True
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return False
-        time.sleep(min(0.05, remaining))
+        return run_process_group_command(command, execution_root, child_env).exit_code
 
 
 @contextmanager
