@@ -255,9 +255,10 @@ And the project's declaration of its owner still brings that company's tier into
 Given an agent session running under the identity of a person whose relationship to a company covers none of that company's projects
 And that company owns several projects
 And that person holds a declared relationship to one of them
-When the Selection policy resolves the caller's project set
-Then that project enters the set and is read in full
-And the company's other projects do not enter it
+When the Selection policy resolves that person's depth on those projects
+Then the related project is read in full when the session works in it or names it
+And the company's other projects are read at what they declare public
+And no reached project enters the default read set on the relationship's account
 ```
 
 #### UC-DSP26: A company's administrative role opens every project that company owns
@@ -265,9 +266,9 @@ And the company's other projects do not enter it
 ```
 Given an agent session running under the identity of a person holding a company's administrative role
 And that company owns a project the person holds no explicit assignment to
-When the Selection policy resolves the caller's project set
-Then that project enters the set and is read in full
-And a project owned by a different company does not enter it on that role's account
+When the Selection policy resolves that person's depth on that project
+Then the project is read in full when the session works in it or names it
+And a project owned by a different company gains no depth on that role's account
 And the Selection policy reads the covered set as the roster resolves it rather than deriving it from the role
 ```
 

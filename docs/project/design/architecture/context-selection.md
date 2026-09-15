@@ -167,10 +167,12 @@ result.
 
 Reach and depth are separate answers and are never traded for one another. Reach
 decides which tiers are assembled; depth decides how much of an assembled tier is
-read. The default read set is the relationship-derived tiers, global, and what
-the invocation offers — the project being worked in and the company that project
-declares as its owner — the last two met at whatever depth the caller's
-relationship grants, public-only where there is none. Naming a tier, by selector
+read. The default read set is the caller's own person tier, every company they
+belong to, global, and what the invocation offers — the project being worked in
+and the company that project declares as its owner — the last two met at
+whatever depth the caller's relationship grants, public-only where there is
+none. The other projects a caller reaches through the roster are not in the
+default set; they are read in full when worked in or named. Naming a tier, by selector
 or by snippet identity, changes reach: the named tier is assembled instead of
 the default set, at the depth this stage grants the caller for it. Naming never
 changes depth. A caller with no resolvable identity gains no tier from a

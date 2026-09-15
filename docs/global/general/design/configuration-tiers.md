@@ -160,10 +160,12 @@ one index entry, listed on demand — rather than autoloaded into every session.
   where they are declared, belong to the configuration tier; what documentation
   does with the answer belongs here.
 - **A caller's relationship-derived scope is exactly three things.** Their own
-  person tier, the projects they reach through the roster, and the documentation
-  of every company they belong to. Those three travel with the caller and are in scope
-  wherever they are working. A platform admin is outside this and reaches
-  everything, including every company they own.
+  person tier, the documentation of every company they belong to, and full depth
+  on every project they reach through the roster. The first two travel with the
+  caller and are listed wherever they are working; the third is a depth, applied
+  to the project being worked in or deliberately named, never a listing of every
+  reached project. A platform admin is outside this and reaches everything,
+  including every company they own.
 - **Reach is wider than the relationship-derived part, and depth is not.** Global
   documentation is in every caller's scope because global is nobody's
   relationship, and the invocation itself offers the project it resolves to and
@@ -213,9 +215,11 @@ company decides how deeply it is read.
 <!-- /planned-change:docs-tier-layering -->
 
 <!-- planned:docs-tier-layering -->
-**Deriving scope from the caller.** A caller's own person tier, their assigned
-projects, and the documentation of every company they belong to are in scope
-wherever they are working, independently of the directory they are in.
+**Deriving scope from the caller.** A caller's own person tier and the
+documentation of every company they belong to are in scope wherever they are
+working, independently of the directory they are in, together with the project
+they are working in. The other projects they reach through the roster are read
+in full when they work in one or name it; they do not enter the default listing.
 Someone with no relationship to a company is not shut out of it — they meet the
 snippet's own declaration and read what is public, which is how a help desk
 running inside a project registered to a company answers public questions for
