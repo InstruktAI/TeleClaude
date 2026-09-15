@@ -46,6 +46,7 @@ _TODO_STATUS_ICEBOX = "icebox"
 _TODO_STATUS_REMOVED = "trashed"
 _TODO_STATUS_HOLDER = "holder"
 _UNKNOWN_TODO_STATUS_LABEL_TEMPLATE = "unknown:{status}"
+DEPENDENCY_FLASH_CLASS = "dependency-flash"
 
 _TODO_STATUS_LABELS: dict[TodoStatus, str] = {
     TodoStatus.DRAFT: _TODO_STATUS_DRAFT,
@@ -638,7 +639,7 @@ class TodoRow(TelecMixin, Widget):
         self._chip_region = None
         self._chip_email = None
 
-        if is_selected:
+        if is_selected or self.has_class(DEPENDENCY_FLASH_CLASS):
             slug_style = Style(reverse=True)
         else:
             slug_style = Style()

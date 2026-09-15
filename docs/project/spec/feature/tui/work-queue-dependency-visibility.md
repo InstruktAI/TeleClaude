@@ -1,7 +1,7 @@
 ---
-description: Momentary dependency highlighting in the Preparation view reveals the visible todo rows that also block the selected todo while leaving its existing tree anchor and layout unchanged.
-delivered_by:
-  - highlight-hidden-todo-dependencies
+description: Momentary dependency highlighting in the Preparation view reveals the
+  visible todo rows that also block the selected todo while leaving its existing tree
+  anchor and layout unchanged.
 ---
 
 # Work Queue Dependency Visibility — Spec

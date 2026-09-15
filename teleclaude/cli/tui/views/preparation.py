@@ -5,6 +5,7 @@ from __future__ import annotations
 import shlex
 import sys
 import time as _t
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
@@ -46,7 +47,7 @@ from teleclaude.cli.tui.tree import (
     parse_collapsed_projects,
     project_collapse_key,
 )
-from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
+from teleclaude.cli.tui.views.preparation_actions import PreparationAction, PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.chip import ownership_surface_enabled, principal_to_email
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.delivered_separator import DeliveredSeparator
@@ -56,7 +57,7 @@ from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_creation_record_row import CreatorSessionRow
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
-from teleclaude.cli.tui.widgets.todo_row import TodoRow
+from teleclaude.cli.tui.widgets.todo_row import DEPENDENCY_FLASH_CLASS, TodoRow
 from teleclaude.cli.tui.widgets.trashed_separator import TrashedSeparator
 from teleclaude.config import config
 from teleclaude.constants import TodoStatus
@@ -65,6 +66,12 @@ from teleclaude.todo_artifacts import artifact_display_filename
 from teleclaude.types.creation_record import Lineage
 
 _UNKNOWN_TODO_STATUS_EVENT = "tui.todo_status_unknown"
+DEPENDENCY_FLASH_DURATION_S = 1.5
+DEPENDENCY_FLASH_KEY = "D"
+DEPENDENCY_FLASH_LABEL = "Deps"
+
+if TYPE_CHECKING:
+    from textual.timer import Timer
 
 
 def _creator_row_fingerprint(lineage: str | None, lookup: CreatorSessionLookup) -> tuple[str, str]:
@@ -145,6 +152,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("d", "toggle_delivered", "Deliv"),
         Binding("i", "toggle_icebox", "Ice"),
         Binding("x", "toggle_trashed", "Trsh"),
+        Binding(DEPENDENCY_FLASH_KEY, PreparationAction.FLASH_DEPENDENCIES, DEPENDENCY_FLASH_LABEL, show=False),
     ]
 
     cursor_index = reactive(0)
@@ -165,11 +173,53 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._human_filter: str | None = None
         self._creator_session_lookup: CreatorSessionLookup = {}
+        self._dependency_flash_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="preparation-scroll")
         scroll.can_focus = False
         yield scroll
+
+    def _clear_dependency_flash(self) -> None:
+        """Remove the transient dependency flash and stop its timer."""
+        if self._dependency_flash_timer is not None:
+            self._dependency_flash_timer.stop()
+            self._dependency_flash_timer = None
+        for widget in self._nav_items:
+            if isinstance(widget, TodoRow) and widget.has_class(DEPENDENCY_FLASH_CLASS):
+                widget.set_class(False, DEPENDENCY_FLASH_CLASS)
+                widget.refresh()
+
+    def _flash_dependencies(self) -> None:
+        """Highlight displayed additional dependencies of the selected todo."""
+        self._clear_dependency_flash()
+        selected_row = self._current_todo_row()
+        if selected_row is None:
+            return
+        dependency_slugs = set(selected_row.todo.after)
+        if not dependency_slugs:
+            return
+        selected_project = project_collapse_key(selected_row.todo.computer, selected_row.todo.project_path)
+        visual_parent_id = selected_row.todo.visual_dependency_parent_id
+        has_flash = False
+        for widget in self._nav_items:
+            if (
+                not isinstance(widget, TodoRow)
+                or not widget.display
+                or project_collapse_key(widget.todo.computer, widget.todo.project_path) != selected_project
+                or widget.todo.slug not in dependency_slugs
+                or widget.todo.todo_id == visual_parent_id
+            ):
+                continue
+            widget.set_class(True, DEPENDENCY_FLASH_CLASS)
+            widget.refresh()
+            has_flash = True
+        if has_flash:
+            self._dependency_flash_timer = self.set_timer(DEPENDENCY_FLASH_DURATION_S, self._clear_dependency_flash)
+
+    def on_unmount(self) -> None:
+        """Stop the transient dependency flash when the view leaves the DOM."""
+        self._clear_dependency_flash()
 
     _logger = get_logger(__name__)
 
@@ -333,11 +383,19 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         """Rebuild the todo display from current data (Computer → Project → Todo)."""
         _rb0 = _t.monotonic()
         self._logger.trace("[PERF] PrepView._rebuild START t=%.3f", _rb0)
+        self._clear_dependency_flash()
         container = self.query_one("#preparation-scroll", VerticalScroll)
         container.remove_children()
         self._nav_items.clear()
 
-        def _item_from_dto(dto: TodoDTO, *, project_path: str, is_holder: bool = False) -> TodoItem:
+        def _item_from_dto(
+            dto: TodoDTO,
+            *,
+            project_path: str,
+            is_holder: bool = False,
+            computer: str | None = None,
+            visual_dependency_parent_id: str | None = None,
+        ) -> TodoItem:
             try:
                 status: TodoStatus | str = TodoStatus(dto.status)
             except ValueError:
@@ -374,6 +432,8 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 task_plan_digest=dto.task_plan_digest,
                 task_approved_digest=dto.task_approved_digest,
                 project_path=dto.project_path or project_path,
+                computer=computer,
+                visual_dependency_parent_id=visual_dependency_parent_id,
                 todo_id=dto.todo_id,
                 removed_at=dto.removed_at,
                 delivered_at=dto.delivered_at,
@@ -393,17 +453,33 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         # Widths are computed per rendered section: rows align with, and
         # reserve state-column slots for, only the section they render in — a
         # scheduled, autonomous, or held todo elsewhere costs no cells here.
-        def _section_metrics(rows: list[FlatRow], project_path: str) -> tuple[int, dict[str, int], int]:
-            items = [_item_from_dto(r.todo, project_path=project_path, is_holder=r.is_holder) for r in rows]
+        def _section_metrics(
+            rows: list[FlatRow], project_path: str, computer: str | None = None
+        ) -> tuple[int, dict[str, int], int]:
+            items = [
+                _item_from_dto(r.todo, project_path=project_path, is_holder=r.is_holder, computer=computer)
+                for r in rows
+            ]
             slug_width = max((len(i.slug) for i in items), default=0)
             max_depth = max((r.depth for r in rows), default=0)
             return slug_width, TodoRow.compute_col_widths(items), max_depth
 
-        def _emit_row(row: FlatRow, project_path: str, metrics: tuple[int, dict[str, int], int]) -> None:
+        def _emit_row(
+            row: FlatRow,
+            project_path: str,
+            computer: str | None,
+            metrics: tuple[int, dict[str, int], int],
+        ) -> None:
             # Depth-0 items always use ├─ because GroupSeparator closes the tree
             is_last = False if row.depth == 0 else row.is_last
             slug_width, col_widths, max_depth = metrics
-            item = _item_from_dto(row.todo, project_path=project_path, is_holder=row.is_holder)
+            item = _item_from_dto(
+                row.todo,
+                project_path=project_path,
+                is_holder=row.is_holder,
+                computer=computer,
+                visual_dependency_parent_id=row.visual_dependency_parent_id,
+            )
             todo_row = TodoRow(
                 todo=item,
                 is_last=is_last,
@@ -503,9 +579,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 rendered_any = False
 
                 active_rows = flatten(sections.active, force_root_branch=True)
-                active_metrics = _section_metrics(active_rows, project.path)
+                active_metrics = _section_metrics(active_rows, project.path, project.computer)
                 for flat_row in active_rows:
-                    _emit_row(flat_row, project.path, active_metrics)
+                    _emit_row(flat_row, project.path, project.computer, active_metrics)
                     rendered_any = True
 
                 # Delivered section — collapsible, rendered above icebox
@@ -513,9 +589,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     delivered_rows = flatten(sections.delivered, force_root_branch=True)
                     if delivered_rows:
                         widgets_to_mount.append(DeliveredSeparator())
-                        delivered_metrics = _section_metrics(delivered_rows, project.path)
+                        delivered_metrics = _section_metrics(delivered_rows, project.path, project.computer)
                         for flat_row in delivered_rows:
-                            _emit_row(flat_row, project.path, delivered_metrics)
+                            _emit_row(flat_row, project.path, project.computer, delivered_metrics)
                         rendered_any = True
 
                 # Icebox section — collapsible
@@ -523,9 +599,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     icebox_rows = flatten(sections.icebox, force_root_branch=True)
                     if icebox_rows:
                         widgets_to_mount.append(IceboxSeparator())
-                        icebox_metrics = _section_metrics(icebox_rows, project.path)
+                        icebox_metrics = _section_metrics(icebox_rows, project.path, project.computer)
                         for flat_row in icebox_rows:
-                            _emit_row(flat_row, project.path, icebox_metrics)
+                            _emit_row(flat_row, project.path, project.computer, icebox_metrics)
                         rendered_any = True
 
                 # Trashed section — collapsible
@@ -533,9 +609,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     trashed_rows = flatten(sections.removed, force_root_branch=True)
                     if trashed_rows:
                         widgets_to_mount.append(TrashedSeparator())
-                        trashed_metrics = _section_metrics(trashed_rows, project.path)
+                        trashed_metrics = _section_metrics(trashed_rows, project.path, project.computer)
                         for flat_row in trashed_rows:
-                            _emit_row(flat_row, project.path, trashed_metrics)
+                            _emit_row(flat_row, project.path, project.computer, trashed_metrics)
                         rendered_any = True
 
                 if rendered_any:
