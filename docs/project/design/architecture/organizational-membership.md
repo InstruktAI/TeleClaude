@@ -113,11 +113,18 @@ enforcing the declared human band, while preserving the agent band the surface
 already admits. Reusing a surface is not inheriting the boundary it advertises.
 
 **Removal follows the owned-data migration boundary.** A stored legacy shape is
-brought forward before domain consumption. Once the migration completes, an
+brought forward before domain consumption: the per-person company list is
+removed, and a per-company owner reference becomes a membership carrying
+`admin` for the person it names — the same relationship, stated in the roster's
+vocabulary. An owner reference naming an unregistered person is the one value
+that cannot be mapped, and it blocks with that name, the refusal a fresh
+declaration receives. The migration runs through the loader's per-load
+pre-validation seam, the way the person tier's existing migrations run, and
+never through the one-shot tier-advancement epoch, which records a root
+complete and never revisits it — a company root advanced before this change
+would otherwise never receive the conversion. Once the migration completes, an
 undeclared key fails at its owning configuration boundary rather than surviving
-as a silent extra. A non-empty legacy value that cannot be mapped to the
-current declared shape remains an explicit blocker; absence of a typed
-attribute is not absence of the field.
+as a silent extra; absence of a typed attribute is not absence of the field.
 
 ## Primary flows
 
@@ -161,9 +168,24 @@ tab, so a new structured field acquires an editing surface by reflection alone.
 An empty roster would reflect as a single generic leaf and a populated one as
 indexed fields the company save path cannot traverse safely — an accidental
 mutation surface nobody designed. The roster is therefore excluded from that
-reflection and is written only through the designed maintenance command. A
+reflection by the per-field tier marker the schema already uses for
+non-wizard fields — the same marker that hides the person tier's subscriptions
+and the global tier's checkout root — and is written only through the designed
+maintenance command. A
 member-by-member editor is a later change with its own write semantics, not a
-side effect of adding a field.
+side effect of adding a field. The People tab's former company multi-reference
+field goes with the per-person list it reflected: it edited a declaration
+nothing read, on the side of the relationship the declaration does not live on,
+and the configuration TUI contract is amended to match.
+
+**A membership entry owns what is nested in it.** Withdrawing a membership
+removes the assignments it carried; removing a registered person removes their
+entry from every roster. Neither refuses until the nested declarations are
+cleared by hand, because the administrator performing the withdrawal is the
+same one who could clear them, so a refusal protects nothing and adds steps.
+Both report what was removed. The person-removal cascade is what keeps the
+roster's person reference an invariant rather than a write-time check that
+later drifts.
 
 **Resolution** walks the company tier. The set is small and folder-discovered,
 so the walk is cheap; no index is introduced for a scan of this size, and adding

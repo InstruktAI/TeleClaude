@@ -58,6 +58,7 @@ And the renderer derives type, choices, default value, and description from the 
 And no TUI-only shadow model is required for that field to appear
 ```
 
+<!-- planned-change:company-member-roster -->
 #### UC-CFG-TUI-SCHEMA-COMPANIES: Companies tab and People company multi-reference
 
 ```
@@ -67,6 +68,18 @@ Then a Companies tab appears as the second tab, after Infra, rendering CompanyCo
 And the People tab exposes a company multi-reference field — a person may belong to multiple companies — edited as a set of company slugs
 And both are schema-driven, requiring no TUI-only shadow model
 ```
+<!-- change:company-member-roster -->
+#### UC-CFG-TUI-SCHEMA-COMPANIES: Companies tab reflects company config without its roster
+
+```
+Given the company config layer (CompanyConfig) carrying the company's roster
+When the human opens `telec config wizard`
+Then a Companies tab appears as the second tab, after Infra, rendering CompanyConfig schema-driven (honoring per-field tier markers)
+And the roster carries the internal tier marker, so it is excluded from that reflection and is not editable from any wizard tab
+And the People tab exposes no company membership field, because membership is declared on the company, not the person
+And the tab remains schema-driven, requiring no TUI-only shadow model
+```
+<!-- /planned-change:company-member-roster -->
 
 #### UC-CFG-TUI-SCHEMA-2: View sections are metadata, not alternate models
 

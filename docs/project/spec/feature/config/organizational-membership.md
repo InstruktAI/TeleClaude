@@ -119,6 +119,28 @@ And no assignment is persisted for that person
 And declaring the membership first and repeating the assignment succeeds
 ```
 
+#### UC-CFG-MEMBER-12: Withdrawing a membership removes the assignments it carried
+
+```gherkin
+Given a person who belongs to a company and is assigned to one or more of that company's projects
+And a human administrator operating the maintenance surface
+When the administrator withdraws that membership
+Then the membership declaration is removed together with every assignment it carried
+And the response names the assignments that were removed with it
+And the person's declarations in other companies are unchanged
+```
+
+#### UC-CFG-MEMBER-13: Removing a registered person removes their roster entries
+
+```gherkin
+Given a person registered on the platform who holds memberships in one or more companies
+And a human administrator operating the person-management surface
+When the administrator removes that person from the platform
+Then every roster entry naming that person is removed, with the assignments each carried
+And the response names each company whose roster changed
+And no roster entry remains that references an unregistered person
+```
+
 ## Known caveats
 
 - Use-case identifiers 4 through 7, 9, and 10 are not in use in this contract
@@ -134,6 +156,10 @@ And declaring the membership first and repeating the assignment succeeds
   registered — there, no declaration of either kind has a subject, and the
   person-to-role mapping such a platform relies on is the platform role, which
   this contract does not touch.
+- A membership entry owns the assignments nested in it. Withdrawing the entry,
+  or removing the person it names, removes those assignments with it rather than
+  refusing until they are cleared one by one; the response names what went. A
+  roster never retains an entry for a person who is no longer registered.
 - Nothing here introduces a default or implicit company. A person who belongs to
   no company holds no membership declaration, rather than membership in a
   standing group.
