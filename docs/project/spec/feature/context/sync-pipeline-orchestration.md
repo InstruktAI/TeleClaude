@@ -13,23 +13,15 @@ visibility: 'public'
 
 
 `telec sync` is the operator-facing command that promotes git-tracked Source
-<!-- planned-change:sync-validation-moves-to-lint -->
 into Deployed agent runtime outputs. Its responsibility is synchronization:
 validate authored source shape, record best-effort provenance, rebuild derived
 indexes, and distribute runtime artifacts. It does not mutate doc snippets in
-<!-- change:sync-validation-moves-to-lint -->
-into Deployed agent runtime outputs. Its responsibility is synchronization:
-promotion only. It validates no source. It does not mutate doc snippets in
-<!-- /planned-change:sync-validation-moves-to-lint -->
 response to todo delivery state; delivery-driven `delivered_by` reconciliation
 belongs to the integration lifecycle before the delivery commit is made.
 
 The sync pipeline is:
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 1. **Validate** — run snippet, artifact, and jobs-config validators.
-<!-- change:sync-validation-moves-to-lint -->
-<!-- /planned-change:sync-validation-moves-to-lint -->
 2. **Record provenance** _(best-effort)_ — when a provenance back-end is
    configured, insert `delivered_by` memberships for audit. Back-end
    unavailability is caught and logged as a warning. This step never blocks
@@ -49,7 +41,6 @@ gate performs no registration.
 <!-- change:sync-stops-converging-project-setup -->
 <!-- /planned-change:sync-stops-converging-project-setup -->
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 Validation always blocks: any finding stops the pipeline and `telec sync` exits
 non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 
@@ -63,13 +54,6 @@ non-zero — there is no warn-and-pass mode. Each flag skips one phase:
 
 Validation findings are stdout text grouped by error code and reason; there is
 no machine-readable output channel today.
-<!-- change:sync-validation-moves-to-lint -->
-`telec sync` performs no source validation and accepts no flag beyond `--help`,
-so it has no blocking mode and nothing to bypass. Snippet, artifact, and
-jobs-config validation belongs to the guardrails lint lane and the commit gate;
-project bootstrap runs the same validators non-blocking through its own path
-(see Known caveats).
-<!-- /planned-change:sync-validation-moves-to-lint -->
 
 ## Canonical fields
 
@@ -113,12 +97,8 @@ behavior; this spec references them rather than restating them.
 Scenario: Full sync on a clean Mother project checkout
   Given the project source is git-tracked and validates cleanly
   When the operator runs telec sync
-<!-- planned-change:sync-validation-moves-to-lint -->
   Then snippet, artifact, and jobs-config validators run once
   And the index-build phase produces a fresh index
-<!-- change:sync-validation-moves-to-lint -->
-  Then the index-build phase produces a fresh index
-<!-- /planned-change:sync-validation-moves-to-lint -->
   And broken or self-pointing tracked docs symlinks are repaired
   And the distribution step is invoked in deploy mode
 And the run exits zero
@@ -126,7 +106,6 @@ And the run exits zero
 
 
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 ```
 Scenario: --skip-deploy validates but produces no derived outputs
   Given the operator wants to validate without deploying
@@ -135,12 +114,9 @@ Scenario: --skip-deploy validates but produces no derived outputs
   And no index build, symlink repair, or distribution step runs
 And the run exits zero only when validation is clean
 ```
-<!-- change:sync-validation-moves-to-lint -->
-<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 ```
 Scenario: Validation findings always block
   Given snippet, artifact, or jobs-config validation reports a finding
@@ -149,12 +125,9 @@ Scenario: Validation findings always block
   And the pipeline aborts before any deploy
 And the run exits non-zero
 ```
-<!-- change:sync-validation-moves-to-lint -->
-<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 ```
 Scenario: The docs watcher bypasses validation to live-reload
   Given the docs watcher authorizes the hidden --skip-validation flag
@@ -171,8 +144,6 @@ Scenario: A non-watcher caller is rejected from bypassing validation
   Then the command is rejected and exits non-zero
 And no deploy occurs
 ```
-<!-- change:sync-validation-moves-to-lint -->
-<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
 ```
@@ -189,11 +160,7 @@ Scenario: Provenance back-end is unavailable
 Scenario: Delivery completes before sync
   Given an integration delivery staged snippet lifecycle reconciliation in its merge commit
   When telec sync runs after the delivery
-<!-- planned-change:sync-validation-moves-to-lint -->
   Then sync validates the already-mutated source
-<!-- change:sync-validation-moves-to-lint -->
-  Then sync deploys the already-mutated source
-<!-- /planned-change:sync-validation-moves-to-lint -->
   And sync performs no additional source markdown mutations
 ```
 
@@ -363,26 +330,16 @@ And validation reports a finding only when that source target is missing
   provenance store is expected until the back-end is healthy again.
 
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 - `--skip-deploy` exits before index build and symlink repair. Broken tracked
   symlinks may therefore remain broken until a full sync runs.
 - `--skip-validation` deploys unvalidated source; it is reserved for the docs
   watcher's live reload, where the commit gate remains the validation contract.
-<!-- change:sync-validation-moves-to-lint -->
-<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 - Project bootstrap (`telec projects init` / `onboard`, via `sync_bootstrap`)
   validates and reports findings without blocking, then deploys — a human-run,
   one-time setup path distinct from the always-blocking `telec sync` command.
   The commit gate remains the validation contract for ongoing work.
-<!-- change:sync-validation-moves-to-lint -->
-- Project bootstrap (`telec projects init` / `onboard`, via `sync_bootstrap`)
-  reports source findings without blocking, then deploys — a human-run, one-time
-  setup path, and the only path on which the deployment command runs a validator
-  at all. The commit gate remains the validation contract for ongoing work.
-<!-- /planned-change:sync-validation-moves-to-lint -->
 - The distribution step is optional in stripped-down deployments because a
   missing distribution entrypoint silently skips phase 4.
 - The v1 CLI namespace is `telec sync`. The v2 target is `telec context sync`.

@@ -10,20 +10,12 @@ visibility: 'public'
 0. **Checks block; there is no passing warning tier.** Every agent-facing check is a blocker or it is removed. A warning that does not block is a silent failure — the gate-level form of the anti-pattern named in `software-development/principle/design-fundamentals` (Fail Fast): agents reliably do not act on warnings, so they accumulate into noise that hides the next real defect and trains everyone to ignore the channel.
 
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 - There is no warn-and-pass flag: `telec sync` always blocks on findings (`--skip-deploy` is the read-only gate; it still blocks). Tool warnings (e.g. an `eslint` `warning`) must be configured as errors or the rule deleted.
-<!-- change:sync-validation-moves-to-lint -->
-- There is no warn-and-pass flag: `telec code lint` always blocks on findings, and so does the commit gate that runs it. Tool warnings (e.g. an `eslint` `warning`) must be configured as errors or the rule deleted.
-<!-- /planned-change:sync-validation-moves-to-lint -->
 
 - A finding that needs human judgment blocks **with an explicit, auditable override** using the applicable tool or language policy's narrow suppression mechanism, or a declared exception that lands in the diff with a reason — never a passive warning. The override is a conscious, reviewable decision; a warning is silent rot.
 
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 - The only validation bypass is the docs watcher's hidden, role-gated `--skip-validation` (live reload must not block; the commit gate is the contract). The only non-gating _output_ is pure information (status/progress) — it signals nothing to act on.
-<!-- change:sync-validation-moves-to-lint -->
-- There is no validation bypass: source validation runs in the lint lane and the commit gate, and `telec sync` — a deployment command — performs none, so it can neither block nor be bypassed. The only non-gating _output_ is pure information (status/progress) — it signals nothing to act on.
-<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
 1. **Fix all lint violations before commit**

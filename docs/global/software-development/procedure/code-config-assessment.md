@@ -83,7 +83,6 @@ judgment; the runtime reads only the written declaration.
 
 
 
-<!-- planned-change:sync-validation-moves-to-lint -->
 After writing the toggles, run `telec sync`: its mutating path (after the
 read-only `--skip-deploy` early return) sets the docs filter driver present iff
 `docs` is subscribed and refreshes the TeleClaude-owned git hooks of a project
@@ -92,15 +91,6 @@ installed plumbing reads the declaration on its next invocation, and no
 capability state is written anywhere else. Never edit a project-tracked file to
 reflect a toggle beyond the declaration that carries it: the `.gitattributes`
 docs line is written once at onboard and left alone thereafter.
-<!-- change:sync-validation-moves-to-lint -->
-After writing the toggles, run `telec sync`: its mutating path sets the docs
-filter driver present iff `docs` is subscribed and refreshes the
-TeleClaude-owned git hooks of a project subscribing `code`. The toggle write is the whole of the capability change: the
-installed plumbing reads the declaration on its next invocation, and no
-capability state is written anywhere else. Never edit a project-tracked file to
-reflect a toggle beyond the declaration that carries it: the `.gitattributes`
-docs line is written once at onboard and left alone thereafter.
-<!-- /planned-change:sync-validation-moves-to-lint -->
 
 
 ### 2. Makefile contract gate (ordered prerequisite)
