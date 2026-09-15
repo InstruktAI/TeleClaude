@@ -295,14 +295,13 @@ And no delivery record is written for the candidate until its own squash content
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
-Given the final repository-root delivery head is rejected by the pre-push content gate
+Given either the integration-worktree candidate head or the folded repository-root head fails its content gate
 When the state machine classifies the rejection
-Then the candidate does not enter fast-forward-race recovery
+Then a candidate-stage failure may be resolved or parked before that candidate reaches origin/main
+And once the candidate push is confirmed, a final-stage failure keeps that candidate current and blocks the drain until the repository-root state passes
 And the integrator owns the finding because the candidate is already in the integration pipeline
-And a finding it can mechanically ground is resolved on the final repository-root delivery state before the gates rerun
-And a finding it cannot ground confidently parks the candidate with a recorded reason while the drain continues through independent candidates
 And no exception permits the failed candidate to bypass the gate
-And no delivery record is written until that candidate's final head is confirmed on origin/main
+And no delivery record is written until the folded repository-root head is confirmed on origin/main
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
@@ -371,12 +370,11 @@ And the integration path provides no candidate-specific quality override
 ```
 <!-- change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
-Given a candidate has been applied and reconciled on repository-root main
-When the integrator prepares the final delivery commit and push
-Then the format-fix step runs over the candidate-owned content before the commit
-And scope-sensitive checks meaningful only over the whole repository do not gate the scoped commit
-And the pre-push full-repository lint remains the authoritative content gate over the final head
-And every failure blocks delivery until the integrator resolves it on the final delivery state or parks the candidate
+Given the integration worktree has prepared a candidate or repository-root main has prepared its folded finalization
+When the corresponding content gate runs before either push
+Then the candidate-stage gate evaluates the isolated candidate head
+And the final-stage gate evaluates the full repository-root head through the same native quality implementation
+And a final-stage failure after candidate-push confirmation blocks the drain until it is resolved
 And the integration path provides no candidate-specific quality override
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
