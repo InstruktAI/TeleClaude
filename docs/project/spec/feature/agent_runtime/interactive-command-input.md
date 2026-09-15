@@ -1,7 +1,6 @@
 ---
-description: Command-and-argument input on the TUI new-session modal and Discord conversation surfaces, with uniform command loading and preserved session authority.
-delivered_by:
-  - restore-interactive-command-shorthand
+description: Command-and-argument input on the TUI new-session modal and Discord conversation
+  surfaces, with uniform command loading and preserved session authority.
 ---
 
 # Interactive Command Input — Spec
