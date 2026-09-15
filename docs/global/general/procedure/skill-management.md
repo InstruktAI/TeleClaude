@@ -53,6 +53,7 @@ Read step 5 before reaching for a project destination.
    Scripts, references, and assets are copied verbatim and stay opaque to TeleClaude
    taxonomy validation.
 
+<!-- planned-change:agent-artifact-source-layout -->
 4. **Adopt globally — the default destination.** Place the complete package at
    `agents/skills/<name>/` in the TeleClaude repository and commit it there. The package
    body is third-party content TeleClaude does not govern — it is never graded against
@@ -62,6 +63,21 @@ Read step 5 before reaching for a project destination.
    `~/.teleclaude/skill-store/<digest>/<name>` snapshot, and
    `general/procedure/skill-use` lists it from there on. Every agent can then find it
    on demand without any project doing anything.
+<!-- change:agent-artifact-source-layout -->
+4. **Adopt globally — the default destination.** Place the complete package at
+   `agents/global/skills/<name>/` in the TeleClaude repository and commit it there. The
+   package body is third-party content TeleClaude does not govern — it is never graded
+   against TeleClaude's artifact taxonomy, no todo carries it, and the commit is routed
+   to no independent review. A doc-hygiene reviewer would grade the package against a
+   taxonomy it is exempt from and find nothing, so the round-trip buys nothing and is
+   charged to every adoption. The safety investigation at step 2 is the gate that covers
+   an incorporated package, and it is performed by the adopting agent before the commit
+   rather than by a prose reviewer after it. Sync publishes the package to
+   `~/.teleclaude/skills/<name>` as a digest-pinned
+   `~/.teleclaude/skill-store/<digest>/<name>` snapshot, and
+   `general/procedure/skill-use` lists it from there on. Every agent can then find it
+   on demand without any project doing anything.
+<!-- /planned-change:agent-artifact-source-layout -->
 
 <!-- planned-change:agent-artifact-source-layout -->
 5. **Adopt project-locally — only for these two reasons.** Copy the complete package
