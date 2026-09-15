@@ -614,13 +614,13 @@ When the heuristic engine evaluates the turn window
 Then no maintenance action is surfaced for that commit
 And no maintenance obligation persists into a later checkpoint cycle of that turn
 And the post-commit review-gate action is still surfaced for the committed code (per UC-CP5A)
-(The maintenance ran at the commit boundary; asking the agent to repeat it would ask for work already done, on evidence the transcript cannot carry.)
+(The maintenance ran at the commit boundary; asking the agent to repeat it would ask for work already done, on evidence a transcript cannot carry.)
 
 Given the same turn also changed paths owing a judgment action
 And no evidence for that judgment action appears in the timeline
 When the heuristic engine evaluates the turn window
 Then the judgment action is surfaced
-(Only actions a mechanism performs at this boundary are withheld; log-check and test remain the agent's.)
+(The engine resolves the checkpoint registry alone, so a maintenance action a binding names is not a checkpoint obligation at all; log-check and test remain the agent's.)
 ```
 <!-- /planned:checkpoint-keeps-only-judgment-actions -->
 
