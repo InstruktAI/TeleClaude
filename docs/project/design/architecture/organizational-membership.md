@@ -88,8 +88,8 @@ by such a change is never reported as access, never blocks the company's
 configuration from loading — that would break every session in every project
 the company still owns — and is surfaced as stale by the load log and by the
 resolution query's stale-assignments field, until an administrator removes it
-through the maintenance surface — the same withdrawal that removes any
-assignment, since a stale entry is still an entry in the roster. Silent dropping is the failure this guards against: the
+through the maintenance surface with the same withdrawal that removes any
+assignment. Silent dropping is the failure this guards against: the
 stale entry stays visible precisely so that the dissolved relation is seen.
 
 **One home per fact.** The company tier is the only place a membership or
