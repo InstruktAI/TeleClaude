@@ -105,6 +105,7 @@ And a commit recorded in a todo worktree rather than the canonical checkout's ma
 When the commit is recorded
 Then no main-only maintenance action is performed
 And the documentation and artifact pipeline is not run from that worktree
+And an agent reading the structured records observes that maintenance was skipped, and the location that made it ineligible
 ```
 
 ## See Also
