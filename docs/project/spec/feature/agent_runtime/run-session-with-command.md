@@ -315,28 +315,29 @@ And this holds whether the request supplies command arguments or none
 
 <!-- planned:agent-artifact-source-layout -->
 
-#### UC-CLR12: The loader resolves a domain-qualified name in the shared corpus and a bare token to its unique match across the session's project delivery and the corpus
+#### UC-CLR12: An agent dispatches a global command by domain, or by a bare name that names exactly one
 
 ```
-Given the shared corpus carries global commands under <domain>/ and the dispatching session's project carries its own commands under .agents/commands/
-When loader composition resolves a canonical name before any document read
-Then a name of the form <domain>/<token> resolves to the corpus document <domain>/<token>.md and nothing else
-And a bare token is matched against the session's project delivery location .agents/commands/<token>.md and every corpus document <domain>/<token>.md
-And a bare token with exactly one match resolves to it
-And a bare token with more than one match composes no loader and is refused naming every candidate
-And a bare token with no match is refused as an unknown command
-And a session rooted in one project never resolves another project's command
+Given an agent dispatches a session with the command software-development/next-build
+When the session starts
+Then it loads that command from the software-development domain and no other
+And given the agent instead dispatches the bare name next-build and exactly one domain carries it
+Then the session loads that one command
+And given the agent dispatches a bare name that two domains carry
+Then no session is started and the refusal names both commands
+And given the agent dispatches a bare name no domain carries
+Then no session is started and the refusal names the unknown command
 ```
 
-#### UC-CLR13: The session record and its live-session attribution carry the command as dispatched
+#### UC-CLR13: An orchestrator finds the session it dispatched by the command it dispatched
 
 ```
-Given a session is dispatched with a domain-qualified command value
-When the session record and title are written and a live-session attribution query names that slug and command
-Then the record's command is the dispatched value and the title reflects it as UC-CLR3 states
-And the attribution query matches the session by that same value
-And the requesting context consumes the query result and owns none of the record, the title, or the match
+Given an orchestrator dispatched a session with a domain-qualified command for a slug
+When the orchestrator later asks for the live session for that slug and command
+Then it is given that session
+And the session's recorded command and title carry the command exactly as dispatched
 ```
+
 <!-- /planned:agent-artifact-source-layout -->
 
 #### Dispatch privilege enforcement

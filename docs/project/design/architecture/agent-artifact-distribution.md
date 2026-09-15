@@ -56,13 +56,12 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   publisher root's in-reach global command sources.
 - The global skill catalog at `~/.teleclaude/skills/`, composed from the
   mother's `agents/global/skills/<name>/` folders alone.
-- Project delivery, bounded to the project: each project's
-  `agents/project/commands/*.md` rendered into that project's own delivery
-  location `.agents/commands/<name>.md`, reachable only from sessions rooted in
-  that project, and never into the shared corpus; project skills rendered into
-  that project's runtime skill directories and into `.agents/skills/`. `.agents/`
-  is written and never read. A machine-generated artifact reaches no further
-  than the tier that produced it.
+- Project delivery: each project's `agents/project/skills/*` rendered into
+  that project's runtime skill directories and into `.agents/skills/`. A source
+  under `agents/project/commands/` is validated and reach-checked and is written
+  to no corpus by this delivery; the per-tier corpus and its resolution are the
+  command output side's contract. `.agents/` is a delivery location and is never
+  read as an authored source.
 - Validation findings that name the file and the reach it exceeds, or both
   files and the colliding name, and fail sync.
 - The deployed-commands ownership manifest, keyed by relative corpus path.
@@ -92,14 +91,14 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   is stated in the workflow domain spec and bound by the prepare and work
   state-machine specs; this document only records that the vocabulary is the
   contract `context` lays the corpus out against.
-- **`agent_runtime` owns resolution, and the session metadata that carries
-  the name.** The rule is stated in the agent runtime domain spec and bound by
-  the run-session-with-command spec; this document only records that
-  resolution reads two places `context` publishes — the shared corpus and the
-  dispatching session's project delivery location — and decides nothing about
-  reach or layout. The session record, its title, and the live-session
-  attribution query carry and match the qualified value `workflow` dispatched;
-  `workflow` consumes that query and owns none of it.
+- **`agent_runtime` owns resolution within the global corpus, and the
+  session metadata that carries the name.** The rule is stated in the agent
+  runtime domain spec and bound by the run-session-with-command spec; this
+  document only records that resolution reads the corpus `context` publishes
+  and decides nothing about reach or layout. Resolution that reads a session's
+  tier context is outside this design. The session record, its title, and the
+  live-session attribution query carry and match the qualified value `workflow`
+  dispatched; `workflow` consumes that query and owns none of it.
 - **`config` owns the declaration, never the gate.** `business.publishes` says
   what a repository may reach; `context` decides admission from it.
 
@@ -120,9 +119,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 
 - The shared corpus holds global commands only, partitioned by domain; two
   domains may carry the same bare file name. A project command never enters the
-  shared corpus: it is delivered inside its own project, so two projects may
-  each carry a command of the same name and neither reaches the other's
-  sessions. Project scope keys leave the shared manifest on their project's
+  shared corpus. Project scope keys leave the shared manifest on their project's
   first sync after migration, because that sync stages nothing at the shared
   root for them.
 - The deployed-commands manifest keys by relative corpus path — `<name>.md` at
@@ -172,11 +169,10 @@ flowchart TD
     V -->|admitted| C[Context: composition]
     C --> CORPUS[~/.teleclaude/commands/&lt;domain&gt;/&lt;name&gt;.md]
     C --> CAT[~/.teleclaude/skills/ catalog: mother only]
-    C --> LOCAL[project: .agents/commands + .agents/skills + runtime skill dirs, written]
+    C --> LOCAL[project: .agents/skills + runtime skill dirs, written]
     WF[workflow: SlashCommand<br/>domain/name] -->|emits| DISPATCH[dispatch · scripts · API]
-    DISPATCH --> AR[agent_runtime: loader resolves<br/>domain/name in corpus, or a bare token<br/>against the session's project delivery + corpus, unique match only]
+    DISPATCH --> AR[agent_runtime: loader resolves<br/>domain/name in the corpus, or a bare token<br/>to its single global match]
     CORPUS --> AR
-    LOCAL --> AR
 ```
 
 Migration sequence:
@@ -198,10 +194,8 @@ sequenceDiagram
 - **A root publishes a global command for a domain it does not declare.** Sync
   fails with the file and the reach it exceeds; nothing is composed for that
   run.
-- **A bare token matches more than one document** — two domains in the shared
-  corpus, or the session's project delivery location and a domain. The loader
-  refuses, naming every candidate; no tier shadows another, because shadowing
-  is not a rule this delivery decides. Domain-qualified dispatch is unaffected.
+- **A bare token names a command in two domains.** The loader refuses, naming
+  both. Domain-qualified dispatch is unaffected.
 - **A sync lands mid-relocation.** The union of both roots is staged; no
   deployed artifact is retracted because its source moved.
 - **A legacy `.agents/` file a project authored by hand.** Never read, never
