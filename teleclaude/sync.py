@@ -6,22 +6,16 @@ two-step pipeline with a single idempotent operation.
 
 from __future__ import annotations
 
-import csv
-import io
 import os
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.capabilities import Capabilities, resolve_capabilities
-from teleclaude.config import config
 from teleclaude.config._blueprint import generate_sample_file
 from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
-from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
-from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT, ConfigFileName
 from teleclaude.resource_validation import (
     _error,
@@ -36,15 +30,6 @@ _DISTRIBUTE_AGENTS_ENABLED_FLAG = "--agents-enabled"
 _DISTRIBUTE_AGENTS_DISABLED_FLAG = "--no-agents-enabled"
 _DISTRIBUTE_DOCS_ENABLED_FLAG = "--docs-enabled"
 _DISTRIBUTE_DOCS_DISABLED_FLAG = "--no-docs-enabled"
-
-
-@dataclass(frozen=True)
-class SnippetProvenanceRecord:
-    """A snippet delivered_by membership anchored to the current git HEAD."""
-
-    snippet_path: str
-    slug: str
-    head_sha_at_acquisition: str
 
 
 def sync(
@@ -101,22 +86,18 @@ def _sync_locked(
     if not skip_validation and _collect_source_findings(project_root, capabilities):
         return False
 
-    # Phase 2: Record provenance
-    if capabilities.docs:
-        _record_snippet_provenance_from_config(project_root)
-
-    # Phase 3: Build indexes
+    # Phase 2: Build indexes
     if capabilities.docs:
         written = build_all_indexes(project_root)
         for path in written:
             if path.exists():
                 print(f"Index: {path}")
 
-    # Phase 3b: Regenerate the public config sample from the field tiers, so the
+    # Regenerate the public config sample from the field tiers, so the
     # sample is a consequence of the markers and cannot drift.
     _regenerate_config_sample(project_root)
 
-    # Phase 4: Build and deploy artifacts
+    # Phase 3: Build and deploy artifacts
     _run_distribute(project_root, capabilities, lock_descriptor=lock_descriptor)
 
     return True
@@ -158,105 +139,6 @@ def sync_bootstrap(project_root: Path) -> None:
             )
     except DocsLeaseTimeoutError as exc:
         print(str(exc), file=sys.stderr)
-
-
-def _record_snippet_provenance_from_config(project_root: Path) -> int:
-    """Record first-acquisition provenance for snippet delivered_by slugs."""
-    database_url = config.database_url
-    if not database_url:
-        return 0
-
-    try:
-        repo = Repo(project_root, search_parent_directories=True)
-        head_sha = repo.head.commit.hexsha
-    except (InvalidGitRepositoryError, NoSuchPathError, GitCommandError, ValueError):
-        return 0
-    return _record_snippet_provenance(project_root, head_sha, database_url)
-
-
-def _record_snippet_provenance(project_root: Path, head_sha: str, database_url: str) -> int:
-    """Insert provenance rows for every current snippet delivered_by membership."""
-    records = _collect_snippet_provenance_records(project_root, head_sha)
-    if not records:
-        return 0
-    try:
-        _run_psql_snippet_provenance_import(
-            database_url,
-            _render_snippet_provenance_import_script(records),
-        )
-    except subprocess.CalledProcessError as exc:
-        print(
-            f"Warning: snippet provenance import skipped: psql exited with status {exc.returncode}",
-            file=sys.stderr,
-        )
-        return 0
-    except OSError as exc:
-        print(f"Warning: snippet provenance import skipped: {exc}", file=sys.stderr)
-        return 0
-    return len(records)
-
-
-def _render_snippet_provenance_import_script(records: list[SnippetProvenanceRecord]) -> str:
-    """Render a psql COPY script that preserves existing provenance anchors."""
-    buf = io.StringIO()
-    buf.write("begin;\n")
-    buf.write(
-        "create temporary table snippet_provenance_import "
-        "(snippet_path text, slug text, head_sha_at_acquisition text) on commit drop;\n"
-    )
-    buf.write(
-        "copy snippet_provenance_import (snippet_path, slug, head_sha_at_acquisition) from stdin with (format csv);\n"
-    )
-    writer = csv.writer(buf, lineterminator="\n")
-    for record in records:
-        writer.writerow([record.snippet_path, record.slug, record.head_sha_at_acquisition])
-    buf.write("\\.\n")
-    buf.write(
-        "insert into workflow.snippet_provenance "
-        "(snippet_path, slug, head_sha_at_acquisition) "
-        "select snippet_path, slug, head_sha_at_acquisition from snippet_provenance_import "
-        "on conflict (snippet_path, slug) do nothing;\n"
-    )
-    buf.write("commit;\n")
-    return buf.getvalue()
-
-
-def _run_psql_snippet_provenance_import(database_url: str, script: str) -> None:
-    """Run provenance import through psql.
-
-    The Python runtime intentionally does not depend on a PostgreSQL DBAPI
-    driver; `psql` is the available native workflow database boundary here.
-    """
-    subprocess.run(
-        ["psql", database_url, "-v", "ON_ERROR_STOP=1"],
-        input=script,
-        text=True,
-        check=True,
-    )
-
-
-def _collect_snippet_provenance_records(project_root: Path, head_sha: str) -> list[SnippetProvenanceRecord]:
-    """Collect delivered_by memberships from snippet frontmatter."""
-    records: list[SnippetProvenanceRecord] = []
-    for snippet_path in _iter_snippet_files(project_root):
-        content = snippet_path.read_text(encoding="utf-8")
-        parsed = _split_frontmatter(content)
-        if parsed is None:
-            continue
-        metadata, _body = parsed
-        try:
-            relative_path = snippet_path.relative_to(project_root).as_posix()
-        except ValueError:
-            relative_path = snippet_path.as_posix()
-        for slug in _delivered_by(metadata):
-            records.append(
-                SnippetProvenanceRecord(
-                    snippet_path=relative_path,
-                    slug=slug,
-                    head_sha_at_acquisition=head_sha,
-                )
-            )
-    return records
 
 
 def _run_distribute(project_root: Path, capabilities: Capabilities, *, lock_descriptor: int) -> None:
