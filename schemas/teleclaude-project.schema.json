@@ -98,6 +98,13 @@
           "default": false,
           "title": "Evidence Must Follow Last Mutation",
           "type": "boolean"
+        },
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Command",
+          "type": "array"
         }
       },
       "required": ["run"],
