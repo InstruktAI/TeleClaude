@@ -211,7 +211,7 @@ The company config file (`~/.teleclaude/companies/<slug>/teleclaude.yml`, model
 each entry names a registered person, the company role they hold, and the
 projects of this company they are assigned to. It replaces the former `owner`
 key, whose relationship the administrative role now carries; `owner` and the
-former per-person `companies` list are migrated away before domain consumption
+former per-person `companies` list are removed from the schema; no file carries either key, and a lingering one fails at load like any undeclared key
 rather than retained as permissive extras. It is folder-discovered (the `COMPANIES_ROOT`
 tree) and composed into the effective config alongside `project`. A
 company-level `.env` in the same folder holds service credentials, read through
@@ -559,7 +559,11 @@ whatsapp:
   template_name: string | null # normally ${WHATSAPP_TEMPLATE_NAME}
   template_language: string
   business_number: string | null # normally ${WHATSAPP_BUSINESS_NUMBER}
+<!-- planned-change:snippet-provenance-leaves-sync -->
 database_url: string | null # optional snippet-provenance database; normally ${DATABASE_URL}
+<!-- change:snippet-provenance-leaves-sync -->
+database_url: string | null # no current consumer; normally ${DATABASE_URL}
+<!-- /planned-change:snippet-provenance-leaves-sync -->
 email:
   enabled: boolean # outbound SMTP; disabled or incomplete config is unavailable
   smtp_username: string | null # normally ${SMTP_USERNAME}

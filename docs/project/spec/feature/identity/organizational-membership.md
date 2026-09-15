@@ -152,6 +152,17 @@ And no company is supplied as a default
 And the person's platform role is reported unchanged by this resolution
 ```
 
+#### UC-ORGID-8: An assignment to a project the company no longer owns is not reported
+
+```gherkin
+Given a person assigned, in a company's roster, to a project that company owned when the assignment was recorded
+And that project's own declaration now names a different owner, or none
+When an agent resolves that person's organizational membership
+Then that assignment is not among the person's reported assignments
+And the person's membership in that company is reported unchanged
+And the stale assignment is surfaced as stale rather than silently dropped, so an administrator can remove it
+```
+
 ## Known caveats
 
 - UC-ORGID-3 is the only place a company role affects what resolution reports.
@@ -162,6 +173,11 @@ And the person's platform role is reported unchanged by this resolution
   membership in that company. The prerequisite binds an assignment to the
   company owning the project it names, so it says nothing about a person who
   belongs to no company.
+- A project's owner is its own declaration and can change after an assignment
+  names it. Resolution reads ownership at the moment of the question, so an
+  assignment to a project the company no longer owns is inert — never reported
+  as access, never fatal to loading the company's configuration, and visible as
+  stale until an administrator removes it.
 - Resolution reports the same shape on a platform carrying no companies as it
   does for an undeclared person: empty, never a default. Such a platform relies
   on the platform role alone, which this contract leaves untouched.

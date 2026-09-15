@@ -75,7 +75,7 @@ And both are schema-driven, requiring no TUI-only shadow model
 Given the company config layer (CompanyConfig) carrying the company's roster
 When the human opens `telec config wizard`
 Then a Companies tab appears as the second tab, after Infra, rendering CompanyConfig schema-driven (honoring per-field tier markers)
-And the roster carries the internal tier marker, so it is excluded from that reflection and is not editable from any wizard tab
+And the roster carries the internal tier marker, so it is excluded from that reflection and is not edited from the wizard
 And the People tab exposes no company membership field, because membership is declared on the company, not the person
 And the tab remains schema-driven, requiring no TUI-only shadow model
 ```

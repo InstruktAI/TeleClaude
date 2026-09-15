@@ -79,9 +79,15 @@ this design never touches — and the sole-user administrator default is
 unreachable from here for the same reason: it derives from the count of
 registered people and never consults a company.
 
-**A load-time assignment whose project no longer resolves to the enclosing
-company fails loudly** rather than resolving as though it held. Silence there
-would let a roster answer questions from a relation that has since dissolved.
+**An assignment whose project the company no longer owns is inert, not fatal.**
+A project's owner is its own declaration in its own file, and changing it is a
+routine edit that cannot reach into company rosters. An assignment left behind
+by such a change is never reported as access, never blocks the company's
+configuration from loading — that would break every session in every project
+the company still owns — and is surfaced as stale by the load log, the
+resolution query, and the wizard, until an administrator removes it through the
+maintenance surface. Silent dropping is the failure this guards against: the
+stale entry stays visible precisely so that the dissolved relation is seen.
 
 **One home per fact.** The company tier is the only place a membership or
 assignment is declared. The person tier declares no company relationship, and
@@ -112,19 +118,14 @@ assignments. The write path therefore carries its own point-of-action check
 enforcing the declared human band, while preserving the agent band the surface
 already admits. Reusing a surface is not inheriting the boundary it advertises.
 
-**Removal follows the owned-data migration boundary.** A stored legacy shape is
-brought forward before domain consumption: the per-person company list is
-removed, and a per-company owner reference becomes a membership carrying
-`admin` for the person it names — the same relationship, stated in the roster's
-vocabulary. An owner reference naming an unregistered person is the one value
-that cannot be mapped, and it blocks with that name, the refusal a fresh
-declaration receives. The migration runs through the loader's per-load
-pre-validation seam, the way the person tier's existing migrations run, and
-never through the one-shot tier-advancement epoch, which records a root
-complete and never revisits it — a company root advanced before this change
-would otherwise never receive the conversion. Once the migration completes, an
-undeclared key fails at its owning configuration boundary rather than surviving
-as a silent extra; absence of a typed attribute is not absence of the field.
+**The two inert declarations are deleted, not migrated.** `PersonConfig.companies`
+and `CompanyConfig.owner` are removed from the schema outright. No file on any
+installation carries either key, so there is no owned data to bring forward and
+the owned-data migration rule has nothing to act on; a key that appears in a
+file after this change fails at load under the closed-overlay rule like any
+other undeclared key. This is deliberate simplicity over file-backed
+migration machinery the human declined: proper CLI create, read, update, and
+delete is the contract, and a file edited into an invalid state does not load.
 
 ## Primary flows
 
@@ -206,7 +207,8 @@ one later is a change with its own evidence rather than a precaution taken now.
   nothing about what it may reference.
 - **Checking ownership only on write.** A project's owner can change after an
   assignment is recorded, so a write-time check alone leaves a roster that was
-  valid once and silently is not.
+  valid once and silently is not. Resolution reads ownership at the moment of
+  the question, and a stale assignment is shown, not hidden and not fatal.
 - **Collapsing the ownership check into the membership check.** They are separate
   rules answering different questions — which projects this roster may reference,
   and whether this person has standing in the business. Satisfying one is never
