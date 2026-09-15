@@ -194,15 +194,12 @@ Scenario: UC-SPO4 Deploy-mode sync is refused from a slug worktree
 ```
 
 <!-- planned:docs-tier-layering -->
-#### UC-SPO17: A commit under a participating tier's documentation home publishes it
+#### UC-SPO17: A deployment composes every participating tier's documentation
 
 ```
 Given a company or person tier whose declaration records participation in the documentation surface
-And that tier's home lives in the platform home repository, which carries the commit-boundary maintenance
-When a documentation source under that tier's home is committed
-Then the commit-boundary maintenance republishes the deployed documentation snapshot
-And the tier's committed material is in that snapshot, exactly as a registered project's would be
-And a saved but uncommitted change under the tier's home deploys nothing
+When a deployment runs, from whichever of its callers invoked it
+Then that tier's documentation is composed into the published snapshot exactly as a registered project's is
 And no global agent-artifact publication path opens from the tier's home
 ```
 <!-- /planned:docs-tier-layering -->
