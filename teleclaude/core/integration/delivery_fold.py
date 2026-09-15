@@ -1,9 +1,9 @@
 """Delivered-snippet fold and fail-closed marker gate for the delivery chokepoint.
 
-`DELIVERY_BOOKKEEPING` is the universal delivery chokepoint: every committed path
-— clean merge, conflict resolution, and crash/resume — converges here before the
-push. These helpers let the bookkeeping step re-assert the idempotent fold and
-gate the push on a clean tree, so a delivered slug never reaches `origin/main`
+`PUSH_SUCCEEDED` is the universal delivery chokepoint: every committed path
+— clean merge, conflict resolution, and crash/resume — converges here before final
+publication. These helpers re-assert the idempotent fold and gate the root state
+on a clean tree, so a delivered slug never reaches `origin/main`
 carrying live markers that trip the platform liveness guard.
 """
 
@@ -87,7 +87,7 @@ def recover_delivered_marker_divergence(
     )
 
 
-def assert_clean_before_push(integration_wt: Path, slug: str) -> str | None:
+def assert_clean_before_push(reconciliation_root: Path, slug: str) -> str | None:
     """Independent fail-closed gate immediately before the push.
 
     Returns a human-readable message when a delivered slug's markers survived the
@@ -95,7 +95,7 @@ def assert_clean_before_push(integration_wt: Path, slug: str) -> str | None:
     This runs even if a future fold path regresses and leaves markers behind.
     """
     try:
-        assert_no_residual_markers(integration_wt, slug)
+        assert_no_residual_markers(reconciliation_root, slug)
     except (ResidualMarkerError, OSError) as exc:
         return f"Residual '{slug}' markers survived the delivery fold; refusing to push: {exc}"
     return None

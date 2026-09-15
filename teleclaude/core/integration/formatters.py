@@ -98,6 +98,15 @@ This is a Git operation failure, not a split-history diagnosis. Inspect and
 resolve the failed operation without stashing, rebasing, or automatically merging.
 
 NEXT: Resolve the Git operation failure, then call telec todo integrate"""
+_ROOT_FINALIZATION_BLOCKER_TEMPLATE = """INTEGRATION BLOCKED: ROOT FINALIZATION
+
+Candidate: {slug}
+
+The confirmed candidate remains current while repository-root finalization is blocked:
+{reason}
+
+Resolve the repository-root state, then call telec todo integrate. This candidate
+cannot be parked, abandoned, or delivered until finalization succeeds."""
 
 
 def _format_anomalies(warnings: list[str]) -> str:
@@ -362,6 +371,11 @@ def _format_repo_root_sync_instruction(result: RepoRootSyncResult, project_root:
     return _REPO_ROOT_SYNC_FORMATTERS[result.outcome](result, project_root)
 
 
+def _format_root_finalization_blocker(slug: str, reason: str) -> str:
+    """Render a non-parkable blocker after intermediate candidate publication."""
+    return _ROOT_FINALIZATION_BLOCKER_TEMPLATE.format(slug=slug, reason=reason)
+
+
 def _format_error(code: str, message: str) -> str:
     return f"INTEGRATION ERROR: {code}\n{message}"
 
@@ -376,4 +390,5 @@ __all__ = [
     "_format_push_rejected",
     "_format_queue_empty",
     "_format_repo_root_sync_instruction",
+    "_format_root_finalization_blocker",
 ]
