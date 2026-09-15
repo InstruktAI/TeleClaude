@@ -1,5 +1,5 @@
 ---
-description: 'How agents operate the daemon: through the make targets (never raw host primitives); a directed make target is mandatory; deterministic maintenance runs at the commit boundary.'
+description: 'How daemon lifecycle and setup operations use make targets for automatic commit-boundary maintenance and agent-operated recovery.'
 visibility: 'public'
 ---
 
