@@ -55,22 +55,11 @@ rather than being consumed; it surfaces once on a turn with no pending commit
 and is consumed then, or is consumed when the review is dispatched. A
 force-fire that has nothing left to surface — no changed files, no required
 actions, no observations, and no commit action — produces no checkpoint.
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-An **integrator-maintenance marker**, carrying the delivered merge range and the
-`main_only` maintenance actions that range owes, is recorded by the
-integration state machine when it advances repo-root `main`. It is keyed to
-the canonical checkout rather than to a session, because the state it records
-— repo-root `main` advanced and the daemon deployed from this checkout has
-not caught up — belongs to the checkout and outlives any one integrator.
-Each recorded action discharges when its evidence is observed in any
-checkpoint cycle, and the marker is removed once the last one discharges.
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 An **integrator-maintenance marker** carries canonical-root ranges whose
 deterministic maintenance has completed and whose live-runtime log judgment
 remains. It is keyed to the canonical checkout rather than to a session, so a
 successor integrator inherits unfinished judgment without repeating mechanical
 work. Log-check evidence discharges the marker.
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 <!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 The action and evidence ledger — what needs doing and what was done since
@@ -319,33 +308,8 @@ And no action is surfaced, because its evidence was observed
 ```
 
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-#### UC-CP11: Integrator post-merge maintenance force-fire
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 #### UC-CP11: Integrator post-advance log-check force-fire
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-```gherkin
-Given a session whose role is integrator
-And the integration state machine advanced repo-root main this turn and recorded the integrator-maintenance marker carrying the delivered merge range
-When the heuristic engine evaluates the turn window
-Then the checkpoint force-fires even though no turn-local Edit/Write changes exist
-And effective files are sourced from the merge delta over the recorded range
-And only the main-only maintenance actions implied by that delta are surfaced (make install / uv sync / make restart)
-And no post-commit review action, no commit reminder, and no test or log-check actions are surfaced
-And every surfaced action remains recorded on the integrator-maintenance marker
-
-Given a session whose role is NOT integrator
-And repo-root main advanced this turn for any reason
-And no integrator-maintenance marker is present for this checkout
-When the heuristic engine evaluates the turn window
-Then no maintenance checkpoint is force-fired on account of the moved main HEAD
-(Repo-root main is a shared working copy; raw HEAD movement is not
-self-attributable, so only the lease-guarded integrator singleton — the recorded
-marker's owner — receives post-merge maintenance.)
-```
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 ```gherkin
 Given a session whose role is integrator
 And integration advanced repository-root main and completed deterministic maintenance for the advanced range
@@ -355,9 +319,7 @@ Then the checkpoint force-fires even though no turn-local Edit or Write change e
 And it surfaces only the log-check action for the accumulated range
 And no install, dependency, restart, reload, sync, review, commit, or test action is surfaced from that marker
 ```
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
-<!-- planned:post-commit-hook-runs-mechanical-maintenance -->
 #### UC-CP29: Main movement without a log marker creates no checkpoint
 
 ```gherkin
@@ -367,7 +329,6 @@ And no checkout-scoped log-check marker is present
 When the heuristic engine evaluates the turn window
 Then no checkpoint is force-fired on account of the moved main HEAD
 ```
-<!-- /planned:post-commit-hook-runs-mechanical-maintenance -->
 
 
 <!-- planned-change:checkpoint-keeps-only-judgment-actions -->
@@ -539,54 +500,14 @@ And the commit action is not required
 (A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
 ```
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-#### UC-CP20: Post-merge maintenance persists per action until its evidence is observed
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 #### UC-CP20: Post-advance log judgment begins with a range-only marker
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-```gherkin
-Given the integration state machine confirms a delivery whose merge delta owes make restart and make install
-When it records the integrator-maintenance marker for this checkout
-Then the range and both owed main-only action ids are recorded together
-(The owed actions are resolved at delivery through the same merged model and single matcher every other consumer uses, so a delivered path owes the equivalent action in each of them.)
-
-Given an integrator-maintenance marker for this checkout already owes make install
-And a further candidate is delivered in the same drain whose delta owes make restart
-When the state machine records that candidate's range
-Then the marker's outstanding set is the union of both deliveries' owed actions
-
-Given an integrator-maintenance marker recorded for this checkout owes make restart and make install
-And an earlier checkpoint cycle surfaced both
-And the agent ran make restart in that cycle and nothing since
-When a later agent-stop evaluates the turn window
-Then the make-restart action is discharged from the marker and is not surfaced again
-And the make-install action is still surfaced
-And the marker is retained
-(Evidence is read from the checkpoint-cycle timeline, which carries only the current cycle. Discharge is therefore recorded on the marker as it is observed; re-deriving it from the timeline each cycle would lose every action satisfied in an earlier one.)
-
-Given the marker's last outstanding action is discharged
-When the agent-stop cycle that observes its evidence completes
-Then the marker is removed
-And no post-merge maintenance checkpoint force-fires for that delivery again
-
-Given an integrator-maintenance marker recorded for this checkout still owes make restart
-And the integrator session that incurred it has ended
-And a different integrator session acquires the lease on the same checkout
-When the heuristic engine evaluates that session's turn window
-Then the outstanding make-restart action is surfaced to the successor
-(The obligation describes the checkout and the daemon deployed from it, so it is addressed by the checkout and reaches whichever integrator holds the lease.)
-```
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 ```gherkin
 Given integration completes deterministic maintenance for a canonical-root advancement whose paths owe log-check
 When it records the checkout-scoped marker
 Then the marker carries the advanced range and no mechanical action id
 ```
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
-<!-- planned:post-commit-hook-runs-mechanical-maintenance -->
 #### UC-CP30: Post-delivery log markers accumulate ranges
 
 ```gherkin
@@ -611,7 +532,6 @@ And another integrator acquires the lease for the same checkout
 When the heuristic engine evaluates that session
 Then the accumulated log-check obligation is surfaced to the successor
 ```
-<!-- /planned:post-commit-hook-runs-mechanical-maintenance -->
 
 
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
@@ -705,16 +625,9 @@ And a decision is still produced when a path becomes unaccounted for after that 
   is passed to `get_checkpoint_content` and stored in `CheckpointContext`
   to gate the integrator-maintenance force-fire path.
 - Reads the session's working slug for structured checkpoint diagnostics.
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-- Consumes the commit-obligation ledger written by the sealed `telec code commit`
-  path for any session, and the integrator-maintenance marker written by the
-  integration state machine (`project/spec/feature/workflow/integration-state-machine`)
-  at delivery, before the per-candidate `pre_merge_head` is cleared.
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 - Consumes the checkout-scoped range marker written after integration completes
   deterministic maintenance, and surfaces only the remaining live-runtime log
   judgment.
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 - Writes checkpoint-seen entries that `session-state-mutation-via-outbox`
   consumes to update last-checkpoint timestamp.
 
@@ -757,38 +670,20 @@ And a decision is still produced when a path becomes unaccounted for after that 
   movement do not re-arm it; doc-only commits do not arm it; raw
   `git commit` does not mark authorship.
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-- The integrator's raw-git merge does not flow through `telec code commit`
-  and so does not arm the authorship latch or the commit-obligation ledger;
-  instead the integration state machine records the integrator-maintenance
-  marker carrying the delivered merge range and the actions it owes, which
-  the engine reads to force-fire post-merge maintenance for the integrator
-  session holding the lease on that checkout.
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 - An integration fast-forward that produces no repository-root commit invokes
   deterministic maintenance directly from canonical root. The checkout-scoped
   marker carries only ranges awaiting log judgment, so a successor integrator
   inherits the judgment without repeating maintenance.
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
 - The engine is project-aware: it may short-circuit early for projects
   outside the supported set (the engine's project-allowlist policy
   lives in the engine itself).
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-- Worktree-aware path resolution composes the project path with the
-  worktree subdirectory so branch detection runs against the working
-  tree, not the repo root. Worktree sessions on a non-main branch
-  behave correctly; sessions on main get the main-only category
-  instructions (setup, deps, restart) suppressed unless they are the
-  integrator receiving post-merge maintenance.
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 - Worktree-aware path resolution composes the project path with the worktree
   subdirectory so branch detection evaluates the actual checkout. Mechanical
   actions never surface from checkpoint location rules; the integrator receives
   only checkout-scoped log judgment after canonical-root maintenance.
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 - Unknown agent names fall back to the default agent — a pragmatic
   guard against unrecognized agent values.
 - All three v1 adapters support hook checkpoints. Claude and Codex

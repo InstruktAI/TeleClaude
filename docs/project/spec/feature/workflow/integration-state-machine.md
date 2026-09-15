@@ -70,15 +70,6 @@ by the rebase-and-re-push instruction above.
 
 #### UC-WISM1: Integrator-maintenance marker emission at delivery
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-```gherkin
-Given the integrator has confirmed the final repository-root head on origin/main
-When the PUSH_SUCCEEDED step runs before the candidate checkpoint is cleared
-Then the state machine records an integrator-maintenance marker for the integrator session
-And the marker carries the delivered range ending at the confirmed repository-root head
-And the agent-stop checkpoint engine consumes that marker to force-fire post-merge maintenance for the integrator
-```
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 ```gherkin
 Given integration advances repository-root main through a fast-forward or finalization commit
 When that canonical-root advancement completes
@@ -87,7 +78,6 @@ And the state machine records a checkout-scoped marker only when the range owes 
 And the marker carries the advanced range but no mechanical action id
 And the agent-stop checkpoint consumes it to surface only the log-check judgment
 ```
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 #### UC-WISM2: Push rejection withholds delivery
 
@@ -250,20 +240,12 @@ Then the candidate is excluded from integration — no candidate is dequeued, th
 
 #### UC-WISM8: Integrator-maintenance marker accumulates ranges across multiple deliveries
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-```gherkin
-Given several candidates are delivered in a single integration drain
-When each PUSH_SUCCEEDED step records its delivered merge range into the session-scoped integrator-maintenance marker
-Then the marker accumulates the union of the delivered ranges across candidates rather than overwriting the prior range
-```
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 ```gherkin
 Given several canonical-root advancements owe log judgment before that judgment completes
 When each advancement records its range
 Then the checkout-scoped marker accumulates the ranges rather than overwriting an earlier range
 And deterministic maintenance still executes exactly once for each advancement
 ```
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 #### UC-WISM9: The pre-push quality gate remains authoritative and blocking
 

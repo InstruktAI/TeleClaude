@@ -29,16 +29,10 @@ read-only gate touches nothing.
 
 ## Canonical fields
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-- **Hooks.** A project subscribing `code` receives the TeleClaude-owned hook set
-  from its canonical templates. A hook the project authored itself is preserved
-  rather than overwritten. A project not subscribing `code` receives none.
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 - **Hooks.** A project receives the TeleClaude-owned hook set when any enabled
   capability or declared binding can resolve an executable action. A hook the
   project authored itself is preserved rather than overwritten. A project with
   no executable binding receives no TeleClaude-owned hook.
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 - **Filter driver.** The driver is present exactly when the project subscribes
   `docs`. Convergence is two-directional: the driver is installed when `docs` is
   subscribed and removed when it is not, so the act runs regardless of the
@@ -77,15 +71,6 @@ And a file carrying local modifications keeps its local content
 
 #### UC-RPC3: Convergence refreshes TeleClaude's hooks and preserves the project's own
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-```gherkin
-Given a project subscribing code whose installed hooks are the ones TeleClaude owns
-And which also carries a hook the project authored itself
-When an agent runs project initialization for that repository
-Then the TeleClaude-owned hooks are refreshed from their current templates
-And the project-authored hook is left in place
-```
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 ```gherkin
 Given a project whose enabled capabilities or declared bindings resolve an executable action
 And whose installed hooks include hooks TeleClaude owns
@@ -94,18 +79,9 @@ When an agent runs project initialization for that repository
 Then the TeleClaude-owned hooks are refreshed from their current templates
 And the project-authored hook is left in place
 ```
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 #### UC-RPC4: A project subscribing neither receives no plumbing
 
-<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
-```gherkin
-Given a repository whose declaration subscribes neither code nor docs
-When an agent runs project initialization for that repository
-Then no TeleClaude-owned git hook is installed for it
-And no docs filter driver is configured for it
-```
-<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 ```gherkin
 Given a repository whose declaration activates no executable action binding
 And whose declaration does not subscribe docs
@@ -113,7 +89,6 @@ When an agent runs project initialization for that repository
 Then no TeleClaude-owned git hook is installed for it
 And no docs filter driver is configured for it
 ```
-<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 #### UC-RPC6: No synchronization path converges project plumbing
 
