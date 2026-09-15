@@ -110,12 +110,21 @@ Then no snippets match and the listing (or fetch) returns empty
 And the command does not hard-fail — an unknown slug yields an empty result, not an error
 ```
 
+<!-- planned-change:docs-tier-layering -->
 ```
 Given a snippet whose visibility excludes the caller's role
 When the caller runs telec docs get on that ID
 Then the snippet is surfaced in the output with an "Insufficient role" / "access: denied" notice
 And the content body is withheld
 ```
+<!-- change:docs-tier-layering -->
+```
+Given a snippet whose visibility the caller's resolved depth on its tier does not admit
+When the caller runs telec docs get on that ID
+Then the snippet is surfaced in the output with a withheld notice
+And the content body is withheld
+```
+<!-- /planned-change:docs-tier-layering -->
 
 #### UC-3PR5: Unknown --domains value fails loud
 

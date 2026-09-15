@@ -343,22 +343,27 @@ And snippets of every other tier are excluded
 
 ### Cross-context references
 
+<!-- planned-change:docs-tier-layering -->
 - **identity** — terminal-session role is resolved upstream by the CLI and
   passed in; the predicate composition uses it to filter visibility.
 - **config** — supplies the registered publishers' `business.publishes`
   declarations (their union is the valid-domain set used for cross-project ID
   classification), the project catalog of known project slugs, and the
   `project_slug` that determines which IDs are "own" vs. "cross-project".
-
-<!-- planned:docs-tier-layering -->
+<!-- change:docs-tier-layering -->
 - **identity** — the resolved caller: their person identity, their platform
-  role, and the company relationships and project assignments that resolution
-  reports. Read scope is derived from these resolved facts; this policy owns
-  neither the resolution nor the declarations beneath it.
-- **config** — supplies each project's own declaration of its owning company and
-  the catalog metadata this policy consumes. Declarations only; a caller's
+  role, and the company relationships and project reach that resolution
+  reports, received from the dispatch boundary. Read depth is derived from
+  these resolved facts; this policy owns neither the resolution nor the
+  declarations beneath it.
+- **config** — supplies the registered publishers' `business.publishes`
+  declarations (their union is the valid-domain set used for cross-project ID
+  classification), the project catalog of known project slugs, the
+  `project_slug` that determines which IDs are "own" vs. "cross-project", each
+  project's own declaration of its owning company, and each tier's declared
+  participation in the documentation surface. Declarations only; a caller's
   resolved relationships come from identity.
-<!-- /planned:docs-tier-layering -->
+<!-- /planned-change:docs-tier-layering -->
 
 ## Known caveats
 
