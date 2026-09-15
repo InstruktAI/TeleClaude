@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NoReturn, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from instrukt_ai_logging import get_logger
 from pydantic import TypeAdapter
 
 from teleclaude.api.auth import CallerIdentity, clearance_history_search
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.config import config
-from teleclaude.core.command_dispatch import parse_remote_dispatch_data_diagnosed
+from teleclaude.core.command_dispatch import RemoteDispatchError, parse_remote_dispatch_data_diagnosed
 from teleclaude.core.models import JsonDict, MessageMetadata
 from teleclaude.history.service import (
     HistorySearchPayload,
@@ -24,9 +25,13 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 REMOTE_HISTORY_SEARCH_COMMAND = "history_search"
+REMOTE_HISTORY_SEARCH_FAILURE_EVENT = "history_search.remote_failure"
+REMOTE_HISTORY_SEARCH_FAILURE_DETAIL = "Remote history search failed"
+REMOTE_HISTORY_SEARCH_TIMEOUT_DETAIL = "Remote history search timed out"
 _NO_REMOTE_COMPUTER = ""
 
 _STATE = SimpleNamespace(client=None)
+logger = get_logger(__name__)
 router = APIRouter()
 
 
@@ -34,6 +39,17 @@ def configure(client: AdapterClient | None = None) -> None:
     """Wire the peer transport used for federated search."""
     if client is not None:
         _STATE.client = client
+
+
+def _raise_remote_history_search_failure(
+    *,
+    computer: str,
+    detail: str,
+    cause: Exception,
+) -> NoReturn:
+    """Log a remote-search failure and return a translated HTTP error."""
+    logger.error(REMOTE_HISTORY_SEARCH_FAILURE_EVENT, computer=computer, exc_info=True)
+    raise HTTPException(status_code=500, detail=detail) from cause
 
 
 @router.get("/history/search")
@@ -73,22 +89,43 @@ async def search_history(
             human_email=caller.email,
             human_role=caller.human_role,
         )
-        message_id = await _STATE.client.send_request(
-            target_computer,
-            REMOTE_HISTORY_SEARCH_COMMAND,
-            metadata,
-        )
-        response_text = await _STATE.client.read_response(
-            message_id,
-            target_computer=target_computer,
-        )
-        data = await parse_remote_dispatch_data_diagnosed(
-            _STATE.client,
-            response_text,
-            target_computer=target_computer,
-            command=REMOTE_HISTORY_SEARCH_COMMAND,
-        )
-        return TypeAdapter(HistorySearchPayload).validate_python(data)
+        try:
+            message_id = await _STATE.client.send_request(
+                target_computer,
+                REMOTE_HISTORY_SEARCH_COMMAND,
+                metadata,
+            )
+            response_text = await _STATE.client.read_response(
+                message_id,
+                target_computer=target_computer,
+            )
+            data = await parse_remote_dispatch_data_diagnosed(
+                _STATE.client,
+                response_text,
+                target_computer=target_computer,
+                command=REMOTE_HISTORY_SEARCH_COMMAND,
+            )
+            return TypeAdapter(HistorySearchPayload).validate_python(data)
+        except HTTPException:
+            raise
+        except RemoteDispatchError as exc:
+            _raise_remote_history_search_failure(
+                computer=target_computer,
+                detail=str(exc),
+                cause=exc,
+            )
+        except TimeoutError as exc:
+            _raise_remote_history_search_failure(
+                computer=target_computer,
+                detail=REMOTE_HISTORY_SEARCH_TIMEOUT_DETAIL,
+                cause=exc,
+            )
+        except Exception as exc:
+            _raise_remote_history_search_failure(
+                computer=target_computer,
+                detail=REMOTE_HISTORY_SEARCH_FAILURE_DETAIL,
+                cause=exc,
+            )
 
     return await asyncio.to_thread(
         build_history_search_payload,
