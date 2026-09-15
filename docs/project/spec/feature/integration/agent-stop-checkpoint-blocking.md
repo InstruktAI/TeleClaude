@@ -597,6 +597,33 @@ Then the judgment action is surfaced
 ```
 <!-- /planned:checkpoint-keeps-only-judgment-actions -->
 
+<!-- planned:unknown-scope-is-not-empty-scope -->
+#### UC-CP26: An unattributable dirty tree surfaces the declaration advisory
+
+```gherkin
+Given an agent session reaches an agent-stop checkpoint boundary
+And the working tree is dirty
+And no path is attributed to that session for the turn
+And the checkpoint cycle carries no declaration, commit, or change-inspection evidence
+When checkpoint evaluation completes
+Then a checkpoint decision is produced rather than skipped as having no changes
+And its required action instructs the agent to compare its own registered scope against what it wrote and declare the difference
+And the decision names no path and resolves no ownership
+```
+
+#### UC-CP27: Inspecting the registered scope discharges the advisory
+
+```gherkin
+Given an agent session was advised to declare its unregistered changes
+And the working tree is still dirty with paths that session did not write
+When the session inspects its registered scope and declares nothing
+And the session reaches a further agent-stop checkpoint boundary in the same cycle
+Then the advisory is not surfaced again
+And the agent stop is not withheld pending an action the session has already performed
+```
+
+<!-- /planned:unknown-scope-is-not-empty-scope -->
+
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
