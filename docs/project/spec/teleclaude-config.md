@@ -501,12 +501,13 @@ environment_variables:
 ```
 <!-- change:config-sample-regeneration-leaves-sync -->
 ```yaml
-# Every name below derives from its machine-config field path.
+# Names backing a machine-config field derive from that field's path.
+# `TELECLAUDE_HOME` is not a machine-config field and does not derive.
 environment_variables:
   # Telegram adapter
   - TELEGRAM_BOT_TOKEN
   # Discord adapter
-  - DISCORD_BOT_TOKEN
+  - DISCORD_TOKEN
   - DISCORD_GUILD_ID
   # WhatsApp adapter
   - WHATSAPP_PHONE_NUMBER_ID
@@ -514,16 +515,15 @@ environment_variables:
   - WHATSAPP_WEBHOOK_SECRET
   - WHATSAPP_VERIFY_TOKEN
   - WHATSAPP_TEMPLATE_NAME
-  - WHATSAPP_TEMPLATE_LANGUAGE
   - WHATSAPP_BUSINESS_NUMBER
-  # AI keys; also editable in the Providers subtab (AI section)
-  - ANTHROPIC_API_KEY
-  - OPENAI_API_KEY
-  - GOOGLE_API_KEY
-  - SUMMARIZER_LLM_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
-  - SUMMARIZER_LLM_MODEL # model id loaded in the local server
-  # Voice / TTS
-  - ELEVENLABS_API_KEY
+  # Summarizer providers; also editable in the Providers subtab (AI section)
+  - SUMMARIZER_ANTHROPIC_API_KEY
+  - SUMMARIZER_OPENAI_API_KEY
+  - SUMMARIZER_GOOGLE_API_KEY
+  - SUMMARIZER_LOCAL_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
+  - SUMMARIZER_LOCAL_MODEL # model id loaded in the local server
+  # Voice providers are operator-authored entries under an `ungoverned_body`;
+  # their references are authored in the configuration, not derived here.
   # Redis transport — essential infrastructure. Editable in the Infra subtab (Redis section)
   # as ${VAR}-backed fields, and a mandatory guided-wizard step (the Infra step is not
   # complete until REDIS_URL is set). Also listed in the config TUI's environment section.
@@ -535,19 +535,19 @@ environment_variables:
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
   # Postgres (v2 only) — DATABASE_URL is deactivated until the v2 workflow cutover; it is
   # commented out in .env / .env.sample and is NOT part of make install yet.
-  # AI keys / Email / Backup / Firecrawl — editable in the Providers subtab (reflected ${VAR} fields, saved to .env)
-  - EMAIL_FROM
-  - EMAIL_REPLYTO
-  - SMTP_USERNAME
-  - SMTP_KEY
-  - SMTP_RELAY # host:port
-  - AWS_ACCESS_KEY_ID
-  - AWS_SECRET_ACCESS_KEY
-  - AWS_S3_HOST
-  - AWS_S3_REGION
-  - AWS_S3_BUCKET
-  - TELECLAUDE_BACKUP_PREFIX
-  - FIRECRAWL_API_KEY
+  # Email and backup — editable in the Providers subtab, saved to .env.
+  # Firecrawl is supplied by the person's own environment for MCP loading.
+  - EMAIL_SENDER
+  - EMAIL_REPLY_TO
+  - EMAIL_SMTP_USERNAME
+  - EMAIL_SMTP_KEY
+  - EMAIL_SMTP_RELAY # host:port
+  - BACKUP_AWS_ACCESS_KEY_ID
+  - BACKUP_AWS_SECRET_ACCESS_KEY
+  - BACKUP_AWS_S3_HOST
+  - BACKUP_AWS_S3_REGION
+  - BACKUP_AWS_S3_BUCKET
+  - BACKUP_PREFIX
 ```
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
@@ -583,7 +583,11 @@ carries none, writing each sensitive field as its derived environment reference.
 that already carries a runtime file keeps it unchanged. The TUI, daemon, and installer
 read and write only the runtime
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 file; the blueprint is never mutated. `make install` writes opted-in agents' `enabled`
+<!-- change:config-sample-regeneration-leaves-sync -->
+file. `make install` writes opted-in agents' `enabled`
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 state into the runtime file. The runtime file's path is
 `<TELECLAUDE_HOME>/config.yml` with no override: moving the runtime tree moves
@@ -813,7 +817,7 @@ This spec must be updated whenever a documented config key or env var is added, 
 <!-- planned-change:config-sample-regeneration-leaves-sync -->
 The config wizard, `_ADAPTER_ENV_VARS` registry, and `GuidanceRegistry` must stay in sync with the user-facing `teleclaude.yml` / environment-variable surfaces documented here.
 <!-- change:config-sample-regeneration-leaves-sync -->
-The environment-variable surface is derived from the machine-config schema's sensitive declarations, so it has nothing to keep in sync.
+A variable backing a machine-config field is derived from that field's path, so no registry is kept in sync with it. Variables from other sources — the deployment-time home location, MCP server requirements, and operator-authored `ungoverned_body` entries — are still recorded here when they are added, renamed, or removed.
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 Daemon-only structural keys in `config.yml` must also be documented here, but they only require wizard or env-var changes when those keys become part of the interactive `teleclaude.yml` setup flow.

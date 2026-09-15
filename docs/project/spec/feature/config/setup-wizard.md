@@ -58,9 +58,16 @@ The user experience holds five guarantees:
    blockers from optional adapter incompleteness. On close, it summarises
    remaining blockers in one screen.
 
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 The wizard delegates to the existing TUI in guided mode and reuses the
 established adapter-tab, env-var-registry, guidance-registry, and
 atomic-config-write infrastructure. Persistence flows through five
+<!-- change:config-sample-regeneration-leaves-sync -->
+The wizard delegates to the existing TUI in guided mode and reuses the
+established adapter-tab and atomic-config-write infrastructure, and the
+schema's own sensitivity declarations in place of a separate registry.
+Persistence flows through five
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 distinct surfaces (see "Persistence surfaces and writers" below): YAML
 overlays are typed by the config bounded context's overlay schemas
 (global, project, per-person), the machine `config.yml` is typed by the

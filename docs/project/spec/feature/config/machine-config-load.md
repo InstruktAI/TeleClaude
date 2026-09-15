@@ -65,7 +65,15 @@ When installation runs
 Then the machine configuration is produced from the configuration schema
 And each field declared sensitive is written as its derived environment reference
 And no field's resolved secret value is written
-And a host that already carries a machine configuration keeps it unchanged
+```
+
+#### UC-CFG-LOAD-11: Installation leaves an existing machine configuration alone
+
+```
+Given a host already carrying a machine configuration at <RuntimeConfig.home>/config.yml
+When installation runs
+Then that configuration is left byte-for-byte unchanged
+And no field is added, removed, or re-derived from the schema
 ```
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
