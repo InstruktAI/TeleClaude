@@ -394,6 +394,29 @@ And it does not fail merely because the concurrent commit temporarily owns the i
 - **Integrator conflict resolution after a squash merge:** edit resolved file; `telec code add <resolved>`; `telec code commit --approved "<msg>"`.
 - **Bash-`rm` deletion that fell out of transcript:** `telec code commit --approved "<msg>" --include <deleted>` declares the deletion explicitly.
 
+<!-- planned:unknown-scope-is-not-empty-scope -->
+#### UC-CGIP-36 — A session can disclaim a dirty path it did not write
+
+```gherkin
+Given a repository path is dirty and is not registered to the calling session
+When the session disclaims that path through the sealed disclaim surface
+Then the path is recorded as disclaimed for that session alone
+And no other session's scope, declarations, or ownership answer changes
+And the path is still reported to every other session that has not accounted for it
+And disclaiming attributes the path to no one
+```
+
+#### UC-CGIP-37 — A disclaimer covers a situation, not a filename
+
+```gherkin
+Given a session has disclaimed a dirty path
+When that path is committed, becomes clean, or the session receives new user input
+Then the disclaimer no longer applies to that path
+And a later change to that path is reported to the session again
+```
+
+<!-- /planned:unknown-scope-is-not-empty-scope -->
+
 ### Commit-time gates — in-process, no framework stash
 
 
