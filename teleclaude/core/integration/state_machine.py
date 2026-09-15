@@ -146,6 +146,56 @@ def _log_delivered_marker_recovery_publication(
     )
 
 
+def _recover_delivered_markers(
+    *,
+    cwd: str,
+    session_id: str,
+    loop: asyncio.AbstractEventLoop | None,
+    sync_id: str,
+) -> str | None:
+    """Repair delivered-marker divergence and publish only applied recovery commits."""
+    recovery = recover_delivered_marker_divergence(Path(cwd), get_todos_db_sync(cwd).delivered_slugs_sync())
+    for fault in recovery.faults:
+        _log_delivered_marker_recovery_fault(fault, session_id=session_id, sync_id=sync_id)
+    if not recovery.applied_receipts:
+        return None
+
+    repo_root_sync = _synchronize_repo_root(cwd=cwd, session_id=session_id, stage=RepoRootSyncStage.ENTRY)
+    _emit_repo_root_sync_progress(repo_root_sync.sync_id, repo_root_sync.outcome.value, loop)
+    if not repo_root_sync.is_ready:
+        return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
+    if repo_root_sync.outcome is not RepoRootSyncOutcome.AHEAD_ONLY:
+        return None
+
+    publication = _publish_repo_root_main(cwd=cwd, synchronization=repo_root_sync)
+    if not publication.succeeded:
+        return _format_repo_root_sync_instruction(publication.synchronization, project_root=cwd)
+    confirmation = _synchronize_repo_root(cwd=cwd, session_id=session_id, stage=RepoRootSyncStage.ENTRY)
+    _emit_repo_root_sync_progress(confirmation.sync_id, confirmation.outcome.value, loop)
+    if not confirmation.is_ready:
+        return _format_repo_root_sync_instruction(confirmation, project_root=cwd)
+    if confirmation.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
+        failed_confirmation = _mark_repo_root_sync_failure(
+            confirmation,
+            outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
+            failed_operation=_PUBLICATION_CONFIRMATION_FAILED_OPERATION,
+            diagnostic=_PUBLICATION_CONFIRMATION_FAILED_DIAGNOSTIC,
+        )
+        return _format_repo_root_sync_instruction(failed_confirmation, project_root=cwd)
+    if publication.source_head is not None:
+        for receipt in recovery.applied_receipts:
+            if receipt.commit is not None:
+                _log_delivered_marker_recovery_publication(
+                    session_id=session_id,
+                    sync_id=publication.synchronization.sync_id,
+                    source_head=publication.source_head,
+                    recovery_slug=receipt.slug,
+                    recovery_commit=receipt.commit,
+                    transition_id=receipt.transition_id,
+                )
+    return None
+
+
 def _dispatch_sync(
     *,
     session_id: str,
@@ -177,55 +227,11 @@ def _dispatch_sync(
         return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
 
     if initial_checkpoint.phase == IntegrationPhase.IDLE.value:
-        recovery = recover_delivered_marker_divergence(
-            Path(cwd),
-            get_todos_db_sync(cwd).delivered_slugs_sync(),
+        recovery_instruction = _recover_delivered_markers(
+            cwd=cwd, session_id=session_id, loop=loop, sync_id=repo_root_sync.sync_id
         )
-        for fault in recovery.faults:
-            _log_delivered_marker_recovery_fault(
-                fault,
-                session_id=session_id,
-                sync_id=repo_root_sync.sync_id,
-            )
-        repo_root_sync = _synchronize_repo_root(
-            cwd=cwd,
-            session_id=session_id,
-            stage=RepoRootSyncStage.ENTRY,
-        )
-        _emit_repo_root_sync_progress(repo_root_sync.sync_id, repo_root_sync.outcome.value, loop)
-        if not repo_root_sync.is_ready:
-            return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
-        if repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
-            publication = _publish_repo_root_main(cwd=cwd, synchronization=repo_root_sync)
-            if not publication.succeeded:
-                return _format_repo_root_sync_instruction(publication.synchronization, project_root=cwd)
-            repo_root_sync = _synchronize_repo_root(
-                cwd=cwd,
-                session_id=session_id,
-                stage=RepoRootSyncStage.ENTRY,
-            )
-            _emit_repo_root_sync_progress(repo_root_sync.sync_id, repo_root_sync.outcome.value, loop)
-            if not repo_root_sync.is_ready:
-                return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
-            if repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
-                repo_root_sync = _mark_repo_root_sync_failure(
-                    repo_root_sync,
-                    outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
-                    failed_operation=_PUBLICATION_CONFIRMATION_FAILED_OPERATION,
-                    diagnostic=_PUBLICATION_CONFIRMATION_FAILED_DIAGNOSTIC,
-                )
-                return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
-            if publication.source_head is not None:
-                for receipt in recovery.applied_receipts:
-                    if receipt.commit is not None:
-                        _log_delivered_marker_recovery_publication(
-                            session_id=session_id,
-                            sync_id=publication.synchronization.sync_id,
-                            source_head=publication.source_head,
-                            recovery_slug=receipt.slug,
-                            recovery_commit=receipt.commit,
-                            transition_id=receipt.transition_id,
-                        )
+        if recovery_instruction:
+            return recovery_instruction
 
     # Reset session-scoped counters on fresh entry so they reflect only this
     # run's work, not accumulated totals from previous integrator sessions.

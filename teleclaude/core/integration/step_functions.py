@@ -6,11 +6,15 @@ Instruction formatters live in formatters.py.
 
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from time import perf_counter
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.capabilities import resolve_capabilities
 from teleclaude.checkpoint_model import main_only_action_ids_for_files
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
@@ -41,15 +45,16 @@ from teleclaude.core.integration.formatters import (
     _format_push_rejected,
     _format_queue_empty,
     _format_repo_root_sync_instruction,
+    _format_root_finalization_blocker,
 )
 from teleclaude.core.integration.git_ops import (
-    RepoRootSyncOutcome,
     RepoRootSyncStage,
     _ensure_integration_worktree,
     _get_branch_log,
     _get_conflicted_files,
     _get_diff_stats,
     _get_head_sha,
+    _get_remote_main_sha,
     _git_dir,
     _integration_worktree_path,
     _merge_head_exists,
@@ -69,10 +74,14 @@ from teleclaude.core.integration.park import (
 )
 from teleclaude.core.integration.push_recovery import _is_content_gate_rejection
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug, reclaim_worktree_trash
+from teleclaude.core.next_machine.git_ops import build_git_hook_env
+from teleclaude.core.next_machine.marker_reconciliation import MarkerReceipt
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.hooks.checkpoint import _git_diff_names
 from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
+from teleclaude.quality.gate import LintGateOutcome, run_lint_gate
+from teleclaude.runtime.environment import resolve_runtime_environment
 
 logger = get_logger(__name__)
 
@@ -84,8 +93,37 @@ _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
 _INTEGRATOR_MAINTENANCE_RECORDING_FAILED = "Failed to {operation} integrator maintenance {target} for range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
 _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG = "integration.maintenance_marker.recorded"
-_REPO_ROOT_SYNC_SOURCE, _INTEGRATION_WORKTREE_SYNC_SOURCE = "repo_root", "integration_worktree"
+_REPO_ROOT_SYNC_SOURCE = "repo_root"
 _BLUEPRINT_REGENERATED_LOG = "integration.blueprint.regenerated"
+_FINAL_CONTENT_GATE_FINISHED_EVENT = "integration.final_content_gate.finished"
+_QUALITY_ENV_REMOVED_KEYS = frozenset({"VIRTUAL_ENV", "PYTHONPATH", "PYTEST_ADDOPTS"})
+_VALIDATION_CHECKOUT_RESET_ARGS = ("reset", "--hard")
+
+
+class FinalContentGateOutcome(StrEnum):
+    """Closed outcomes of the repository-root final content gate."""
+
+    PASSED = "passed"
+    FAILED = "failed"
+    NOT_APPLICABLE = "not_applicable"
+
+
+@dataclass(frozen=True)
+class FinalContentGateResult:
+    """The finalization gate result retained at the integration boundary."""
+
+    outcome: FinalContentGateOutcome
+    reason: str
+
+
+@dataclass(frozen=True)
+class RootFinalizationResult:
+    """The root-only receipt and SHA required to persist a delivered todo."""
+
+    final_sha: str | None
+    receipt: MarkerReceipt | None
+    blocker: str | None
+
 
 # ---------------------------------------------------------------------------
 # Git helpers
@@ -416,13 +454,6 @@ def _step_delivery_bookkeeping(
     wt = str(integration_wt)
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
 
-    _changed, _, fold_error = reassert_delivered_fold(integration_wt, key.slug)
-    if fold_error is not None:
-        return False, _format_error("RESIDUAL_MARKERS", fold_error)
-    gate_error = assert_clean_before_push(integration_wt, key.slug)
-    if gate_error is not None:
-        return False, _format_error("RESIDUAL_MARKERS", gate_error)
-
     rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
     if rc != 0:
         # Deferred: teleclaude.commit_identity pulls in todo_scaffold ->
@@ -531,7 +562,7 @@ def _step_push_succeeded(
     session_id: str,
     cwd: str,
 ) -> tuple[bool, str]:
-    """Confirm delivery, complete maintenance and cleanup, then pause on a non-ready repo root."""
+    """Finalize the confirmed candidate through the repository-root delivery boundary."""
     key = _get_candidate_key(checkpoint)
     if not key:
         return False, _format_error("INVALID_STATE", "PUSH_SUCCEEDED phase has no candidate key")
@@ -564,22 +595,34 @@ def _step_push_succeeded(
         logger.info("%s slug=%s phase=PUSH_REJECTED (confirmation gate)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(reason, key.slug, wt)
 
-    _, receipt, reconciliation_error = reassert_delivered_fold(integration_wt, key.slug)
-    if reconciliation_error is not None:
-        return False, _format_error("DELIVERY_RECONCILIATION_FAILED", reconciliation_error or "unknown failure")
+    finalization = _finalize_confirmed_candidate(
+        cwd=cwd,
+        session_id=session_id,
+        integration_wt=integration_wt,
+        slug=key.slug,
+        candidate_sha=confirmed_sha,
+    )
+    if finalization.blocker is not None or finalization.final_sha is None or finalization.receipt is None:
+        return False, finalization.blocker or _format_root_finalization_blocker(
+            key.slug, "Root finalization produced no receipt."
+        )
+    final_sha = finalization.final_sha
+    receipt = finalization.receipt
+
+    checkpoint.pushed_sha = final_sha
 
     todos_db = get_todos_db_sync(cwd)
     delivered = todos_db.deliver_sync(
         key.slug,
         reconciliation_receipt=receipt,
-        reconciliation_root=integration_wt,
-        commit=confirmed_sha,
+        reconciliation_root=Path(cwd),
+        commit=final_sha,
     )
     if not delivered:
         if key.slug in todos_db.delivered_slugs_sync():
             logger.info(
                 "integration.delivery.already_delivered",
-                extra={"slug": key.slug, "commit_sha": confirmed_sha},
+                extra={"slug": key.slug, "commit_sha": final_sha},
             )
         else:
             return False, _format_error(
@@ -593,23 +636,16 @@ def _step_push_succeeded(
     finally:
         conn.close()
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
-    repo_root_sync = _synchronize_repo_root(
-        cwd=cwd,
-        session_id=session_id,
-        stage=RepoRootSyncStage.POST_DELIVERY,
-    )
-    if repo_root_sync.is_ready and repo_root_sync.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
-        repo_root_sync = _publish_repo_root_main(cwd=cwd, synchronization=repo_root_sync).synchronization
     checkpoint.warnings = warnings
     if checkpoint.pre_merge_head:
-        merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{confirmed_sha}"
+        merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{final_sha}"
         try:
             changed_files = _git_diff_names(cwd, merge_range)
             actions = main_only_action_ids_for_files(changed_files, Path(cwd))
             record_integrator_maintenance_marker(cwd, merge_range, actions)
             logger.info(
                 _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG,
-                extra={"session_id": repo_root_sync.session_id, "merge_range": merge_range, "actions": actions},
+                extra={"session_id": session_id, "merge_range": merge_range, "actions": actions},
             )
         except OSError:
             msg = _INTEGRATOR_MAINTENANCE_RECORDING_FAILED.format(
@@ -626,28 +662,15 @@ def _step_push_succeeded(
             warnings.append(msg)
             checkpoint.warnings = warnings
 
-    if repo_root_sync.is_ready:
-        baseline_sha = _get_head_sha(cwd)
-        if baseline_sha:
-            blueprint_warning = _regenerate_blueprint_after_delivery(
-                cwd=cwd,
-                baseline_sha=baseline_sha,
-                source=_REPO_ROOT_SYNC_SOURCE,
-            )
-            if blueprint_warning:
-                logger.warning(blueprint_warning)
-                warnings.append(blueprint_warning)
-                checkpoint.warnings = warnings
-    else:
-        blueprint_warning = _regenerate_blueprint_after_delivery(
-            cwd=wt,
-            baseline_sha=confirmed_sha,
-            source=_INTEGRATION_WORKTREE_SYNC_SOURCE,
-        )
-        if blueprint_warning:
-            logger.warning(blueprint_warning)
-            warnings.append(blueprint_warning)
-            checkpoint.warnings = warnings
+    blueprint_warning = _regenerate_blueprint_after_delivery(
+        cwd=cwd,
+        baseline_sha=final_sha,
+        source=_REPO_ROOT_SYNC_SOURCE,
+    )
+    if blueprint_warning:
+        logger.warning(blueprint_warning)
+        warnings.append(blueprint_warning)
+        checkpoint.warnings = warnings
 
     checkpoint.phase = IntegrationPhase.CLEANUP.value
     _write_checkpoint(checkpoint_path, checkpoint)
@@ -657,9 +680,127 @@ def _step_push_succeeded(
         key=key,
         cwd=cwd,
     )
-    if not repo_root_sync.is_ready:
-        return False, _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
     return cleanup_continues, cleanup_instruction
+
+
+def _finalize_confirmed_candidate(
+    *,
+    cwd: str,
+    session_id: str,
+    integration_wt: Path,
+    slug: str,
+    candidate_sha: str,
+) -> RootFinalizationResult:
+    """Fold, validate, and publish the confirmed candidate from repository root."""
+    repo_root_sync = _synchronize_repo_root(cwd=cwd, session_id=session_id, stage=RepoRootSyncStage.POST_DELIVERY)
+    if not repo_root_sync.is_ready:
+        return RootFinalizationResult(None, None, _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd))
+
+    reconciliation_root = Path(cwd)
+    _, receipt, reconciliation_error = reassert_delivered_fold(reconciliation_root, slug)
+    if reconciliation_error is not None:
+        return RootFinalizationResult(None, None, _format_root_finalization_blocker(slug, reconciliation_error))
+    residual_marker_error = assert_clean_before_push(reconciliation_root, slug)
+    if residual_marker_error is not None:
+        return RootFinalizationResult(None, None, _format_root_finalization_blocker(slug, residual_marker_error))
+
+    subject_sha = _get_head_sha(cwd)
+    if subject_sha is None:
+        return RootFinalizationResult(
+            None,
+            None,
+            _format_root_finalization_blocker(slug, "Repository-root HEAD is unavailable after marker reconciliation."),
+        )
+    reset_rc, _, reset_stderr = _run_git([*_VALIDATION_CHECKOUT_RESET_ARGS, subject_sha], cwd=str(integration_wt))
+    if reset_rc != 0 or _get_head_sha(str(integration_wt)) != subject_sha:
+        return RootFinalizationResult(
+            None,
+            None,
+            _format_root_finalization_blocker(
+                slug,
+                f"Validation checkout could not reset to root subject {subject_sha}: {reset_stderr.strip()}",
+            ),
+        )
+
+    final_gate = _run_final_content_gate(
+        project_root=reconciliation_root,
+        execution_root=integration_wt,
+        subject_sha=subject_sha,
+        slug=slug,
+        candidate_sha=candidate_sha,
+    )
+    if final_gate.outcome is FinalContentGateOutcome.FAILED:
+        return RootFinalizationResult(None, None, _format_root_finalization_blocker(slug, final_gate.reason))
+    if _get_head_sha(cwd) != subject_sha:
+        return RootFinalizationResult(
+            None,
+            None,
+            _format_root_finalization_blocker(
+                slug,
+                "Repository-root HEAD changed after final validation; synchronization and validation must restart.",
+            ),
+        )
+
+    publication = _publish_repo_root_main(cwd=cwd, synchronization=repo_root_sync)
+    final_sha = publication.source_head
+    if not publication.succeeded or final_sha is None:
+        return RootFinalizationResult(
+            None,
+            None,
+            _format_root_finalization_blocker(slug, publication.synchronization.diagnostic),
+        )
+    if _get_remote_main_sha(cwd) != final_sha:
+        return RootFinalizationResult(
+            None,
+            None,
+            _format_root_finalization_blocker(
+                slug,
+                f"Repository-root publication did not confirm source head {final_sha} on origin/main.",
+            ),
+        )
+    return RootFinalizationResult(final_sha, receipt, None)
+
+
+def _run_final_content_gate(
+    *,
+    project_root: Path,
+    execution_root: Path,
+    subject_sha: str,
+    slug: str,
+    candidate_sha: str,
+) -> FinalContentGateResult:
+    """Evaluate the folded repository-root subject in an isolated checkout."""
+    if not resolve_capabilities(project_root).code:
+        result = FinalContentGateResult(FinalContentGateOutcome.NOT_APPLICABLE, "Code capability is not declared.")
+    else:
+        base_env = dict(os.environ)  # guard: direct-env-read - allowed: child-process environment construction
+        for key in _QUALITY_ENV_REMOVED_KEYS:
+            base_env.pop(key, None)
+        runtime_env = resolve_runtime_environment(base_env)
+        base_env["PATH"] = str(runtime_env["PATH"])
+        shell = runtime_env.get("SHELL")
+        if isinstance(shell, str):
+            base_env["SHELL"] = shell
+        child_env = build_git_hook_env(str(project_root), base_env)
+        gate_result = run_lint_gate(project_root, execution_root, subject_sha, None, False, child_env)
+        outcome = (
+            FinalContentGateOutcome.PASSED
+            if gate_result.outcome is LintGateOutcome.PASSED
+            else FinalContentGateOutcome.FAILED
+        )
+        result = FinalContentGateResult(outcome, gate_result.failure_reason or "")
+    _emit_lifecycle_event(
+        _FINAL_CONTENT_GATE_FINISHED_EVENT,
+        {
+            "slug": slug,
+            "candidate_sha": candidate_sha,
+            "subject_sha": subject_sha,
+            "validation_root": str(execution_root),
+            "outcome": result.outcome.value,
+            "reason": result.reason,
+        },
+    )
+    return result
 
 
 def _step_cleanup(
