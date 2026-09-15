@@ -493,9 +493,9 @@ And the recorded delivered commit is that final confirmed SHA
 ```
 <!-- /planned-change:fix-delivered-todos-attribution-by-declarati -->
 
+<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 #### UC-WISM33: Idle integration publishes ahead-only repo-root state before candidate selection
 
-<!-- planned-change:fix-delivered-todos-attribution-by-declarati -->
 ```gherkin
 Given the integration checkpoint is idle
 And repo-root main contains committed work ahead of origin/main and is not behind it
