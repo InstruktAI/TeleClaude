@@ -172,7 +172,11 @@ belong to, global, and what the invocation offers — the project being worked i
 and the company that project declares as its owner — the last two met at
 whatever depth the caller's relationship grants, public-only where there is
 none. The other projects a caller reaches through the roster are not in the
-default set; they are read in full when worked in or named. Naming a tier, by selector
+default set; they are read in full when worked in or named. When the invocation
+resolves to no context at all, it offers what it offers today — the published
+documentation of every registered project — at the caller's depth; the bound on
+the default set rejects relationship-derived expansion inside a context and
+removes nothing from that absent-workspace case. Naming a tier, by selector
 or by snippet identity, changes reach: the named tier is assembled instead of
 the default set, at the depth this stage grants the caller for it. Naming never
 changes depth. A caller with no resolvable identity gains no tier from a
