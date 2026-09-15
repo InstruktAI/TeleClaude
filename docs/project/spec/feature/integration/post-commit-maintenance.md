@@ -14,11 +14,11 @@ installing the toolchain, reconciling dependencies, restarting the daemon,
 reloading the terminal interface, and running the documentation and artifact
 pipeline. Those actions carry no decision: each either ran or it did not.
 
-Maintenance runs automatically for every commit recorded on the canonical
-checkout, including the repository-root finalization commit that completes an
-integration delivery. It is not addressed to a session and does not depend on
-one existing, so a person committing by hand and an integrator delivery receive
-the same maintenance.
+Maintenance runs automatically whenever the canonical checkout advances: from
+a commit recorded there, or from an integration-controlled fast-forward that
+produces no repository-root commit. It is not addressed to a session and does
+not depend on one existing, so a person committing by hand and an integrator
+delivery receive the same maintenance.
 
 The owed set is resolved by the checkpoint scope matcher from the merged
 action registry and bindings
@@ -32,10 +32,10 @@ contract governs only what happens when maintenance runs.
 
 ## Canonical fields
 
-- **Trigger.** A recorded commit on canonical main. Integration reaches this
-  boundary through its repository-root finalization commit. Maintenance is not
-  conditioned on who or what made the commit, nor on whether a session is
-  present.
+- **Trigger.** A recorded commit on canonical main, or an integration-controlled
+  canonical-main fast-forward that produces no repository-root commit.
+  Maintenance is not conditioned on who or what made the commit, nor on whether
+  a session is present.
 - **Owed set.** The `main_only` maintenance actions the committed paths resolve
   to under the merged registry and bindings. Actions in the same precedence
   wave run concurrently; the next precedence wave starts after every action in
@@ -112,15 +112,14 @@ And the documentation and artifact pipeline is not run from that worktree
 And an agent reading the structured records observes that maintenance was skipped, and the location that made it ineligible
 ```
 
-#### UC-PCM6: Repository-root delivery finalization performs maintenance
+#### UC-PCM6: A no-commit integration fast-forward performs maintenance
 
 ```gherkin
-Given integration finalization records its repository-root commit on canonical main
-And the committed paths resolve deterministic maintenance actions
-And one owed action fails after starting
-When the finalization commit is recorded
+Given integration advances canonical main by fast-forward
+And no repository-root finalization commit is produced
+And the advanced range resolves deterministic maintenance actions
+When the canonical-root advancement completes
 Then the actions execute from the canonical checkout without an agent instruction
-And independent actions proceed despite another action failing
 And the structured records contain a terminal outcome for every action
 But the integration worktree performs no maintenance action
 ```
