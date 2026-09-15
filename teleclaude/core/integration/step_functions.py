@@ -11,10 +11,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from time import perf_counter
+from typing import Final
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import resolve_capabilities
+from teleclaude.checkpoint_model import main_only_action_ids_for_files
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
@@ -88,7 +90,7 @@ _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
 _GIT_RANGE_SEPARATOR = ".."
-_LOG_CHECK_ACTION_IDS = ["log-check"]
+_LOG_CHECK_ACTION_ID = "log-check"
 _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
 _INTEGRATOR_MAINTENANCE_RECORDING_FAILED = "Failed to {operation} integrator maintenance {target} for range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
@@ -98,6 +100,23 @@ _BLUEPRINT_REGENERATED_LOG = "integration.blueprint.regenerated"
 _FINAL_CONTENT_GATE_FINISHED_EVENT = "integration.final_content_gate.finished"
 _QUALITY_ENV_REMOVED_KEYS = frozenset({"VIRTUAL_ENV", "PYTHONPATH", "PYTEST_ADDOPTS"})
 _VALIDATION_CHECKOUT_RESET_ARGS = ("reset", "--hard")
+_PATH_ENV_KEY: Final = "PATH"
+_SHELL_ENV_KEY: Final = "SHELL"
+_ROOT_HEAD_UNAVAILABLE_AFTER_RECONCILIATION = "Repository-root HEAD is unavailable after marker reconciliation."
+_VALIDATION_CHECKOUT_RESET_FAILURE = "Validation checkout could not reset to root subject {subject_sha}: {stderr}"
+_ROOT_HEAD_CHANGED_AFTER_VALIDATION = (
+    "Repository-root HEAD changed after final validation; synchronization and validation must restart."
+)
+_ROOT_PUBLICATION_CONFIRMATION_FAILURE = (
+    "Repository-root publication did not confirm source head {final_sha} on origin/main."
+)
+_NO_CODE_CAPABILITY_REASON = "Code capability is not declared."
+_FINAL_GATE_FIELD_SLUG = "slug"
+_FINAL_GATE_FIELD_CANDIDATE_SHA = "candidate_sha"
+_FINAL_GATE_FIELD_SUBJECT_SHA = "subject_sha"
+_FINAL_GATE_FIELD_VALIDATION_ROOT = "validation_root"
+_FINAL_GATE_FIELD_OUTCOME = "outcome"
+_FINAL_GATE_FIELD_REASON = "reason"
 
 
 class FinalContentGateOutcome(StrEnum):
@@ -640,13 +659,18 @@ def _step_push_succeeded(
     if checkpoint.pre_merge_head:
         merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{final_sha}"
         try:
-            _ = _git_diff_names(cwd, merge_range)
-            actions = _LOG_CHECK_ACTION_IDS
-            record_integrator_maintenance_marker(cwd, merge_range, actions)
-            logger.info(
-                _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG,
-                extra={"session_id": session_id, "merge_range": merge_range, "actions": actions},
-            )
+            changed_files = _git_diff_names(cwd, merge_range)
+            actions = [
+                action_id
+                for action_id in main_only_action_ids_for_files(changed_files, Path(cwd))
+                if action_id == _LOG_CHECK_ACTION_ID
+            ]
+            if actions:
+                record_integrator_maintenance_marker(cwd, merge_range, actions)
+                logger.info(
+                    _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG,
+                    extra={"session_id": session_id, "merge_range": merge_range, "actions": actions},
+                )
         except OSError:
             msg = _INTEGRATOR_MAINTENANCE_RECORDING_FAILED.format(
                 operation="record", target="marker", merge_range=merge_range
@@ -709,7 +733,7 @@ def _finalize_confirmed_candidate(
         return RootFinalizationResult(
             None,
             None,
-            _format_root_finalization_blocker(slug, "Repository-root HEAD is unavailable after marker reconciliation."),
+            _format_root_finalization_blocker(slug, _ROOT_HEAD_UNAVAILABLE_AFTER_RECONCILIATION),
         )
     reset_rc, _, reset_stderr = _run_git([*_VALIDATION_CHECKOUT_RESET_ARGS, subject_sha], cwd=str(integration_wt))
     if reset_rc != 0 or _get_head_sha(str(integration_wt)) != subject_sha:
@@ -718,7 +742,10 @@ def _finalize_confirmed_candidate(
             None,
             _format_root_finalization_blocker(
                 slug,
-                f"Validation checkout could not reset to root subject {subject_sha}: {reset_stderr.strip()}",
+                _VALIDATION_CHECKOUT_RESET_FAILURE.format(
+                    subject_sha=subject_sha,
+                    stderr=reset_stderr.strip(),
+                ),
             ),
         )
 
@@ -737,11 +764,15 @@ def _finalize_confirmed_candidate(
             None,
             _format_root_finalization_blocker(
                 slug,
-                "Repository-root HEAD changed after final validation; synchronization and validation must restart.",
+                _ROOT_HEAD_CHANGED_AFTER_VALIDATION,
             ),
         )
 
-    publication = _publish_repo_root_main(cwd=cwd, synchronization=repo_root_sync)
+    publication = _publish_repo_root_main(
+        cwd=cwd,
+        synchronization=repo_root_sync,
+        expected_source_head=subject_sha,
+    )
     final_sha = publication.source_head
     if not publication.succeeded or final_sha is None:
         return RootFinalizationResult(
@@ -755,7 +786,7 @@ def _finalize_confirmed_candidate(
             None,
             _format_root_finalization_blocker(
                 slug,
-                f"Repository-root publication did not confirm source head {final_sha} on origin/main.",
+                _ROOT_PUBLICATION_CONFIRMATION_FAILURE.format(final_sha=final_sha),
             ),
         )
     return RootFinalizationResult(final_sha, receipt, None)
@@ -771,16 +802,16 @@ def _run_final_content_gate(
 ) -> FinalContentGateResult:
     """Evaluate the folded repository-root subject in an isolated checkout."""
     if not resolve_capabilities(project_root).code:
-        result = FinalContentGateResult(FinalContentGateOutcome.NOT_APPLICABLE, "Code capability is not declared.")
+        result = FinalContentGateResult(FinalContentGateOutcome.NOT_APPLICABLE, _NO_CODE_CAPABILITY_REASON)
     else:
         base_env = dict(os.environ)  # guard: direct-env-read - allowed: child-process environment construction
         for key in _QUALITY_ENV_REMOVED_KEYS:
             base_env.pop(key, None)
         runtime_env = resolve_runtime_environment(base_env)
-        base_env["PATH"] = str(runtime_env["PATH"])
-        shell = runtime_env.get("SHELL")
+        base_env[_PATH_ENV_KEY] = str(runtime_env[_PATH_ENV_KEY])
+        shell = runtime_env.get(_SHELL_ENV_KEY)
         if isinstance(shell, str):
-            base_env["SHELL"] = shell
+            base_env[_SHELL_ENV_KEY] = shell
         child_env = build_git_hook_env(str(project_root), base_env)
         gate_result = run_lint_gate(project_root, execution_root, subject_sha, None, False, child_env)
         outcome = (
@@ -792,12 +823,12 @@ def _run_final_content_gate(
     _emit_lifecycle_event(
         _FINAL_CONTENT_GATE_FINISHED_EVENT,
         {
-            "slug": slug,
-            "candidate_sha": candidate_sha,
-            "subject_sha": subject_sha,
-            "validation_root": str(execution_root),
-            "outcome": result.outcome.value,
-            "reason": result.reason,
+            _FINAL_GATE_FIELD_SLUG: slug,
+            _FINAL_GATE_FIELD_CANDIDATE_SHA: candidate_sha,
+            _FINAL_GATE_FIELD_SUBJECT_SHA: subject_sha,
+            _FINAL_GATE_FIELD_VALIDATION_ROOT: str(execution_root),
+            _FINAL_GATE_FIELD_OUTCOME: result.outcome.value,
+            _FINAL_GATE_FIELD_REASON: result.reason,
         },
     )
     return result

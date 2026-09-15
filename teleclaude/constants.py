@@ -595,9 +595,9 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
     ),
 }
 
-# Universal base bindings preserve their scopes for project overlays. Platform
-# defaults bind no action; `test` and `log-check` attach to a project-declared
-# `code` scope (code is an allowlist; an unmatched file is silent).
+# Universal base bindings preserve their scopes for project overlays. Docs and
+# agent-artifact scopes run tailored sync, while the toolchain scope runs install;
+# project-declared code scopes attach test and log-check separately.
 CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
 CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
     scope=CheckpointScope(include=("agents/**", ".agents/**", "**/AGENTS.master.md")),

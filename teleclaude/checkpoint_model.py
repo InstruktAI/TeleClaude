@@ -1,10 +1,10 @@
 """Effective checkpoint model: base ⊕ overlay merge, the scope matcher, and resolution.
 
-One matcher and one resolution source serve all three checkpoint consumers — the
-`agent_stop` hook engine, the commit-obligation ledger, and the integrator
-post-merge maintenance path — so a path that owes an action in one owes the
-equivalent in the others. Action selection is structured glob + evidence matching
-over the merged declaration only; no runtime language or content detection.
+One matcher and one resolution source serve every checkpoint and maintenance
+consumer: the agent-stop engine surfaces judgment actions, while post-commit and
+integration canonical-root advancement execute declared commands. Action
+selection is structured glob matching over the merged declaration only; no
+consumer recreates path or capability policy.
 """
 
 from __future__ import annotations

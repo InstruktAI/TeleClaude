@@ -38,6 +38,9 @@ _REPO_ROOT_SYNC_CLASSIFIED_LOG = "integration.repo_root_sync.classified"
 _REPO_ROOT_PUBLICATION_FINISHED_EVENT = "integration.repo_root_publication.finished"
 _REPO_ROOT_PUBLICATION_FINISHED_LOG = "Repo-root publication finished"
 _REPO_ROOT_PUBLICATION_SOURCE_HEAD_UNAVAILABLE = "repo-root HEAD is unavailable"
+_REPO_ROOT_PUBLICATION_SUBJECT_MISMATCH = (
+    "repo-root HEAD {source_head} does not match validated subject {expected_source_head}"
+)
 
 
 class RepoRootSyncStage(StrEnum):
@@ -366,7 +369,12 @@ def _mark_repo_root_sync_failure(
     )
 
 
-def _publish_repo_root_main(*, cwd: str, synchronization: RepoRootSyncResult) -> RepoRootPublicationResult:
+def _publish_repo_root_main(
+    *,
+    cwd: str,
+    synchronization: RepoRootSyncResult,
+    expected_source_head: str | None = None,
+) -> RepoRootPublicationResult:
     """Push already-committed repo-root main under the canonical main lock."""
     with main_branch_lock():
         source_head = _get_head_sha(cwd)
@@ -376,6 +384,17 @@ def _publish_repo_root_main(*, cwd: str, synchronization: RepoRootSyncResult) ->
                 outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
                 failed_operation=_GIT_PUSH_ORIGIN_MAIN_ARGS[0],
                 diagnostic=_REPO_ROOT_PUBLICATION_SOURCE_HEAD_UNAVAILABLE,
+            )
+            outcome = RepoRootPublicationOutcome.FAULTED
+        elif expected_source_head is not None and source_head != expected_source_head:
+            synchronization = _mark_repo_root_sync_failure(
+                synchronization,
+                outcome=RepoRootSyncOutcome.BOOKKEEPING_PUSH_FAILED,
+                failed_operation=_GIT_PUSH_ORIGIN_MAIN_ARGS[0],
+                diagnostic=_REPO_ROOT_PUBLICATION_SUBJECT_MISMATCH.format(
+                    source_head=source_head,
+                    expected_source_head=expected_source_head,
+                ),
             )
             outcome = RepoRootPublicationOutcome.FAULTED
         else:

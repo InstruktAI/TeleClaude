@@ -19,6 +19,19 @@ logger = get_logger(__name__)
 
 _SUBJECT_MISMATCH_TEMPLATE = "Quality gate refused to evaluate {subject_sha}: execution root HEAD is {execution_head}."
 _HEAD_READ_FAILURES = (BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError)
+_QUALITY_GATE_SUBJECT_UNAVAILABLE_EVENT = "quality_gate_subject_unavailable"
+_MAKE_EXECUTABLE = "make"
+_MAKE_FORMAT_TARGET = "format"
+_MAKE_LINT_TARGET = "lint"
+_MAKE_VARIABLE_TEMPLATE = "{key}={value}"
+_FILES_FROM_ARGUMENT_TEMPLATE = "FILES_FROM={files_from}"
+_NATIVE_LINT_FAILURE_TEMPLATE = "Native lint failed with exit code {exit_code}."
+_GUARDRAILS_FAILURE_TEMPLATE = "Guardrails failed with exit code {exit_code}."
+_FAILURE_REASON_SEPARATOR = " "
+_UTF8 = "utf-8"
+_EMPTY_BYTES = b""
+_NUL_BYTE = b"\0"
+_DEFAULT_FAILURE_EXIT_CODE = 1
 
 
 class LintGateOutcome(StrEnum):
@@ -54,7 +67,7 @@ def read_head_sha(execution_root: Path) -> str | None:
     try:
         return Repo(execution_root).head.commit.hexsha
     except _HEAD_READ_FAILURES as exc:
-        logger.error("quality_gate_subject_unavailable root=%s error=%s", execution_root, exc)
+        logger.error(_QUALITY_GATE_SUBJECT_UNAVAILABLE_EVENT, root=str(execution_root), error=str(exc))
         return None
 
 
@@ -79,9 +92,9 @@ def run_lint_gate(
         )
 
     if format_scoped and files is not None:
-        run_make_target("format", execution_root, files=files, child_env=child_env)
+        run_make_target(_MAKE_FORMAT_TARGET, execution_root, files=files, child_env=child_env)
 
-    native_exit_code = run_make_target("lint", execution_root, files=files, child_env=child_env)
+    native_exit_code = run_make_target(_MAKE_LINT_TARGET, execution_root, files=files, child_env=child_env)
     guardrails_exit_code = 0
     try:
         LintRunner(project_root=execution_root).run(files=files, run_all=files is None)
@@ -89,12 +102,14 @@ def run_lint_gate(
         guardrails_exit_code = _system_exit_code(exc)
 
     outcome = LintGateOutcome.PASSED if native_exit_code == 0 and guardrails_exit_code == 0 else LintGateOutcome.FAILED
+    failure_reason = _lint_failure_reason(native_exit_code, guardrails_exit_code)
     return LintGateResult(
         outcome=outcome,
         subject_sha=subject_sha,
         execution_head=execution_head,
         native_exit_code=native_exit_code,
         guardrails_exit_code=guardrails_exit_code,
+        failure_reason=failure_reason,
     )
 
 
@@ -107,13 +122,13 @@ def run_make_target(
     child_env: Mapping[str, str] | None = None,
 ) -> int:
     """Run one native Make target with optional NUL-delimited file scope."""
-    command = ["make", target]
+    command = [_MAKE_EXECUTABLE, target]
     if variables:
-        command.extend(f"{key}={value}" for key, value in variables.items())
+        command.extend(_MAKE_VARIABLE_TEMPLATE.format(key=key, value=value) for key, value in variables.items())
     if files is None:
         return run_process_group_command(command, execution_root, child_env).exit_code
     with _nul_file(files) as files_from:
-        command.append(f"FILES_FROM={files_from}")
+        command.append(_FILES_FROM_ARGUMENT_TEMPLATE.format(files_from=files_from))
         return run_process_group_command(command, execution_root, child_env).exit_code
 
 
@@ -122,14 +137,24 @@ def _nul_file(files: list[str]) -> Iterator[str]:
     handle = tempfile.NamedTemporaryFile(delete=False)
     try:
         with handle:
-            handle.write(b"".join(path.encode("utf-8") + b"\0" for path in files))
+            handle.write(_EMPTY_BYTES.join(path.encode(_UTF8) + _NUL_BYTE for path in files))
         yield handle.name
     finally:
         Path(handle.name).unlink(missing_ok=True)
 
 
 def _system_exit_code(exc: SystemExit) -> int:
-    return exc.code if isinstance(exc.code, int) else 1
+    return exc.code if isinstance(exc.code, int) else _DEFAULT_FAILURE_EXIT_CODE
+
+
+def _lint_failure_reason(native_exit_code: int, guardrails_exit_code: int) -> str | None:
+    """Describe every failing lint leg with its terminal status."""
+    reasons: list[str] = []
+    if native_exit_code != 0:
+        reasons.append(_NATIVE_LINT_FAILURE_TEMPLATE.format(exit_code=native_exit_code))
+    if guardrails_exit_code != 0:
+        reasons.append(_GUARDRAILS_FAILURE_TEMPLATE.format(exit_code=guardrails_exit_code))
+    return _FAILURE_REASON_SEPARATOR.join(reasons) or None
 
 
 __all__ = ["LintGateOutcome", "LintGateResult", "read_head_sha", "run_lint_gate", "run_make_target"]

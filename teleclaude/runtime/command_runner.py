@@ -7,13 +7,15 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 _PROCESS_GROUP_TERM_GRACE_SECONDS = 2.0
 _PROCESS_GROUP_KILL_GRACE_SECONDS = 2.0
+_PROCESS_POLL_INTERVAL_SECONDS = 0.05
+_COMMAND_START_FAILURE_EXIT_CODE = 127
 
 
 @dataclass(frozen=True)
@@ -27,9 +29,15 @@ def run_process_group_command(
     command: list[str], cwd: Path, child_env: Mapping[str, str] | None = None
 ) -> CommandResult:
     """Run one external command and reap its entire process group on exit."""
-    process = subprocess.Popen(
-        command, cwd=str(cwd), env=dict(child_env) if child_env is not None else None, start_new_session=True
-    )
+    return run_process_group_commands((command,), cwd, child_env)[0]
+
+
+def run_process_group_commands(
+    commands: Sequence[Sequence[str]], cwd: Path, child_env: Mapping[str, str] | None = None
+) -> tuple[CommandResult, ...]:
+    """Run argument vectors concurrently and reap every process group on exit."""
+    processes: list[subprocess.Popen[bytes] | None] = []
+    results: list[CommandResult | None] = []
     previous: dict[int, Any] = {}
 
     def _forward(signum: int, _frame: object) -> None:
@@ -40,18 +48,42 @@ def run_process_group_command(
         if installable:
             for signal_value in (signal.SIGINT, signal.SIGTERM):
                 previous[signal_value] = signal.signal(signal_value, _forward)
+        for command in commands:
+            try:
+                # Declared arbitrary argv requires an external process; no Python-native API can perform the action.
+                process = subprocess.Popen(
+                    list(command),
+                    cwd=str(cwd),
+                    env=dict(child_env) if child_env is not None else None,
+                    start_new_session=True,
+                )
+            except OSError:
+                processes.append(None)
+                results.append(CommandResult(_COMMAND_START_FAILURE_EXIT_CODE))
+                continue
+            processes.append(process)
+            results.append(None)
         try:
-            exit_code = process.wait()
+            while any(result is None for result in results):
+                for index, process in enumerate(processes):
+                    if process is None or results[index] is not None:
+                        continue
+                    exit_code = process.poll()
+                    if exit_code is None:
+                        continue
+                    _kill_process_group(process)
+                    results[index] = CommandResult(exit_code)
+                if any(result is None for result in results):
+                    time.sleep(_PROCESS_POLL_INTERVAL_SECONDS)
         except _SignalReceived as received:
-            _kill_process_group(process)
+            _kill_process_groups(processes)
             signal.signal(received.signum, signal.SIG_DFL)
             os.kill(os.getpid(), received.signum)
             raise SystemExit(128 + received.signum) from None
         except BaseException:
-            _kill_process_group(process)
+            _kill_process_groups(processes)
             raise
-        _kill_process_group(process)
-        return CommandResult(exit_code)
+        return tuple(result for result in results if result is not None)
     finally:
         for stored_signal, handler in previous.items():
             signal.signal(stored_signal, handler)
@@ -83,6 +115,13 @@ def _kill_process_group(process: subprocess.Popen[bytes]) -> None:
         except OSError:
             pass
         _wait_process_group(process, process_group, _PROCESS_GROUP_KILL_GRACE_SECONDS)
+
+
+def _kill_process_groups(processes: Sequence[subprocess.Popen[bytes] | None]) -> None:
+    """Terminate and reap every process group that started successfully."""
+    for process in processes:
+        if process is not None:
+            _kill_process_group(process)
 
 
 def _process_group_exists(process_group: int) -> bool:
