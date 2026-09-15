@@ -82,6 +82,7 @@ _AGENT_ARTIFACT_WORKTREE_GUIDANCE = (
     "\nAgent-artifact sources are authored on main in the session where their intent was decided; "
     "remove these paths from the worktree commit and route the artifact change to that session."
 )
+_WORKTREE_REFUSAL_PATH_TEMPLATE = "  {path}"
 
 
 @dataclass(frozen=True)
@@ -938,12 +939,12 @@ def _refuse_frozen_paths_in_slug_worktree(
     if doc_layer_paths:
         print(_DOC_LAYER_WORKTREE_ERROR, file=sys.stderr)
         for path in doc_layer_paths:
-            print(f"  {path}", file=sys.stderr)
+            print(_WORKTREE_REFUSAL_PATH_TEMPLATE.format(path=path), file=sys.stderr)
         print(_DOC_LAYER_WORKTREE_GUIDANCE, file=sys.stderr)
     if agent_artifact_paths:
         print(_AGENT_ARTIFACT_WORKTREE_ERROR, file=sys.stderr)
         for path in agent_artifact_paths:
-            print(f"  {path}", file=sys.stderr)
+            print(_WORKTREE_REFUSAL_PATH_TEMPLATE.format(path=path), file=sys.stderr)
         print(_AGENT_ARTIFACT_WORKTREE_GUIDANCE, file=sys.stderr)
     raise SystemExit(1)
 
