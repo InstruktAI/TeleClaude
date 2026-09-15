@@ -31,11 +31,27 @@ project.
    (onto which the base `test` / `log-check` actions attach), and the
    project's own runtime actions (build, restart, reload) named by make-contract
    convention (`make install` / `make test` / `make lint` work by convention).
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 2. For each inferred action the assessor writes a registry entry — `run`, the
    `evidence` substrings that prove it ran (defaulting to the command),
    `main_only`, `precedence`, and `evidence_must_follow_last_mutation` where
    ordering matters — and binds path scopes to action ids, referencing base
    action ids where they apply and declaring project actions otherwise.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+2. For each inferred action the assessor decides which registry declares it, by one test:
+   can the mechanism that performs the action establish its own outcome? A deterministic
+   command — installing, restarting, reconciling dependencies, reloading — can, and is
+   written into the maintenance registry as `command`, `main_only` and `precedence`, with no
+   `run` and no `evidence`, because nothing asks an agent to do it and nothing reads a
+   transcript to find out whether it happened. An action whose substance is a judgment an
+   agent makes and acts on cannot, and is written into the checkpoint registry as `run`, the
+   `evidence` substrings that prove it ran (defaulting to the command), `main_only`,
+   `precedence`, and `evidence_must_follow_last_mutation` where ordering matters. An action
+   id belongs to exactly one of the two registries; declaring the same id in both is
+   rejected when the declaration is validated. The assessor then binds path scopes to action
+   ids, referencing base action ids where they apply and declaring project actions
+   otherwise; a binding names an id without regard to which registry declares it.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 3. The assessor writes the result into `ProjectConfig.checkpoint` in the
    project's `teleclaude.yml`. The merged base ⊕ overlay then drives the runtime
    structurally; the language flavoring lives only in this authoring step.
