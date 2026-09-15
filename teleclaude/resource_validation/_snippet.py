@@ -17,7 +17,6 @@ from teleclaude.docs_publishers import DocsPublisherResolutionError, resolve_glo
 from teleclaude.paths import GLOBAL_DOCS_DIR
 from teleclaude.required_reads import extract_required_reads
 from teleclaude.resource_validation._markers import (
-    _RESOLVABLE_TODO_STATUSES,
     validate_marker_structure,
     validate_planned_change_markers,
 )
@@ -39,7 +38,7 @@ from teleclaude.resource_validation._models import (
     _error,
     _first_out_of_order_ref,
 )
-from teleclaude.resource_validation._todo_status import build_todo_status_map
+from teleclaude.resource_validation._todo_status import TodoStatusFact, build_todo_status_facts, is_pending_marker_stale
 from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots
 from teleclaude.snippet_validation import (
     SnippetClassification,
@@ -248,22 +247,15 @@ def _validate_delivered_by(
 def _validate_delivered_by_todo(
     path: Path,
     meta: Mapping[str, object],
-    todo_status_map: Mapping[str, str],
+    todo_status_facts: Mapping[str, TodoStatusFact],
+    project_root: Path,
 ) -> None:
-    """Flag a delivered_by slug only when it resolves to a delivered todo.
-
-    A slug resolving to a retained todo (active, icebox, soft-removed) is in flight
-    and tolerated. A slug absent from the local store is expected and skipped —
-    todos are machine-local, so a git-carried snippet routinely names an in-flight
-    todo that lives on another computer (or one already hard-purged with its markers
-    folded by maintenance). Only a delivered slug is a real stale marker: delivery
-    should have folded it.
-    """
+    """Flag a delivered_by slug only when its delivery commit is in this checkout."""
     delivered_by = _as_str_list(meta.get("delivered_by"))
     for slug in delivered_by:
-        status = todo_status_map.get(slug)
-        if status in _RESOLVABLE_TODO_STATUSES or status is None:
+        if not is_pending_marker_stale(slug, todo_status_facts, project_root):
             continue
+        status = todo_status_facts[slug].status.value
         _error(
             "snippet_delivered_by_invalid_slug", path=str(path), slug=slug, reason=f"todo is {status}, not in flight"
         )
@@ -275,13 +267,14 @@ def validate_snippet(
     project_root: Path,
     *,
     domains: set[str],
-    todo_status_map: Mapping[str, str] | None = None,
+    todo_status_facts: Mapping[str, TodoStatusFact] | None = None,
 ) -> None:
     """Validate a single doc snippet. Collects validation findings via ``_error``.
 
-    When ``todo_status_map`` is provided, delivered_by slugs are also checked
-    against the live todo (existence + in-flight status); when ``None`` the
-    snippet is validated for shape only (todo-agnostic callers).
+    When ``todo_status_facts`` is provided, a delivered slug is reported only
+    when its recorded delivery commit is contained by the validated checkout.
+    Uncontained or unrecorded commits are tolerated; when ``None`` the snippet
+    is validated for shape only (todo-agnostic callers).
     """
     if _is_third_party_doc(path, project_root):
         validate_third_party_doc(path, content, project_root)
@@ -319,9 +312,9 @@ def validate_snippet(
     snippet_type = _snippet_type_for_validation(classification)
     _validate_activation_trigger(path, meta, snippet_type=snippet_type)
     _validate_delivered_by(path, meta)
-    if todo_status_map is not None:
-        _validate_delivered_by_todo(path, meta, todo_status_map)
-    validate_planned_change_markers(path, body, todo_status_map)
+    if todo_status_facts is not None:
+        _validate_delivered_by_todo(path, meta, todo_status_facts, project_root)
+    validate_planned_change_markers(path, body, todo_status_facts, project_root)
     validate_marker_structure(path, body)
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains, classification=classification)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
@@ -775,15 +768,15 @@ def _validate_baseline_dedup(project_root: Path) -> None:
                     )
 
 
-def _resolve_todo_status_map(project_root: Path) -> dict[str, str] | None:
-    """Load the todo slug→status map, or ``None`` when no todos DB is reachable.
+def _resolve_todo_status_facts(project_root: Path) -> dict[str, TodoStatusFact] | None:
+    """Load validation todo facts, or ``None`` when no todos DB is reachable.
 
     Returning ``None`` (DB genuinely absent — fresh clone, CI without state) skips
     the delivered_by todo-validity check rather than flagging every slug as
     missing. An empty map with a present DB is a real empty todo and still runs.
     """
     if todos_db_path(project_root).exists():
-        return build_todo_status_map(project_root)
+        return build_todo_status_facts(project_root)
     return None
 
 
@@ -829,7 +822,7 @@ def validate_all_snippets(project_root: Path, *, paths: list[Path] | None = None
                 validate_snippet(path, text, project_root, domains=domains)
         return
 
-    todo_status_map = _resolve_todo_status_map(project_root)
+    todo_status_facts = _resolve_todo_status_facts(project_root)
     snippet_roots = _iter_snippet_roots(project_root)
     for snippets_root in snippet_roots:
         try:
@@ -849,6 +842,6 @@ def validate_all_snippets(project_root: Path, *, paths: list[Path] | None = None
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
-            validate_snippet(path, text, project_root, domains=domains, todo_status_map=todo_status_map)
+            validate_snippet(path, text, project_root, domains=domains, todo_status_facts=todo_status_facts)
     _validate_baseline_dedup(project_root)
     validate_third_party_docs(project_root)

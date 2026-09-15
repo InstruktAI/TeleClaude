@@ -12,8 +12,8 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.constants import TodoStatus
 from teleclaude.resource_validation._models import _CODE_FENCE_LINE, _INLINE_CODE_SPAN, _error
+from teleclaude.resource_validation._todo_status import TodoStatusFact, is_pending_marker_stale
 
 _PLANNED_CHANGE_MARKER_RE = re.compile(
     r"<!--[ \t]*(?P<closing>/)?(?P<kind>planned-change|change):(?P<slug>[^>\s]+)[ \t]*-->"
@@ -24,13 +24,6 @@ _PLANNED_CHANGE_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 # permissive slug, so malformed structures are surfaced rather than skipped. Order
 # matters: ``planned-change`` precedes ``planned`` so the longer literal wins.
 _MARKER_RE = re.compile(r"<!--[ \t]*(?P<closing>/)?(?P<kind>planned-change|planned|change):(?P<slug>[^>\s]+)[ \t]*-->")
-
-# A pending in-body marker (or delivered_by entry) is reported only when its slug
-# resolves to an already-delivered todo — a marker delivery should have folded but
-# did not. An active/icebox/removed todo is in flight and tolerated; a slug absent
-# from the local store is expected and skipped, since todos are machine-local and a
-# git-carried snippet routinely names a todo that lives on another computer.
-_RESOLVABLE_TODO_STATUSES = frozenset({TodoStatus.ACTIVE.value, TodoStatus.ICEBOX.value, TodoStatus.REMOVED.value})
 
 
 def _planned_change_marker_error(path: Path, marker: re.Match[str], reason: str) -> None:
@@ -68,7 +61,8 @@ def _mask_marker_examples(body: str) -> str:
 def _validate_planned_marker_liveness(
     path: Path,
     body: str,
-    todo_status_map: Mapping[str, str],
+    todo_status_facts: Mapping[str, TodoStatusFact],
+    project_root: Path,
 ) -> None:
     checked_slugs: set[str] = set()
     for marker in [*_PLANNED_CHANGE_MARKER_RE.finditer(body), *_PLANNED_MARKER_RE.finditer(body)]:
@@ -76,11 +70,9 @@ def _validate_planned_marker_liveness(
         if slug in checked_slugs:
             continue
         checked_slugs.add(slug)
-        status = todo_status_map.get(slug)
-        # Unknown slug (no local row) is expected — todos are machine-local; only a
-        # delivered slug is a real stale marker (delivery should have folded it).
-        if status in _RESOLVABLE_TODO_STATUSES or status is None:
+        if not is_pending_marker_stale(slug, todo_status_facts, project_root):
             continue
+        status = todo_status_facts[slug].status.value
         _error(
             "snippet_planned_marker_invalid_slug", path=str(path), slug=slug, reason=f"todo is {status}, not in flight"
         )
@@ -89,11 +81,12 @@ def _validate_planned_marker_liveness(
 def validate_planned_change_markers(
     path: Path,
     body: str,
-    todo_status_map: Mapping[str, str] | None = None,
+    todo_status_facts: Mapping[str, TodoStatusFact] | None = None,
+    project_root: Path | None = None,
 ) -> None:
     body = _mask_marker_examples(body)
-    if todo_status_map is not None:
-        _validate_planned_marker_liveness(path, body, todo_status_map)
+    if todo_status_facts is not None and project_root is not None:
+        _validate_planned_marker_liveness(path, body, todo_status_facts, project_root)
     markers = list(_PLANNED_CHANGE_MARKER_RE.finditer(body))
     idx = 0
     while idx < len(markers):
