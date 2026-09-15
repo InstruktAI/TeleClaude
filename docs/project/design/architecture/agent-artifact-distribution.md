@@ -1,5 +1,5 @@
 ---
-description: How authored agent artifacts flow from tiered sources through reach-gated validation into a domain-partitioned global corpus and project delivery locations, and how the mother's flat sources migrate without a retraction gap.
+description: How authored agent artifacts flow from tiered sources through reach-gated validation into a domain-partitioned global corpus and project delivery locations, which directories the source registry declares and what each consumer derives from it, and how the mother's flat sources migrate by expansion before contraction.
 visibility: internal
 delivered_by:
   - agent-artifact-source-layout
@@ -15,8 +15,9 @@ delivered_by:
 ## Purpose
 
 Realize `@prd#authorized-horizon` across several bounded contexts without
-letting any of them absorb another's rule. `context` owns the authored-source
-registry, reach validation, composition, and deployment of commands and skills.
+letting any of them absorb another's rule. `context` owns the artifact-source
+registry this delivery introduces, reach validation, composition, and
+deployment of commands and skills.
 `config` owns the publishing declaration that bounds a repository's global
 reach. Each command's name, and every emission of it, belongs to the context
 that owns that command's meaning — `workflow` for the todo-lifecycle commands,
@@ -44,10 +45,6 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   untiered master and addenda at the artifact root.
 - The repository's publishing declaration (`business.publishes`), read through
   `config`'s existing `publishes_for_root` contract, and the registered-root set.
-- The Context-owned artifact-source registry in `teleclaude/agent_artifacts.py`:
-  one frozen record per source directory carrying relative directory, artifact
-  kind, authorship, tier, and reach. The records name the tiered directories;
-  the domain spec that owns the registry is listed under Required reads.
 - The command-name table in `teleclaude/constants.py` (`SlashCommand`): a
   mechanical registry holding every command's canonical value. Each value is
   owned by the context that owns its command; the table owns none of them.
@@ -68,14 +65,19 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 - Validation findings that name the file and the reach it exceeds, or both
   files and the colliding name, and fail sync.
 - The deployed-commands ownership manifest, keyed by relative corpus path.
+- The artifact-source registry: one typed owner declaring every directory that
+  is an agent-artifact source, the kind it carries, its tier and reach, and
+  whether its content is authored by TeleClaude or incorporated from a third
+  party. It holds no filesystem access, validation, deployment, or checkpoint
+  behavior; its consumers read it and restate nothing.
 
 ## Invariants
 
 ### Ownership
 
 - **`context` owns the registry, reach, composition, and retraction.** The
-  registry in `teleclaude/agent_artifacts.py` is the single statement of which
-  directories are sources, of which kind, at which tier, with which reach. Every
+  registry is the single statement of which directories are sources, of which
+  kind, at which tier, with which reach, and under which authorship. Every
   consumer — validation (`teleclaude/resource_validation/_artifacts.py`), global
   skill discovery (`teleclaude/global_skills.py`), distribution
 <!-- planned-change:retire-docs-watcher -->
@@ -86,8 +88,11 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   (`scripts/distribute.py`), the checkpoint sync scope
   (`teleclaude/constants.py`), and onboarding inference
 <!-- /planned-change:retire-docs-watcher -->
-  (`teleclaude/project_setup/init_flow.py`) — derives its directory set from the
-  registry and restates nothing.
+  (`teleclaude/project_setup/init_flow.py`), and the commit gate's review
+  routing (`teleclaude/cli/telec/handlers/code.py`) — derives its directory set
+  from the registry and restates nothing. Three of those consumers previously
+  carried their own directory and kind vocabulary; one registry replaces all
+  three.
 - **Reach is a registry attribute, resolved against `config`'s declaration.** A
   global command record's reach is the set of domains the repository publishes;
   the mother's reach additionally includes `general`. A global skill record's
@@ -115,6 +120,23 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   dispatched; `workflow` consumes that query and owns none of it.
 - **`config` owns the declaration, never the gate.** `business.publishes` says
   what a repository may reach; `context` decides admission from it.
+
+### Authorship decides review routing
+
+- Every source record declares its content authored or incorporated. Authored
+  content is TeleClaude's own — commands, the masters, the addenda — and a
+  commit touching it routes to required doc-hygiene review. Incorporated
+  content is a third-party skill package the platform republishes unchanged,
+  and a commit touching it routes to no review.
+- The exemption is not a weakening of the review contract: the package body is
+  explicitly outside TeleClaude's artifact taxonomy, so a doc-hygiene reviewer
+  grades it against a schema it does not claim to satisfy and can find nothing.
+  The risk that is real — executable content, egress, credential reach,
+  injected directives — is inspected by the adopting agent before the commit,
+  under `general/procedure/skill-management`.
+- Authorship is a property of the source directory, not of the file: the
+  mother-authored catalog master living beside incorporated packages is an
+  authored record in its own right and keeps its review.
 
 ### Reach gate
 
@@ -160,9 +182,9 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   owned internal data). The same step rekeys the one phase-wide owner an
   unversioned manifest carries to the repository that produced it — the mother,
   which was the only repository able to publish globally while that shape was
-  written — so no inventory is orphaned and no file is left unretractable. A later sync that stages `<domain>/<name>.md` for a
-  relocated command retracts the root entry and records the partitioned one in
-  the same run.
+  written — so no inventory is orphaned and no file is left unretractable. While both roots carry a command, the manifest holds
+  both its root key and its partitioned key, and the deletion of the flat root
+  is what later retracts the root key.
 - Domain assignment of the mother's existing commands is read from each
   command's own governing contract, never assumed from its name
   (`@prd#premises-and-assumptions`): a command publishes under the domain that
@@ -175,18 +197,26 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   there, while `agent_runtime` dispatches a scheduled job into a session as it
   dispatches any command. `config` owns this command's name, and its domain is `general`.
 
-### Migration without a retraction gap
+### Migration by expansion before contraction
 
-- The reader accepts the mother's sources at both the flat root
-  (`agents/commands`, `agents/skills`) and the tiered root until the flat root
-  carries no artifacts; the flat root is a registry record marked legacy and
-  retired when empty. A sync run at any point during the relocation therefore
-  stages the union and retracts nothing that moved.
-- Landing order: the code that reads both roots and keys the manifest by
-  relative path lands first; the human-present relocation on `main` follows.
-  The legacy record exists exactly as long as the flat root carries an
-  artifact; a flat root that carries none is not a source. `@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`
-  binds the outcome; this section is the mechanism.
+- The migration expands first: the mother's commands exist under both the flat
+  root and the tiered root simultaneously, and contraction — deleting the flat
+  root — is the last step. The expansion has already landed on `main`; the
+  contraction happens after this delivery folds.
+- The safety this buys is structural, not designed. Retraction removes what an
+  owner staged before and does not stage now, so the hazard is a staged set
+  that shrinks. While both roots are present, every command the flat root
+  carried is still staged, so no publication run observes a source as absent
+  and no retraction of a live command is reachable. No compatibility mechanism
+  is required and none is designed:
+  `@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`
+  is satisfied by the shape of the migration.
+- Landing order is unconstrained. The reader may read the tiered root before or
+  after the expansion landed, because the flat root it already reads never
+  stopped carrying anything.
+- Both roots being authored sources for the length of the cutover is what makes
+  the contraction a plain deletion: the existing reconciler retracts the flat
+  root's keys on the next publication, needing no new mechanism.
 
 ## Primary flows
 
@@ -210,14 +240,15 @@ Migration sequence:
 
 ```mermaid
 sequenceDiagram
-    participant Code as delivery (reader + manifest)
-    participant Sync as telec sync
     participant Human as human-present session on main
-    Code->>Sync: reads flat + tiered roots, manifest keyed by relative path
-    Sync->>Sync: stages union, retracts nothing
-    Human->>Sync: relocates agents/commands → agents/global/commands/<domain>/
-    Sync->>Sync: same run: old key retracted, new key deployed
-    Sync->>Sync: flat root empty: legacy record is no longer a source
+    participant Code as this delivery
+    participant Sync as publication
+    Human->>Sync: expansion: commands copied to the tiered root, flat root kept
+    Sync->>Sync: both roots staged; staged set never shrinks
+    Code->>Sync: registry declares both roots; manifest keyed by relative path
+    Sync->>Sync: corpus carries each command at its root key and its domain key
+    Human->>Sync: contraction after the fold: flat root deleted
+    Sync->>Sync: existing reconciler retracts the root keys
 ```
 
 ## Failure modes
@@ -227,8 +258,13 @@ sequenceDiagram
   run.
 - **A bare token names a command in two domains.** The loader refuses, naming
   both. Domain-qualified dispatch is unaffected.
-- **A sync lands mid-relocation.** The union of both roots is staged; no
-  deployed artifact is retracted because its source moved.
+- **An edit lands on one root and not the other.** While both roots exist the
+  same command is two files, and they can diverge. The window is bounded by the
+  contraction, and the corpus composes from both, so a divergence surfaces as
+  two sources for one name rather than as a silent loss.
+- **A commit touches an incorporated package and no review runs.** Intended:
+  the adopting agent's pre-commit inspection is the gate, and the registry's
+  authorship class is what routes it.
 - **A legacy `.agents/` file a project authored by hand.** Never read, never
   adopted, never deleted by this delivery; it stays until the native-output
   sibling lands ownership records.

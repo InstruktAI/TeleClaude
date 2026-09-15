@@ -476,14 +476,15 @@ Scenario: UC-ARD37 One repository's deploy never retracts another repository's g
   And a command that repository itself no longer carries is retracted
 ```
 
-#### UC-ARD32: No sync during the mother's artifact migration retracts a deployed artifact
+#### UC-ARD32: Every declared artifact source directory is enumerated from one registry
 
 ```
-Scenario: UC-ARD32 No sync during the mother's artifact migration retracts a deployed artifact
-  Given the mother's artifact sources are partway through relocation into the tiered layout
-  When sync runs in deploy mode at any point during that relocation
-  Then every global command and skill deployed before the relocation began is still deployed
-  And no deployed artifact is retracted because its source moved
+Scenario: UC-ARD32 Every declared artifact source directory is enumerated from one registry
+  Given the artifact-source registry declares each source directory with its kind, tier, reach, and authorship
+  When artifact validation, global-skill discovery, deployment, or the commit gate resolves which directories to act on
+  Then each derives that set from the registry
+  And a directory absent from the registry is not treated as an artifact source by any of them
+  And a registry record with no explicit disposition fails the run rather than being skipped
 ```
 
 <!-- /planned:agent-artifact-source-layout -->
