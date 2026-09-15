@@ -24,9 +24,17 @@ visibility: 'public'
    invitation binding, conversational input modalities, and delivery of the
    session response to the origin endpoint.
 2. Implement `start`/`stop` and required messaging or transport methods.
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 3. Add configuration keys to `templates/config.yml`.
+<!-- change:config-sample-regeneration-leaves-sync -->
+3. Declare the adapter's configuration fields on the machine-config schema, marking credential fields sensitive.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 4. Register adapter env vars in `_ADAPTER_ENV_VARS` in `teleclaude/cli/config_handlers.py`.
 5. Register adapter field guidance in `GuidanceRegistry` in `teleclaude/cli/tui/config_components/guidance.py`.
+<!-- change:config-sample-regeneration-leaves-sync -->
+4. Nothing further: the adapter's environment variables and their presence in the config TUI follow from the field declarations in step 3.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 6. Verify the config wizard discovers and exposes the new adapter area.
 7. Update `docs/project/spec/teleclaude-config.md` with the new config keys and env vars.
 8. Register the adapter in `AdapterClient.start()` based on config.

@@ -137,8 +137,13 @@ And projected output for that person hides tool calls on every projected surface
 Given a config field belongs under a credentials section owned by a typed config surface
 When the human opens the config TUI section that owns that surface
 Then the field is reachable through the same schema-driven renderer as non-credential fields
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 And the TUI does not suppress the field solely because the path contains "creds", "token", "secret", or "key"
 And any masking or reveal-on-edit behavior is a rendering rule layered on top of the same editable field
+<!-- change:config-sample-regeneration-leaves-sync -->
+And the TUI does not suppress the field solely because the path contains "creds", "token", "secret", or "key"
+And a schema-declared sensitive field is set through that same renderer without its value being displayed
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 ```
 
 #### UC-CFG-TUI-SCHEMA-6: Edits persist to the owning config file
@@ -203,6 +208,7 @@ And an unset optional nested structure still renders its leaf fields, derived fr
 And editing a nested leaf persists to that leaf's dotted path in the owning config file
 ```
 
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 #### UC-CFG-TUI-SCHEMA-11: Env-sourced values are masked unless the field is being edited
 
 ```
@@ -213,6 +219,19 @@ When the human edits the field
 Then the actual value is revealed in the edit buffer
 And masking is a rendering rule only, leaving the persistence target and editability unchanged
 ```
+<!-- change:config-sample-regeneration-leaves-sync -->
+#### UC-CFG-TUI-SCHEMA-11: Sensitive values are never displayed and are only set
+
+```
+Given a rendered field the configuration schema declares sensitive
+When the field is displayed
+Then whether a value is set is shown and no value is shown
+When the human edits the field
+Then the entered value replaces the stored one and is never revealed back
+And submitting without entering a value leaves the stored value unchanged
+And removing a stored value is a separate deliberate action
+```
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 #### UC-CFG-TUI-SCHEMA-12: Nested structures render as an indented tree
 

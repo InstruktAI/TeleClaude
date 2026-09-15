@@ -10,6 +10,7 @@ visibility: internal
 
 - Every machine-config field carries an editability **tier**, declared in code on
   the field: `internal` (the default), `public`, or `tui`.
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 - **`internal` is the default.** A field with no tier marker is internal —
   constants, TTLs, QoS blocks, box sizes, channel identifiers, and
   runtime-derived or system-resolved values. It is absent from the generated
@@ -18,11 +19,36 @@ visibility: internal
   `templates/config.yml`; agents patch `config.yml` directly.
 - **`tui`** is the operator-facing render set: the only tier the config wizard
   renders. `tui` fields also appear in the generated `templates/config.yml`.
+<!-- change:config-sample-regeneration-leaves-sync -->
+- **`internal` is the default.** A field with no tier marker is internal —
+  constants, TTLs, QoS blocks, box sizes, channel identifiers, and
+  runtime-derived or system-resolved values. It is absent from a generated
+  machine configuration, absent from the config TUI, and not presented as
+  human-editable.
+- **`public`** fields are the `config.yml` surface; agents patch `config.yml`
+  directly.
+- **`tui`** is the operator-facing render set: the only tier the config wizard
+  renders.
+- **A field may additionally be declared sensitive.** A sensitive field is
+  written into a generated machine configuration as its environment reference
+  and never as its value, and the config TUI reports only whether it is set.
+- **A field's environment variable is derived from its path**, upper-cased and
+  joined with a single underscore. The derivation runs one way, from schema to
+  name; no nesting separator is introduced for a reverse mapping nothing performs.
+  A reference inside a body declared `ungoverned_body` is operator-authored,
+  because no marker can name a member the schema does not enumerate.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 - A field reaches humans only by a deliberate tier declaration. A new field with
   no marker stays internal.
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 - The field tiers are the single authority for what is public. The
   `DEFAULT_CONFIG` defaults blob and the generated `templates/config.yml` sample
   are consequences of the markers, not independent sources of the public surface.
+<!-- change:config-sample-regeneration-leaves-sync -->
+- The field markers are the single authority for what is public and what is
+  secret. The `DEFAULT_CONFIG` defaults blob and any generated machine
+  configuration are consequences of the markers, never independent sources.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 - **A container of structured members is never silently treated as a leaf.** Its
   members carry their own tiers, so a schema walk that steps over the container
   leaves those tiers claiming a surface nothing generates, reconciles, or
@@ -56,9 +82,17 @@ visibility: internal
 - A reviewer treats a human-facing field carrying no deliberate `public` or `tui`
   tier as a defect.
 
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 - `telec sync` regenerates `templates/config.yml` by reconciling the `public` and
   `tui` tiers into the curated sample, preserving its comments and seed content;
   tier drift between the markers and the sample is corrected on the next sync.
+<!-- change:config-sample-regeneration-leaves-sync -->
+- No command writes a git-tracked configuration file. A machine configuration is
+  produced from the markers when none exists, and is not reconciled afterwards.
+- A reviewer treats a credential-bearing field carrying no sensitivity
+  declaration as a defect, because its value would be written where a reference
+  belongs.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 ## Exceptions
 

@@ -110,7 +110,11 @@ And no question that was reachable in `bin/init.sh` requires the human
 Given a wizard run where every required section is `configured`
 When the human re-opens `telec config wizard`
 Then every section's default value is the current persisted value
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 And secrets are presented in masked form with default "keep existing"
+<!-- change:config-sample-regeneration-leaves-sync -->
+And a sensitive field shows only whether it is set, never a value
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 When the human accepts every default without modification
 And the human exits the wizard
 Then the persisted config is byte-stable relative to its prior state
@@ -294,7 +298,11 @@ Then the daemon reports itself ready without requiring a restart
 Given a configured person and a person-scoped MCP server with declared environment requirements
 When an authorized operator expands the person in `telec config wizard`
 Then the People view shows a Secrets section derived from those requirements and the person's stored key names
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 And configured values are masked with keep-existing as the default action
+<!-- change:config-sample-regeneration-leaves-sync -->
+And a configured key shows only that it is set, never its value
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 When the operator explicitly replaces or clears a key
 Then the wizard writes only that person's owner-only secret file
 And the next render derives status from the persisted file

@@ -42,6 +42,7 @@ And the resulting Config object is bound to the module-level `config` global
 And the module-level `config_path` global is set to the absolute path
 ```
 
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
 ```
@@ -53,6 +54,18 @@ And blueprint keys absent from the machine config are written into it
 And the machine config is rewritten only when that merge changed it
 And the blueprint file itself is never written
 ```
+<!-- change:config-sample-regeneration-leaves-sync -->
+#### UC-CFG-LOAD-1b: The schema produces a machine config that does not yet exist
+
+```
+Given no machine configuration exists at <RuntimeConfig.home>/config.yml
+When the machine config path is resolved at process start
+Then the machine configuration is produced from the configuration schema
+And each field declared sensitive is written as its derived environment reference
+And no field's resolved secret value is written
+And an existing machine configuration is left as it is
+```
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 
@@ -109,8 +122,13 @@ And config construction raises a validation error downstream because the require
 #### UC-CFG-LOAD-8: Env-backed credentials remain file-declared and service-available
 
 ```gherkin
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 Given a human operator declares a service credential or externally supplied service identifier in machine configuration as an environment-backed placeholder
 And the referenced value exists in the runtime secret environment
+<!-- change:config-sample-regeneration-leaves-sync -->
+Given the configuration schema declares a service credential or externally supplied service identifier sensitive, and the machine configuration carries its derived environment reference
+And the referenced value exists in the runtime secret environment
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 When the runtime loads configuration and starts the configured service
 Then the typed effective configuration contains the resolved value
 And the service is available using that effective configuration
