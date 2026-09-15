@@ -184,6 +184,21 @@ And "telec todo list --include-delivered" can show the delivered history
 And a new "shipped-thing" slug may be created because the unique-slug index excludes delivered entries
 ```
 
+<!-- planned:deliver-requires-commit-provenance -->
+
+#### UC-WM31: Delivery without a commit is refused for SDLC work
+
+```
+Given an active todo whose kind is "feature", "change", or "bug"
+When the operator runs "telec todo deliver <slug>" without --commit
+Then the delivery is refused and the command exits non-zero naming the missing provenance
+And the entry keeps its current status with no delivered_at and no delivered_commit
+And any lifecycle markers reconciled for the attempted delivery are restored
+And the same invocation without --commit delivers a todo whose kind is "task", which terminates with no delivery commit
+```
+
+<!-- /planned:deliver-requires-commit-provenance -->
+
 ```
 Given an active todo "feature-y" that is no longer wanted
 When the operator runs "telec todo remove feature-y"
