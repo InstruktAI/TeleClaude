@@ -407,16 +407,16 @@ Scenario: UC-ARD34 Retraction removes what the pipeline deployed and keeps what 
 
 <!-- planned:agent-artifact-source-layout -->
 
-#### UC-ARD15: A repository's project-scoped artifact sources are delivered to that project's runtimes
+#### UC-ARD15: A repository's project-scoped skills are delivered to that project's runtimes and its project commands are validated
 
 ```
-Scenario: UC-ARD15 A repository's project-scoped artifact sources are delivered to that project's runtimes
+Scenario: UC-ARD15 A repository's project-scoped skills are delivered to that project's runtimes and its project commands are validated
   Given a repository carries commands and skills under agents/project/
   And sync is invoked in deploy mode
   When the local phase deploys
-  Then each artifact is offered to an agent session started in that project
+  Then each skill is offered to an agent session started in that project
   And every agent CLI that project is configured to use is served
-  And both artifact kinds are served
+  And each command source is validated and reach-checked and written to no corpus by this phase
 ```
 
 #### UC-ARD20: A project carrying no artifact sources is unaffected
