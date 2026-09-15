@@ -54,8 +54,9 @@ uncommitted change owing a commit, so the marker persists across those turns
 rather than being consumed; it surfaces once on a turn with no pending commit
 and is consumed then, or is consumed when the review is dispatched. A
 force-fire that has nothing left to surface — no changed files, no required
-actions, no observations, and no commit action — produces no checkpoint. An
-**integrator-maintenance marker**, carrying the delivered merge range and the
+actions, no observations, and no commit action — produces no checkpoint.
+<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
+An **integrator-maintenance marker**, carrying the delivered merge range and the
 `main_only` maintenance actions that range owes, is recorded by the
 integration state machine when it advances repo-root `main`. It is keyed to
 the canonical checkout rather than to a session, because the state it records
@@ -63,6 +64,13 @@ the canonical checkout rather than to a session, because the state it records
 not caught up — belongs to the checkout and outlives any one integrator.
 Each recorded action discharges when its evidence is observed in any
 checkpoint cycle, and the marker is removed once the last one discharges.
+<!-- change:post-commit-hook-runs-mechanical-maintenance -->
+An **integrator-maintenance marker** carries canonical-root ranges whose
+deterministic maintenance has completed and whose live-runtime log judgment
+remains. It is keyed to the canonical checkout rather than to a session, so a
+successor integrator inherits unfinished judgment without repeating mechanical
+work. Log-check evidence discharges the marker.
+<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 <!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 The action and evidence ledger — what needs doing and what was done since
@@ -311,7 +319,11 @@ And no action is surfaced, because its evidence was observed
 ```
 
 
+<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
 #### UC-CP11: Integrator post-merge maintenance force-fire
+<!-- change:post-commit-hook-runs-mechanical-maintenance -->
+#### UC-CP11: Integrator post-advance log-check force-fire
+<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 <!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
 ```gherkin
@@ -527,7 +539,11 @@ And the commit action is not required
 (A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
 ```
 
+<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
 #### UC-CP20: Post-merge maintenance persists per action until its evidence is observed
+<!-- change:post-commit-hook-runs-mechanical-maintenance -->
+#### UC-CP20: Post-advance log judgment begins with a range-only marker
+<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 <!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
 ```gherkin
@@ -689,16 +705,16 @@ And a decision is still produced when a path becomes unaccounted for after that 
   is passed to `get_checkpoint_content` and stored in `CheckpointContext`
   to gate the integrator-maintenance force-fire path.
 - Reads the session's working slug for structured checkpoint diagnostics.
-<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
 - Consumes the commit-obligation ledger written by the sealed `telec code commit`
   path for any session, and the integrator-maintenance marker written by the
   integration state machine (`project/spec/feature/workflow/integration-state-machine`)
   at delivery, before the per-candidate `pre_merge_head` is cleared.
-<!-- change:checkpoint-keeps-only-judgment-actions -->
+<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 - Consumes the checkout-scoped range marker written after integration completes
   deterministic maintenance, and surfaces only the remaining live-runtime log
   judgment.
-<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
+<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 - Writes checkpoint-seen entries that `session-state-mutation-via-outbox`
   consumes to update last-checkpoint timestamp.
 
@@ -741,31 +757,38 @@ And a decision is still produced when a path becomes unaccounted for after that 
   movement do not re-arm it; doc-only commits do not arm it; raw
   `git commit` does not mark authorship.
 
-<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
 - The integrator's raw-git merge does not flow through `telec code commit`
   and so does not arm the authorship latch or the commit-obligation ledger;
   instead the integration state machine records the integrator-maintenance
   marker carrying the delivered merge range and the actions it owes, which
   the engine reads to force-fire post-merge maintenance for the integrator
   session holding the lease on that checkout.
-<!-- change:checkpoint-keeps-only-judgment-actions -->
+<!-- change:post-commit-hook-runs-mechanical-maintenance -->
 - An integration fast-forward that produces no repository-root commit invokes
   deterministic maintenance directly from canonical root. The checkout-scoped
   marker carries only ranges awaiting log judgment, so a successor integrator
   inherits the judgment without repeating maintenance.
-<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
+<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 
 - Heuristics are zero-LLM and deterministic — pattern matching on
   version-control state and the transcript, no API calls.
 - The engine is project-aware: it may short-circuit early for projects
   outside the supported set (the engine's project-allowlist policy
   lives in the engine itself).
+<!-- planned-change:post-commit-hook-runs-mechanical-maintenance -->
 - Worktree-aware path resolution composes the project path with the
   worktree subdirectory so branch detection runs against the working
   tree, not the repo root. Worktree sessions on a non-main branch
   behave correctly; sessions on main get the main-only category
   instructions (setup, deps, restart) suppressed unless they are the
   integrator receiving post-merge maintenance.
+<!-- change:post-commit-hook-runs-mechanical-maintenance -->
+- Worktree-aware path resolution composes the project path with the worktree
+  subdirectory so branch detection evaluates the actual checkout. Mechanical
+  actions never surface from checkpoint location rules; the integrator receives
+  only checkout-scoped log judgment after canonical-root maintenance.
+<!-- /planned-change:post-commit-hook-runs-mechanical-maintenance -->
 - Unknown agent names fall back to the default agent — a pragmatic
   guard against unrecognized agent values.
 - All three v1 adapters support hook checkpoints. Claude and Codex
