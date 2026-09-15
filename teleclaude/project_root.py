@@ -13,10 +13,13 @@ from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.project_state import resolve_project_state_root
 
 DOC_LAYER_PATTERN = "docs/**"
+AGENT_ARTIFACT_SOURCE_PATTERN = "agents/**"
 
 __all__ = [
+    "AGENT_ARTIFACT_SOURCE_PATTERN",
     "DOC_LAYER_PATTERN",
     "declaration_root",
+    "forbidden_slug_worktree_agent_artifact_paths",
     "forbidden_slug_worktree_doc_paths",
     "is_integration_worktree",
     "is_project_checkout",
@@ -177,6 +180,13 @@ def forbidden_slug_worktree_doc_paths(root: Path, paths: Iterable[str]) -> tuple
     if not is_slug_worktree(root):
         return ()
     return tuple(path for path in paths if fnmatch(path, DOC_LAYER_PATTERN))
+
+
+def forbidden_slug_worktree_agent_artifact_paths(root: Path, paths: Iterable[str]) -> tuple[str, ...]:
+    """Return agent-artifact source paths that a slug worktree may not commit."""
+    if not is_slug_worktree(root):
+        return ()
+    return tuple(path for path in paths if fnmatch(path, AGENT_ARTIFACT_SOURCE_PATTERN))
 
 
 def is_project_checkout(start: str | Path) -> bool:

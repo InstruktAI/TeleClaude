@@ -525,6 +525,40 @@ Then the doc refusal does not fire
 And the commit proceeds subject to the other commit-time invariants
 ```
 
+#### UC-CGIP-12a — Slug worktree refuses agent-artifact source paths
+
+```
+Given a slug worktree at trees/<slug> (a worktree that is not trees/_integration)
+And the resolved commit pathspec contains one or more paths under agents/**
+When agent invokes telec code commit --approved "<msg>"
+Then SystemExit(1) names each offending agents/** path
+And no commit occurs
+And neither handle_format nor handle_lint is invoked
+And the refusal reports the paths as agent-artifact sources rather than as doc-layer paths
+And the refusal directs the agent to author the artifacts on main in the session where their intent was decided
+```
+
+#### UC-CGIP-13a — Main branch and integration worktree are unaffected by the agent-artifact refusal
+
+```
+Given the commit pathspec contains a path under agents/**
+When the invocation is on the repo-root main branch, or in the integration worktree at trees/_integration
+Then the agent-artifact refusal does not fire
+And the commit proceeds subject to the other commit-time invariants
+```
+
+#### UC-CGIP-29 — The pre-merge worktree sync refuses agent-artifact source paths
+
+```
+Given a slug worktree at trees/<slug> whose working tree carries uncommitted changes
+And one or more of those dirty paths is under agents/**
+When the work state machine syncs that worktree against origin/main before merging
+Then no path is staged and no pre-merge sync commit is created
+And the sync returns an error naming each offending agents/** path
+And the error reports the paths as agent-artifact sources rather than as doc-layer paths
+And the error directs the agent to author the artifacts on main in the session where their intent was decided
+```
+
 
 #### UC-CGIP-14 — A session with no resolvable transcript scopes to empty, not to an error
 

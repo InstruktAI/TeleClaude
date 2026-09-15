@@ -98,11 +98,13 @@ guard that performs only a partial-staging check as a backstop for raw
 
 
 In a slug worktree (`trees/<slug>`), `telec code commit` refuses any staged or
-pathspec-resolved path under `docs/**`: the doc layer is authored at prepare on
-`main` and folded at integration, and the work phase executes a frozen
-contract. The refusal names the offending paths and points at the kickback
-path for a doc need discovered mid-build. Main-branch and integration-worktree
-invocations are unaffected.
+pathspec-resolved path under `docs/**` or `agents/**`: the doc layer is authored
+at prepare on `main` and folded at integration, while agent-artifact sources are
+authored on `main` in the session where their intent was decided. The work phase
+executes those frozen contracts. Each refusal names the offending paths under
+the class they violate and points at the applicable authoring route. Main-branch
+and integration-worktree invocations are unaffected. `.agents/**` remains a
+generated delivery location and is not part of this refusal.
 
 
 <!-- planned:distributed-todo-postgres -->

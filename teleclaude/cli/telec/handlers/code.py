@@ -42,6 +42,7 @@ from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, recor
 from teleclaude.project_root import (
     DOC_LAYER_PATTERN,
     declaration_root,
+    forbidden_slug_worktree_agent_artifact_paths,
     forbidden_slug_worktree_doc_paths,
     resolve_invocation_roots,
 )
@@ -69,6 +70,18 @@ _OWNERS_USAGE = "Usage: telec code owners <path> [<path> ...]"
 _OWNERS_UNKNOWN_FLAG = "ERROR: unknown flag: {flag}"
 _OWNERS_ERROR = "ERROR: {error}"
 _OWNERS_UNDETERMINED_WARNING = "WARNING: {count} captured session(s) had undetermined attribution; do not revert null-owned paths from this result."
+_DOC_LAYER_WORKTREE_ERROR = "ERROR: doc-layer paths cannot be committed from a slug worktree:"
+_DOC_LAYER_WORKTREE_GUIDANCE = (
+    "\nThe doc layer is authored at prepare on main and folded at integration; "
+    "the work phase executes a frozen contract. If a doc need surfaced mid-build, "
+    "kick back instead of editing docs/** here:\n"
+    '  telec todo stamp <slug> --kickback --reason "<why the plan cannot be built>"'
+)
+_AGENT_ARTIFACT_WORKTREE_ERROR = "ERROR: agent-artifact source paths cannot be committed from a slug worktree:"
+_AGENT_ARTIFACT_WORKTREE_GUIDANCE = (
+    "\nAgent-artifact sources are authored on main in the session where their intent was decided; "
+    "remove these paths from the worktree commit and route the artifact change to that session."
+)
 
 
 @dataclass(frozen=True)
@@ -541,8 +554,8 @@ def _commit_under_lock(
         raise SystemExit(1)
     pathspec = validated_pathspec
 
-    # Docs are frozen during work; only integration may fold docs/**.
-    _refuse_doc_layer_in_slug_worktree(scope_resolution, project_root, pathspec)
+    # Governed source contracts are frozen in slug worktrees.
+    _refuse_frozen_paths_in_slug_worktree(scope_resolution, project_root, pathspec)
 
     # Explain skipped new files before an empty-scope failure hides recovery.
     if only is None and untracked_unstaged_in_scope:
@@ -906,32 +919,32 @@ def _print_commit_review_guidance(project_root: Path) -> None:
     )
 
 
-def _refuse_doc_layer_in_slug_worktree(
+def _refuse_frozen_paths_in_slug_worktree(
     scope_resolution: WorkspaceScopeResolution,
     project_root: Path,
     pathspec: list[str],
 ) -> None:
-    """Refuse a commit whose pathspec touches docs/** from a slug worktree.
+    """Refuse commits to source contracts frozen outside slug worktrees.
 
     Exits before any staging/format/lint/commit runs. The integration worktree
-    is excluded because the integrator's fold step legitimately commits
-    docs/** there.
+    is excluded because it legitimately commits frozen paths during delivery.
     """
     if scope_resolution.kind is not WorkspaceScopeKind.WORKTREE:
         return
     doc_layer_paths = forbidden_slug_worktree_doc_paths(project_root, pathspec)
-    if not doc_layer_paths:
+    agent_artifact_paths = forbidden_slug_worktree_agent_artifact_paths(project_root, pathspec)
+    if not doc_layer_paths and not agent_artifact_paths:
         return
-    print("ERROR: doc-layer paths cannot be committed from a slug worktree:", file=sys.stderr)
-    for path in doc_layer_paths:
-        print(f"  {path}", file=sys.stderr)
-    print(
-        "\nThe doc layer is authored at prepare on main and folded at integration; "
-        "the work phase executes a frozen contract. If a doc need surfaced mid-build, "
-        "kick back instead of editing docs/** here:\n"
-        '  telec todo stamp <slug> --kickback --reason "<why the plan cannot be built>"',
-        file=sys.stderr,
-    )
+    if doc_layer_paths:
+        print(_DOC_LAYER_WORKTREE_ERROR, file=sys.stderr)
+        for path in doc_layer_paths:
+            print(f"  {path}", file=sys.stderr)
+        print(_DOC_LAYER_WORKTREE_GUIDANCE, file=sys.stderr)
+    if agent_artifact_paths:
+        print(_AGENT_ARTIFACT_WORKTREE_ERROR, file=sys.stderr)
+        for path in agent_artifact_paths:
+            print(f"  {path}", file=sys.stderr)
+        print(_AGENT_ARTIFACT_WORKTREE_GUIDANCE, file=sys.stderr)
     raise SystemExit(1)
 
 

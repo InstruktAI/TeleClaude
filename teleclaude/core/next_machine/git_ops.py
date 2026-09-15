@@ -34,7 +34,10 @@ from teleclaude.git import (
     Repo,
     no_autostash_env,
 )
-from teleclaude.project_root import forbidden_slug_worktree_doc_paths
+from teleclaude.project_root import (
+    forbidden_slug_worktree_agent_artifact_paths,
+    forbidden_slug_worktree_doc_paths,
+)
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, TodoState
 
@@ -60,6 +63,13 @@ _PRE_MERGE_DOC_LAYER_ERROR_TEMPLATE = (
 )
 _PRE_MERGE_DOC_LAYER_PATH_TEMPLATE = "  {path}"
 _PRE_MERGE_DOC_LAYER_PATH_SEPARATOR = "\n"
+_PRE_MERGE_AGENT_ARTIFACT_ERROR_TEMPLATE = (
+    "ERROR: agent-artifact source paths cannot be committed from a slug worktree:\n"
+    "{paths}\n\n"
+    "Agent-artifact sources are authored on main in the session where their intent was decided; "
+    "remove these paths from the worktree commit and route the artifact change to that session."
+)
+_PRE_MERGE_FROZEN_PATH_ERROR_SEPARATOR = "\n\n"
 
 _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_INPUT: STATE_KEY_INPUT,
@@ -634,11 +644,20 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
     dirty_paths = _dirty_paths(repo)
     if dirty_paths:
         forbidden_doc_paths = forbidden_slug_worktree_doc_paths(Path(worktree_cwd), dirty_paths)
+        forbidden_agent_artifact_paths = forbidden_slug_worktree_agent_artifact_paths(Path(worktree_cwd), dirty_paths)
+        refusal_messages: list[str] = []
         if forbidden_doc_paths:
             formatted_paths = _PRE_MERGE_DOC_LAYER_PATH_SEPARATOR.join(
                 _PRE_MERGE_DOC_LAYER_PATH_TEMPLATE.format(path=path) for path in forbidden_doc_paths
             )
-            return _PRE_MERGE_DOC_LAYER_ERROR_TEMPLATE.format(paths=formatted_paths)
+            refusal_messages.append(_PRE_MERGE_DOC_LAYER_ERROR_TEMPLATE.format(paths=formatted_paths))
+        if forbidden_agent_artifact_paths:
+            formatted_paths = _PRE_MERGE_DOC_LAYER_PATH_SEPARATOR.join(
+                _PRE_MERGE_DOC_LAYER_PATH_TEMPLATE.format(path=path) for path in forbidden_agent_artifact_paths
+            )
+            refusal_messages.append(_PRE_MERGE_AGENT_ARTIFACT_ERROR_TEMPLATE.format(paths=formatted_paths))
+        if refusal_messages:
+            return _PRE_MERGE_FROZEN_PATH_ERROR_SEPARATOR.join(refusal_messages)
         repo.git.add("-A")
         # Deferred: teleclaude.commit_identity pulls in todo_scaffold ->
         # hooks.receiver -> core.todos_db -> core.next_machine.lifecycle ->
