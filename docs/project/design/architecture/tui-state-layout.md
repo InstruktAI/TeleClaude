@@ -241,6 +241,9 @@ a **non-sticky** session sets/swaps the preview.
 - `←`/`→` on a todo: collapse/expand its file list; on a project or computer header: collapse/expand that node's whole subtree.
 - `=`/`-`: `ExpandAll()` / `CollapseAll()` — leaf fold of every todo's file list.
 - `+`/`_` (shift): collapse/expand every computer and project (structural fold); todo file lists are untouched.
+<!-- planned:highlight-hidden-todo-dependencies -->
+- `D` on a selected todo row: start a 1.5-second dependency flash. Every currently rendered dependency row in the same project receives the normal selected-todo highlight except the dependency already represented by the selected todo's tree parent. The cursor stays on the selected todo; no row, badge, connector, section, or persisted state is added. Cursor movement clears the flash immediately, and another `D` starts a fresh interval.
+<!-- /planned:highlight-hidden-todo-dependencies -->
 - `d` on project: `ToggleProjectDelivered(project_path)` — reveals/hides the project's recent delivery history.
 - `i` on project: `ToggleProjectIcebox(project_path)` — reveals/hides the project's iceboxed entries.
 - `x` on project: `ToggleProjectTrashed(project_path)` — reveals/hides the project's soft-removed entries (Trashed section). Per-project toggle; persisted across TUI sessions. Binding chosen over `t` (the global Cycle-Theme binding at `teleclaude/cli/tui/app.py:233`) and `T` (kept free for future use); `x` matches the "trash" mental model and the input proposal.
