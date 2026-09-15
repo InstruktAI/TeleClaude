@@ -86,11 +86,6 @@ build_review:
 - **Ground-shift follow-up**: if `origin/main` is merged while review is in flight and the newly landed files overlap the current review surface, the state machine sends a targeted follow-up to the same reviewer instead of widening scope or spawning a new reviewer.
 - **Explicit build completion**: commits and passing gates are evidence only. Review does not reopen until the builder stamps `build_complete`.
 
-<!-- planned:fix-work-verdict-stamp-silent-noop -->
-
-- **Verdict consumption phase-gate**: a `build_review` verdict is consumed only when `lifecycle_phase == build_complete` (`apply_authoritative_signal`); the next transition to `build_complete` clears the verdict, so a verdict stamped at any other phase is inert. The stamp surface therefore refuses to record a `build_review` verdict off `build_complete` rather than recording it silently, unless `--force` is passed — which records the verdict and sets `lifecycle_phase = build_complete` so the next dispatch consumes it. This gate is specific to `build_review`; prepare verdicts are consumed by stateless re-derivation and need no gate.
-
-<!-- /planned:fix-work-verdict-stamp-silent-noop -->
 
 - **Review threshold**: at the configured threshold the machine reports the admitted-pass count and instructs the orchestrator to dispatch an assist against the loop; it refuses no pass and keeps looping.
 - **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready` on the finalize sub-state; the Work machine performs the triple-ref-gated advance from `review_approved` to terminal `lifecycle_phase=finalize_ready` and ends the worker's child sessions and own session inside the same step. There is no separate `handed_off` follow-up phase.
