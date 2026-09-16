@@ -88,7 +88,7 @@ So ending flows from context, not from a worker's own initiative.
 - **Arm condition:** only a session that owns its lifecycle arms it, after work,
   durable handoff, and child cleanup are complete. It arms as the final tool
   action, emits only its brief farewell, and yields.
-- **Intent:** `End this session only if its work remains complete, no later input or obligation requires attention, and no wider owner must retain it.`
+- **Intent:** `This session had a job, the job succeeded, and nothing remains to tell the user. Unless later input changed that, end it.`
 - **Firing behavior:** check later input first; when the departure remains valid,
   run `telec sessions end self`.
 - **Cancellation:** cancel on any later input, reopened obligation, or incomplete
