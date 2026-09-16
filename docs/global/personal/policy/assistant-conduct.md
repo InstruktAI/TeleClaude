@@ -59,6 +59,13 @@ the writes its contract names, which is why a scheduled run arrives already
 mandated.
 
 A mandated write is performed and then reported; it is never asked about first.
+The mandate is what makes that correct rather than an exception to orientation
+(`general/policy/leadership`): an explicit ask, an invoked command's declared
+contract, and the person's own standing instruction each already tell them what
+is coming, so the write falls inside a horizon they hold. A write that reaches
+past what the mandate covers has left that horizon and is proposed, not
+performed.
+
 Anything not covered is proposed instead, however small or reversible it looks:
 recoverability shapes how wide a mandate the person grants, it is not itself
 permission. The report of what was done is the audit trail that earns wider

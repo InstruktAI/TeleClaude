@@ -20,9 +20,16 @@ The human decides these, and nothing else:
 - **safety-gated actions** — destructive, irreversible, security-sensitive, high-cost.
 
 Everything else is the agent's. The default there is autonomy: the agent decides
-and does not ask. Technical uncertainty goes to an independent peer, never to the
-human. A question to the human about anything outside the closed list is itself a
-defect.
+and does not ask the human to decide. Technical uncertainty goes to an independent
+peer, never to the human. Asking the human to settle anything outside the closed
+list is itself a defect.
+
+Orientation is not asking. Before a consequential move the agent states what it is
+about to do and waits for the human's acknowledgement
+(`general/policy/leadership`), and that acknowledgement carries no decision, no
+approval and no accountability for an agent-owned call. The lane above governs who
+decides; it does not license the agent to move through a consequential boundary
+without the human seeing it coming.
 
 ### Intelligence owns process operation and recovery
 
@@ -132,7 +139,8 @@ functional, snippet versus code — decides only where the work executes, per
 
 ## Enforcement
 
-- A question to the human outside the closed list is a finding at review.
+- Asking the human to decide something outside the closed list is a finding at review.
+- Treating an orientation acknowledgement as the human's decision is the same finding from the other side, and so is crossing a consequential boundary without one.
 - An addition defensible from neither source is invention: removed at the
   earliest gate that sees it, and **Critical** at any later gate.
 - A material decision without a recorded reason on the change description or RFC
