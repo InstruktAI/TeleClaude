@@ -396,12 +396,6 @@ performing only a partial-staging check as a backstop for raw `git commit`
 invocations.
 <!-- /planned-change:home-tier-commit-maintenance -->
 
-<!-- planned:home-tier-commit-maintenance -->
-Which tiers participate in documentation is the tier-permission contract's
-answer, not this surface's: this contract consumes it and decides nothing about
-which tier carries it.
-<!-- /planned:home-tier-commit-maintenance -->
-
 
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
 
@@ -801,9 +795,10 @@ Given an agent working in an invocation context root whose tier carries no proje
 And whose tier's material participates in documentation
 And that context root has documentation changes in scope
 When the agent commits through the sealed surface
-Then format runs before lint over the documentation paths in quality_paths
+Then the gate receives quality_paths, and each check applies to the paths it governs
 And the gate is the one a subscribed project runs, by no separate mechanism
 And a failing gate blocks the commit exactly as it does for a subscribed project
+And a check whose contract the tier does not carry is not owed, and nothing is applied in its place
 ```
 <!-- /planned:home-tier-commit-maintenance -->
 
