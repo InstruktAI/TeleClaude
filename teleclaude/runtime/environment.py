@@ -188,10 +188,10 @@ def _capture_shell_environment(shell_value: str, env: Mapping[str, str] | None =
         )
         return {}
 
-    lines = result.stdout.splitlines()
-    if _SHELL_CAPTURE_SENTINEL not in lines:
+    sentinel_index = result.stdout.find(_SHELL_CAPTURE_SENTINEL)
+    if sentinel_index < 0:
         logger.warning(
-            "user shell environment capture produced no sentinel line; falling back to daemon environment: "
+            "user shell environment capture produced no sentinel marker; falling back to daemon environment: "
             "shell=%s stdout=%s",
             shell_value,
             result.stdout.strip(),
@@ -199,9 +199,10 @@ def _capture_shell_environment(shell_value: str, env: Mapping[str, str] | None =
         return {}
 
     captured: dict[str, str] = {}
-    for line in lines[lines.index(_SHELL_CAPTURE_SENTINEL) + 1 :]:
+    block = result.stdout[sentinel_index + len(_SHELL_CAPTURE_SENTINEL) :]
+    for line in block.splitlines():
         name, separator, value = line.partition(_ENV_ASSIGNMENT_SEPARATOR)
-        if not separator or name not in _CAPTURED_ENV_NAMES:
+        if not separator or name not in _CAPTURED_ENV_NAMES or name in captured:
             continue
         if value:
             captured[name] = value
