@@ -49,9 +49,10 @@ declared tier. Where that tier carries project subscriptions, it runs format the
 lint in-process against `quality_paths` (the commit pathspec filtered to existing
 files) before `git commit --no-verify`. Where the tier is a non-project tier
 whose material participates in documentation — the global tier at the platform
-home, and the person and company homes inside it — the docs gate runs the same
-way over the documentation paths in the pathspec. Where a tier carries neither,
-neither runs and nothing is applied in their place.
+home, and the person and company homes inside it — the same format-then-lint
+gate runs against the documentation paths in `quality_paths`, no separate
+mechanism. Where a tier carries neither, neither runs and nothing is applied in
+their place.
 <!-- /planned-change:home-tier-commit-maintenance -->
 No framework stash, no working-tree reset
 outside the pathspec. The installed `.git/hooks/pre-commit` is a thin telec-owned
