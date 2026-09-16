@@ -8,7 +8,6 @@ from typing import Protocol, TypedDict, cast
 
 import yaml
 
-from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.paths import MACHINE_CONFIG_PATH
 
 
@@ -25,6 +24,9 @@ class ProjectNotifier(Protocol):
 
     def notify(self, message: str, *, severity: str = "information") -> None:
         """Notify the user of a project action result."""
+
+    def notify_text(self, message: str, *, severity: str = "information") -> None:
+        """Notify the user with text the caller did not author, rendered as data."""
 
 
 class TrustedDirEntryData(TypedDict, total=False):
@@ -157,8 +159,8 @@ def save_new_project(app: ProjectNotifier, result: NewProjectResultLike) -> bool
         _write_raw_config(config_path, raw_config)
     except Exception as exc:
         _rollback_created_directory(project_path, created_project_dir)
-        app.notify(f"Failed to save project: {escape_markup(str(exc)[:80])}", severity="error")
+        app.notify_text(f"Failed to save project: {str(exc)[:80]}", severity="error")
         return False
 
-    app.notify(f"Project '{result.name}' added")
+    app.notify_text(f"Project '{result.name}' added")
     return True

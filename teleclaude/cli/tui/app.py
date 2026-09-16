@@ -18,6 +18,7 @@ from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.notifications import SeverityLevel
 from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Input, TabbedContent, TabPane
@@ -368,6 +369,22 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         self._paste_guard_quiet_until = float("-inf")
         self._last_paste_at = float("-inf")
         self._media_state.animation_engine.on_animation_start = self._show_animation_toast
+
+    def notify_text(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: SeverityLevel = "information",
+        timeout: float | None = None,
+    ) -> None:
+        """Raise a notification for text the TUI did not author.
+
+        Text whose content this app does not control is data, never markup:
+        this entry point declares that once, on behalf of every caller that
+        cannot vouch for its own message.
+        """
+        self.notify(message, title=title, severity=severity, timeout=timeout, markup=False)
 
     def __getattr__(self, name: str) -> object:
         """Keep legacy mixin attribute access working via grouped state."""

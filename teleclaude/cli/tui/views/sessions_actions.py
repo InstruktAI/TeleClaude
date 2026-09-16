@@ -379,7 +379,7 @@ class SessionsViewActionsMixin:
             {s.session_id for s in self._sessions if s.project_path == project_path}
         )
         if not session_ids:
-            self.app.notify(
+            self.app.notify_text(
                 f"No sessions to restart in {item.project.name}",
                 severity="warning",
             )  # type: ignore[attr-defined]
@@ -410,7 +410,7 @@ class SessionsViewActionsMixin:
             {s.session_id for s in self._sessions if (s.computer or "local") == computer}
         )
         if not session_ids:
-            self.app.notify(
+            self.app.notify_text(
                 f"No sessions to restart on {computer}",
                 severity="warning",
             )  # type: ignore[attr-defined]

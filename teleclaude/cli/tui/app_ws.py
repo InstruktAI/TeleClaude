@@ -29,7 +29,6 @@ from teleclaude.cli.tui.animation_triggers import ActivityTrigger
 from teleclaude.cli.tui.messages import AgentActivity, SessionClosed, SessionStarted, SessionUpdated
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.tree import _is_local_name
-from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.config import config
@@ -165,7 +164,7 @@ class TelecAppWsMixin:
             return True
 
         if isinstance(event, ErrorEventDTO):
-            self.notify(escape_markup(event.data.message), severity="error")  # type: ignore[attr-defined]
+            self.notify_text(event.data.message, severity="error")  # type: ignore[attr-defined]
             return True
 
         if isinstance(event, OperationCompletedEventDTO):
@@ -173,7 +172,7 @@ class TelecAppWsMixin:
             # Successful completions stay silent — the relevant view already
             # reflects the new state through its own data refresh.
             if event.error:
-                self.notify(escape_markup(event.error), severity="error")  # type: ignore[attr-defined]
+                self.notify_text(event.error, severity="error")  # type: ignore[attr-defined]
             return True
 
         return False
@@ -182,7 +181,7 @@ class TelecAppWsMixin:
         """Handle chiptunes status updates for the footer."""
         if isinstance(event, ChiptunesTrackEventDTO):
             if event.track:
-                self.notify(f"♪ Loading: {event.track}", timeout=4)  # type: ignore[attr-defined]
+                self.notify_text(f"♪ Loading: {event.track}", timeout=4)  # type: ignore[attr-defined]
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
                 loaded=True,
                 playback="loading",
@@ -230,13 +229,13 @@ class TelecAppWsMixin:
     def _notify_session_lifecycle_status(self, event: SessionLifecycleStatusEventDTO) -> None:
         """Surface session lifecycle events as TUI notifications."""
         if event.status == "escalated":
-            self.notify(  # type: ignore[attr-defined]
+            self.notify_text(  # type: ignore[attr-defined]
                 f"Session {event.session_id} escalated to human",
                 severity="information",
             )
             return
         if event.status == "escalation_ended":
-            self.notify(  # type: ignore[attr-defined]
+            self.notify_text(  # type: ignore[attr-defined]
                 f"Session {event.session_id} returned from escalation",
                 severity="information",
             )
@@ -244,13 +243,13 @@ class TelecAppWsMixin:
         if event.status != "error":
             return
         if event.reason == "close_failed":
-            self.notify(  # type: ignore[attr-defined]
+            self.notify_text(  # type: ignore[attr-defined]
                 f"Session {event.session_id} failed to close",
                 severity="error",
             )
             self._refresh_data(["sessions"])  # type: ignore[attr-defined]
             return
-        self.notify(  # type: ignore[attr-defined]
+        self.notify_text(  # type: ignore[attr-defined]
             f"Session {event.session_id}: {event.status}",
             severity="warning",
         )

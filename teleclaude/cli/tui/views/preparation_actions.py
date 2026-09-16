@@ -15,7 +15,6 @@ from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.tree import project_collapse_key
-from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
@@ -456,15 +455,15 @@ class PreparationViewActionsMixin:
                     "POST", "/todos/dump", json_body=request.model_dump(mode="json"), timeout=10.0
                 )
             except Exception as exc:
-                self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
                 return
 
             if isinstance(result, dict) and result.get("status") == "ok":
                 self.app.notify(f"Created {slug}")  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
             else:
-                self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ContentInputModal(title=f"New {'Bug' if kind == 'bug' else 'Todo'}"),
@@ -543,15 +542,15 @@ class PreparationViewActionsMixin:
                         timeout=10.0,
                     )
                 except ToolAPIError as exc:
-                    self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+                    self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
                     return
                 if isinstance(result, dict) and result.get("status") == "ok":
-                    self.app.notify(f"Removed artifact '{artifact_name}' from {slug}")  # type: ignore[attr-defined]
+                    self.app.notify_text(f"Removed artifact '{artifact_name}' from {slug}")  # type: ignore[attr-defined]
                     self.app._refresh_data()  # type: ignore[attr-defined]
                 elif isinstance(result, dict) and result.get("detail"):
-                    self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+                    self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
                 else:
-                    self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+                    self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
 
             self.app.push_screen(  # type: ignore[attr-defined]
                 ConfirmModal(
@@ -583,15 +582,15 @@ class PreparationViewActionsMixin:
                     timeout=10.0,
                 )
             except ToolAPIError as exc:
-                self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
                 return
             if isinstance(result, dict) and result.get("operation_id"):
-                self.app.notify(f"Removing {slug}...")  # type: ignore[attr-defined]
+                self.app.notify_text(f"Removing {slug}...")  # type: ignore[attr-defined]
                 self._follow_lifecycle_operation(str(result["operation_id"]))  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
             else:
-                self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ConfirmModal(
@@ -613,18 +612,18 @@ class PreparationViewActionsMixin:
                 timeout=10.0,
             )
         except ToolAPIError as exc:
-            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+            self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
             return
         if isinstance(result, dict) and result.get("operation_id"):
             target = f" {slug}" if slug else ""
-            self.app.notify(f"{label}{target}...")  # type: ignore[attr-defined]
+            self.app.notify_text(f"{label}{target}...")  # type: ignore[attr-defined]
             self.app._refresh_data()  # type: ignore[attr-defined]
             self._follow_lifecycle_operation(str(result["operation_id"]))  # type: ignore[attr-defined]
             return
         if isinstance(result, dict) and result.get("detail"):
-            self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+            self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
             return
-        self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+        self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
 
     @work(thread=True, group="lifecycle-op")
     def _follow_lifecycle_operation(self, operation_id: str) -> None:
@@ -647,8 +646,8 @@ class PreparationViewActionsMixin:
             except ToolAPIError as exc:
                 if time.monotonic() - start > _LIFECYCLE_POLL_BUDGET_S:
                     self.app.call_from_thread(  # type: ignore[attr-defined]
-                        self.app.notify,
-                        escape_markup(str(exc)),
+                        self.app.notify_text,
+                        str(exc),
                         severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
                     )
                     return
@@ -665,10 +664,8 @@ class PreparationViewActionsMixin:
                     response.get(_OPERATION_RESPONSE_KEY_RECOVERY_COMMAND) if isinstance(response, dict) else None
                 ) or _RECOVERY_COMMAND_TEMPLATE.format(operation_id=operation_id)
                 self.app.call_from_thread(  # type: ignore[attr-defined]
-                    self.app.notify,  # type: ignore[attr-defined]
-                    escape_markup(
-                        _OUTCOME_UNKNOWN_MESSAGE_TEMPLATE.format(operation_id=operation_id, recovery=recovery)
-                    ),
+                    self.app.notify_text,  # type: ignore[attr-defined]
+                    _OUTCOME_UNKNOWN_MESSAGE_TEMPLATE.format(operation_id=operation_id, recovery=recovery),
                     severity=_NOTIFY_SEVERITY_ERROR,
                 )
                 return
@@ -694,16 +691,16 @@ class PreparationViewActionsMixin:
                 else _OPERATION_ENDED_IN_STATE_MESSAGE_TEMPLATE.format(state=state)
             )
             self.app.call_from_thread(  # type: ignore[attr-defined]
-                self.app.notify,
-                escape_markup(str(message)),
+                self.app.notify_text,
+                str(message),
                 severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
             )
             return
         result = response.get(_OPERATION_RESPONSE_KEY_RESULT)
         if isinstance(result, str) and result.startswith(_RUNNER_NOT_DISPATCHED_PREFIX):
             self.app.call_from_thread(  # type: ignore[attr-defined]
-                self.app.notify,
-                escape_markup(result),
+                self.app.notify_text,
+                result,
                 severity=_NOTIFY_SEVERITY_ERROR,  # type: ignore[attr-defined]
             )
 
@@ -736,7 +733,7 @@ class PreparationViewActionsMixin:
             if kind != TODO_KIND_TASK:
                 ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=todo_row.todo.lifecycle_phase)
                 if not ready:
-                    self.app.notify(
+                    self.app.notify_text(
                         f"Todo is not ready to start work: {reason}",
                         severity="warning",
                     )  # type: ignore[attr-defined]
@@ -767,17 +764,17 @@ class PreparationViewActionsMixin:
                     timeout=10.0,
                 )
                 if isinstance(result, dict) and result.get("status") == "ok":
-                    self.app.notify(f"Frozen '{slug}' to icebox")  # type: ignore[attr-defined]
+                    self.app.notify_text(f"Frozen '{slug}' to icebox")  # type: ignore[attr-defined]
                     warnings = result.get(_WARNING_RESPONSE_KEY)
                     if isinstance(warnings, list):
                         for warning in warnings:
                             if isinstance(warning, str):
-                                self.app.notify(escape_markup(warning), severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
+                                self.app.notify_text(warning, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
                     self.app._refresh_data()  # type: ignore[attr-defined]
                 elif isinstance(result, dict) and result.get("detail"):
-                    self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+                    self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
             except Exception as exc:
-                self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ConfirmModal(
@@ -868,17 +865,17 @@ class PreparationViewActionsMixin:
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(f"Unfrozen '{slug}' to todo list")  # type: ignore[attr-defined]
+                self.app.notify_text(f"Unfrozen '{slug}' to todo list")  # type: ignore[attr-defined]
                 warnings = result.get(_WARNING_RESPONSE_KEY)
                 if isinstance(warnings, list):
                     for warning in warnings:
                         if isinstance(warning, str):
-                            self.app.notify(escape_markup(warning), severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
+                            self.app.notify_text(warning, severity=_NOTIFY_SEVERITY_WARNING)  # type: ignore[attr-defined]
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
         except Exception as exc:
-            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+            self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
 
     def action_hold(self) -> None:
         """h: hold an active todo with a reason, or release its existing hold."""
@@ -914,19 +911,19 @@ class PreparationViewActionsMixin:
                         timeout=10.0,
                     )
                     if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
-                        self.app.notify(_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
+                        self.app.notify_text(_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
                         self.app._refresh_data()  # type: ignore[attr-defined]
                     elif isinstance(result, dict) and result.get(_RESPONSE_KEY_DETAIL):
-                        self.app.notify(  # type: ignore[attr-defined]
-                            escape_markup(str(result[_RESPONSE_KEY_DETAIL])), severity=_NOTIFY_SEVERITY_ERROR
+                        self.app.notify_text(  # type: ignore[attr-defined]
+                            str(result[_RESPONSE_KEY_DETAIL]), severity=_NOTIFY_SEVERITY_ERROR
                         )
                     else:
-                        self.app.notify(  # type: ignore[attr-defined]
-                            escape_markup(_UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result)),
+                        self.app.notify_text(  # type: ignore[attr-defined]
+                            _UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result),
                             severity=_NOTIFY_SEVERITY_ERROR,
                         )
                 except Exception as exc:
-                    self.app.notify(escape_markup(str(exc)), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+                    self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
 
             self.app.push_screen(  # type: ignore[attr-defined]
                 ContentInputModal(
@@ -951,19 +948,19 @@ class PreparationViewActionsMixin:
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get(_RESPONSE_KEY_STATUS) == _RESPONSE_STATUS_OK:
-                self.app.notify(_RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
+                self.app.notify_text(_RELEASE_HOLD_SUCCESS_MESSAGE_TEMPLATE.format(slug=slug))  # type: ignore[attr-defined]
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get(_RESPONSE_KEY_DETAIL):
-                self.app.notify(  # type: ignore[attr-defined]
-                    escape_markup(str(result[_RESPONSE_KEY_DETAIL])), severity=_NOTIFY_SEVERITY_ERROR
+                self.app.notify_text(  # type: ignore[attr-defined]
+                    str(result[_RESPONSE_KEY_DETAIL]), severity=_NOTIFY_SEVERITY_ERROR
                 )
             else:
-                self.app.notify(  # type: ignore[attr-defined]
-                    escape_markup(_UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result)),
+                self.app.notify_text(  # type: ignore[attr-defined]
+                    _UNEXPECTED_RESPONSE_MESSAGE_TEMPLATE.format(response=result),
                     severity=_NOTIFY_SEVERITY_ERROR,
                 )
         except Exception as exc:
-            self.app.notify(escape_markup(str(exc)), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
+            self.app.notify_text(str(exc), severity=_NOTIFY_SEVERITY_ERROR)  # type: ignore[attr-defined]
 
     def action_approve_gate(self) -> None:
         """A: approve the selected todo's current human gate."""
@@ -993,14 +990,14 @@ class PreparationViewActionsMixin:
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(f"Approved '{slug}'")  # type: ignore[attr-defined]
+                self.app.notify_text(f"Approved '{slug}'")  # type: ignore[attr-defined]
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
             else:
-                self.app.notify(escape_markup(f"Unexpected response: {result}"), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
         except Exception as exc:
-            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+            self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
 
     def action_toggle_trashed(self) -> None:
         """x: toggle the trashed section visibility, scoped to computer or project."""
@@ -1061,14 +1058,14 @@ class PreparationViewActionsMixin:
                 timeout=10.0,
             )
             if isinstance(result, dict) and result.get("status") == "ok":
-                self.app.notify(f"Restored '{slug}' to todo")  # type: ignore[attr-defined]
+                self.app.notify_text(f"Restored '{slug}' to todo")  # type: ignore[attr-defined]
                 # Rely on _on_mutation("todo_updated") to refresh via websocket,
                 # but call refresh_data to be sure if needed.
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
-                self.app.notify(escape_markup(str(result["detail"])), severity="error")  # type: ignore[attr-defined]
+                self.app.notify_text(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
         except Exception as exc:
-            self.app.notify(escape_markup(str(exc)), severity="error")  # type: ignore[attr-defined]
+            self.app.notify_text(str(exc), severity="error")  # type: ignore[attr-defined]
 
 
 def _handle_flash_dependencies(view: PreparationViewActionsMixin) -> None:

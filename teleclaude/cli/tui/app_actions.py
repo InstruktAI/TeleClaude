@@ -23,7 +23,6 @@ from teleclaude.cli.tui.messages import (
 )
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.theme import get_pane_theming_mode_level
-from teleclaude.cli.tui.utils.formatters import escape_markup
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
@@ -112,15 +111,15 @@ class TelecAppActionsMixin:
                 )
                 if result.status == "success":
                     self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
-                    self.notify(f"Revived session {message.revive_session_id}...")  # type: ignore[attr-defined]
+                    self.notify_text(f"Revived session {message.revive_session_id}...")  # type: ignore[attr-defined]
                     if message.navigate_after_revive:
                         self.action_switch_tab("sessions")  # type: ignore[attr-defined]
                         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
                         sessions_view.select_session(result.session_id, request_focus=True)
                 else:
-                    self.notify(escape_markup(result.error or "Revive failed"), severity="error")  # type: ignore[attr-defined]
+                    self.notify_text(result.error or "Revive failed", severity="error")  # type: ignore[attr-defined]
             except APP_ACTION_ERRORS as error:
-                self.notify(f"Failed to revive session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
+                self.notify_text(f"Failed to revive session: {error}", severity="error")  # type: ignore[attr-defined]
             return
 
         # Resume by native session ID
@@ -137,7 +136,7 @@ class TelecAppActionsMixin:
                 self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
                 self.notify("Resuming session...")  # type: ignore[attr-defined]
             except APP_ACTION_ERRORS as error:
-                self.notify(f"Failed to resume session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
+                self.notify_text(f"Failed to resume session: {error}", severity="error")  # type: ignore[attr-defined]
             return
 
         # Normal new session
@@ -158,9 +157,9 @@ class TelecAppActionsMixin:
                 sessions_view = self.query_one(_SESSIONS_VIEW_SELECTOR, SessionsView)  # type: ignore[attr-defined]
                 sessions_view.select_session(result.session_id, request_focus=True)
             if result.routing_explanation:
-                self.notify(escape_markup(result.routing_explanation))  # type: ignore[attr-defined]
+                self.notify_text(result.routing_explanation)  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify(f"Failed to create session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
+            self.notify_text(f"Failed to create session: {error}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="session-action")
     async def on_kill_session_request(self, message: KillSessionRequest) -> None:
@@ -171,7 +170,7 @@ class TelecAppActionsMixin:
                 sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
                 sessions_view.optimistically_hide_session(message.session_id)
         except APP_ACTION_ERRORS as error:
-            self.notify(f"Failed to kill session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
+            self.notify_text(f"Failed to kill session: {error}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="session-action")
     async def on_revive_session_request(self, message: ReviveSessionRequest) -> None:
@@ -185,7 +184,7 @@ class TelecAppActionsMixin:
             )
             self.notify("Reviving headless session...")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify(f"Failed to revive session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
+            self.notify_text(f"Failed to revive session: {error}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="session-action")
     async def on_restart_session_request(self, message: RestartSessionRequest) -> None:
@@ -194,7 +193,7 @@ class TelecAppActionsMixin:
             await self.api.agent_restart(message.session_id, computer=message.computer)  # type: ignore[attr-defined]
             self.notify("Restarting agent...")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify(f"Failed to restart session: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
+            self.notify_text(f"Failed to restart session: {error}", severity="error")  # type: ignore[attr-defined]
 
     @work(exclusive=True, group="session-action")
     async def on_restart_sessions_request(self, message: RestartSessionsRequest) -> None:
@@ -213,7 +212,7 @@ class TelecAppActionsMixin:
                 severity="warning",
             )
         else:
-            self.notify(  # type: ignore[attr-defined]
+            self.notify_text(  # type: ignore[attr-defined]
                 f"Restarted {len(message.session_ids)} sessions on {message.computer}"
             )
 
@@ -245,9 +244,9 @@ class TelecAppActionsMixin:
         """Run a footer-triggered background job and surface the result."""
         try:
             await self.api.run_job(job_name, project)  # type: ignore[attr-defined]
-            self.notify(f"Job '{job_name}' started for {project}")  # type: ignore[attr-defined]
+            self.notify_text(f"Job '{job_name}' started for {project}")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
-            self.notify(f"Failed to run job: {escape_markup(str(error))}", severity="error")  # type: ignore[attr-defined]
+            self.notify_text(f"Failed to run job: {error}", severity="error")  # type: ignore[attr-defined]
 
     # --- Tab switching ---
 

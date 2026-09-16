@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from rich.markup import escape as _rich_escape
-
 # Width of the date suffix appended by ``format_time(with_date=True)``: ``-DD/MM``.
 DATE_SUFFIX_WIDTH = 6
 
@@ -117,8 +115,3 @@ def session_display_index(index: int, parent_index: str | None = None) -> str:
     if parent_index:
         return f"{parent_index}.{index}"
     return str(index)
-
-
-def escape_markup(text: str) -> str:
-    """Escape Rich markup characters so text renders as plain text in markup-aware widgets."""
-    return _rich_escape(text)
