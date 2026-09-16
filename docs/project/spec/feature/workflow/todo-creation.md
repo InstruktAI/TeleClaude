@@ -425,7 +425,6 @@ And a `--reason` supplied without `--hold` is refused before any write rather th
 And the reason input is hidden from the structured flag surfaces exactly as `--hold` is
 ```
 
-<!-- planned:fix-post-todos-dump-creates-a-todo-from-a-sl -->
 
 #### UC-WTC30: Creation refuses a slug that violates the kebab-case invariant
 
@@ -438,7 +437,6 @@ And a slug carrying a path separator or a relative-path segment is refused the s
 And each `--after` dependency slug and the `--group` parent slug are held to that same format invariant
 ```
 
-<!-- /planned:fix-post-todos-dump-creates-a-todo-from-a-sl -->
 
 ### Cross-context references
 
