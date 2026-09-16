@@ -5,12 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.todo import assemble_todo_from_db
 
 if TYPE_CHECKING:
     from teleclaude.services.work._base import WorkServiceBase
+
+
+logger = get_logger(__name__)
 
 
 class TodoOps:
@@ -130,6 +135,14 @@ class TodoOps:
         db = await self._base._ensure_db()
         receipt = reconcile_lifecycle_markers(Path(self._base.project_root), slug, MarkerMoment.DELIVER)
         if not receipt.succeeded:
+            # The boolean says it failed; without the reason a caller cannot tell a
+            # dirty path awaiting its owner from a genuine reconciliation fault.
+            logger.error(
+                "Delivery marker reconciliation did not apply",
+                slug=slug,
+                reason=receipt.reason,
+                project_root=str(self._base.project_root),
+            )
             return False
         return await db.deliver(
             slug,

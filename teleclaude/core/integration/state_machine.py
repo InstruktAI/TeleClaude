@@ -34,6 +34,7 @@ from teleclaude.core.integration.checkpoint import (
 )
 from teleclaude.core.integration.delivery_fold import (
     DeliveredMarkerRecoveryFault,
+    UnrepairableMarkerDivergence,
     recover_delivered_marker_divergence,
 )
 from teleclaude.core.integration.formatters import (
@@ -155,34 +156,67 @@ def _log_delivered_marker_recovery_publication(
     )
 
 
+def _format_recovery_fault_anomaly(fault: DeliveredMarkerRecoveryFault) -> str:
+    """Describe one unfoldable slug as work the integrator completes by hand."""
+    paths = ", ".join(sorted({finding.relative_path for finding in fault.divergences}))
+    return (
+        f"Delivered-marker fold did not apply for `{fault.receipt.slug}` ({fault.receipt.reason}). "
+        f"Documentation lives on main and every `telec docs` read resolves there, so fold it there "
+        f"yourself before ending this session. Affected: {paths or '(no path recorded)'}"
+    )
+
+
+def _format_unrepairable_anomaly(divergence: UnrepairableMarkerDivergence) -> str:
+    """Describe a settled slug that is reported but deliberately not auto-folded."""
+    paths = ", ".join(sorted({finding.relative_path for finding in divergence.divergences}))
+    return (
+        f"Settled slug `{divergence.slug}` (status {divergence.status}) still carries live markers. "
+        f"No terminal fold is defined for this status, so none was attempted — resolve it on main "
+        f"yourself. Affected: {paths or '(no path recorded)'}"
+    )
+
+
 def _recover_delivered_markers(
     *,
     cwd: str,
     session_id: str,
     loop: asyncio.AbstractEventLoop | None,
     sync_id: str,
-) -> str | None:
-    """Repair delivered-marker divergence and publish only applied recovery commits."""
+) -> tuple[str | None, list[str]]:
+    """Repair delivered-marker divergence, surfacing whatever would not fold.
+
+    The machine folds what it can. What it cannot — almost always a path another
+    session is holding dirty — is handed back as an anomaly rather than left in a
+    log, because completing it is the integrator's work. It never blocks: a dirty
+    path clears when its owner commits, and parking the queue on someone else's
+    working tree helps nobody. It is re-derived on every idle entry instead, so it
+    keeps being handed over until the fold actually lands and stops the moment it
+    does.
+    """
     recovery = recover_delivered_marker_divergence(Path(cwd), get_todos_db_sync(cwd).delivered_slugs_sync())
+    anomalies: list[str] = []
     for fault in recovery.faults:
         _log_delivered_marker_recovery_fault(fault, session_id=session_id, sync_id=sync_id)
+        anomalies.append(_format_recovery_fault_anomaly(fault))
+    for divergence in recovery.unrepairable:
+        anomalies.append(_format_unrepairable_anomaly(divergence))
     if not recovery.applied_receipts:
-        return None
+        return None, anomalies
 
     repo_root_sync = _synchronize_repo_root(cwd=cwd, session_id=session_id, stage=RepoRootSyncStage.ENTRY)
     _emit_repo_root_sync_progress(repo_root_sync.sync_id, repo_root_sync.outcome.value, loop)
     if not repo_root_sync.is_ready:
-        return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
+        return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd), anomalies
     if repo_root_sync.outcome is not RepoRootSyncOutcome.AHEAD_ONLY:
-        return None
+        return None, anomalies
 
     publication = _publish_repo_root_main(cwd=cwd, synchronization=repo_root_sync)
     if not publication.succeeded:
-        return _format_repo_root_sync_instruction(publication.synchronization, project_root=cwd)
+        return _format_repo_root_sync_instruction(publication.synchronization, project_root=cwd), anomalies
     confirmation = _synchronize_repo_root(cwd=cwd, session_id=session_id, stage=RepoRootSyncStage.ENTRY)
     _emit_repo_root_sync_progress(confirmation.sync_id, confirmation.outcome.value, loop)
     if not confirmation.is_ready:
-        return _format_repo_root_sync_instruction(confirmation, project_root=cwd)
+        return _format_repo_root_sync_instruction(confirmation, project_root=cwd), anomalies
     if confirmation.outcome is RepoRootSyncOutcome.AHEAD_ONLY:
         failed_confirmation = _mark_repo_root_sync_failure(
             confirmation,
@@ -190,7 +224,7 @@ def _recover_delivered_markers(
             failed_operation=_PUBLICATION_CONFIRMATION_FAILED_OPERATION,
             diagnostic=_PUBLICATION_CONFIRMATION_FAILED_DIAGNOSTIC,
         )
-        return _format_repo_root_sync_instruction(failed_confirmation, project_root=cwd)
+        return _format_repo_root_sync_instruction(failed_confirmation, project_root=cwd), anomalies
     if publication.source_head is not None:
         for receipt in recovery.applied_receipts:
             if receipt.commit is not None:
@@ -202,7 +236,7 @@ def _recover_delivered_markers(
                     recovery_commit=receipt.commit,
                     transition_id=receipt.transition_id,
                 )
-    return None
+    return None, anomalies
 
 
 def _dispatch_sync(
@@ -235,8 +269,9 @@ def _dispatch_sync(
     if not repo_root_sync.is_ready:
         return _format_repo_root_sync_instruction(repo_root_sync, project_root=cwd)
 
+    unfolded_anomalies: list[str] = []
     if initial_checkpoint.phase == IntegrationPhase.IDLE.value:
-        recovery_instruction = _recover_delivered_markers(
+        recovery_instruction, unfolded_anomalies = _recover_delivered_markers(
             cwd=cwd, session_id=session_id, loop=loop, sync_id=repo_root_sync.sync_id
         )
         if recovery_instruction:
@@ -248,7 +283,9 @@ def _dispatch_sync(
         initial_checkpoint.items_processed = 0
         initial_checkpoint.items_blocked = 0
         initial_checkpoint.parked = []
-        initial_checkpoint.warnings = []
+        # Seeded after the reset, never before: the anomalies are re-derived on
+        # every idle entry, so they persist while unfolded and vanish once folded.
+        initial_checkpoint.warnings = list(unfolded_anomalies)
         _write_checkpoint(checkpoint_path, initial_checkpoint)
     elif initial_checkpoint.candidate_slug and not _candidate_belongs_to_project(initial_checkpoint, cwd=cwd):
         # A non-IDLE checkpoint whose candidate has no branch or worktree in this

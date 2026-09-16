@@ -24,6 +24,7 @@ from teleclaude.docs_reconcile import (
     assert_no_residual_markers,
     find_marker_divergence,
 )
+from teleclaude.resource_validation._todo_status import build_todo_status_map
 
 
 @dataclass(frozen=True)
@@ -35,11 +36,27 @@ class DeliveredMarkerRecoveryFault:
 
 
 @dataclass(frozen=True)
+class UnrepairableMarkerDivergence:
+    """A settled slug reported without an automatic repair attempt.
+
+    Only a delivered slug has a defined terminal fold. A removed or holder slug
+    diverging is reported and left alone: guessing a moment for it could rewrite
+    documentation in a direction nobody asked for, and a wrong fold is worse than
+    an unfolded one.
+    """
+
+    slug: str
+    status: str
+    divergences: tuple[MarkerDivergence, ...]
+
+
+@dataclass(frozen=True)
 class DeliveredMarkerRecoveryResult:
     """Applied recovery receipts and retained faults from one root scan."""
 
     applied_receipts: tuple[MarkerReceipt, ...]
     faults: tuple[DeliveredMarkerRecoveryFault, ...]
+    unrepairable: tuple[UnrepairableMarkerDivergence, ...] = ()
 
 
 def reassert_delivered_fold(reconciliation_root: Path, slug: str) -> tuple[bool, MarkerReceipt, str | None]:
@@ -61,15 +78,36 @@ def recover_delivered_marker_divergence(
     reconciliation_root: Path,
     delivered_slugs: set[str],
 ) -> DeliveredMarkerRecoveryResult:
-    """Repair only delivered-slug marker divergence found at an idle integration entry."""
-    delivered_statuses = {slug: TodoStatus.DELIVERED.value for slug in delivered_slugs}
-    findings = find_marker_divergence(reconciliation_root, delivered_statuses)
+    """Report every settled-slug marker divergence at an idle integration entry.
+
+    Detection covers every settled status, so nothing that failed to fold passes
+    unseen. Repair is narrower than detection on purpose: only a delivered slug has
+    a defined terminal fold, so only it is repaired automatically. The rest are
+    returned for the integrator to resolve.
+
+    ``delivered_slugs`` remains the authority on which slugs may be repaired; the
+    status map supplies the wider detection set.
+    """
+    statuses = build_todo_status_map(reconciliation_root)
+    for slug in delivered_slugs:
+        statuses.setdefault(slug, TodoStatus.DELIVERED.value)
+    findings = find_marker_divergence(reconciliation_root, statuses)
     findings_by_slug: dict[str, list[MarkerDivergence]] = {}
     for finding in findings:
         findings_by_slug.setdefault(finding.slug, []).append(finding)
     applied_receipts: list[MarkerReceipt] = []
     faults: list[DeliveredMarkerRecoveryFault] = []
+    unrepairable: list[UnrepairableMarkerDivergence] = []
     for slug in sorted(findings_by_slug):
+        if slug not in delivered_slugs:
+            unrepairable.append(
+                UnrepairableMarkerDivergence(
+                    slug=slug,
+                    status=statuses.get(slug, "unknown"),
+                    divergences=tuple(findings_by_slug[slug]),
+                )
+            )
+            continue
         receipt = reconcile_lifecycle_markers(reconciliation_root, slug, MarkerMoment.DELIVER)
         if receipt.succeeded:
             if receipt.commit is not None:
@@ -84,6 +122,7 @@ def recover_delivered_marker_divergence(
     return DeliveredMarkerRecoveryResult(
         applied_receipts=tuple(applied_receipts),
         faults=tuple(faults),
+        unrepairable=tuple(unrepairable),
     )
 
 
