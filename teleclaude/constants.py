@@ -321,6 +321,7 @@ class SlashCommand(str, Enum):
     NEXT_CREATE_ART = "next-create-art"
     NEXT_CREATE_HTML = "next-create-html"
     NEXT_DEFER = "next-defer"
+    NEXT_ASSIST = "next-assist"
     NEXT_RUN_JOB = "next-run-job"
 
 
