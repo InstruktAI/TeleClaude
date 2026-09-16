@@ -17,6 +17,15 @@ while [ -L "$SOURCE" ]; do
 done
 
 INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+# Run from the checkout the caller is standing in, so its own sources are the ones
+# executed. A linked worktree is a complete checkout, but the installed editable
+# package registers a meta-path finder pinned to INSTALL_DIR, and a meta-path
+# finder outranks both PYTHONPATH and sys.path — cwd is the only lever that
+# reaches it. Without this, a worktree lints, validates and smoke-tests its own
+# change against main's rules, schema and CLI surface. Anything that is not a
+# TeleClaude checkout falls back to the installation.
+TELEC_CHECKOUT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$INSTALL_DIR")"
+[ -f "$TELEC_CHECKOUT/teleclaude/__init__.py" ] || TELEC_CHECKOUT="$INSTALL_DIR"
 # Preserve the user's invocation directory. `uv run --directory` below sets the
 # Python process cwd to INSTALL_DIR, which breaks worktree-scope detection in
 # telec code lint/test (`Path.cwd()` would point at the main repo, not the worktree
@@ -26,4 +35,4 @@ export TELEC_INVOCATION_CWD="$PWD"
 # holds modules loaded causes stale-module ImportError crashes. Explicit
 # `uv sync` (install.sh, dependency_upgrade job) still works.
 export UV_NO_SYNC=1
-exec uv run --directory "$INSTALL_DIR" --quiet python -m teleclaude.cli.telec "$@"
+exec uv run --directory "$TELEC_CHECKOUT" --quiet python -m teleclaude.cli.telec "$@"
