@@ -378,7 +378,6 @@ And disclaiming attributes the path to no one
 Given a session has disclaimed a dirty path
 When that path is committed, becomes clean, or the session receives new user input
 Then the disclaimer no longer applies to that path
-And a later change to that path is reported to the session again
 ```
 
 <!-- /planned:unknown-scope-is-not-empty-scope -->

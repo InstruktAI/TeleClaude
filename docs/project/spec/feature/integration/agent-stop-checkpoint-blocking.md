@@ -435,6 +435,7 @@ And the restart maintenance action is not among the actions it owes
 <!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 
+<!-- planned-change:unknown-scope-is-not-empty-scope -->
 #### UC-CP16: Shell command text attributes no path to a turn
 
 ```gherkin
@@ -446,6 +447,8 @@ Then no path is attributed to the turn from the shell-command text
 And the pre-existing dirty file is not attributed to this turn
 And no checkpoint is produced for that file
 ```
+<!-- change:unknown-scope-is-not-empty-scope -->
+<!-- /planned-change:unknown-scope-is-not-empty-scope -->
 
 <!-- planned-change:checkpoint-keeps-only-judgment-actions -->
 #### UC-CP17: A sealed commit outside the deployed source records no maintenance obligation
