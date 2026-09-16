@@ -97,7 +97,6 @@ And the final close-session call is also SKIPPED
 And the function returns without reporting a new transition
 ```
 
-<!-- planned:fix-telec-sessions-end-cannot-recover-a-sess -->
 #### UC-SCR-8: An interrupted close finalizes on the next terminate-session
 
 ```
@@ -111,7 +110,6 @@ And the final close-session call sets the closed-at marker and moves the row to 
 And the caller receives the ordinary end-session success rather than a lifecycle-transition error
 ```
 
-<!-- /planned:fix-telec-sessions-end-cannot-recover-a-sess -->
 
 #### Idempotency of resource cleanup
 
