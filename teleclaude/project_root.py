@@ -164,13 +164,16 @@ def is_slug_worktree(root: Path) -> bool:
 def declaration_root(context_root: Path) -> Path:
     """Return the checkout whose declaration governs this invocation.
 
-    A linked worktree carries a branch copy of the project declaration, but a
-    worktree is never authoritative for daemon-facing configuration: the tier
-    and subscriptions an invocation answers to belong to the owning checkout.
-    Contexts that are not linked worktrees answer for themselves, so global,
-    person, and nested contexts resolve unchanged.
+    A slug worktree carries a branch copy of the project declaration that is not
+    authoritative for daemon-facing configuration: the tier and subscriptions an
+    invocation answers to belong to the owning checkout. The integration worktree
+    is the exception, because its copy is not a proposal — it holds origin/main
+    plus the merge under way, so it is the declaration about to be canonical, and
+    the owning checkout's copy is the superseded one. Contexts that are not linked
+    worktrees answer for themselves, so global, person, and nested contexts
+    resolve unchanged.
     """
-    if not (is_integration_worktree(context_root) or is_slug_worktree(context_root)):
+    if not is_slug_worktree(context_root):
         return context_root
     return resolve_project_root(context_root)
 
