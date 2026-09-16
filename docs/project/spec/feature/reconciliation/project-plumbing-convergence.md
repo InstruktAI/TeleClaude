@@ -23,9 +23,17 @@ crossing and never restated here; what the converged plumbing then does — what
 the hooks check, what the docs pipeline processes — belongs to the contexts that
 own those behaviors.
 
+<!-- planned-change:home-tier-commit-maintenance -->
 Convergence runs at project initialization. No synchronization path performs it:
 a deploying synchronization installs, refreshes and withdraws nothing, and the
 read-only gate touches nothing.
+<!-- change:home-tier-commit-maintenance -->
+Convergence runs at project initialization for a project, and at machine
+installation for the platform home — the repository declaring the global tier,
+which holds the person and company homes. No synchronization path performs
+either: a deploying synchronization installs, refreshes and withdraws nothing,
+and the read-only gate touches nothing.
+<!-- /planned-change:home-tier-commit-maintenance -->
 
 ## Canonical fields
 
@@ -90,6 +98,19 @@ Then no TeleClaude-owned git hook is installed for it
 And no docs filter driver is configured for it
 ```
 
+<!-- planned:home-tier-commit-maintenance -->
+#### UC-RPC7: Machine installation converges the platform home's plumbing
+
+```gherkin
+Given the platform home repository, declaring the global tier and holding person and company documentation homes
+When the machine installation target runs
+Then TeleClaude's hooks and the docs filter driver are installed in the home's git directory when absent
+And an installed hook is rewritten only when the content rendered from TeleClaude's hook template differs from what is installed, and is otherwise left untouched
+And hooks the home carries that TeleClaude does not own are preserved
+And a repeated run with nothing changed writes nothing
+```
+<!-- /planned:home-tier-commit-maintenance -->
+
 #### UC-RPC6: No synchronization path converges project plumbing
 
 ```gherkin
@@ -105,6 +126,13 @@ And the docs filter driver is neither configured nor removed
   the next, a project's installed plumbing can lag a changed hook template; the
   capability declaration itself needs no reinstallation to take effect, because
   the installed plumbing reads it on each invocation.
+<!-- planned-change:home-tier-commit-maintenance -->
 - The TeleClaude checkout's own hooks and filter driver are additionally
   installed by its machine installation target, which is not a project
   initialization path and carries its own contract.
+<!-- change:home-tier-commit-maintenance -->
+- The TeleClaude checkout's own hooks and filter driver, and the platform
+  home's, are installed by the machine installation target, which is not a
+  project initialization path; between one installation and the next the
+  home's plumbing can lag a changed hook template exactly as a project's can.
+<!-- /planned-change:home-tier-commit-maintenance -->
