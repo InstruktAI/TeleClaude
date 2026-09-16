@@ -45,12 +45,20 @@ And emits integration.merge.conflicted at the original conflict and integration.
 
 ```
 Given the candidate SHA is already an ancestor of HEAD on origin/main (stale re-queue after restart)
-Or the squash merge produced an empty staged diff (squash of already-integrated commits)
+Or the squash merge succeeded and produced an empty staged diff (squash of already-integrated commits)
 When the merge step runs
 Then the candidate skips merge and commit entirely
 And the checkpoint advances to CANDIDATE_DELIVERED
 And integration.candidate.already_merged is emitted
 And any leftover squash-merge bookkeeping is cleaned up
+```
+
+```gherkin
+Given the squash merge failed and staged nothing
+And no conflicted paths explain the failure
+When the merge step runs
+Then no delivery is inferred and the checkpoint does not advance
+And the step returns a MERGE_FAILED_WITHOUT_CONFLICTS error carrying git's stderr and the integration worktree path
 ```
 
 ```
@@ -348,7 +356,6 @@ And crash recovery may repeat a completed reconciliation only as an idempotent n
 And it publishes the folded repository-root head
 And the recorded delivered commit is that final confirmed SHA
 ```
-
 
 #### UC-WISM34: Settled marker divergence is repaired outside candidate delivery
 

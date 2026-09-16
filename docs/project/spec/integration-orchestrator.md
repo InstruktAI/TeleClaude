@@ -361,10 +361,16 @@ Two guards prevent re-integrating content already on main:
 1. **Ancestry check** (fast path): `git merge-base --is-ancestor <sha> HEAD`. Works for
    regular merges where git maintains ancestry links. Skips directly to `CANDIDATE_DELIVERED`.
 
-2. **Empty-merge guard** (squash-merge path): After `git merge --squash`, checks
-   `git diff --cached --quiet`. If no staged changes and no conflicted files, the candidate's
+2. **Empty-merge guard** (squash-merge path): After a `git merge --squash` that **succeeded**,
+   checks `git diff --cached --quiet`. If the merge succeeded and staged nothing, the candidate's
    content is already on main (squash commits don't create ancestry links, so guard #1 misses
    this). Cleans up `SQUASH_MSG` and skips to `CANDIDATE_DELIVERED`.
+
+   The success precondition is load-bearing. A merge that fails for any non-conflict reason also
+   stages nothing, so an empty index alone cannot distinguish the two. A merge that failed with no
+   conflicted paths to explain it leaves the candidate's state unknown: no delivery is inferred,
+   the checkpoint does not advance, and the step returns a `MERGE_FAILED_WITHOUT_CONFLICTS` error
+   carrying git's stderr and the integration worktree path for inspection.
 
 Both guards emit `integration.candidate.already_merged` lifecycle events.
 

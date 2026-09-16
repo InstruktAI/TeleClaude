@@ -430,18 +430,20 @@ flowchart TD
 
     Skip["CANDIDATE_DELIVERED<br/>(skip - already integrated)"]
     Proceed["Continue with merge"]
+    Unknown["MERGE_FAILED_WITHOUT_CONFLICTS<br/>(no delivery inferred)"]
 
     Candidate --> Guard1
     Guard1 -->|"Is ancestor"| Skip
     Guard1 -->|"Not ancestor"| Guard2
-    Guard2 -->|"No staged changes"| Skip
+    Guard2 -->|"Merge succeeded,<br/>no staged changes"| Skip
+    Guard2 -->|"Merge failed,<br/>no conflicts"| Unknown
     Guard2 -->|"Has changes"| Proceed
 ```
 
 - **Guard 1 (ancestry):** fast path for regular merges where git maintains ancestry links.
-- **Guard 2 (empty merge):** catches squash merges — squash commits don't create ancestry links, so Guard 1 misses them. After `git merge --squash`, if `git diff --cached` shows no changes, the content is already on main.
+- **Guard 2 (empty merge):** catches squash merges — squash commits don't create ancestry links, so Guard 1 misses them. After a `git merge --squash` that succeeded, if `git diff --cached` shows no changes, the content is already on main. The success precondition is load-bearing: a merge that fails for a non-conflict reason also stages nothing, so an empty index alone cannot distinguish the two. A failed merge with no conflicted paths leaves the candidate's state unknown and is surfaced rather than skipped.
 
-Both guards emit `integration.candidate.already_merged` lifecycle events.
+Both guards emit `integration.candidate.already_merged` lifecycle events. The unknown-state outcome emits none: nothing was integrated, so no candidate lifecycle transition occurred.
 
 ### Delivery bookkeeping
 
