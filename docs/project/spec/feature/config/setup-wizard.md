@@ -315,11 +315,7 @@ Then the daemon reports itself ready without requiring a restart
 Given a configured person and a person-scoped MCP server with declared environment requirements
 When an authorized operator expands the person in `telec config wizard`
 Then the People view shows a Secrets section derived from those requirements and the person's stored key names
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
 And configured values are masked with keep-existing as the default action
-<!-- change:config-sample-regeneration-leaves-sync -->
-And a configured key shows only that it is set, never its value
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 When the operator explicitly replaces or clears a key
 Then the wizard writes only that person's owner-only secret file
 And the next render derives status from the persisted file
