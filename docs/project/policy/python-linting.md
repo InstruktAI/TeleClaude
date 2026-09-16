@@ -28,10 +28,12 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
   only checker that does so everywhere: mypy's per-module overrides in
   `pyproject.toml` disable `arg-type` across a large first-party surface, so a
   call-site type error inside that surface reaches no other gate.
-- `teleclaude/cli` and `teleclaude/api` are the only packages exempt from it.
-  `pyrightconfig.json` owns the exempt paths and the severity that applies to
-  them; this policy owns the rule that the carve-out has exactly those two
-  package roots.
+- The carve-out covers the CLI surface and the API surface, and nothing else:
+  the `teleclaude/cli` package, the `teleclaude/api` package, and the
+  `teleclaude/api_server` module that serves the same routes from the package
+  root. `pyrightconfig.json` owns the exact paths and the severity applied to
+  them; this policy owns the rule that the carve-out reaches those three and no
+  further.
 - The carve-out is transitional debt that only shrinks. Narrowing it, or
   removing it, needs no approval. Widening it — a new exempt path, a broader
   glob, or a lowered severity — is a relaxation of quality-defining
@@ -64,8 +66,8 @@ guarantee the build never made. Declaring strict type checking and then
 disabling the rule that enforces it at call sites is that failure written into
 configuration.
 
-The carve-out is bounded to two package roots rather than removed because the
-errors concentrate there, and burning them down inside this contract change
+The carve-out is bounded to the CLI and API surfaces rather than removed because
+the errors concentrate there, and burning them down inside this contract change
 would bury the contract. Naming the packages here, while the paths and severity
 stay in the checker's own configuration, keeps one source of truth for the
 values and one owner for the rule about them. The asymmetry between shrinking
