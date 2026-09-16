@@ -35,6 +35,16 @@ either: a deploying synchronization installs, refreshes and withdraws nothing,
 and the read-only gate touches nothing.
 <!-- /planned-change:home-tier-commit-maintenance -->
 
+<!-- planned:automatic-plumbing-convergence -->
+Convergence additionally runs without an initialization or an installation when a
+TeleClaude-owned hook template changes and that change reaches the canonical
+checkout's main branch: the commit-boundary maintenance then converges every
+registered root on that machine. The act is the one initialization already
+performs — the same comparison against the template, the same sanctioned actions,
+the same preservation of a root's own hooks — reached by a different trigger. It
+remains outside every synchronization path.
+<!-- /planned:automatic-plumbing-convergence -->
+
 ## Canonical fields
 
 - **Hooks.** A project receives the TeleClaude-owned hook set when any enabled
@@ -53,6 +63,15 @@ and the read-only gate touches nothing.
   state. The one project-tracked file TeleClaude ever writes is the
   `.gitattributes` docs-filter line, written additively at adoption by its own
   step and never touched by a later convergence.
+<!-- planned:automatic-plumbing-convergence -->
+- **Fleet convergence is one operation.** A single operation converges every
+  registered root on the machine: it enumerates roots from the project registry,
+  compares each root's installed plumbing against the current templates, and
+  performs only the actions that close a gap. It is what the commit-boundary
+  trigger invokes, and it is invocable on its own. A root whose plumbing already
+  matches is left untouched, an unavailable root is reported rather than
+  failing the run, and roots on other machines are outside its reach.
+<!-- /planned:automatic-plumbing-convergence -->
 
 ### Use cases
 
@@ -120,12 +139,54 @@ Then no git hook is installed or refreshed
 And the docs filter driver is neither configured nor removed
 ```
 
+<!-- planned:automatic-plumbing-convergence -->
+#### UC-RPC8: A changed hook template converges every registered root
+
+```gherkin
+Given a TeleClaude-owned hook template has changed
+And that change advances the canonical checkout's main branch
+When the commit-boundary maintenance runs
+Then every registered root on that machine converges its installed plumbing
+And a root whose installed plumbing already matches its template is left untouched
+And a hook a root authored itself is preserved
+And no tracked file is written and no commit is produced in any converged root
+```
+
+#### UC-RPC9: Machine installation converges the TeleClaude checkout's own hooks
+
+```gherkin
+Given the TeleClaude checkout's installed hooks lag their current templates
+When the machine installation target runs
+Then those hooks are refreshed from their current templates
+And the checkout's docs filter driver is configured
+And a hook the checkout carries that TeleClaude does not own is preserved
+```
+
+#### UC-RPC10: An unavailable root does not fail the convergence run
+
+```gherkin
+Given the registry names a root that is not present on this machine
+When fleet convergence runs
+Then that root is reported as unavailable
+And every other registered root still converges
+```
+<!-- /planned:automatic-plumbing-convergence -->
+
 ## Known caveats
 
+<!-- planned-change:automatic-plumbing-convergence -->
 - Convergence is the initialization path's act. Between one initialization and
   the next, a project's installed plumbing can lag a changed hook template; the
   capability declaration itself needs no reinstallation to take effect, because
   the installed plumbing reads it on each invocation.
+<!-- change:automatic-plumbing-convergence -->
+- A changed hook template reaches a machine's registered roots when that change
+  reaches the machine's canonical checkout, so installed plumbing lags only
+  between a template change and its arrival there; a machine that has not
+  received it has nothing newer to install. The capability declaration itself
+  needs no reinstallation to take effect, because the installed plumbing reads
+  it on each invocation.
+<!-- /planned-change:automatic-plumbing-convergence -->
 <!-- planned-change:home-tier-commit-maintenance -->
 - The TeleClaude checkout's own hooks and filter driver are additionally
   installed by its machine installation target, which is not a project
