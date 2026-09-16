@@ -10,6 +10,7 @@ from teleclaude.capabilities import Capabilities
 from teleclaude.checkpoint_model import triggered_action_ids
 from teleclaude.config.schema import CheckpointConfig
 from teleclaude.constants import CheckpointModel
+from teleclaude.core.next_machine.delivery import parse_git_porcelain_paths
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
 from teleclaude.shell_path_parser import extract_shell_command as _shared_extract_shell_command
@@ -146,15 +147,7 @@ def _dirty_repo_paths(project_path: str) -> set[str]:
         status = repo.git.status("--porcelain", "--untracked-files=all")
     except Exception:
         return set()
-    paths: set[str] = set()
-    for line in status.splitlines():
-        if not line.strip():
-            continue
-        raw_path = line[3:].strip() if len(line) > 3 else line.strip()
-        if " -> " in raw_path:
-            raw_path = raw_path.rsplit(" -> ", 1)[1]
-        paths.add(raw_path.strip('"'))
-    return paths
+    return parse_git_porcelain_paths(status)
 
 
 def _current_branch(project_path: str) -> str | None:
