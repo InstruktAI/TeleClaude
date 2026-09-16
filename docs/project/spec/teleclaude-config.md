@@ -159,6 +159,16 @@ agents:
   enabled: bool # the project holds agent artifacts
 ```
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+A project also declares its checkpoint overlay under `checkpoint`. The `actions`
+registry is keyed by action id; each entry carries the agent-facing `run`, its
+`evidence`, `main_only`, `precedence`, optional mutation-ordering constraint, and
+an optional `command` argument vector. Entries without `command` remain agent
+obligations, while canonical-main maintenance consumers execute declared command
+vectors. Bindings map changed-path scopes to those action ids through the shared
+checkpoint matcher. The overlay is authored by config assessment rather than by
+hand.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 A project also declares its checkpoint maintenance overlay under `checkpoint`, holding two
 registries keyed by action id: `checkpoint.actions`, whose entries carry `run` and `evidence`
 and are obligations an agent is asked to discharge, and `checkpoint.maintenance`, whose
@@ -169,6 +179,7 @@ owns is rejected at validation. The declared shape, the eligibility rule that de
 registry an action belongs in, and the binding table that maps paths to action ids are
 specified in `project/design/architecture/checkpoint-system`; the overlay is authored by
 config assessment rather than by hand.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 These are project-level capability toggles and are unrelated to the machine
 config's `agents` block, which registers the agent CLIs themselves. They are

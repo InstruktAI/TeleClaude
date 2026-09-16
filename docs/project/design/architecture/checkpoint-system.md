@@ -13,7 +13,11 @@ Checkpoint hook output uses the semantic-envelope registry's XML renderer at the
 
 Two signal axes feed a shared checkpoint builder (`checkpoint.py`):
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and action instructions (e.g., daemon code changed → "Run `make restart`"). Two additional sources keep maintenance visible after HEAD moves: the commit-obligation ledger supplies outstanding maintenance actions derived from sealed `telec code commit` pathspecs for any session, and, for the integrator session, the delivered merge delta sourced from the integrator-maintenance marker supplies the changed files when no turn-local edits exist. Git is the category oracle (which file maps to which category) only — never the arbiter of what is in-scope or done.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and judgment actions (for example, changed code may owe a live-runtime log check). After an integration-controlled canonical-root advancement, the checkout-scoped range marker carries only the outstanding log judgment when the advanced paths owe one. Deterministic maintenance is performed at the advancement boundary and never enters checkpoint evaluation. Git is the category oracle only — never the arbiter of what is in-scope or done.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 1. **Transcript-based** — Tool call timeline from the current checkpoint cycle provides file attribution, suppression evidence (action already taken), error state detection, and edit hygiene observations.
 
 One delivery path exists:
@@ -27,11 +31,20 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 **Inputs:**
 
 - `agent_stop` hook event — Agent's turn ended. Triggers checkpoint evaluation.
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+- `user_prompt_submit` hook event — New user input. Hard-clears the turn-scoped checkpoint state (recheck flag, clear flag, commit-obligation ledger) for the new turn.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 - `user_prompt_submit` hook event — New user input. Hard-clears the recheck and clear flags for the new turn.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 - `pre_tool_use` hook event — Agent finished reasoning. Tracked for other uses but not used in checkpoint decisions.
 - Agent restart via API — Triggers unconditional checkpoint injection after a delay.
 - `git diff --name-only HEAD` — Uncommitted files relative to HEAD, used as the category oracle for action instructions.
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+- Commit-obligation ledger — session-scoped marker carrying outstanding `main_only` maintenance actions derived from every sealed `telec code commit` in the turn; unioned into the turn's effective actions so committing does not empty the action ledger. Individual obligations discharge when evidence is observed; the ledger is hard-cleared at the next `user_prompt_submit`.
+- Integrator-maintenance marker — session-scoped marker carrying the delivered merge range; for the integrator session it sources the changed files when there are no turn-local edits.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 - Integrator-maintenance marker — checkout-scoped marker carrying canonical-root advancement ranges that still await log judgment; any integrator session on that checkout can surface and discharge it without repeating deterministic maintenance.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 - `TurnTimeline` — Ordered tool calls from the current checkpoint cycle, extracted from the agent transcript via `extract_effective_tool_calls(..., scope="checkpoint")`.
 - `CheckpointContext` — Session context: project path, agent name, and `system_role` (e.g. `"integrator"`) threaded from the session row by the receiver. The working slug accompanies structured diagnostic records.
 
@@ -52,7 +65,11 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 4. **Per-turn clearing**: `handle_user_prompt_submit` clears `last_checkpoint_at` and `last_tool_use_at` on real user input so each turn starts fresh.
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+5. **Atomic, time-anchored checkpoint-cycle scope**: The action and evidence ledger — what needs doing and what was done — is scoped from the latest TeleClaude checkpoint emitted by the `Stop` hook. Before any checkpoint exists in the work, the scope falls back to the latest real user input. Dirty files from the broader user turn are filtered through this checkpoint-cycle transcript slice, so old dirty files cannot trigger new checkpoint actions after a reset. The commit-obligation ledger (Invariant 20) unions outstanding obligations into this ledger so committing does not empty it; each obligation discharges when its evidence is observed, and the wholesale clear at `user_prompt_submit` is the turn-boundary backstop. Git is consulted only as the category oracle, never as the arbiter of in-scope or done.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 5. **Atomic, time-anchored checkpoint-cycle scope**: Checkpoint action selection and evidence — what judgment remains and what was observed — are scoped from the latest TeleClaude checkpoint emitted by the `Stop` hook. Before any checkpoint exists in the work, the scope falls back to the latest real user input. Dirty files from the broader user turn are filtered through this checkpoint-cycle transcript slice, so old dirty files cannot trigger new checkpoint actions after a reset. A commit performs deterministic maintenance at its own boundary and creates no later checkpoint obligation. Git is consulted only as the category oracle, never as the arbiter of in-scope or done.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 6. **TTS dedup**: Agent output extracted at `agent_stop` is compared against `last_output_raw` in the session. If identical, summarization and TTS are skipped. This prevents double-speaking when a checkpoint-induced `agent_stop` re-extracts the same output.
 
@@ -64,7 +81,11 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini/Codex, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+11. **Suppressibility**: Every heuristic checks for positive evidence in the checkpoint-cycle tool call timeline. If the expected action was already performed in that same cycle (e.g., `make restart` found in Bash commands, or `telec sync` for sync-validation), the instruction is suppressed. This applies equally to commit-derived obligations (Invariant 20) — a `make restart` after committing daemon code discharges the restart obligation, removing it from the ledger so it cannot re-surface in a later cycle; suppression and discharge coincide for these obligations rather than the action being merely silenced while still listed. `telec code commit` output that reaches the main-branch classification gate is evidence that the commit-options step was performed, even though no approved commit occurred. When all instructions are suppressed and no observations remain, the checkpoint is "all-clear".
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 11. **Suppressibility**: Every judgment-action heuristic checks for positive evidence in the checkpoint-cycle tool-call timeline. If the expected judgment action was already performed in that cycle (for example, a log check or targeted test), its instruction is suppressed. `telec code commit` output that reaches the main-branch classification gate is evidence that the commit-options step was performed, even though no approved commit occurred. When all instructions are suppressed and no observations remain, the checkpoint is "all-clear".
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 12. **Two-layer error detection**: Layer 1 (structural gate) only fires for tool results with `is_error: true`. Layer 2 (content enrichment) pattern-matches the result snippet to produce targeted feedback. Successful commands with error-like output (e.g., log viewers showing tracebacks) never trigger observations.
 
@@ -82,19 +103,29 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 19. **Integrator post-advance judgment**: Every integration-controlled advancement of repo-root `main` first executes the tailored deterministic maintenance resolved for the exact advanced range from the canonical checkout. A root commit enters through post-commit; a fast-forward that produces no root commit invokes the same executor directly. Once every selected action has a terminal record, the state machine records a checkout-scoped marker only when the range owes `log-check`. The marker accumulates qualifying ranges and carries no mechanical action id. The integrator checkpoint force-fires only that log judgment, and observed log-check evidence removes the marker. Checkout addressing lets a successor integrator inherit an unfinished judgment without repeating mechanical maintenance.
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+20. **Committed code sourced as discharging obligations**: A sealed `telec code commit` categorizes its committed pathspec once and records the owed `main_only` maintenance actions (make install / uv sync / make restart / telec sync) into the session-scoped commit-obligation ledger — not the raw file list. The engine unions the outstanding obligations into the turn's effective actions before the no-change early-exit, so commit-implied maintenance survives the HEAD move for any session. Each obligation is discharged the moment its evidence is observed in any checkpoint cycle — in the cycle that surfaced it or a later one — and a discharge is durable: a satisfied obligation does not reappear. The ledger is hard-cleared at `user_prompt_submit` only as a turn-boundary backstop. Tests and log-check are not recorded as commit obligations; they remain cycle-local advisories on the dirty tree, since their soft detectors cannot reliably discharge and would otherwise loop. The commit is the attributing action, so files the agent committed but did not itself Edit/Write are categorized all the same.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 20. **The commit boundary performs what a commit's paths owe**: A sealed `telec code commit` on the canonical checkout's main branch is followed, in the same act, by the maintenance its committed paths owe (`project/spec/feature/integration/post-commit-maintenance`). The engine records no maintenance obligation against that commit and surfaces none afterwards: the work is already done, and its record is a structured log entry rather than a substring match against a tool call. Tests and log-check are not maintenance and remain cycle-local advisories on the dirty tree, and the commit remains the attributing action for them, so files the agent committed but did not itself Edit or Write are categorized all the same. The post-commit review latch of Invariant 18 is unaffected — routing review is a judgment, not a command, and the latch that arms it is independent of any action ledger.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 21. **Companion-drift detection**: when a turn's changed files include a live parent doc snippet (`<stem>.md`) whose pending companion sibling (`<stem>.<slug>.md`) exists on disk but is absent from the changed set, the engine surfaces an action to mirror the parent edit into the companion — catching, at agent_stop, the edit that the companion would otherwise clobber when it replaces the parent at delivery. The check is a filename-derived presence test (reusing the companion-detection helpers the doc index uses); companion in the changed set suppresses it for free. It mechanizes only the question code may answer (presence); whether the companion is a correct mirror stays with the reviewer (intelligence-boundaries).
 
 ### Invariant 22 — Base ⊕ overlay action set
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+The effective action set is a TeleClaude-owned **platform-universal base** merged with a **project-declared overlay** in `teleclaude.yml` (`ProjectConfig`). Base bindings attach per subscribed capability (`project/spec/feature/config/project-capability-manifest`): `docs: enabled` and `agents: enabled` activate their scopes (`docs/**`; `agents/**`, `.agents/**`, `**/AGENTS.master.md`) carrying no base action; a project overlay anchors its own actions on them; `code: enabled` activates the toolchain binding (`Makefile`, `.pre-commit-config.yaml`, `.gitattributes`, `.husky/pre-commit` → `make install`) and the slug-parameterized log-check on changed code (`instrukt-ai-logs <project_slug>` with the slug read from `ProjectConfig`, superseding the hardcoded command in Invariant 15). The overlay adds the project's own runtime actions. Unreadable project config fails open to base-only — the fail-open posture of Invariant 13 extended to configuration.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 The effective action model is a TeleClaude-owned **platform-universal base** merged with a **project-declared overlay** in `teleclaude.yml` (`ProjectConfig`). The base contains disjoint checkpoint and maintenance registries plus one binding table. Base bindings attach per subscribed capability (`project/spec/feature/config/project-capability-manifest`): `docs: enabled` and `agents: enabled` activate their fixed scopes (`docs/**`; `agents/**`, `.agents/**`, `**/AGENTS.master.md`) carrying artifact-pipeline maintenance; `code: enabled` activates toolchain maintenance and the slug-parameterized log judgment on changed code (`instrukt-ai-logs <project_slug>` with the slug read from `ProjectConfig`, superseding the hardcoded command in Invariant 15). A binding names the action a changed path owes without regard to which registry declares it. The overlay extends each registry with the project's own actions. Unreadable project config fails open to both base registries and the base bindings — the fail-open posture of Invariant 13 extended to configuration.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 23. **Action registries and bindings (verb/noun split)**: Detection is three tables joined by action id. The **checkpoint registry** maps an id to the agent-facing `run`, transcript `evidence`, `main_only`, `off_main_eligible`, `precedence`, and optional `evidence_must_follow_last_mutation`; it carries no executable command. The **maintenance registry** maps an id to the `command` an automated consumer executes, `main_only`, and `precedence`; it carries no agent-facing instruction or transcript evidence. Automated consumers execute selected maintenance actions in precedence waves: equal-precedence actions run concurrently, the next wave waits for every prior terminal outcome, and failure never cancels a later wave. The single **binding table** maps a scope to action ids without owning registry membership. Each action id belongs to exactly one registry, while every binding and consumer resolves through the same joined model.
 
 TeleClaude owns both platform base registries. A project references their ids in its bindings and extends the registry whose eligibility contract its project-specific action satisfies.
 
+<!-- planned:checkpoint-keeps-only-judgment-actions -->
 An action is eligible for the checkpoint registry only when its outcome cannot be established by the mechanism that performs it: the checkpoint registry governs what an agent must judge and act on, never what a command either did or did not do. Deterministic maintenance therefore carries no checkpoint registry entry and is declared in the **maintenance registry** instead — `checkpoint.maintenance` in a project's `teleclaude.yml`, a map of action id to `command`, `main_only` and `precedence`, beside the `checkpoint.actions` map that declares judgment actions with `run` and `evidence`. An action id belongs to exactly one of the two registries across base and overlay together, and a declaration claiming an id the opposite registry already owns is rejected when the project's configuration is validated. Both registries are joined by action id into one merged model, so a single binding table and a single scope matcher serve every consumer; what differs is which registry a consumer reads. The `agent_stop` engine reads the checkpoint registry alone, which is what makes a mechanical action unsurfaceable rather than merely unsurfaced. A project declares its own actions in whichever registry this test places them.
+<!-- /planned:checkpoint-keeps-only-judgment-actions -->
 
  The conventional kinds `docs`, `agents`, and `code` are sugar over bindings: `docs` and `agents` carry fixed base scope and default actions; `code` carries a project-declared scope onto which the base `test` / `log-check` actions attach automatically.
 
@@ -104,7 +135,11 @@ An action is eligible for the checkpoint registry only when its outcome cannot b
 
 ### Invariant 26 — Capability-gated engine activation
 
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+The engine evaluates a turn only when the project subscribes at least one maintenance-owing capability — `code`, `docs`, or `agents` enabled in `teleclaude.yml`, or any project-declared binding present (`project/spec/feature/config/project-capability-manifest`). A project with no subscribed capability receives no checkpoint at `agent_stop`: no timeline extraction, no evidence scanning, no commit obligation — silence is derived from having nothing to enforce, never declared through an independent kill-switch. There is no standalone engine on/off flag; the `checkpoint:` section remains the overlay declaration only (Invariant 22). The commit obligation homes under `code ∨ docs` — the capabilities whose contract includes committing. Capability toggles are authored at analyze-time (`project/procedure/checkpoint-overlay-projection`); the runtime reads the declaration only. This extends Invariant 24 one level up: no enabled/disabled classifier at engine level, only subscribed capabilities.
+<!-- change:checkpoint-keeps-only-judgment-actions -->
 The engine evaluates a turn only when the project subscribes at least one checkpoint-relevant capability — `code`, `docs`, or `agents` enabled in `teleclaude.yml`, or any project-declared binding present (`project/spec/feature/config/project-capability-manifest`). A project with no subscribed capability receives no checkpoint at `agent_stop`: no timeline extraction, evidence scan, or commit decision — silence is derived from having nothing to enforce, never declared through an independent kill-switch. There is no standalone engine on/off flag; the `checkpoint:` section remains the overlay declaration only (Invariant 22). Commit decisions belong to `code ∨ docs`, the capabilities whose contract includes authoring committed work. Capability toggles are authored at analyze-time (`project/procedure/checkpoint-overlay-projection`); the runtime reads the declaration only. This extends Invariant 24 one level up: no enabled/disabled classifier at engine level, only subscribed capabilities.
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 ### Invariant 27 — Mutation ordering
 
@@ -244,6 +279,10 @@ sequenceDiagram
 | Transcript missing or corrupt                                 | `TurnTimeline(has_data=False)` → file-based instructions only                                     | No suppression; all actions listed                                    |
 | Large transcript (>512KB JSONL)                               | Extraction reads full file via `_get_entries_for_agent()`                                         | Performance acceptable for checkpoint frequency                       |
 | False suppression (evidence substring in unrelated command)   | Action incorrectly suppressed                                                                     | Acceptable: false suppression > false negative (R8)                   |
+<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
+| Committed-turn-files marker write fails (OSError)             | Commit handler logs a warning; the action ledger falls back to dirty-file scoping for that commit | Re-running the implied action manually; next sealed commit re-records |
+<!-- change:checkpoint-keeps-only-judgment-actions -->
+<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 ## See Also
 
