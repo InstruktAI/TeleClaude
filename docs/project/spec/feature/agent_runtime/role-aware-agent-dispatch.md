@@ -80,6 +80,9 @@ supplies either. System role and job role remain identity and authority facts.
 | `next-create-art`           | Gemini, Claude, Codex, DeepSeek                                                       | `med`                 |
 | `next-create-html`          | Gemini, Claude, Codex, DeepSeek                                                       | `med`                 |
 | `next-defer`                | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
+<!-- planned:fix-agent-dispatch-logs-recurring-error-leve -->
+| `next-assist`               | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
+<!-- /planned:fix-agent-dispatch-logs-recurring-error-leve -->
 
 The global automatic order is Claude, Codex, Gemini, DeepSeek. It applies to generic session
 creation with no canonical command; a known command missing from this matrix is a
