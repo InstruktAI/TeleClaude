@@ -298,6 +298,21 @@ And unrelated person YAML, global environment, and other person secret files rem
 
 <!-- /planned:person-scoped-mcp-credentials -->
 
+<!-- planned:config-sample-regeneration-leaves-sync -->
+
+#### UC-CFG-TUI-SCHEMA-17: Required fields are marked, and a set sensitive field is distinguishable from an unset one
+
+```
+Given a rendered section carrying both required and optional fields
+And one required field is unconfigured while another is configured
+When the section renders
+Then each required field is marked as required and no optional field is
+And the unconfigured required field is distinguishable from the configured one without revealing either value
+And the marking reflects the same required-field rule the write path enforces, so the two cannot disagree
+```
+
+<!-- /planned:config-sample-regeneration-leaves-sync -->
+
 The `tui` tier is the wizard's render set: the operator-facing fields the config
 wizard shows, declared per field in code. The `tier` marker is the opt-in form of
 the schema view metadata named in UC-CFG-TUI-SCHEMA-9 — declaration to show,

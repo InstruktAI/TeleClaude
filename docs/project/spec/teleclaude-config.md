@@ -677,6 +677,7 @@ whatsapp:
   template_language: string
   business_number: string | null # normally ${WHATSAPP_BUSINESS_NUMBER}
 database_url: string | null # no current consumer; normally ${DATABASE_URL}
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 email:
   enabled: boolean # outbound SMTP; disabled or incomplete config is unavailable
   smtp_username: string | null # normally ${SMTP_USERNAME}
@@ -684,6 +685,22 @@ email:
   email_from: string | null # normally ${EMAIL_FROM}
   reply_to: string | null # normally ${EMAIL_REPLYTO}
   smtp_relay: string # normally ${SMTP_RELAY}; defaults to smtp-relay.brevo.com:587
+<!-- change:config-sample-regeneration-leaves-sync -->
+email:
+  enabled: boolean # outbound SMTP; disabled or incomplete config is unavailable
+  smtp_username: string | null # sensitive; ${EMAIL_SMTP_USERNAME}
+  smtp_key: string | null # sensitive; ${EMAIL_SMTP_KEY}
+  sender: string | null # sensitive; ${EMAIL_SENDER}
+  reply_to: string | null # sensitive; ${EMAIL_REPLY_TO}
+  smtp_relay: string # sensitive; ${EMAIL_SMTP_RELAY}; defaults to smtp-relay.brevo.com:587
+backup:
+  aws_access_key_id: string | null # sensitive; ${BACKUP_AWS_ACCESS_KEY_ID}
+  aws_secret_access_key: string | null # sensitive; ${BACKUP_AWS_SECRET_ACCESS_KEY}
+  aws_s3_host: string | null # sensitive; ${BACKUP_AWS_S3_HOST}
+  aws_s3_region: string | null # sensitive; ${BACKUP_AWS_S3_REGION}
+  aws_s3_bucket: string | null # ${BACKUP_AWS_S3_BUCKET}
+  backup_prefix: string | null # ${BACKUP_PREFIX}
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 agents:
   default: string
   claude|gemini|codex|deepseek:
