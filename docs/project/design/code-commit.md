@@ -45,14 +45,22 @@ files) before `git commit --no-verify`; where it carries none, neither runs and
 nothing is applied in their place.
 <!-- change:home-tier-commit-maintenance -->
 `telec code commit` runs the gates carried by the acting invocation context's
-declared tier. Where that tier carries project subscriptions, it runs format then
-lint in-process against `quality_paths` (the commit pathspec filtered to existing
-files) before `git commit --no-verify`. Where the tier is a non-project tier
-whose material participates in documentation — the global tier at the platform
-home, and the person and company homes inside it — the same format-then-lint
-gate runs against the documentation paths in `quality_paths`, no separate
-mechanism. Where a tier carries neither, neither runs and nothing is applied in
-their place.
+declared tier, in-process against `quality_paths` (the commit pathspec filtered
+to existing files) before `git commit --no-verify`.
+
+**Whether** the gate runs follows the tier: a tier carrying project
+subscriptions, or whose material participates in documentation, is gated. A tier
+carrying neither is not, and nothing is applied in its place.
+
+**Which checks run** follows what the tier carries, never where its root sits.
+The project's native toolchain leg runs where the tier carries `code`.
+TeleClaude's guardrails lane runs wherever the gate runs. A tier carrying both
+runs both, and their order is unchanged.
+
+The platform home, and the person and company homes inside it, participate in
+documentation and carry no project subscriptions. They are gated, they run the
+guardrails lane, and they require no native toolchain contract at their root —
+by no separate mechanism.
 <!-- /planned-change:home-tier-commit-maintenance -->
 No framework stash, no working-tree reset
 outside the pathspec. The installed `.git/hooks/pre-commit` is a thin telec-owned
@@ -245,12 +253,17 @@ The pathspec commit is built internally from `workspace scope plus
    neither runs and nothing is applied in their place.
 <!-- change:home-tier-commit-maintenance -->
 4. **The gates the acting tier carries run in-process before `git commit --no-verify`.**
-   Where the acting invocation context's declared tier carries project
-   subscriptions, or is a non-project tier whose material participates in
-   documentation, `telec code commit` runs `handle_format` then `handle_lint`
-   against `quality_paths` (the commit pathspec filtered to existing files)
-   before invoking `git commit --no-verify`. Where that tier carries neither,
-   neither runs and nothing is applied in their place.
+   Whether the gate runs follows the acting invocation context's declared tier:
+   a tier carrying project subscriptions, or whose material participates in
+   documentation, is gated; a tier carrying neither is not, and nothing is
+   applied in its place. Which checks run follows what that tier carries, never
+   where its root sits: the native toolchain leg runs where the tier carries
+   `code`, and TeleClaude's guardrails lane runs wherever the gate runs. Both
+   run against `quality_paths` (the commit pathspec filtered to existing files)
+   before `git commit --no-verify`, in that order where both apply. A tier that
+   participates in documentation and carries no project subscriptions is gated,
+   runs the guardrails lane, and requires no native toolchain contract at its
+   root.
 <!-- /planned-change:home-tier-commit-maintenance -->
 Deletion-only commits
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The

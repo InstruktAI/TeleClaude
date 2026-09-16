@@ -383,17 +383,20 @@ invocations.
 <!-- change:home-tier-commit-maintenance -->
 `telec code commit` runs the gates the acting invocation context root's declared
 tier carries, read from that tier's published answers
-(`project/spec/feature/config/tier-permissions`). Where the tier carries project
-subscriptions, it runs format then lint in-process against `quality_paths` (the
-commit pathspec filtered to existing files) before `git commit --no-verify`.
-Where the tier is a non-project tier whose material participates in
-documentation, the same format-then-lint gate runs against the documentation
-paths in `quality_paths`, by no separate mechanism. Where a tier carries neither,
-neither runs, no check is applied in their place, and the commit proceeds
-directly. No framework stash occurs; files outside the pathspec are not
-touched. The installed `.git/hooks/pre-commit` is a thin telec-owned guard
-performing only a partial-staging check as a backstop for raw `git commit`
-invocations.
+(`project/spec/feature/config/tier-permissions`). Whether the gate runs follows
+the tier: a tier carrying project subscriptions, or whose material participates
+in documentation, is gated; a tier carrying neither is not, no check is applied
+in its place, and the commit proceeds directly. Which checks run follows what the
+tier carries, never where its root sits: the native toolchain leg runs where the
+tier carries `code`, and TeleClaude's guardrails lane runs wherever the gate
+runs. Both run in-process against `quality_paths` (the commit pathspec filtered
+to existing files) before `git commit --no-verify`, in that order where both
+apply. A tier participating in documentation that carries no project
+subscriptions is gated, runs the guardrails lane, and requires no native
+toolchain contract at its root — by no separate mechanism. No framework stash
+occurs; files outside the pathspec are not touched. The installed
+`.git/hooks/pre-commit` is a thin telec-owned guard performing only a
+partial-staging check as a backstop for raw `git commit` invocations.
 <!-- /planned-change:home-tier-commit-maintenance -->
 
 
@@ -788,16 +791,29 @@ And the commit is produced
 <!-- /planned-change:home-tier-commit-maintenance -->
 
 <!-- planned:home-tier-commit-maintenance -->
-#### UC-NCR-14 — A non-project tier participating in documentation runs the same gate over its documentation paths
+#### UC-NCR-14 — A tier participating in documentation without project subscriptions is gated and runs the guardrails lane
 
 ```
 Given an agent working in an invocation context root whose tier carries no project subscriptions
 And whose tier's material participates in documentation
-And that context root has documentation changes in scope
+And that context root has changes in scope
 When the agent commits through the sealed surface
-Then the gate receives quality_paths, and each check applies to the paths it governs
-And the gate is the one a subscribed project runs, by no separate mechanism
+Then the gate runs, receiving quality_paths
+And TeleClaude's guardrails lane runs over them
+And the native toolchain leg does not run, because the tier does not carry code
+And no native toolchain contract is required at that root for the commit to proceed
 And a failing gate blocks the commit exactly as it does for a subscribed project
+```
+
+#### UC-NCR-15 — A tier carrying code still requires its native toolchain
+
+```
+Given an agent working in an invocation context root whose tier carries code
+And that root has no native toolchain contract
+And that root has changes in scope
+When the agent commits through the sealed surface
+Then the gate fails loudly rather than skipping the native toolchain leg
+And no commit is produced
 ```
 <!-- /planned:home-tier-commit-maintenance -->
 
