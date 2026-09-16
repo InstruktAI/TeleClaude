@@ -43,10 +43,12 @@ origin/main, candidate finalization synchronizes repository-root main, folds the
 candidate slug there, publishes the folded root, and records only that final
 confirmed SHA as delivered.
 
-A maintenance sweep is the backstop for new or bypassed lifecycle doors. It
-detects settled-slug/live-marker divergence wherever documentation material
-lives, including repository-root snippets outside a candidate branch, and
-faults the divergence to the integrator with the evidence needed to resolve it.
+The integrator is the backstop for new or bypassed lifecycle doors. On entering
+integration it detects settled-slug/live-marker divergence itself, wherever
+documentation material lives, including repository-root snippets outside a
+candidate branch. Detection belongs to the role that can act on it: an
+unattended timer can only announce a fault, and documentation state is judged by
+intelligence rather than graded on a schedule.
 The integrator handles a delivered-slug fault as a separate recovery operation
 after the repository root is synchronized and safe to mutate: it reconciles
 only that delivered slug, publishes the resulting cleanup through its
@@ -128,14 +130,14 @@ And the movement does not report successful reconciliation
 And the fault remains owned by the intelligence driving that lifecycle moment
 ```
 
-#### UC-LMR7: The divergence sweep finds settled material outside delivery candidates
+#### UC-LMR7: The integrator finds settled material outside delivery candidates
 
 ```gherkin
 Given a settled todo still has live pending markers or ownership metadata in documentation sources
 And the material may live outside every integration candidate branch
-When lifecycle maintenance sweeps for state and marker divergence
+When the integrator enters integration and checks for state and marker divergence
 Then it detects the settled slug wherever the material lives
-And faults the divergence to the integrator with the slug, source path, line, and reason
+And holds the divergence with the slug, source path, line, and reason
 And when the faulted slug is delivered and repository-root main is synchronized and safe to mutate, the integrator runs a new slug-scoped delivery reconciliation as a recovery operation
 And it commits and publishes only that recovery result without changing the settled todo's recorded delivery commit
 And a failed recovery leaves the divergence fault active with its failure evidence
@@ -178,16 +180,15 @@ And the folded repository-root head is published and confirmed before delivery i
 
 - workflow — owns todo fate, identity, and reversal transitions and invokes
   reconciliation before making those movements durable.
-- integration — owns candidate delivery reconciliation and consumes divergence
-  faults from the maintenance sweep through its separate recovery transition.
+- integration — owns candidate delivery reconciliation, detects divergence on
+  entry, and resolves it through its separate recovery transition.
 - context — owns pending-material parsing, resolution, rendering, and source
   mutation primitives used by lifecycle callers.
 
 ## Known caveats
 
-- Reconciliation is slug-scoped at write time. The maintenance sweep detects
-  unrelated divergence but does not silently fold it into the current caller's
-  operation.
+- Reconciliation is slug-scoped at write time. The integrator detects unrelated
+  divergence but does not silently fold it into the current caller's operation.
 - A pending region shared by multiple slugs becomes current only after every
   owner has resolved its fate.
 - Reassigning material during a split or regroup requires an explicit resulting
