@@ -338,20 +338,6 @@ And the restart maintenance action is not among the actions it owes
 ```
 
 
-<!-- planned-change:unknown-scope-is-not-empty-scope -->
-#### UC-CP16: Shell command text attributes no path to a turn
-
-```gherkin
-Given a turn's only tool activity is shell commands that read, write, or name repository paths
-And no path appears in the runtime's file-edit records or the session's explicit declarations
-And the working tree carries a pre-existing dirty file unrelated to this turn
-When the heuristic engine evaluates the turn window
-Then no path is attributed to the turn from the shell-command text
-And the pre-existing dirty file is not attributed to this turn
-And no checkpoint is produced for that file
-```
-<!-- change:unknown-scope-is-not-empty-scope -->
-<!-- /planned-change:unknown-scope-is-not-empty-scope -->
 
 #### UC-CP18: A clean working tree raises no commit action
 
@@ -481,7 +467,6 @@ Then the judgment action is surfaced
 (The engine resolves the checkpoint registry alone, so a maintenance action a binding names is not a checkpoint obligation at all; log-check and test remain the agent's.)
 ```
 
-<!-- planned:unknown-scope-is-not-empty-scope -->
 #### UC-CP26: The checkpoint names what it could not account for
 
 ```gherkin
@@ -503,7 +488,6 @@ When the session reaches a further agent-stop checkpoint boundary
 Then those paths are not reported again
 And a decision is still produced when a path becomes unaccounted for after that disclaimer
 ```
-<!-- /planned:unknown-scope-is-not-empty-scope -->
 
 ### Cross-context references
 

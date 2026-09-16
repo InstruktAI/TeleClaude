@@ -314,19 +314,6 @@ And the commit proceeds (subject to the other invariants — pathspec constructi
 And this is justified because every change the integrator commits was individually approved via its delivery's lifecycle
 ```
 
-<!-- planned-change:unknown-scope-is-not-empty-scope -->
-#### UC-CGIP-33 — A declaration is one session's path evidence across every scope consumer
-
-```gherkin
-Given an agent session on a shared branch has a dirty repository file that its native file records do not carry
-When the agent declares the path through the sealed add surface
-Then change inspection, lint, sealed commit, and agent-stop checkpoint receive the path in that session's effective scope
-And dirty-path ownership attributes the path to that session at the declaration time
-And another session does not acquire the declaration
-And the declaration remains effective after that session restarts or is handed off
-And a later sealed-commit command record in the session's transcript chain ends the declaration
-```
-<!-- change:unknown-scope-is-not-empty-scope -->
 #### UC-CGIP-33 — A declaration is one session's path evidence across every scope consumer
 
 ```gherkin
@@ -339,7 +326,6 @@ And the declaration remains effective after that session restarts or is handed o
 And a later sealed-commit command record in the session's transcript chain ends the declaration
 And a sealed-commit record whose result has not been observed does not end the declaration
 ```
-<!-- /planned-change:unknown-scope-is-not-empty-scope -->
 
 #### UC-CGIP-34 — Sealed add serializes its index mutation with sealed commit
 
@@ -360,7 +346,6 @@ And it does not fail merely because the concurrent commit temporarily owns the i
 - **Integrator conflict resolution after a squash merge:** edit resolved file; `telec code add <resolved>`; `telec code commit --approved "<msg>"`.
 - **Bash-`rm` deletion that fell out of transcript:** `telec code commit --approved "<msg>" --include <deleted>` declares the deletion explicitly.
 
-<!-- planned:unknown-scope-is-not-empty-scope -->
 #### UC-CGIP-36 — A session can disclaim a dirty path it did not write
 
 ```gherkin
@@ -380,7 +365,6 @@ When that path is committed, becomes clean, or the session receives new user inp
 Then the disclaimer no longer applies to that path
 ```
 
-<!-- /planned:unknown-scope-is-not-empty-scope -->
 
 ### Commit-time gates — in-process, no framework stash
 
