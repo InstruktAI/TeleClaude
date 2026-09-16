@@ -714,12 +714,9 @@ async def _run_session(
 ) -> CreateSessionResponseDTO:
     """Run a slash command on a new agent session."""
     request_id = str(uuid.uuid4())
-    normalized_command = request.command.lstrip("/") if request.command.startswith("/") else None
+    normalized_command = request.command.lstrip("/") or None
     command_kind = "prepare" if normalized_command == SlashCommand.NEXT_PREPARE.value else normalized_command
-    try:
-        requested_command = SlashCommand(normalized_command) if normalized_command else None
-    except ValueError:
-        requested_command = None
+    requested_command = _normalize_command(request.command)
     request_entry_point = SessionEntryPoint.CRON if requested_command is SlashCommand.NEXT_RUN_JOB else entry_point
     role_info = COMMAND_ROLE_MAP.get(requested_command) if requested_command else None
     agent_supplied = "agent" in request.model_fields_set
