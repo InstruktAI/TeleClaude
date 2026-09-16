@@ -292,33 +292,57 @@ def _do_merge(
         _write_checkpoint(checkpoint_path, checkpoint)
         return True, ""
 
-    rc, _, _stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
+    rc, _, merge_stderr = _run_git(["merge", "--squash", key.branch], cwd=wt)
 
     # Guard: squash merge produced no content changes — candidate already integrated.
     # Catches squash merges where ancestry check (above) doesn't fire because
     # squash commits don't create ancestry links.
+    #
+    # Only a merge that SUCCEEDED may be read this way. An empty index proves the
+    # candidate is already on main solely when the merge ran; a merge that failed
+    # for any non-conflict reason also stages nothing, and `_get_conflicted_files`
+    # returns an empty list both when there are no conflicts and when its own query
+    # fails. Without the success check those two states are indistinguishable, and
+    # a failed merge is recorded as a delivery: the fold runs, the candidate is
+    # stamped delivered, and its branch is deleted while its content is nowhere on
+    # main. Absence of a staged diff is not evidence about main unless the command
+    # that would have produced one actually ran.
     empty_rc, _, _ = _run_git(["diff", "--cached", "--quiet"], cwd=wt)
-    if empty_rc == 0:
-        conflicted = _get_conflicted_files(wt) if rc != 0 else []
-        if not conflicted:
-            logger.info(
-                "%s slug=%s already integrated (empty squash merge) — skipping",
-                _NEXT_INTEGRATE_PHASE_LOG,
-                key.slug,
-            )
-            _emit_lifecycle_event(
-                "integration.candidate.already_merged",
-                {"slug": key.slug, "branch": key.branch, "sha": key.sha},
-            )
-            # Clean up SQUASH_MSG left by git (worktree-aware path)
-            gd = _git_dir(wt)
-            if gd:
-                squash_msg = gd / "SQUASH_MSG"
-                if squash_msg.exists():
-                    squash_msg.unlink()
-            checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
-            _write_checkpoint(checkpoint_path, checkpoint)
-            return True, ""
+    if empty_rc == 0 and rc == 0:
+        logger.info(
+            "%s slug=%s already integrated (empty squash merge) — skipping",
+            _NEXT_INTEGRATE_PHASE_LOG,
+            key.slug,
+        )
+        _emit_lifecycle_event(
+            "integration.candidate.already_merged",
+            {"slug": key.slug, "branch": key.branch, "sha": key.sha},
+        )
+        # Clean up SQUASH_MSG left by git (worktree-aware path)
+        gd = _git_dir(wt)
+        if gd:
+            squash_msg = gd / "SQUASH_MSG"
+            if squash_msg.exists():
+                squash_msg.unlink()
+        checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
+        _write_checkpoint(checkpoint_path, checkpoint)
+        return True, ""
+
+    if empty_rc == 0 and rc != 0 and not _get_conflicted_files(wt):
+        # Nothing staged, the merge failed, and no conflict explains it. The
+        # candidate's state is unknown, so it is surfaced rather than assumed.
+        logger.error(
+            "%s slug=%s squash merge failed without conflicts — refusing to infer delivery",
+            _NEXT_INTEGRATE_PHASE_LOG,
+            key.slug,
+        )
+        return False, _format_error(
+            "MERGE_FAILED_WITHOUT_CONFLICTS",
+            f"Squash merge of {key.branch} staged nothing and reported failure, with no conflicted "
+            f"paths to explain it. The candidate has not been integrated and no delivery is "
+            f"recorded. Inspect the integration worktree at {wt}, resolve the cause, then call "
+            f"telec todo integrate again.\ngit stderr: {merge_stderr.strip() or '(empty)'}",
+        )
 
     if rc == 0:
         # Read stats from integration worktree, context from repo root
