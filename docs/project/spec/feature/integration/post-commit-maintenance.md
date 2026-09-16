@@ -20,18 +20,10 @@ produces no repository-root commit. It is not addressed to a session and does
 not depend on one existing, so a person committing by hand and an integrator
 delivery receive the same maintenance.
 
-<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
-The owed set is resolved by the checkpoint scope matcher from the merged
-action registry and bindings
-(`project/design/architecture/checkpoint-system`, Invariant 25). This
-surface is one of that matcher's consumers; it recreates no location rule of
-its own and holds no second table of paths, actions, or commands.
-<!-- change:checkpoint-keeps-only-judgment-actions -->
 The owed set is resolved by the shared scope matcher from the merged registry
 pair and bindings (`project/design/architecture/checkpoint-system`, Invariant
 25). This surface consumes the maintenance registry and recreates no location
 rule or second table of paths, actions, or commands.
-<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 Which hooks a project has installed, and when they are installed, belongs to
 `project/spec/feature/reconciliation/project-plumbing-convergence`. This
@@ -43,21 +35,12 @@ contract governs only what happens when maintenance runs.
   canonical-main fast-forward that produces no repository-root commit.
   Maintenance is not conditioned on who or what made the commit, nor on whether
   a session is present.
-<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
-- **Owed set.** The `main_only` maintenance actions the committed paths resolve
-  to under the merged registry and bindings. Actions in the same precedence
-  wave run concurrently; the next precedence wave starts after every action in
-  the prior wave reaches a terminal outcome. A failed action never cancels a
-  later wave. An action the registry does not mark executable is not performed
-  here and remains an agent obligation.
-<!-- change:checkpoint-keeps-only-judgment-actions -->
 - **Owed set.** The `main_only` actions the committed paths resolve from the
   maintenance registry and shared bindings. Actions in the same precedence
   wave run concurrently; the next precedence wave starts after every action in
   the prior wave reaches a terminal outcome. A failed action never cancels a
   later wave. Judgment actions live in the checkpoint registry and never enter
   this executor.
-<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 - **Location.** Maintenance performs the owed `main_only` actions only from the
   canonical checkout on the main branch. The integration worktree supplies the
   delivered range but never executes maintenance; a commit recorded anywhere

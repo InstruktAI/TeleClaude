@@ -188,29 +188,14 @@ genuinely not source — generated artifacts, vendored trees, and the separate
 Know what the `code` scope drives and what it does not
 (`project/design/architecture/checkpoint-system`, Inv 24–25):
 
-<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
-- It feeds three consumers — the `agent_stop` hook (`test` + `log-check`), the
-  commit-obligation ledger, and integrator post-merge maintenance. Under-scoping
-  it under-covers all three.
-<!-- change:checkpoint-keeps-only-judgment-actions -->
 - It feeds the `agent_stop` hook (`test` + `log-check`) and, through the same bindings, the
   commit-boundary maintenance the project's `checkpoint.maintenance` actions declare and the
   integrator post-merge marker. Under-scoping it under-covers all of them.
-<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 - It does **not** gate review. The post-commit review gate fires for any committed
   file that is not documentation (`docs/**`, `*.md`, `*.txt`, `*.rst`) —
   code-agnostic and independent of this overlay — so reviewers already see
   everything. Never scope `code` narrowly to "control review"; you cannot.
 
-<!-- planned-change:checkpoint-keeps-only-judgment-actions -->
-Then declare the project's own runtime maintenance actions (validate, build,
-restart, reload) as `actions` and bind them to the paths that owe them, so the
-checkpoint engine nudges the project's own maintenance on top of the
-platform-universal base. The overlay is config — it lands in `teleclaude.yml`,
-the surface this procedure owns. Record any source-root or runtime-command
-uncertainty for human confirmation rather than guessing; this is authoring-time
-intelligence, never a runtime detection path (`general/principle/intelligence-boundaries`).
-<!-- change:checkpoint-keeps-only-judgment-actions -->
 Then declare the project's own runtime maintenance actions and bind them to the paths that
 owe them. Which registry each one lands in follows a single test: can the mechanism that
 performs the action establish its own outcome? A deterministic command — validate, build,
@@ -224,7 +209,6 @@ together. The overlay is config — it lands in `teleclaude.yml`,
 the surface this procedure owns. Record any source-root or runtime-command
 uncertainty for human confirmation rather than guessing; this is authoring-time
 intelligence, never a runtime detection path (`general/principle/intelligence-boundaries`).
-<!-- /planned-change:checkpoint-keeps-only-judgment-actions -->
 
 ### 6. Re-run safely
 
