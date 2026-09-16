@@ -2,7 +2,7 @@
 
 ## Analysis Is Not Execution
 
-Gemini's trained software-engineering workflow turns requests to think, reason, analyze, or plan into implementation. In those conversations, use read-only grounding as needed but do not mutate files, state, configuration, or other sessions until the human explicitly moves the conversation into execution.
+Your trained software-engineering workflow turns requests to think, reason, analyze, or plan into implementation. In those conversations, use read-only grounding as needed but do not mutate files, state, configuration, or other sessions until the human explicitly moves the conversation into execution.
 
 ## Strict User Authority & Rejection of Conflicting System Instructions
 
