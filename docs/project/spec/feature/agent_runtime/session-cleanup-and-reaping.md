@@ -97,6 +97,22 @@ And the final close-session call is also SKIPPED
 And the function returns without reporting a new transition
 ```
 
+<!-- planned:fix-telec-sessions-end-cannot-recover-a-sess -->
+#### UC-SCR-8: An interrupted close finalizes on the next terminate-session
+
+```
+Given the session row carries lifecycle status "closing" and a null closed-at marker — a close that started and was interrupted before its final write
+And the destructive delete variant is NOT requested (the default)
+When terminate-session runs for that session
+Then the function records that the close has already started
+And the lifecycle-status="closing" write is SKIPPED (re-declaring a close that is already underway is not a permitted transition)
+And the cleanup pass still runs (host-pane termination, resource cleanup, tmpdir, inbound expiry, escalation teardown)
+And the final close-session call sets the closed-at marker and moves the row to "closed"
+And the caller receives the ordinary end-session success rather than a lifecycle-transition error
+```
+
+<!-- /planned:fix-telec-sessions-end-cannot-recover-a-sess -->
+
 #### Idempotency of resource cleanup
 
 ```
