@@ -423,16 +423,19 @@ class AgentCoordinator(
         if update_kwargs:
             await db.update_session(context.session_id, **update_kwargs)
 
-        await transition_session(
-            db,
-            context.session_id,
-            LifecycleTransition(
-                SessionLifecycleStatus.ACTIVE,
-                LifecycleTransitionReason.RUNTIME_SESSION_START,
-                runtime_start_observed=True,
-                runtime_activity_at=datetime.now(UTC),
-            ),
-        )
+        # A headless session has no adoption boundary to cross into ACTIVE;
+        # runtime start stays observable through session data, not status.
+        if not session or session.lifecycle_status != SessionLifecycleStatus.HEADLESS:
+            await transition_session(
+                db,
+                context.session_id,
+                LifecycleTransition(
+                    SessionLifecycleStatus.ACTIVE,
+                    LifecycleTransitionReason.RUNTIME_SESSION_START,
+                    runtime_start_observed=True,
+                    runtime_activity_at=datetime.now(UTC),
+                ),
+            )
 
         voice = await db.get_voice(context.session_id)
         if voice:
