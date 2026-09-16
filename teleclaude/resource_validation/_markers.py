@@ -12,7 +12,7 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 
-from teleclaude.resource_validation._models import _CODE_FENCE_LINE, _INLINE_CODE_SPAN, _error
+from teleclaude.resource_validation._models import _INLINE_CODE_SPAN, _error
 from teleclaude.resource_validation._todo_status import TodoStatusFact, is_pending_marker_stale
 
 _PLANNED_CHANGE_MARKER_RE = re.compile(
@@ -35,18 +35,6 @@ def _planned_change_marker_error(path: Path, marker: re.Match[str], reason: str)
     )
 
 
-def _mask_fenced_code_blocks(text: str) -> str:
-    lines: list[str] = []
-    in_code_block = False
-    for line in text.splitlines(keepends=True):
-        if _CODE_FENCE_LINE.match(line.strip()):
-            in_code_block = not in_code_block
-            lines.append(line)
-            continue
-        lines.append("\n" if in_code_block else line)
-    return "".join(lines)
-
-
 def _mask_inline_code_spans(text: str) -> str:
     def _blank(match: re.Match[str]) -> str:
         return "".join("\n" if char == "\n" else " " for char in match.group(0))
@@ -55,7 +43,7 @@ def _mask_inline_code_spans(text: str) -> str:
 
 
 def _mask_marker_examples(body: str) -> str:
-    return _mask_inline_code_spans(_mask_fenced_code_blocks(body))
+    return _mask_inline_code_spans(body)
 
 
 def _validate_planned_marker_liveness(
@@ -154,7 +142,9 @@ def validate_marker_structure(path: Path, body: str) -> None:
     - **Kebab slug** for ``planned`` ADD markers (``snippet_marker_invalid_slug``);
       ``planned-change`` / ``change`` kebab stays owned by that same validator.
 
-    Code-fence and inline-code examples are masked, so syntax samples never flag.
+    Inline-code examples are masked, so syntax samples never flag. Fenced blocks are
+    not masked: live markers are authored inside them, and masking those blinded this
+    check to nesting there.
     """
     body = _mask_marker_examples(body)
     open_stack: list[tuple[str, str, str]] = []
