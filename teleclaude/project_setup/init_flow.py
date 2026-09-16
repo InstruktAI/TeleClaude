@@ -50,7 +50,7 @@ def _has_executable_maintenance(project_root: Path, capabilities: Capabilities) 
     """Return whether effective bindings resolve an executable action."""
     _ = capabilities
     model = load_checkpoint_model(str(project_root))
-    return any(model.actions[action_id].command for binding in model.bindings for action_id in binding.actions)
+    return any(action_id in model.maintenance for binding in model.bindings for action_id in binding.actions)
 
 
 def _is_teleclaude_project(project_root: Path) -> bool:

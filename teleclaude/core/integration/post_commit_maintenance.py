@@ -7,8 +7,8 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.checkpoint_model import load_checkpoint_model, main_only_action_ids_for_files
-from teleclaude.constants import CheckpointAction
+from teleclaude.checkpoint_model import load_checkpoint_model, main_only_maintenance_action_ids_for_files
+from teleclaude.constants import MaintenanceAction
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import resolve_project_root
 from teleclaude.runtime.command_runner import CommandResult, run_process_group_commands
@@ -61,19 +61,15 @@ def run_post_commit_maintenance(project_root: Path, commit_range: str) -> PostCo
         return PostCommitMaintenanceOutcome(commit_range, (), (), _SKIP_GIT_UNAVAILABLE)
 
     model = load_checkpoint_model(str(root))
-    action_ids = tuple(
-        action_id
-        for action_id in main_only_action_ids_for_files(list(changed_files), root)
-        if model.actions[action_id].command
-    )
+    action_ids = tuple(main_only_maintenance_action_ids_for_files(list(changed_files), root))
     logger.info(
         _MAINTENANCE_RESOLVED_EVENT, commit_range=commit_range, action_ids=action_ids, changed_files=changed_files
     )
     outcomes: list[MaintenanceActionOutcome] = []
-    for wave in _precedence_waves(action_ids, model.actions):
+    for wave in _precedence_waves(action_ids, model.maintenance):
         for action_id in wave:
             logger.info(_MAINTENANCE_ACTION_STARTED_EVENT, commit_range=commit_range, action_id=action_id)
-        results = run_process_group_commands(tuple(model.actions[action_id].command for action_id in wave), root)
+        results = run_process_group_commands(tuple(model.maintenance[action_id].command for action_id in wave), root)
         for action_id, result in zip(wave, results, strict=True):
             logger.info(
                 _MAINTENANCE_ACTION_FINISHED_EVENT,
@@ -85,7 +81,9 @@ def run_post_commit_maintenance(project_root: Path, commit_range: str) -> PostCo
     return PostCommitMaintenanceOutcome(commit_range, action_ids, tuple(outcomes), None)
 
 
-def _precedence_waves(action_ids: tuple[str, ...], actions: dict[str, CheckpointAction]) -> tuple[tuple[str, ...], ...]:
+def _precedence_waves(
+    action_ids: tuple[str, ...], actions: dict[str, MaintenanceAction]
+) -> tuple[tuple[str, ...], ...]:
     """Group stable action ids by their declared precedence."""
     grouped: dict[int, list[str]] = {}
     for action_id in action_ids:

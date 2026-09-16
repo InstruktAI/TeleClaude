@@ -16,7 +16,7 @@ from typing import Final
 from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import resolve_capabilities
-from teleclaude.checkpoint_model import main_only_action_ids_for_files
+from teleclaude.checkpoint_model import main_only_judgment_action_ids_for_files
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
@@ -662,7 +662,7 @@ def _step_push_succeeded(
             changed_files = _git_diff_names(cwd, merge_range)
             actions = [
                 action_id
-                for action_id in main_only_action_ids_for_files(changed_files, Path(cwd))
+                for action_id in main_only_judgment_action_ids_for_files(changed_files, Path(cwd))
                 if action_id == _LOG_CHECK_ACTION_ID
             ]
             if actions:

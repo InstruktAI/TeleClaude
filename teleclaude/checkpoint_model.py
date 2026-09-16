@@ -1,10 +1,9 @@
 """Effective checkpoint model: base ⊕ overlay merge, the scope matcher, and resolution.
 
-One matcher and one resolution source serve every checkpoint and maintenance
-consumer: the agent-stop engine surfaces judgment actions, while post-commit and
-integration canonical-root advancement execute declared commands. Action
-selection is structured glob matching over the merged declaration only; no
-consumer recreates path or capability policy.
+One matcher and one binding table serve every checkpoint and maintenance consumer:
+the agent-stop engine surfaces judgment actions, while canonical-root maintenance
+executes declared commands. Action selection is structured glob matching over the
+merged declaration only; no consumer recreates path or capability policy.
 """
 
 from __future__ import annotations
@@ -21,10 +20,12 @@ from teleclaude.constants import (
     CHECKPOINT_BASE_AGENTS_BINDING,
     CHECKPOINT_BASE_CODE_BINDING,
     CHECKPOINT_BASE_DOCS_BINDING,
+    CHECKPOINT_BASE_MAINTENANCE,
     CheckpointAction,
     CheckpointBinding,
     CheckpointModel,
     CheckpointScope,
+    MaintenanceAction,
     _compile_glob,
 )
 
@@ -33,12 +34,14 @@ logger = get_logger(__name__)
 _DEFAULT_PROJECT_PATH = "."
 _DEFAULT_PROJECT_SLUG = "project"
 _PROJECT_SLUG_PLACEHOLDER = "{slug}"
+_MAINTENANCE_ACTIONS_RESOLVED_EVENT = "checkpoint_maintenance_actions_resolved"
 
 __all__ = [
     "base_checkpoint_model",
     "checkpoint_model_from_project_config",
     "load_checkpoint_model",
-    "main_only_action_ids_for_files",
+    "main_only_judgment_action_ids_for_files",
+    "main_only_maintenance_action_ids_for_files",
     "merge_overlay",
     "scope_matches",
     "scopes_for_action",
@@ -71,20 +74,32 @@ def triggered_action_ids(files: list[str], model: CheckpointModel) -> set[str]:
     return owed
 
 
-def main_only_action_ids_for_files(files: list[str], project_root: Path) -> list[str]:
+def main_only_maintenance_action_ids_for_files(files: list[str], project_root: Path) -> list[str]:
     """Return ordered main-only maintenance action ids owed by project files."""
     model = load_checkpoint_model(str(project_root))
     owed = triggered_action_ids(files, model)
-    main_only = [action_id for action_id in owed if action_id in model.actions and model.actions[action_id].main_only]
-    ordered_main_only = sorted(main_only, key=lambda action_id: (model.actions[action_id].precedence, action_id))
+    main_only = [
+        action_id for action_id in owed if action_id in model.maintenance and model.maintenance[action_id].main_only
+    ]
+    ordered_main_only = sorted(main_only, key=lambda action_id: (model.maintenance[action_id].precedence, action_id))
     logger.info(
-        "checkpoint_durable_actions_resolved",
+        _MAINTENANCE_ACTIONS_RESOLVED_EVENT,
         project_path=str(project_root),
         changed_file_set=sorted(files),
         triggered_action_ids=sorted(owed),
         main_only_action_ids=ordered_main_only,
     )
     return ordered_main_only
+
+
+def main_only_judgment_action_ids_for_files(files: list[str], project_root: Path) -> list[str]:
+    """Return ordered main-only judgment action ids owed by project files."""
+    model = load_checkpoint_model(str(project_root))
+    owed = triggered_action_ids(files, model)
+    return sorted(
+        (action_id for action_id in owed if action_id in model.actions and model.actions[action_id].main_only),
+        key=lambda action_id: (model.actions[action_id].precedence, action_id),
+    )
 
 
 def scopes_for_action(model: CheckpointModel, action_id: str) -> list[CheckpointScope]:
@@ -94,10 +109,8 @@ def scopes_for_action(model: CheckpointModel, action_id: str) -> list[Checkpoint
 
 def _fill_slug(action: CheckpointAction, project_slug: str) -> CheckpointAction:
     """Substitute the ``{slug}`` placeholder in the action's dynamic fields."""
-    if (
-        _PROJECT_SLUG_PLACEHOLDER not in action.run
-        and not any(_PROJECT_SLUG_PLACEHOLDER in marker for marker in action.evidence)
-        and not any(_PROJECT_SLUG_PLACEHOLDER in argument for argument in action.command)
+    if _PROJECT_SLUG_PLACEHOLDER not in action.run and not any(
+        _PROJECT_SLUG_PLACEHOLDER in marker for marker in action.evidence
     ):
         return action
     return CheckpointAction(
@@ -108,13 +121,28 @@ def _fill_slug(action: CheckpointAction, project_slug: str) -> CheckpointAction:
         off_main_eligible=action.off_main_eligible,
         precedence=action.precedence,
         evidence_must_follow_last_mutation=action.evidence_must_follow_last_mutation,
+    )
+
+
+def _fill_maintenance_slug(action: MaintenanceAction, project_slug: str) -> MaintenanceAction:
+    """Substitute the ``{slug}`` placeholder in maintenance command arguments."""
+    if not any(_PROJECT_SLUG_PLACEHOLDER in argument for argument in action.command):
+        return action
+    return MaintenanceAction(
+        id=action.id,
         command=tuple(argument.replace(_PROJECT_SLUG_PLACEHOLDER, project_slug) for argument in action.command),
+        main_only=action.main_only,
+        precedence=action.precedence,
     )
 
 
 def base_checkpoint_model(project_slug: str, capabilities: Capabilities = ALL_CAPABILITIES) -> CheckpointModel:
     """The platform-universal base with ``{slug}`` filled, no overlay merged."""
     actions = {action_id: _fill_slug(action, project_slug) for action_id, action in CHECKPOINT_BASE_ACTIONS.items()}
+    maintenance = {
+        action_id: _fill_maintenance_slug(action, project_slug)
+        for action_id, action in CHECKPOINT_BASE_MAINTENANCE.items()
+    }
     enabled_bindings = (
         binding
         for binding, enabled in (
@@ -124,7 +152,7 @@ def base_checkpoint_model(project_slug: str, capabilities: Capabilities = ALL_CA
         )
         if enabled
     )
-    return CheckpointModel(actions=actions, bindings=tuple(enabled_bindings))
+    return CheckpointModel(actions=actions, maintenance=maintenance, bindings=tuple(enabled_bindings))
 
 
 def _scope_from_cfg(scope_cfg: object) -> CheckpointScope:
@@ -144,13 +172,17 @@ def merge_overlay(
 ) -> CheckpointModel:
     """Merge a project-declared overlay (``CheckpointConfig``) atop the base model.
 
-    Registry: overlay actions extend or override base actions by id. Bindings: the
+    Registries: overlay actions extend or override their matching base registry by
+    id. Bindings: the
     conventional ``docs`` / ``agents`` extras append to the matching base binding;
     the ``code`` kind adds a binding onto which ``test`` / ``log-check`` attach;
     generic bindings append their declared scope → action-id lists. ``{slug}`` is
     filled across every action.
     """
     actions = {action_id: _fill_slug(action, project_slug) for action_id, action in base.actions.items()}
+    maintenance = {
+        action_id: _fill_maintenance_slug(action, project_slug) for action_id, action in base.maintenance.items()
+    }
     bindings: list[CheckpointBinding] = list(base.bindings)
 
     if overlay is not None:
@@ -164,7 +196,17 @@ def merge_overlay(
                     main_only=action_cfg.main_only,
                     precedence=action_cfg.precedence,
                     evidence_must_follow_last_mutation=action_cfg.evidence_must_follow_last_mutation,
+                ),
+                project_slug,
+            )
+
+        for action_id, action_cfg in (getattr(overlay, "maintenance", None) or {}).items():
+            maintenance[action_id] = _fill_maintenance_slug(
+                MaintenanceAction(
+                    id=action_id,
                     command=tuple(action_cfg.command),
+                    main_only=action_cfg.main_only,
+                    precedence=action_cfg.precedence,
                 ),
                 project_slug,
             )
@@ -182,7 +224,7 @@ def merge_overlay(
                 CheckpointBinding(scope=_scope_from_cfg(binding_cfg.scope), actions=tuple(binding_cfg.actions))
             )
 
-    return CheckpointModel(actions=actions, bindings=tuple(bindings))
+    return CheckpointModel(actions=actions, maintenance=maintenance, bindings=tuple(bindings))
 
 
 def _append_conventional_extras(bindings: list[CheckpointBinding], overlay: object) -> list[CheckpointBinding]:

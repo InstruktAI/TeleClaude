@@ -21,7 +21,6 @@ CHECKPOINT_CLEAR_FLAG = "teleclaude_checkpoint_clear"
 CHECKPOINT_RECHECK_FLAG = "teleclaude_checkpoint_recheck"
 CHECKPOINT_AUTHORED_MAIN_COMMIT_FLAG = "teleclaude_checkpoint_authored_main_commit"
 CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG = "teleclaude_checkpoint_integrator_maintenance"
-CHECKPOINT_COMMIT_OBLIGATIONS_FLAG = "teleclaude_checkpoint_commit_obligations"
 
 _INTEGRATOR_MAINTENANCE_RANGE_PREFIX = "range:"
 _INTEGRATOR_MAINTENANCE_ACTION_PREFIX = "action:"
@@ -165,45 +164,6 @@ def record_integrator_maintenance_marker(project_root: str | Path, merge_range: 
             outstanding_action_ids=tuple(_dedupe_preserving_order([*marker.outstanding_action_ids, *actions])),
         ),
     )
-
-
-def record_commit_obligations(session_id: str, actions: list[str]) -> None:
-    """Append commit-derived maintenance actions to this turn's obligation ledger."""
-    if not actions:
-        return
-    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG)
-    flag_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = flag_path.read_text(encoding="utf-8") if flag_path.exists() else ""
-    current_actions = [line for line in existing.splitlines() if line]
-    current_actions.extend(action for action in actions if action)
-    flag_path.write_text("\n".join(_dedupe_preserving_order(current_actions)) + "\n", encoding="utf-8")
-    logger.debug("Checkpoint commit obligations recorded", session_id=session_id, actions=actions)
-
-
-def read_commit_obligations(session_id: str) -> list[str]:
-    """Return outstanding commit-derived maintenance actions."""
-    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG)
-    if not flag_path.exists():
-        return []
-    content = flag_path.read_text(encoding="utf-8")
-    return _dedupe_preserving_order([line for line in content.splitlines() if line])
-
-
-def discharge_commit_obligation(session_id: str, action: str) -> bool:
-    """Remove one satisfied maintenance action from the obligation ledger."""
-    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_COMMIT_OBLIGATIONS_FLAG)
-    if not flag_path.exists():
-        return False
-    actions = [line for line in flag_path.read_text(encoding="utf-8").splitlines() if line]
-    remaining = [item for item in actions if item != action]
-    if len(remaining) == len(actions):
-        return False
-    if remaining:
-        flag_path.write_text("\n".join(_dedupe_preserving_order(remaining)) + "\n", encoding="utf-8")
-    else:
-        flag_path.unlink()
-    logger.debug("Checkpoint commit obligation discharged", session_id=session_id, action=action)
-    return True
 
 
 def _dedupe_preserving_order(items: list[str]) -> list[str]:

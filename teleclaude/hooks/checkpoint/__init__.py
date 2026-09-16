@@ -5,7 +5,6 @@ Uses session_scoping.resolve_scoped_paths for turn-local file attribution and Tu
 All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
-from collections.abc import Callable
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -68,10 +67,8 @@ from teleclaude.hooks.checkpoint._models import (
 from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
     consume_integrator_maintenance_marker,
-    discharge_commit_obligation,
     discharge_integrator_maintenance_action,
     has_authored_main_commit_flag,
-    read_commit_obligations,
     read_integrator_maintenance_marker,
 )
 from teleclaude.project_root import declaration_root
@@ -83,6 +80,10 @@ logger = get_logger(__name__)
 _INTEGRATOR_MAINTENANCE_ACTION_LINE = "{index}. {action}"
 _INTEGRATOR_MAINTENANCE_ACTIONS_LABEL = "Outstanding actions: {actions}"
 _INTEGRATOR_MAINTENANCE_LOG_WINDOW = "2m"
+_INTEGRATOR_LOG_JUDGMENT_TITLE = "Integrator post-merge log judgment"
+_INTEGRATOR_LOG_JUDGMENT_REQUIRED_ACTIONS = (
+    "Required actions (log judgment after delivery — complete before next integration):"
+)
 _CHECKPOINT_BUILD_FAILED_MESSAGE = "Checkpoint content build failed; no checkpoint emitted"
 
 __all__ = [
@@ -135,8 +136,6 @@ def run_heuristics(
     context: CheckpointContext,
     log_since_window: str = "2m",
     authored_main_commit: bool = False,
-    commit_obligations: list[str] | None = None,
-    discharge_obligation: Callable[[str], bool] | None = None,
     model: CheckpointModel | None = None,
 ) -> CheckpointResult:
     """Run all checkpoint heuristics and return structured result."""
@@ -172,11 +171,11 @@ def run_heuristics(
         append_required_action(_post_commit_review_instruction())
         result.post_commit_review_action_required = True
 
-    # 1. Owed action ids: every action any changed file triggers under the merged
-    # model, unioned with outstanding commit obligations (which surface only on main).
+    # 1. Owed action ids: every changed file triggers judgment actions under the
+    # merged checkpoint registry. Deterministic maintenance completed at the
+    # commit boundary belongs only to the maintenance registry.
     actions_by_id = model.actions
-    obligation_ids = set(commit_obligations or []) if result.on_main else set[str]()
-    owed_ids = triggered_action_ids(git_files, model) | obligation_ids
+    owed_ids = triggered_action_ids(git_files, model)
 
     # 2. Resolve every known owed action exactly once. The registry owns both
     # main-branch maintenance and turn-local off-main eligibility; the latter
@@ -222,8 +221,6 @@ def run_heuristics(
             )
             continue
         if _action_has_evidence(timeline, action, model, context.project_path):
-            if action_id in obligation_ids and discharge_obligation is not None:
-                discharge_obligation(action_id)
             decisions.append(
                 CheckpointActionDecision(
                     action_id=action_id,
@@ -414,35 +411,32 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 # ---------------------------------------------------------------------------
 
 
-def _build_integrator_maintenance_checkpoint(
+def _build_integrator_log_judgment_checkpoint(
     action_ids: list[str],
     model: CheckpointModel,
 ) -> str | None:
-    """Build a maintenance checkpoint message from outstanding action ids.
+    """Build a checkpoint message from outstanding post-merge log actions.
 
-    Surfaces only main_only maintenance actions. No review, commit reminder,
-    test, or log-check actions appear here.
+    Surfaces only main-only judgment actions recorded by integration. No review,
+    commit reminder, test, or maintenance action appears here.
     """
-    # Integrator maintenance surfaces only main_only actions (install, deps,
-    # restart, sync). Non-main_only actions are not the integrator's
-    # responsibility and must not appear here regardless of the marker.
-    maintenance_actions = [
+    judgment_actions = [
         model.actions[action_id]
         for action_id in action_ids
         if action_id in model.actions and model.actions[action_id].main_only
     ]
-    if not maintenance_actions:
+    if not judgment_actions:
         return None
 
-    category_names = [action.id for action in sorted(maintenance_actions, key=lambda a: (a.precedence, a.id))]
+    category_names = [action.id for action in sorted(judgment_actions, key=lambda a: (a.precedence, a.id))]
     lines: list[str] = [
-        "Integrator post-merge maintenance",
+        _INTEGRATOR_LOG_JUDGMENT_TITLE,
         "",
         _INTEGRATOR_MAINTENANCE_ACTIONS_LABEL.format(actions=", ".join(category_names)),
         "",
-        "Required actions (maintenance after delivery — complete before next integration):",
+        _INTEGRATOR_LOG_JUDGMENT_REQUIRED_ACTIONS,
     ]
-    for i, action in enumerate(sorted(maintenance_actions, key=lambda a: (a.precedence, a.id)), 1):
+    for i, action in enumerate(sorted(judgment_actions, key=lambda a: (a.precedence, a.id)), 1):
         lines.append(
             _INTEGRATOR_MAINTENANCE_ACTION_LINE.format(
                 index=i,
@@ -541,18 +535,18 @@ def get_checkpoint_content(
                         action_ids.append(action.id)
                 if not action_ids:
                     consume_integrator_maintenance_marker(project_path)
-                maintenance_message = _build_integrator_maintenance_checkpoint(action_ids, model)
-                if maintenance_message:
+                log_judgment_message = _build_integrator_log_judgment_checkpoint(action_ids, model)
+                if log_judgment_message:
                     logger.info(
                         "Checkpoint payload computed (integrator maintenance force-fire)",
                         extra={
                             **base_extra,
-                            "mode": "integrator_maintenance",
+                            "mode": "integrator_log_judgment",
                             "actions": len(action_ids),
-                            "message_len": len(maintenance_message),
+                            "message_len": len(log_judgment_message),
                         },
                     )
-                    return maintenance_message
+                    return log_judgment_message
 
         scoped_paths = resolve_scoped_paths(
             session_id=session_id,
@@ -572,15 +566,6 @@ def get_checkpoint_content(
             project_path,
         )
         effective_files = sorted(set(effective_files) | declared_paths)
-        try:
-            commit_obligations = read_commit_obligations(session_id)
-        except OSError:
-            logger.warning(
-                "Commit obligations marker read failed",
-                extra={**base_extra, "mode": "commit_obligations_read_failed"},
-                exc_info=True,
-            )
-            return None
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
 
@@ -588,7 +573,7 @@ def get_checkpoint_content(
         # survive earlier turns and handoffs until later commit evidence.
         used_session_fallback = False
 
-        if not effective_files and not force_main_commit_checkpoint and not commit_obligations:
+        if not effective_files and not force_main_commit_checkpoint:
             logger.info(
                 "Checkpoint payload skipped (no turn-local changes)",
                 extra={
@@ -615,12 +600,7 @@ def get_checkpoint_content(
             effective_files,
             project_path,
         )
-        if (
-            _is_no_action_only(effective_files, model)
-            and not force_main_commit_checkpoint
-            and not commit_obligations
-            and docs_committed
-        ):
+        if _is_no_action_only(effective_files, model) and not force_main_commit_checkpoint and docs_committed:
             logger.info(
                 "Checkpoint payload skipped (no-action changes only, already committed)",
                 extra={
@@ -655,8 +635,6 @@ def get_checkpoint_content(
             context,
             log_since_window=log_since_window,
             authored_main_commit=authored_main_commit,
-            commit_obligations=commit_obligations,
-            discharge_obligation=lambda action: discharge_commit_obligation(session_id, action),
             model=model,
         )
 

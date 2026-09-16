@@ -17,7 +17,6 @@ from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import OperationalError
 
 from teleclaude.capabilities import Capabilities, TierPermissions, resolve_capabilities, resolve_tier_permissions
-from teleclaude.checkpoint_model import main_only_action_ids_for_files
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._code_git_state import (
@@ -39,7 +38,7 @@ from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
-from teleclaude.hooks.checkpoint_flags import record_authored_main_commit, record_commit_obligations
+from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
 from teleclaude.project_root import (
     DOC_LAYER_PATTERN,
     declaration_root,
@@ -804,16 +803,6 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
     """Record checkpoint markers derived from the sealed commit."""
     session_id = get_session_id()
     current_branch = resolve_current_branch(project_root)
-    if session_id and current_branch == "main":
-        obligations = main_only_action_ids_for_files(committed_files, project_root)
-        try:
-            record_commit_obligations(session_id, obligations)
-        except OSError as exc:
-            logger.warning(
-                "Failed to record commit obligations checkpoint marker",
-                session_id=session_id,
-                error=str(exc),
-            )
     committed_includes_code = any(
         not any(fnmatch(path, pattern) for pattern in _NON_CODE_DOCUMENTATION_PATTERNS) for path in committed_files
     )

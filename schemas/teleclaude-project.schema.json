@@ -98,13 +98,6 @@
           "default": false,
           "title": "Evidence Must Follow Last Mutation",
           "type": "boolean"
-        },
-        "command": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Command",
-          "type": "array"
         }
       },
       "required": ["run"],
@@ -161,6 +154,14 @@
           },
           "default": {},
           "title": "Actions",
+          "type": "object"
+        },
+        "maintenance": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CheckpointMaintenanceConfig"
+          },
+          "default": {},
+          "title": "Maintenance",
           "type": "object"
         },
         "code": {
@@ -222,6 +223,33 @@
         }
       },
       "title": "CheckpointExtraActionsConfig",
+      "type": "object"
+    },
+    "CheckpointMaintenanceConfig": {
+      "additionalProperties": true,
+      "description": "A project-declared deterministic action overlaid on the maintenance registry.",
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Command",
+          "type": "array"
+        },
+        "main_only": {
+          "default": false,
+          "title": "Main Only",
+          "type": "boolean"
+        },
+        "precedence": {
+          "default": 0,
+          "title": "Precedence",
+          "type": "integer"
+        }
+      },
+      "required": ["command"],
+      "title": "CheckpointMaintenanceConfig",
       "type": "object"
     },
     "CheckpointScopeConfig": {

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from teleclaude.agent_registry import AgentName
 from teleclaude.config.tiers import Tier
-from teleclaude.constants import CHECKPOINT_BASE_ACTIONS
+from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE
 from teleclaude.events.domain_config import DomainsConfig
 from teleclaude.slug import validate_slug
 
@@ -453,7 +453,15 @@ class CheckpointActionConfig(BaseModel):
     main_only: bool = False
     precedence: int = 0
     evidence_must_follow_last_mutation: bool = False
-    command: list[str] = Field(default_factory=list)
+
+
+class CheckpointMaintenanceConfig(BaseModel):
+    """A project-declared deterministic action overlaid on the maintenance registry."""
+
+    model_config = ConfigDict(extra="allow")
+    command: list[str] = Field(min_length=1)
+    main_only: bool = False
+    precedence: int = 0
 
 
 class CheckpointScopeConfig(BaseModel):
@@ -497,6 +505,7 @@ class CheckpointConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     actions: dict[str, CheckpointActionConfig] = {}
+    maintenance: dict[str, CheckpointMaintenanceConfig] = {}
     code: CheckpointCodeConfig | None = None
     bindings: list[CheckpointBindingConfig] = []
     docs: CheckpointExtraActionsConfig | None = None
@@ -511,7 +520,24 @@ class CheckpointConfig(BaseModel):
         declared maintenance never surfaces. Reject it at the boundary instead, and
         reject a binding/extra block that references no action at all.
         """
-        valid_ids = set(CHECKPOINT_BASE_ACTIONS) | set(self.actions)
+        action_ids = set(CHECKPOINT_BASE_ACTIONS) | set(self.actions)
+        maintenance_ids = set(CHECKPOINT_BASE_MAINTENANCE) | set(self.maintenance)
+        duplicate_ids = action_ids & maintenance_ids
+        if duplicate_ids:
+            raise ValueError(
+                "checkpoint action ids must belong to exactly one registry; "
+                f"declared in both actions and maintenance: {', '.join(sorted(duplicate_ids))}"
+            )
+        valid_ids = action_ids | maintenance_ids
+
+        for action_id, action in self.actions.items():
+            if action.model_extra is not None and "command" in action.model_extra:
+                raise ValueError(f"checkpoint.actions.{action_id}.command belongs under checkpoint.maintenance")
+        for maintenance_id, maintenance_action in self.maintenance.items():
+            if maintenance_action.model_extra is not None and (
+                "run" in maintenance_action.model_extra or "evidence" in maintenance_action.model_extra
+            ):
+                raise ValueError(f"checkpoint.maintenance.{maintenance_id} may not declare run or evidence")
 
         def _check(action_ids: list[str], where: str) -> None:
             if not action_ids:
@@ -520,7 +546,7 @@ class CheckpointConfig(BaseModel):
             if unknown:
                 raise ValueError(
                     f"checkpoint.{where} references unknown action id(s): {', '.join(unknown)}; "
-                    f"declare them under checkpoint.actions or reference a base action "
+                    f"declare them under checkpoint.actions or checkpoint.maintenance, or reference a base action "
                     f"({', '.join(sorted(valid_ids))})"
                 )
 

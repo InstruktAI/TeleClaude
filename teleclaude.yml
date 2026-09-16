@@ -27,23 +27,16 @@ business:
 # project-declared `code` scope, so each project chooses them for itself.
 # This overlay adds TeleClaude's runtime-specific actions.
 checkpoint:
-  actions:
+  maintenance:
     restart:
-      run: Run `make restart`
-      evidence: [make restart]
       main_only: true
       precedence: 30
       command: [make, restart]
     deps:
-      run: 'Install updated dependencies: `uv sync`'
-      evidence: [uv sync, make install]
       main_only: true
       precedence: 20
       command: [uv, sync]
     tui-reload:
-      run: Run `telec reload`
-      evidence: [telec reload]
-      evidence_must_follow_last_mutation: true
       main_only: true
       precedence: 40
       command: [telec, reload]

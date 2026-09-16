@@ -502,10 +502,10 @@ def _glob_matches(path: str, pattern: str) -> bool:  # pyright: ignore[reportUnu
 
 @dataclass(frozen=True)
 class CheckpointAction:
-    """A single maintenance action in the checkpoint registry (the verb).
+    """A judgment action in the checkpoint registry (the verb).
 
-    Evidence, gating, ordering, and the command all live on the action, never on
-    a binding — so many bindings may trigger one action while its suppression,
+    Evidence, gating, and surface order live on the action, never on a binding
+    — so many bindings may trigger one action while its suppression,
     branch-gating, and surface order are defined exactly once. ``run`` and
     ``evidence`` may carry the ``{slug}`` placeholder, filled from the project's
     ``project_slug`` when the effective model is loaded; ``run`` may carry the
@@ -519,11 +519,20 @@ class CheckpointAction:
     off_main_eligible: bool = True
     precedence: int = 0
     evidence_must_follow_last_mutation: bool = False
-    command: tuple[str, ...] = ()
 
     def effective_evidence(self) -> tuple[str, ...]:
         """Evidence substrings proving the action ran; defaults to ``[run]``."""
         return self.evidence if self.evidence else (self.run,)
+
+
+@dataclass(frozen=True)
+class MaintenanceAction:
+    """A deterministic action performed at the canonical-main boundary."""
+
+    id: str
+    command: tuple[str, ...]
+    main_only: bool = False
+    precedence: int = 0
 
 
 @dataclass(frozen=True)
@@ -545,9 +554,10 @@ class CheckpointBinding:
 
 @dataclass(frozen=True)
 class CheckpointModel:
-    """The effective checkpoint declaration: an action registry plus bindings."""
+    """The effective checkpoint and maintenance registries plus shared bindings."""
 
     actions: dict[str, CheckpointAction]
+    maintenance: dict[str, MaintenanceAction]
     bindings: tuple[CheckpointBinding, ...]
 
 
@@ -558,28 +568,12 @@ CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
 # via telec sessions send).
 CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = ["next-review-commits", "review commits"]
 
-# Universal base actions (the verbs). TeleClaude owns this registry; every
+# Universal base judgment actions (the verbs). TeleClaude owns this registry; every
 # onboarded project inherits it and references these ids in its own bindings or
 # extends it with project-specific actions. `log-check` carries the {slug}
 # placeholder (filled from ProjectConfig.project_slug) and the {window}
 # placeholder (filled at surface time from elapsed turn duration).
 CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
-    "install": CheckpointAction(
-        id="install",
-        run="Run `make install`",
-        evidence=("make install",),
-        main_only=True,
-        precedence=10,
-        command=("make", "install"),
-    ),
-    "sync": CheckpointAction(
-        id="sync",
-        run="Run `telec sync --skip-deploy`",
-        evidence=("telec sync",),
-        main_only=True,
-        precedence=55,
-        command=("telec", "sync", "--skip-deploy"),
-    ),
     "log-check": CheckpointAction(
         id="log-check",
         run="Check logs: `instrukt-ai-logs {slug} --since {window} --exclude git-wrapper`",
@@ -596,8 +590,14 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
     ),
 }
 
+
+CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
+    "install": MaintenanceAction(id="install", command=("make", "install"), main_only=True, precedence=10),
+    "sync": MaintenanceAction(id="sync", command=("telec", "sync", "--skip-deploy"), main_only=True, precedence=55),
+}
+
 # Universal base bindings preserve their scopes for project overlays. Docs and
-# agent-artifact scopes run tailored sync, while the toolchain scope runs install;
+# agent-artifact scopes trigger sync, while the toolchain scope triggers install;
 # project-declared code scopes attach test and log-check separately.
 CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
 CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
