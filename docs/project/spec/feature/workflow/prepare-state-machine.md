@@ -358,7 +358,11 @@ driver as the child's `active_runner`; no reservation, expiry, or other
 pre-ownership state participates.
 
 This supersedes parent-worker reuse for child prepare. A prepare session must
+<!-- planned-change:agent-artifact-source-layout -->
 not send a new `/next-prepare` instruction to itself, must not rebind a parent
+<!-- change:agent-artifact-source-layout -->
+not send a new `/software-development/next-prepare` instruction to itself, must not rebind a parent
+<!-- /planned-change:agent-artifact-source-layout -->
 worker to a child slug, and must not rely on the parent worker's live context as
 the child's execution substrate. The child's context is recovered from frozen
 artifacts/snippets and normal docs retrieval.

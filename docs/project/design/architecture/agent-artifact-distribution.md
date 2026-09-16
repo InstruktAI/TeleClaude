@@ -203,14 +203,22 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   both are declared artifact sources while both carry commands. Contraction —
   deleting the flat root — is the migration's last step.
 - Retraction removes what an owner staged before and does not stage now, so the
-  hazard it poses is a staged set that shrinks. While both roots carry a
-  command, every command the flat root carries is staged, so no publication run
-  observes a source as absent and no retraction of a live command is reachable.
+  hazard it poses is a staged set that shrinks. Two independent things can
+  shrink it, and the migration's shape answers only one. Both roots carrying a
+  command means no *source* goes absent. Partitioning the staged corpus into
+  `<domain>/` directories is the other: an enumerator that lists one level and
+  counts only files sees an empty staged set the moment the corpus stops being
+  flat, and retracts everything the owner held. Ownership enumeration is
+  therefore recursive over the staged corpus and keyed by relative path, and
+  that is the mechanism
   `@prd#sc-5-the-mothers-migrated-artifacts-lose-nothing-sessions-were-offered-at-every-point-in-the-cutover`
-  holds by the shape of the migration, so no compatibility mechanism exists in
-  this design.
-- The order in which the tiered root and its reader appear is unconstrained,
-  because the flat root carries every command throughout.
+  rests on. The migration's shape covers the source side; this covers the
+  staged side.
+- The order in which the tiered root and its reader appear is unconstrained on
+  the source side, because the flat root carries every command throughout. The
+  recursive, relative-path ownership enumeration is not order-free: it is the
+  precondition for partitioning the corpus at all, and lands with or before the
+  first partitioned deploy.
 - Contraction is a plain deletion: the existing reconciler retracts the flat
   root's keys on the next publication, and this design adds no mechanism for
   it.

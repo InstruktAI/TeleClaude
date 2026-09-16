@@ -476,6 +476,17 @@ Scenario: UC-ARD37 One repository's deploy never retracts another repository's g
   And a command that repository itself no longer carries is retracted
 ```
 
+#### UC-ARD38: Partitioning the corpus retracts nothing a publisher still carries
+
+```
+Scenario: UC-ARD38 Partitioning the corpus retracts nothing a publisher still carries
+  Given a publisher's commands are deployed at the corpus root and its sources move under agents/global/commands/<domain>/
+  When sync runs in deploy mode and stages that publisher's commands under <domain>/
+  Then every command that publisher still carries remains deployed
+  And ownership is recorded for each by its path relative to the corpus root
+  And a command the publisher no longer carries is the only thing retracted
+```
+
 #### UC-ARD32: Every declared artifact source directory is enumerated from one registry
 
 ```

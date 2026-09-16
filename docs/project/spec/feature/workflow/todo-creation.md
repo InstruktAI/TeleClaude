@@ -45,7 +45,11 @@ The Todo aggregate's invariants — unique kebab-case slug, kind fixed once assi
 The workflow service emits the event with this payload:
 
 - `slug` — the created slug.
+<!-- planned-change:agent-artifact-source-layout -->
 - `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/analyze-todo-input`).
+<!-- change:agent-artifact-source-layout -->
+- `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/software-development/analyze-todo-input`).
+<!-- /planned-change:agent-artifact-source-layout -->
 - `creation_mode` — `"pickup"` when pickup is requested, otherwise `"silent"`; derived from `pickup_requested`.
 - `pickup_requested` — boolean, false when the caller passed `--icebox` or the kind is `task`.
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"task_plan_drafting"` for a bare `--kind task`, `"prepared"` for `--kind task --plan`, `"plan_drafting"` for `--kind change --plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
@@ -422,7 +426,11 @@ Create-time dispatch is dependency-gated by the lane selected from the creation 
 Given an operator needs to create a todo
 When they run `telec todo create --help`
 Then the usage line shows `--kind` as optional with values `feature|change|bug|task`
+<!-- planned-change:agent-artifact-source-layout -->
 And the help states that omitting `--kind` creates a kind-less todo classified by `/analyze-todo-input`
+<!-- change:agent-artifact-source-layout -->
+And the help states that omitting `--kind` creates a kind-less todo classified by `/software-development/analyze-todo-input`
+<!-- /planned-change:agent-artifact-source-layout -->
 And the help does not advertise retired kind values
 And the usage line and the Options table do not advertise the hidden `--hold` flag, which the Notes are free to explain
 ```
@@ -494,7 +502,11 @@ And each `--after` dependency slug and the `--group` parent slug are held to tha
 ## Known caveats
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
+<!-- planned-change:agent-artifact-source-layout -->
 - `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). A bare `task` is created silent and enters `task_plan_drafting`, where `/next-prepare-task` authors its `task-plan`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review, or with `--kind task` when the content is a complete `task-plan`: the task is born `prepared` and pre-authorized (the `task_approved` stamp is written at creation, digest-bound to the seeded `task-plan`), so the runner routes it straight to `/next-run-task` once its dependency or `schedule` gate passes.
+<!-- change:agent-artifact-source-layout -->
+- `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/software-development/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). A bare `task` is created silent and enters `task_plan_drafting`, where `/software-development/next-prepare-task` authors its `task-plan`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review, or with `--kind task` when the content is a complete `task-plan`: the task is born `prepared` and pre-authorized (the `task_approved` stamp is written at creation, digest-bound to the seeded `task-plan`), so the runner routes it straight to `/software-development/next-run-task` once its dependency or `schedule` gate passes.
+<!-- /planned-change:agent-artifact-source-layout -->
 - A created todo enters its kind's lifecycle; nothing holds it back at creation by default. Two flags suppress create-time dispatch (`pickup_requested=false`): `--icebox` parks it in the icebox (`status="icebox"`), and `--hold` leaves it **active** but sets the durable dispatch brake (`hold=True`, `hold_audit.source="creation"`). The lifecycle runner skips both — iceboxed entries by status, held entries by the hold brake — until the icebox is unfrozen or the hold is released. The two are mutually exclusive. The route always emits `workflow.todo.created` after a successful create.
 
 - `--group <parent-slug>` is the create-time path to a grouped child. It records the child's group reference to the parent row's durable id inside the create transaction. The first grouped child transitions the parent's row to status `holder` in the same transaction — removing its `todo_state` and voiding any claim or hold — while preserving all of its artifacts and their version history as frozen evidence, so a parent still in the prepare lane can be grouped without shredding prepared work (see UC-WTC24). A parent whose lifecycle_phase has reached `prepared` or the work lane is refused with a 409 instead (see UC-WTC16). `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18). Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and `delivered_by` membership naming the parent is rewritten to that child and committed as part of the same transition.

@@ -52,7 +52,11 @@ And on the same call dispatches the software-development/next-build worker sessi
 ```
 
 ```gherkin
+<!-- planned-change:agent-artifact-source-layout -->
 Given a Todo has a live next-build session for its worktree
+<!-- change:agent-artifact-source-layout -->
+Given a Todo has a live software-development/next-build session for its worktree
+<!-- /planned-change:agent-artifact-source-layout -->
 And `telec todo work` merges origin/main into that worktree before dispatch/review
 When the merge fails with conflicts
 Then `telec todo work` returns a recovery handoff for the orchestrator
@@ -85,7 +89,11 @@ And the machine returns a script that dispatches the software-development/next-d
 <!-- /planned-change:agent-artifact-source-layout -->
 And the work orchestrator never calls "telec todo prepare my-feature"
 And on re-entry after a cosmetic verdict the machine observes non-blocking drift and proceeds with worktree creation and dispatch
+<!-- planned-change:agent-artifact-source-layout -->
 And on re-entry after a substantive verdict the machine hands the same session off to drive "/next-prepare my-feature" without mutating its job or title itself
+<!-- change:agent-artifact-source-layout -->
+And on re-entry after a substantive verdict the machine hands the same session off to drive "/software-development/next-prepare my-feature" without mutating its job or title itself
+<!-- /planned-change:agent-artifact-source-layout -->
 And calling "telec todo prepare my-feature" next adopts this session as prepare-orchestrator in place — claim ownership is the only gate, there is no distinct promotion step
 And the adopted session re-derives the affected artifact with no 403 write refusal and no 409 claim conflict, reaches prepared, and its terminal output tells it to resume work in this same session rather than self-end
 ```
@@ -158,7 +166,11 @@ And it leaves the SDLC work state machine untouched
 ```
 
 ```gherkin
+<!-- planned-change:agent-artifact-source-layout -->
 Given `/next-run-task` reaches the end of the task-plan
+<!-- change:agent-artifact-source-layout -->
+Given `/software-development/next-run-task` reaches the end of the task-plan
+<!-- /planned-change:agent-artifact-source-layout -->
 When it stamps the firing outcome
 Then a `success` firing ends the session — a one-shot delivers the todo, a recurring records the firing and leaves the todo live for its next instant
 And an `error` firing holds the todo and stays alive as the human-inspection beacon
@@ -166,14 +178,24 @@ And it does not stamp build-complete, dispatch review, or enter finalize-ready
 ```
 
 ```gherkin
+<!-- planned-change:agent-artifact-source-layout -->
 Given a recurring task has a live `/next-run-task` session and its schedule reaches a new due instant
 When the lifecycle runner evaluates eligible work for the project
 Then it does not start a second `/next-run-task`
+<!-- change:agent-artifact-source-layout -->
+Given a recurring task has a live `/software-development/next-run-task` session and its schedule reaches a new due instant
+When the lifecycle runner evaluates eligible work for the project
+Then it does not start a second `/software-development/next-run-task`
+<!-- /planned-change:agent-artifact-source-layout -->
 And it does not signal the live run session
 ```
 
 ```gherkin
+<!-- planned-change:agent-artifact-source-layout -->
 Given a recurring task has no live `/next-run-task` session and its schedule reaches a due instant
+<!-- change:agent-artifact-source-layout -->
+Given a recurring task has no live `/software-development/next-run-task` session and its schedule reaches a due instant
+<!-- /planned-change:agent-artifact-source-layout -->
 When the lifecycle runner evaluates eligible work for the project
 <!-- planned-change:agent-artifact-source-layout -->
 Then it dispatches a fresh `/next-run-task`, exactly like a one-shot

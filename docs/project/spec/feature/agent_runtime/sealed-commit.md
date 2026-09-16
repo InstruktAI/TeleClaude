@@ -369,6 +369,7 @@ Then the disclaimer no longer applies to that path
 ### Commit-time gates — in-process, no framework stash
 
 
+<!-- planned-change:home-tier-commit-maintenance -->
 `telec code commit` runs the gates read from the project-subscription axis of the
 acting invocation context root's declared tier
 (`project/spec/feature/config/tier-permissions`). Where that tier carries project
@@ -379,6 +380,27 @@ proceeds directly. No framework stash occurs; files outside the pathspec are not
 touched. The installed `.git/hooks/pre-commit` is a thin telec-owned guard
 performing only a partial-staging check as a backstop for raw `git commit`
 invocations.
+<!-- change:home-tier-commit-maintenance -->
+`telec code commit` runs the gates the acting invocation context root's declared
+tier carries, read from that tier's published answers
+(`project/spec/feature/config/tier-permissions`). Where the tier carries project
+subscriptions, it runs format then lint in-process against `quality_paths` (the
+commit pathspec filtered to existing files) before `git commit --no-verify`.
+Where the tier is a non-project tier whose material participates in
+documentation, the same format-then-lint gate runs against the documentation
+paths in `quality_paths`, by no separate mechanism. Where a tier carries neither,
+neither runs, no check is applied in their place, and the commit proceeds
+directly. No framework stash occurs; files outside the pathspec are not
+touched. The installed `.git/hooks/pre-commit` is a thin telec-owned guard
+performing only a partial-staging check as a backstop for raw `git commit`
+invocations.
+<!-- /planned-change:home-tier-commit-maintenance -->
+
+<!-- planned:home-tier-commit-maintenance -->
+Which tiers participate in documentation is the tier-permission contract's
+answer, not this surface's: this contract consumes it and decides nothing about
+which tier carries it.
+<!-- /planned:home-tier-commit-maintenance -->
 
 
 #### UC-CGIP-1 — Commitizen format check blocks malformed message
@@ -748,6 +770,7 @@ Then the wrapper refuses and points at the sealed surface
 And the raw invocation produces neither a commit nor a staged change
 ```
 
+<!-- planned-change:home-tier-commit-maintenance -->
 #### UC-NCR-8 — An invocation context carrying no project subscriptions commits with no gates and no substitute
 
 ```
@@ -757,6 +780,32 @@ When the agent commits through the sealed surface
 Then no subscription-gated check runs, and no check is applied in place of one
 And the commit is produced
 ```
+<!-- change:home-tier-commit-maintenance -->
+#### UC-NCR-8 — An invocation context carrying neither subscriptions nor a participating surface commits with no gates and no substitute
+
+```
+Given an agent working in an invocation context root whose tier carries no project subscriptions
+And whose tier's material participates in no surface
+And that context root has changes in scope
+When the agent commits through the sealed surface
+Then no subscription-gated check runs, and no check is applied in place of one
+And the commit is produced
+```
+<!-- /planned-change:home-tier-commit-maintenance -->
+
+<!-- planned:home-tier-commit-maintenance -->
+#### UC-NCR-14 — A non-project tier participating in documentation runs the same gate over its documentation paths
+
+```
+Given an agent working in an invocation context root whose tier carries no project subscriptions
+And whose tier's material participates in documentation
+And that context root has documentation changes in scope
+When the agent commits through the sealed surface
+Then format runs before lint over the documentation paths in quality_paths
+And the gate is the one a subscribed project runs, by no separate mechanism
+And a failing gate blocks the commit exactly as it does for a subscribed project
+```
+<!-- /planned:home-tier-commit-maintenance -->
 
 #### UC-NCR-9 — A context root that is also the repository root is unchanged
 
