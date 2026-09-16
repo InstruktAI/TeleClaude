@@ -62,14 +62,6 @@ Then the session's inherited environment carries those directories
 And the runtime process environment is not required to hold them
 ```
 
-### Environment values outside the allow list
-
-The XDG base directories (`XDG_DATA_HOME`, `XDG_CACHE_HOME`) enter a session
-through the host-shell capture owned by `project/spec/agent-shell-path`. An
-agent CLI rejects `XDG_*` supplied by a `.env` layer, so the inherited session
-environment is the only channel open to them, and the capture supplies it at
-session creation. Authorizing these names here does not change that delivery.
-
 ```
 Given an agent skill needs a secret or account credential
 When the project owner trusts the agent with that access
@@ -77,6 +69,14 @@ Then the owner adds the variable name to env_allow_list
 And ensures the runtime process environment contains the value
 And starts or restarts the agent session
 ```
+
+### Environment values outside the allow list
+
+The XDG base directories (`XDG_DATA_HOME`, `XDG_CACHE_HOME`) enter a session
+through the host-shell capture owned by `project/spec/agent-shell-path`. The
+DeepSeek Harness CLI accepts `XDG_*` only from the inherited environment and
+refuses any `.env` layer that declares one (`dsh-app-boot` bootstrap-name rule).
+Authorizing these names here does not change that delivery.
 
 ## Allowed values
 

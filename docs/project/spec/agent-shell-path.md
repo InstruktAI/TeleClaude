@@ -1,5 +1,5 @@
 ---
-description: The PATH and terminal-hint contract for TeleClaude agent shells and the daemon's own service environment — which tool directories and TUI color hints are guaranteed, where the contract is implemented, and which sibling files must change together.
+description: The PATH, terminal-hint, and XDG session-environment contract for TeleClaude agent shells and the daemon's own service environment — which tool directories and TUI color hints are guaranteed, where the contract is implemented, and which sibling files must change together.
 ---
 
 # Agent Shell PATH — Spec
@@ -79,13 +79,14 @@ set by its launchd/systemd unit. `bin/init/install_services.sh` generates that P
 
 ### XDG base directories
 
-The daemon resolves the XDG base directories the user's login shell declares
-(`XDG_DATA_HOME`, `XDG_CACHE_HOME`) through the same user-shell capture that
+The daemon resolves two XDG base directories — `XDG_DATA_HOME` and
+`XDG_CACHE_HOME` — from the user's login shell through the same capture that
 resolves PATH, and places them in every agent session's environment. Tools that
-honour XDG — the pnpm store, uv, agent CLI caches — therefore resolve the same
-directories inside an agent session as they do in the user's own shells. A
-directory the shell does not declare is absent from the session, and the tool
-falls back to its own default.
+honour either name — the pnpm store, uv, agent CLI caches — therefore resolve the
+same directory inside an agent session as they do in the user's own shells. A
+name the login shell does not declare falls back to the daemon process
+environment's value for that name, and is absent from the session when neither
+declares it. The remaining XDG names are not captured.
 
 These values arrive in the session's inherited environment. Provenance for
 environment values that no `.env` layer may carry is owned by

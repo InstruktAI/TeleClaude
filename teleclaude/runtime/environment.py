@@ -7,22 +7,25 @@ import pwd
 import subprocess
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import NotRequired, TypedDict, cast
+from typing import NotRequired, TypedDict
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.paths import BIN_DIR
 
 logger = get_logger(__name__)
-_SHELL_PATH_CAPTURE_TIMEOUT_SECONDS = 5
+_SHELL_ENV_CAPTURE_TIMEOUT_SECONDS = 5
 _SHELL_CAPTURE_ENV_REMOVALS = ("ZDOTDIR", "BASH_ENV", "ENV", "TELECLAUDE_HOST_SHELL")
 _PATH_ENV_NAME = "PATH"
-HOST_XDG_ENV_NAMES: tuple[str, ...] = ("XDG_DATA_HOME", "XDG_CACHE_HOME")
+_HOST_XDG_ENV_NAMES: tuple[str, ...] = ("XDG_DATA_HOME", "XDG_CACHE_HOME")
+_CAPTURED_ENV_NAMES: tuple[str, ...] = (_PATH_ENV_NAME, *_HOST_XDG_ENV_NAMES)
 _EMPTY_ENV_VALUE = ""
-_SHELL_CAPTURE_SCRIPT = " ".join(
+_ENV_ASSIGNMENT_SEPARATOR = "="
+_SHELL_CAPTURE_SENTINEL = "__teleclaude_env_capture__"
+_SHELL_CAPTURE_SCRIPT = "\n".join(
     (
-        "printf '%s\\n'",
-        *(f'"${name}"' for name in (_PATH_ENV_NAME, *HOST_XDG_ENV_NAMES)),
+        f"printf '%s\\n' {_SHELL_CAPTURE_SENTINEL}",
+        *(f"printf '{name}=%s\\n' \"${{{name}:-}}\"" for name in _CAPTURED_ENV_NAMES),
     )
 )
 _TMUX_RUNTIME_ENV_EXACT_ALLOWLIST = frozenset(
@@ -168,7 +171,7 @@ def _capture_shell_environment(shell_value: str, env: Mapping[str, str] | None =
             env=_host_shell_capture_env(env),
             capture_output=True,
             text=True,
-            timeout=_SHELL_PATH_CAPTURE_TIMEOUT_SECONDS,
+            timeout=_SHELL_ENV_CAPTURE_TIMEOUT_SECONDS,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -186,11 +189,28 @@ def _capture_shell_environment(shell_value: str, env: Mapping[str, str] | None =
         return {}
 
     lines = result.stdout.splitlines()
+    if _SHELL_CAPTURE_SENTINEL not in lines:
+        logger.warning(
+            "user shell environment capture produced no sentinel line; falling back to daemon environment: "
+            "shell=%s stdout=%s",
+            shell_value,
+            result.stdout.strip(),
+        )
+        return {}
+
     captured: dict[str, str] = {}
-    for offset, name in enumerate((_PATH_ENV_NAME, *HOST_XDG_ENV_NAMES)):
-        value = lines[offset].strip() if offset < len(lines) else _EMPTY_ENV_VALUE
+    for line in lines[lines.index(_SHELL_CAPTURE_SENTINEL) + 1 :]:
+        name, separator, value = line.partition(_ENV_ASSIGNMENT_SEPARATOR)
+        if not separator or name not in _CAPTURED_ENV_NAMES:
+            continue
         if value:
             captured[name] = value
+
+    if _PATH_ENV_NAME not in captured:
+        logger.warning(
+            "user shell environment capture declared no PATH; falling back to daemon environment: shell=%s",
+            shell_value,
+        )
     return captured
 
 
@@ -207,16 +227,22 @@ def host_xdg_env(runtime_env: RuntimeEnvironment) -> dict[str, str]:
 
 
 def resolve_runtime_environment(env: Mapping[str, str] | None = None) -> RuntimeEnvironment:
-    """Resolve the live session environment from the daemon and configured user shell."""
+    """Resolve the live session environment from the daemon and configured user shell.
+
+    A name the user shell does not declare falls back to the daemon process
+    environment's value for that name.
+    """
     source = env if env is not None else os.environ  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     user_shell = resolve_user_shell(source)
     captured = _capture_shell_environment(user_shell, source) if user_shell else {}
     path_value = captured.get(_PATH_ENV_NAME) or source.get(_PATH_ENV_NAME, _EMPTY_ENV_VALUE)
-    values: dict[str, str] = {"PATH": compose_runtime_path(path_value)}
+    values: RuntimeEnvironment = {"PATH": compose_runtime_path(path_value)}
     if user_shell:
         values["SHELL"] = user_shell
-    for name in HOST_XDG_ENV_NAMES:
-        value = captured.get(name) or source.get(name, _EMPTY_ENV_VALUE)
-        if value:
-            values[name] = value
-    return cast(RuntimeEnvironment, values)
+    data_home = captured.get("XDG_DATA_HOME") or source.get("XDG_DATA_HOME", _EMPTY_ENV_VALUE)
+    if data_home:
+        values["XDG_DATA_HOME"] = data_home
+    cache_home = captured.get("XDG_CACHE_HOME") or source.get("XDG_CACHE_HOME", _EMPTY_ENV_VALUE)
+    if cache_home:
+        values["XDG_CACHE_HOME"] = cache_home
+    return values
