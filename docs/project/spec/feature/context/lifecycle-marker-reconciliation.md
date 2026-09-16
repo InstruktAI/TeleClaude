@@ -46,9 +46,9 @@ confirmed SHA as delivered.
 The integrator detects settled-slug/live-marker divergence on entering
 integration, wherever documentation material lives in its project, including
 repository-root snippets outside a candidate branch. Detection covers every
-settled status; automatic repair covers only a delivered slug, because that is
-the only status with a defined terminal fold. A settled slug of any other status
-is reported for the integrator to resolve and is left untouched.
+settled status; automatic repair covers only a delivered slug. A settled slug of
+any other status is reported for the integrator to resolve and is left
+untouched.
 The integrator handles a delivered-slug fault as a separate recovery operation
 after the repository root is synchronized and safe to mutate: it reconciles
 only that delivered slug, publishes the resulting cleanup through its
