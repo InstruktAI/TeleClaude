@@ -149,7 +149,11 @@ And no runner wake-up is emitted
 ```gherkin
 Given a task has a `task_approved` stamp whose `approved_digest` was recorded against an earlier `task-plan`
 When the `task-plan` is edited so its current digest no longer equals the stamped `approved_digest`
+<!-- planned-change:agent-artifact-source-layout -->
 Then the lifecycle runner treats the task as unauthorized and does not dispatch `/next-run-task`
+<!-- change:agent-artifact-source-layout -->
+Then the lifecycle runner treats the task as unauthorized and does not dispatch `/software-development/next-run-task`
+<!-- /planned-change:agent-artifact-source-layout -->
 And the task stays unauthorized until a fresh `task_approved` stamp re-binds `approved_digest` to the current `task-plan`
 ```
 
@@ -223,7 +227,11 @@ Given a Todo has kind="task", a one-shot schedule (no cron recurrence), and a li
 When the run session runs "telec todo stamp my-slug --task-outcome success"
 Then the stamp confirms the todo is kind="task" and resolves the schedule as one-shot
 And the todo is delivered through the existing delivery path, satisfying its dependents
+<!-- planned-change:agent-artifact-source-layout -->
 And the lifecycle runner skips the delivered todo and does not re-dispatch /next-run-task after the run session closes
+<!-- change:agent-artifact-source-layout -->
+And the lifecycle runner skips the delivered todo and does not re-dispatch /software-development/next-run-task after the run session closes
+<!-- /planned-change:agent-artifact-source-layout -->
 ```
 
 #### UC-WSS13: Recurring task success outcome clears an error-hold and stays live
