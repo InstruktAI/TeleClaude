@@ -425,6 +425,21 @@ And a `--reason` supplied without `--hold` is refused before any write rather th
 And the reason input is hidden from the structured flag surfaces exactly as `--hold` is
 ```
 
+<!-- planned:fix-post-todos-dump-creates-a-todo-from-a-sl -->
+
+#### UC-WTC30: Creation refuses a slug that violates the kebab-case invariant
+
+```gherkin
+Given an agent runs `telec todo create My_Slug "<content>" --kind change`
+When the workflow service validates the creation request
+Then the create is refused before any roadmap row, state, `input` artifact, or `workflow.todo.created` event is written
+And the diagnostic names the slug format the invariant requires
+And a slug carrying a path separator or a relative-path segment is refused the same way
+And each `--after` dependency slug and the `--group` parent slug are held to that same format invariant
+```
+
+<!-- /planned:fix-post-todos-dump-creates-a-todo-from-a-sl -->
+
 ### Cross-context references
 
 - `operations` — async, receipt-backed long-running operations (e.g., `telec todo remove`) are surfaced through the operations subsystem; create itself is synchronous.
