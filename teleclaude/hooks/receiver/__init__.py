@@ -339,11 +339,11 @@ def _build_receiver_error_payload(
 
 
 def _reset_checkpoint_flags(session_id: str) -> None:
-    # New user input starts a fresh checkpoint turn.
+    # New user input starts a fresh checkpoint turn. This resets the turn
+    # latches only — the disclaim marker is not one: its lapse conditions are
+    # committed, goes-clean, and real user input, never a turn boundary.
     consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
     consume_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG)
-    # Lapse: "not mine" describes the current situation, not the filename forever.
-    consume_checkpoint_flag(session_id, CHECKPOINT_DISCLAIMED_PATHS_FLAG)
 
 
 def _maybe_checkpoint_output(
@@ -1056,6 +1056,8 @@ def _handle_user_prompt_submit(
         )
         return True
     _reset_checkpoint_flags(session_id)
+    # Real user input is the disclaim marker's documented lapse condition.
+    consume_checkpoint_flag(session_id, CHECKPOINT_DISCLAIMED_PATHS_FLAG)
     logger.info(
         EVENT_HOOK_CHECKPOINT_FLAGS_RESET,
         receiver_ingress_id=receiver_ingress_id,
