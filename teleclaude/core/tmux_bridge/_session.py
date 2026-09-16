@@ -12,7 +12,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_DIR
-from teleclaude.runtime.environment import filter_platform_session_environment, resolve_runtime_environment
+from teleclaude.runtime.environment import (
+    filter_platform_session_environment,
+    host_xdg_env,
+    resolve_runtime_environment,
+)
 
 from ._pane import kill_session, session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
@@ -216,6 +220,7 @@ async def _create_tmux_session(
         controlled_env_vars["ENV"] = f"{shell_dir}/.profile"
         runtime_env = resolve_runtime_environment()
         controlled_env_vars["PATH"] = runtime_env["PATH"]
+        controlled_env_vars.update(host_xdg_env(runtime_env))
         host_shell = runtime_env.get("SHELL")
         if host_shell:
             controlled_env_vars["TELECLAUDE_HOST_SHELL"] = host_shell

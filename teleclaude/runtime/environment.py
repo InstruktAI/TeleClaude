@@ -7,7 +7,7 @@ import pwd
 import subprocess
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import NotRequired, TypedDict
+from typing import NotRequired, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -16,6 +16,15 @@ from teleclaude.paths import BIN_DIR
 logger = get_logger(__name__)
 _SHELL_PATH_CAPTURE_TIMEOUT_SECONDS = 5
 _SHELL_CAPTURE_ENV_REMOVALS = ("ZDOTDIR", "BASH_ENV", "ENV", "TELECLAUDE_HOST_SHELL")
+_PATH_ENV_NAME = "PATH"
+HOST_XDG_ENV_NAMES: tuple[str, ...] = ("XDG_DATA_HOME", "XDG_CACHE_HOME")
+_EMPTY_ENV_VALUE = ""
+_SHELL_CAPTURE_SCRIPT = " ".join(
+    (
+        "printf '%s\\n'",
+        *(f'"${name}"' for name in (_PATH_ENV_NAME, *HOST_XDG_ENV_NAMES)),
+    )
+)
 _TMUX_RUNTIME_ENV_EXACT_ALLOWLIST = frozenset(
     {
         "APPEARANCE_MODE",
@@ -67,6 +76,8 @@ class RuntimeEnvironment(TypedDict):
 
     PATH: str
     SHELL: NotRequired[str]
+    XDG_DATA_HOME: NotRequired[str]
+    XDG_CACHE_HOME: NotRequired[str]
 
 
 def _filter_tmux_environment(env: Mapping[str, str], extra_allowlist: Iterable[str] = ()) -> dict[str, str]:
@@ -144,10 +155,16 @@ def _host_shell_capture_env(env: Mapping[str, str] | None) -> dict[str, str] | N
     return cleaned
 
 
-def _capture_path_from_shell(shell_value: str, env: Mapping[str, str] | None = None) -> str | None:
+def _capture_shell_environment(shell_value: str, env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Capture the environment values declared by the user's login shell.
+
+    A subprocess is required here: only the user's own shell evaluates the rc
+    files that declare these values, and no Python API reproduces that
+    evaluation.
+    """
     try:
         result = subprocess.run(
-            [shell_value, "-lic", 'printf %s "$PATH"'],
+            [shell_value, "-lic", _SHELL_CAPTURE_SCRIPT],
             env=_host_shell_capture_env(env),
             capture_output=True,
             text=True,
@@ -155,29 +172,51 @@ def _capture_path_from_shell(shell_value: str, env: Mapping[str, str] | None = N
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        logger.warning("failed to capture PATH from user shell: shell=%s error=%s", shell_value, exc)
-        return None
+        logger.warning("failed to capture environment from user shell: shell=%s error=%s", shell_value, exc)
+        return {}
 
-    captured_path = result.stdout.strip()
-    if result.returncode == 0 and captured_path:
-        return captured_path
+    if result.returncode != 0:
+        logger.warning(
+            "user shell environment capture failed; falling back to daemon environment: "
+            "shell=%s returncode=%s stderr=%s",
+            shell_value,
+            result.returncode,
+            result.stderr.strip(),
+        )
+        return {}
 
-    logger.warning(
-        "user shell PATH capture failed; falling back to daemon environment: shell=%s returncode=%s stderr=%s",
-        shell_value,
-        result.returncode,
-        result.stderr.strip(),
-    )
-    return None
+    lines = result.stdout.splitlines()
+    captured: dict[str, str] = {}
+    for offset, name in enumerate((_PATH_ENV_NAME, *HOST_XDG_ENV_NAMES)):
+        value = lines[offset].strip() if offset < len(lines) else _EMPTY_ENV_VALUE
+        if value:
+            captured[name] = value
+    return captured
+
+
+def host_xdg_env(runtime_env: RuntimeEnvironment) -> dict[str, str]:
+    """Return the XDG base dirs a resolved runtime environment carries."""
+    values: dict[str, str] = {}
+    data_home = runtime_env.get("XDG_DATA_HOME")
+    if data_home is not None:
+        values["XDG_DATA_HOME"] = data_home
+    cache_home = runtime_env.get("XDG_CACHE_HOME")
+    if cache_home is not None:
+        values["XDG_CACHE_HOME"] = cache_home
+    return values
 
 
 def resolve_runtime_environment(env: Mapping[str, str] | None = None) -> RuntimeEnvironment:
     """Resolve the live session environment from the daemon and configured user shell."""
     source = env if env is not None else os.environ  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
     user_shell = resolve_user_shell(source)
-    captured_path = _capture_path_from_shell(user_shell, source) if user_shell else None
-    path_value = captured_path or source.get("PATH", "")
-    resolved: RuntimeEnvironment = {"PATH": compose_runtime_path(path_value)}
+    captured = _capture_shell_environment(user_shell, source) if user_shell else {}
+    path_value = captured.get(_PATH_ENV_NAME) or source.get(_PATH_ENV_NAME, _EMPTY_ENV_VALUE)
+    values: dict[str, str] = {"PATH": compose_runtime_path(path_value)}
     if user_shell:
-        resolved["SHELL"] = user_shell
-    return resolved
+        values["SHELL"] = user_shell
+    for name in HOST_XDG_ENV_NAMES:
+        value = captured.get(name) or source.get(name, _EMPTY_ENV_VALUE)
+        if value:
+            values[name] = value
+    return cast(RuntimeEnvironment, values)

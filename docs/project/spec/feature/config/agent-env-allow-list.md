@@ -46,7 +46,7 @@ env_allow_list:
 Given the global teleclaude.yml has env_allow_list
 And a project teleclaude.yml may also have env_allow_list
 When the agent runtime starts a new agent session for that project
-Then only names listed in the merged env_allow_list are eligible for pass-through
+Then only names listed in the merged env_allow_list are eligible for pass-through from the runtime process environment
 And global entries are considered before project entries
 And each listed value is read from the runtime process environment
 And missing variables are skipped
@@ -54,6 +54,21 @@ And variables not listed in the merged env_allow_list are not passed through
 And the regular project .env is not treated as an implicit allow list
 And authorized values are delivered through the agent runtime's private per-session env file
 ```
+
+```
+Given the user's login shell declares the XDG base directories
+When the agent runtime starts a new agent session
+Then the session's inherited environment carries those directories
+And the runtime process environment is not required to hold them
+```
+
+### Environment values outside the allow list
+
+The XDG base directories (`XDG_DATA_HOME`, `XDG_CACHE_HOME`) enter a session
+through the host-shell capture owned by `project/spec/agent-shell-path`. An
+agent CLI rejects `XDG_*` supplied by a `.env` layer, so the inherited session
+environment is the only channel open to them, and the capture supplies it at
+session creation. Authorizing these names here does not change that delivery.
 
 ```
 Given an agent skill needs a secret or account credential

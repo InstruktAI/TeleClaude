@@ -77,10 +77,27 @@ set by its launchd/systemd unit. `bin/init/install_services.sh` generates that P
 (Linux) — and includes the shared tool set (`~/.npm-global/bin`,
 `~/.local/bin`, `~/.cargo/bin`).
 
+### XDG base directories
+
+The daemon resolves the XDG base directories the user's login shell declares
+(`XDG_DATA_HOME`, `XDG_CACHE_HOME`) through the same user-shell capture that
+resolves PATH, and places them in every agent session's environment. Tools that
+honour XDG — the pnpm store, uv, agent CLI caches — therefore resolve the same
+directories inside an agent session as they do in the user's own shells. A
+directory the shell does not declare is absent from the session, and the tool
+falls back to its own default.
+
+These values arrive in the session's inherited environment. Provenance for
+environment values that no `.env` layer may carry is owned by
+`project/spec/feature/config/agent-env-allow-list`.
+
 ## Known caveats
 
 - The three env files are **live symlinks**: editing them takes effect for every
   new agent shell immediately, with no `make install`.
+- XDG capture follows the user's login shell: an edit to that shell's
+  configuration applies to the next agent session, with no `make install` and no
+  daemon restart.
 - The daemon unit PATH is **not** live: changing `bin/daemon-control.sh` requires
   `make install` (regenerate the unit) then `make restart` (reload the daemon).
 - Inheritance is not a guarantee. An agent shell launched from a rich interactive
