@@ -53,6 +53,14 @@ trees/
 
 teleclaude-mcp.local.jsonc
 
+# Per-file locks held by the atomic config writer. Recreated on every write,
+# never meaningful to track. Enumerated rather than a bare *.lock so a
+# project's tracked uv.lock or Cargo.lock stays tracked.
+
+*.yml.lock
+.env.lock
+invitations.json.lock
+
 todos.db
 todos.db-wal
 todos.db-shm
