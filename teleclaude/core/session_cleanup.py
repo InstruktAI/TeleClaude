@@ -29,7 +29,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_listeners import cleanup_caller_listeners, cleanup_session_links, pop_listeners
-from teleclaude.core.session_status import SessionLifecycleStatus
+from teleclaude.core.session_status import SessionLifecycleStatus, is_close_started
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 from teleclaude.events.envelope import EventVisibility
 
@@ -316,7 +316,7 @@ async def _terminate_session_inner(
     except Exception as exc:
         logger.error("Failed to revoke tokens for session %s: %s", session_id, exc)
 
-    if not already_closed:
+    if not already_closed and not is_close_started(lifecycle_status=session.lifecycle_status):
         await transition_session(
             db,
             session_id,

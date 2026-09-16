@@ -54,6 +54,16 @@ def is_session_terminal(*, lifecycle_status: str | None, closed_at: datetime | N
     return not is_session_open(closed_at=closed_at) or lifecycle_status in TERMINAL_LIFECYCLE_STATUSES
 
 
+def is_close_started(*, lifecycle_status: str | None) -> bool:
+    """Return whether a session's close has already been declared started.
+
+    ``closed_at`` answers whether the close is *finished*; this answers
+    whether it has *started*. The two diverge for a session stranded at
+    ``CLOSING`` with no ``closed_at`` marker — an interrupted close.
+    """
+    return lifecycle_status == SessionLifecycleStatus.CLOSING
+
+
 def is_agent_turn_running(
     *,
     last_input_at: datetime | None,
