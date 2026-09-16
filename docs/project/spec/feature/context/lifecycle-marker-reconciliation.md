@@ -43,12 +43,12 @@ origin/main, candidate finalization synchronizes repository-root main, folds the
 candidate slug there, publishes the folded root, and records only that final
 confirmed SHA as delivered.
 
-The integrator is the backstop for new or bypassed lifecycle doors. On entering
-integration it detects settled-slug/live-marker divergence itself, wherever
-documentation material lives, including repository-root snippets outside a
-candidate branch. Detection belongs to the role that can act on it: an
-unattended timer can only announce a fault, and documentation state is judged by
-intelligence rather than graded on a schedule.
+The integrator detects settled-slug/live-marker divergence on entering
+integration, wherever documentation material lives in its project, including
+repository-root snippets outside a candidate branch. Detection covers every
+settled status; automatic repair covers only a delivered slug, because that is
+the only status with a defined terminal fold. A settled slug of any other status
+is reported for the integrator to resolve and is left untouched.
 The integrator handles a delivered-slug fault as a separate recovery operation
 after the repository root is synchronized and safe to mutate: it reconciles
 only that delivered slug, publishes the resulting cleanup through its
@@ -197,4 +197,5 @@ And the folded repository-root head is published and confirmed before delivery i
 
 ## See Also
 
+- docs/project/adr/0092-divergence-detection-belongs-to-the-acting-role.md — why detection runs inside the role that repairs it rather than on an unattended schedule.
 - docs/project/adr/0090-root-fold-finalizes-a-pushed-candidate.md — why repository-root folding follows the confirmed candidate push and precedes delivery recording.
