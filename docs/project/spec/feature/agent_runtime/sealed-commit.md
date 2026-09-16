@@ -798,7 +798,6 @@ When the agent commits through the sealed surface
 Then the gate receives quality_paths, and each check applies to the paths it governs
 And the gate is the one a subscribed project runs, by no separate mechanism
 And a failing gate blocks the commit exactly as it does for a subscribed project
-And a check whose contract the tier does not carry is not owed, and nothing is applied in its place
 ```
 <!-- /planned:home-tier-commit-maintenance -->
 
