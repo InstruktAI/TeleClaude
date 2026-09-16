@@ -1,9 +1,9 @@
 # OS / editor cruft
 
-.DS*Store
+.DS_Store
 Thumbs.db
 *.swp
-\_~
+*~
 .idea/
 .history/
 
@@ -18,20 +18,20 @@ Thumbs.db
 
 # Logs
 
-\*.log
+*.log
 logs/
 
 # Virtual Environment
 
-uv.\*
+uv.*
 !uv.lock
 .venv
 
 # Runtime
 
-_.pid
-_.db
-\*.db-journal
+*.pid
+*.db
+*.db-journal
 
 # AI agents
 
@@ -60,8 +60,8 @@ todos.db-shm
 AGENTS.md
 CLAUDE.md
 
-\*_/index.yaml
-docs/global/_/domain-baseline-bundle.md
+**/index.yaml
+docs/global/*/domain-baseline-bundle.md
 
-publications/inbox/\*
+publications/inbox/*
 !publications/inbox/.gitkeep
