@@ -21,6 +21,7 @@ CHECKPOINT_CLEAR_FLAG = "teleclaude_checkpoint_clear"
 CHECKPOINT_RECHECK_FLAG = "teleclaude_checkpoint_recheck"
 CHECKPOINT_AUTHORED_MAIN_COMMIT_FLAG = "teleclaude_checkpoint_authored_main_commit"
 CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG = "teleclaude_checkpoint_integrator_maintenance"
+CHECKPOINT_DISCLAIMED_PATHS_FLAG = "teleclaude_checkpoint_disclaimed_paths"
 
 _INTEGRATOR_MAINTENANCE_RANGE_PREFIX = "range:"
 _INTEGRATOR_MAINTENANCE_ACTION_PREFIX = "action:"
@@ -164,6 +165,95 @@ def record_integrator_maintenance_marker(project_root: str | Path, merge_range: 
             outstanding_action_ids=tuple(_dedupe_preserving_order([*marker.outstanding_action_ids, *actions])),
         ),
     )
+
+
+def record_disclaimed_paths(session_id: str, paths: list[str]) -> None:
+    """Add repository-relative paths to this session's disclaim marker.
+
+    Raises OSError on write failure so `telec code disclaim` can report the
+    failure instead of claiming a disclaimer that was never durably recorded —
+    the opposite default from `set_checkpoint_flag`'s fail-open siblings.
+    """
+    if not paths:
+        return
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_DISCLAIMED_PATHS_FLAG)
+    flag_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = flag_path.read_text(encoding="utf-8") if flag_path.exists() else ""
+    current_paths = [line for line in existing.splitlines() if line]
+    current_paths.extend(path for path in paths if path)
+    flag_path.write_text("\n".join(_dedupe_preserving_order(current_paths)) + "\n", encoding="utf-8")
+    logger.debug("Checkpoint disclaimed paths recorded", session_id=session_id, paths=paths)
+
+
+def read_disclaimed_paths(session_id: str) -> list[str]:
+    """Return this session's disclaimed paths; a read failure holds none.
+
+    Checkpoint evaluation takes the opposite default from the write side: a
+    marker it cannot read is treated as holding no disclaimers, so the
+    unaccounted path still surfaces as a report rather than going silent.
+    """
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_DISCLAIMED_PATHS_FLAG)
+    if not flag_path.exists():
+        return []
+    try:
+        content = flag_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning(
+            "Failed to read disclaimed paths",
+            session_id=session_id,
+            path=str(flag_path),
+            error=str(exc),
+        )
+        return []
+    return _dedupe_preserving_order([line for line in content.splitlines() if line])
+
+
+def clear_disclaimed_paths(session_id: str, paths: list[str]) -> None:
+    """Remove specific paths from this session's disclaim marker (lapse: committed)."""
+    if not paths:
+        return
+    flag_path = checkpoint_flag_path(session_id, CHECKPOINT_DISCLAIMED_PATHS_FLAG)
+    if not flag_path.exists():
+        return
+    to_remove = set(paths)
+    remaining = [item for item in read_disclaimed_paths(session_id) if item not in to_remove]
+    try:
+        if remaining:
+            flag_path.write_text("\n".join(remaining) + "\n", encoding="utf-8")
+        else:
+            flag_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning(
+            "Failed to clear disclaimed paths",
+            session_id=session_id,
+            error=str(exc),
+        )
+
+
+def reconcile_disclaimed_paths(session_id: str, dirty_paths: set[str]) -> set[str]:
+    """Return this session's disclaimed paths still dirty (lapse: goes clean).
+
+    A disclaimed path that is no longer dirty no longer needs an advisory
+    exemption; pruning it here keeps the marker from growing stale.
+    """
+    disclaimed = read_disclaimed_paths(session_id)
+    if not disclaimed:
+        return set()
+    still_dirty = [path for path in disclaimed if path in dirty_paths]
+    if len(still_dirty) != len(disclaimed):
+        flag_path = checkpoint_flag_path(session_id, CHECKPOINT_DISCLAIMED_PATHS_FLAG)
+        try:
+            if still_dirty:
+                flag_path.write_text("\n".join(still_dirty) + "\n", encoding="utf-8")
+            else:
+                flag_path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "Failed to prune disclaimed paths",
+                session_id=session_id,
+                error=str(exc),
+            )
+    return set(still_dirty)
 
 
 def _dedupe_preserving_order(items: list[str]) -> list[str]:

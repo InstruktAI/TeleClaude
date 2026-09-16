@@ -1404,6 +1404,19 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
+            "disclaim": CommandDef(
+                desc="Record paths as not this session's work, for the next checkpoint evaluation",
+                args="<path> [<path> ...]",
+                flags=[F.FLAG_HELP],
+                notes=[
+                    "Symmetric answer to `telec code add`: `add` says this is mine, `disclaim` says "
+                    "this is not. Neither asks the agent to work out whose it is.",
+                    "Stages nothing, touches no index, and writes no declaration — records a "
+                    "session-scoped advisory exemption only.",
+                    "Lapses when the path is committed, goes clean, or the next real user input arrives.",
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
             "commit": CommandDef(
                 desc="Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)",
                 args='"<message>" [--approved] [--human-involved] [--include <path> ...] [--only <path> ...]',

@@ -55,6 +55,9 @@ class ToolCallRecord:
     had_error: bool = False
     result_snippet: str = ""
     timestamp: datetime | None = None
+    # Defaults completed; a record built before its result is known (a
+    # still-running tool call) carries False until its completion is observed.
+    result_observed: bool = True
 
 
 @dataclass
@@ -114,18 +117,22 @@ def _replace_custom_records(
     state: _ToolCallExtractionState,
     record_indexes: list[int],
     output_text: str,
+    *,
+    completed: bool = True,
 ) -> None:
     """Attach a custom-exec transport result snippet without disturbing source ordering.
 
-    The records' ``had_error`` was seeded from the custom-call envelope's
-    structured ``status`` field when the record was created and is never
-    overwritten here — a payload completion only makes the result readable.
+    ``had_error`` is seeded from the envelope's ``status`` and never
+    overwritten here. ``completed=False`` marks an interim cell output ahead
+    of the deferred ``wait`` tool's real payload result, leaving
+    ``result_observed`` at its not-yet-arrived default until that call lands.
     """
     result_snippet = output_text[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS]
     for record_index in record_indexes:
         state.records[record_index] = replace(
             state.records[record_index],
             result_snippet=result_snippet,
+            result_observed=completed,
         )
 
 
@@ -224,6 +231,7 @@ def _handle_function_call_payload(
         had_error=False,
         result_snippet="",
         timestamp=entry_dt,
+        result_observed=False,
     )
     if call_id:
         state.pending_function_calls[call_id] = function_record
@@ -259,6 +267,7 @@ def _handle_function_call_output_payload(
     if cell_id is not None:
         record_indexes = state.pending_custom_cells.get(cell_id)
         if record_indexes is not None:
+            # The deferred `wait` tool's own output is the cell's actual payload result.
             _replace_custom_records(state, record_indexes, output_str)
     return True
 
@@ -276,8 +285,10 @@ def _handle_custom_tool_call_output_payload(
     output_text = extract_payload_text(payload.get(_OUTPUT_FIELD, _EMPTY_STRING))
     cell_id = extract_cell_id(output_text)
     if cell_id is not None:
+        # This envelope's own output is an interim cell view, not the payload
+        # result — the deferred `wait` tool's output completes the record.
         state.pending_custom_cells[cell_id] = record_indexes
-        _replace_custom_records(state, record_indexes, output_text)
+        _replace_custom_records(state, record_indexes, output_text, completed=False)
         return True
 
     _replace_custom_records(state, record_indexes, output_text)
@@ -321,6 +332,7 @@ def _handle_custom_tool_call_payload(
                     had_error=had_error,
                     result_snippet=_EMPTY_STRING,
                     timestamp=entry_dt,
+                    result_observed=False,
                 )
             )
         if call_id:
@@ -418,6 +430,7 @@ def _start_pending_tool_use(block: Mapping[str, object], entry_dt: datetime | No
         had_error=False,
         result_snippet="",
         timestamp=entry_dt,
+        result_observed=False,
     )
 
 

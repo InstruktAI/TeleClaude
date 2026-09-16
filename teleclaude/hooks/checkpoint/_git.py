@@ -36,6 +36,7 @@ __all__ = [
     "WorktreeStatus",
     "_canonical_tool_name",
     "_current_branch",
+    "_dirty_repo_paths",
     "_extract_apply_patch_paths",
     "_extract_shell_command",
     "_extract_turn_file_signals",
@@ -132,6 +133,28 @@ def _worktree_status(project_path: str) -> WorktreeStatus:
     except Exception:
         return WorktreeStatus.UNREADABLE
     return WorktreeStatus.CLEAN if not status.strip() else WorktreeStatus.DIRTY
+
+
+def _dirty_repo_paths(project_path: str) -> set[str]:
+    """Return every dirty repository-relative path — staged, unstaged, or untracked.
+
+    Fail-closed: an unreadable worktree reports no dirty paths, so a git
+    failure here never invents a checkpoint reason (ADR-0086).
+    """
+    try:
+        repo = Repo(project_path or ".", search_parent_directories=True)
+        status = repo.git.status("--porcelain", "--untracked-files=all")
+    except Exception:
+        return set()
+    paths: set[str] = set()
+    for line in status.splitlines():
+        if not line.strip():
+            continue
+        raw_path = line[3:].strip() if len(line) > 3 else line.strip()
+        if " -> " in raw_path:
+            raw_path = raw_path.rsplit(" -> ", 1)[1]
+        paths.add(raw_path.strip('"'))
+    return paths
 
 
 def _current_branch(project_path: str) -> str | None:

@@ -8,7 +8,6 @@ import os
 import re
 import sys
 import tempfile
-from dataclasses import dataclass
 from enum import StrEnum
 from fnmatch import fnmatch
 from pathlib import Path
@@ -16,9 +15,9 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import OperationalError
 
-from teleclaude.capabilities import Capabilities, TierPermissions, resolve_capabilities, resolve_tier_permissions
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.handlers._code_disclaim import handle_code_disclaim
 from teleclaude.cli.telec.handlers._code_git_state import (
     dirty_paths,
     get_unmerged_files,
@@ -26,6 +25,7 @@ from teleclaude.cli.telec.handlers._code_git_state import (
     resolve_current_branch,
     working_tree_snapshot,
 )
+from teleclaude.cli.telec.handlers._code_invocation import resolve_invocation_state
 from teleclaude.cli.telec.handlers._code_post_commit import handle_code_post_commit
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
@@ -38,13 +38,14 @@ from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
-from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
+from teleclaude.hooks.checkpoint_flags import (
+    clear_disclaimed_paths,
+    record_authored_main_commit,
+)
 from teleclaude.project_root import (
     DOC_LAYER_PATTERN,
-    declaration_root,
     forbidden_slug_worktree_agent_artifact_paths,
     forbidden_slug_worktree_doc_paths,
-    resolve_invocation_roots,
 )
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
@@ -85,37 +86,6 @@ _AGENT_ARTIFACT_WORKTREE_GUIDANCE = (
 _WORKTREE_REFUSAL_PATH_TEMPLATE = "  {path}"
 
 
-@dataclass(frozen=True)
-class InvocationState:
-    """Resolved roots and capability declaration for one code invocation."""
-
-    context_root: Path | None
-    repository_root: Path
-    tier_permissions: TierPermissions | None
-
-    @property
-    def project_root(self) -> Path:
-        """Return the repository root retained by existing code paths."""
-        return self.repository_root
-
-    @property
-    def capabilities(self) -> Capabilities:
-        """Return subscriptions from the acting tier, or legacy repository state."""
-        if self.tier_permissions is not None:
-            return self.tier_permissions.project_subscriptions
-        return resolve_capabilities(self.repository_root)
-
-    @property
-    def is_invocation_context(self) -> bool:
-        """Return whether this invocation has a declared acting context."""
-        return self.tier_permissions is not None and self.tier_permissions.invocation_context
-
-    @property
-    def is_non_project_invocation_context(self) -> bool:
-        """Return whether the acting context is a non-project tier root."""
-        return self.is_invocation_context and not self.capabilities.is_target
-
-
 class CodeSubcommand(StrEnum):
     """Closed command vocabulary for capability routing."""
 
@@ -126,6 +96,7 @@ class CodeSubcommand(StrEnum):
     COMMIT = "commit"
     CHANGED = "changed"
     ADD = "add"
+    DISCLAIM = "disclaim"
     BLUEPRINT = "blueprint"
     OWNERS = "owners"
     POST_COMMIT = "post-commit"
@@ -142,7 +113,9 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.OWNERS,
     }
 )
-_COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.CHANGED, CodeSubcommand.ADD})
+_COMMIT_SUBCOMMANDS = frozenset(
+    {CodeSubcommand.COMMIT, CodeSubcommand.CHANGED, CodeSubcommand.ADD, CodeSubcommand.DISCLAIM}
+)
 
 
 def handle_code(args: list[str]) -> None:
@@ -177,6 +150,8 @@ def handle_code(args: list[str]) -> None:
         handle_code_changed(rest)
     elif sub is CodeSubcommand.ADD:
         handle_code_add(rest)
+    elif sub is CodeSubcommand.DISCLAIM:
+        handle_code_disclaim(rest)
     elif sub is CodeSubcommand.BLUEPRINT:
         from teleclaude.cli.telec.handlers.blueprint import handle_code_blueprint  # noqa: PLC0415
 
@@ -187,7 +162,7 @@ def handle_code(args: list[str]) -> None:
 
 def _require_code_capability(command: CodeSubcommand) -> None:
     """Refuse commands whose owning project capability is unsubscribed."""
-    state = _resolve_invocation_state()
+    state = resolve_invocation_state()
     if command in _CODE_CAPABILITY_SUBCOMMANDS and not state.capabilities.code:
         print(_CODE_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
@@ -196,19 +171,6 @@ def _require_code_capability(command: CodeSubcommand) -> None:
     ):
         print(_COMMIT_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
-
-
-def _resolve_invocation_state() -> InvocationState:
-    """Resolve the acting context and containing repository for one command."""
-    roots = resolve_invocation_roots()
-    permissions = (
-        resolve_tier_permissions(declaration_root(roots.context_root)) if roots.context_root is not None else None
-    )
-    return InvocationState(
-        context_root=roots.context_root,
-        repository_root=roots.repository_root,
-        tier_permissions=permissions,
-    )
 
 
 def handle_code_owners(args: list[str]) -> None:
@@ -221,7 +183,7 @@ def handle_code_owners(args: list[str]) -> None:
             print(_OWNERS_UNKNOWN_FLAG.format(flag=argument), file=sys.stderr)
             print(_OWNERS_USAGE, file=sys.stderr)
             raise SystemExit(2)
-    state = _resolve_invocation_state()
+    state = resolve_invocation_state()
     project_root = state.project_root
     try:
         result = asyncio.run(resolve_dirty_path_owners(project_root, args))
@@ -279,7 +241,7 @@ def handle_code_add(args: list[str]) -> None:
         )
         raise SystemExit(2)
 
-    state = _resolve_invocation_state()
+    state = resolve_invocation_state()
     project_root = state.project_root
     validated_positionals = validate_context_paths(positionals, project_root, state.context_root)
     if len(validated_positionals) != len(positionals):
@@ -363,7 +325,7 @@ def handle_code_changed(args: list[str]) -> None:
         print("ERROR: --only cannot be combined with --include.", file=sys.stderr)
         raise SystemExit(2)
 
-    state = _resolve_invocation_state()
+    state = resolve_invocation_state()
     project_root = state.project_root
     scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=state.context_root)
     includes = _resolve_context_payload_paths(includes, project_root, state.context_root)
@@ -446,7 +408,7 @@ def handle_code_commit(args: list[str]) -> None:
 
     message = positionals[0] if positionals else None
     system_role = get_system_role()
-    state = _resolve_invocation_state()
+    state = resolve_invocation_state()
     project_root = state.project_root
     includes = _resolve_context_payload_paths(includes, project_root, state.context_root)
     only = _resolve_context_payload_paths(only, project_root, state.context_root)
@@ -802,6 +764,9 @@ def _merge_quality_paths(repo: Repo, project_root: Path) -> list[str]:
 def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[str]) -> None:
     """Record checkpoint markers derived from the sealed commit."""
     session_id = get_session_id()
+    if session_id:
+        # Lapse: a committed path no longer needs its advisory exemption.
+        clear_disclaimed_paths(session_id, committed_files)
     current_branch = resolve_current_branch(project_root)
     committed_includes_code = any(
         not any(fnmatch(path, pattern) for pattern in _NON_CODE_DOCUMENTATION_PATTERNS) for path in committed_files

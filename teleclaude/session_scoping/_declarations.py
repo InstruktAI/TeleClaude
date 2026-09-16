@@ -46,8 +46,12 @@ def collect_live_declarations(
             for segment in split_shell_segments(command):
                 tokens = executable_command_tokens(segment)
                 if matches_command_prefix(segment, _COMMIT_COMMAND):
-                    records.append((record.timestamp, sequence, (), True))
-                    sequence += 1
+                    # A record is a commit boundary only once its result has been
+                    # observed — an in-flight commit invocation is not evidence
+                    # that it ended the declarations it is itself resolving.
+                    if record.result_observed:
+                        records.append((record.timestamp, sequence, (), True))
+                        sequence += 1
                     continue
                 if not matches_command_prefix(segment, _ADD_COMMAND):
                     continue

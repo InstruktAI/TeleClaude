@@ -47,6 +47,7 @@ from teleclaude.hooks.adapters.contracts import (
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_CLEAR_FLAG,
+    CHECKPOINT_DISCLAIMED_PATHS_FLAG,
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
     is_checkpoint_disabled,
@@ -341,6 +342,8 @@ def _reset_checkpoint_flags(session_id: str) -> None:
     # New user input starts a fresh checkpoint turn.
     consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
     consume_checkpoint_flag(session_id, CHECKPOINT_CLEAR_FLAG)
+    # Lapse: "not mine" describes the current situation, not the filename forever.
+    consume_checkpoint_flag(session_id, CHECKPOINT_DISCLAIMED_PATHS_FLAG)
 
 
 def _maybe_checkpoint_output(
