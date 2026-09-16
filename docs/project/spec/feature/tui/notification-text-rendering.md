@@ -1,8 +1,7 @@
 ---
-description: "Notification-text contract for the running TUI: a notification
-  displays the text it was given literally, so no message content can alter
-  rendering or interrupt the operator's session."
-delivered_by: [fix-tui-crashes-with-a-textual-markuperror-w]
+description: 'Notification-text contract for the running TUI: a notification displays
+  the text it was given literally, so no message content can alter rendering or interrupt
+  the operator''s session.'
 ---
 
 # Notification Text Rendering — Spec
