@@ -77,6 +77,7 @@ from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
+from teleclaude.slug import validate_slug
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.creation_record import EntryPoint
 from teleclaude.types.lifecycle import WORK_LIFECYCLE_PHASES
@@ -430,6 +431,13 @@ def _validate_slug_for_update(slug: str, *, field_name: str) -> None:
         )
 
 
+def _validate_slug_for_create(slug: str, *, field_name: str) -> None:
+    try:
+        validate_slug(slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid {field_name} '{slug}': {exc}") from exc
+
+
 async def _todo_build_started(todos_db: TodosDb, slug: str) -> bool:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
@@ -509,6 +517,12 @@ async def todo_content_create(
     """
     slug = request.slug
     try:
+        _validate_slug_for_create(slug, field_name="slug")
+        for dep_slug in request.after or []:
+            _validate_slug_for_create(dep_slug, field_name="after")
+        if request.group is not None:
+            _validate_slug_for_create(request.group, field_name="group")
+
         effective_cwd = request.cwd or _default_cwd()
         todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
