@@ -152,14 +152,28 @@ And a hook a root authored itself is preserved
 And no tracked file is written and no commit is produced in any converged root
 ```
 
-#### UC-RPC9: Machine installation converges the TeleClaude checkout's own hooks
+#### UC-RPC9: Machine installation converges this checkout through the same act
 
 ```gherkin
-Given the TeleClaude checkout's installed hooks lag their current templates
+Given the TeleClaude checkout carries a hook TeleClaude does not own
+And one of its TeleClaude-owned hooks lags its current template
+And another already matches its current template
 When the machine installation target runs
-Then those hooks are refreshed from their current templates
+Then the lagging hook is refreshed from its template
+And the hook already matching its template is not rewritten
+And the hook the checkout authored itself is preserved
+And every hook in the TeleClaude-owned set is covered, none omitted
 And the checkout's docs filter driver is configured
-And a hook the checkout carries that TeleClaude does not own is preserved
+```
+
+#### UC-RPC11: One act converges plumbing, whatever triggers it
+
+```gherkin
+Given plumbing is converged from project initialization, from machine installation, and from the commit-boundary trigger
+When any of those paths runs
+Then each performs the same comparison against the current templates
+And each preserves a hook its root authored itself
+And no trigger carries an installer whose semantics differ from the others
 ```
 
 #### UC-RPC10: An unavailable root does not fail the convergence run
