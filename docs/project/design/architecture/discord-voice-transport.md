@@ -1,7 +1,7 @@
 ---
-description: Two-process Discord voice transport — Python owns the Gateway, a Node sidecar owns the encrypted voice connection — with explicit utterance closure, single-owner connection claim, and fail-closed identity.
-delivered_by:
-  - discord-personal-voice-conversation
+description: Two-process Discord voice transport — Python owns the Gateway, a Node
+  sidecar owns the encrypted voice connection — with explicit utterance closure, single-owner
+  connection claim, and fail-closed identity.
 ---
 
 # Discord Voice Transport — Design

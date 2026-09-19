@@ -33,7 +33,6 @@ TeleClaudeNext.
   for systems configured by those settings.
 - **Published contracts:** validated configuration models and `telec config`
   commands; consumers never reinterpret missing or invalid values.
-<!-- planned:discord-personal-voice-conversation -->
 - **Also owns:** the person tier's voice-room declaration as typed settings —
   the voice bot credential reference and the private voice channel. These are
   declared fields rather than tolerated extras, so a missing or malformed value
@@ -50,7 +49,6 @@ TeleClaudeNext.
   first entry as the template default, and absent for a service that declares
   no voices — as a typed setting validated against the list it names. What the
   room does with it belongs to the TTS design.
-<!-- /planned:discord-personal-voice-conversation -->
 <!-- planned:personal-assistant-launch -->
 - **Also published:** person-workspace containment — whether a given path lies
   inside any person's workspace, answered for the composed destination rather

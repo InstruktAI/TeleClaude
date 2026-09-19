@@ -1,7 +1,6 @@
 ---
-description: Personal Discord voice rooms provide push-to-talk agent input, automatic spoken replies in one configured room voice, and explicit thread selection.
-delivered_by:
-  - discord-personal-voice-conversation
+description: Personal Discord voice rooms provide push-to-talk agent input, automatic
+  spoken replies in one configured room voice, and explicit thread selection.
 ---
 
 # Discord Personal Voice Conversation — Spec

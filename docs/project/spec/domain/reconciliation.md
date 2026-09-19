@@ -34,14 +34,12 @@ maintenance-only appliance surface, not the replacement reconciliation design.
   `not-retained`, or `outside` — the last where the path resolves beyond the home
   root. The predicate reports membership only; the consumer's response to a
   result is that consumer's own contract.
-<!-- planned:discord-personal-voice-conversation -->
 - **Also published:** fleet discovery facts for this installation — which node
   is the mesh master, and which capabilities this node advertises — carried on
   the heartbeat as additive fields and readable by every peer. The context owns
   the declaration and its advertisement only; which capability a consumer
   requires before coordinating, and what it does when a peer lacks it, is that
   consumer's own contract.
-<!-- /planned:discord-personal-voice-conversation -->
 
 #### Use cases (index of feature specs)
 

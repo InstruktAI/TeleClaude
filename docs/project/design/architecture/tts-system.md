@@ -85,7 +85,6 @@ visibility: 'public'
 5. Chiptunes audio focus is queue-scoped, not item-scoped — music resumes only after all queued speech has completed.
 6. Paused chiptunes does not keep a live audio stream open in the background.
 7. Chiptunes pause intent survives daemon restart — `enabled` and `paused` are restored together.
-<!-- planned:discord-personal-voice-conversation -->
 8. **Rendering is separable from destination.** Turning text and a voice into
    audio is one capability; deciding where that audio is heard is another. A
    backend that can produce an audio artifact without playing it locally
@@ -113,4 +112,3 @@ visibility: 'public'
     produced for it; a new output version or a different effective voice
     produces a new one. Artifacts are bounded in lifetime and private in
     permission.
-<!-- /planned:discord-personal-voice-conversation -->

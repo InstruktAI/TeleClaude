@@ -43,7 +43,6 @@ TeleClaudeNext repository.
 <!-- /planned-change:external-session-identity -->
 - **Does not own:** provider transport or presentation, caller-identity policy,
   todo workflow, or durable historical projections.
-<!-- planned:discord-personal-voice-conversation -->
 - **Owns (voice focus):** the association between one identified human and the
   single live session they are currently listening to. Focus follows that
   human's most recent accepted input across origins; activity that is not
@@ -73,7 +72,6 @@ TeleClaudeNext repository.
   snapshot carries the generated summary and an output digest, neither of which
   is the spoken contract, so this is the contract a remote listener reads. It is
   additive: existing queries and payloads are unchanged.
-<!-- /planned:discord-personal-voice-conversation -->
 <!-- planned-change:external-session-identity -->
 - **Published contracts:** session commands, queries, and lifecycle signals
   exposed to integration, workflow, identity, and session mirrors.

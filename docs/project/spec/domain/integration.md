@@ -28,7 +28,6 @@ implementation remain the current appliance contract.
 - **Does not own:** session-input acceptance or execution, identity policy,
   todo lifecycle, or presentation policy merely because integration carries
   the message.
-<!-- planned:discord-personal-voice-conversation -->
 - **Owns (live voice transport):** the personal Discord voice room's
   connection lifecycle, encrypted media transport across the two-process
   boundary, the explicit transmission framing that opens and closes one
@@ -47,7 +46,6 @@ implementation remain the current appliance contract.
   session's spoken reply says, how audio is rendered, or whether a
   transcription becomes agent input. Integration hands a closed utterance to
   the established voice-input contract and plays what it is given.
-<!-- /planned:discord-personal-voice-conversation -->
 <!-- planned-change:external-session-identity -->
 - **Published contracts:** normalized inbound commands and events, outbound
   delivery requests and results, and provider-neutral transport types.
