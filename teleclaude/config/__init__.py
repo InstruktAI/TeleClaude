@@ -815,6 +815,10 @@ def reload_config() -> list[str]:
     any other changed section needs a daemon restart (see ``restart_required_sections``).
     """
     fresh = _load_config_from_disk(_config_path)
-    changed = [f.name for f in fields(TeleclaudeConfig) if getattr(config, f.name) != getattr(fresh, f.name)]
+    changed = [
+        f.name
+        for f in fields(TeleclaudeConfig)
+        if f.name != CONFIG_LOAD_ID and getattr(config, f.name) != getattr(fresh, f.name)
+    ]
     config.__dict__.update(fresh.__dict__)
     return changed
