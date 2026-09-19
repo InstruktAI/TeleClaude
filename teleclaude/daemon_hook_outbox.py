@@ -523,13 +523,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             )
             return
 
-        update_kwargs = {}
-        if normalized_agent_name in AgentName.choices() and session.active_agent != normalized_agent_name:
-            update_kwargs["active_agent"] = normalized_agent_name
-
-        if update_kwargs:
-            await db.update_session(session_id, **update_kwargs)
-
         # Headless sessions have no tmux — skip output polling to avoid spawning one.
         if session.tmux_session_name:
             await self._ensure_output_polling(session)

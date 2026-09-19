@@ -62,10 +62,6 @@ async def handle_native_metadata_update(
         return
 
     updates: dict[str, object] = {}  # guard: loose-dict - Session update payload is field-addressed at runtime.
-    agent_name = optional_payload_str_value(payload, "agent")
-    if agent_name and session.active_agent != agent_name:
-        updates["active_agent"] = agent_name
-
     native_session_id = optional_payload_str_value(payload, "native_session_id")
     if native_session_id and session.native_session_id != native_session_id:
         updates["native_session_id"] = native_session_id
