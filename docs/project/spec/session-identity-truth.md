@@ -47,8 +47,21 @@ Current runtime rule:
   detached. Ownership fails closed: a socket path that cannot be parsed or resolved
   counts as TeleClaude's own, so a dying managed session keeps its attribution
   rather than minting a headless session from its final hooks.
+<!-- planned-change:session-handoff-state-convergence -->
 - A valid marker with pane attachment is a managed-primary invocation. Its native
   identity may refresh the session's canonical native binding.
+<!-- change:session-handoff-state-convergence -->
+- A valid marker with pane attachment is a managed-primary invocation. Outside a
+  handoff, its provider and native session id must match the committed runtime
+  owner before its metadata or lifecycle event can mutate the session.
+- During `handoff_successor_committed`, the retained predecessor native session id
+  is a quarantine boundary. Only an `agent-session-start` from the committed
+  successor provider with a present, different native session id can establish the
+  successor binding and activate the session. Every predecessor or non-start hook
+  is dropped until that binding is established. This distinguishes same-provider
+  predecessor and successor executions without creating a second TeleClaude
+  session identity.
+<!-- /planned-change:session-handoff-state-convergence -->
 - A valid marker without pane attachment is a managed-descendant invocation. It
   resolves to the marker's TeleClaude session, retains its own native id in the
   hook envelope, and never mints a session or replaces the parent's canonical

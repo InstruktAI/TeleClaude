@@ -97,6 +97,7 @@ And subsequent fetch-batch calls exclude paused sessions
 And claims resume only after depth drops to <= the low watermark
 ```
 
+<!-- planned-change:session-handoff-state-convergence -->
 #### UC-D6: Session-state-mutation events bypass the event bus
 
 ```gherkin
@@ -107,7 +108,21 @@ And the corresponding mutation handler is invoked
 And the entry is removed on success
 And NO event-bus emit happens for these entries
 ```
+<!-- change:session-handoff-state-convergence -->
+#### UC-D6: Session-state mutation is owner-bound and bypasses the event bus
 
+```gherkin
+Given a claimed entry has event type in {checkpoint-seen, native-metadata-update, native-session-refresh}
+When the dispatcher runs
+Then it validates the entry's provider and native execution identity against the session's committed runtime owner before mutation
+And an entry from a predecessor or unrelated runtime is terminally dropped without mutating session state
+And a matching entry invokes the corresponding mutation handler
+And the entry is removed on success
+And NO event-bus emit happens for these entries
+```
+<!-- /planned-change:session-handoff-state-convergence -->
+
+<!-- planned-change:session-handoff-state-convergence -->
 #### UC-D6b: Non-error agent events use direct coordinator call
 
 ```gherkin
@@ -119,6 +134,20 @@ And the local agent-event coordinator is awaited DIRECTLY
 And the outbox worker only marks the entry delivered AFTER the coordinator returns
 And NO event-bus emit call is made for this path — outbox serialization depends on the coordinator completing before the entry is marked delivered; a fire-and-forget event-bus emit would not provide that guarantee
 ```
+<!-- change:session-handoff-state-convergence -->
+#### UC-D6b: Owner-matched non-error agent events use direct coordinator call
+
+```gherkin
+Given a claimed entry has event type in {agent-session-start, user-prompt-submit, tool-use, agent-stop}
+When the dispatcher runs past the state-mutation fork
+Then it first validates the entry's provider and native execution identity against the session's committed runtime owner
+And a mismatched predecessor or unrelated runtime is terminally dropped before activity, stop, polling, or fan-out behavior
+And a matching entry becomes a typed agent payload and agent-event context
+And the local agent-event coordinator is awaited DIRECTLY
+And the outbox worker only marks the entry delivered AFTER the coordinator returns
+And NO event-bus emit call is made for this path
+```
+<!-- /planned-change:session-handoff-state-convergence -->
 
 #### UC-D6c: Agent-error is the only event-bus emit path
 

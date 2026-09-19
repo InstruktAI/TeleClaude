@@ -91,6 +91,7 @@ Then it updates the session record's native session id to null
 And the session record's native binding is cleared
 ```
 
+<!-- planned-change:session-handoff-state-convergence -->
 #### UC-SSM7: agent rename on metadata update
 
 ```gherkin
@@ -101,6 +102,18 @@ Then the active-agent field is set to "codex"
 And the session record's active agent flips to "codex"
 And the transcript chain rule fires separately if the transcript path also changed
 ```
+<!-- change:session-handoff-state-convergence -->
+#### UC-SSM7: metadata update preserves committed runtime ownership
+
+```gherkin
+Given a native-metadata-update belongs to a managed TeleClaude session
+And the payload identifies an agent provider and native session id
+When the metadata-update handler runs
+Then it applies transcript and native metadata only when that provider/native pair matches the session's committed runtime owner
+And it never changes the active-agent field from hook metadata
+And a mismatched predecessor or unrelated runtime mutates no session field
+```
+<!-- /planned-change:session-handoff-state-convergence -->
 
 #### UC-SSM8: Closed-session-guard bypass
 
