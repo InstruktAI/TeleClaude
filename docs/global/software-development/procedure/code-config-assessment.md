@@ -210,6 +210,11 @@ the surface this procedure owns. Record any source-root or runtime-command
 uncertainty for human confirmation rather than guessing; this is authoring-time
 intelligence, never a runtime detection path (`general/principle/intelligence-boundaries`).
 
+A maintenance action that restarts the service hosting the maintenance sequence is
+terminal: assign it precedence strictly greater than every other deterministic
+maintenance action. The restart may end its own executor, so an action ordered after
+it is not reliably reachable.
+
 ### 6. Re-run safely
 
 The routine is idempotent. A re-run re-checks the Makefile contract gate, the

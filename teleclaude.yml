@@ -30,7 +30,7 @@ checkpoint:
   maintenance:
     restart:
       main_only: true
-      precedence: 30
+      precedence: 100
       command: [make, restart]
     deps:
       main_only: true
