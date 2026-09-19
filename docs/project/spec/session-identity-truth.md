@@ -65,7 +65,9 @@ Current runtime rule:
   A same-provider predecessor retains the previous launch value and therefore
   fails closed. If marker and database publication are interrupted between their
   two durable writes, their mismatch rejects hooks until recovery restores the
-  marker from the database owner. The TeleClaude session id remains unchanged.
+  marker from the database owner. Daemon startup performs that reconciliation for
+  both durable handoff phases before inbound or hook-outbox delivery begins. The
+  TeleClaude session id remains unchanged.
 <!-- /planned-change:session-handoff-state-convergence -->
 - A valid marker without pane attachment is a managed-descendant invocation. It
   resolves to the marker's TeleClaude session, retains its own native id in the
