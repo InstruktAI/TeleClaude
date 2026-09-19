@@ -12,6 +12,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.capabilities import resolve_capabilities
 from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV
 from teleclaude.core.blueprint.generate import regenerate_blueprint
 from teleclaude.git import GitCommandError, Repo
@@ -35,7 +36,7 @@ def _rev_parse(repo_root: Path, rev: str) -> str | None:
         return None
 
 
-def run_post_merge_regeneration() -> int:
+def run_post_merge_regeneration(repo_root: Path | None = None) -> int:
     """Regenerate the Blueprint after an external repo-root merge changed HEAD.
 
     The hook is best-effort by contract: every failure is logged and returns zero
@@ -45,14 +46,14 @@ def run_post_merge_regeneration() -> int:
         return 0
 
     try:
-        repo_root = _repo_root_from_env()
-        if is_slug_worktree(repo_root):
+        resolved_root = repo_root.resolve() if repo_root is not None else _repo_root_from_env()
+        if is_slug_worktree(resolved_root) or not resolve_capabilities(resolved_root).code:
             return 0
-        head = _rev_parse(repo_root, "HEAD")
-        orig_head = _rev_parse(repo_root, "ORIG_HEAD")
+        head = _rev_parse(resolved_root, "HEAD")
+        orig_head = _rev_parse(resolved_root, "ORIG_HEAD")
         if head is None or orig_head is None or head == orig_head:
             return 0
-        regenerate_blueprint(repo_root, baseline_sha=head)
+        regenerate_blueprint(resolved_root, baseline_sha=head)
     except Exception:
         logger.warning("post-merge Blueprint regeneration failed", exc_info=True)
     return 0

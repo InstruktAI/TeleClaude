@@ -9,16 +9,17 @@ visibility: internal
 
 ## What it is
 
-A commit's changed paths owe a set of deterministic maintenance actions —
+A canonical-main activation range's changed paths owe a set of deterministic maintenance actions —
 installing the toolchain, reconciling dependencies, restarting the daemon,
 reloading the terminal interface, and running the documentation and artifact
 pipeline. Those actions carry no decision: each either ran or it did not.
 
-Maintenance runs automatically whenever the canonical checkout advances: from
-a commit recorded there, or from an integration-controlled fast-forward that
-produces no repository-root commit. It is not addressed to a session and does
-not depend on one existing, so a person committing by hand and an integrator
-delivery receive the same maintenance.
+Maintenance runs automatically whenever the canonical checkout advances: the
+post-commit hook carries a commit recorded there, while the post-merge hook
+carries the complete `ORIG_HEAD..HEAD` range activated by either a merge commit
+or a fast-forward. It is not addressed to a session and does not depend on one
+existing, so a person committing by hand and an integrator delivery receive the
+same maintenance.
 
 The owed set is resolved by the shared scope matcher from the merged registry
 pair and bindings (`project/design/architecture/checkpoint-system`, Invariant
@@ -31,10 +32,9 @@ contract governs only what happens when maintenance runs.
 
 ## Canonical fields
 
-- **Trigger.** A recorded commit on canonical main, or an integration-controlled
-  canonical-main fast-forward that produces no repository-root commit.
-  Maintenance is not conditioned on who or what made the commit, nor on whether
-  a session is present.
+- **Trigger.** A recorded commit on canonical main, or a successful canonical-main
+  merge operation, including a fast-forward. Maintenance is not conditioned on
+  who or what advanced main, nor on whether a session is present.
 - **Owed set.** The `main_only` actions the committed paths resolve from the
   maintenance registry and shared bindings. Actions in the same precedence
   wave run concurrently; the next precedence wave starts after every action in
@@ -42,9 +42,9 @@ contract governs only what happens when maintenance runs.
   later wave. Judgment actions live in the checkpoint registry and never enter
   this executor.
 - **Location.** Maintenance performs the owed `main_only` actions only from the
-  canonical checkout on the main branch. The integration worktree supplies the
-  delivered range but never executes maintenance; a commit recorded anywhere
-  else performs none.
+  canonical checkout on the main branch. The integration worktree may create the
+  delivered commit, but only canonical main's activation range executes
+  maintenance; a commit or merge elsewhere performs none.
 - **Reporting.** Every attempt and every outcome is emitted through the
   structured logging boundary, carrying the commit, the resolved action set,
   and each action's result. The record, not an inference over a transcript, is
@@ -111,11 +111,10 @@ And the documentation and artifact pipeline is not run from that worktree
 And an agent reading the structured records observes that maintenance was skipped, and the location that made it ineligible
 ```
 
-#### UC-PCM6: A no-commit integration fast-forward performs maintenance
+#### UC-PCM6: An integration merge or fast-forward performs maintenance
 
 ```gherkin
-Given integration advances canonical main by fast-forward
-And no repository-root finalization commit is produced
+Given integration advances canonical main by merge or fast-forward
 And the advanced range resolves deterministic maintenance actions
 When the canonical-root advancement completes
 Then the actions execute from the canonical checkout without an agent instruction

@@ -27,6 +27,7 @@ from teleclaude.cli.telec.handlers._code_git_state import (
 )
 from teleclaude.cli.telec.handlers._code_invocation import resolve_invocation_state
 from teleclaude.cli.telec.handlers._code_post_commit import handle_code_post_commit
+from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merge
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
@@ -101,6 +102,7 @@ class CodeSubcommand(StrEnum):
     BLUEPRINT = "blueprint"
     OWNERS = "owners"
     POST_COMMIT = "post-commit"
+    POST_MERGE = "post-merge"
     PRE_COMMIT = "pre-commit"
 
 
@@ -132,6 +134,9 @@ def handle_code(args: list[str]) -> None:
     rest = args[1:]
     if sub is CodeSubcommand.POST_COMMIT:
         handle_code_post_commit(rest)
+        return
+    if sub is CodeSubcommand.POST_MERGE:
+        handle_code_post_merge(rest)
         return
     if sub is CodeSubcommand.PRE_COMMIT:
         handle_code_pre_commit(rest)

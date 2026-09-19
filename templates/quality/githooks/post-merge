@@ -1,36 +1,4 @@
 #!/usr/bin/env bash
-# teleclaude: run the post-merge blueprint reconciliation for code projects.
-set -euo pipefail
+# teleclaude: execute deterministic post-merge automation.
 
-_tc_lib="${TELECLAUDE_HOME:-$HOME/.teleclaude}/bin/teleclaude-capabilities.sh"
-if [ ! -f "$_tc_lib" ]; then
-    echo "ERROR: teleclaude-capabilities.sh not found at $_tc_lib" >&2
-    exit 1
-fi
-# shellcheck disable=SC1090
-source "$_tc_lib"
-
-_tc_toplevel="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-if ! teleclaude_read_declaration "$_tc_toplevel/teleclaude.yml"; then
-    echo "ERROR: $TC_DECL_ERROR" >&2
-    exit 1
-fi
-[ "$TC_DECL_CODE" = "1" ] || exit 0
-
-[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-
-if [ "${TELECLAUDE_INTEGRATOR_GITOP:-}" = "1" ]; then
-    exit 0
-fi
-
-REPO_ROOT="${GRAPHIFY_REPO_ROOT:-$_tc_toplevel}"
-export GRAPHIFY_REPO_ROOT="$REPO_ROOT"
-
-if command -v uv >/dev/null 2>&1; then
-    (cd "$REPO_ROOT" && uv run python -m teleclaude.core.blueprint.post_merge) || true
-else
-    (cd "$REPO_ROOT" && python -m teleclaude.core.blueprint.post_merge) || true
-fi
-
-exit 0
+exec telec code post-merge

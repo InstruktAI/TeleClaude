@@ -1448,6 +1448,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 hidden=True,
             ),
+            "post-merge": CommandDef(
+                desc="Run deterministic post-merge automation",
+                flags=[F.FLAG_HELP],
+                hidden=True,
+            ),
         },
     ),
 }
