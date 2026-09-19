@@ -42,12 +42,10 @@ TeleClaudeNext.
   integration and associating it with a session belongs to agent_runtime;
   identity consumes both through their published contracts.
 <!-- /planned-change:external-session-identity -->
-<!-- planned:company-member-roster -->
 - **Also owns:** organizational relationship resolution — what a person's
   company membership, company role, and project assignment mean, and what
   resolving them reports. The declarations themselves are config's; identity
   reads them and reinterprets nothing.
-<!-- /planned:company-member-roster -->
 - **Also owns:** person-context binding resolution — whether a person
   workspace's declared identity claim is accepted as binding that context to
   exactly one registered person, validated against the person registry, with

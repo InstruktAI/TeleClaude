@@ -1,7 +1,7 @@
 ---
-description: What a person's company membership, company role, and project assignment mean, and what resolving them reports — belonging to a company confers no project, and the platform role stays independent.
-delivered_by:
-  - company-member-roster
+description: What a person's company membership, company role, and project assignment
+  mean, and what resolving them reports — belonging to a company confers no project,
+  and the platform role stays independent.
 ---
 
 # Organizational Membership — Spec

@@ -1,7 +1,7 @@
 ---
-description: How a person's company membership, company role, and project assignment are declared in the company's own configuration, validated against registered referents, and maintained through the ordinary operator surface.
-delivered_by:
-  - company-member-roster
+description: How a person's company membership, company role, and project assignment
+  are declared in the company's own configuration, validated against registered referents,
+  and maintained through the ordinary operator surface.
 ---
 
 # Organizational Membership Declaration — Spec

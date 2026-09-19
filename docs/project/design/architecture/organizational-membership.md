@@ -1,7 +1,7 @@
 ---
-description: How the company-tier roster is stored, validated, mutated, and resolved — config declaring the relationship, identity answering what it means, and the membership an assignment presupposes.
-delivered_by:
-  - company-member-roster
+description: How the company-tier roster is stored, validated, mutated, and resolved
+  — config declaring the relationship, identity answering what it means, and the membership
+  an assignment presupposes.
 ---
 
 # Organizational Membership — Design

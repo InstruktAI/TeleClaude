@@ -81,27 +81,17 @@ one index entry, listed on demand — rather than autoloaded into every session.
 - **Platform role and company role are independent axes.** The platform role
   governs authority over TeleClaude itself; a company role states one person's
   relationship to one business. Neither follows from the other.
-<!-- planned:company-member-roster -->
 - **The company tier carries who operates the business.** A company's
   configuration declares its people, the role each holds, and which of that
   company's projects each is assigned to. The person tier declares no company
   membership, so there is one authoritative place to read the relationship from
   and one place to change it.
-<!-- /planned:company-member-roster -->
-<!-- planned-change:company-member-roster -->
-- **Today, authorization to read is one gate.** A caller resolves to a person
-  and their platform role. An admin sees every snippet; everyone else sees only
-  snippets declaring themselves public. There is no membership or ownership
-  dimension in the read path — `PersonConfig.companies` is modelled and
-  validated but has no consumer and no values on disk.
-<!-- change:company-member-roster -->
 - **Today, authorization to read is one gate.** A caller resolves to a person
   and their platform role. An admin sees every snippet; everyone else sees only
   snippets declaring themselves public. There is no membership or ownership
   dimension in the read path: the company tier declares who belongs to a
   business and which of its projects each person is assigned to, and no read
   path consults it.
-<!-- /planned-change:company-member-roster -->
 
 - **Meaning comes from the file, never from where it sits.** Each configuration
   file declares its own kind, and resolution reads that declaration. Location is

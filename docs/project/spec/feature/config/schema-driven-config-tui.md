@@ -21,17 +21,6 @@ The config wizard's TUI renders TeleClaude configuration from the canonical
 configuration schemas and their persistence surfaces, not from TUI-local shadow
 models or hand-maintained field maps.
 
-<!-- planned-change:company-member-roster -->
-Every typed configuration layer that the wizard owns is represented as a
-schema-backed editable tree:
-
-- machine runtime `config.yml`;
-- global `~/.teleclaude/teleclaude.yml`;
-- project `<project>/teleclaude.yml`;
-- per-person `~/.teleclaude/people/<name>/teleclaude.yml`;
-- company `~/.teleclaude/companies/<slug>/teleclaude.yml` (`CompanyConfig`);
-- env-backed fields declared by the env-var registry.
-<!-- change:company-member-roster -->
 Every typed configuration layer that the wizard owns is represented as a
 schema-backed editable tree:
 
@@ -43,7 +32,6 @@ schema-backed editable tree:
 
 The company layer (`~/.teleclaude/companies/<slug>/teleclaude.yml`,
 `CompanyConfig`) is not wizard-owned; it is maintained through the CLI.
-<!-- /planned-change:company-member-roster -->
 
 The TUI may still organize fields into operator-friendly tabs and sections, but
 section placement is view metadata layered over the schema. It must not require
@@ -72,17 +60,6 @@ And the renderer derives type, choices, default value, and description from the 
 And no TUI-only shadow model is required for that field to appear
 ```
 
-<!-- planned-change:company-member-roster -->
-#### UC-CFG-TUI-SCHEMA-COMPANIES: Companies tab and People company multi-reference
-
-```
-Given the company config layer (CompanyConfig) and the People identity layer
-When the human opens `telec config wizard`
-Then a Companies tab appears as the second tab, after Infra, rendering CompanyConfig schema-driven (honoring exclude_from_tui)
-And the People tab exposes a company multi-reference field — a person may belong to multiple companies — edited as a set of company slugs
-And both are schema-driven, requiring no TUI-only shadow model
-```
-<!-- change:company-member-roster -->
 #### UC-CFG-TUI-SCHEMA-COMPANIES: Company configuration is not edited from the wizard
 
 ```
@@ -92,7 +69,6 @@ Then no Companies tab appears; company configuration, including its roster, is m
 And the People tab exposes no company membership field, because membership is declared on the company, not the person
 And every remaining tab is schema-driven, requiring no TUI-only shadow model
 ```
-<!-- /planned-change:company-member-roster -->
 
 #### UC-CFG-TUI-SCHEMA-2: View sections are metadata, not alternate models
 
