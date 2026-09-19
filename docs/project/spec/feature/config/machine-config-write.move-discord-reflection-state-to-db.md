@@ -1,8 +1,15 @@
 ---
 description: The config context owns a validated, transaction-wide mutation boundary for machine configuration.
+visibility: public
 ---
 
 # Machine Config Write — Spec
+
+## Required reads
+
+@docs/project/spec/domain/config.md
+@docs/project/spec/feature/config/atomic-project-config-write.md
+@docs/project/spec/feature/config/machine-config-load.md
 
 ## What it is
 

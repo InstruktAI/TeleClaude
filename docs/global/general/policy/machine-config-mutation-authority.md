@@ -6,6 +6,10 @@ delivered_by:
 
 # Machine Config Mutation Authority — Policy
 
+## Required reads
+
+None.
+
 ## Rules
 
 - TeleClaude machine configuration is agent-operated. Agents inspect and mutate it through the `telec config` surface; they never read, edit, replace, or repair the backing file with shell editors, ad hoc scripts, or direct filesystem APIs.

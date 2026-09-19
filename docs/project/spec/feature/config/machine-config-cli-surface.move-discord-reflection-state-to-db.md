@@ -1,8 +1,16 @@
 ---
 description: The telec config surface is the sole agent front door for inspecting, mutating, and diagnosing machine configuration.
+visibility: public
 ---
 
 # Machine Config CLI Surface — Spec
+
+## Required reads
+
+@docs/project/spec/domain/config.md
+@docs/project/spec/feature/config/atomic-project-config-write.md
+@docs/project/spec/feature/config/machine-config-load.md
+@docs/project/spec/feature/config/machine-config-write.md
 
 ## What it is
 

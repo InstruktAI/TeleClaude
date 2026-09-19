@@ -7,6 +7,10 @@ delivered_by:
 
 # Machine Config Editing — Procedure
 
+## Required reads
+
+None.
+
 ## Goal
 
 Change TeleClaude machine configuration through the supported agent surface while preserving the config context’s validation, serialization, and concurrency guarantees.
