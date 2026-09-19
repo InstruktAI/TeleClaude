@@ -490,14 +490,6 @@
       "title": "Interests",
       "type": "array"
     },
-    "companies": {
-      "default": [],
-      "items": {
-        "type": "string"
-      },
-      "title": "Companies",
-      "type": "array"
-    },
     "settings": {
       "$ref": "#/$defs/PersonSettings",
       "default": {

@@ -24,7 +24,6 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from teleclaude.cli.telec import is_command_allowed
 from teleclaude.constants import (
-    HUMAN_ROLE_ADMIN,
     ROLE_INTEGRATOR,
     ROLE_JOB_RUNNER,
     ROLE_ORCHESTRATOR,
@@ -132,11 +131,6 @@ def _resolve_terminal_role(email_header: str | None) -> str | None:
     if not email:
         return None
     return get_identity_resolver().resolve_by_email(email).person_role
-
-
-def _requires_terminal_login() -> bool:
-    """Return True when global config has multiple registered users."""
-    return get_identity_resolver().is_multi_user
 
 
 def _derive_session_system_role(session: Session) -> str | None:
@@ -248,7 +242,7 @@ def _build_terminal_identity(
     """Resolve caller identity for non-session callers."""
     email_header = x_telec_email or x_web_user_email
     normalized_email = _normalize_email(email_header)
-    terminal_role = _resolve_terminal_role(email_header)
+    terminal_role = get_identity_resolver().effective_terminal_role(email_header)
     entry_point = _derive_terminal_entry_point(
         x_telec_email=x_telec_email,
         x_web_user_email=x_web_user_email,
@@ -263,16 +257,7 @@ def _build_terminal_identity(
             email=normalized_email,
             entry_point=entry_point,
         )
-    if _requires_terminal_login():
-        raise HTTPException(status_code=401, detail="login required in multi-user mode")
-    return CallerIdentity(
-        session_id="",
-        system_role=None,
-        human_role=HUMAN_ROLE_ADMIN,
-        tmux_session_name=tmux_session_name,
-        email=normalized_email,
-        entry_point=entry_point,
-    )
+    raise HTTPException(status_code=401, detail="login required in multi-user mode")
 
 
 def _resolve_human_role(session: Session, x_telec_email: str | None) -> str | None:

@@ -463,7 +463,7 @@ def load_person_config_for_entry(person: PersonEntry, people_dir: Path = PEOPLE_
     return load_person_config(person_config_path, registered_slug=person.slug)
 
 
-def _find_person_entry(
+def find_person_entry(
     *,
     people: list[PersonEntry],
     person_email: str | None = None,
@@ -492,7 +492,7 @@ def resolve_person_output_visibility_settings(
 ) -> OutputVisibilitySettings | None:
     """Resolve optional per-person output visibility settings for a recipient."""
     known_people = people if people is not None else load_global_config().people
-    person = _find_person_entry(
+    person = find_person_entry(
         people=known_people,
         person_email=person_email,
         person_name=person_name,
@@ -532,7 +532,7 @@ def load_app_config(workspace: Path) -> AppConfig:
         if company_config is None:
             raise ValueError(_UNRESOLVED_COMPANY_OWNER.format(owner=project_config.company))
     if project_config is not None and project_config.person:
-        person_owner = _find_person_entry(people=global_config.people, person_slug=project_config.person)
+        person_owner = find_person_entry(people=global_config.people, person_slug=project_config.person)
         if person_owner is None:
             raise ValueError(_UNRESOLVED_PERSON_OWNER.format(owner=project_config.person))
 

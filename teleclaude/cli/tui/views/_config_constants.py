@@ -42,7 +42,6 @@ class Subtab(StrEnum):
     """Config-view subtab identifiers."""
 
     INFRA = "Infra"
-    COMPANIES = "Companies"
     PEOPLE = "People"
     ADAPTERS = "Adapters"
     PROVIDERS = "Providers"

@@ -26,6 +26,13 @@ class ConfigKind(StrEnum):
     COMPANY = "company"
 
 
+class CompanyRole(StrEnum):
+    """The closed vocabulary for a person's relationship to one company."""
+
+    ADMIN = "admin"
+    MEMBER = "member"
+
+
 def normalize_env_allow_list(value: list[str]) -> list[str]:
     """Validate and de-duplicate agent-session environment variable names."""
     valid_name = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -729,7 +736,6 @@ class PersonConfig(BaseModel):
     subscriptions: list[SubscriptionEntry] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     mail_accounts: list[MailAccount] = Field(default_factory=list, json_schema_extra={"tier": Tier.INTERNAL})
     interests: list[str] = []
-    companies: list[str] = []
     settings: PersonSettings = PersonSettings()
     color: PersonChipColor | None = None
     preferred_channel: MessagingChannel | None = None
@@ -750,25 +756,6 @@ class PersonConfig(BaseModel):
             return v["tags"]
         return v
 
-    @field_validator("companies")
-    @classmethod
-    def validate_companies(cls, value: list[str]) -> list[str]:
-        """Validate and de-duplicate the person's company-membership slugs.
-
-        Many-to-many identity record: one person may work for several companies.
-        Each entry is a kebab-case company slug; a malformed entry is rejected.
-        """
-        result: list[str] = []
-        seen: set[str] = set()
-        for item in value:
-            stripped = item.strip()
-            validate_slug(stripped)
-            if stripped in seen:
-                continue
-            seen.add(stripped)
-            result.append(stripped)
-        return result
-
     @model_validator(mode="before")
     @classmethod
     def reject_disallowed_keys(cls, data: Any) -> Any:
@@ -780,6 +767,26 @@ class PersonConfig(BaseModel):
         if present:
             raise ValueError(f"Keys not allowed at per-person level: {', '.join(present)}")
         return data
+
+
+class CompanyMember(BaseModel):
+    """One person's role and explicit project assignments in a company roster."""
+
+    role: CompanyRole
+    projects: list[str] = Field(default_factory=list)
+
+    @field_validator("projects")
+    @classmethod
+    def validate_projects(cls, value: list[str]) -> list[str]:
+        """Validate and de-duplicate project assignments by slug."""
+        projects: list[str] = []
+        seen: set[str] = set()
+        for project_slug in value:
+            validate_slug(project_slug)
+            if project_slug not in seen:
+                seen.add(project_slug)
+                projects.append(project_slug)
+        return projects
 
 
 class CompanyConfig(BaseModel):
@@ -801,12 +808,12 @@ class CompanyConfig(BaseModel):
     git: str | None = None
     description: str | None = None
     erp_id: str | None = None
-    owner: str | None = None
+    members: dict[str, CompanyMember] = Field(default_factory=dict)
 
-    @field_validator("slug", "owner")
+    @field_validator("slug")
     @classmethod
     def validate_company_slugs(cls, value: str | None) -> str | None:
-        """Enforce slug format on the company id and its ``PersonConfig.slug`` owner.
+        """Enforce slug format on the company id.
 
         Empty/missing values normalize to ``None`` so partially-authored profiles
         still load; a malformed slug is rejected at the model boundary.
@@ -818,6 +825,14 @@ class CompanyConfig(BaseModel):
             return None
         validate_slug(stripped)
         return stripped
+
+    @field_validator("members")
+    @classmethod
+    def validate_members(cls, value: dict[str, CompanyMember]) -> dict[str, CompanyMember]:
+        """Validate every roster key as the slug of its declared person."""
+        for person_slug in value:
+            validate_slug(person_slug)
+        return value
 
 
 @dataclass(frozen=True)

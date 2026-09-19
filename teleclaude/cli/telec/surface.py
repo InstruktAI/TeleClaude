@@ -1075,6 +1075,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
                     ),
+                    "show": CommandDef(
+                        desc="Show a person's organizational memberships",
+                        args="<name> [--json]",
+                        flags=[F.FLAG_HELP, F.FLAG_JSON_MACHINE_READABLE],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                    ),
                     "add": CommandDef(
                         desc="Add a person",
                         args=(
@@ -1101,6 +1107,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         desc="Edit a person",
                         args=(
                             "<name> [--email <email>] [--role <role>]"
+                            " [--company <slug>] [--company-role <admin|member>]"
+                            " [--remove-company <slug>] [--assign <project-slug>]... [--unassign <project-slug>]..."
                             " [--expertise '<json>']"
                             " [--telegram-user <user>] [--telegram-id <id>] [--json]"
                         ),
@@ -1108,6 +1116,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_HELP,
                             F.FLAG_PEOPLE_EMAIL,
                             F.FLAG_PEOPLE_ROLE,
+                            F.FLAG_PEOPLE_COMPANY,
+                            F.FLAG_PEOPLE_COMPANY_ROLE,
+                            F.FLAG_PEOPLE_REMOVE_COMPANY,
+                            F.FLAG_PEOPLE_ASSIGN,
+                            F.FLAG_PEOPLE_UNASSIGN,
                             F.FLAG_PEOPLE_USERNAME,
                             F.FLAG_PEOPLE_EXPERTISE,
                             F.FLAG_PEOPLE_TELEGRAM_USER,
@@ -1548,6 +1561,7 @@ CONFIG_PATCH = CLI_SURFACE["config"].subcommands["patch"]
 CONFIG_VALIDATE = CLI_SURFACE["config"].subcommands["validate"]
 CONFIG_NOTIFY = CLI_SURFACE["config"].subcommands["notify"]
 CONFIG_PEOPLE_LIST = CLI_SURFACE["config"].subcommands["people"].subcommands["list"]
+CONFIG_PEOPLE_SHOW = CLI_SURFACE["config"].subcommands["people"].subcommands["show"]
 CONFIG_PEOPLE_ADD = CLI_SURFACE["config"].subcommands["people"].subcommands["add"]
 CONFIG_PEOPLE_EDIT = CLI_SURFACE["config"].subcommands["people"].subcommands["edit"]
 CONFIG_PEOPLE_REMOVE = CLI_SURFACE["config"].subcommands["people"].subcommands["remove"]

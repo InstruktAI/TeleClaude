@@ -1,4 +1,30 @@
 {
+  "$defs": {
+    "CompanyMember": {
+      "description": "One person's role and explicit project assignments in a company roster.",
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/CompanyRole"
+        },
+        "projects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Projects",
+          "type": "array"
+        }
+      },
+      "required": ["role"],
+      "title": "CompanyMember",
+      "type": "object"
+    },
+    "CompanyRole": {
+      "description": "The closed vocabulary for a person's relationship to one company.",
+      "enum": ["admin", "member"],
+      "title": "CompanyRole",
+      "type": "string"
+    }
+  },
   "additionalProperties": true,
   "description": "Company-tier configuration: per-company ``teleclaude.yml`` overlay.\n\nFolder-discovered under ``~/.teleclaude/companies/<slug>/`` (the\n``COMPANIES_ROOT`` tree) \u2014 the company-scoped twin of the per-person tier.\nComposed into the effective config alongside ``project`` (not workspace-type\nkeyed): resolved from the active project's ``company`` membership. ERP is the\nsystem of record; every real company detail resolves through ``erp_id`` and is\nnever duplicated here \u2014 the profile is thin context-scaffolding. File-backed\noverlays reject undeclared fields at their load boundary.",
   "properties": {
@@ -68,22 +94,15 @@
       "default": null,
       "title": "Erp Id"
     },
-    "owner": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Owner"
+    "members": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CompanyMember"
+      },
+      "title": "Members",
+      "type": "object"
     }
   },
-  "required": [
-    "kind"
-  ],
+  "required": ["kind"],
   "title": "CompanyConfig",
   "type": "object"
 }

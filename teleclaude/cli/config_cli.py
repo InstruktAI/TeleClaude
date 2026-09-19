@@ -34,7 +34,8 @@ from teleclaude.cli.config_handlers import (
 )
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec import flags as F
-from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.auth import is_command_allowed
+from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
 from teleclaude.cli.telec.help import _maybe_show_help, _usage
 from teleclaude.cli.telec.surface import (
     CONFIG_ENV_LIST,
@@ -45,14 +46,17 @@ from teleclaude.cli.telec.surface import (
     CONFIG_PEOPLE_INVITE,
     CONFIG_PEOPLE_LIST,
     CONFIG_PEOPLE_REMOVE,
+    CONFIG_PEOPLE_SHOW,
     CONFIG_VALIDATE,
 )
 from teleclaude.config import config
 from teleclaude.config._environment import write_environment_value
 from teleclaude.config.migrations import migrate_person_slugs_if_needed
-from teleclaude.config.schema import PersonEntry, TelegramCreds
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+from teleclaude.config.roster import RosterDelta, RosterRefused, apply_roster_delta, person_has_roster_membership
+from teleclaude.config.schema import CompanyRole, PersonEntry, TelegramCreds
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_CUSTOMER
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.organization import resolve_organization
 from teleclaude.invite import (
     generate_invite_links,
     resolve_discord_bot_user_id,
@@ -60,9 +64,39 @@ from teleclaude.invite import (
     send_invite_email,
 )
 from teleclaude.paths import PEOPLE_DIR, PROJECT_ENV_PATH
+from teleclaude.session_identity import get_human_role, get_system_role
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 logger = get_logger(__name__)
+
+_CONFIG_PEOPLE_EDIT_PATH = "config people edit"
+_CONFIG_PEOPLE_REMOVE_PATH = "config people remove"
+_ROSTER_ADMIN_ERROR = "Error: Permission denied. Roster changes require administrator role."
+_ROSTER_FLAG_PAIR_ERROR = "Error: --company and --company-role must be used together."
+_ROSTER_ROLE_ERROR = "Error: --company-role must be admin or member."
+_ROSTER_CHANGED_COMPANIES = "companies="
+_ROSTER_REMOVED_ASSIGNMENTS = "removed_assignments="
+_COMMA = ","
+_ERROR_TEMPLATE = "Error: {}"
+_JSON_ERROR = "error"
+_JSON_REASON = "reason"
+_JSON_REFERENT = "referent"
+_JSON_OK = "ok"
+_JSON_NAME = "name"
+_JSON_DIRECTORY_DELETED = "directory_deleted"
+_JSON_COMPANIES_WRITTEN = "companies_written"
+_JSON_REMOVED_ASSIGNMENTS = "removed_assignments"
+_MEMBERSHIPS_HEADING = "Memberships:"
+_ASSIGNMENTS_HEADING = "Assignments:"
+_COVERED_HEADING = "Covered:"
+_STALE_HEADING = "Stale:"
+_ORGANIZATION_ROW = "  {}: {}"
+_STALE_ASSIGNMENT_ROW = "  {}: {} ({})"
+_REMOVAL_TEMPLATE = "Removed {}.{} {}{}."
+_DIRECTORY_DELETED_SUFFIX = " Directory deleted."
+_EMPTY_TEXT = ""
+_PERSON_NAME_REQUIRED = "person name required"
+_PERSON_NOT_FOUND = "person not found"
 
 
 class InviteResult(TypedDict):
@@ -82,6 +116,66 @@ def _check_customer_guard() -> None:
     if role == HUMAN_ROLE_CUSTOMER:
         print("Error: Permission denied. This operation requires member role or higher.")
         raise SystemExit(1)
+
+
+def _require_roster_admin(command_path: str) -> None:
+    """Require the declared agent band or an effective human administrator role."""
+    system_role = get_system_role()
+    if system_role is not None:
+        allowed = is_command_allowed(command_path, system_role, None)
+    else:
+        human_role = get_human_role()
+        effective_role = human_role or get_identity_resolver().effective_terminal_role(read_current_session_email())
+        allowed = effective_role == HUMAN_ROLE_ADMIN
+    if not allowed:
+        print(_ROSTER_ADMIN_ERROR)
+        raise SystemExit(1)
+
+
+def _parse_roster_delta(parsed: ParsedArgs, command_path: str) -> RosterDelta | None:
+    """Translate declared roster flags into one complete mutation request."""
+    company = parsed.value(F.FLAG_PEOPLE_COMPANY)
+    company_role = parsed.value(F.FLAG_PEOPLE_COMPANY_ROLE)
+    remove_company = parsed.value(F.FLAG_PEOPLE_REMOVE_COMPANY)
+    assignments = parsed.values(F.FLAG_PEOPLE_ASSIGN)
+    unassignments = parsed.values(F.FLAG_PEOPLE_UNASSIGN)
+    if not any((company, company_role, remove_company, assignments, unassignments)):
+        return None
+    if (company is None) != (company_role is None):
+        print(_ROSTER_FLAG_PAIR_ERROR)
+        raise SystemExit(1)
+    membership = None
+    if company is not None and company_role is not None:
+        try:
+            membership = (company, CompanyRole(company_role))
+        except ValueError as error:
+            print(_ROSTER_ROLE_ERROR)
+            raise SystemExit(1) from error
+    _require_roster_admin(command_path)
+    return RosterDelta(
+        membership=membership,
+        remove_company=remove_company,
+        assign=assignments,
+        unassign=unassignments,
+    )
+
+
+def _apply_person_roster_change(person_slug: str, delta: RosterDelta, use_json: bool) -> list[str]:
+    """Apply one already-authorized roster delta and render a refusal at the CLI edge."""
+    try:
+        outcome = apply_roster_delta(person_slug, delta)
+    except RosterRefused as error:
+        if use_json:
+            print(
+                json.dumps({_JSON_ERROR: str(error), _JSON_REASON: error.reason.value, _JSON_REFERENT: error.referent})
+            )
+        else:
+            print(_ERROR_TEMPLATE.format(error))
+        raise SystemExit(1) from error
+    return [
+        _ROSTER_CHANGED_COMPANIES + _COMMA.join(outcome.companies_written),
+        _ROSTER_REMOVED_ASSIGNMENTS + _COMMA.join(project for _, project in outcome.removed_assignments),
+    ]
 
 
 @dataclass
@@ -144,6 +238,8 @@ def _handle_people(args: list[str]) -> None:
 
     if action == "list":
         _people_list(rest)
+    elif action == "show":
+        _people_show(rest)
     elif action == "add":
         _people_add(rest)
     elif action == "edit":
@@ -189,6 +285,40 @@ def _people_list(args: list[str]) -> None:
         for p in people:
             slug_part = f" [{p.slug}]" if p.slug else ""
             print(f"  {p.name}{slug_part} ({p.role}){f' <{p.email}>' if p.email else ''}")
+
+
+def _people_show(args: list[str]) -> None:
+    """Print the organizational facts resolved for one registered person."""
+    parsed = parse_command_args(CONFIG_PEOPLE_SHOW, args)
+    if len(parsed.positionals) != 1:
+        print(_ERROR_TEMPLATE.format(_PERSON_NAME_REQUIRED))
+        raise SystemExit(1)
+    person = next((entry for entry in list_people() if entry.name == parsed.positionals[0]), None)
+    if person is None or person.slug is None:
+        print(_ERROR_TEMPLATE.format(_PERSON_NOT_FOUND))
+        raise SystemExit(1)
+    result = resolve_organization(person.slug)
+    if parsed.has(F.FLAG_JSON_MACHINE_READABLE):
+        print(json.dumps(asdict(result), indent=2))
+        return
+    print(_MEMBERSHIPS_HEADING)
+    for membership in result.memberships:
+        print(_ORGANIZATION_ROW.format(membership.company_slug, membership.role.value))
+    print(_ASSIGNMENTS_HEADING)
+    for assignment in result.assignments:
+        print(_ORGANIZATION_ROW.format(assignment.company_slug, assignment.project_slug))
+    print(_COVERED_HEADING)
+    for project in result.covered:
+        print(_ORGANIZATION_ROW.format(project.company_slug, project.project_slug))
+    print(_STALE_HEADING)
+    for stale_assignment in result.stale:
+        print(
+            _STALE_ASSIGNMENT_ROW.format(
+                stale_assignment.company_slug,
+                stale_assignment.project_slug,
+                stale_assignment.current_owner,
+            )
+        )
 
 
 def _people_add(args: list[str]) -> None:
@@ -323,6 +453,7 @@ def _people_edit(args: list[str]) -> None:
     expertise_raw = parsed.value(F.FLAG_PEOPLE_EXPERTISE)
     telegram_user = parsed.value(F.FLAG_PEOPLE_TELEGRAM_USER)
     telegram_id = parsed.value(F.FLAG_PEOPLE_TELEGRAM_ID)
+    roster_delta = _parse_roster_delta(parsed, _CONFIG_PEOPLE_EDIT_PATH)
 
     changed = False
     updated_fields: list[str] = []
@@ -362,6 +493,10 @@ def _people_edit(args: list[str]) -> None:
         _set_telegram_creds(person.slug or normalize_slug(name), telegram_user, telegram_id)
         changed = True
 
+    if roster_delta is not None:
+        updated_fields.extend(_apply_person_roster_change(person.slug or normalize_slug(name), roster_delta, use_json))
+        changed = True
+
     if not changed:
         msg = "No changes specified. Use --role, --email, --username, --expertise, --telegram-user, --telegram-id"
         if use_json:
@@ -389,9 +524,11 @@ def _people_remove(args: list[str]) -> None:
 
     person = next((p for p in list_people() if p.name == name), None)
     slug = (person.slug if person else None) or normalize_slug(name)
+    if person is not None and person_has_roster_membership(slug):
+        _require_roster_admin(_CONFIG_PEOPLE_REMOVE_PATH)
 
     try:
-        remove_person(slug, delete_directory=delete_dir)
+        roster_outcome = remove_person(slug, delete_directory=delete_dir)
     except ValueError as e:
         if use_json:
             print(json.dumps({"error": str(e)}))
@@ -400,9 +537,26 @@ def _people_remove(args: list[str]) -> None:
         raise SystemExit(1) from e
 
     if use_json:
-        print(json.dumps({"ok": True, "name": name, "directory_deleted": delete_dir}))
+        print(
+            json.dumps(
+                {
+                    _JSON_OK: True,
+                    _JSON_NAME: name,
+                    _JSON_DIRECTORY_DELETED: delete_dir,
+                    _JSON_COMPANIES_WRITTEN: roster_outcome.companies_written,
+                    _JSON_REMOVED_ASSIGNMENTS: roster_outcome.removed_assignments,
+                }
+            )
+        )
     else:
-        print(f"Removed {name}.{' Directory deleted.' if delete_dir else ''}")
+        print(
+            _REMOVAL_TEMPLATE.format(
+                name,
+                _DIRECTORY_DELETED_SUFFIX if delete_dir else _EMPTY_TEXT,
+                _ROSTER_CHANGED_COMPANIES,
+                _COMMA.join(roster_outcome.companies_written),
+            )
+        )
 
 
 def _set_telegram_creds(slug: str, user_name: str | None, user_id: str | None) -> None:
