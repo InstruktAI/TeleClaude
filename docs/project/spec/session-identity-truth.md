@@ -51,16 +51,17 @@ Current runtime rule:
 - A valid marker with pane attachment is a managed-primary invocation. Its native
   identity may refresh the session's canonical native binding.
 <!-- change:session-handoff-state-convergence -->
-- A valid marker with pane attachment is a managed-primary invocation. Outside a
-  handoff, its provider and native session id must match the committed runtime
-  owner before its metadata or lifecycle event can mutate the session.
-- During `handoff_successor_committed`, the retained predecessor native session id
-  is a quarantine boundary. Only an `agent-session-start` from the committed
-  successor provider with a present, different native session id can establish the
-  successor binding and activate the session. Every predecessor or non-start hook
-  is dropped until that binding is established. This distinguishes same-provider
-  predecessor and successor executions without creating a second TeleClaude
-  session identity.
+- A valid marker with pane attachment is a managed-primary invocation. Its
+  provider must match the session's committed active agent before the receiver
+  performs checkpoint evaluation, control delivery, metadata persistence, or
+  outbox enqueue. Native identity remains optional and may refresh the canonical
+  native binding after provider ownership is established.
+- Handoff always selects a different agent provider. The atomic successor commit
+  installs that provider and clears the predecessor native binding before launch,
+  so successor metadata and start hooks are admitted while every late predecessor
+  hook fails the provider check. A request that resolves to the current provider
+  is not a handoff and leaves the session untouched; same-agent continuation uses
+  restart instead.
 <!-- /planned-change:session-handoff-state-convergence -->
 - A valid marker without pane attachment is a managed-descendant invocation. It
   resolves to the marker's TeleClaude session, retains its own native id in the

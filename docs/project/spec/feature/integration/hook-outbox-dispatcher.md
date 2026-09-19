@@ -114,9 +114,10 @@ And NO event-bus emit happens for these entries
 ```gherkin
 Given a claimed entry has event type in {checkpoint-seen, native-metadata-update, native-session-refresh}
 When the dispatcher runs
-Then it validates the entry's provider and native execution identity against the session's committed runtime owner before mutation
-And an entry from a predecessor or unrelated runtime is terminally dropped without mutating session state
-And a matching entry invokes the corresponding mutation handler
+Then checkpoint-seen is trusted only because the receiver owner-admitted its enclosing hook before creating the row
+And native-metadata-update and native-session-refresh validate their provider against the session's committed active agent before mutation
+And a metadata or refresh entry from the predecessor or an unrelated provider is terminally dropped without mutating session state
+And an admitted entry invokes the corresponding mutation handler
 And the entry is removed on success
 And NO event-bus emit happens for these entries
 ```
@@ -140,9 +141,9 @@ And NO event-bus emit call is made for this path — outbox serialization depend
 ```gherkin
 Given a claimed entry has event type in {agent-session-start, user-prompt-submit, tool-use, agent-stop}
 When the dispatcher runs past the state-mutation fork
-Then it validates the entry's provider and native execution identity against the session's committed runtime owner
-And during handoff-successor-committed only an agent-session-start from the committed provider with a present native session id different from the quarantined predecessor binding is admitted as the successor-establishment exception
-And every other mismatched predecessor or unrelated runtime is terminally dropped before activity, stop, polling, or fan-out behavior
+Then it validates the entry's provider against the session's committed active agent
+And a handoff successor is admitted because handoff always selects a different provider and commits that provider before launch
+And every predecessor or unrelated provider is terminally dropped before activity, stop, polling, or fan-out behavior
 And a matching entry becomes a typed agent payload and agent-event context
 And the local agent-event coordinator is awaited DIRECTLY
 And the outbox worker only marks the entry delivered AFTER the coordinator returns
@@ -166,11 +167,11 @@ And the entry is then removed by the worker as processed
 #### UC-D6c: Owner-matched agent-error is the only event-bus emit path
 
 ```gherkin
-Given a claimed entry has event type agent-error
+Given the receiver owner-admitted a hook from the committed active-agent provider
+And created a claimed entry with event type agent-error
 When the dispatcher runs past the state-mutation fork
-Then it validates the entry's provider and native execution identity against the session's committed runtime owner
-And an error from the quarantined predecessor or any unrelated runtime is terminally dropped without an event-bus emit
-And a matching error is converted to an error event context containing severity, retryable, code, details, message, and session id
+Then the receiver's admission decision is the ownership boundary for this internally produced row
+And the error is converted to an error event context containing severity, retryable, code, details, message, and session id
 And the event bus emits that error event with cluster visibility
 And any cluster subscriber to error receives the event asynchronously
 And the entry is then removed by the worker as processed
