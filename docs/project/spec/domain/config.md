@@ -33,6 +33,16 @@ TeleClaudeNext.
   for systems configured by those settings.
 - **Published contracts:** validated configuration models and `telec config`
   commands; consumers never reinterpret missing or invalid values.
+<!-- planned:move-discord-reflection-state-to-db -->
+- **Also owns:** every mutation of machine configuration. Agents use the
+  `telec config` surface, and runtime consumers submit named semantic operations;
+  neither receives backing-file write authority. The config context holds the
+  lock across reading the latest document, applying the operation, validating
+  the complete candidate, and atomically replacing the file.
+- **Does not own:** provider-returned identifiers or other observed external
+  state. The bounded context that observes such state persists it through its
+  own state contract rather than through machine configuration.
+<!-- /planned:move-discord-reflection-state-to-db -->
 - **Also owns:** the person tier's voice-room declaration as typed settings —
   the voice bot credential reference and the private voice channel. These are
   declared fields rather than tolerated extras, so a missing or malformed value
