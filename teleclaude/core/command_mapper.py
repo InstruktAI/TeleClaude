@@ -261,8 +261,10 @@ class CommandMapper:
             return _with_computer(
                 RestartAgentCommand(
                     session_id=session_id,
-                    agent_name=agent_name,
+                    agent_name=cast(str | None, payload.get("agent")) or agent_name,
                     self_restart=bool(payload.get("self_restart")),
+                    handoff=bool(payload.get("handoff")),
+                    caller_system_role=cast(str | None, payload.get("caller_system_role")),
                 ),
                 computer,
             )

@@ -12,6 +12,8 @@ from teleclaude.cli.api_client import APIError, CreateSessionArgs
 from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
+    HandoffSessionRequest,
+    HandoffSessionsRequest,
     KillSessionRequest,
     PreviewChanged,
     RestartSessionRequest,
@@ -215,6 +217,38 @@ class TelecAppActionsMixin:
             self.notify_text(  # type: ignore[attr-defined]
                 f"Restarted {len(message.session_ids)} sessions on {message.computer}"
             )
+
+    @work(exclusive=True, group="session-action")
+    async def on_handoff_session_request(self, message: HandoffSessionRequest) -> None:
+        """Hand one session to a fresh automatic or named successor."""
+        try:
+            result = await self.api.agent_restart(  # type: ignore[attr-defined]
+                message.session_id,
+                computer=message.computer,
+                handoff=True,
+                agent=message.agent,
+            )
+            successor = result.selected_agent or "selected successor"
+            self.notify_text(f"Handed off to {successor}")  # type: ignore[attr-defined]
+        except APP_ACTION_ERRORS as error:
+            self.notify_text(f"Failed to hand off session: {error}", severity="error")  # type: ignore[attr-defined]
+
+    @work(exclusive=True, group="session-action")
+    async def on_handoff_sessions_request(self, message: HandoffSessionsRequest) -> None:
+        """Hand every live project session to the chosen successor."""
+        failures = 0
+        for session_id in message.session_ids:
+            try:
+                await self.api.agent_restart(  # type: ignore[attr-defined]
+                    session_id,
+                    computer=message.computer,
+                    handoff=True,
+                )
+            except APP_ACTION_ERRORS:
+                failures += 1
+                logger.exception("Failed to hand off session %s", session_id)
+        completed = len(message.session_ids) - failures
+        self.notify_text(f"Handed off {completed}/{len(message.session_ids)} sessions")  # type: ignore[attr-defined]
 
     async def on_settings_changed(self, message: SettingsChanged) -> None:
         """Apply footer-initiated setting changes."""

@@ -26,7 +26,7 @@ from textual.widgets import Button, Input, Label, TextArea
 
 from teleclaude.api_models import AgentAvailabilityDTO
 from teleclaude.cli.tui.base import TelecMixin
-from teleclaude.cli.tui.messages import CreateSessionRequest
+from teleclaude.cli.tui.messages import CreateSessionRequest, HandoffSessionRequest
 from teleclaude.cli.tui.widgets.agent_status import build_agent_render_spec
 from teleclaude.core.agents import get_enabled_agents
 from teleclaude.slug import SLUG_PATTERN
@@ -70,12 +70,13 @@ class AgentSelector(TelecMixin, Widget, can_focus=True):
         self,
         agents: tuple[str, ...],
         availability: dict[str, AgentAvailabilityDTO],
+        allow_unavailable: bool = False,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
         self._agents = agents
         self._render_specs = [build_agent_render_spec(agent, availability.get(agent)) for agent in agents]
-        self._selectable = [spec.selectable for spec in self._render_specs]
+        self._selectable = [spec.selectable or allow_unavailable for spec in self._render_specs]
         selectable_indices = [index for index, selectable in enumerate(self._selectable) if selectable]
         if selectable_indices:
             self.selected = selectable_indices[0]
@@ -332,7 +333,7 @@ class ConfirmModal(ModalScreen[bool]):
         self.dismiss(event.button.id == "confirm-yes")
 
 
-class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
+class StartSessionModal(ModalScreen[CreateSessionRequest | HandoffSessionRequest | None]):
     """Session creation modal with thin border and titled field groups.
 
     Fields: Agent, Mode, Prompt, Session ID (with native/teleclaude toggle).
@@ -358,6 +359,8 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         default_message: str | None = None,
         path_mode: bool = False,
         title: str | None = None,
+        handoff_session_id: str | None = None,
+        handoff_source_selection: bool = False,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -367,6 +370,8 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         self._default_message = default_message
         self._path_mode = path_mode
         self._title = title
+        self._handoff_session_id = handoff_session_id
+        self._handoff_source_selection = handoff_source_selection
         self._agents = tuple(get_enabled_agents())
 
     def compose(self) -> ComposeResult:
@@ -395,6 +400,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
                     yield AgentSelector(
                         agents=self._agents,
                         availability=self._agent_availability,
+                        allow_unavailable=self._handoff_source_selection,
                         id="agent-selector",
                     )
                 else:
@@ -550,6 +556,12 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         """Gather form values and dismiss with CreateSessionRequest."""
         if not self._agents:
             self.dismiss(None)
+            return
+
+        if self._handoff_session_id is not None:
+            agent_sel = self.query_one("#agent-selector", AgentSelector)
+            if agent_sel.selected_is_selectable:
+                self.dismiss(HandoffSessionRequest(self._handoff_session_id, self._computer, agent_sel.selected_agent))
             return
 
         project_path = self._resolve_project_path()

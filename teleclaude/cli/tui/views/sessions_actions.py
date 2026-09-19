@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 from teleclaude.cli.tui.layout_model import enforce_i1
 from teleclaude.cli.tui.messages import (
     CreateSessionRequest,
+    HandoffSessionRequest,
+    HandoffSessionsRequest,
     KillSessionRequest,
     PreviewChanged,
     RestartSessionRequest,
@@ -330,7 +332,7 @@ class SessionsViewActionsMixin:
         )
         self.app.push_screen(modal, self._on_create_session_result)  # type: ignore[attr-defined]
 
-    def _on_create_session_result(self, result: CreateSessionRequest | None) -> None:
+    def _on_create_session_result(self, result: CreateSessionRequest | HandoffSessionRequest | None) -> None:
         """Handle result from StartSessionModal."""
         if result:
             self.post_message(result)  # type: ignore[attr-defined]
@@ -367,6 +369,54 @@ class SessionsViewActionsMixin:
         self.post_message(  # type: ignore[attr-defined]
             RestartSessionRequest(row.session_id, row.session.computer or "local")
         )
+
+    def action_handoff_session(self) -> None:
+        """o: hand the selected session to automatic dispatch."""
+        row = self._current_session_row()  # type: ignore[attr-defined]
+        if row:
+            self.post_message(HandoffSessionRequest(row.session_id, row.session.computer or "local"))  # type: ignore[attr-defined]
+
+    def action_handoff_session_select(self) -> None:
+        """O: choose the successor for the selected session."""
+        row = self._current_session_row()  # type: ignore[attr-defined]
+        if not row:
+            return
+        modal = StartSessionModal(
+            computer=row.session.computer or "local",
+            project_path=row.session.project_path or "",
+            agent_availability=self._availability,  # type: ignore[attr-defined]
+            handoff_session_id=row.session_id,
+        )
+        self.app.push_screen(modal, self._on_create_session_result)  # type: ignore[attr-defined]
+
+    def action_handoff_project(self) -> None:
+        """o on a project header: filter live sessions by source provider for automatic handoff."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        if not isinstance(item, ProjectHeader):
+            return
+        modal = StartSessionModal(
+            computer=item.project.computer or "local",
+            project_path=item.project.path,
+            agent_availability=self._availability,  # type: ignore[attr-defined]
+            handoff_session_id=item.project.path,
+            handoff_source_selection=True,
+        )
+
+        def on_selected(result: CreateSessionRequest | HandoffSessionRequest | None) -> None:
+            if isinstance(result, HandoffSessionRequest) and result.agent:
+                computer = item.project.computer or "local"
+                session_ids = [
+                    session.session_id
+                    for session in self._sessions  # type: ignore[attr-defined]
+                    if session.project_path == item.project.path
+                    and (session.computer or "local") == computer
+                    and session.status != "closed"
+                    and session.active_agent == result.agent
+                ]
+                if session_ids:
+                    self.post_message(HandoffSessionsRequest(computer, session_ids))  # type: ignore[attr-defined]
+
+        self.app.push_screen(modal, on_selected)  # type: ignore[attr-defined]
 
     def action_restart_project(self) -> None:
         """R on project header: restart all sessions for that project."""

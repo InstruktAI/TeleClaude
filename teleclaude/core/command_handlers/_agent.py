@@ -17,11 +17,21 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.config._models import AgentConfig
-from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
+from teleclaude.constants import COMMAND_ROLE_MAP, HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS, SlashCommand
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_availability import launch_ownership
-from teleclaude.core.agent_dispatch import emit_agent_launch_started, resolve_launch_model
+from teleclaude.core.agent_dispatch import (
+    AgentDispatchFailure,
+    AgentDispatchOutcome,
+    AgentDispatchStage,
+    classify_fresh_agent_preference,
+    emit_agent_dispatch_decision,
+    emit_agent_launch_started,
+    resolve_agent_dispatch,
+    resolve_launch_model,
+)
 from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.agent_startup_delivery import AgentStartupDeliveryMode, emit_agent_startup_delivery_decision
 from teleclaude.core.agents import AgentName, _get_agent_config, assert_agent_enabled, get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
@@ -38,8 +48,16 @@ from teleclaude.core.injected_text import (
     semantic_envelope,
     visible_input_update,
 )
-from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, HumanActionIntent, Session, ThinkingMode
+from teleclaude.core.models import (
+    AgentResumeArgs,
+    AgentStartArgs,
+    HumanActionIntent,
+    Session,
+    SessionEntryPoint,
+    ThinkingMode,
+)
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_startup_message import compose_command_loader
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.tmux_bridge._session import safe_session_tmp_component
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
@@ -48,6 +66,7 @@ from teleclaude.events.producer import emit_event
 from teleclaude.paths import TMP_SESSIONS_DIR
 from teleclaude.types.commands import (
     RestartAgentCommand,
+    RestartAgentResult,
     ResumeAgentCommand,
     RunAgentCommand,
     StartAgentCommand,
@@ -70,6 +89,32 @@ _AGENT_START_DEBUG_LOG = (
 )
 _AGENT_START_COMMAND_LOG = "Executing agent start command for %s: base_command=%s prompt_len=%s prompt_sha=%s"
 _AGENT_RESTART_READINESS_OPPORTUNITY_EVENT = "agent_restart_readiness_opportunity"
+_HANDOFF_CONTEXT_HEADER = "ADDITIONAL CONTEXT:"
+_HANDOFF_CONTEXT_WITH_TRANSCRIPT_TEMPLATE = (
+    "This session was handed off from {predecessor}. Session: {session_id}. "
+    "The predecessor was {state} for {elapsed_seconds} seconds. "
+    "Read the predecessor transcript tail first: {transcript}. "
+    "Inspect the worktree for uncommitted work, then re-derive state through the role command."
+)
+_HANDOFF_CONTEXT_WITHOUT_TRANSCRIPT_TEMPLATE = (
+    "This session was handed off from {predecessor}. Session: {session_id}. "
+    "The predecessor was {state} for {elapsed_seconds} seconds. "
+    "No predecessor native transcript exists. Inspect the worktree for uncommitted work, "
+    "then re-derive state through the role command."
+)
+_HANDOFF_NO_TRANSCRIPT = "no predecessor agent was recorded"
+_HANDOFF_LIVE_STATE = "live"
+_HANDOFF_CLOSED_STATE = "closed"
+_HANDOFF_RESULT_OK = "ok"
+_HANDOFF_RESULT_ERROR = "error"
+_HANDOFF_RESULT_SELECTED_AGENT = "selected_agent"
+_HANDOFF_CONTEXT_SEPARATOR = "\n\n"
+_HANDOFF_COMMAND_PREFIX = "/"
+_HANDOFF_BACKGROUND_TASK = "agent-handoff-restart"
+_HANDOFF_LAUNCHED_EVENT = "agent_runtime.handoff.launched"
+_HANDOFF_EVENT_SOURCE = "agent_restart"
+_HANDOFF_EVENT_DOMAIN = "agent_runtime"
+_HANDOFF_DELIVERY_FAILURE = "Handoff startup brief could not be delivered; session kept alive for inspection."
 
 
 class _AgentRestartReadinessOpportunityOutcome(StrEnum):
@@ -509,14 +554,119 @@ async def _wait_for_restart_barrier(
         await asyncio.sleep(min(_RESTART_STOP_POLL_INTERVAL_S, remaining_stop_s))
 
 
-@with_session
-async def agent_restart(
+def _handoff_startup_message(session: Session, *, predecessor: str, was_closed: bool, elapsed_seconds: int) -> str:
+    """Compose the successor's ordinary loader plus the one handoff context section."""
+    state = _HANDOFF_CLOSED_STATE if was_closed else _HANDOFF_LIVE_STATE
+    context_template = (
+        _HANDOFF_CONTEXT_WITH_TRANSCRIPT_TEMPLATE
+        if session.native_log_file
+        else _HANDOFF_CONTEXT_WITHOUT_TRANSCRIPT_TEMPLATE
+    )
+    context = context_template.format(
+        predecessor=predecessor,
+        session_id=session.session_id,
+        state=state,
+        elapsed_seconds=elapsed_seconds,
+        transcript=session.native_log_file,
+    )
+    context_block = _HANDOFF_CONTEXT_SEPARATOR.join((_HANDOFF_CONTEXT_HEADER, context))
+    if session.command is None:
+        return context_block
+    loader = compose_command_loader(session.command, session.working_slug or "")
+    return _HANDOFF_CONTEXT_SEPARATOR.join((loader, context_block))
+
+
+async def _resolve_handoff_restart(
     session: Session,
     cmd: RestartAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
-) -> tuple[bool, str | None]:
+) -> RestartAgentResult:
+    """Resolve a successor before scheduling any session mutation."""
+    command = f"{_HANDOFF_COMMAND_PREFIX}{session.command}" if session.command else None
+    role_info = None
+    if session.command:
+        try:
+            role_info = COMMAND_ROLE_MAP.get(SlashCommand(session.command))
+        except ValueError:
+            role_info = None
+    role = role_info[0] if role_info else None
+    dispatch_mode, preferred_agent = classify_fresh_agent_preference(
+        cmd.agent_name,
+        caller_system_role=cmd.caller_system_role,
+    )
+    try:
+        decision = await resolve_agent_dispatch(
+            mode=dispatch_mode,
+            role=role,
+            command=command,
+            preferred_agent=preferred_agent,
+            fixed_agent=None,
+            candidate_order=None,
+            entry_point=SessionEntryPoint.AGENT_HANDOFF,
+        )
+    except AgentDispatchFailure as exc:
+        emit_agent_dispatch_decision(
+            stage=AgentDispatchStage.RESOLVED,
+            outcome=AgentDispatchOutcome.REFUSED,
+            reason=exc.reason,
+            request_id=cmd.request_id,
+            session_id=session.session_id,
+            dispatch_mode=dispatch_mode,
+            entry_point=SessionEntryPoint.AGENT_HANDOFF,
+            preferred_agent=preferred_agent,
+        )
+        return {_HANDOFF_RESULT_OK: False, _HANDOFF_RESULT_ERROR: str(exc), _HANDOFF_RESULT_SELECTED_AGENT: None}
+
+    emit_agent_dispatch_decision(
+        stage=AgentDispatchStage.RESOLVED,
+        outcome=AgentDispatchOutcome.SELECTED,
+        reason=decision.reason,
+        selected_agent=decision.agent,
+        request_id=cmd.request_id,
+        session_id=session.session_id,
+        dispatch_mode=dispatch_mode,
+        entry_point=SessionEntryPoint.AGENT_HANDOFF,
+        preferred_agent=preferred_agent,
+        fallback_reason=decision.fallback_reason,
+        candidate_order=decision.candidate_order,
+        order_branch=decision.order_branch,
+    )
+    predecessor = session.active_agent or _HANDOFF_NO_TRANSCRIPT
+    reference_time = session.closed_at if session.closed_at is not None else session.last_activity
+    elapsed_seconds = int((datetime.now(UTC) - reference_time).total_seconds()) if reference_time else 0
+    startup_message = _handoff_startup_message(
+        session,
+        predecessor=predecessor,
+        was_closed=session.closed_at is not None,
+        elapsed_seconds=max(elapsed_seconds, 0),
+    )
+    successor_command = RestartAgentCommand(
+        session_id=session.session_id,
+        agent_name=decision.agent,
+        self_restart=True,
+        fresh_start=True,
+        startup_message=startup_message,
+        request_id=cmd.request_id,
+    )
+    asyncio.create_task(
+        agent_restart(successor_command, client, execute_terminal_command),
+        name=_HANDOFF_BACKGROUND_TASK,
+    )
+    return {_HANDOFF_RESULT_OK: True, _HANDOFF_RESULT_ERROR: None, _HANDOFF_RESULT_SELECTED_AGENT: decision.agent}
+
+
+@with_session
+async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered stop-and-relaunch transaction
+    session: Session,
+    cmd: RestartAgentCommand,
+    client: "AdapterClient",
+    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
+) -> tuple[bool, str | None] | RestartAgentResult:
     """Restart an AI agent in the session by resuming the native session."""
+    if cmd.handoff:
+        return await _resolve_handoff_restart(session, cmd, client, execute_terminal_command)
+
     active_agent = session.active_agent
     native_session_id = session.native_session_id
 
@@ -532,7 +682,7 @@ async def agent_restart(
         await client.send_message(session, f"❌ {error}")
         return False, error
 
-    if not native_session_id:
+    if not native_session_id and not cmd.fresh_start:
         error = "Cannot restart agent: no native session ID stored. Start the agent first."
         logger.error("agent_restart blocked (session=%s): %s", session.session_id, error)
         event_bus.emit(
@@ -654,7 +804,7 @@ async def agent_restart(
         agent=target_agent,
         thinking_mode=restart_mode,
         exec=False,
-        native_session_id=native_session_id,
+        native_session_id=None if cmd.fresh_start else native_session_id,
         profile=_get_session_profile(session),
         resolved_flags=launch.flags,
     )
@@ -728,6 +878,37 @@ async def agent_restart(
                 await client.send_message(
                     session,
                     "Agent process exited after restart before the continuation stimulus could be sent; session kept alive for inspection.",
+                )
+                return
+
+            if cmd.startup_message:
+                delivery_result = await tmux_io.inject_user_turn(
+                    session,
+                    cmd.startup_message,
+                    active_agent=target_agent,
+                )
+                emit_agent_startup_delivery_decision(
+                    session_id=session.session_id,
+                    agent_name=target_agent,
+                    delivery_mode=AgentStartupDeliveryMode.HANDOFF,
+                    outcome=delivery_result.outcome.value,
+                    reason=delivery_result.reason.value,
+                    stage=delivery_result.stage.value,
+                    paste_performed=delivery_result.paste_performed,
+                    platform_enter_sent=delivery_result.platform_enter_sent,
+                    existing_input_preserved=delivery_result.existing_input_preserved,
+                )
+                if not delivery_result.succeeded:
+                    await client.send_message(session, _HANDOFF_DELIVERY_FAILURE)
+                    return
+                await db.update_last_activity(session.session_id)
+                await emit_event(
+                    _HANDOFF_LAUNCHED_EVENT,
+                    source=_HANDOFF_EVENT_SOURCE,
+                    level=EventLevel.OPERATIONAL,
+                    domain=_HANDOFF_EVENT_DOMAIN,
+                    visibility=EventVisibility.LOCAL,
+                    payload={"session_id": session.session_id, "successor": target_agent},
                 )
                 return
 

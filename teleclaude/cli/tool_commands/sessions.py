@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import time
+from typing import TypedDict
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -42,6 +43,12 @@ _BULK_END_TIMEOUT_S = 30.0
 _BULK_END_POLL_INTERVAL_S = 0.25
 _SESSION_LIST_ADAPTER = TypeAdapter(list[SessionDTO])
 _SESSION_END_DUPLICATE_TARGET_ERROR = "Error: do not specify more than one session_id"
+
+
+class _RestartRequestBody(TypedDict, total=False):
+    self_restart: bool
+    handoff: bool
+    agent: str | None
 
 
 def handle_sessions(args: list[str]) -> None:
@@ -551,7 +558,11 @@ def handle_sessions_restart(args: list[str]) -> None:
             print("Error: could not resolve 'self' — $TMPDIR/teleclaude_identity.json not found", file=sys.stderr)
             raise SystemExit(1)
 
-    body = {"self_restart": True} if self_restart else None
+    handoff = parsed.has(F.FLAG_HANDOFF)
+    handoff_agent = parsed.value(F.FLAG_HANDOFF)
+    body: _RestartRequestBody | None = {"handoff": True, "agent": handoff_agent} if handoff else None
+    if self_restart:
+        body = {"self_restart": True, "handoff": True, "agent": handoff_agent} if handoff else {"self_restart": True}
     try:
         data = tool_api_call(
             "POST",

@@ -101,6 +101,9 @@ class SessionsView(
         Binding("R", "restart_session", "Restart"),
         Binding("R", "restart_project", "Restart All"),
         Binding("R", "restart_all", "Restart All"),
+        Binding("o", "handoff_session", "Handoff"),
+        Binding("o", "handoff_project", "Handoff All"),
+        Binding("O", "handoff_session_select", "Handoff As"),
     ]
 
     preview_session_id = reactive[str | None](None)

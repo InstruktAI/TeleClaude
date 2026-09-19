@@ -14,6 +14,10 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_io
 from teleclaude.core.agent_readiness import await_agent_readiness
+from teleclaude.core.agent_startup_delivery import (
+    AgentStartupDeliveryMode,
+    emit_agent_startup_delivery_decision,
+)
 from teleclaude.core.agents import _get_agent_config
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
@@ -56,7 +60,6 @@ logger = get_logger(__name__)
 AGENT_START_STABILIZE_QUIET_S = 3.0  # How long output must be quiet to be "stable"
 AGENT_PROMPT_READY_TIMEOUT_S = config.daemon.agent_prompt_ready_timeout_s
 _AGENT_STARTUP_DELIVERY_OPPORTUNITY_EVENT = "agent_startup_delivery_opportunity"
-_AGENT_STARTUP_DELIVERY_DECIDED_EVENT = "agent_startup_delivery_decided"
 
 
 class _AgentStartupDeliveryOpportunityOutcome(StrEnum):
@@ -69,12 +72,6 @@ class _AgentStartupDeliveryOpportunityReason(StrEnum):
     """Closed reasons for a fresh startup delivery opportunity."""
 
     POST_LAUNCH_MESSAGE = "post_launch_message"
-
-
-class _AgentStartupDeliveryMode(StrEnum):
-    """Closed delivery modes for startup message placement."""
-
-    FRESH_START = "fresh_start"
 
 
 class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
@@ -467,12 +464,10 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             message,
             active_agent=session.active_agent,
         )
-        logger.info(
-            _AGENT_STARTUP_DELIVERY_DECIDED_EVENT,
+        emit_agent_startup_delivery_decision(
             session_id=session_id,
             agent_name=agent_name,
-            delivery_mode=_AgentStartupDeliveryMode.FRESH_START.value,
-            composer_observed=True,
+            delivery_mode=AgentStartupDeliveryMode.FRESH_START,
             outcome=delivery_result.outcome.value,
             reason=delivery_result.reason.value,
             stage=delivery_result.stage.value,

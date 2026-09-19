@@ -249,8 +249,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "restart": CommandDef(
                 desc="Restart an agent session ('self' to restart own session)",
-                args="<session_id>",
-                flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
+                args="<session_id> [--handoff [<agent>]]",
+                flags=[F.FLAG_HELP, F.FLAG_COMPUTER, F.FLAG_HANDOFF],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ADMIN),
             ),
             "result": CommandDef(

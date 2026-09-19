@@ -88,6 +88,7 @@ class FlagArity(StrEnum):
 
     SWITCH = "switch"
     VALUE = "value"
+    OPTIONAL_VALUE = "optional_value"
     REPEATED = "repeated"
     GREEDY = "greedy"
 

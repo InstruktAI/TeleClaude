@@ -55,6 +55,7 @@ from teleclaude.types.commands import (
     KeysCommand,
     ProcessMessageCommand,
     RestartAgentCommand,
+    RestartAgentResult,
     ResumeAgentCommand,
     RunAgentCommand,
     SetVoiceFocusCommand,
@@ -205,7 +206,7 @@ class CommandService:
     async def resume_agent(self, cmd: ResumeAgentCommand) -> None:
         await resume_agent(cmd, self.client, self._execute_terminal_command)
 
-    async def restart_agent(self, cmd: RestartAgentCommand) -> tuple[bool, str | None]:
+    async def restart_agent(self, cmd: RestartAgentCommand) -> tuple[bool, str | None] | RestartAgentResult:
         return await agent_restart(cmd, self.client, self._execute_terminal_command)
 
     async def run_agent_command(self, cmd: RunAgentCommand) -> None:

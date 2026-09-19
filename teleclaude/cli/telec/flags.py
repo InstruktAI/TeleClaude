@@ -23,6 +23,7 @@ SWITCH = FlagArity.SWITCH
 VALUE = FlagArity.VALUE
 REPEATED = FlagArity.REPEATED
 GREEDY = FlagArity.GREEDY
+OPTIONAL_VALUE = FlagArity.OPTIONAL_VALUE
 
 SCOPE_VALUES = "|".join(member.value for member in SnippetScope)
 
@@ -95,6 +96,7 @@ FLAG_RUN_ADDITIONAL_CONTEXT = Flag(
 )
 FLAG_REVIVE_AGENT = Flag("--agent", desc="Treat session_id as native agent session ID for the given agent", arity=VALUE)
 FLAG_REVIVE_ATTACH = Flag("--attach", desc="Attach to tmux session after revive", arity=SWITCH)
+FLAG_HANDOFF = Flag("--handoff", desc="Continue with automatic or named successor agent", arity=OPTIONAL_VALUE)
 
 FLAG_RESULT_FORMAT = Flag("--format", desc="Output format: markdown, html", arity=VALUE)
 FLAG_RESULT_CONTENT_ALIAS = Flag(

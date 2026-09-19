@@ -190,6 +190,7 @@ class SessionEntryPoint(StrEnum):
     WHATSAPP = "whatsapp"
     CRON = "cron"
     SYSTEM = "system"
+    AGENT_HANDOFF = "agent_handoff"
 
 
 FIELD_KIND = "kind"

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from inspect import signature
-from typing import Any, Optional, cast
+from typing import Any, Optional, TypedDict, cast
 from uuid import uuid4
 
 from teleclaude.core.command_input import CommandInputMode
@@ -38,6 +38,14 @@ class ResponseMode(str, Enum):
     IMMEDIATE = "immediate"
     FIRE_AND_FORGET = "fire_and_forget"
     RECEIPT = "receipt"
+
+
+class RestartAgentResult(TypedDict):
+    """Immediate outcome of a restart request that resolves a successor."""
+
+    ok: bool
+    error: str | None
+    selected_agent: str | None
 
 
 @dataclass(kw_only=True)
@@ -523,6 +531,10 @@ class RestartAgentCommand(InternalCommand):
     session_id: str
     agent_name: str | None = None
     self_restart: bool = False
+    handoff: bool = False
+    caller_system_role: str | None = None
+    fresh_start: bool = False
+    startup_message: str | None = None
 
     def __init__(
         self,
@@ -530,17 +542,25 @@ class RestartAgentCommand(InternalCommand):
         session_id: str,
         agent_name: str | None = None,
         self_restart: bool = False,
+        handoff: bool = False,
+        caller_system_role: str | None = None,
+        fresh_start: bool = False,
+        startup_message: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(
             command_type=CommandType.RESTART_AGENT,
             request_id=request_id,
-            response_mode=ResponseMode.FIRE_AND_FORGET,
+            response_mode=ResponseMode.IMMEDIATE if handoff else ResponseMode.FIRE_AND_FORGET,
             completion_event="agent.restart_dispatched",
         )
         self.session_id = session_id
         self.agent_name = agent_name
         self.self_restart = self_restart
+        self.handoff = handoff
+        self.caller_system_role = caller_system_role
+        self.fresh_start = fresh_start
+        self.startup_message = startup_message
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = []

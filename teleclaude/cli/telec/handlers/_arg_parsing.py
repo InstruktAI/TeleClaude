@@ -61,7 +61,9 @@ class ParsedArgs:
         return self._values.get(flag.long, ())
 
 
-def parse_command_args(node: CommandDef, args: Sequence[str]) -> ParsedArgs:
+def parse_command_args(  # noqa: C901 - declared flag arities intentionally share one ordered parser
+    node: CommandDef, args: Sequence[str]
+) -> ParsedArgs:
     """Parse ``args`` against ``node``'s declared flags.
 
     Tokenizer rules, left to right:
@@ -126,6 +128,14 @@ def parse_command_args(node: CommandDef, args: Sequence[str]) -> ParsedArgs:
                     raise CliUsageError(f"Missing value for {flag.long}")
                 values[flag.long] = [tokens[index + 1]]
                 index += 2
+                continue
+            if flag.arity is FlagArity.OPTIONAL_VALUE:
+                values.setdefault(flag.long, [])
+                if index + 1 < count and not _is_option_like(tokens[index + 1]):
+                    values[flag.long] = [tokens[index + 1]]
+                    index += 2
+                    continue
+                index += 1
                 continue
             if flag.arity is FlagArity.REPEATED:
                 if index + 1 >= count or _is_option_like(tokens[index + 1]):

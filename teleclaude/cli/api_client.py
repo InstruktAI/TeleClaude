@@ -36,6 +36,7 @@ from teleclaude.api_models import (
     TuiBootstrapDTO,
     TuiBootstrapPillar,
 )
+from teleclaude.api_session_actions_models import AgentRestartResponseDTO
 from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeData, UnsubscribeRequest, WsEvent
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
@@ -783,15 +784,25 @@ class _TelecSessionAPI:
         data = resp.json()
         return data.get("status") == "success"
 
-    async def agent_restart(self, session_id: str, computer: str | None = None) -> bool:
+    async def agent_restart(
+        self,
+        session_id: str,
+        computer: str | None = None,
+        *,
+        handoff: bool = False,
+        agent: str | None = None,
+    ) -> AgentRestartResponseDTO:
         """Restart the agent in a session while preserving conversation state."""
         params = {"computer": computer} if computer else None
         resp = await self._request(
             "POST",
             f"/sessions/{session_id}/agent-restart",
-            request_options=RequestOptions(params=params),
+            request_options=RequestOptions(
+                params=params,
+                json_body={"handoff": handoff, "agent": agent} if handoff else None,
+            ),
         )
-        return resp.status_code in {200, 202}
+        return TypeAdapter(AgentRestartResponseDTO).validate_json(resp.text)
 
 
 class _TelecRuntimeAPI:

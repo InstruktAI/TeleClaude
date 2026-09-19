@@ -249,6 +249,25 @@ class RestartSessionsRequest(Message):
         self.session_ids = session_ids
 
 
+class HandoffSessionRequest(Message):
+    """Request a fresh successor for one existing session."""
+
+    def __init__(self, session_id: str, computer: str, agent: str | None = None) -> None:
+        super().__init__()
+        self.session_id = session_id
+        self.computer = computer
+        self.agent = agent
+
+
+class HandoffSessionsRequest(Message):
+    """Request automatic successors across sessions sharing one source agent."""
+
+    def __init__(self, computer: str, session_ids: list[str]) -> None:
+        super().__init__()
+        self.computer = computer
+        self.session_ids = session_ids
+
+
 class ReviveSessionRequest(Message):
     """Request to revive a headless session (create its tmux pane)."""
 

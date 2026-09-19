@@ -57,6 +57,7 @@ from teleclaude.api_models import (
     SessionMessagesDTO,
     VoiceInputRequest,
 )
+from teleclaude.api_session_actions_models import AgentRestartRequest
 from teleclaude.config import config
 from teleclaude.constants import (
     COMMAND_ROLE_MAP,
@@ -139,6 +140,9 @@ SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
 
 REMOTE_SESSION_MESSAGES_COMMAND = "get_session_messages"
 NO_REMOTE_COMPUTER = ""
+_HANDOFF_STATUS_ACCEPTED = "accepted"
+_HANDOFF_COMPLETION_EVENT = "agent.restart_dispatched"
+_HANDOFF_RESPONSE_OK, _HANDOFF_RESPONSE_ERROR, _HANDOFF_RESPONSE_SELECTED_AGENT = "ok", "error", "selected_agent"
 
 _STATE = SimpleNamespace(client=None)
 router = APIRouter()
@@ -540,7 +544,8 @@ async def agent_restart(
     http_request: Request,
     session_id: str,
     computer: str | None = Query(None),
-    _identity: CallerIdentity = Depends(clearance_sessions_agent_restart),
+    restart_request: AgentRestartRequest | None = None,
+    identity: CallerIdentity = Depends(clearance_sessions_agent_restart),
 ) -> dict[str, str]:
     """Restart agent in session (preserves conversation via --resume)."""
     await check_session_access(http_request, session_id)
@@ -554,21 +559,47 @@ async def agent_restart(
                 raise HTTPException(status_code=404, detail="Session not found")
             if not session.active_agent:
                 raise HTTPException(status_code=409, detail="No active agent for this session")
-            if not session.native_session_id:
+            if not session.native_session_id and not (restart_request and restart_request.handoff):
                 raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
         # Dispatch work asynchronously - don't await
-        body = await http_request.json() if http_request.headers.get("content-type") == "application/json" else {}
-        self_restart = bool(body.get("self_restart")) if isinstance(body, dict) else False
+        handoff = restart_request.handoff if restart_request else False
+        self_restart = restart_request.self_restart if restart_request else False
+        agent = restart_request.agent.value if restart_request and restart_request.agent else None
+        request_id = str(uuid.uuid4())
         metadata = _build_metadata()
         cmd = CommandMapper.map_api_input(
             "agent_restart",
-            {"session_id": session_id, "args": [], "self_restart": self_restart},
+            {
+                "session_id": session_id,
+                "args": [],
+                "self_restart": self_restart,
+                "handoff": handoff,
+                "agent": agent,
+                "caller_system_role": identity.system_role,
+            },
             metadata,
             computer=computer,
         )
+        cmd.request_id = request_id
+        if handoff:
+            result = await dispatch_command(_STATE.client, cmd)
+            if not isinstance(result, dict):
+                raise RuntimeError("Handoff restart returned no immediate result")
+            if not result.get(_HANDOFF_RESPONSE_OK):
+                detail = result.get(_HANDOFF_RESPONSE_ERROR)
+                raise HTTPException(status_code=409, detail=str(detail))
+            selected_agent = result.get(_HANDOFF_RESPONSE_SELECTED_AGENT)
+            return {
+                "status": _HANDOFF_STATUS_ACCEPTED,
+                "selected_agent": str(selected_agent),
+                "completion_event": cmd.completion_event or _HANDOFF_COMPLETION_EVENT,
+            }
         asyncio.create_task(dispatch_command(_STATE.client, cmd), name=f"agent-restart-{session_id}")
-        return {"status": "accepted", "completion_event": cmd.completion_event or "agent.restart_dispatched"}
+        return {
+            "status": _HANDOFF_STATUS_ACCEPTED,
+            "completion_event": cmd.completion_event or _HANDOFF_COMPLETION_EVENT,
+        }
     except HTTPException:
         raise
     except Exception as e:
