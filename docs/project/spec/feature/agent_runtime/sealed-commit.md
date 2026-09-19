@@ -649,13 +649,6 @@ Then the message has Human-Involved: false appended
 
 #### UC-CGIP-20 — Human-Involved is true when the committing agent declares it
 
-<!-- planned-change:action-scoped-human-involvement -->
-```
-Given telec code commit is invoked with --human-involved
-When the commit lands
-Then the message has Human-Involved: true appended
-```
-<!-- change:action-scoped-human-involvement -->
 ```gherkin
 Given the committing agent invokes telec code commit with a non-empty human-involvement reason
 And the session's latest authenticated human input falls within the code-owned recency window
@@ -665,9 +658,7 @@ And the reason remains only in the invoking session's transcript
 And the reason is absent from the commit message, command output, logs, events, and every other durable record
 And the declaration changes no authorization, scope, gate, or later action
 ```
-<!-- /planned-change:action-scoped-human-involvement -->
 
-<!-- planned:action-scoped-human-involvement -->
 #### UC-CGIP-38 — Human involvement requires a non-empty invocation reason
 
 ```gherkin
@@ -698,7 +689,6 @@ When the same session later creates another commit without a human-involvement d
 Then the later commit records Human-Involved: false
 And no session, todo, branch, parent act, or earlier commit supplies the later value
 ```
-<!-- /planned:action-scoped-human-involvement -->
 
 #### UC-CGIP-21 — A pre-existing tool-shaped line in the message is left untouched, not enforced against
 

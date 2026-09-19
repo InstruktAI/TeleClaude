@@ -71,17 +71,11 @@ description: Decide whether a todo should exist, audit that decision at preparat
   is not filed from an agent's inference. Without the decision, do not create
   the todo; escalate the proposal to the human as
   `software-development/policy/process-change-authority` directs.
-<!-- planned-change:action-scoped-human-involvement -->
-- **Declare genuine human involvement at filing.** An agent whose filing was
-  seen, requested, or shaped by a human passes `--human-involved`. Omitting the
-  flag declares the filing agent-initiated for later audit.
-<!-- change:action-scoped-human-involvement -->
 - **Declare genuine human involvement only on the filing act.** An agent whose
   filing was seen, requested, or shaped by a human uses the creation surface's
   involvement declaration. Omitting it declares the filing agent-initiated for
   later audit. A session, lineage, parent todo, or preceding act never supplies
   the filing's value.
-<!-- /planned-change:action-scoped-human-involvement -->
 
 - **The creation surfaces interrogate before creating.** Creation is pipeline
   entry for every kind: the lifecycle runner dispatches preparation as soon as

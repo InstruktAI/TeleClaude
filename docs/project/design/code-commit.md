@@ -200,13 +200,11 @@ Sealed contract — exactly:
 - `--approved` — agent-owned sealed-gate acknowledgment. Absence triggers
   commit-first and post-commit review-routing guidance; it is not a human
   approval signal.
-<!-- planned:action-scoped-human-involvement -->
 - `--human-involved <reason>` — an action-scoped audit declaration accepted
   only when the reason is non-empty and authenticated human input is within the
   code-owned recency window. The reason is consumed for invocation validation
   and remains only in the invoking session transcript; the commit carries only
   the existing boolean footer.
-<!-- /planned:action-scoped-human-involvement -->
 - `--include <path> [<path> ...]` — declare files outside the resolved
   workspace scope that must be in this commit (e.g., a file the human
   collaboratively edited that the scope heuristic missed). Each declared

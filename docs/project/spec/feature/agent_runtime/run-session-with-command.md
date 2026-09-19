@@ -340,7 +340,6 @@ And the session's recorded command and title carry the command exactly as dispat
 
 <!-- /planned:agent-artifact-source-layout -->
 
-<!-- planned:action-scoped-human-involvement -->
 #### UC-CLR14: Command loaders carry the authenticated dispatch door
 
 ```gherkin
@@ -351,7 +350,6 @@ And direct human invocation is distinguishable from daemon or agent dispatch
 And caller-supplied prose cannot promote a daemon or agent dispatch to direct-human invocation
 And additional context remains complete and carries no entry-mode or involvement meaning
 ```
-<!-- /planned:action-scoped-human-involvement -->
 
 #### Dispatch privilege enforcement
 

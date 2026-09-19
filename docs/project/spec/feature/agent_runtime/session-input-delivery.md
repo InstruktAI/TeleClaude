@@ -300,7 +300,6 @@ And pane readiness and submission do not themselves mark the child active
 And the child becomes active only from its declared runtime-start observation
 ```
 
-<!-- planned:action-scoped-human-involvement -->
 #### UC-SID15: Human-input recency excludes machine-authored turns
 
 ```gherkin
@@ -319,7 +318,6 @@ When the context is delivered to the agent
 Then the complete caller-supplied details remain available to that session
 And their presence, absence, or wording changes no human-involvement declaration or recency result
 ```
-<!-- /planned:action-scoped-human-involvement -->
 
 ### Cross-context references
 

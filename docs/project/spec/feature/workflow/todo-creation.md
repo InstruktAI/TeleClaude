@@ -32,11 +32,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 
 - `--hold` — **hidden specialist control.** Creates an **active** todo (roadmap `status="active"`) whose hold flag is set with `hold_audit.source=creation`, so the lifecycle router consumes the creation event without dispatch and the lifecycle runner skips the slug until the hold is released via `telec todo update <slug> --release`. Unlike `--icebox` it does not park the todo in the icebox: the todo carries normal state and its `input` artifact, and stays visible as an active held row. It is mutually exclusive with `--icebox`. It is reserved for live-human prepare orchestration (a human driving an agent to own a new todo's prepare phase). Hidden-ness is a property of the structured flag surfaces: it is suppressed from the usage line, the Options table, and generated command tables, while the create Notes explain it as the create-time parking flag for todos fleshed out progressively.
 
-<!-- planned-change:action-scoped-human-involvement -->
-- `--human-involved` — valid only for agent-session callers (the `agent` door); a human door derives involvement and ignores the flag. It is the filing agent's declaration that a human was in the conversation that produced the filing — saw it, asked for it, or shaped it. Omitting it records `human_involved=false`, deliberately: a forgotten flag lands the todo in the human's agent-initiated audit bucket rather than hiding an autonomous filing.
-<!-- change:action-scoped-human-involvement -->
 - `--human-involved <reason>` — valid only for agent-session callers (the `agent` door); a human door derives involvement and ignores the flag. The reason must be non-empty and authenticated human input must fall within the code-owned recency window. The reason remains only in the invoking session's transcript and is never written to the todo, its artifacts, events, logs, output, or UI. Omitting the flag records `human_involved=false`; the declaration applies only to this creation act and never propagates through its lifecycle.
-<!-- /planned-change:action-scoped-human-involvement -->
 
 - **`telec todo design [<slug>]`** (and the deprecated alias `co-create`) — runs the creative state machine. It does not create a todo entry on its own; it inspects creative state for the slug (or auto-selects the next creative work item from the todo list) and returns the next-action instruction. Todo scaffolding for design work happens upstream through `create`.
 
@@ -62,11 +58,7 @@ The workflow service emits the event with this payload:
 
 - `lineage` — the complete creation lineage in one value: the chain-root authority plus, when an agent session was the hands, that acting session. A direct human filing carries the human root alone; an agent filing under human lineage carries both the human root and the acting session in the same value; a root with no human is legitimate only for a job-runner filing. The human root is denormalized in the value so it stays resolvable after the acting session is garbage-collected. Never null: a create whose caller identity resolves to neither a human nor a session fails loudly.
 - `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `web`, `agent`, or `split`. Never declared by the caller. A todo created while an agent processes deferrals records `agent` like any other agent filing — the door records how the todo came into existence, not which todo preceded it.
-<!-- planned-change:action-scoped-human-involvement -->
-- `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`, `web`). For the `agent` door it defaults to `false`; `--human-involved` is the filing agent's declaration that a human was in the conversation that produced the filing — saw it, asked for it, or shaped it.
-<!-- change:action-scoped-human-involvement -->
 - `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`, `web`). For the `agent` door it defaults to `false` and becomes `true` only from an admissible action-scoped declaration on this creation call. It is never inherited from the session, lineage, parent todo, or any preceding act.
-<!-- /planned-change:action-scoped-human-involvement -->
 - `context` — door-specific reference data, never identity: the parent todo slug for the `split` door, derived from its `--group` signal; absent for every other door.
 
 - `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.
@@ -373,15 +365,6 @@ And a filing agent that omits the flag for a human-shaped conversation produces 
 
 #### UC-WTC22: Human-involved agent filing is declared, not inferred
 
-<!-- planned-change:action-scoped-human-involvement -->
-```gherkin
-Given an agent files a todo from a conversation a human was part of — saw it, asked for it, or shaped it
-When the agent passes `--human-involved` on the create or bug-report call
-Then `human_involved` is recorded `true`
-And `lineage` still records the full chain (human root plus acting session)
-And `entry_point` remains `agent` — involvement never rewrites the door
-```
-<!-- change:action-scoped-human-involvement -->
 ```gherkin
 Given an agent files a todo from input a human shaped
 And the session's latest authenticated human input falls within the code-owned recency window
@@ -392,9 +375,7 @@ And the reason is absent from the todo, its artifacts, events, logs, output, and
 And `lineage` still records the full chain while `entry_point` remains `agent`
 And the declaration supplies no involvement value to preparation, work, review, integration, or any later filing
 ```
-<!-- /planned-change:action-scoped-human-involvement -->
 
-<!-- planned:action-scoped-human-involvement -->
 #### UC-WTC31: Agent filing refuses an inadmissible involvement declaration
 
 ```gherkin
@@ -415,7 +396,6 @@ When any later lifecycle act or another filing occurs without its own admissible
 Then that later act records its own default involvement value
 And the todo's creation record supplies no authorization, approval, or inherited involvement
 ```
-<!-- /planned:action-scoped-human-involvement -->
 
 #### UC-WTC23: A lineage-less create fails loudly
 

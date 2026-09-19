@@ -84,14 +84,9 @@ normal completion or material communication wakes the next action. See
   intent is concrete enough.
 - Session was invoked via `/next-prepare [slug]` (direct human invocation) or
   auto-spawned by the daemon (dump-mode entry).
-<!-- planned-change:action-scoped-human-involvement -->
-- Session `additional_context` carries `human_in_loop: true | false`.
-  Default `true`.
-<!-- change:action-scoped-human-involvement -->
 - The authenticated dispatch door distinguishes direct human invocation from
   daemon or agent dispatch. Additional context carries no entry-mode,
   identity, presence, or involvement semantics.
-<!-- /planned-change:action-scoped-human-involvement -->
 
 ## Steps
 
@@ -100,22 +95,6 @@ normal completion or material communication wakes the next action. See
 Before doing anything else, resolve which of three live-entry modes this session
 is in — the slug's presence and the human's presence determine the posture:
 
-<!-- planned-change:action-scoped-human-involvement -->
-- **No slug + human present.** The conversation itself is the source for
-  `@input`. Shape a concrete todo with the human, and once the intent is
-  concrete create it held with the hidden specialist control
-  `telec todo create <slug> <content> --kind <kind> --hold --reason "<why this waits, or the gate or owner it waits on>"`.
-  The `--hold` keeps the runner from claiming the new todo before you continue,
-  while the reason records why the brake exists. Then continue as the owning
-  prepare orchestrator from Step 1.
-- **Slug + human present and no `human_in_loop: false`.** Treat this as the
-  human reassessing or refining that todo, not autonomous continuation. Do not
-  call `telec todo prepare {slug}` before assessing the conversation and the
-  human's intent for the slug; advance only once that intent is clear, then
-  proceed from Step 1.
-- **Slug + `human_in_loop: false`.** Daemon standin path: proceed directly
-  from the artifacts through the prepare state machine (Step 1 onward).
-<!-- change:action-scoped-human-involvement -->
 - **No slug + direct human invocation.** The conversation itself is the source
   for `@input`. Shape a concrete todo with the human, and once the intent is
   concrete create it held with the hidden specialist control
@@ -131,7 +110,6 @@ is in — the slug's presence and the human's presence determine the posture:
   artifacts through the prepare state machine (Step 1 onward). A later direct
   human contribution governs only the act it addresses and does not rewrite
   the session's launch door or any involvement record.
-<!-- /planned-change:action-scoped-human-involvement -->
 
 `--hold` is the create-time dispatch brake reserved for this orchestration
 context; release it with `telec todo update <slug> --release` once the todo is
@@ -187,17 +165,6 @@ viability check:
   - Input is empty, placeholder text, or matches a known smoke-test pattern.
 
 - **Mode-dependent resolution:**
-<!-- planned-change:action-scoped-human-involvement -->
-  - `human_in_loop: false` (standin) → **hard-stop and escalate.** Do not
-    dispatch intake. The PO emulator has no way to fill the gap and a human
-    cannot sanity-check the result. Surface to the user: "Input too sparse
-    for standin mode; needs human elaboration or removal." Stop the prepare
-    flow.
-  - `human_in_loop: true` → **soft-stop and elicit from the user before
-    dispatch.** Point the user at `@input` (do not paste it back), name the
-    gap, ask one direct question to surface the goal/actor/outcome. Update
-    the input artifact with the elaborated text, then proceed.
-<!-- change:action-scoped-human-involvement -->
   - Stand-in entry → **hard-stop and escalate.** Do not dispatch intake. The PO
     emulator has no basis to fill the gap and no direct human conversation is
     available to complete it. Surface: "Input too sparse for stand-in mode;
@@ -206,7 +173,6 @@ viability check:
     human at `@input` (do not paste it back), name the gap, ask one direct
     question to surface the goal/actor/outcome. Update the input artifact with
     the elaborated text, then proceed.
-<!-- /planned-change:action-scoped-human-involvement -->
 
 Substantive inputs (clear intent, concrete outcome, identifiable actor — even
 if short) pass the gate and proceed to Step 1a.
@@ -293,14 +259,9 @@ decisions. On confirm, stamp `prd_approved`. On refinement, capture the delta,
 rewrite the PRD, and let the machine invalidate and rerun `prd_review` before
 presenting it again.
 
-<!-- planned-change:action-scoped-human-involvement -->
-In standin mode, agents can draft and review but cannot stamp
-`prd_approved`; the chain waits for the human at the same gate.
-<!-- change:action-scoped-human-involvement -->
 An agent can draft and review but never stamps `prd_approved` without the
 human's direct approval of that PRD in the live conversation. The dispatch door
 does not supply, withhold, or propagate that approval.
-<!-- /planned-change:action-scoped-human-involvement -->
 
 ### 5. Skip phases that don't earn their place
 
@@ -394,18 +355,6 @@ state, not a declaration that the human owns its recovery.
 - **Input changed after creation audit.** Repeat Step 0a before deriving or
   re-deriving preparation artifacts.
 
-<!-- planned-change:action-scoped-human-involvement -->
-- **Input fails the viability gate in standin mode.** Do not dispatch intake.
-  Surface the gap to the user by referencing `@input` (do not paste its
-  text), and recommend either elaboration (re-dump with substance) or
-  removal (`telec todo remove {slug}`). The prepare flow stops until the
-  input is fixed or the todo is removed.
-- **Input fails the viability gate in human-in-loop mode.** Stop before
-  dispatch, reference `@input` (do not paste it), and ask one direct
-  question to surface the missing goal/actor/outcome. Update the input
-  artifact with the human's elaboration, then repeat the authority and kind
-  gates before entering the routed lane.
-<!-- change:action-scoped-human-involvement -->
 - **Input fails the viability gate after stand-in entry.** Do not dispatch
   intake. Surface the gap by referencing `@input` (do not paste its text), and
   recommend either human elaboration or removal (`telec todo remove {slug}`).
@@ -415,7 +364,6 @@ state, not a declaration that the human owns its recovery.
   question to surface the missing goal/actor/outcome. Update the input artifact
   with the human's elaboration, then repeat the authority and kind gates before
   entering the routed lane.
-<!-- /planned-change:action-scoped-human-involvement -->
 - **State machine returns an unfamiliar recommendation.** Read its governing
   contract and route any unresolved technical discrepancy to its agent owner
   under `general/policy/human-contract`; do not improvise a state transition.
@@ -426,19 +374,11 @@ state, not a declaration that the human owns its recovery.
   substitute for reviewer verification or establish human ownership.
 - **Human disengages mid-flow.** State machine retains current state; next
   session resumes where things were left.
-<!-- planned-change:action-scoped-human-involvement -->
-- **Conflict between standin-produced artifact and real human's intent.**
-  When the human refines a standin-produced artifact substantially, treat
-  the refinement as authoritative and re-derive downstream — even if
-  downstream had already been auto-produced in standin mode. The human's
-  stamp is the source of truth.
-<!-- change:action-scoped-human-involvement -->
 - **Conflict between a stand-in-produced artifact and later human intent.**
   When the human refines a stand-in-produced artifact substantially, treat the
   refinement as authoritative and re-derive downstream — even if downstream
   had already been auto-produced. The human's artifact-level decision is the
   source of truth for that refinement only.
-<!-- /planned-change:action-scoped-human-involvement -->
 
 ## See Also
 

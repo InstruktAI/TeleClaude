@@ -19,18 +19,11 @@ The tests are conjunctive by design. Each one alone admits a wide class of facts
 
 ### What the flag is, and is not
 
-<!-- planned-change:action-scoped-human-involvement -->
-- Involvement is **declared by the acting agent**, never derived. The agent asserts that a human was in the conversation that produced the fact — saw it, asked for it, or shaped it.
-- Involvement is **derived mechanically only at a human door** — an entry point the platform itself stamps, where a human is the caller by construction.
-- Involvement is **never inferred from identity**. A principal without a system root means a human started the session, not that a human is present for this act. Lineage names delegated authority and never records involvement (`general/concept/lineage-vs-authorship`).
-- The flag is **orthogonal to authorization**. It records whether a human shaped the fact; it is never consulted to permit an operation. It widens no brief, suspends no ownership, and unfreezes no contract — authorization reads the acting agent and the object alone, and every caller is an agent (`general/principle/trust-and-guardrails`).
-<!-- change:action-scoped-human-involvement -->
 - Involvement is **declared for one fact by the acting agent**, never derived from the session or a preceding act. Absence is the default; a declaration says only that a human saw, asked for, or shaped the fact being created now.
 - Involvement is **derived mechanically only at a human door** — an entry point the platform itself stamps, where the human is the caller of that fact-producing act by construction.
 - Involvement is **never inherited or propagated**. A declaration on a session launch, todo, artifact, commit, parent session, or earlier operation supplies no declaration for any later fact.
 - Involvement is **never inferred from identity**. A principal without a system root means a human started the session, not that a human shaped a later act. Lineage names delegated authority and never records involvement (`general/concept/lineage-vs-authorship`).
 - The flag is **orthogonal to authorization**. It records whether a human shaped the fact; it is never consulted to permit an operation. It widens no brief, suspends no ownership, and unfreezes no contract — authorization reads the acting agent and the object alone, and every caller is an agent (`general/principle/trust-and-guardrails`).
-<!-- /planned-change:action-scoped-human-involvement -->
 
 ### The record fails toward audit
 
