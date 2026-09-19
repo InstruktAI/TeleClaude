@@ -306,7 +306,7 @@ And unrelated person YAML, global environment, and other person secret files rem
 Given a rendered section carrying both required and optional fields
 And one required field is unconfigured while another is configured
 When the section renders
-Then each required field is marked as required and no optional field is
+Then each required field is marked with an asterisk and no optional field carries an asterisk
 And the unconfigured required field is distinguishable from the configured one without revealing either value
 And the marking reflects the same required-field rule the write path enforces, so the two cannot disagree
 ```
