@@ -16,7 +16,6 @@ plain click, Shift-click, Space, or Enter revives the session instead of
 previewing it. The keyboard `k` binding closes the selected session through a
 confirmation modal.
 
-<!-- planned:session-handoff -->
 Three keyboard gestures hand a session to a different agent. `o` on a session
 row hands that session off with the successor chosen automatically; `o` on a
 project header asks the operator to choose an agent and hands off every live
@@ -24,7 +23,6 @@ session of that project currently running on it; `O` on a session row opens the
 existing start-session modal with the session fixed and the agent selector live,
 so the operator names the successor. The handoff itself is owned by
 `project/spec/feature/agent_runtime/agent-handoff`; the view only requests it.
-<!-- /planned:session-handoff -->
 
 Close and revive are distinct destinations that must not fire from one gesture.
 The fast-close chord routes to the session-close funnel; the headless-revive
@@ -72,7 +70,6 @@ And the view requests no preview for that session
 And the view requests no close for that session
 ```
 
-<!-- planned:session-handoff -->
 #### UC-SACT-4: Pressing `o` on a session row hands the session off automatically
 
 ```gherkin
@@ -103,4 +100,3 @@ Then the existing start-session modal opens with the session fixed and the agent
 And confirming with an agent chosen requests exactly one handoff for that session naming that agent
 And dismissing the modal sends no request
 ```
-<!-- /planned:session-handoff -->

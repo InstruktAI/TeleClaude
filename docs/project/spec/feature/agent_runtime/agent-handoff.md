@@ -1,8 +1,8 @@
 ---
-description: Hand a TeleClaude session to a different agent under the same session id — a fresh successor launch whose transcript chains onto the predecessor's, with ownership, child links, claims, and lineage untouched.
+description: Hand a TeleClaude session to a different agent under the same session
+  id — a fresh successor launch whose transcript chains onto the predecessor's, with
+  ownership, child links, claims, and lineage untouched.
 visibility: public
-delivered_by:
-  - session-handoff
 ---
 
 # Agent Handoff — Spec

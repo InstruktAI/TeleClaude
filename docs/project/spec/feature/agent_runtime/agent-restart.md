@@ -21,17 +21,6 @@ A special `self` form is dispatched by orchestrators that want to restart themse
 
 ### Use cases
 
-<!-- planned-change:session-handoff -->
-#### Eligibility gates
-
-```
-Given a caller asks the agent_runtime service to restart the agent for a session
-When the service loads the session row
-Then if the row does not exist, the request is refused with a "session not found" error
-And if no active agent is bound to the session, the request is refused with a "no active agent for this session" error
-And if no native session identifier has been recorded, the request is refused with a "no native session ID — start agent first" error
-```
-<!-- change:session-handoff -->
 #### UC-AR13: Restart eligibility distinguishes handoff from native resume
 
 ```
@@ -42,17 +31,7 @@ And if no active agent is bound to the session, the request is refused with a "n
 And if no native session identifier has been recorded and the request does not ask for a handoff, the request is refused with a "no native session ID — start agent first" error
 And a request that asks for a handoff is not refused for a missing native session identifier; the agent-handoff feature spec owns that path
 ```
-<!-- /planned-change:session-handoff -->
 
-<!-- planned-change:session-handoff -->
-```
-Given the eligibility gates pass
-When the service accepts the request
-Then the service dispatches the restart asynchronously and returns immediately
-And the response carries an acceptance signal and the name of the completion event consumers can subscribe to
-And no readiness information is encoded in the acceptance response
-```
-<!-- change:session-handoff -->
 #### UC-AR14: Accepted restart names its asynchronous completion event
 
 ```
@@ -62,21 +41,7 @@ Then the service dispatches the restart asynchronously and returns immediately
 And the response carries an acceptance signal and the name of the completion event consumers can subscribe to
 And no readiness information is encoded in the acceptance response
 ```
-<!-- /planned-change:session-handoff -->
 
-<!-- planned-change:session-handoff -->
-#### Process replacement (kill side)
-
-```
-Given the restart has been dispatched
-When the handler stops the running agent
-Then it resolves the host pane's child process and sends a termination signal directly to that process
-And it does NOT route the termination through pane keystrokes (that path is swallowed when the agent is mid-tool-execution)
-And it waits for the host shell prompt to return before relaunching
-And if the shell does not become ready, the handler aborts with "Agent did not exit after termination. Restart aborted."
-And the abort is emitted as an error event and as an in-session message
-```
-<!-- change:session-handoff -->
 #### UC-AR15: Restart waits for direct process termination before relaunch
 
 ```
@@ -88,21 +53,7 @@ And it waits for the host shell prompt to return before relaunching
 And if the shell does not become ready, the handler aborts with "Agent did not exit after termination. Restart aborted."
 And the abort is emitted as an error event and as an in-session message
 ```
-<!-- /planned-change:session-handoff -->
 
-<!-- planned-change:session-handoff -->
-#### Process replacement (launch side)
-
-```
-Given the agent process has exited and the shell is ready
-When the handler relaunches the agent
-Then it constructs the agent command with resume-from-transcript semantics and the session's recorded thinking mode (defaulting to "slow")
-And it sends the command into the existing host pane
-And the host pane, session_id, native session identifier, and transcript chain are preserved
-And the agent CLI replays its own transcript on startup so the resumed agent observes its prior context
-And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
-```
-<!-- change:session-handoff -->
 #### UC-AR16: Restart relaunches in place with native transcript continuity
 
 ```
@@ -114,7 +65,6 @@ And the host pane, session_id, native session identifier, and transcript chain a
 And the agent CLI replays its own transcript on startup so the resumed agent observes its prior context
 And the handler emits the `agent_runtime.agent.restarted` event with CLUSTER visibility
 ```
-<!-- /planned-change:session-handoff -->
 
 #### UC-AR1: Self-restart wakes the resumed agent without foregrounding the continuation
 
@@ -161,24 +111,6 @@ And no continuation stimulus is injected
 And the resumed agent acts on whatever its replayed transcript dictates
 ```
 
-<!-- planned-change:session-handoff -->
-#### Closed / detached / headless recovery
-
-```
-Given the target session row is marked closed
-When the restart runs
-Then it clears the closed marker, sets the lifecycle status to "headless", and re-reads the row before continuing
-And revival of a closed session is a side effect of restart, not a separate code path
-```
-
-```
-Given the row's recorded host pane no longer exists
-When the restart runs
-Then it clears the recorded host pane reference, sets the lifecycle status to "headless", and re-reads the row
-And it adopts a fresh host pane in headless mode before relaunch
-And if adoption fails, the restart reports "Failed to adopt headless session."
-```
-<!-- change:session-handoff -->
 #### UC-AR17: Restart revives a closed session through headless state
 
 ```
@@ -197,18 +129,7 @@ Then it clears the recorded host pane reference, sets the lifecycle status to "h
 And it adopts a fresh host pane in headless mode before relaunch
 And if adoption fails, the restart reports "Failed to adopt headless session."
 ```
-<!-- /planned-change:session-handoff -->
 
-<!-- planned-change:session-handoff -->
-#### Agent-enablement check
-
-```
-Given the target agent is no longer enabled in configuration
-When the restart consults the enablement gate
-Then it aborts with that gate's error message
-And an error event is emitted (sourced from agent restart) and a failure-marker message is sent to the session
-```
-<!-- change:session-handoff -->
 #### UC-AR19: Restart fails when the target agent is disabled
 
 ```
@@ -217,7 +138,6 @@ When the restart consults the enablement gate
 Then it aborts with that gate's error message
 And an error event is emitted (sourced from agent restart) and a failure-marker message is sent to the session
 ```
-<!-- /planned-change:session-handoff -->
 
 #### UC-AR5: Restart a session owned by a remote computer
 
@@ -230,13 +150,6 @@ And the acceptance response and the agent_runtime.agent.restarted completion eve
 And no restart is attempted against the local computer, which does not own the session
 ```
 
-<!-- planned-change:session-handoff -->
-```
-Given a caller asks to restart a session but names no owning computer for a session this computer does not own
-When the restart request is resolved
-Then the request is refused with a "session not found" error rather than silently executing locally
-```
-<!-- change:session-handoff -->
 #### UC-AR20: Restart refuses a remote session when its owner is omitted
 
 ```
@@ -244,7 +157,6 @@ Given a caller asks to restart a session but names no owning computer for a sess
 When the restart request is resolved
 Then the request is refused with a "session not found" error rather than silently executing locally
 ```
-<!-- /planned-change:session-handoff -->
 
 #### UC-AR6: Kill-side restart abort notifies the operator
 

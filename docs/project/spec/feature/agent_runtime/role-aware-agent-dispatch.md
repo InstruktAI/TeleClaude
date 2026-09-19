@@ -195,15 +195,6 @@ And TeleClaude does not substitute another agent
 
 #### UC-RAAD-7: Fixed continuation never substitutes
 
-<!-- planned-change:session-handoff -->
-```gherkin
-Given an agent caller resumes, revives, restarts, attaches, or continues work bound to a runtime
-Or a job declares a fixed agent
-When the bound agent cannot continue
-Then TeleClaude does not select a different agent
-And the caller receives an agent-specific refusal or continuation status
-```
-<!-- change:session-handoff -->
 ```gherkin
 Given an agent caller resumes, revives, attaches, continues work bound to a runtime, or restarts without asking for a handoff
 Or a job declares a fixed agent
@@ -211,7 +202,6 @@ When the bound agent cannot continue
 Then TeleClaude does not select a different agent
 And the caller receives an agent-specific refusal or continuation status
 ```
-<!-- /planned-change:session-handoff -->
 
 #### UC-RAAD-8: Every fresh-session entry point uses one policy
 
@@ -370,9 +360,7 @@ And the resolved session may be the same agent implementation the earlier sessio
   reports whether an existing binding can continue.
 - Quota collection and ranking extend this eligibility contract separately. They never
   make an agent eligible when this contract excludes it.
-<!-- planned:session-handoff -->
 - A restart that asks for a handoff is the one continuation that may select a
   different agent. It runs this contract's fresh-session resolution for the
   session's command as it is, owns no eligibility or exclusion logic of its own,
   and is specified by `project/spec/feature/agent_runtime/agent-handoff`.
-<!-- /planned:session-handoff -->
