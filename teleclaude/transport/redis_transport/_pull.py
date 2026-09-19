@@ -9,7 +9,16 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.core.models import JsonDict, MessageMetadata, ProjectInfo, SessionSnapshot
+from teleclaude.core.models import (
+    JsonDict,
+    MessageMetadata,
+    PeerCapabilityMissing,
+    ProjectInfo,
+    SessionFinalOutput,
+    SessionSnapshot,
+)
+
+_GET_SESSION_FINAL_OUTPUT_REQUEST = "get_session_final_output"
 
 logger = get_logger(__name__)
 
@@ -355,3 +364,40 @@ class _PullMixin:  # pyright: ignore[reportUnusedClass]
 
         except _PULL_EXCEPTIONS as e:
             logger.warning("Failed to pull todos from %s:%s: %s", computer, project_path, e)
+
+    async def fetch_session_final_output(
+        self, computer: str, session_id: str
+    ) -> SessionFinalOutput | PeerCapabilityMissing:
+        """Pull a remote session's current final output.
+
+        Returns `PeerCapabilityMissing` when the peer does not (or no longer)
+        answer this request — an older peer's generic unsupported-command
+        error included, since that peer never advertised the capability.
+        """
+        missing = PeerCapabilityMissing(computer=computer, request=_GET_SESSION_FINAL_OUTPUT_REQUEST)
+        try:
+            message_id = await self.send_request(
+                computer, _GET_SESSION_FINAL_OUTPUT_REQUEST, MessageMetadata(), session_id=session_id
+            )
+            response_data = await self.client.read_response(message_id, timeout=3.0, target_computer=computer)
+            envelope = self._parse_envelope(computer, response_data, "session-final-output")
+            if envelope is None:
+                return missing
+
+            if envelope.get("status") == "error":
+                logger.warning("get_session_final_output error from %s: %s", computer, envelope.get("error"))
+                return missing
+
+            data = envelope.get("data")
+            if not isinstance(data, dict):
+                logger.warning("Invalid session-final-output data from %s: %s", computer, type(data))
+                return missing
+
+            return SessionFinalOutput(
+                session_id=str(data.get("session_id") or session_id),
+                last_output_raw=str(data["last_output_raw"]) if data.get("last_output_raw") else None,
+                last_output_stop_at=(str(data["last_output_stop_at"]) if data.get("last_output_stop_at") else None),
+            )
+        except _PULL_EXCEPTIONS as e:
+            logger.warning("Failed to fetch final output from %s: %s", computer, e)
+            return missing

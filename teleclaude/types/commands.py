@@ -29,6 +29,7 @@ class CommandType(str, Enum):
     GET_SESSION_DATA = "get_session_data"
     CLOSE_SESSION = "close_session"
     SYSTEM = "system_command"
+    SET_VOICE_FOCUS = "set_voice_focus"
 
 
 class ResponseMode(str, Enum):
@@ -660,6 +661,22 @@ class SystemCommand(InternalCommand):
         return payload
 
 
+@dataclass(kw_only=True)
+class SetVoiceFocusCommand(InternalCommand):
+    """Intent to durably override a person's voice focus to one session.
+
+    Cross-computer envelope for the "Listen here" control and any other
+    explicit-selection surface; the focus record lives on the master.
+    """
+
+    command_type: CommandType = field(init=False, default=CommandType.SET_VOICE_FOCUS)
+    person_slug: str
+    session_id: str
+
+    def to_payload(self) -> dict[str, object]:
+        return {"person_slug": self.person_slug, "session_id": self.session_id}
+
+
 COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.CREATE_SESSION: CreateSessionCommand,
     CommandType.HANDLE_VOICE: HandleVoiceCommand,
@@ -674,6 +691,7 @@ COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.GET_SESSION_DATA: GetSessionDataCommand,
     CommandType.CLOSE_SESSION: CloseSessionCommand,
     CommandType.SYSTEM: SystemCommand,
+    CommandType.SET_VOICE_FOCUS: SetVoiceFocusCommand,
 }
 
 

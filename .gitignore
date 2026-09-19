@@ -11,6 +11,9 @@ build/
 .tmp/
 tmp/
 
+# Node
+node_modules/
+
 # Virtual Environment
 uv.*
 !uv.lock

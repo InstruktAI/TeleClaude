@@ -323,6 +323,7 @@ class TTSServiceConfig:
     params: dict[str, object] | None = None  # guard: loose-dict - Model-specific kwargs are dynamic.
     cli_bin: str | None = None
     instruct: str = "A clear, natural conversational voice."
+    discord_voice: str | None = None  # Room voice; None excludes this service from the room chain
 
 
 @dataclass

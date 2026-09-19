@@ -76,6 +76,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
             "version": info.version,
             "channel": info.channel,
             "capability_set": info.capability_set,
+            "is_master": info.is_master,
         }
 
         # Set key with auto-expiry

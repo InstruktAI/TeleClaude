@@ -81,6 +81,19 @@ class VoiceAssignment(SQLModel, table=True):
     assigned_at: datetime | None = None
 
 
+class VoiceFocus(SQLModel, table=True):
+    """voice_focus table."""
+
+    __tablename__ = "voice_focus"
+    __table_args__ = {"extend_existing": True}
+
+    person_slug: str = Field(primary_key=True)
+    focus_id: str
+    focused_session_id: str | None = None
+    basis: str = "derived"
+    set_at: datetime | None = None
+
+
 class VoiceTranscription(SQLModel, table=True):
     """voice_transcriptions table."""
 

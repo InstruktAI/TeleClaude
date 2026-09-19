@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import importlib
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import datetime
 from types import ModuleType
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -21,14 +22,21 @@ from teleclaude.adapters.discord import (
     MessageOperationsMixin,
 )
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
+from teleclaude.adapters.discord.listen_control import ListenHereView
+from teleclaude.adapters.discord.voice_room import VoiceRoom
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
 from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
+from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
-from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField
+from teleclaude.core.event_bus import EventHandler, event_bus
+from teleclaude.core.events import AgentEventContext, SystemCommand, SystemCommandContext, VoiceFocusSetContext
+from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField, MessageMetadata
+from teleclaude.types.commands import SetVoiceFocusCommand
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
     _gfm_closers,
@@ -137,6 +145,11 @@ class DiscordAdapter(
         self._gateway_task: asyncio.Task[object] | None = None
         self._ready_event = asyncio.Event()
         self._client: DiscordClientLike | None = None
+        self._voice_room: VoiceRoom | None = None
+        self._voice_focus_handler: EventHandler | None = None
+        self._voice_agent_event_handler: EventHandler | None = None
+        self._voice_system_command_handler: EventHandler | None = None
+        self._registered_listen_message_ids: set[int] = set()
         # project_path -> discord_forum_id mapping, built at startup
         self._project_forum_map: dict[str, int] = {}
         # discord_forum_id -> project_path mapping, built at startup
@@ -172,8 +185,13 @@ class DiscordAdapter(
         intents.guilds = True
         intents.messages = True
         intents.message_content = True
+        intents.voice_states = True
 
         self._client = self._discord.Client(intents=intents)  # pyright: ignore[reportIncompatibleVariableOverride]
+        self._voice_room = VoiceRoom(self.client, self._client)
+        self._voice_focus_handler = event_bus.subscribe("voice_focus_set", self._handle_voice_focus_set)
+        self._voice_agent_event_handler = event_bus.subscribe("agent_event", self._handle_voice_agent_event)
+        self._voice_system_command_handler = event_bus.subscribe("system_command", self._handle_voice_system_command)
         self._register_cancel_slash_command()
         self._register_gateway_handlers()
         self._ready_event.clear()
@@ -200,12 +218,134 @@ class DiscordAdapter(
         await self._qos_scheduler.stop()
         self._tree = None
         self._registered_launcher_message_ids.clear()
+        self._registered_listen_message_ids.clear()
+        if self._voice_focus_handler is not None:
+            event_bus.unsubscribe("voice_focus_set", self._voice_focus_handler)
+            self._voice_focus_handler = None
+        if self._voice_agent_event_handler is not None:
+            event_bus.unsubscribe("agent_event", self._voice_agent_event_handler)
+            self._voice_agent_event_handler = None
+        if self._voice_system_command_handler is not None:
+            event_bus.unsubscribe("system_command", self._voice_system_command_handler)
+            self._voice_system_command_handler = None
+        if self._voice_room is not None:
+            await self._voice_room.close()
+            self._voice_room = None
         if self._client is not None:
             await self._client.close()
         if self._gateway_task and not self._gateway_task.done():
             self._gateway_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._gateway_task
+
+    async def _handle_voice_focus_set(self, _event: str, context: VoiceFocusSetContext) -> None:
+        if self._voice_room is not None:
+            await self._voice_room.focus_changed(context.session_id)
+
+    async def _handle_voice_agent_event(self, _event: str, context: AgentEventContext) -> None:
+        if context.event_type.value == "agent_stop" and self._voice_room is not None:
+            await self._voice_room.play_current(context.session_id)
+
+    async def _handle_voice_system_command(self, _event: str, context: SystemCommandContext) -> None:
+        payload = context.payload
+        if (
+            self._voice_room is not None
+            and context.command == SystemCommand.SESSION_OUTPUT_STOPPED
+            and payload is not None
+        ):
+            await self._voice_room.handle_observed_stop(payload.session_id)
+
+    async def send_output_update(
+        self,
+        session: Session,
+        output: str,
+        started_at: float,
+        last_output_changed_at: float,
+        is_final: bool = False,
+        exit_code: int | None = None,
+        render_markdown: bool = False,
+        multi_message: bool = False,
+        delivery_ts: object | None = None,
+        output_metadata: MessageMetadata | None = None,
+    ) -> str | None:
+        result = await super().send_output_update(
+            session,
+            output,
+            started_at,
+            last_output_changed_at,
+            is_final,
+            exit_code,
+            render_markdown,
+            multi_message,
+            delivery_ts=cast("datetime | None", delivery_ts),
+            output_metadata=output_metadata,
+        )
+        if is_final and result:
+            await self._attach_listen_control(session, result)
+        return result
+
+    async def _attach_listen_control(self, session: Session, output_message_id: str) -> None:
+        dc = self._dc(session)
+        if dc.thread_id is None or self._client is None:
+            return
+        channel = await self._get_channel(dc.thread_id)
+        send = getattr(channel, "send", None)
+        if not callable(send):
+            return
+        control = await self._require_async_callable(send, label="Discord listen control send")(
+            "Listen here", view=ListenHereView(session.session_id, self._handle_listen_click)
+        )
+        control_id = getattr(control, "id", None)
+        add_view = getattr(self._client, "add_view", None)
+        if isinstance(control_id, int) and callable(add_view):
+            add_view(ListenHereView(session.session_id, self._handle_listen_click), message_id=control_id)
+            self._registered_listen_message_ids.add(control_id)
+            await db.set_system_setting(f"discord_listen:{session.session_id}", str(control_id))
+        logger.info(
+            "discord.listen.attached",
+            session_id=session.session_id,
+            output_message_id=output_message_id,
+            control_message_id=control_id,
+        )
+
+    async def _handle_listen_click(self, interaction: object, session_id: str) -> None:
+        message_id = self._parse_optional_int(getattr(getattr(interaction, "message", None), "id", None))
+        if message_id is None or message_id not in self._registered_listen_message_ids:
+            logger.info("discord.listen.ownership_decided", owned=False, reason="foreign_message")
+            return
+        user_id = str(getattr(getattr(interaction, "user", None), "id", ""))
+        identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
+        if not identity.person_slug:
+            return
+        logger.info("discord.listen.received", session_id=session_id)
+        target = config.computer.name if config.computer.is_master else None
+        if target is None:
+            for peer in await self.client.discover_peers():
+                if peer.get("is_master") is True and isinstance(peer.get("name"), str):
+                    target = cast(str, peer["name"])
+                    break
+        if target is None:
+            logger.info("discord.listen.unroutable", reason="no_master_advertised")
+            return
+        command = SetVoiceFocusCommand(person_slug=identity.person_slug, session_id=session_id)
+        command.computer = target
+        await dispatch_command(self.client, command)
+        logger.info("discord.listen.ownership_decided", owned=True, reason="master_routed")
+
+    async def _restore_listen_controls(self) -> None:
+        """Re-register each persisted exact control message after a restart."""
+        if self._client is None:
+            return
+        add_view = getattr(self._client, "add_view", None)
+        if not callable(add_view):
+            return
+        for session in await db.list_sessions(
+            computer_name=config.computer.name, include_closed=True, include_headless=True
+        ):
+            control_id = self._parse_optional_int(await db.get_system_setting(f"discord_listen:{session.session_id}"))
+            if control_id is not None:
+                add_view(ListenHereView(session.session_id, self._handle_listen_click), message_id=control_id)
+                self._registered_listen_message_ids.add(control_id)
 
     def _get_enabled_agents(self) -> list[str]:
         return [name for name, agent_cfg in config.agents.items() if agent_cfg.enabled]

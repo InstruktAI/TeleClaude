@@ -1030,6 +1030,19 @@ install_deps_only() {
 
     (cd "$INSTALL_DIR" && uv run --group dev python -c "print(\"Python environment ready\")")
 
+    check_node
+    setup_corepack
+    VOICE_BRIDGE_DIR="$INSTALL_DIR/teleclaude/adapters/discord/voice_bridge"
+    if [ -d "$VOICE_BRIDGE_DIR" ]; then
+        print_info "Installing Discord voice bridge dependencies..."
+        if (cd "$VOICE_BRIDGE_DIR" && pnpm install --frozen-lockfile) >> "$LOG_FILE" 2>&1; then
+            print_success "Discord voice bridge dependencies installed"
+        else
+            print_error "Failed to install Discord voice bridge dependencies"
+            exit 1
+        fi
+    fi
+
     install_hook pre-commit
     install_hook post-commit
     install_hook post-merge

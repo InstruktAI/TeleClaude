@@ -3,6 +3,7 @@
 import asyncio
 import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -13,13 +14,18 @@ from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.voice_assignment import VoiceConfig
+from teleclaude.tts import backends
 from teleclaude.tts.audio_focus import AudioFocusCoordinator
 from teleclaude.tts.queue_runner import run_tts_with_lock_async
+from teleclaude.tts.render_cache import RenderCacheKey, dir_for, lookup
 
 if TYPE_CHECKING:
     from teleclaude.chiptunes.manager import ChiptunesManager
 
 logger = get_logger(__name__)
+
+_VOICE_REPLY_SERVICE_SKIPPED_EVENT = "voice_reply_service_skipped"
+_DEFAULT_SERVICE_PRIORITY = ["elevenlabs", "openai", "macos", "pyttsx3"]
 
 
 @dataclass(slots=True)
@@ -28,6 +34,16 @@ class _SpeechJob:
     service_chain: list[tuple[str, str | None]]
     session_id: str
     primary_service: str
+
+
+@dataclass(frozen=True, slots=True)
+class RenderedReply:
+    """One rendered Discord-room reply artifact and the service/voice that produced it."""
+
+    path: Path
+    service: str
+    voice: str
+    artifact_reused: bool
 
 
 class TTSManager:
@@ -127,6 +143,47 @@ class TTSManager:
             return (service_name, voice.voice_id or voice.name)
 
         logger.debug("No TTS services with available voices")
+        return None
+
+    async def render_for_discord(self, session_id: str, text: str, output_version: str) -> RenderedReply | None:
+        """Render a reply for the configured Discord room, never for host playback.
+
+        Walks ``service_priority`` filtered to backends that can render and
+        services that declare a room voice (``discord_voice``); first success
+        wins. No per-session voice assignment is read or written, and no
+        fallback promotion occurs here — the room speaks with one fixed,
+        configured voice per service, never a per-session identity.
+        """
+        priority = self.tts_config.service_priority or _DEFAULT_SERVICE_PRIORITY
+        for service_name in priority:
+            service_cfg = self.tts_config.services.get(service_name)
+            if not service_cfg or not service_cfg.enabled:
+                continue
+            if service_cfg.discord_voice is None:
+                logger.info(_VOICE_REPLY_SERVICE_SKIPPED_EVENT, service=service_name, reason="no_room_voice")
+                continue
+
+            backend = backends.get_backend(service_name)
+            if not backend or not getattr(backend, "can_render", False):
+                logger.info(_VOICE_REPLY_SERVICE_SKIPPED_EVENT, service=service_name, reason="cannot_render")
+                continue
+
+            voice_entry = next((v for v in (service_cfg.voices or []) if v.name == service_cfg.discord_voice), None)
+            voice_param = (voice_entry.voice_id or voice_entry.name) if voice_entry else service_cfg.discord_voice
+
+            key = RenderCacheKey(
+                session_id=session_id, output_version=output_version, service=service_name, voice=voice_param
+            )
+            cached = lookup(key)
+            if cached is not None:
+                return RenderedReply(path=cached, service=service_name, voice=voice_param, artifact_reused=True)
+
+            out_dir = dir_for(key)
+            rendered_path = await asyncio.to_thread(backend.render, text, voice_param, out_dir)
+            if rendered_path is not None:
+                return RenderedReply(path=rendered_path, service=service_name, voice=voice_param, artifact_reused=False)
+
+        logger.warning("No TTS service could render a Discord reply", extra={"session_id": session_id})
         return None
 
     async def _get_or_assign_voice(self, session_id: str) -> VoiceConfig | None:

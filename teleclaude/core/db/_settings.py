@@ -118,6 +118,42 @@ class DbSettingsMixin:
             result = await db_session.exec(stmt)
             return {(row[0], row[1] or "") for row in result.all()}
 
+    # Voice focus methods
+
+    async def get_voice_focus_row(self, person_slug: str) -> db_models.VoiceFocus | None:
+        """Get the durable voice-focus row for a person, or None if never created."""
+        async with self._session() as db_session:
+            return await db_session.get(db_models.VoiceFocus, person_slug)
+
+    async def upsert_voice_focus_row(
+        self,
+        person_slug: str,
+        *,
+        focus_id: str,
+        focused_session_id: str | None,
+        basis: str,
+        set_at: datetime,
+    ) -> None:
+        """Create or update a person's durable voice-focus row (focus_id is immutable)."""
+        stmt = sqlite_insert(db_models.VoiceFocus).values(
+            person_slug=person_slug,
+            focus_id=focus_id,
+            focused_session_id=focused_session_id,
+            basis=basis,
+            set_at=set_at,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["person_slug"],
+            set_={
+                "focused_session_id": stmt.excluded.focused_session_id,
+                "basis": stmt.excluded.basis,
+                "set_at": stmt.excluded.set_at,
+            },
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
     async def cleanup_stale_voice_assignments(self) -> int:
         """Delete voice assignments that do not belong to an open session."""
         live_conditions = (

@@ -62,6 +62,32 @@ class PeerInfo:
     version: str | None = None
     channel: str | None = None
     capability_set: list[str] = field(default_factory=list)
+    is_master: bool | None = None
+
+
+@dataclass(frozen=True)
+class ObservedStopPublication:
+    """Result of publishing a session's agent-stop to its observer, if any."""
+
+    published: bool
+    observer: str | None
+
+
+@dataclass(frozen=True)
+class SessionFinalOutput:
+    """A remote session's current final output, as answered by its host."""
+
+    session_id: str
+    last_output_raw: str | None
+    last_output_stop_at: str | None
+
+
+@dataclass(frozen=True)
+class PeerCapabilityMissing:
+    """A remote operation could not be attempted because the peer never advertised it."""
+
+    computer: str
+    request: str
 
 
 def _int_or_none(value: object) -> int | None:

@@ -325,7 +325,28 @@ def _parse_tts_voices(raw_voices: object) -> list[TTSServiceVoiceConfig]:
     return voices
 
 
-def _parse_tts_service(service_data: object) -> TTSServiceConfig | None:
+def _parse_tts_service_discord_voice(
+    service_name: str,
+    service_data: dict[str, object],  # guard: loose-dict - YAML config tree
+    voices: list[TTSServiceVoiceConfig],
+) -> str | None:
+    """Resolve the one voice this service speaks with in the room.
+
+    Absent declares no room voice and excludes a voiceless service from the
+    room chain by construction; the configured-voice rule is preserved by
+    exclusion, never an implicit backend default.
+    """
+    if not voices:
+        return None
+    declared = _parse_optional_str(service_data.get("discord_voice"))
+    if declared is None:
+        return voices[0].name
+    if declared not in {voice.name for voice in voices}:
+        raise ValueError(f"tts.services.{service_name}.discord_voice '{declared}' is not in this service's voices")
+    return declared
+
+
+def _parse_tts_service(service_name: str, service_data: object) -> TTSServiceConfig | None:
     if not isinstance(service_data, dict):
         return None
     voices = _parse_tts_voices(service_data.get("voices", []))
@@ -339,6 +360,7 @@ def _parse_tts_service(service_data: object) -> TTSServiceConfig | None:
         params=params,
         cli_bin=_parse_optional_str(service_data.get("cli_bin")),
         instruct=str(service_data.get("instruct") or "A clear, natural conversational voice."),
+        discord_voice=_parse_tts_service_discord_voice(service_name, service_data, voices),
     )
 
 
@@ -347,7 +369,7 @@ def _parse_tts_services(raw_services: object) -> dict[str, TTSServiceConfig]:
     if not isinstance(raw_services, dict):
         return services
     for service_name, service_data in raw_services.items():
-        parsed = _parse_tts_service(service_data)
+        parsed = _parse_tts_service(service_name, service_data)
         if parsed is not None:
             services[service_name] = parsed
     return services

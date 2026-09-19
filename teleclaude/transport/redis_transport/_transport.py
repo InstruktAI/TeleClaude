@@ -63,7 +63,7 @@ class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
     - Comp2 → XADD output:{computer}:{message_id} → Comp1 reads response for request/response
     """
 
-    _ALLOWED_REFRESH_REASONS = {"startup", "first_heartbeat", "interest", "ttl"}
+    _ALLOWED_REFRESH_REASONS = {"startup", "first_heartbeat", "interest", "ttl", "observed_stop"}
 
     def __init__(self, adapter_client: AdapterClient, task_registry: TaskRegistry | None = None):
         """Initialize Redis transport.

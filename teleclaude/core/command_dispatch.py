@@ -49,6 +49,7 @@ COMMAND_HANDLER_METHODS: dict[CommandType, str] = {
     CommandType.UNSUBSCRIBE_SESSION: "unsubscribe",
     CommandType.CLOSE_SESSION: "close_session",
     CommandType.SYSTEM: "system_command",
+    CommandType.SET_VOICE_FOCUS: "set_voice_focus",
 }
 
 PEER_NAME_FIELD = "name"

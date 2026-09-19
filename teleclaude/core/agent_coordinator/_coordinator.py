@@ -68,6 +68,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _AGENT_STOP_OUTPUT_SUPPRESSED_EVENT = "agent_stop_output_suppressed"
+_SESSION_OBSERVED_STOP_SENT_EVENT = "session_observed_stop_sent"
 _AGENT_STOP_OUTPUT_SUPPRESSED_OUTCOME = "suppressed"
 _AGENT_STOP_OUTPUT_BARE_NOOP_REASON = "bare_noop"
 _HOOK_MESSAGE_KEY = "message"
@@ -688,6 +689,7 @@ class AgentCoordinator(
             payload,
             source_computer,
             suppress_notifications=output_result.is_suppressed,
+            output_version=(stop_timestamp if output_result.has_substantive_output else None),
         )
 
         if not output_result.is_suppressed:
@@ -854,6 +856,7 @@ class AgentCoordinator(
         source_computer: str | None,
         *,
         suppress_notifications: bool,
+        output_version: str | None,
     ) -> None:
         """Complete stop fan-out, listener notification, and forwarding."""
         schedule_debounced_delivery(
@@ -869,6 +872,11 @@ class AgentCoordinator(
         title_raw = payload.raw.get("title")
         title = title_raw if isinstance(title_raw, str) and title_raw else None
         await self._notify_session_listener(session_id, source_computer=source_computer, title_override=title)
+
+        if output_version is not None:
+            publication = await self.client.notify_session_observed_stop(session_id, output_version)
+            if publication.published:
+                logger.info(_SESSION_OBSERVED_STOP_SENT_EVENT, session_id=session_id, observer=publication.observer)
 
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id)

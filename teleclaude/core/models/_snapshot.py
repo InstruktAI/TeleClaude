@@ -104,6 +104,7 @@ class SessionSnapshot(
     initializing_for_seconds: int | None = None
     attention: str | None = None
     procedure: str | None = None
+    last_output_stop_at: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert snapshot to a JSON-compatible dictionary."""
@@ -150,6 +151,7 @@ class SessionSnapshot(
             "initializing_for_seconds": self.initializing_for_seconds,
             "attention": self.attention,
             "procedure": self.procedure,
+            "last_output_stop_at": self.last_output_stop_at,
         }
 
     @classmethod
@@ -220,6 +222,7 @@ class SessionSnapshot(
             initializing_for_seconds=initializing_for_seconds,
             attention=attention,
             procedure=procedure,
+            last_output_stop_at=(session.last_output_stop_at.isoformat() if session.last_output_stop_at else None),
         )
 
     @classmethod
@@ -283,6 +286,7 @@ class SessionSnapshot(
             ),
             attention=str(data.get("attention")) if data.get("attention") else None,
             procedure=str(data.get("procedure")) if data.get("procedure") else None,
+            last_output_stop_at=(str(data.get("last_output_stop_at")) if data.get("last_output_stop_at") else None),
         )
 
 
@@ -340,6 +344,7 @@ class ComputerInfo:
     version: str | None = None
     channel: str | None = None
     capability_set: list[str] = field(default_factory=list)
+    is_master: bool | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict
         """Convert computer info to a JSON-compatible dictionary."""
