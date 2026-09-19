@@ -107,11 +107,10 @@ And the transcript chain rule fires separately if the transcript path also chang
 
 ```gherkin
 Given a native-metadata-update belongs to a managed TeleClaude session
-And the receiver admitted its runtime generation before creating the row
 When the metadata-update handler runs
-Then it applies transcript and native metadata only when the payload provider matches the session's committed active agent
+Then it updates the native session id when that binding changed
+And it archives the previous native transcript before installing a changed transcript path
 And it never changes the active-agent field from hook metadata
-And a mismatched predecessor or unrelated runtime mutates no session field
 ```
 <!-- /planned-change:session-handoff-state-convergence -->
 

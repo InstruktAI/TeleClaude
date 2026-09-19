@@ -97,7 +97,6 @@ And subsequent fetch-batch calls exclude paused sessions
 And claims resume only after depth drops to <= the low watermark
 ```
 
-<!-- planned-change:session-handoff-state-convergence -->
 #### UC-D6: Session-state-mutation events bypass the event bus
 
 ```gherkin
@@ -108,22 +107,7 @@ And the corresponding mutation handler is invoked
 And the entry is removed on success
 And NO event-bus emit happens for these entries
 ```
-<!-- change:session-handoff-state-convergence -->
-#### UC-D6: Session-state mutation is owner-bound and bypasses the event bus
 
-```gherkin
-Given a claimed entry has event type in {checkpoint-seen, native-metadata-update, native-session-refresh}
-When the dispatcher runs
-Then the entry is trusted only because the receiver matched its launch-scoped runtime generation to both the session marker and durable session owner before creating the row
-And native-metadata-update and native-session-refresh additionally validate their provider against the session's committed active agent before mutation
-And a metadata or refresh entry from the predecessor or an unrelated provider is terminally dropped without mutating session state
-And an admitted entry invokes the corresponding mutation handler
-And the entry is removed on success
-And NO event-bus emit happens for these entries
-```
-<!-- /planned-change:session-handoff-state-convergence -->
-
-<!-- planned-change:session-handoff-state-convergence -->
 #### UC-D6b: Non-error agent events use direct coordinator call
 
 ```gherkin
@@ -135,23 +119,7 @@ And the local agent-event coordinator is awaited DIRECTLY
 And the outbox worker only marks the entry delivered AFTER the coordinator returns
 And NO event-bus emit call is made for this path — outbox serialization depends on the coordinator completing before the entry is marked delivered; a fire-and-forget event-bus emit would not provide that guarantee
 ```
-<!-- change:session-handoff-state-convergence -->
-#### UC-D6b: Owner-matched non-error agent events use direct coordinator call
 
-```gherkin
-Given a claimed entry has event type in {agent-session-start, user-prompt-submit, tool-use, agent-stop}
-When the dispatcher runs past the state-mutation fork
-Then the row is known to come from the runtime generation admitted by the receiver
-And it validates the entry's provider against the session's committed active agent as defense in depth
-And every superseded generation or unrelated provider is terminally dropped before activity, stop, polling, or fan-out behavior
-And a matching entry becomes a typed agent payload and agent-event context
-And the local agent-event coordinator is awaited DIRECTLY
-And the outbox worker only marks the entry delivered AFTER the coordinator returns
-And NO event-bus emit call is made for this path
-```
-<!-- /planned-change:session-handoff-state-convergence -->
-
-<!-- planned-change:session-handoff-state-convergence -->
 #### UC-D6c: Agent-error is the only event-bus emit path
 
 ```gherkin
@@ -163,21 +131,6 @@ And the event bus emits the error event with cluster visibility
 And any cluster subscriber to error receives the event asynchronously
 And the entry is then removed by the worker as processed
 ```
-<!-- change:session-handoff-state-convergence -->
-#### UC-D6c: Owner-matched agent-error is the only event-bus emit path
-
-```gherkin
-Given the receiver parsed enough structured identity to resolve a managed TeleClaude session
-And matched the hook's launch-scoped runtime generation to both the session marker and durable session owner under ingress exclusion
-And created a claimed entry with event type agent-error
-When the dispatcher runs past the state-mutation fork
-Then the receiver's runtime-generation admission is the ownership boundary for this internally produced row
-And the error is converted to an error event context containing severity, retryable, code, details, message, and session id
-And the event bus emits that error event with cluster visibility
-And any cluster subscriber to error receives the event asynchronously
-And the entry is then removed by the worker as processed
-```
-<!-- /planned-change:session-handoff-state-convergence -->
 
 #### UC-D7: Retry with exponential backoff on retryable failure
 

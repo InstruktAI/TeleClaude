@@ -158,25 +158,6 @@ And only the active agent, its native session identity, and the transcript chain
 ```
 <!-- /planned:session-handoff-state-convergence -->
 
-<!-- planned:session-handoff-state-convergence -->
-#### UC-AH14: Daemon restart continues the durable handoff phase
-
-```gherkin
-Given the daemon restarts while a session is in handoff-initializing
-When startup reconciles durable session lifecycle state
-Then it restores the session identity marker from the durable predecessor generation
-And completes the existing abort recovery to active when the predecessor still runs or to headless when it does not
-And inbound delivery remains attempt-neutral until that recovery settles
-
-Given the daemon restarts while a session is in handoff-successor-committed
-When startup reconciles durable session lifecycle state
-Then it restores the session identity marker from the durable successor generation
-And launches the already-selected successor fresh with that generation and the persisted handoff brief
-And it does not select again, stop again, drain again, or run ordinary native resume
-And successor readiness delivers the persisted brief, clears it, and releases inbound delivery exactly once
-```
-<!-- /planned:session-handoff-state-convergence -->
-
 ### Cross-context references
 
 - **workflow** — orchestrator ownership and owned-slug resolution key on session row fields the handoff preserves; workflow observes the same session before and after, with a different active agent.

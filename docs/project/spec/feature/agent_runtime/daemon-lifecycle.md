@@ -87,7 +87,6 @@ Then it spawns the following tracked background workers (each wired to a structu
 And only after these are scheduled does the service log that it is running
 ```
 
-<!-- planned-change:session-handoff-state-convergence -->
 #### UC-DL2 — Turn delivery state is reconciled before adapters can emit output
 
 ```
@@ -98,20 +97,6 @@ And every existing session receives an explicit pre-cutover generation before ne
 And restart reconstructs any in-memory scheduling only from durable rows
 And the independently-running agent panes and native transcripts remain the authority for work that continued while the daemon was absent
 ```
-<!-- change:session-handoff-state-convergence -->
-#### UC-DL2 — Turn and interrupted-handoff state are reconciled before delivery resumes
-
-```
-Given the daemon starts with accepted inputs, transcript bindings, output generations, peer cursors, Discord send intents, or an interrupted handoff left by an earlier process
-When staged startup reaches runtime reconciliation
-Then it completes schema migration and durable turn-state reconciliation before adapters, per-session pollers, inbound delivery, hook-outbox delivery, and conversation delivery may emit new output
-And every existing session receives an explicit pre-cutover generation before new-code delivery can write to that session
-And a session in handoff-initializing restores its identity marker from the durable runtime generation and completes the agent-runtime lifecycle's abort-to-active-or-headless recovery
-And a session in handoff-successor-committed restores its marker from the durable successor generation and schedules the already-committed successor for a fresh launch without selection or cutover replay
-And restart reconstructs in-memory scheduling only from durable rows
-And the independently-running agent panes and native transcripts remain the authority for work that continued while the daemon was absent
-```
-<!-- /planned-change:session-handoff-state-convergence -->
 
 #### Orphan sweeps run from the cleanup task, not from startup
 

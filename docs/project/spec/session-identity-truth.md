@@ -47,28 +47,8 @@ Current runtime rule:
   detached. Ownership fails closed: a socket path that cannot be parsed or resolved
   counts as TeleClaude's own, so a dying managed session keeps its attribution
   rather than minting a headless session from its final hooks.
-<!-- planned-change:session-handoff-state-convergence -->
 - A valid marker with pane attachment is a managed-primary invocation. Its native
   identity may refresh the session's canonical native binding.
-<!-- change:session-handoff-state-convergence -->
-- A valid marker with pane attachment is a managed-primary invocation. The marker
-  carries the durable TeleClaude session id and the currently committed runtime
-  generation id. Each launched agent process receives that generation as immutable
-  launch environment, inherited by its hook subprocesses. Before checkpoint
-  evaluation, control delivery, metadata persistence, error enqueue, response
-  emission, or ordinary outbox enqueue, the receiver holds the session ingress
-  range and requires the invocation generation, marker generation, and database
-  generation to match. Native identity remains optional and may refresh the
-  canonical native binding only after this generation proof.
-- Handoff rotates the runtime generation while holding exclusive ingress ownership,
-  commits it with the successor owner, and launches the successor with that value.
-  A same-provider predecessor retains the previous launch value and therefore
-  fails closed. If marker and database publication are interrupted between their
-  two durable writes, their mismatch rejects hooks until recovery restores the
-  marker from the database owner. Daemon startup performs that reconciliation for
-  both durable handoff phases before inbound or hook-outbox delivery begins. The
-  TeleClaude session id remains unchanged.
-<!-- /planned-change:session-handoff-state-convergence -->
 - A valid marker without pane attachment is a managed-descendant invocation. It
   resolves to the marker's TeleClaude session, retains its own native id in the
   hook envelope, and never mints a session or replaces the parent's canonical

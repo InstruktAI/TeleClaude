@@ -139,7 +139,6 @@ Then a "dropped unhandled hook event" debug log is emitted
 And the receiver exits cleanly with no outbox row written
 ```
 
-<!-- planned-change:session-handoff-state-convergence -->
 #### UC-R6: Invalid payload — best-effort error path
 
 ```gherkin
@@ -160,23 +159,6 @@ When the error helper runs
 Then session resolution succeeds and an error outbox row IS enqueued
 But the parse-failure path does NOT supply such data, so this branch is not reached on the parse path
 ```
-<!-- change:session-handoff-state-convergence -->
-#### UC-R6: Invalid payload fails without unproved session attribution
-
-```gherkin
-Given the agent CLI invokes the receiver with a malformed payload
-When the receiver cannot parse enough structured identity to resolve and generation-check a managed session
-Then it logs the receiver error with unknown session
-And enqueues no error outbox row
-And exits with a failure status
-
-Given the receiver parses structured identity and later validation fails
-When it resolves a managed session under the shared ingress range
-And the invocation, marker, and database runtime generations match
-Then it may enqueue one session-addressed agent-error row
-But a generation mismatch or unresolved session is logged and enqueues no row
-```
-<!-- /planned-change:session-handoff-state-convergence -->
 
 #### UC-R7: Receiver runs under the project venv
 
