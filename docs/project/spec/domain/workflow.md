@@ -47,6 +47,32 @@ feature specs remain the current contract.
   context consumes.
 <!-- /planned:agent-artifact-source-layout -->
 
+### Preparation completion provenance
+
+Every transition into PREPARED records the completing prepare orchestrator's
+TeleClaude session id as `prepared_session_id`. The prepare orchestrator is a
+TeleClaude session by contract, so absence of that identity is a contract
+violation: the transition fails before PREPARED or provenance persists. A
+later preparation pass replaces the value through the same boundary. Claims,
+artifact writes, review verdicts, and intermediate phases never set it.
+
+Todo state advances to schema v13 through one forward migration. The upcycle
+entrypoint retains the persisted source version across sequential hops. The
+v12-to-v13 migration seeds `prepared_session_id` only when the source version
+was exactly v12, the record is currently PREPARED, and `active_runner` carries
+the authoritative completing session. A record merely passing through v12
+from an older schema, a later-stage record, or a record without that exact
+evidence stays unstamped. Domain consumers see only the v13 shape.
+
+The Todo query projection publishes `prepared_session_id` and an
+`artifact_updated_at` mapping keyed by artifact name. Timestamps come from the
+current artifact records. The existing `files` list remains the ordered
+artifact-name contract.
+
+This placement follows `software-development/policy/domain-ownership`:
+workflow records and publishes its facts once, while presentation consumers
+never reconstruct lifecycle or artifact policy.
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md
