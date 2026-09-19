@@ -28,7 +28,11 @@ schema-backed editable tree:
 - global `~/.teleclaude/teleclaude.yml`;
 - project `<project>/teleclaude.yml`;
 - per-person `~/.teleclaude/people/<name>/teleclaude.yml`;
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 - env-backed fields declared by the env-var registry.
+<!-- change:config-sample-regeneration-leaves-sync -->
+- machine environment-backed fields declared sensitive by the canonical machine-config schema.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 The company layer (`~/.teleclaude/companies/<slug>/teleclaude.yml`,
 `CompanyConfig`) is not wizard-owned; it is maintained through the CLI.
@@ -251,7 +255,11 @@ And `internal` and `public` fields do not render
 And the tier declaration is the view-metadata authority, not a TUI-local field name list
 Given a new machine-config field is added without a tier declaration
 Then it is `internal` and does not render in the config TUI
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 And it is absent from the generated config.yml public sample
+<!-- change:config-sample-regeneration-leaves-sync -->
+And it is absent from a fresh machine configuration generated from the schema
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 ```
 
 
@@ -338,7 +346,11 @@ blacklist is retired as the authority.
 ## Allowed values
 
 - Output visibility override values: `null`, `off`, `mobile`, `web`, `both`.
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 - Schema field source: canonical config models or env-var registry descriptors.
+<!-- change:config-sample-regeneration-leaves-sync -->
+- Schema field source: canonical config models and their sensitivity descriptors; personal MCP secrets remain registry-derived.
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 - Persistence source: machine config, global overlay, project overlay,
   per-person overlay, or env file.
 - Field render disposition: `visible` (rendered through the schema-driven

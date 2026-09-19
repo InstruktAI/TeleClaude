@@ -339,7 +339,11 @@ lands in one of the six surfaces below.
 | Per-person MCP service secrets                        | `~/.teleclaude/people/<slug>/.env`           | MCP registry-derived secret requirements (untyped) | person-secret writer (config bounded context)                         |
 | Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)    | project overlay schema                             | project-config writer (atomic — per `atomic-project-config-write.md`) |
 | Agent environment allow list                          | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema (`env_allow_list`)           | global-config writer (config bounded context)                         |
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 | Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                  | env-var registry (untyped)                         | env-file writer (atomic — per `atomic-env-file-write.md`)             |
+<!-- change:config-sample-regeneration-leaves-sync -->
+| Machine-config secrets and external identifiers       | `.env` file                                  | machine-config sensitivity descriptors             | env-file writer (atomic — per `atomic-env-file-write.md`)             |
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 | Computer identity, agents inventory, runtime settings | `config.yml` (machine config)                | runtime configuration aggregate                    | machine-config writer (per `machine-config-write.md`)                 |
 
 
