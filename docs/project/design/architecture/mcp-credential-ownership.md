@@ -24,37 +24,13 @@ bounded context retains its own rule: identity resolves the person, config owns
 the secret store, and agent runtime owns server leases and tool traffic. The
 API edge translates between those contracts without becoming a policy owner.
 
-### Current and intended state
+### Credential-owner binding
 
-The runtime pool already isolates MCP runtimes by invocation project, while
-each runtime currently keys leases only by server slug and reads one global
-environment file. Protected MCP routes already resolve `CallerIdentity` but do
-not pass it downstream. Registry normalization already derives environment
-requirements and fingerprints, and the config context already provides locked
-atomic environment-file mutation that preserves unrelated lines.
-
-The person-owner coordinate is added inside each project-scoped runtime. The
-existing global path remains the default; a person-scoped declaration requires
-a verified canonical person before secret resolution or lease lookup.
-
-### Prior art and adopt-vs-build
-
-The design adapts the existing host-managed runtime rather than adding a second
-credential broker or requiring provider OAuth. MCP assigns connection
-authorization, lifecycle, and isolation to the host; Omi exposes a scoped
-developer API key as the credential used by its client; and VS Code provides a
-production host precedent where sensitive MCP inputs are stored outside server
-configuration and injected only when the server starts.
-
-The official MCP TypeScript SDK is the reference implementation for the owner
-binding. Its client auth provider owns credential storage, stamps and looks up
-stored credentials by authorization-server issuer, and supplies the token to
-the transport instead of exposing credential selection to tool arguments. The
-official Go SDK applies the same isolation shape to connection lifecycle by
-binding a session to verified token user identity and rejecting subsequent
-requests whose identity differs. TeleClaude adapts those owner-keyed
-credential and session boundaries to its existing verified person identity and
-static provider-key store.
+Credential storage, server-client lifecycle, reusable capability state, and
+tool traffic share one credential-owner identity. The project runtime remains
+the outer isolation boundary; each person-scoped server requires a verified
+canonical person before secret resolution or lease lookup. Global servers use
+the shared global owner.
 
 ## Inputs/Outputs
 
@@ -141,7 +117,8 @@ stale lease; leases owned by other people and the global owner remain active.
 
 - https://modelcontextprotocol.io/specification/2025-03-26/architecture/index
 - https://apps.extensions.modelcontextprotocol.io/api/documents/authorization.html
-- https://docs.omi.me/api-reference/api-keys/create-api-key
+- docs/project/adr/0093-bind-mcp-credentials-to-verified-owner.md
+- https://docs.omi.me/doc/developer/mcp/setup
 - https://code.visualstudio.com/docs/agents/reference/mcp-configuration
 - https://code.visualstudio.com/docs/agents/run/security
 - https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/src/client/auth.ts
