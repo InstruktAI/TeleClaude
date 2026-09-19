@@ -59,6 +59,7 @@ from teleclaude.constants import (
     TodoStatus,
 )
 from teleclaude.core.db import db as runtime_db
+from teleclaude.core.human_involvement import human_involvement_refusal_detail, validate_human_involvement
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
@@ -118,6 +119,23 @@ class _SlugStatusResponse(BaseModel):
     status: str
     slug: str
     warnings: list[str] = Field(default_factory=list)
+
+
+async def _resolve_human_involved(request: TodoDumpRequest, identity: CallerIdentity) -> bool:
+    """Derive one creation-record boolean without propagating prior action state."""
+    if identity.entry_point is not EntryPoint.AGENT:
+        return identity.entry_point is not None
+    declaration_requested = request.human_involved or request.human_involvement_reason is not None
+    if not declaration_requested:
+        return False
+    validation = await validate_human_involvement(
+        session_id=identity.session_id,
+        reason=request.human_involvement_reason,
+        session_store=runtime_db,
+    )
+    if not validation.admitted:
+        raise HTTPException(status_code=400, detail=human_involvement_refusal_detail(validation))
+    return True
 
 
 class _TodoUpdateResponse(BaseModel):
@@ -576,9 +594,7 @@ async def todo_content_create(
         # identity is provably non-None here.
         assert identity is not None
         caller_entry_point = identity.entry_point
-        human_involved = (
-            request.human_involved if caller_entry_point == EntryPoint.AGENT else caller_entry_point is not None
-        )
+        human_involved = await _resolve_human_involved(request, identity)
         entry_point = EntryPoint.SPLIT if request.group else caller_entry_point
         creation_context = request.group if entry_point == EntryPoint.SPLIT else None
 

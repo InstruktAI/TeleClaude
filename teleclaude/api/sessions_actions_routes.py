@@ -26,7 +26,6 @@ from teleclaude.api.auth import (
     clearance_sessions_escalate,
     clearance_sessions_file,
     clearance_sessions_keys,
-    clearance_sessions_result,
     clearance_sessions_revive,
     clearance_sessions_run,
     clearance_sessions_tail,
@@ -41,6 +40,8 @@ from teleclaude.api.run_session_refusals import (
 )
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
 from teleclaude.api.session_access import check_session_access
+from teleclaude.api.session_create_launch import resolve_dispatch_door
+from teleclaude.api.session_human_involvement_routes import router as human_involvement_router
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
 from teleclaude.api.session_pane_routes import router as session_pane_router
@@ -53,7 +54,6 @@ from teleclaude.api_models import (
     FileUploadRequest,
     KeysRequest,
     RunSessionRequest,
-    SendResultRequest,
     SessionMessagesDTO,
     VoiceInputRequest,
 )
@@ -148,6 +148,7 @@ _STATE = SimpleNamespace(client=None)
 router = APIRouter()
 router.include_router(sessions_coordinate_router)
 router.include_router(session_pane_router)
+router.include_router(human_involvement_router)
 
 
 def configure(client: AdapterClient | None = None) -> None:
@@ -441,6 +442,7 @@ def _prepare_run_session(
             dispatch_mode=dispatch_mode,
             preferred_agent=preferred_agent,
             candidate_order=candidate_order,
+            dispatch_door=resolve_dispatch_door(identity, request.dispatch_door),
         ),
         initiator_session_id=initiator_session_id,
         origin_metadata=origin_metadata,
@@ -941,27 +943,6 @@ async def unsubscribe_session(
     if isinstance(result, dict):
         return {"status": "success", **result}
     return {"status": "success", "listener_removed": False, "link_closed": False, "link_id": None}
-
-
-@router.post("/sessions/self/result")
-async def send_result_endpoint(
-    request: SendResultRequest,
-    identity: CallerIdentity = Depends(clearance_sessions_result),
-) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """Send a formatted result to the session's user as a separate message.
-
-    Dispatches through CommandService.deliver_result() which handles adapter
-    delivery with formatting fallback. Requires dual-factor caller identity.
-    """
-    cmd = SystemCommand(
-        command="deliver_result",
-        session_id=identity.session_id,
-        data={"content": request.content, "output_format": request.output_format},
-    )
-    try:
-        return await get_command_service().deliver_result(cmd)  # type: ignore[return-value]
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/sessions/self/escalate")

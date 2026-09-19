@@ -53,7 +53,6 @@ from teleclaude.types.todos import HoldAuditState, TodoState
 
 logger = get_logger(__name__)
 
-_ADDITIONAL_CONTEXT = "human_in_loop: false\n"
 _RUNNER_REPREPARE_EVENT = "todo_runner_routed_to_prepare"
 _RUNNER_REPREPARE_MESSAGE = "todo runner routed to prepare"
 _RUNNER_REPREPARE_OUTCOME = "prepare"
@@ -92,14 +91,14 @@ def default_session_runner() -> SessionRunner:
 
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:
     if lane is RunnerLane.ANALYZE:
-        return "/analyze-todo-input", _ADDITIONAL_CONTEXT
+        return "/analyze-todo-input", ""
     if lane is RunnerLane.TASK_PREPARE:
-        return "/next-prepare-task", _ADDITIONAL_CONTEXT
+        return "/next-prepare-task", ""
     if lane is RunnerLane.TASK_RUN:
         return "/next-run-task", ""
     if lane is RunnerLane.WORK:
         return "/next-work", ""
-    return "/next-prepare", _ADDITIONAL_CONTEXT
+    return "/next-prepare", ""
 
 
 def _role_for_lane(lane: RunnerLane) -> tuple[str, JobRole]:
@@ -552,6 +551,7 @@ async def dispatch_lifecycle_session(
         "project_path": project_path,
         "args": intent.slug,
         "detach": True,
+        "dispatch_door": "delegated",
     }
     if intent.additional_context:
         kwargs["additional_context"] = intent.additional_context

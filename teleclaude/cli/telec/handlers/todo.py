@@ -82,7 +82,7 @@ class _ParsedTodoCreate:
     plan: bool
     hold: bool
     reason: str | None
-    human_involved: bool
+    human_involvement_reason: str | None
     kind_value: str | None
     approved: bool
 
@@ -303,7 +303,7 @@ def _parse_todo_create_args(args: list[str]) -> _ParsedTodoCreate:
         plan=parsed.has(F.FLAG_TODO_PLAN),
         hold=parsed.has(F.FLAG_TODO_CREATE_HOLD),
         reason=parsed.value(F.FLAG_TODO_CREATE_REASON),
-        human_involved=parsed.has(F.FLAG_HUMAN_INVOLVED),
+        human_involvement_reason=parsed.value(F.FLAG_HUMAN_INVOLVED),
         kind_value=parsed.value(F.FLAG_TODO_KIND),
         approved=parsed.has(F.FLAG_TODO_CREATE_APPROVED),
     )
@@ -354,7 +354,8 @@ def _handle_todo_create(args: list[str]) -> None:
         plan=parsed.plan,
         hold=parsed.hold,
         reason=parsed.reason.strip() if parsed.reason is not None else None,
-        human_involved=parsed.human_involved,
+        human_involved=parsed.human_involvement_reason is not None,
+        human_involvement_reason=parsed.human_involvement_reason,
     )
     result = tool_api_request(
         "POST",

@@ -40,7 +40,6 @@ __all__ = [
     "format_work_entry_kickback_handoff",
     "format_work_entry_substantive_handoff",
     "format_worker_redispatch",
-    "parse_human_in_loop",
 ]
 
 
@@ -232,15 +231,6 @@ def _format_additional_context(request: ToolCallRequest) -> tuple[str, str]:
         f" --additional-context {shlex.quote(escaped_context)}",
         f"\nADDITIONAL CONTEXT FOR WORKER:\n{additional_context}\n",
     )
-
-
-def parse_human_in_loop(context: str) -> bool:
-    """Return the human-in-loop mode encoded in ``additional_context``."""
-    for line in context.splitlines():
-        key, separator, raw_value = line.partition(":")
-        if separator and key.strip().lower() == "human_in_loop":
-            return raw_value.strip().lower() != "false"
-    return True
 
 
 def format_tool_call(request: ToolCallRequest) -> str:
