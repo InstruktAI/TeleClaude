@@ -87,6 +87,7 @@ But a runtime consumer requesting the effective configuration still fails fast w
 ```
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 
 ```
@@ -96,6 +97,18 @@ Then a FileNotFoundError is raised with the message:
   "Config file not found: <path>. Run 'telec config wizard' to create it."
 And no Config object is bound (import fails for every consumer)
 ```
+<!-- change:config-sample-regeneration-leaves-sync -->
+#### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
+
+#### UC-CFG-LOAD-14: Missing machine configuration fails runtime aggregate access
+
+```gherkin
+Given the machine configuration does not exist at <RuntimeConfig.home>/config.yml
+When a runtime consumer requests the effective machine configuration outside installation
+Then the request fails fast with a diagnostic naming the missing file and the creation surface
+And no effective configuration aggregate is bound
+```
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 #### UC-CFG-LOAD-4: Environment variables in YAML values are expanded
 
