@@ -157,13 +157,12 @@ And ambient process environment values cannot override the selected value
 ```
 
 <!-- planned:config-reload-always-forces-daemon-restart -->
-#### UC-CFG-LOAD-12: A live-reloadable machine change keeps the daemon running
+#### UC-CFG-LOAD-12: A live-reloadable machine change does not restart the daemon
 
 ```gherkin
 Given a human operator changes only a live-reloadable machine setting while TeleClaude is running
-When the running service accepts and applies the changed machine configuration
-Then the setting takes effect in the running service
-And the daemon process remains running without a restart
+When the running service processes the changed machine configuration
+Then the daemon process remains running without a restart
 ```
 <!-- /planned:config-reload-always-forces-daemon-restart -->
 
