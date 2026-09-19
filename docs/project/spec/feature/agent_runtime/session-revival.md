@@ -175,6 +175,7 @@ Then it iterates discovered transcripts for that agent and matches by extracted 
 And returns true on first hit, false if no transcript matches
 ```
 
+<!-- planned-change:session-handoff -->
 #### Restart leg of revival
 
 ```
@@ -185,6 +186,18 @@ And if the session was closed (closed-at marker set), revival clears the marker 
 And if no host pane exists for the row, the service adopts a fresh host pane in headless mode before launch
 And the response payload reports a successful create with session id, host-pane reference, and agent
 ```
+<!-- change:session-handoff -->
+#### UC-SR9: Revival completes through the restart flow
+
+```gherkin
+Given a TeleClaude session id has been resolved (reused or freshly created)
+When the service hands off to the restart-agent flow
+Then the agent CLI is launched with resume-from-transcript semantics (the agent CLI replays its own transcript)
+And if the session was closed (closed-at marker set), revival clears the marker and sets lifecycle status to headless before launch
+And if no host pane exists for the row, the service adopts a fresh host pane in headless mode before launch
+And the response payload reports a successful create with session id, host-pane reference, and agent
+```
+<!-- /planned-change:session-handoff -->
 
 #### UC-SR7 — Revival preserves generation and delivery identity across native-session replacement
 

@@ -18,6 +18,7 @@ The agent-restart action is the one place where v1 deliberately diverges from th
 
 ### Use cases
 
+<!-- planned-change:session-handoff -->
 ```
 Given a worker agent session with CallerIdentity.session_id=`8f3c1a7d-2b94-4e6c-9f0e-2a8d7b6c4e5f` and system_role=`worker`
 When the session issues an agent-restart action for its own session_id with a structured payload `{"self_restart": true}`
@@ -63,6 +64,65 @@ Then the self-restart predicate rejects (`identity.session_id` is empty)
 And the standard rule runs against the caller's human_role
 And admin/member callers pass; others are rejected
 ```
+<!-- change:session-handoff -->
+#### UC-SRAB1: A worker may restart its own session with a structured self-restart flag
+
+```gherkin
+Given a worker agent session with CallerIdentity.session_id=`8f3c1a7d-2b94-4e6c-9f0e-2a8d7b6c4e5f` and system_role=`worker`
+When the session issues an agent-restart action for its own session_id with a structured payload `{"self_restart": true}`
+Then the self-restart predicate accepts (session ids match, structured payload, flag truthy)
+And the agent-restart clearance gate returns the CallerIdentity without consulting the standard verb allowlist
+And the action proceeds to dispatch the restart
+```
+
+#### UC-SRAB2: A worker may not use self-restart authority on another session
+
+```gherkin
+Given the same worker session
+When it issues an agent-restart action targeting a DIFFERENT session_id with `{"self_restart": true}`
+Then the self-restart predicate rejects (session_id mismatch)
+And the standard rule fires: the worker short-circuit rejects the call
+And the response is a not-permitted authorization failure for `telec sessions restart`
+```
+
+#### UC-SRAB3: An orchestrator may restart another session through ordinary clearance
+
+```gherkin
+Given an orchestrator-Role agent session (system_role=`orchestrator`) whose Role is in the `telec sessions restart` system band
+When it issues an agent-restart action targeting another session with any payload
+Then the self-restart predicate rejects (session_id mismatch)
+And the standard verb-clearance evaluation accepts the orchestrator
+And the dependency returns the CallerIdentity and the cross-session restart proceeds
+```
+
+#### UC-SRAB4: A false self-restart flag grants no worker bypass
+
+```gherkin
+Given a worker session
+When it issues a self-targeted agent-restart with a structured payload `{"self_restart": false}`
+Then the self-restart predicate rejects (flag not truthy)
+And the worker short-circuit rejects the call
+```
+
+#### UC-SRAB5: A non-structured self-restart payload grants no worker bypass
+
+```gherkin
+Given a worker session
+When it issues a self-targeted agent-restart with a non-structured payload (e.g. text encoding) carrying `self_restart=true`
+Then the self-restart predicate rejects (payload encoding is not structured)
+And the worker short-circuit rejects the call
+```
+
+#### UC-SRAB6: A terminal caller uses ordinary human-role clearance
+
+```gherkin
+Given a terminal caller with CallerIdentity.session_id="" (no owning session)
+When it issues an agent-restart action with `{"self_restart": true}`
+Then the self-restart predicate rejects (`identity.session_id` is empty)
+And the standard rule runs against the caller's human_role
+And admin/member callers pass; others are rejected
+```
+<!-- /planned-change:session-handoff -->
 
 ### Cross-context references
 
