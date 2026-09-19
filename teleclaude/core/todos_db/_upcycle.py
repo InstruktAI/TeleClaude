@@ -7,9 +7,15 @@ from typing import cast
 from teleclaude.core.next_machine.kinds import FAST_TRACK_PREPARED_KINDS, canonical_kind
 from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import TodoState
+from teleclaude.types.todos import (
+    ACTIVE_RUNNER_STATE_KEY,
+    LIFECYCLE_PHASE_STATE_KEY,
+    PREPARED_SESSION_ID_STATE_KEY,
+    SCHEMA_VERSION_STATE_KEY,
+    TodoState,
+)
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 12
+LATEST_TODO_STATE_SCHEMA_VERSION = 13
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
@@ -23,6 +29,7 @@ _V9_SCHEMA_VERSION = 9
 _V10_SCHEMA_VERSION = 10
 _V11_SCHEMA_VERSION = 11
 _V12_SCHEMA_VERSION = 12
+_V13_SCHEMA_VERSION = 13
 # Historical: the v9-to-v10 upcycler's own vocabulary for who self-assesses a
 # continuation. Frozen as literals rather than read from the live
 # ReviewContinuationCallerRole enum, which no longer exists — a migration
@@ -440,9 +447,25 @@ def _upcycle_v11_to_v12(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     return migrated
 
 
+def _upcycle_v12_to_v13(raw: dict[str, StateValue], *, original_version: int) -> dict[str, StateValue]:
+    """Recover preparation provenance only where the original record proves it."""
+    migrated = dict(raw)
+    active_runner = migrated.get(ACTIVE_RUNNER_STATE_KEY)
+    if (
+        original_version == _V12_SCHEMA_VERSION
+        and migrated.get(LIFECYCLE_PHASE_STATE_KEY) == LifecyclePhase.PREPARED.value
+        and isinstance(active_runner, str)
+        and active_runner
+    ):
+        migrated[PREPARED_SESSION_ID_STATE_KEY] = active_runner
+    migrated[SCHEMA_VERSION_STATE_KEY] = _V13_SCHEMA_VERSION
+    return migrated
+
+
 def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
     version = _detect_schema_version(migrated)
+    original_version = version
 
     if version > LATEST_TODO_STATE_SCHEMA_VERSION:
         msg = f"todo state schema_version {version} is newer than supported latest {LATEST_TODO_STATE_SCHEMA_VERSION}"
@@ -473,6 +496,8 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v10_to_v11(migrated)
         elif version == _V11_SCHEMA_VERSION:
             migrated = _upcycle_v11_to_v12(migrated)
+        elif version == _V12_SCHEMA_VERSION:
+            migrated = _upcycle_v12_to_v13(migrated, original_version=original_version)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)

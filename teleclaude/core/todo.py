@@ -26,6 +26,7 @@ from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TODO_KIND_DEFAULT
+from teleclaude.types.todos import PREPARED_SESSION_ID_STATE_KEY
 
 logger = get_logger(__name__)
 
@@ -578,9 +579,9 @@ def assemble_todo_from_db(
                 (row_id,),
             ).fetchone()
 
-            # List artifact names for the files field
+            # Preserve artifact names as the ordering contract while projecting recency alongside them.
             artifact_rows = conn.execute(
-                "SELECT name FROM todo_artifacts WHERE id = ? ORDER BY name",  # guard: raw-sql
+                "SELECT name, updated_at FROM todo_artifacts WHERE id = ? ORDER BY name",  # guard: raw-sql
                 (row_id,),
             ).fetchall()
             version_total_row = conn.execute(
@@ -632,7 +633,9 @@ def assemble_todo_from_db(
                     active_runner=(
                         str(state.get("active_runner")) if isinstance(state.get("active_runner"), str) else None
                     ),
+                    prepared_session_id=_non_empty_str(state.get(PREPARED_SESSION_ID_STATE_KEY)),
                     files=[ar[0] for ar in artifact_rows],
+                    artifact_updated_at={ar[0]: ar[1] for ar in artifact_rows if isinstance(ar[1], str)},
                     version_total=version_total,
                     todo_id=str(row_id),
                     removed_at=row[10],

@@ -1,4 +1,4 @@
-"""Pydantic models for Todo state management (schema v4)."""
+"""Pydantic models for Todo state management (schema v13)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,11 @@ from teleclaude.constants import TodoStatus
 from teleclaude.types.lifecycle import LEGACY_LIFECYCLE_PHASE_NORMALIZATION, LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS, TODO_KIND_DEFAULT
+
+ACTIVE_RUNNER_STATE_KEY = "active_runner"
+LIFECYCLE_PHASE_STATE_KEY = "lifecycle_phase"
+PREPARED_SESSION_ID_STATE_KEY = "prepared_session_id"
+SCHEMA_VERSION_STATE_KEY = "schema_version"
 
 
 class DorActions(BaseModel):
@@ -267,7 +272,7 @@ class AuditState(BaseModel):
 
 
 class TodoState(BaseModel):
-    """Canonical state for a TeleClaude work item (schema v11).
+    """Canonical state for a TeleClaude work item (schema v13).
 
     ``lifecycle_phase`` is the only authoritative software-development phase
     pointer. ``phase`` remains the coarse pending/in_progress/done item status
@@ -280,7 +285,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[12] = 12
+    schema_version: Literal[13] = 13
     phase: str = "pending"
     lifecycle_phase: LifecyclePhase | None = LifecyclePhase.DRAFT
     prepare_phase: str = Field(default="", exclude=True)
@@ -293,6 +298,7 @@ class TodoState(BaseModel):
     hold: bool = False
     hold_audit: HoldAuditState = Field(default_factory=HoldAuditState)
     active_runner: str | None = None
+    prepared_session_id: str | None = None
     manually_started: bool = False
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)

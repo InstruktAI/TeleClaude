@@ -191,7 +191,11 @@ async def _adopt_prepare_phase(
         for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()
         if artifacts.target_artifact_key is not None
     }
-    derived = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root, report_digests=report_digests)
+    derived = adopt_prepare_handoff_phase(
+        writer.state,
+        repo_root=repo_root,
+        report_digests=report_digests,
+    )
     for phase, artifacts in REVIEW_EVIDENCE_ARTIFACTS.items():
         if artifacts.target_artifact_key is None:
             continue

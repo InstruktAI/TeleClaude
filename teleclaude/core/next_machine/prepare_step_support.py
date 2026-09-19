@@ -36,6 +36,7 @@ class _PrepareCompletionLogFields(TypedDict):
     reason: str
     slug: str
     caller_session_id: str
+    prepared_session_id: str
     build_start_base_present: bool
     old_plan_digest: str
     current_plan_digest: str
@@ -109,6 +110,7 @@ def _log_prepare_completed(model: TodoState, *, slug: str, resume_work: bool) ->
         "reason": _BUILD_RESIDUE_REASON if resume_work else _NO_BUILD_RESIDUE_REASON,
         "slug": slug,
         "caller_session_id": get_session_id() or _EMPTY_TEXT,
+        "prepared_session_id": model.prepared_session_id or _EMPTY_TEXT,
         "build_start_base_present": resume_work,
         "old_plan_digest": model.build_plan_digest,
         "current_plan_digest": model.artifacts.implementation_plan.digest,

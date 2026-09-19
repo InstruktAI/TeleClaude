@@ -43,6 +43,7 @@ async def seed_task_plan_authorization(
     slug: str,
     *,
     caller_session_id: str,
+    prepared_session_id: str | None,
 ) -> str:
     """Mark a supplied ``--kind task --plan`` task-plan as pre-authorized."""
     raw_state = await todos_db.read_state(slug)
@@ -50,7 +51,11 @@ async def seed_task_plan_authorization(
         msg = f"Todo state missing after --kind task --plan creation for {slug!r}"
         raise RuntimeError(msg)
     writer = StateWriter(raw_state)
-    phase = adopt_prepare_handoff_phase(writer.state, report_digests={})
+    phase = adopt_prepare_handoff_phase(
+        writer.state,
+        report_digests={},
+        prepared_session_id=prepared_session_id,
+    )
     writer.state.lifecycle_phase = phase
     ApprovalsManager(writer).approve(
         "task_approved",

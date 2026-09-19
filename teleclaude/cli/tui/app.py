@@ -48,7 +48,7 @@ from teleclaude.cli.tui.bootstrap import (
     failed_bootstrap_pillars,
     projects_from_projects_with_todos,
 )
-from teleclaude.cli.tui.creator_session import CreatorSessionInfo, CreatorSessionLookup
+from teleclaude.cli.tui.creator_session import SessionInfo, SessionLookup
 from teleclaude.cli.tui.messages import (
     DataRefreshed,
     DocEditRequest,
@@ -235,7 +235,7 @@ class _RefreshStateSnapshot:
     sessions: list[SessionDTO]
     jobs: list[JobDTO]
     tts_enabled: bool
-    creator_session_lookup: CreatorSessionLookup
+    session_lookup: SessionLookup
     chiptunes_loaded: bool
     chiptunes_playback: str
     chiptunes_state_version: int
@@ -726,37 +726,35 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         """Build the aggregate `DataRefreshed` message from TUI bootstrap data."""
         bootstrap = await self.api.get_tui_bootstrap(requested, include_removed=True)
         missing = failed_bootstrap_pillars(bootstrap, requested=requested)
-        creator_session_lookup = (
-            await self._fetch_creator_session_lookup() if set(requested) == set(BOOTSTRAP_PILLARS) else None
-        )
+        session_lookup = await self._fetch_session_lookup() if set(requested) == set(BOOTSTRAP_PILLARS) else None
         logger.trace("[PERF] _refresh_data bootstrap done dt=%.3f", _t.monotonic() - start_time)
         return self._merge_bootstrap_message(
             bootstrap,
-            creator_session_lookup,
+            session_lookup,
             requested=requested,
             missing=missing,
             operation_id=operation_id,
             parent_operation_id=parent_operation_id,
         )
 
-    async def _fetch_creator_session_lookup(self) -> CreatorSessionLookup | None:
-        """Fetch every session, including retained-closed ones, for the creator-session row lookup.
+    async def _fetch_session_lookup(self) -> SessionLookup | None:
+        """Fetch every session, including retained-closed ones, for provenance row lookup.
 
         A separate round trip from the bootstrap `sessions` pillar (which never
-        includes closed sessions) — the creator-session row needs to classify a
-        lineage's acting session id as live, retained-closed, or absent.
+        includes closed sessions) — provenance rows need to classify their
+        session ids as live, retained-closed, or absent.
 
         Returns None on fetch failure so `_merge_bootstrap_message` retains the
-        last successfully fetched lookup instead of blanking every creator row
+        last successfully fetched lookup instead of blanking every provenance row
         to inert — a transient daemon hiccup must not read as "session purged."
         """
         try:
             sessions = await self.api.list_sessions(include_closed=True)
         except APP_DATA_ERRORS:
-            logger.exception("Creator-session lookup fetch failed")
+            logger.exception("Session lookup fetch failed")
             return None
         return {
-            session.session_id: CreatorSessionInfo(
+            session.session_id: SessionInfo(
                 status="closed" if session.closed_at else "live",
                 computer=session.computer,
             )
@@ -766,7 +764,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
     def _merge_bootstrap_message(
         self,
         bootstrap: TuiBootstrapDTO,
-        creator_session_lookup: CreatorSessionLookup | None,
+        session_lookup: SessionLookup | None,
         *,
         requested: list[TuiBootstrapPillar],
         missing: list[TuiBootstrapPillar],
@@ -785,7 +783,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         jobs = data.jobs if data.jobs is not None else current.jobs
         settings = data.settings
         chiptunes_status = data.chiptunes
-        lookup = creator_session_lookup if creator_session_lookup is not None else current.creator_session_lookup
+        lookup = session_lookup if session_lookup is not None else current.session_lookup
 
         self._runtime_state.computers = computers
         return DataRefreshed(
@@ -959,7 +957,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
             sessions=list(getattr(sessions_view, "_sessions", [])),
             jobs=list(getattr(jobs_view, "_jobs", [])),
             tts_enabled=bool(getattr(status_bar, "tts_enabled", False)),
-            creator_session_lookup=dict(getattr(prep_view, "_creator_session_lookup", {})),
+            session_lookup=dict(getattr(prep_view, "_session_lookup", {})),
             chiptunes_loaded=bool(getattr(status_bar, "chiptunes_loaded", False)),
             chiptunes_playback=str(getattr(status_bar, "chiptunes_playback", "cold")),
             chiptunes_state_version=int(getattr(self, "_chiptunes_state_version", 0)),
@@ -994,7 +992,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppCrossNavMixin, Tel
         )
         prep_view.update_data(
             message.projects_with_todos,
-            creator_session_lookup=message.creator_session_lookup,
+            session_lookup=message.session_lookup,
         )
         jobs_view.update_data(message.jobs)
         if message.availability is not None:

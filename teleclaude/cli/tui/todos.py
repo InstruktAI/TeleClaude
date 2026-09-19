@@ -22,6 +22,7 @@ class TodoItem:
     prepare_review_verdict: str | None = None
     deferrals_status: str | None = None
     files: list[str] = field(default_factory=list)
+    artifact_updated_at: dict[str, str] = field(default_factory=dict)
     version_total: int = 0
     after: list[str] = field(default_factory=list)
     group: str | None = None
@@ -33,6 +34,7 @@ class TodoItem:
     held: bool = False
     hold_source: str | None = None
     active_runner: str | None = None
+    prepared_session_id: str | None = None
     schedule: str | None = None
     task_plan_digest: str | None = None
     task_approved_digest: str | None = None

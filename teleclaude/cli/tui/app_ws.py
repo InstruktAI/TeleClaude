@@ -69,7 +69,7 @@ class TelecAppWsMixin:
             sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
             prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
             computers, projects = self._get_sessions_view_data(sessions_view)
-            prep_view.reconcile_creator_sessions(list(event.data.sessions), computer=event.data.computer)
+            prep_view.reconcile_sessions(list(event.data.sessions), computer=event.data.computer)
             merged = self._merge_sessions_for_computer(
                 existing=getattr(sessions_view, "_sessions", []),
                 incoming=list(event.data.sessions),
@@ -326,7 +326,7 @@ class TelecAppWsMixin:
         """Handle a newly started session broadcast from the websocket."""
         session = message.session
         prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
-        prep_view.update_creator_session(
+        prep_view.update_session(
             session.session_id,
             status="closed" if session.closed_at else "live",
             computer=session.computer,
@@ -357,7 +357,7 @@ class TelecAppWsMixin:
         """Handle session updates from the websocket."""
         session = message.session
         prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
-        prep_view.update_creator_session(
+        prep_view.update_session(
             session.session_id,
             status="closed" if session.closed_at else "live",
             computer=session.computer,
@@ -377,7 +377,7 @@ class TelecAppWsMixin:
     def on_session_closed(self, message: SessionClosed) -> None:
         """Handle session closure from the websocket."""
         prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
-        prep_view.update_creator_session(message.session_id, status="closed", computer=None)
+        prep_view.update_session(message.session_id, status="closed", computer=None)
         self._session_agents.pop(message.session_id, None)  # type: ignore[attr-defined]
 
         # Update pane bridge catalog

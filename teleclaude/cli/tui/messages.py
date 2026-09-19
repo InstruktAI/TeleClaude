@@ -15,7 +15,7 @@ from teleclaude.api_models import (
     SessionDTO,
     TuiBootstrapPillar,
 )
-from teleclaude.cli.tui.creator_session import CreatorSessionLookup
+from teleclaude.cli.tui.creator_session import SessionLookup
 
 # --- Data refresh messages ---
 
@@ -46,7 +46,7 @@ class _RefreshPayload:
     availability: dict[str, AgentAvailabilityDTO] | None
     jobs: list[JobDTO]
     tts_enabled: bool
-    creator_session_lookup: CreatorSessionLookup
+    session_lookup: SessionLookup
 
 
 class DataRefreshed(Message):
@@ -135,9 +135,9 @@ class DataRefreshed(Message):
         return self._payload.tts_enabled
 
     @property
-    def creator_session_lookup(self) -> CreatorSessionLookup:
-        """Return the creator-session id -> live/closed classification lookup."""
-        return self._payload.creator_session_lookup
+    def session_lookup(self) -> SessionLookup:
+        """Return the session id -> live/closed classification lookup."""
+        return self._payload.session_lookup
 
     @property
     def chiptunes_loaded(self) -> bool:

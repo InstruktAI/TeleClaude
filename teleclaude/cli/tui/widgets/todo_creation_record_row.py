@@ -1,4 +1,4 @@
-"""Creator-session navigation row within an expanded todo."""
+"""Session-provenance navigation row within an expanded todo."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from textual.events import Click
 from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
-from teleclaude.cli.tui.creator_session import CreatorRowState
+from teleclaude.cli.tui.creator_session import SessionRowState
 from teleclaude.cli.tui.messages import CreateSessionRequest, JumpToSession
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR
 from teleclaude.cli.tui.todos import TodoItem
@@ -21,25 +21,22 @@ _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
 _BOLD = Style(bold=True)
 
-_LABEL_PREFIX = "created in: "
 _REVIVE_SEPARATOR = " - "
 _REVIVE_LABEL = "revive"
+_LABEL_SUFFIX = ": "
 
 
-class CreatorSessionRow(TelecMixin, Widget):
-    """Renders the creator-session navigation affordance for an expanded todo.
+class TodoSessionRow(TelecMixin, Widget):
+    """Renders one session-provenance navigation affordance for an expanded todo.
 
-    Mounted as the first child when a todo is expanded and its creation
-    lineage carries an acting TeleClaude session id (see
-    project/spec/feature/tui/todo-session-cross-navigation). A navigation
-    affordance, not an authorship claim: a live session renders its id bold
+    A live session renders its id bold
     and clickable (jump); a retained closed session renders inert id text
     plus a bold clickable "revive"; a hard-deleted session renders inert text
     with no click target at all.
     """
 
     DEFAULT_CSS = """
-    CreatorSessionRow {
+    TodoSessionRow {
         width: 100%;
         height: 1;
         padding: 0 1;
@@ -51,7 +48,8 @@ class CreatorSessionRow(TelecMixin, Widget):
         *,
         todo: TodoItem,
         slug: str,
-        state: CreatorRowState,
+        label: str,
+        state: SessionRowState,
         is_last: bool = False,
         tree_lines: list[bool] | None = None,
         **kwargs: object,
@@ -59,20 +57,21 @@ class CreatorSessionRow(TelecMixin, Widget):
         super().__init__(**kwargs)
         self.todo = todo
         self.slug = slug
+        self.label = label
         self.state = state
         self.is_last = is_last
         self._tree_lines = tree_lines or []
         self._click_region: tuple[int, int] | None = None
 
     def render(self) -> Text:
-        """Render the creator-session line for this row's live/closed/missing state."""
+        """Render the session line for this row's live/closed/missing state."""
         line = Text()
         line.append("  ", style=_CONNECTOR)
         for continues in self._tree_lines:
             line.append("│ " if continues else "  ", style=_CONNECTOR)
         connector = "└" if self.is_last else "├"
         line.append(f"{connector}─", style=_CONNECTOR)
-        line.append(_LABEL_PREFIX, style=_DIM)
+        line.append(self.label + _LABEL_SUFFIX, style=_DIM)
 
         self._click_region = None
         session_id = self.state.session_id

@@ -469,7 +469,13 @@ async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
 
 
 async def _sync_artifact_provenance_state(
-    todos_db: TodosDb, slug: str, artifact_name: str, *, repo_root: str, artifact_body: str
+    todos_db: TodosDb,
+    slug: str,
+    artifact_name: str,
+    *,
+    repo_root: str,
+    artifact_body: str,
+    prepared_session_id: str | None,
 ) -> None:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
@@ -485,7 +491,11 @@ async def _sync_artifact_provenance_state(
         snippet_digest_fn=snippet_body_digest_for(repo_root),
     )
     if artifact_name == ARTIFACT_TASK_PLAN:
-        writer.state.lifecycle_phase = adopt_prepare_handoff_phase(writer.state, report_digests={})
+        writer.state.lifecycle_phase = adopt_prepare_handoff_phase(
+            writer.state,
+            report_digests={},
+            prepared_session_id=prepared_session_id,
+        )
     await writer.commit(todos_db, slug)
 
 
@@ -640,6 +650,7 @@ async def todo_content_create(
                 written_artifact_name,
                 repo_root=effective_cwd,
                 artifact_body=written_artifact_body,
+                prepared_session_id=identity.session_id,
             )
 
         if request.plan and request.kind == TODO_KIND_CHANGE:
@@ -652,7 +663,8 @@ async def todo_content_create(
             state["lifecycle_phase"] = await seed_task_plan_authorization(
                 todos_db,
                 slug,
-                caller_session_id=lineage.encode(),
+                caller_session_id=identity.session_id,
+                prepared_session_id=identity.session_id,
             )
             todos_db.on_committed("todo_updated")
 

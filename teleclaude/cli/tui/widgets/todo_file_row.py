@@ -10,8 +10,13 @@ from textual.widget import Widget
 
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR
+from teleclaude.cli.tui.utils.formatters import format_time
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
+_TIMESTAMP = Style(dim=True)
+_TIMESTAMP_SEPARATOR = " "
+_TIMESTAMP_OPEN = "["
+_TIMESTAMP_CLOSE = "]"
 
 
 class TodoFileRow(TelecMixin, Widget):
@@ -39,6 +44,7 @@ class TodoFileRow(TelecMixin, Widget):
         filename: str,
         slug: str,
         project_path: str,
+        updated_at: str | None = None,
         is_last: bool = False,
         tree_lines: list[bool] | None = None,
         **kwargs: object,
@@ -48,6 +54,7 @@ class TodoFileRow(TelecMixin, Widget):
         self.filename = filename
         self.slug = slug
         self.project_path = project_path
+        self.updated_at = updated_at
         self.is_last = is_last
         self._tree_lines = tree_lines or []
 
@@ -62,6 +69,11 @@ class TodoFileRow(TelecMixin, Widget):
         connector = "\u2514" if self.is_last else "\u251c"
         line.append(f"{connector}\u2500", style=_CONNECTOR)
         name_style = Style(reverse=True) if is_selected else Style()
+        if self.updated_at:
+            line.append(_TIMESTAMP_OPEN, style=_TIMESTAMP)
+            line.append(format_time(self.updated_at, with_date=True), style=_TIMESTAMP)
+            line.append(_TIMESTAMP_CLOSE, style=_TIMESTAMP)
+            line.append(_TIMESTAMP_SEPARATOR, style=_TIMESTAMP)
         line.append(self.filename, style=name_style)
         return line
 

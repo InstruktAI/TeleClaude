@@ -49,6 +49,7 @@ from teleclaude.core.next_machine.kinds import (
 )
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.paths import MAIN_DB_PATH
+from teleclaude.session_identity import get_session_id
 from teleclaude.types.lifecycle import (
     LEGACY_LIFECYCLE_PHASE_NORMALIZATION,
     LIFECYCLE_PHASE_ORDER,
@@ -94,6 +95,7 @@ __all__ = [
 _ArtifactPresence = Mapping[str, bool]
 _FEATURE_KINDS = FEATURE_PREPARE_KINDS
 _EMPTY_TEXT = ""
+_PREPARED_SESSION_ID_REQUIRED_ERROR = "prepared transition requires a completing TeleClaude session identity"
 
 # Pre-finalize phases from which a build_review verdict re-derives the phase.
 # FINALIZE_READY and later are absent: finalized work is handed to the
@@ -767,25 +769,33 @@ def adopt_prepare_handoff_phase(
     artifact_presence: _ArtifactPresence | None = None,
     repo_root: str | None = None,
     report_digests: Mapping[str, str],
+    prepared_session_id: str | None = None,
 ) -> LifecyclePhase:
     """Choose the prepare pointer from existing authoritative state and artifacts."""
     if model.kind == KIND_TASK:
-        return _task_phase(model, artifact_presence=artifact_presence)
-    if model.kind in FAST_TRACK_PREPARED_KINDS:
-        return LifecyclePhase.PREPARED
-    if _non_drift_prepare_blockers(model):
-        return LifecyclePhase.BLOCKED
-    if model.kind in BUG_DIAGNOSE_KINDS:
-        return _diagnose_phase(
+        target = _task_phase(model, artifact_presence=artifact_presence)
+    elif model.kind in FAST_TRACK_PREPARED_KINDS:
+        target = LifecyclePhase.PREPARED
+    elif _non_drift_prepare_blockers(model):
+        target = LifecyclePhase.BLOCKED
+    elif model.kind in BUG_DIAGNOSE_KINDS:
+        target = _diagnose_phase(
             model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
         )
-    if model.kind in PLAN_ONLY_PREPARE_KINDS:
-        return _plan_only_phase(
+    elif model.kind in PLAN_ONLY_PREPARE_KINDS:
+        target = _plan_only_phase(
             model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
         )
-    return _feature_phase(
-        model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
-    )
+    else:
+        target = _feature_phase(
+            model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+        )
+    if target is LifecyclePhase.PREPARED and model.lifecycle_phase is not LifecyclePhase.PREPARED:
+        completing_session_id = prepared_session_id or get_session_id()
+        if not completing_session_id:
+            raise ValueError(_PREPARED_SESSION_ID_REQUIRED_ERROR)
+        model.prepared_session_id = completing_session_id
+    return target
 
 
 def _move_to(model: TodoState, target: LifecyclePhase) -> LifecyclePhase:

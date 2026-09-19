@@ -185,6 +185,7 @@ async def write_artifact(
                 name,
                 repo_root=effective_cwd,
                 artifact_body=content,
+                prepared_session_id=identity.session_id,
             )
     except HolderWriteRefused as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -303,6 +303,7 @@ class TodoDTO(BaseModel):
     prepare_review_verdict: str | None = None
     deferrals_status: str | None = None
     files: list[str] = Field(default_factory=list)
+    artifact_updated_at: dict[str, str] = Field(default_factory=dict)
     version_total: int = 0
     after: list[str] = Field(default_factory=list)
     group: str | None = None
@@ -327,6 +328,7 @@ class TodoDTO(BaseModel):
     held: bool = False
     hold_source: str | None = None
     active_runner: str | None = None
+    prepared_session_id: str | None = None
     todo_id: str | None = None
     removed_at: str | None = None
     lineage: str | None = None
