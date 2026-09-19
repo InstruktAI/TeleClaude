@@ -91,7 +91,7 @@ And a pathspec after `--` that happens to be named main is not a ref and is unaf
 ```
 
 
-#### Bare telec code commit on main surfaces the commit-first review-routing gate
+#### UC-CGIP-41 — Bare telec code commit on main surfaces the commit-first review-routing gate
 
 ```
 Given an agent on the `main` branch with a non-integrator role
