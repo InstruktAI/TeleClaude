@@ -52,10 +52,14 @@ feature specs remain the current contract.
 
 The Todo lifecycle state owns `prepared_session_id`, the TeleClaude session
 that most recently completed preparation. The prepare state machine writes the
-authenticated caller session at the terminal PREPARED transition, in the same
-state mutation that records successful completion. A later preparation pass
-replaces the value. Claims, artifact writes, review verdicts, and intermediate
-phase transitions never set it.
+authenticated caller session while deriving the PREPARED lifecycle phase and
+before committing that transition. The phase and provenance land through one
+state-writer commit; when the completing caller has no TeleClaude session
+identity, the transition fails before either value persists. A later
+preparation pass replaces the value through the same boundary. The terminal
+completion handler reads the committed fact for logging and handoff but performs
+no provenance mutation. Claims, artifact writes, review verdicts, and
+intermediate phase transitions never set it.
 
 Todo state advances to schema v13 through one forward migration. The upcycle
 entrypoint captures the persisted source version before its sequential hops and
