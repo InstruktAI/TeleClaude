@@ -420,6 +420,17 @@ CREATE INDEX IF NOT EXISTS idx_process_spawn_registry_lease
 ON process_spawn_registry(lease_expires_at);
 
 -- Voice assignments
+-- One durable voice-focus record per person: which session their voice
+-- utterances latch to and their replies play from. focus_id is generated
+-- once per person and stays stable across every subsequent update.
+CREATE TABLE IF NOT EXISTS voice_focus (
+    person_slug TEXT PRIMARY KEY,
+    focus_id TEXT NOT NULL,
+    focused_session_id TEXT,
+    basis TEXT NOT NULL DEFAULT 'derived' CHECK(basis IN ('derived', 'explicit')),
+    set_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS voice_assignments (
     id TEXT PRIMARY KEY,
     service_name TEXT,

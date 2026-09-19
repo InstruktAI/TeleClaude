@@ -10,6 +10,7 @@ FLEET_CROSS_VERSION_INTEROP_FEATURE_ID = "project/spec/feature/reconciliation/fl
 WEBHOOK_INGRESS_FEATURE_ID = "project/spec/feature/integration/single-ingress-webhook-termination"
 DETERMINISTIC_AGENT_ROUTING_FEATURE_ID = "project/spec/feature/agent_runtime/deterministic-agent-routing"
 INTERACTIVE_COMMAND_INPUT_FEATURE_ID = "project/spec/feature/agent_runtime/interactive-command-input"
+SESSION_OBSERVED_STOP_FEATURE_ID = "project/spec/feature/integration/discord-personal-voice-conversation"
 
 
 class FeatureMark(StrEnum):
@@ -105,6 +106,10 @@ DEFAULT_FEATURE_ID_REGISTRY = FeatureIDRegistry.from_entries(
         FeatureID(
             identifier=INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
             mark=FeatureMark.MUST_NEGOTIATE,
+        ),
+        FeatureID(
+            identifier=SESSION_OBSERVED_STOP_FEATURE_ID,
+            mark=FeatureMark.IGNORABLE,
         ),
     )
 )

@@ -108,6 +108,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                 version=peer.version,
                 channel=peer.channel,
                 capability_set=peer.capability_set,
+                is_master=peer.is_master,
             )
             self.cache.update_computer(computer_info)
 
@@ -274,6 +275,7 @@ class _RefreshMixin:  # pyright: ignore[reportUnusedClass]
                     version=cast("str | None", info.get("version")),
                     channel=cast("str | None", info.get("channel")),
                     capability_set=decode_capability_set(info.get("capability_set")),
+                    is_master=(cast(bool, info["is_master"]) if isinstance(info.get("is_master"), bool) else None),
                 )
                 self.cache.update_computer(computer_info)
 

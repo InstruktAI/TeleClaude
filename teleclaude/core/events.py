@@ -35,6 +35,7 @@ EventType = Literal[
     "session_status",
     "session_updated",
     "system_command",
+    "voice_focus_set",
 ]
 
 
@@ -462,12 +463,66 @@ class SessionLifecycleContext:
     session_id: str
 
 
+class SystemCommand(StrEnum):
+    """Closed vocabulary for system commands carrying a validated typed payload.
+
+    A daemon-to-daemon system command outside this vocabulary keeps today's
+    bare-string path (no payload validation, no narrowing).
+    """
+
+    SESSION_OUTPUT_STOPPED = "session_output_stopped"
+
+
+@dataclass(frozen=True)
+class SessionOutputStoppedPayload:
+    """Validated payload for `SystemCommand.SESSION_OUTPUT_STOPPED`."""
+
+    session_id: str
+    last_output_stop_at: str
+
+    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - wire payload
+        """Serialize for transport as system-command args."""
+        return {"session_id": self.session_id, "last_output_stop_at": self.last_output_stop_at}
+
+    @classmethod
+    def from_dict(cls, data: object) -> "SessionOutputStoppedPayload | None":  # guard: loose-dict
+        """Validate a decoded args mapping, or return None when malformed."""
+        if not isinstance(data, dict):
+            return None
+        session_id = data.get("session_id")
+        last_output_stop_at = data.get("last_output_stop_at")
+        if not isinstance(session_id, str) or not session_id:
+            return None
+        if not isinstance(last_output_stop_at, str) or not last_output_stop_at:
+            return None
+        if parse_iso_datetime(last_output_stop_at) is None:
+            return None
+        return cls(session_id=session_id, last_output_stop_at=last_output_stop_at)
+
+
 @dataclass(frozen=True)
 class SystemCommandContext:
     """Context for system commands (no session_id)."""
 
     command: str = ""
     from_computer: str = "unknown"
+    payload: SessionOutputStoppedPayload | None = None
+
+
+@dataclass(frozen=True)
+class VoiceFocusSetContext:
+    """Local-only event: a person's voice focus was durably set.
+
+    Carries `focus_id` only — never a person slug, email, or platform id.
+    The Discord adapter subscribes to play the newly focused session's
+    current reply immediately; core emits this without importing any
+    adapter module.
+    """
+
+    focus_id: str
+    session_id: str
+    basis: str
+    set_at: str
 
 
 @dataclass(frozen=True)
@@ -668,4 +723,5 @@ EventContext = (
     | SessionStatusContext
     | SessionUpdatedContext
     | SystemCommandContext
+    | VoiceFocusSetContext
 )

@@ -210,8 +210,13 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             version=self._optional_text(computer_info.get("version")),
             channel=self._optional_text(computer_info.get("channel")),
             capability_set=capability_set,
+            is_master=self._optional_bool(computer_info.get("is_master")),
         )
 
     def _optional_text(self, value: object) -> str | None:
         """Convert a truthy value to text, otherwise return `None`."""
         return str(value) if value else None
+
+    def _optional_bool(self, value: object) -> bool | None:
+        """Return the decoded bool, or `None` when the key is absent (older peer)."""
+        return bool(value) if isinstance(value, bool) else None

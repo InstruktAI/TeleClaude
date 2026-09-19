@@ -166,6 +166,7 @@ tts:
   services:
     voxcpm:
       enabled: true
+      # discord_voice: narrator # Optional room-voice override; defaults to the first voice below.
       # Optional: local model path or HF repo id.
       # Example local path:
       # ${HOME}/.cache/lm-studio/models/mlx-community/voxcpm1.5
@@ -190,6 +191,7 @@ tts:
             speed: 1.2
     kokoro:
       enabled: true
+      # discord_voice: adam # Optional room-voice override; defaults to the first voice below.
       model: mlx-community/Kokoro-82M-bf16
       voices:
         - name: adam
@@ -248,6 +250,7 @@ tts:
           voice_id: bm_lewis
     qwen3:
       enabled: true
+      # discord_voice: serena # Optional room-voice override; defaults to the first voice below.
       model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
       voices:
         - name: serena
@@ -260,6 +263,7 @@ tts:
         - name: dylan
     elevenlabs:
       enabled: true
+      # discord_voice: Rachel # Optional room-voice override; defaults to the first voice below.
       api_key: ${ELEVENLABS_API_KEY}
       voices:
         - name: Rachel
@@ -288,6 +292,7 @@ tts:
           voice_id: oWAxZDx7w5VEj9dCyTzz
     openai:
       enabled: true
+      # discord_voice: alloy # Optional room-voice override; defaults to the first voice below.
       api_key: ${OPENAI_API_KEY}
       voices:
         - name: alloy
@@ -298,6 +303,7 @@ tts:
         - name: shimmer
     macos:
       enabled: true
+      # discord_voice: 'Samantha (Enhanced)' # Optional room-voice override; defaults to the first voice below.
       voices:
         - name: 'Samantha (Enhanced)'
         - name: 'Daniel (Enhanced)'

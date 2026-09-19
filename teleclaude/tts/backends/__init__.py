@@ -1,6 +1,7 @@
 """TTS backends - modular speech synthesis implementations."""
 
 import sys
+from pathlib import Path
 from typing import Protocol
 
 from instrukt_ai_logging import get_logger
@@ -15,8 +16,18 @@ logger = get_logger(__name__)
 class TTSBackend(Protocol):
     """Common interface for all TTS backends."""
 
+    can_render: bool
+
     def speak(self, text: str, voice: str | None = None, /) -> bool:
         """Synthesize and play speech. Returns True on success."""
+        raise NotImplementedError
+
+    def render(self, text: str, voice: str | None, out_dir: Path) -> Path | None:
+        """Synthesize speech to a file in ``out_dir`` without playing it.
+
+        Returns the rendered file path, or ``None`` when rendering is
+        unsupported or fails. ``can_render`` tells a caller whether to try.
+        """
         raise NotImplementedError
 
 

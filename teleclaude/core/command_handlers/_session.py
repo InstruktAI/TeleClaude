@@ -683,6 +683,7 @@ async def get_computer_info() -> ComputerInfo:
         version=__version__,
         channel=config.deployment.channel,
         capability_set=sorted(DEFAULT_FEATURE_ID_REGISTRY.carried_set()),
+        is_master=config.computer.is_master,
     )
 
     logger.debug("get_computer_info() returning info: %s", info)

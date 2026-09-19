@@ -72,6 +72,30 @@
           ],
           "default": null,
           "title": "Avatar Url"
+        },
+        "voice_bot_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voice Bot Token"
+        },
+        "voice_channel_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Voice Channel Id"
         }
       },
       "required": ["user_id"],

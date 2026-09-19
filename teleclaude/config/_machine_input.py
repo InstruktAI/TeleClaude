@@ -32,6 +32,7 @@ _TTS_SERVICE_INPUT = ClosedMapping(
         "params": OPEN,
         "cli_bin": SCALAR,
         "instruct": SCALAR,
+        "discord_voice": SCALAR,
     }
 )
 _TTS_INPUT = ClosedMapping(

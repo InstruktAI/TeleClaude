@@ -24,6 +24,7 @@ from teleclaude.constants import (
     JobRole,
     SlashCommand,
 )
+from teleclaude.core import voice_focus
 from teleclaude.core.command_handlers import (
     EndSessionHandlerResult,
     SessionDataPayload,
@@ -56,6 +57,7 @@ from teleclaude.types.commands import (
     RestartAgentCommand,
     ResumeAgentCommand,
     RunAgentCommand,
+    SetVoiceFocusCommand,
     StartAgentCommand,
     SystemCommand,
     UnsubscribeSessionCommand,
@@ -68,7 +70,7 @@ from datetime import UTC, datetime
 from teleclaude.core.adapter_errors import AdapterError
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionEscalatedPayload
+from teleclaude.core.events import SessionEscalatedPayload, VoiceFocusSetContext
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
 from teleclaude.core.models import ContentFormat, MessageMetadata
 from teleclaude.core.protocols import AdminReflectionAdapter
@@ -229,6 +231,31 @@ class CommandService:
 
     async def close_session(self, cmd: CloseSessionCommand) -> None:
         await close_session(cmd, self.client)
+
+    async def set_voice_focus(self, cmd: SetVoiceFocusCommand) -> dict[str, str | None]:
+        """Durably override a person's voice focus, then notify local subscribers.
+
+        The command envelope crosses computers; the emitted event stays local
+        (the Discord adapter subscribes to play the newly focused session's
+        current reply immediately). Core imports no adapter module.
+        """
+        record = await voice_focus.set_explicit(cmd.person_slug, cmd.session_id)
+        event_bus.emit(
+            "voice_focus_set",
+            VoiceFocusSetContext(
+                focus_id=record.focus_id,
+                session_id=cmd.session_id,
+                basis=record.basis.value,
+                set_at=record.set_at.isoformat(),
+            ),
+            visibility=EventVisibility.LOCAL,
+        )
+        return {
+            "focus_id": record.focus_id,
+            "session_id": record.focused_session_id,
+            "basis": record.basis.value,
+            "set_at": record.set_at.isoformat(),
+        }
 
     async def end_session(self, cmd: CloseSessionCommand) -> EndSessionHandlerResult:
         return await end_session(cmd, self.client)

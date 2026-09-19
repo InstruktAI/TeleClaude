@@ -3,7 +3,13 @@
 from collections.abc import AsyncIterator
 from typing import Protocol, runtime_checkable
 
-from teleclaude.core.models import JsonDict, MessageMetadata
+from teleclaude.core.models import (
+    JsonDict,
+    MessageMetadata,
+    ObservedStopPublication,
+    PeerCapabilityMissing,
+    SessionFinalOutput,
+)
 
 
 @runtime_checkable
@@ -117,5 +123,57 @@ class RemoteExecutionProtocol(Protocol):
 
         Raises:
             TimeoutError: If no response received within timeout
+        """
+        ...
+
+    async def notify_session_observed_stop(self, session_id: str, output_version: str) -> ObservedStopPublication:
+        """Notify this session's observer, if any, that its agent stopped.
+
+        Every transport error is caught inside the implementation and
+        reported as `published=False` — this never raises.
+
+        Args:
+            session_id: The session whose agent just stopped.
+            output_version: The stop marker (`last_output_stop_at`) this notification carries.
+
+        Returns:
+            Whether a notification was published, and to which observer.
+        """
+        ...
+
+    async def observe_session(self, computer: str, session_id: str, ttl_s: int) -> bool:
+        """Signal interest in a remote session for `ttl_s` seconds.
+
+        Args:
+            computer: The computer hosting the session.
+            session_id: The session to observe.
+            ttl_s: How long the observation window lasts before it must be renewed.
+
+        Returns:
+            Whether the signal was sent successfully.
+        """
+        ...
+
+    def request_sessions_refresh(self, computer: str, reason: str) -> None:
+        """Ask this computer's session cache to refresh from `computer`.
+
+        Args:
+            computer: The peer whose sessions should be refreshed.
+            reason: One of the transport's allowed refresh reasons.
+        """
+        ...
+
+    async def fetch_session_final_output(
+        self, computer: str, session_id: str
+    ) -> SessionFinalOutput | PeerCapabilityMissing:
+        """Pull a remote session's current final output.
+
+        Args:
+            computer: The computer hosting the session.
+            session_id: The session to query.
+
+        Returns:
+            The session's current output, or `PeerCapabilityMissing` when the
+            peer does not answer this request.
         """
         ...

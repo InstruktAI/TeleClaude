@@ -24,6 +24,7 @@ from teleclaude.core.events import (
     ErrorEventContext,
     SessionLifecycleContext,
     SessionStatusContext,
+    SystemCommand,
     SystemCommandContext,
     TeleClaudeEvents,
 )
@@ -225,6 +226,8 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         if ctx.command == "health_check":
             await self._handle_health_check()
+        elif ctx.command == SystemCommand.SESSION_OUTPUT_STOPPED:
+            pass  # Subscriber-delivered: the voice playback module owns this command.
         else:
             logger.warning("Unknown system command: %s", ctx.command)
 

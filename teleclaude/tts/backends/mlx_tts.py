@@ -9,6 +9,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.mlx_utils import is_local_path, resolve_model_ref
+from teleclaude.tts.backends._local_play import play_file
 
 generate_audio = None
 load_model = None
@@ -38,6 +39,8 @@ def _looks_like_python_script(path: str) -> bool:
 
 class MLXTTSBackend:
     """Local TTS using mlx_audio. One instance per model in config."""
+
+    can_render: bool = True
 
     def __init__(
         self,
@@ -167,55 +170,49 @@ class MLXTTSBackend:
             return False
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            prefix = f"{tmp_dir}/tts_output"
-            cmd = self._build_cli_command(
-                text=text,
-                voice=voice,
-                file_prefix=prefix,
-            )
-
-            # Pass config params as CLI flags, excluding internally-controlled keys.
-            # `play` would re-add async playback (the exact bug this fix removes);
-            # `model`, `text`, `voice`, `file_prefix`, `join_audio`, `audio_format`
-            # are already set by _build_cli_command and must not be doubled.
-            _protected = frozenset(
-                {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
-            )
-            for key, val in self._params.items():
-                if key not in _protected:
-                    cmd.extend([f"--{key}", str(val)])
-
-            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-            if result.returncode:
-                logger.error(
-                    "MLX TTS [%s] CLI failed: %s", self._service_name, (result.stderr or result.stdout).strip()
-                )
-                return False
-
-            audio_file = Path(f"{prefix}.wav")
-            if not audio_file.exists() or not audio_file.stat().st_size:
-                logger.error("MLX TTS [%s] CLI produced no audio file (voice=%s)", self._service_name, voice)
+            audio_file = self._generate_cli(text, voice, Path(tmp_dir))
+            if audio_file is None:
                 return False
 
             # Play audio explicitly (synchronous) while temp dir still exists.
             # This keeps the playback lock held for the full audio duration,
             # preventing overlapping playback that would otherwise cause echoes.
-            play_result = subprocess.run(
-                ["afplay", str(audio_file)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if play_result.returncode:
-                logger.error(
-                    "MLX TTS [%s] CLI playback failed: %s",
-                    self._service_name,
-                    (play_result.stderr or play_result.stdout).strip(),
-                )
+            if not play_file(audio_file):
+                logger.debug("MLX TTS [%s] CLI playback failed", self._service_name)
                 return False
 
         logger.debug("MLX TTS [%s]: spoke %d chars via CLI (voice=%s)", self._service_name, len(text), voice)
         return True
+
+    def _generate_cli(self, text: str, voice: str, out_dir: Path) -> Path | None:
+        """Generate a WAV file via CLI subprocess into ``out_dir``, without playing it."""
+        if not self._cli_bin:
+            return None
+
+        prefix = str(out_dir / "tts_output")
+        cmd = self._build_cli_command(text=text, voice=voice, file_prefix=prefix)
+
+        # Pass config params as CLI flags, excluding internally-controlled keys.
+        # `play` would re-add async playback (the exact bug this fix removes);
+        # `model`, `text`, `voice`, `file_prefix`, `join_audio`, `audio_format`
+        # are already set by _build_cli_command and must not be doubled.
+        _protected = frozenset(
+            {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
+        )
+        for key, val in self._params.items():
+            if key not in _protected:
+                cmd.extend([f"--{key}", str(val)])
+
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if result.returncode:
+            logger.error("MLX TTS [%s] CLI failed: %s", self._service_name, (result.stderr or result.stdout).strip())
+            return None
+
+        audio_file = Path(f"{prefix}.wav")
+        if not audio_file.exists() or not audio_file.stat().st_size:
+            logger.error("MLX TTS [%s] CLI produced no audio file (voice=%s)", self._service_name, voice)
+            return None
+        return audio_file
 
     def _build_cli_command(self, text: str, voice: str, file_prefix: str) -> list[str]:
         """Build the CLI command list for the fallback CLI path."""
@@ -252,54 +249,64 @@ class MLXTTSBackend:
     def _speak_local(self, text: str, voice: str, model_type: str) -> bool:
         """Speak via in-process mlx_audio."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            prefix = f"{tmp_dir}/tts_output"
-            generate_kwargs: dict[str, object] = {  # guard: loose-dict - mlx_audio kwargs are dynamic.
-                "model": self._model,
-                "text": text,
-                "voice": voice,
-                "file_prefix": prefix,
-                "play": False,
-                "join_audio": True,
-                "audio_format": "wav",
-                "verbose": False,
-            }
-
-            if model_type == "voice_design":
-                generate_kwargs["instruct"] = self._instruct
-
-            # Merge config params, but never let user params override the internally-
-            # controlled keys. Overriding `play` would cause double-playback (echo);
-            # overriding `verbose` would leak model output to the daemon TTY.
-            _protected = frozenset(
-                {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
-            )
-            generate_kwargs.update({k: v for k, v in self._params.items() if k not in _protected})
-
-            generate_audio(**generate_kwargs)
-
-            audio_file = Path(f"{prefix}.wav")
-            if not audio_file.exists() or not audio_file.stat().st_size:
-                logger.error(
-                    "MLX TTS [%s] produced no audio (model_type=%s voice=%s)",
-                    self._service_name,
-                    model_type,
-                    voice,
-                )
+            audio_file = self._generate_local(text, voice, model_type, Path(tmp_dir))
+            if audio_file is None:
                 return False
 
-            result = subprocess.run(
-                ["afplay", str(audio_file)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode:
-                logger.error(
-                    "MLX TTS [%s] playback failed: %s", self._service_name, (result.stderr or result.stdout).strip()
-                )
+            if not play_file(audio_file):
+                logger.debug("MLX TTS [%s] playback failed", self._service_name)
                 return False
 
         logger.debug(
             "MLX TTS [%s]: spoke %d chars (model_type=%s voice=%s)", self._service_name, len(text), model_type, voice
         )
         return True
+
+    def _generate_local(self, text: str, voice: str, model_type: str, out_dir: Path) -> Path | None:
+        """Generate a WAV file via in-process mlx_audio into ``out_dir``, without playing it."""
+        prefix = str(out_dir / "tts_output")
+        generate_kwargs: dict[str, object] = {  # guard: loose-dict - mlx_audio kwargs are dynamic.
+            "model": self._model,
+            "text": text,
+            "voice": voice,
+            "file_prefix": prefix,
+            "play": False,
+            "join_audio": True,
+            "audio_format": "wav",
+            "verbose": False,
+        }
+
+        if model_type == "voice_design":
+            generate_kwargs["instruct"] = self._instruct
+
+        # Merge config params, but never let user params override the internally-
+        # controlled keys. Overriding `play` would cause double-playback (echo);
+        # overriding `verbose` would leak model output to the daemon TTY.
+        _protected = frozenset(
+            {"play", "verbose", "model", "text", "voice", "file_prefix", "join_audio", "audio_format"}
+        )
+        generate_kwargs.update({k: v for k, v in self._params.items() if k not in _protected})
+
+        generate_audio(**generate_kwargs)
+
+        audio_file = Path(f"{prefix}.wav")
+        if not audio_file.exists() or not audio_file.stat().st_size:
+            logger.error(
+                "MLX TTS [%s] produced no audio (model_type=%s voice=%s)", self._service_name, model_type, voice
+            )
+            return None
+        return audio_file
+
+    def render(self, text: str, voice: str | None, out_dir: Path) -> Path | None:
+        """Render text to a WAV file in ``out_dir`` without playing it."""
+        if not self._ensure_model():
+            return None
+        resolved_voice = voice or self._service_name
+        try:
+            if self._model is None and self._cli_bin:
+                return self._generate_cli(text, resolved_voice, out_dir)
+            model_type = getattr(getattr(self._model, "config", None), "tts_model_type", "unknown")
+            return self._generate_local(text, resolved_voice, model_type, out_dir)
+        except Exception as e:
+            logger.error("MLX TTS [%s] render failed: %s", self._service_name, e)
+            return None

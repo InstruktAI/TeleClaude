@@ -4,7 +4,13 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import JsonDict, MessageMetadata
+from teleclaude.core.models import (
+    JsonDict,
+    MessageMetadata,
+    ObservedStopPublication,
+    PeerCapabilityMissing,
+    SessionFinalOutput,
+)
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
@@ -91,6 +97,8 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
                         peer_dict["version"] = peer_info.version
                     if peer_info.channel:
                         peer_dict["channel"] = peer_info.channel
+                    if peer_info.is_master is not None:
+                        peer_dict["is_master"] = peer_info.is_master
                     peer_dict["capability_set"] = peer_info.capability_set
                     all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
@@ -179,6 +187,36 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
         """
         transport = self._get_transport_adapter()
         return await transport.read_response(message_id, timeout, target_computer)
+
+    async def notify_session_observed_stop(self, session_id: str, output_version: str) -> ObservedStopPublication:
+        """Notify this session's observer, if any, that its agent stopped.
+
+        Returns `published=False` when no transport is configured, rather
+        than raising — a stop fan-out must never be interrupted by this.
+        """
+        if self.transport is None:
+            return ObservedStopPublication(published=False, observer=None)
+        return await self.transport.notify_session_observed_stop(session_id, output_version)
+
+    async def observe_session(self, computer: str, session_id: str, ttl_s: int) -> bool:
+        """Signal interest in a remote session for `ttl_s` seconds."""
+        if self.transport is None:
+            return False
+        return await self.transport.observe_session(computer, session_id, ttl_s)
+
+    def request_sessions_refresh(self, computer: str, reason: str) -> None:
+        """Ask this computer's session cache to refresh from `computer`."""
+        if self.transport is None:
+            return
+        self.transport.request_sessions_refresh(computer, reason)
+
+    async def fetch_session_final_output(
+        self, computer: str, session_id: str
+    ) -> SessionFinalOutput | PeerCapabilityMissing:
+        """Pull a remote session's current final output."""
+        if self.transport is None:
+            return PeerCapabilityMissing(computer=computer, request="get_session_final_output")
+        return await self.transport.fetch_session_final_output(computer, session_id)
 
     def _get_transport_adapter(self) -> RemoteExecutionProtocol:
         """Return the Redis transport that backs remote execution.

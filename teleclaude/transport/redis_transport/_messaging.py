@@ -18,7 +18,13 @@ from teleclaude.core.command_dispatch import execute_command_envelope
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentAttentionObservation, SystemCommandContext, parse_command_string
+from teleclaude.core.events import (
+    AgentAttentionObservation,
+    SessionOutputStoppedPayload,
+    SystemCommand,
+    SystemCommandContext,
+    parse_command_string,
+)
 from teleclaude.core.models import JsonDict, RedisInboundMessage
 from teleclaude.core.session_listeners import (
     NotificationKind,
@@ -54,6 +60,7 @@ _MESSAGE_EXCEPTIONS = (
     json.JSONDecodeError,
 )
 _DECODE_EXCEPTIONS = (binascii.Error, UnicodeError, ValueError)
+_SYSTEM_COMMAND_PAYLOAD_REJECTED_EVENT = "system_command_payload_rejected"
 _ATTENTION_OBSERVATION_METADATA_KEY = "attention_observation"
 _ATTENTION_PROVIDER_KEY = "provider"
 _ATTENTION_NATIVE_EVENT_KEY = "native_event"
@@ -278,6 +285,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 "get_session_messages",
                 "get_session_pane",
                 "history_search",
+                "get_session_final_output",
             }:
                 # ``get_computer_info`` round-trip removed — identity now ships in the heartbeat
                 # payload (see ``_heartbeat.py``); peers read it directly in ``discover_peers``.
@@ -323,6 +331,17 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                         identity=(str(search_data["identity"]) if search_data.get("identity") is not None else None),
                         project=(str(search_data["project"]) if search_data.get("project") is not None else None),
                     )
+                elif cmd_name == "get_session_final_output":
+                    final_output_session = await db.get_session(parsed.session_id or "")
+                    payload = {
+                        "session_id": parsed.session_id or "",
+                        "last_output_raw": final_output_session.last_output_raw if final_output_session else None,
+                        "last_output_stop_at": (
+                            final_output_session.last_output_stop_at.isoformat()
+                            if final_output_session and final_output_session.last_output_stop_at
+                            else None
+                        ),
+                    }
                 else:
                     payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
 
@@ -488,11 +507,31 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
 
         logger.info("Received system command '%s' from %s", command, from_computer)
 
+        payload: SessionOutputStoppedPayload | None = None
+        try:
+            known_command = SystemCommand(command)
+        except ValueError:
+            known_command = None
+
+        if known_command is SystemCommand.SESSION_OUTPUT_STOPPED:
+            raw_args = data.get(b"args", b"")
+            decoded_args: object = None
+            if raw_args:
+                try:
+                    decoded_args = json.loads(raw_args.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeError):
+                    decoded_args = None
+            payload = SessionOutputStoppedPayload.from_dict(decoded_args)
+            if payload is None:
+                logger.warning(_SYSTEM_COMMAND_PAYLOAD_REJECTED_EVENT, command=command, from_computer=from_computer)
+                return
+
         event_bus.emit(
             "system_command",
             SystemCommandContext(
                 command=command,
                 from_computer=from_computer or "unknown",
+                payload=payload,
             ),
             visibility=EventVisibility.CLUSTER,
         )

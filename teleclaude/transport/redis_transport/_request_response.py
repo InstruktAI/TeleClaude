@@ -10,9 +10,12 @@ from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.models import JsonDict, MessageMetadata
+from teleclaude.core.events import SessionOutputStoppedPayload, SystemCommand
+from teleclaude.core.models import JsonDict, MessageMetadata, ObservedStopPublication
 
 logger = get_logger(__name__)
+
+_SESSION_OBSERVED_STOP_FAILED_EVENT = "session_observed_stop_failed"
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -29,6 +32,17 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
 
         async def _get_redis(self) -> Redis:
             """Return an active Redis client."""
+            raise NotImplementedError
+
+        def request_refresh(
+            self,
+            computer: str,
+            data_type: str,
+            *,
+            reason: str,
+            project_path: str | None = None,
+        ) -> bool:
+            """Request a remote refresh if the reason is allowed and cooldown permits it."""
             raise NotImplementedError
 
     # === Session Observation (Interest Window) ===
@@ -82,6 +96,52 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
         redis_client = await self._get_redis()
         exists = await redis_client.exists(key)
         return bool(exists)
+
+    async def _session_observer(self, session_id: str) -> str | None:
+        """Return the computer observing this session, or None if unobserved."""
+        key = f"observation:{self.computer_name}:{session_id}"
+        redis_client = await self._get_redis()
+        raw = await redis_client.get(key)
+        if not raw:
+            return None
+        try:
+            observation_data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+            return None
+        observer = observation_data.get("observer") if isinstance(observation_data, dict) else None
+        return str(observer) if observer else None
+
+    async def observe_session(self, computer: str, session_id: str, ttl_s: int) -> bool:
+        """Signal interest in a remote session's stop, renewed on a cadence shorter than ttl_s."""
+        try:
+            await self.signal_observation(computer, session_id, ttl_s)
+            return True
+        except Exception as e:
+            logger.warning("Failed to observe session %s on %s: %s", session_id, computer, e)
+            return False
+
+    def request_sessions_refresh(self, computer: str, reason: str) -> None:
+        """Ask a peer's cache to refresh sessions data for this computer."""
+        self.request_refresh(computer, "sessions", reason=reason)
+
+    async def notify_session_observed_stop(self, session_id: str, output_version: str) -> ObservedStopPublication:
+        """Notify this session's observer, if any, that its agent stopped.
+
+        Every transport error is caught here and reported as a failed
+        publication rather than propagated, so a notification failure never
+        interrupts the caller's stop fan-out.
+        """
+        try:
+            observer = await self._session_observer(session_id)
+            if observer is None:
+                return ObservedStopPublication(published=False, observer=None)
+
+            payload = SessionOutputStoppedPayload(session_id=session_id, last_output_stop_at=output_version)
+            await self.send_system_command(observer, SystemCommand.SESSION_OUTPUT_STOPPED, payload.to_dict())
+            return ObservedStopPublication(published=True, observer=observer)
+        except Exception as e:
+            logger.warning(_SESSION_OBSERVED_STOP_FAILED_EVENT, session_id=session_id, error=str(e))
+            return ObservedStopPublication(published=False, observer=None)
 
     # === Request/Response pattern for ephemeral queries (list_projects, etc.) ===
 
