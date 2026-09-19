@@ -4,11 +4,12 @@ visibility: internal
 delivered_by:
   - fleet-artifact-sync
 ---
+
 # Runtime Publication Convergence — Spec
 
 ## Required reads
 
-- @docs/project/spec/domain/reconciliation.md
+- @docs/project/spec/domain/context.md
 - @docs/project/spec/feature/context/sync-pipeline-orchestration.md
 
 ## What it is
@@ -19,10 +20,10 @@ the fleet from authoritative registration and tier declarations, so the result
 does not depend on the directory from which the request was made and does not
 discover publishers by scanning the filesystem.
 
-The Reconciliation context owns fleet enumeration and orchestration. Each
-source root keeps its own publication contract, capability gates, validation,
-and outputs; the Context contract owns source-backed reference resolution,
-serialization, and atomic replacement of the deployed documentation snapshot.
+The Context area owns fleet enumeration, orchestration, source validation, and
+publication. Each source root keeps its own capability gates and permitted
+outputs; the composed documentation contract retains source-backed reference
+resolution, serialization, and atomic replacement of the deployed snapshot.
 
 ## Canonical fields
 
@@ -40,7 +41,6 @@ serialization, and atomic replacement of the deployed documentation snapshot.
 
 ### Use cases
 
-<!-- planned:fleet-artifact-sync -->
 #### UC-RPC1: One request reconciles the configured fleet from any location
 
 ```gherkin
@@ -71,11 +71,10 @@ Then the reference is resolved against its registered publisher source
 And generated documentation required by publication is produced before dependent outputs are replaced
 And a runtime reader observes either the complete prior documentation snapshot or the complete replacement snapshot
 ```
-<!-- /planned:fleet-artifact-sync -->
 
 ## Known caveats
 
-- Fleet reconciliation coordinates owner-local publication contracts; it does
+- Fleet reconciliation coordinates root-local capability contracts; it does
   not define company, person, project, or global artifact reach.
 - A root that is declared but unavailable is not discovered by searching for an
   alternate checkout. Availability handling belongs to the fleet orchestrator
