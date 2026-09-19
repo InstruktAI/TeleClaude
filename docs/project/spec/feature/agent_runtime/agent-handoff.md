@@ -145,6 +145,19 @@ And no replacement session identity is minted and no successor hook is dropped
 ```
 <!-- /planned:session-handoff-state-convergence -->
 
+<!-- planned:session-handoff-state-convergence -->
+#### UC-AH13: Handoff preserves every session-scoped behavior
+
+```gherkin
+Given an agent session has pending input or control delivery, active conversation links or listeners, reminders, parent or child relationships, workflow ownership, or other behavior addressed to its TeleClaude session id
+When that session is handed to a different agent
+Then every durable record remains addressed to the same TeleClaude session
+And accepted input and control delivery continue in order without loss or duplication
+And later activity and turn completion trigger the same links, listeners, parent attention, workflow transitions, attribution, and projections as if the predecessor agent had continued
+And only the active agent, its native session identity, and the transcript chain change
+```
+<!-- /planned:session-handoff-state-convergence -->
+
 ### Cross-context references
 
 - **workflow** — orchestrator ownership and owned-slug resolution key on session row fields the handoff preserves; workflow observes the same session before and after, with a different active agent.

@@ -72,7 +72,7 @@ And re-upserts both members on the survivor (idempotent: caller stays participan
 And returns the survivor link as reused
 ```
 
-#### Cross-sharing of turn-complete outputs
+#### UC-DCL22: Cross-sharing of turn-complete outputs
 
 ```
 Given an active direct link exists between members A and B
