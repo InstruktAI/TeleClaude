@@ -60,7 +60,11 @@ def _require_delivery_provenance(slug: str, state_model: TodoStateModel | None, 
     if commit and commit.strip():
         return
     try:
-        kind = TodoState.model_validate(json.loads(state_model.state)).kind if state_model is not None else None
+        kind = (
+            TodoState.model_validate(upcycle_state_dict(json.loads(state_model.state))).kind
+            if state_model is not None
+            else None
+        )
     except (TypeError, ValueError):
         kind = None
     if kind != TODO_KIND_TASK:
@@ -69,7 +73,7 @@ def _require_delivery_provenance(slug: str, state_model: TodoStateModel | None, 
 
 def _delivered_state(raw_state: str) -> str:
     """Apply delivery through the lifecycle authority before persisting state."""
-    state = TodoState.model_validate(json.loads(raw_state))
+    state = TodoState.model_validate(upcycle_state_dict(json.loads(raw_state)))
     apply_authoritative_signal(state, "delivery_evidence")
     return json.dumps(canonicalize_state_for_storage(state.model_dump(exclude_none=True)))
 
