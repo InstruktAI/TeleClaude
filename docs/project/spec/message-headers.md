@@ -60,9 +60,16 @@ one typed kind, from a closed set that is wider than the platform's own headers:
 - **platform control** — a `[TeleClaude …]` envelope;
 - **identity content** — a peer or caller-origin envelope;
 - **reminder** — a reminder envelope;
+<!-- planned-change:action-scoped-human-involvement -->
 - **third-party runtime artifact** — a complete entry emitted by the agent CLI
   itself, recognized from that runtime's own declared wrapper vocabulary: not
   platform-authored, never content, and never a human turn;
+<!-- change:action-scoped-human-involvement -->
+- **runtime artifact** — a complete entry emitted by the agent CLI or a
+  platform-generated command loader, recognized from its declared structural
+  vocabulary: never human-authored content and never eligible as a human-input
+  recency signal;
+<!-- /planned-change:action-scoped-human-involvement -->
 - **ordinary** — a user entry, or a span within one lying outside every envelope:
   prompt input typed into the session. An assistant entry is the agent's own
   output and is not classified by this taxonomy.

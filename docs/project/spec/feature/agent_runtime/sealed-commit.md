@@ -649,11 +649,56 @@ Then the message has Human-Involved: false appended
 
 #### UC-CGIP-20 — Human-Involved is true when the committing agent declares it
 
+<!-- planned-change:action-scoped-human-involvement -->
 ```
 Given telec code commit is invoked with --human-involved
 When the commit lands
 Then the message has Human-Involved: true appended
 ```
+<!-- change:action-scoped-human-involvement -->
+```gherkin
+Given the committing agent invokes telec code commit with a non-empty human-involvement reason
+And the session's latest authenticated human input falls within the code-owned recency window
+When the commit lands
+Then the message has Human-Involved: true appended
+And the reason remains only in the invoking session's transcript
+And the reason is absent from the commit message, command output, logs, events, and every other durable record
+And the declaration changes no authorization, scope, gate, or later action
+```
+<!-- /planned-change:action-scoped-human-involvement -->
+
+<!-- planned:action-scoped-human-involvement -->
+#### UC-CGIP-38 — Human involvement requires a non-empty invocation reason
+
+```gherkin
+Given an agent invokes telec code commit with a missing or blank human-involvement reason
+When the sealed surface validates the invocation
+Then it refuses the declaration before producing a commit
+And it emits no supplied reason
+And the diagnostic directs the agent to rerun without the declaration when the act is not human-involved
+```
+
+#### UC-CGIP-39 — Stale human activity refuses only the declaration
+
+```gherkin
+Given an agent invokes telec code commit with a non-empty human-involvement reason
+And the session's latest authenticated human input is absent or older than the code-owned recency window
+When the sealed surface validates the invocation
+Then it refuses the declaration before producing a commit
+And the diagnostic reports the human-input age without emitting the supplied reason
+And it directs the agent to rerun the same commit without the human-involvement declaration
+And no authorization or commit-content decision changes
+```
+
+#### UC-CGIP-40 — Human involvement never propagates between commits
+
+```gherkin
+Given one commit recorded Human-Involved: true
+When the same session later creates another commit without a human-involvement declaration
+Then the later commit records Human-Involved: false
+And no session, todo, branch, parent act, or earlier commit supplies the later value
+```
+<!-- /planned:action-scoped-human-involvement -->
 
 #### UC-CGIP-21 — A pre-existing tool-shaped line in the message is left untouched, not enforced against
 

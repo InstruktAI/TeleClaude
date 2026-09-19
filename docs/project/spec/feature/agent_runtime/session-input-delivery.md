@@ -300,6 +300,27 @@ And pane readiness and submission do not themselves mark the child active
 And the child becomes active only from its declared runtime-start observation
 ```
 
+<!-- planned:action-scoped-human-involvement -->
+#### UC-SID15: Human-input recency excludes machine-authored turns
+
+```gherkin
+Given an authenticated agent action asks whether recent human input can support an involvement declaration
+When agent runtime reads the session's existing input and transcript evidence
+Then it returns the age of the latest authenticated human-authored input when one exists
+And platform commands, additional context, peer input, reminders, wakes, checkpoints, continuations, and runtime artifacts never qualify as human input
+And no session-wide human-involvement state is created or persisted
+```
+
+#### UC-SID16: Additional context carries no involvement semantics
+
+```gherkin
+Given a caller starts a command session with additional context
+When the context is delivered to the agent
+Then the complete caller-supplied details remain available to that session
+And their presence, absence, or wording changes no human-involvement declaration or recency result
+```
+<!-- /planned:action-scoped-human-involvement -->
+
 ### Cross-context references
 
 - **identity** — the caller-identity context (resolved via clearance for the send/keys flows) gates access; the caller's session id and system role feed origin wrapping.

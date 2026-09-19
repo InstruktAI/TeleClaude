@@ -31,6 +31,7 @@ Human-Involved: <true|false>
   or edits that message to enforce this or anything else. `Session:` is
   present whenever an agent session resolves — the revival handle
   (`telec sessions revive <id>`) for that exact commit.
+<!-- planned-change:action-scoped-human-involvement -->
 - `Human-Involved:` is a bare `true`/`false` with no identity attached,
   always present. It is a declaration by the agent making the commit, from its
   own awareness of whether a human was present in that session — passed as the
@@ -38,6 +39,14 @@ Human-Involved: <true|false>
   no declaration is made. It is never derived from a todo's recorded
   `human_involved` fact, never inferred from where the commit is made, and
   never read from the message text.
+<!-- change:action-scoped-human-involvement -->
+- `Human-Involved:` is a bare `true`/`false` with no identity attached and is
+  always present. It records only whether a human shaped this commit; omission
+  records `false`. The declaration is made through the sealed commit surface,
+  whose point-of-use contract owns its admissibility. It is never derived from
+  a todo, session launch, lineage, preceding act, or message text, and it
+  supplies no declaration for any later commit.
+<!-- /planned-change:action-scoped-human-involvement -->
 - `Co-Authored-By`, `Agent:`, and `Signed-off-by` trailers are prohibited —
   the git author field is what carries attribution. The sealed surface does
   not enforce this by inspecting messages: a message that contains one
