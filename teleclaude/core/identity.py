@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
 from teleclaude.config.schema import PersonChipColor, PersonEntry
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import MessageAuthorKind
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
@@ -364,6 +364,18 @@ class IdentityResolver:
         threshold, every consumer reads it.
         """
         return self.registered_people_count > 1
+
+    def effective_terminal_role(self, email: str | None) -> str | None:
+        """Resolve the role a terminal caller holds under the current registry."""
+        self._reload_if_stale()
+        normalized_email = email.strip().lower() if email else None
+        if normalized_email:
+            person = self._by_email.get(normalized_email)
+            if person:
+                return self._normalize_role(person.role)
+        if self.is_multi_user:
+            return None
+        return HUMAN_ROLE_ADMIN
 
     def resolve(self, origin: str, origin_metadata: Mapping[str, object]) -> IdentityContext:
         """Resolve identity from origin and metadata.

@@ -474,6 +474,11 @@ FLAG_CONFIG_YAML = Flag("--yaml", "-y", "Inline YAML patch", arity=VALUE)
 
 FLAG_PEOPLE_EMAIL = Flag("--email", desc="Person's email address", arity=VALUE)
 FLAG_PEOPLE_ROLE = Flag("--role", desc="Person's role", arity=VALUE)
+FLAG_PEOPLE_COMPANY = Flag("--company", desc="Company membership to set", arity=VALUE)
+FLAG_PEOPLE_COMPANY_ROLE = Flag("--company-role", desc="Role held in the named company", arity=VALUE)
+FLAG_PEOPLE_REMOVE_COMPANY = Flag("--remove-company", desc="Company membership to withdraw", arity=VALUE)
+FLAG_PEOPLE_ASSIGN = Flag("--assign", desc="Project assignment to add", arity=REPEATED)
+FLAG_PEOPLE_UNASSIGN = Flag("--unassign", desc="Project assignment to remove", arity=REPEATED)
 FLAG_PEOPLE_USERNAME = Flag("--username", desc="Person's username", arity=VALUE)
 FLAG_PEOPLE_EXPERTISE = Flag(
     "--expertise",

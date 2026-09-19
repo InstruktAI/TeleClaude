@@ -66,8 +66,8 @@ from teleclaude.config import (
     parse_tts_config,
 )
 from teleclaude.config._summarizer import parse_summarizer_config
-from teleclaude.config.loader import find_company_config_path, find_person_config_path, list_company_configs
-from teleclaude.config.schema import CompanyConfig, ConfigKind, PersonEntry
+from teleclaude.config.loader import find_person_config_path
+from teleclaude.config.schema import PersonEntry
 from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, ConfigFileName
@@ -389,7 +389,6 @@ class ConfigContent(
         super().__init__(**kwargs)
         self._env_data: list[EnvVarStatus] = []
         self._people_data: list[PersonEntry] = []
-        self._companies_data: list[tuple[str, CompanyConfig]] = []
         self._validation_results: list[ValidationResult] = []
         self._adapter_sections: list[AdapterSectionProjection] = []
         self._cursor_by_context: dict[str, int] = {}
@@ -445,38 +444,6 @@ class ConfigContent(
 
     def _build_reflected_fields(self, tab: Subtab) -> list[ReflectedField]:
         """Construct the reflected fields for a subtab from the current raw config."""
-        if tab == Subtab.COMPANIES:
-            # Folder-discovered companies, each rendered schema-driven from
-            # CompanyConfig (honoring tier markers). An empty companies tree still
-            # renders the schema fields so the tab is never blank.
-            if not self._companies_data:
-                return reflect_schema(
-                    CompanyConfig(kind=ConfigKind.COMPANY),
-                    prefix="company",
-                    section="Company",
-                    owning_source="per-company",
-                    inherited_tier=Tier.TUI,
-                )
-            fields: list[ReflectedField] = []
-            for slug, company in self._companies_data:
-                company_fields = reflect_schema(
-                    company,
-                    prefix=f"company:{slug}",
-                    section=company.name or slug,
-                    owning_source="per-company",
-                    inherited_tier=Tier.TUI,
-                )
-                company_path = find_company_config_path(slug)
-                if company_path is not None:
-                    bind_environment_provenance(
-                        company_fields,
-                        _load_raw_config(company_path),
-                        company_path.with_name(ConfigFileName.ENV),
-                        f"company:{slug}",
-                    )
-                fields.extend(company_fields)
-            return fields
-
         if tab == Subtab.INFRA:
             computer_data = self._raw_config.get("computer", {})
             computer_fields = {f.name for f in dataclasses.fields(ComputerConfig)}
@@ -731,13 +698,6 @@ class ConfigContent(
         except Exception as exc:
             self._people_data = []
             self._status_message = f"Failed to load people: {exc}"
-            self._status_is_error = True
-
-        try:
-            self._companies_data = list_company_configs()
-        except Exception as exc:
-            self._companies_data = []
-            self._status_message = f"Failed to load companies: {exc}"
             self._status_is_error = True
 
         self._clamp_current_cursor()

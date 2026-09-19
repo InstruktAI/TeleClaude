@@ -34,6 +34,7 @@ from teleclaude.config.loader import (
 )
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
+from teleclaude.config.roster import RosterOutcome, remove_person_from_rosters
 from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, TELECLAUDE_HOME, ConfigFileName
@@ -320,16 +321,21 @@ def rename_person(old_name: str, new_name: str) -> None:
             return
 
 
-def remove_person(slug: str, delete_directory: bool = False) -> None:
+def remove_person(slug: str, delete_directory: bool = False) -> RosterOutcome:
     """Remove person from global list by slug. Optionally remove their config directory."""
     config = get_global_config()
+    original_config = config.model_copy(deep=True)
     original_count = len(config.people)
     config.people = [p for p in config.people if p.slug != slug]
 
     if len(config.people) == original_count:
         raise ValueError(f"Person with slug '{slug}' not found")
 
-    save_global_config(config)
+    try:
+        roster_outcome = remove_person_from_rosters(slug, config, original_config)
+    except (OSError, ValueError):
+        config.people = original_config.people
+        raise
 
     if delete_directory:
         person_dir = _PEOPLE_DIR / slug
@@ -338,6 +344,7 @@ def remove_person(slug: str, delete_directory: bool = False) -> None:
             logger.info("Removed person directory for slug '%s'", slug)
 
     logger.info("Removed person with slug '%s' from global config", slug)
+    return roster_outcome
 
 
 _migration_done = False
