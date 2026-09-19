@@ -57,11 +57,15 @@ state mutation that records successful completion. A later preparation pass
 replaces the value. Claims, artifact writes, review verdicts, and intermediate
 phase transitions never set it.
 
-The state upcaster seeds this field only for an existing schema-v12 record that
-is currently PREPARED and still carries an authoritative `active_runner`; the
-runner value becomes the preparation-session provenance. Older later-stage
-records, other schema generations, and records without that exact evidence stay
-unstamped.
+Todo state advances to schema v13 through one forward migration. The upcycle
+entrypoint captures the persisted source version before its sequential hops and
+passes that fact only to the v12-to-v13 migration. That migration seeds
+`prepared_session_id` only when the source version was exactly v12, the record
+is currently PREPARED, and it still carries an authoritative `active_runner`;
+the runner value becomes the preparation-session provenance. A record that
+merely passes through v12 from an older schema therefore stays unstamped, as do
+later-stage records and records without that exact evidence. Domain consumers
+see only the v13 shape and contain no compatibility branch.
 
 The Todo query projection publishes `prepared_session_id` and an
 `artifact_updated_at` mapping keyed by artifact name. The timestamps come from
