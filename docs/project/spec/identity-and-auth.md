@@ -162,7 +162,6 @@ Child worker sessions should be linked to parent orchestrator session identity w
 - Requests without caller session identity remain valid, but they create unlinked sessions because terminal/TUI callers do not have a parent TeleClaude session.
 - A lifecycle session the runner auto-dispatches for a todo whose `created_by_principal` is a `human:<email>` establishes that human as its root identity: the session row carries the owning human's `principal`/`human_email`, so its resolved principal is `human:<email>` rather than `system:<session_id>`, and the rest of the chain inherits it through `initiator_session_id`. The session's `system_role` is left untouched, so the attribution does not change what the session is authorized to do.
 
-<!-- planned:person-scoped-mcp-credentials -->
 
 ### 8) Person-bound service identity
 
@@ -175,7 +174,6 @@ Person-bound service access is authorized from the same verified caller identity
 - The session identity marker in `$TMPDIR` is a client-side transport input, not authority for person selection. Person-bound handlers never read it directly and never accept a person from tool arguments.
 
 The protected edge translates `CallerIdentity` into a typed service invocation context. Downstream runtime and credential components receive the resolved person slug or an explicit absence; they do not inspect headers, session files, or identity storage themselves. Failure to resolve a person is a request denial, not a fallback to the sole configured user or to global credentials.
-<!-- /planned:person-scoped-mcp-credentials -->
 
 ## Known caveats
 

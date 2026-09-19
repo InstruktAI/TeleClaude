@@ -14,13 +14,8 @@ visibility: public
 
 Lazy MCP runtime gives agents access to configured MCP servers without loading every server into every agent process at startup. The TeleClaude daemon owns MCP server leases, starts or connects to a server only when a caller asks for its tools or invokes a tool, and exposes the capability through `telec mcp` and `/mcp` API endpoints.
 
-<!-- planned-change:person-scoped-mcp-credentials -->
-
-The TeleClaude MCP registry is the source of available servers. Server entries from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` are accumulated into the daemon's effective MCP catalog; those source files are inputs, not mutation targets. `mcp.json` and `mcp.local.json` are compatibility import inputs during the transition window only. Secret placeholders in server definitions resolve from the TeleClaude environment file at runtime, and resolved secret values never appear in agent-facing output.
-<!-- change:person-scoped-mcp-credentials -->
 
 The TeleClaude MCP registry is the source of available servers. Server entries from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` are accumulated into the daemon's effective MCP catalog; those source files are inputs, not mutation targets. `mcp.json` and `mcp.local.json` are compatibility import inputs during the transition window only. Each server declares whether its credential owner is global or the verified person behind the caller. Secret placeholders resolve exclusively from that owner's TeleClaude environment file at lease start, and resolved secret values never appear in agent-facing output.
-<!-- /planned-change:person-scoped-mcp-credentials -->
 
 ## Canonical fields
 
@@ -44,15 +39,9 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - Managed MCP servers use the lazy runtime exclusively; native agent MCP configs are not a publication target, and setup removes TeleClaude-managed entries from them.
 
 
-<!-- planned-change:person-scoped-mcp-credentials -->
-
-- A lease is keyed by server slug and effective registry fingerprint. The lease remains warm while calls arrive and expires after its idle TTL.
-
-<!-- change:person-scoped-mcp-credentials -->
 
 - A lease is keyed by server slug, credential owner, and effective registry fingerprint. Global servers use one global owner key; person-bound servers use the canonical person slug resolved from verified caller identity. The lease remains warm while calls from that owner arrive and expires after its idle TTL.
 
-<!-- /planned-change:person-scoped-mcp-credentials -->
 
 - Tool catalogs are cached per lease after `tools/list`. The cache is invalidated when the server emits `tools/list_changed`, the effective MCP configuration changes, the environment fingerprint changes, or the lease restarts.
 - Calls for a single server are serialized unless that server is explicitly marked parallel-safe. Shared leases preserve response routing by MCP request id, cancellation token, caller timeout, and operation trace.
@@ -72,12 +61,10 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 - Server definitions may declare a top-level `trigger` string. The trigger is human-facing discovery metadata only: it is advertised by `telec mcp list` and does not affect startup, credential lookup, or lease fingerprinting.
 
 
-<!-- planned:person-scoped-mcp-credentials -->
 
 - Server definitions may declare `credentialScope` as `global` or `person`. The default is `global`, preserving existing registries and shared lease behavior. `person` requires a verified human caller that resolves to a configured person and makes every environment placeholder on that server a requirement of that person's secret store.
 - Credential scope is runtime policy, not agent input. The `/mcp` edge translates verified caller identity into typed invocation context; tool arguments never select or override the credential owner.
 
-<!-- /planned:person-scoped-mcp-credentials -->
 
 
 - The effective registry is resolved per invocation project. A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root are deep-merged over the machine-wide TeleClaude registry, with project definitions taking precedence over machine-wide definitions and the local overlay taking precedence over the shared file within each root. Invocations from a project subdirectory or a todo worktree resolve the owning project checkout's registry. Invocations from outside any TeleClaude project keep their current per-subcommand behavior.
@@ -101,24 +88,6 @@ And the human-readable output does not expose transport or environment metadata
 And the response never includes resolved environment secret values
 ```
 
-<!-- planned-change:person-scoped-mcp-credentials -->
-
-#### UC-LMCP-2: Listing tools lazily initializes one server
-
-```
-Given no lease is active for `omi-memory`
-And the effective server definition requires `OMI_API_KEY`
-And the TeleClaude environment file contains `OMI_API_KEY`
-When an agent runs `telec mcp list-tools omi-memory`
-Then the daemon resolves `OMI_API_KEY` from the TeleClaude environment
-And starts or connects to only the `omi-memory` MCP server
-And completes MCP initialization
-And sends `tools/list`
-And returns the advertised tools
-And stores the lease and tool catalog for later callers
-```
-
-<!-- change:person-scoped-mcp-credentials -->
 
 #### UC-LMCP-2: Listing tools lazily initializes one person-bound server
 
@@ -137,22 +106,7 @@ And returns the advertised tools
 And stores the lease and tool catalog for later callers owned by the same person
 ```
 
-<!-- /planned-change:person-scoped-mcp-credentials -->
 
-<!-- planned-change:person-scoped-mcp-credentials -->
-
-#### UC-LMCP-3: Calling a tool reuses the warm lease
-
-```
-Given a warm lease exists for `omi-memory`
-And the cached catalog includes `search_memories`
-When an agent runs `telec mcp call omi-memory search_memories --json '{"query":"deployment notes"}'`
-Then the daemon sends a `tools/call` request over the existing lease
-And returns the MCP tool result as JSON
-And refreshes the lease idle deadline
-```
-
-<!-- change:person-scoped-mcp-credentials -->
 
 #### UC-LMCP-3: Calling a tool reuses the warm lease for its credential owner
 
@@ -165,7 +119,6 @@ And returns the MCP tool result as JSON
 And refreshes only that lease's idle deadline
 ```
 
-<!-- /planned-change:person-scoped-mcp-credentials -->
 
 #### UC-LMCP-4: Concurrent callers remain isolated
 
@@ -200,20 +153,6 @@ And closes the stale lease
 And starts a fresh lease from the new effective definition
 ```
 
-<!-- planned-change:person-scoped-mcp-credentials -->
-
-#### UC-LMCP-7: Missing credentials fail secret-safe
-
-```
-Given a server definition references `${OMI_API_KEY}`
-And the TeleClaude environment file does not contain `OMI_API_KEY`
-When an agent runs `telec mcp list-tools omi-memory`
-Then the command fails before starting the server
-And the error names the missing environment variable
-And the error does not print command lines containing resolved secrets
-```
-
-<!-- change:person-scoped-mcp-credentials -->
 
 #### UC-LMCP-7: Missing owner credentials fail secret-safe
 
@@ -227,7 +166,6 @@ And the runtime does not consult the global environment or another person's secr
 And the error names the unmet requirement without exposing a secret value or another person's identity
 ```
 
-<!-- /planned-change:person-scoped-mcp-credentials -->
 
 #### UC-LMCP-8: Registry schema supports offline editor validation
 
@@ -242,7 +180,6 @@ And machine-local generated examples may use an absolute file schema reference
 
 ```
 
-<!-- planned:person-scoped-mcp-credentials -->
 
 #### UC-LMCP-9: Person-bound access requires authoritative human identity
 
@@ -285,7 +222,6 @@ Then the runtime closes and replaces only that person's stale lease
 And the other person's lease and every global lease remain active
 ```
 
-<!-- /planned:person-scoped-mcp-credentials -->
 
 #### UC-LMCP-13: Present header credentials start the remote server secret-safe
 

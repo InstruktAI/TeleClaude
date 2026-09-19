@@ -254,7 +254,6 @@ Then it is `internal` and does not render in the config TUI
 And it is absent from the generated config.yml public sample
 ```
 
-<!-- planned:person-scoped-mcp-credentials -->
 
 #### UC-CFG-TUI-SCHEMA-16: People exposes registry-derived personal secrets
 
@@ -275,7 +274,6 @@ And unrelated person YAML, global environment, and other person secret files rem
 And the TUI introduces no role gate beyond its trusted local machine and terminal boundary
 ```
 
-<!-- /planned:person-scoped-mcp-credentials -->
 
 <!-- planned:config-sample-regeneration-leaves-sync -->
 
@@ -333,11 +331,9 @@ blacklist is retired as the authority.
   guarantees: single setup surface, idempotent re-runs, persisted-state resume,
   and write-then-read rendering after edits.
 
-<!-- planned:person-scoped-mcp-credentials -->
 
 - `project/spec/feature/agent_runtime/lazy-mcp-runtime` owns personal MCP credential requirements and owner-scoped lease behavior; the People view projects its registry requirements without becoming their source of truth.
 
-<!-- /planned:person-scoped-mcp-credentials -->
 
 ## Allowed values
 

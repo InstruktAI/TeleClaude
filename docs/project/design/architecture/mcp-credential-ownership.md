@@ -1,7 +1,6 @@
 ---
-description: Composition of verified person identity, personal secret ownership, and MCP runtime lease isolation.
-delivered_by:
-  - person-scoped-mcp-credentials
+description: Composition of verified person identity, personal secret ownership, and
+  MCP runtime lease isolation.
 ---
 
 # MCP Credential Ownership — Design
