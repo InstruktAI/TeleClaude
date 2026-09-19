@@ -11,7 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:config-validation-at-import-blocks-repair -->
 The runtime configuration surface (`config.yml`) is the single per-machine
 file that tells the runtime and the CLI surface who the computer is, which
 agents are installed, where Redis is, which Discord/Telegram credentials
@@ -26,31 +25,11 @@ dynamic named mappings, lists, and explicitly open parameter bags remain
 valid. This is the machine-level inventory layer; it is distinct from the
 `teleclaude.yml` layered-overlay system that resolves per-workspace
 global/project/person settings.
-<!-- change:config-validation-at-import-blocks-repair -->
-The runtime configuration surface (`config.yml`) is the single per-machine
-file that tells the runtime and the CLI surface who the computer is, which
-agents are installed, where Redis is, which Discord/Telegram credentials
-apply, and which remote computers are reachable. Importing the config package
-or one of its schema and helper submodules does not read or validate the file.
-The config bounded context loads it once when a consumer first requests the
-effective runtime aggregate; daemon startup is one such consumer, while raw
-configuration inspection and repair surfaces are not. Effective loading
-validates raw operator input against parser-owned accepted-key shapes before
-default merge and typed construction, expands `${ENV_VAR}` references using
-the shell environment (after `.env` is sourced), optionally merges a sibling
-`experiments.yml` for feature-flag entries, and exposes the typed aggregate to
-consumers. Undeclared keys fail with dotted paths; parser-declared aliases,
-dynamic named mappings, lists, and explicitly open parameter bags remain
-valid. This is the machine-level inventory layer; it is distinct from the
-`teleclaude.yml` layered-overlay system that resolves per-workspace
-global/project/person settings.
-<!-- /planned-change:config-validation-at-import-blocks-repair -->
 
 ## Canonical fields
 
 ### Use cases
 
-<!-- planned-change:config-validation-at-import-blocks-repair -->
 #### UC-CFG-LOAD-1: Default config.yml path is the machine home
 
 ```
@@ -62,30 +41,13 @@ And the file is opened and parsed as YAML
 And the resulting Config object is bound to the module-level `config` global
 And the module-level `config_path` global is set to the absolute path
 ```
-<!-- change:config-validation-at-import-blocks-repair -->
-#### UC-CFG-LOAD-1: Effective config resolves from the machine home on first use
-
-```gherkin
-Given a process imports the config package or one of its schema or helper submodules
-When no consumer requests an effective runtime-config value
-Then <RuntimeConfig.home>/config.yml is not opened or validated
-And the package exposes the resolved absolute machine-config path without requiring a valid effective aggregate
-
-When a consumer first requests an effective runtime-config value
-Then the config loads from <RuntimeConfig.home>/config.yml, which defaults to ~/.teleclaude/config.yml
-And the current working directory does not participate in the resolution
-And no environment variable re-points that path; moving TELECLAUDE_HOME is the only way to move it
-And the resulting typed aggregate is retained behind the module-level `config` surface
-And later consumers observe that same aggregate until an explicit reload replaces its values in place
-```
-<!-- /planned-change:config-validation-at-import-blocks-repair -->
 
 <!-- planned-change:config-sample-regeneration-leaves-sync -->
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
 ```
 Given the bundled read-only blueprint exists at <_project_root>/templates/config.yml
-When a consumer first requests the effective runtime configuration
+When the machine config path is resolved at process start
 Then the blueprint is deep-merged underneath the machine config at <RuntimeConfig.home>/config.yml
 And values already present in the machine config win over blueprint values
 And blueprint keys absent from the machine config are written into it
@@ -115,7 +77,6 @@ And no field is added, removed, or re-derived from the schema
 ```
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
-<!-- planned-change:config-validation-at-import-blocks-repair -->
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 
 ```
@@ -125,17 +86,6 @@ Then a FileNotFoundError is raised with the message:
   "Config file not found: <path>. Run 'telec config wizard' to create it."
 And no Config object is bound (import fails for every consumer)
 ```
-<!-- change:config-validation-at-import-blocks-repair -->
-#### UC-CFG-LOAD-3: Missing config.yml fails at effective-config access
-
-```gherkin
-Given the resolved machine-config path does not exist
-When a consumer requests an effective runtime-config value
-Then the request fails fast with a FileNotFoundError that names the missing path and the guided-repair surface
-And no typed effective aggregate is retained
-But importing the config package and invoking the guided-repair surface remain possible
-```
-<!-- /planned-change:config-validation-at-import-blocks-repair -->
 
 #### UC-CFG-LOAD-4: Environment variables in YAML values are expanded
 
@@ -209,7 +159,6 @@ And ambient process environment values cannot override the selected value
 
 ### Cross-context references
 
-<!-- planned-change:config-validation-at-import-blocks-repair -->
 - The config bounded context does not emit the `config.effective.updated`
   event described in `project/spec/domain/config.md` for machine-config
   load. The initial machine config is read once at process start. While the
@@ -218,17 +167,6 @@ And ambient process environment values cannot override the selected value
   connection-bound sections) — see the hot-reload note in "Known caveats" —
   but no domain event is emitted; consumers observe the mutated aggregate
   directly.
-<!-- change:config-validation-at-import-blocks-repair -->
-- The config bounded context does not emit the `config.effective.updated`
-  event described in `project/spec/domain/config.md` for machine-config
-  load. The initial machine config is read once when a consumer first requests
-  the effective aggregate; the daemon does so during process start. While the
-  runtime is up, the config bounded context watches the file for changes
-  and hot-reloads the live aggregate in place (or self-restarts for
-  connection-bound sections) — see the hot-reload note in "Known caveats" —
-  but no domain event is emitted; consumers observe the mutated aggregate
-  directly.
-<!-- /planned-change:config-validation-at-import-blocks-repair -->
 - Consumed transitively by every bounded context that reads runtime
   configuration — the runtime, the CLI surface, transport adapters
   (Telegram, Discord, WhatsApp), the agent runtime, the identity context
@@ -251,29 +189,15 @@ And ambient process environment values cannot override the selected value
   The local migration contract is specified by
   `project/spec/feature/config/unknown-key-warning`.
 
-<!-- planned-change:config-validation-at-import-blocks-repair -->
 - **Process-start side effects.** The load runs once at process start with no
   opt-out. The initialisation reads files from disk, may fail with a missing
   or malformed file, and binds the runtime configuration aggregate. There is no
   redirect seam: the path is `<TELECLAUDE_HOME>/config.yml`, so pointing the load
   at a different file means relocating `TELECLAUDE_HOME` before the package is
   imported.
-<!-- change:config-validation-at-import-blocks-repair -->
-- **First-effective-use side effects.** Resolving the effective aggregate reads
-  files from disk and may fail with a missing or malformed file. Importing the
-  package, schema, or helper submodules does not perform that operation. There
-  is no per-file redirect seam: the path is
-  `<TELECLAUDE_HOME>/config.yml`, so pointing the load at a different file means
-  relocating `TELECLAUDE_HOME` before the config package is imported.
-<!-- /planned-change:config-validation-at-import-blocks-repair -->
 
-<!-- planned-change:config-validation-at-import-blocks-repair -->
 - **Hot reload via the config bounded context's watcher.** The process-start
   load is still one-shot, but the running runtime owns an in-process config
-<!-- change:config-validation-at-import-blocks-repair -->
-- **Hot reload via the config bounded context's watcher.** The initial
-  effective-config load is one-shot, but the running runtime owns an in-process config
-<!-- /planned-change:config-validation-at-import-blocks-repair -->
   watcher that watches `config.yml`, `experiments.yml`, and `.env` (debounced
   mtime poll). On a change it re-reads from disk and mutates the live
   configuration aggregate in place. Hot-reloadable sections (`summarizer`,
