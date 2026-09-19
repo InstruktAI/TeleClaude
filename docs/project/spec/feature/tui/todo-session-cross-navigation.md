@@ -308,6 +308,58 @@ And no revive affordance is rendered
 And no native session id fallback is rendered
 ```
 
+<!-- planned:tui-todo-detail-provenance -->
+#### UC-XNAV-24: Prepared-session row renders from durable preparation provenance
+
+```gherkin
+Given a todo whose preparation provenance carries a TeleClaude session id
+When the todo is expanded in the Preparation view
+Then the detail row immediately after the creator-session row reads "prepped in: <session_id>"
+And no native session id is rendered
+
+Given a todo whose preparation provenance carries no TeleClaude session id
+When the todo is expanded in the Preparation view
+Then no prepared-session detail row is rendered
+```
+
+#### UC-XNAV-25: Prepared-session navigation follows session liveness
+
+```gherkin
+Given an expanded todo renders "prepped in: <session_id>"
+When the preparation session is live, retained closed, or absent from the session ledger
+Then the row respectively offers direct jump, revive, or inert session-id presentation
+And the affordance matches the creator-session row for the same liveness state
+```
+
+#### UC-XNAV-26: Session metadata rows do not consume keyboard navigation
+
+```gherkin
+Given an expanded todo renders creator-session and prepared-session detail rows
+When the operator moves through the Preparation view with Up or Down
+Then neither session metadata row receives keyboard selection
+And one keypress moves directly to the nearest navigable tree row in that direction
+And the session metadata rows remain mouse-clickable
+```
+
+#### UC-XNAV-27: Artifact rows show their last edit time and remain navigable
+
+```gherkin
+Given an expanded todo has a stored artifact with a last-edited timestamp
+When its artifact row is rendered in the Preparation view
+Then the row prefixes the artifact name with the local time and date as "[HH:MM:SS-DD/MM]"
+And the artifact row remains keyboard-selectable and openable
+```
+
+#### UC-XNAV-28: Re-preparation identifies the latest completing session
+
+```gherkin
+Given a todo was prepared in one TeleClaude session
+And later re-enters preparation because its prepared contract changed
+When another TeleClaude session completes preparation
+Then the prepared-session detail row identifies the later completing session
+```
+<!-- /planned:tui-todo-detail-provenance -->
+
 ## Known caveats
 
 - **Legacy todos show no chip.** Todos created before `created_by_principal`
