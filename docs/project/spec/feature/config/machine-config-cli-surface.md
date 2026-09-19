@@ -24,6 +24,7 @@ Three properties define the surface:
    the running system loads, and what `patch` mutates is the file the running
    system will reload. The process working directory never selects the target.
 
+<!-- planned-change:config-validation-at-import-blocks-repair -->
 2. **Schema-safe mutation.** A patch is merged in memory and built through the
    typed machine-config schema before anything is written. An invalid patch is
    refused with the schema's own error and the on-disk file is left byte-for-byte
@@ -33,6 +34,18 @@ Three properties define the surface:
 3. **One write path.** The accepted patch is persisted through the machine-config
    writer and its atomic-replace guarantees; the CLI holds no second
    serialization or replace routine of its own.
+<!-- change:config-validation-at-import-blocks-repair -->
+2. **Schema-safe mutation.** A patch expresses mapping values to merge and may
+   explicitly name dotted mapping paths to remove. The config context holds the
+   machine-config transaction across reading the latest document, applying both
+   operations, building the complete candidate through the typed schema, and
+   atomically replacing the file. An invalid mutation is refused with the
+   schema's own error and leaves the committed bytes unchanged.
+
+3. **One mutation path.** The CLI declares mutation intent and renders the
+   result; it never reads, edits, serializes, or replaces the backing file on its
+   own.
+<!-- /planned-change:config-validation-at-import-blocks-repair -->
 
 `validate` reports the same typed build against the resolved machine config as
 part of full-system validation, so `get`, `patch`, and `validate` agree on both
@@ -133,6 +146,7 @@ And direct file editing is not required
 - `patch` persists the raw YAML mapping, not the loaded aggregate, per the
   machine-config writer's raw-mapping-input constraint. Runtime-derived fields
   never enter the file.
+<!-- planned-change:config-validation-at-import-blocks-repair -->
 - `patch` rewrites the whole file from the parsed mapping, so comments and the
   original formatting of `config.yml` do not survive a patch. An operator who
   keeps annotations in the machine config edits it directly or through the
@@ -140,6 +154,14 @@ And direct file editing is not required
 - `patch` inherits the machine-config writer's caveats, including its lack of
   concurrent-writer exclusion: a patch racing another machine-config write still
   yields one complete file, but which write wins is scheduling-dependent.
+<!-- change:config-validation-at-import-blocks-repair -->
+- `patch` rewrites the whole file from the parsed mapping, so comments and the
+  original formatting of `config.yml` do not survive a mutation. Operational
+  annotations belong outside the machine configuration.
+- Config-context mutations serialize through the persistent machine-config
+  transaction. Direct external filesystem writes do not participate in that
+  transaction and are outside the supported mutation contract.
+<!-- /planned-change:config-validation-at-import-blocks-repair -->
 
 ## See Also
 

@@ -115,6 +115,8 @@ And no shell editor, ad hoc script, or direct filesystem write targets the backi
 
 - A candidate may depend on environment-backed values that are available during mutation but absent in a later runtime environment. The surface validates the candidate against the environment in which the operation runs.
 - `validate` diagnoses committed state; it does not certify external services referenced by that state.
+- A mutation rewrites the whole file from the parsed mapping, so comments and original formatting do not survive. Operational annotations belong outside the machine configuration.
+- Config-context mutations serialize through the persistent machine-config transaction. Direct external filesystem writes do not participate in that transaction and are outside the supported mutation contract.
 
 ## See Also
 

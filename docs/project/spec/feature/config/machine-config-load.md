@@ -85,7 +85,7 @@ And later consumers observe that same aggregate until an explicit reload replace
 
 ```
 Given the bundled read-only blueprint exists at <_project_root>/templates/config.yml
-When the machine config path is resolved at process start
+When a consumer first requests the effective runtime configuration
 Then the blueprint is deep-merged underneath the machine config at <RuntimeConfig.home>/config.yml
 And values already present in the machine config win over blueprint values
 And blueprint keys absent from the machine config are written into it
