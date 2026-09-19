@@ -5,14 +5,14 @@ against one of the schemas in this folder before any layout work happens.
 
 ## Files
 
-| Schema                     | Governs                                     | Structural arrays                                         |
-| -------------------------- | ------------------------------------------- | --------------------------------------------------------- |
-| `workflow.schema.json`     | `diagram_type: "workflow"`                  | `lanes`, `phases`, `groups`, `mainPath`, `nodes`, `edges` |
-| `sequence.schema.json`     | `diagram_type: "sequence"`                  | `participants`, `segments`, `messages`, `activations`     |
-| `dataflow.schema.json`     | `diagram_type: "dataflow"`                  | `stages`, `nodes`, `flows`                                |
-| `lifecycle.schema.json`    | `diagram_type: "lifecycle"`                 | `lanes`, `states`, `transitions`                          |
-| `architecture.schema.json` | `diagram_type: "architecture"`              | `components`, `boundaries`, `connections`                 |
-| `common.schema.json`       | shared `$defs` only (no top-level document) | —                                                         |
+| Schema | Governs | Structural arrays |
+|--------|---------|-------------------|
+| `workflow.schema.json` | `diagram_type: "workflow"` | `lanes`, `phases`, `groups`, `mainPath`, `nodes`, `edges` |
+| `sequence.schema.json` | `diagram_type: "sequence"` | `participants`, `segments`, `messages`, `activations` |
+| `dataflow.schema.json` | `diagram_type: "dataflow"` | `stages`, `nodes`, `flows` |
+| `lifecycle.schema.json` | `diagram_type: "lifecycle"` | `lanes`, `states`, `transitions` |
+| `architecture.schema.json` | `diagram_type: "architecture"` | `components`, `boundaries`, `connections` |
+| `common.schema.json` | shared `$defs` only (no top-level document) | — |
 
 Every diagram schema requires `schema_version`, `diagram_type`, `meta` (with
 `title`), and its structural arrays — except `segments`, `activations`, and
@@ -75,13 +75,13 @@ strict validation.
 
 Supported keys are renderer-owned:
 
-| Renderer     | `meta.legend.entries` keys                                                            |
-| ------------ | ------------------------------------------------------------------------------------- |
-| Architecture | `frontend`, `backend`, `database`, `cloud`, `security`, `messagebus`, `external`      |
-| Workflow     | `frontend`, `backend`, `security`, `messagebus`, `database`, `cloud`, `external`      |
-| Sequence     | `emphasis`, `return`, `security`, `dashed`, `default`                                 |
-| Dataflow     | `emphasis`, `security`, `dashed`, `database`, `default`                               |
-| Lifecycle    | `start`, `active`, `waiting`, `decision`, `success`, `failure`, `neutral`, `external` |
+| Renderer | `meta.legend.entries` keys |
+|---|---|
+| Architecture | `frontend`, `backend`, `database`, `cloud`, `security`, `messagebus`, `external` |
+| Workflow | `frontend`, `backend`, `security`, `messagebus`, `database`, `cloud`, `external` |
+| Sequence | `emphasis`, `return`, `security`, `dashed`, `default` |
+| Dataflow | `emphasis`, `security`, `dashed`, `database`, `default` |
+| Lifecycle | `start`, `active`, `waiting`, `decision`, `success`, `failure`, `neutral`, `external` |
 
 Labels are presentation only: they do not rename the stable kind, change
 nodes/relationships, or create Semantic Lens edge facts. Sequence message and

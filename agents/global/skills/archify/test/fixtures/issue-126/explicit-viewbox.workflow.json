@@ -6,10 +6,14 @@
     "viewBox": [1600, 520],
     "legend": { "mode": "hidden" }
   },
-  "lanes": [{ "id": "main", "label": "Main flow" }],
+  "lanes": [
+    { "id": "main", "label": "Main flow" }
+  ],
   "nodes": [
     { "id": "start", "lane": "main", "col": 0, "type": "frontend", "label": "Start" },
     { "id": "finish", "lane": "main", "col": 5, "type": "backend", "label": "Finish" }
   ],
-  "edges": [{ "id": "start-finish", "from": "start", "to": "finish", "label": "complete" }]
+  "edges": [
+    { "id": "start-finish", "from": "start", "to": "finish", "label": "complete" }
+  ]
 }

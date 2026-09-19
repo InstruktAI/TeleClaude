@@ -28,7 +28,10 @@
     },
     "point": {
       "type": "array",
-      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" }
+      ],
       "items": false,
       "minItems": 2,
       "maxItems": 2
@@ -42,7 +45,10 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 2048,
-          "anyOf": [{ "maxLength": 80, "pattern": "^[^\\r\\n]+$" }, { "pattern": "^https?://" }]
+          "anyOf": [
+            { "maxLength": 80, "pattern": "^[^\\r\\n]+$" },
+            { "pattern": "^https?://" }
+          ]
         },
         {
           "type": "object",

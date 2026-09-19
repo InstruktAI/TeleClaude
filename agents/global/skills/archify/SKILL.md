@@ -3,7 +3,7 @@ name: archify
 description: Create polished, validated architecture, workflow, sequence, data-flow, and lifecycle/state diagrams as explorable standalone HTML with inline SVG, dark/light themes, optional trace motion, and PNG/JPEG/WebP/SVG/WebM export. Accept plain-language requirements or pasted Mermaid flowchart, sequenceDiagram, and stateDiagram input; inspect repository evidence when the diagram must reflect real code. Use when the user asks to visualize system architecture, infrastructure, cloud/security/network topology, technical workflows, API call sequences, request lifecycles, data pipelines, ETL/ELT, data lineage, state machines, or to convert/beautify Mermaid.
 license: MIT
 metadata:
-  version: '2.17'
+  version: "2.17"
   author: tt-a1i
   based_on: Cocoon-AI/architecture-diagram-generator (MIT, v1.0)
 ---
@@ -26,7 +26,6 @@ Use this bounded path for ordinary generation. Do not read the optional Viewer R
    ```
 
    A receipt with only 4 artifact checks is basic validation, never showcase acceptance. A showcase pass must report all 9 artifact checks with 0 composition errors and 0 warnings. If the candidate omits or misspells the exact `meta.quality_profile` field, fix it before geometry. For a workflow v2 geometry diagnosis, run `node bin/archify.mjs validate workflow <candidate.json> --layout-json` and use the stable compiler receipt; solver internals are not authoring controls. A passing final validation freezes the candidate: never edit it afterward.
-
 5. For a delivered HTML, `deliver` is the final acceptance command:
 
    ```bash
@@ -55,13 +54,13 @@ Lifecycle note: phase columns `0..4` occupy the main rail; event/terminal column
 
 ## Type router
 
-| Type           | Use for                                                         |
-| -------------- | --------------------------------------------------------------- |
+| Type | Use for |
+|---|---|
 | `architecture` | Components, services, cloud/security boundaries, infrastructure |
-| `workflow`     | Processes, approval gates, tool calls, runbooks, CI/CD          |
-| `sequence`     | API call chains, request lifecycles, async traces, returns      |
-| `dataflow`     | Pipelines, ETL/ELT, lineage, governance, consumers              |
-| `lifecycle`    | State/status transitions, retries, waiting and terminal states  |
+| `workflow` | Processes, approval gates, tool calls, runbooks, CI/CD |
+| `sequence` | API call chains, request lifecycles, async traces, returns |
+| `dataflow` | Pipelines, ETL/ELT, lineage, governance, consumers |
+| `lifecycle` | State/status transitions, retries, waiting and terminal states |
 
 When ambiguous, run `node bin/archify.mjs guide "<scenario>" --json`. Scenario proof examples are structural references, not facts to copy.
 
