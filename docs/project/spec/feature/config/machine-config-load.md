@@ -156,7 +156,6 @@ And an undeclared setting preserves the built-in runtime behavior
 And ambient process environment values cannot override the selected value
 ```
 
-<!-- planned:config-reload-always-forces-daemon-restart -->
 #### UC-CFG-LOAD-12: A live-reloadable machine change applies without restarting the daemon
 
 ```gherkin
@@ -165,7 +164,6 @@ When the running service processes the changed machine configuration
 Then the next behavior governed by that setting uses the changed value
 And the daemon process remains running without a restart
 ```
-<!-- /planned:config-reload-always-forces-daemon-restart -->
 
 
 ### Cross-context references
