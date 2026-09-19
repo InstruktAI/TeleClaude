@@ -21,9 +21,12 @@ from teleclaude.project_root import is_slug_worktree
 logger = get_logger(__name__)
 
 
-def _repo_root_from_env() -> Path:
+def resolve_post_merge_root(fallback_root: Path | None = None) -> Path:
+    """Resolve the post-merge automation root, preserving the explicit override."""
     configured = os.environ.get("GRAPHIFY_REPO_ROOT")  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
-    return Path(configured).expanduser().resolve() if configured else Path.cwd().resolve()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return fallback_root.resolve() if fallback_root is not None else Path.cwd().resolve()
 
 
 def _rev_parse(repo_root: Path, rev: str) -> str | None:
@@ -46,7 +49,7 @@ def run_post_merge_regeneration(repo_root: Path | None = None) -> int:
         return 0
 
     try:
-        resolved_root = repo_root.resolve() if repo_root is not None else _repo_root_from_env()
+        resolved_root = resolve_post_merge_root(repo_root)
         if is_slug_worktree(resolved_root) or not resolve_capabilities(resolved_root).code:
             return 0
         head = _rev_parse(resolved_root, "HEAD")

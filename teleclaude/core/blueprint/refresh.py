@@ -24,7 +24,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV
 from teleclaude.core.blueprint._paths import refresh_lock_path
 from teleclaude.core.blueprint.generate import regenerate_blueprint
-from teleclaude.core.blueprint.post_merge import _repo_root_from_env, _rev_parse
+from teleclaude.core.blueprint.post_merge import _rev_parse, resolve_post_merge_root
 from teleclaude.project_root import is_slug_worktree, resolve_invocation_cwd, resolve_workspace_root
 
 logger = get_logger(__name__)
@@ -98,7 +98,7 @@ def main() -> int:
     value the parent read earlier, since it may have moved again by the time this
     process runs.
     """
-    repo_root = _repo_root_from_env()
+    repo_root = resolve_post_merge_root()
     lock_path = refresh_lock_path(repo_root)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fh = lock_path.open("a+")

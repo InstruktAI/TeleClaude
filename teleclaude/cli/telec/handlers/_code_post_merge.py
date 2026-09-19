@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from teleclaude.core.blueprint.post_merge import run_post_merge_regeneration
+from teleclaude.core.blueprint.post_merge import resolve_post_merge_root, run_post_merge_regeneration
 from teleclaude.core.integration.post_commit_maintenance import run_post_commit_maintenance
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd, resolve_project_root
 
@@ -18,7 +18,8 @@ def handle_code_post_merge(args: list[str]) -> None:
         print(_POST_MERGE_USAGE, file=sys.stderr)
         raise SystemExit(2)
     checkout_root = resolve_git_root(resolve_invocation_cwd())
-    canonical_root = resolve_project_root(checkout_root)
-    run_post_merge_regeneration(checkout_root)
-    maintenance_root = checkout_root if checkout_root != canonical_root else canonical_root
+    effective_root = resolve_post_merge_root(checkout_root)
+    canonical_root = resolve_project_root(effective_root)
+    run_post_merge_regeneration(effective_root)
+    maintenance_root = effective_root if effective_root != canonical_root else canonical_root
     run_post_commit_maintenance(maintenance_root, _GIT_PRE_MERGE_TO_HEAD_RANGE)
