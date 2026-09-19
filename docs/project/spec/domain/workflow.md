@@ -47,6 +47,33 @@ feature specs remain the current contract.
   context consumes.
 <!-- /planned:agent-artifact-source-layout -->
 
+<!-- planned:tui-todo-detail-provenance -->
+### Preparation completion provenance
+
+The Todo lifecycle state owns `prepared_session_id`, the TeleClaude session
+that most recently completed preparation. The prepare state machine writes the
+authenticated caller session at the terminal PREPARED transition, in the same
+state mutation that records successful completion. A later preparation pass
+replaces the value. Claims, artifact writes, review verdicts, and intermediate
+phase transitions never set it.
+
+The state upcaster seeds this field only for an existing schema-v12 record that
+is currently PREPARED and still carries an authoritative `active_runner`; the
+runner value becomes the preparation-session provenance. Older later-stage
+records, other schema generations, and records without that exact evidence stay
+unstamped.
+
+The Todo query projection publishes `prepared_session_id` and an
+`artifact_updated_at` mapping keyed by artifact name. The timestamps come from
+the current artifact records owned by this context. The existing `files` list
+remains the ordered artifact-name contract, so consumers that need names alone
+do not acquire a new shape or interpretation.
+
+This contract applies `software-development/policy/domain-ownership`: workflow
+defines each durable workflow fact once and consumers receive it through the
+published query projection rather than re-deriving workflow policy.
+<!-- /planned:tui-todo-detail-provenance -->
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md
