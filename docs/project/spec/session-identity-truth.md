@@ -51,17 +51,21 @@ Current runtime rule:
 - A valid marker with pane attachment is a managed-primary invocation. Its native
   identity may refresh the session's canonical native binding.
 <!-- change:session-handoff-state-convergence -->
-- A valid marker with pane attachment is a managed-primary invocation. Its
-  provider must match the session's committed active agent before the receiver
-  performs checkpoint evaluation, control delivery, metadata persistence, or
-  outbox enqueue. Native identity remains optional and may refresh the canonical
-  native binding after provider ownership is established.
-- Handoff always selects a different agent provider. The atomic successor commit
-  installs that provider and clears the predecessor native binding before launch,
-  so successor metadata and start hooks are admitted while every late predecessor
-  hook fails the provider check. A request that resolves to the current provider
-  is not a handoff and leaves the session untouched; same-agent continuation uses
-  restart instead.
+- A valid marker with pane attachment is a managed-primary invocation. The marker
+  carries the durable TeleClaude session id and the currently committed runtime
+  generation id. Each launched agent process receives that generation as immutable
+  launch environment, inherited by its hook subprocesses. Before checkpoint
+  evaluation, control delivery, metadata persistence, error enqueue, response
+  emission, or ordinary outbox enqueue, the receiver holds the session ingress
+  range and requires the invocation generation, marker generation, and database
+  generation to match. Native identity remains optional and may refresh the
+  canonical native binding only after this generation proof.
+- Handoff rotates the runtime generation while holding exclusive ingress ownership,
+  commits it with the successor owner, and launches the successor with that value.
+  A same-provider predecessor retains the previous launch value and therefore
+  fails closed. If marker and database publication are interrupted between their
+  two durable writes, their mismatch rejects hooks until recovery restores the
+  marker from the database owner. The TeleClaude session id remains unchanged.
 <!-- /planned-change:session-handoff-state-convergence -->
 - A valid marker without pane attachment is a managed-descendant invocation. It
   resolves to the marker's TeleClaude session, retains its own native id in the
