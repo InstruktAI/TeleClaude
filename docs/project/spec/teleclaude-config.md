@@ -307,7 +307,7 @@ instead of scanning per-person overlays. See
 
 <!-- planned:person-scoped-mcp-credentials -->
 
-Person-bound service secrets live in `~/.teleclaude/people/{slug}/.env`, beside but separate from the typed person overlay. The `.env` file is an opaque secret store, not a `PersonConfig` field: person YAML contains no secret inventory or values. The canonical person slug selects the folder; each file is owner-only `0600` and is read or mutated only through the config bounded context's person-secret store. Secret status exposed to the config TUI contains names and requirement provenance but never values.
+Person-bound service secrets live in `~/.teleclaude/people/{slug}/.env`, beside but separate from the typed person overlay. The `.env` file is an opaque secret store, not a `PersonConfig` field: person YAML contains no secret inventory or values. The canonical person slug selects the folder; each file is owner-only `0600` and is read or mutated only through the config bounded context's person-secret store. Secret status exposed to the config TUI contains names and requirement provenance but never values, including while a secret is being replaced. Keep performs no write; replace and clear are atomic targeted mutations that preserve every unrelated key and line in the same file.
 
 <!-- /planned:person-scoped-mcp-credentials -->
 

@@ -313,13 +313,16 @@ Then the daemon reports itself ready without requiring a restart
 
 ```
 Given a configured person and a person-scoped MCP server with declared environment requirements
-When an authorized operator expands the person in `telec config wizard`
+When a trusted local operator expands the person in `telec config wizard`
 Then the People view shows a Secrets section derived from those requirements and the person's stored key names
-And configured values are masked with keep-existing as the default action
+And configured values are never displayed or loaded into an edit buffer
+And keep-existing is the default action
 When the operator explicitly replaces or clears a key
 Then the wizard writes only that person's owner-only secret file
+And every unrelated key and line in that file remains unchanged
 And the next render derives status from the persisted file
 And PersonConfig YAML and the global environment remain unchanged
+And the wizard introduces no role gate beyond its trusted local machine and terminal boundary
 ```
 
 <!-- /planned:person-scoped-mcp-credentials -->

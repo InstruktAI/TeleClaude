@@ -261,15 +261,18 @@ And it is absent from the generated config.yml public sample
 ```
 Given the MCP registry contains a person-scoped server whose launch definition references `OMI_API_KEY`
 And a configured person exists
-When an authorized operator expands that person in the People view
+When a trusted local operator expands that person in the People view
 Then a Secrets section shows `OMI_API_KEY` with set or unset status
 And it shows which personal MCP servers require the key
 And the inventory is derived from the MCP registry plus existing keys in that person's secret store
 And no duplicate secret list or value is stored on PersonConfig
-And the value is masked outside an active edit
+And the existing value is never displayed or loaded into an edit buffer
+And keep-existing is the default action
 When the operator keeps, replaces, or clears the secret explicitly
 Then only that person's owner-only secret file is preserved or mutated atomically
+And every unrelated key and line in that person's secret file remains unchanged
 And unrelated person YAML, global environment, and other person secret files remain unchanged
+And the TUI introduces no role gate beyond its trusted local machine and terminal boundary
 ```
 
 <!-- /planned:person-scoped-mcp-credentials -->

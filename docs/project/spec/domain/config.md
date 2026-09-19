@@ -112,6 +112,21 @@ TeleClaudeNext.
 - **project-registry** — `docs/project/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
 
 
+<!-- planned:person-scoped-mcp-credentials -->
+### Personal MCP secret store
+
+The config context owns the opaque personal MCP secret store beside each typed
+person overlay. The canonical person slug selects the store; safe reads require
+an owner-only regular file, and missing or unsafe storage is distinguished from
+a missing key. Inventory exposes key names, set state, and registry requirement
+provenance without values.
+
+Keep performs no write. Replace and clear use locked atomic targeted mutation
+and preserve every unrelated key and line. Runtime and TUI consumers use this
+published contract and never parse the store or consult the process environment
+directly.
+<!-- /planned:person-scoped-mcp-credentials -->
+
 ## See Also
 
 - docs/project/spec/teleclaude-config.md
