@@ -91,8 +91,8 @@ TeleClaudeNext repository.
   at dispatch — a domain-qualified name directly, a bare token to its single
   global match, ambiguity refused by name — and the session record, title, and
   live-session attribution query that carry and match the value as dispatched.
-  It reads the corpus `context` publishes and the vocabulary `workflow` emits,
-  and decides neither reach nor layout.
+  It reads the corpus `context` publishes and the canonical value the command's
+  semantic owner emits, and decides neither reach, layout, nor vocabulary.
 <!-- /planned:agent-artifact-source-layout -->
 
 ## See Also

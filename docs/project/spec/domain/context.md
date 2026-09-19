@@ -50,22 +50,25 @@ scope is a property of the caller, never of the invocation's directory.
 <!-- /planned:docs-tier-layering -->
 
 <!-- planned:agent-artifact-source-layout -->
-- **Also owns:** the artifact-source registry — which directories of a
-  registered root are authored artifact sources, of which kind, at which tier,
-  with which reach — and every decision taken from it: reach admission,
+- **Also owns:** the artifact-source registry — which exact files, uniform
+  directory trees, and immediate package directories of a registered root are
+  artifact-source boundaries, of which kind, at which tier, with which reach
+  and authorship — and every decision taken from it: reach admission,
   composition of the domain-partitioned global command corpus and the
   mother-only skill catalog, project delivery, and retraction of what a run no
   longer produces. Implementation roots for this ownership are
   `teleclaude/agent_artifacts.py`, `teleclaude/artifact_ownership.py`,
   `teleclaude/global_skills.py`, and `scripts/distribute.py`.
 - **Also does not own:** the publishing declaration that bounds reach (a
-  `config` fact), the canonical command-name vocabulary (a `workflow` fact), or
-  the resolution of a name to a document at dispatch (an `agent_runtime`
-  decision). This context consumes the first through its published contract
-  and lays out the corpus the other two are defined against.
-- **Also publishes:** the registry as a typed contract every directory consumer
-  reads; the composed corpus laid out as `<domain>/<name>`; and reach and
-  collision findings that name the offending files.
+  `config` fact), any command's canonical name or emission (facts owned by the
+  context that owns that command), or resolution of a name to a document at
+  dispatch (an `agent_runtime` decision). This context consumes the first two
+  through their published contracts and lays out the corpus the latter resolves.
+- **Also publishes:** the registry as a typed contract every source
+  consumer reads; its non-overlapping path classification distinguishes the
+  authored global-skill catalog master from incorporated package directories.
+  It also publishes the composed corpus laid out as `<domain>/<name>` and reach,
+  collision, or unclassifiable-source findings that name the offending files.
 <!-- /planned:agent-artifact-source-layout -->
 
 ## See Also

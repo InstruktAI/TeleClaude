@@ -98,6 +98,14 @@ TeleClaudeNext.
   to the context that creates linked worktrees and defines what they share.
   Carrying a configuration file is not an ownership basis. The decomposition is
   `project/design/architecture/config-tier-resolution`.
+<!-- planned:agent-artifact-source-layout -->
+- **Also owns:** the canonical `general/next-run-job` command name and every
+  scheduler emission of it, because the command executes the configured job
+  declaration and changes when that job model changes. `agent_runtime` consumes
+  the emitted value through its ordinary command-dispatch contract and owns the
+  session launch; the shared command-name table and cron process are mechanical
+  hosts and own neither the name nor the job rule.
+<!-- /planned:agent-artifact-source-layout -->
 
 #### Use cases (index of feature specs)
 

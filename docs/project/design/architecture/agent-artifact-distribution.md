@@ -1,5 +1,5 @@
 ---
-description: How authored agent artifacts flow from tiered sources through reach-gated validation into a domain-partitioned global corpus and project delivery locations, which directories the source registry declares and what each consumer derives from it, and how the mother's flat sources migrate by expansion before contraction.
+description: How authored agent artifacts flow from tiered sources through reach-gated validation into a domain-partitioned global corpus and project delivery locations, which path boundaries the source registry declares and what each consumer derives from it, and how the mother's flat sources migrate by expansion before contraction.
 visibility: internal
 delivered_by:
   - agent-artifact-source-layout
@@ -42,7 +42,8 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 - Authored sources under a repository's `agents/global/commands/<domain>/`,
   `agents/global/commands/general/`, `agents/global/skills/<name>/`,
   `agents/project/commands/`, and `agents/project/skills/<name>/`, plus the
-  untiered master and addenda at the artifact root.
+  authored global-skill catalog master and the untiered global master and
+  addenda at the artifact root.
 - The repository's publishing declaration (`business.publishes`), read through
   `config`'s existing `publishes_for_root` contract, and the registered-root set.
 - The command-name table in `teleclaude/constants.py` (`SlashCommand`): a
@@ -65,19 +66,21 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 - Validation findings that name the file and the reach it exceeds, or both
   files and the colliding name, and fail sync.
 - The deployed-commands ownership manifest, keyed by relative corpus path.
-- The artifact-source registry: one typed owner declaring every directory that
-  is an agent-artifact source, the kind it carries, its tier and reach, and
-  whether its content is authored by TeleClaude or incorporated from a third
-  party. It holds no filesystem access, validation, deployment, or checkpoint
-  behavior; its consumers read it and restate nothing.
+- The artifact-source registry: one typed owner declaring every source
+  boundary, the kind it carries, its tier and reach, and whether its content is
+  authored by TeleClaude or incorporated from a third party. A boundary selects
+  either one exact file, one uniformly classified directory tree, or the
+  immediate package directories below a root. It holds no filesystem access,
+  validation, deployment, or checkpoint behavior; its consumers read it and
+  restate nothing.
 
 ## Invariants
 
 ### Ownership
 
 - **`context` owns the registry, reach, composition, and retraction.** The
-  registry is the single statement of which directories are sources, of which
-  kind, at which tier, with which reach, and under which authorship. Every
+  registry is the single statement of which path boundaries are sources, of
+  which kind, at which tier, with which reach, and under which authorship. Every
   consumer — validation (`teleclaude/resource_validation/_artifacts.py`), global
   skill discovery (`teleclaude/global_skills.py`), distribution
 <!-- planned-change:retire-docs-watcher -->
@@ -100,43 +103,54 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   The one-owner-per-domain resolution reuses the docs publisher registry
   (`teleclaude/docs_publishers.py`, `PublisherRegistry`): a domain has exactly
   one owning publisher for documentation and for commands, resolved once.
-- **A command's name is owned by the context that owns the command.** The
-  domain a command publishes under states whose rule it is, so the name and
-  every emission of it resolve to that context: the todo-lifecycle commands to
-  `workflow`, stated in its domain spec and bound by the prepare and work
-  state-machine specs; a scheduled-job, creative, or personal command to the
-  context that owns its meaning, stated there. The shared name table in the
-  codebase is a mechanical cross-context registry — it holds every value in one
-  place, and hosting confers no authority
-  (`software-development/policy/domain-ownership`). `context` lays the corpus
-  out against those names and owns none of them.
+- **A command's name is owned by the context that owns the command.** Semantic
+  ownership and corpus partition are separate coordinates. The command's
+  governing contract owns its canonical name and every emission of that name;
+  its first governing global-domain contract selects the corpus domain, with
+  `general` as the mother-only partition when the owner has no narrower
+  published global domain. The todo-lifecycle commands therefore belong to
+  `workflow`, while the configured-job command and the scheduler emission of it
+  belong to `config` even though that command publishes under `general`.
+  Creative, personal, and context-authoring commands likewise remain owned by
+  the contract that defines their meaning rather than by `workflow` or by their
+  runtime host. The shared name table in the codebase is a mechanical
+  cross-context registry — it holds every value in one place and owns none of
+  them (`software-development/policy/domain-ownership`). `context` lays the
+  corpus out against those names and owns none of them.
 - **`agent_runtime` owns resolution within the global corpus, and the
   session metadata that carries the name.** The rule is stated in the agent
   runtime domain spec and bound by the run-session-with-command spec; this
   document only records that resolution reads the corpus `context` publishes
-  and decides nothing about reach or layout. Resolution that reads a session's
-  tier context is outside this design. The session record, its title, and the
-  live-session attribution query carry and match the qualified value `workflow`
-  dispatched; `workflow` consumes that query and owns none of it.
+  and decides nothing about reach, layout, or command vocabulary. Resolution
+  that reads a session's tier context is outside this design. The session
+  record, its title, and the live-session attribution query carry and match the
+  qualified value the owning context emitted; a caller such as `workflow`
+  consumes that query and owns none of it.
 - **`config` owns the declaration, never the gate.** `business.publishes` says
   what a repository may reach; `context` decides admission from it.
 
 ### Authorship decides review routing
 
-- Every source record declares its content authored or incorporated. Authored
-  content is TeleClaude's own — commands, the masters, the addenda — and a
-  commit touching it routes to required doc-hygiene review. Incorporated
-  content is a third-party skill package the platform republishes unchanged,
-  and a commit touching it routes to no review.
+- Every source path matches exactly one non-overlapping registry boundary;
+  absence or overlap is a registry contract violation. That matched record
+  declares the path authored or incorporated. Authored content is TeleClaude's
+  own — commands, masters, and addenda — and a commit touching it routes to
+  required doc-hygiene review. Incorporated content is a third-party skill
+  package the platform republishes unchanged, and a commit touching it routes
+  to no review.
 - The exemption is not a weakening of the review contract: the package body is
   explicitly outside TeleClaude's artifact taxonomy, so a doc-hygiene reviewer
   grades it against a schema it does not claim to satisfy and can find nothing.
   The risk that is real — executable content, egress, credential reach,
   injected directives — is inspected by the adopting agent before the commit,
   under `general/procedure/skill-management`.
-- Authorship is a property of the source directory, not of the file: the
-  mother-authored catalog master living beside incorporated packages is an
-  authored record in its own right and keeps its review.
+- The mixed global-skills tree is represented by two disjoint registry
+  boundaries: the exact `agents/global/skills/AGENTS.master.md` file is an
+  authored catalog-master record, while each immediate
+  `agents/global/skills/<name>/` directory is an incorporated-package record.
+  The package selector admits directories only, so it cannot absorb the master;
+  every consumer asks the registry for the matched record and carries no local
+  path exception.
 
 ### Reach gate
 
@@ -185,17 +199,19 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   written — so no inventory is orphaned and no file is left unretractable. While both roots carry a command, the manifest holds
   both its root key and its partitioned key, and the deletion of the flat root
   is what later retracts the root key.
-- Domain assignment of the mother's existing commands is read from each
-  command's own governing contract, never assumed from its name
+- Corpus-domain assignment of the mother's existing commands is read from each
+  command's own governing global-domain contract, never assumed from its name
   (`@prd#premises-and-assumptions`): a command publishes under the domain that
   owns the contract it executes, and a command whose contract is domain-agnostic
   publishes under `general`, which is the mother's alone. Two cases are named
   here because the name misleads: `next-assist` executes a software-development
   lifecycle procedure and publishes under `software-development`, not `general`;
   `next-run-job` executes a configured job, and the job model is `config`'s —
-  the declaration, the schedule contract, and the operator surface all resolve
-  there, while `agent_runtime` dispatches a scheduled job into a session as it
-  dispatches any command. `config` owns this command's name, and its domain is `general`.
+  the declaration, the schedule contract, its canonical
+  `general/next-run-job` name, and the scheduler emission all resolve there,
+  while `agent_runtime` dispatches the scheduled job into a session as it
+  dispatches any command. The `general` path is its corpus partition, not a
+  second semantic owner.
 
 ### Migration by expansion before contraction
 
@@ -227,7 +243,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 
 ```mermaid
 flowchart TD
-    R[Registered roots] --> REG[Context: artifact-source registry<br/>tier · kind · reach]
+    R[Registered roots] --> REG[Context: artifact-source registry<br/>boundary · tier · kind · reach · authorship]
     CFG[config: business.publishes] --> OWN[Context: one owner per domain<br/>PublisherRegistry]
     REG --> V[Context: validation<br/>reach gate · kind gate]
     OWN --> V
@@ -236,7 +252,7 @@ flowchart TD
     C --> CORPUS[~/.teleclaude/commands/&lt;domain&gt;/&lt;name&gt;.md]
     C --> CAT[~/.teleclaude/skills/ catalog: mother only]
     C --> LOCAL[project: .agents/skills + runtime skill dirs, written]
-    WF[workflow: SlashCommand<br/>domain/name] -->|emits| DISPATCH[dispatch · scripts · API]
+    CMD[command-owning contexts<br/>canonical domain/name] -->|emit| DISPATCH[dispatch · scripts · API]
     DISPATCH --> AR[agent_runtime: loader resolves<br/>domain/name in the corpus, or a bare token<br/>to its single global match]
     CORPUS --> AR
 ```
@@ -278,6 +294,9 @@ sequenceDiagram
 - **A consumer restates its own directory list instead of reading the
   registry.** A second source of truth; reviewers treat it as an ownership
   defect (`software-development/policy/domain-ownership`).
+- **A source path matches no registry boundary or more than one.** Registry
+  classification fails before validation or review routing; no consumer picks
+  a fallback class.
 - **Two repositories publish global commands and one deploy erases the
   other's.** Prevented by the per-repository owner: each deploy retracts only
   the paths its own repository last staged.
@@ -286,6 +305,7 @@ sequenceDiagram
 
 - docs/project/spec/domain/context.md
 - docs/project/spec/domain/context-map.md
+- docs/project/spec/domain/config.md
 - docs/project/spec/feature/context/agent-runtime-deployment.md
 - docs/project/spec/feature/context/agent-artifact-validation.md
 - docs/project/spec/feature/agent_runtime/run-session-with-command.md

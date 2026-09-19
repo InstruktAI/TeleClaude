@@ -487,15 +487,17 @@ Scenario: UC-ARD38 Partitioning the corpus retracts nothing a publisher still ca
   And a command the publisher no longer carries is the only thing retracted
 ```
 
-#### UC-ARD32: Every declared artifact source directory is enumerated from one registry
+#### UC-ARD32: Every artifact source path is classified by one registry boundary
 
 ```
-Scenario: UC-ARD32 Every declared artifact source directory is enumerated from one registry
-  Given the artifact-source registry declares each source directory with its kind, tier, reach, and authorship
-  When artifact validation, global-skill discovery, deployment, or the commit gate resolves which directories to act on
-  Then each derives that set from the registry
-  And a directory absent from the registry is not treated as an artifact source by any of them
-  And a registry record with no explicit disposition fails the run rather than being skipped
+Scenario: UC-ARD32 Every artifact source path is classified by one registry boundary
+  Given the artifact-source registry declares non-overlapping exact-file, uniform-tree, and immediate-package-directory boundaries with their kind, tier, reach, and authorship
+  And the global-skill catalog master matches an authored exact-file boundary
+  And each sibling skill package directory matches an incorporated-package boundary
+  When artifact validation, global-skill discovery, deployment, checkpoint scope, onboarding inference, or commit review routing resolves a source path
+  Then each receives the same single matched registry record
+  And no consumer carries a local exception for the catalog master or package bodies
+  And a path matching no boundary, more than one boundary, or a record with no explicit disposition fails the run rather than being skipped
 ```
 
 <!-- /planned:agent-artifact-source-layout -->
