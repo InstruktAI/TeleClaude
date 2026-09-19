@@ -135,11 +135,13 @@ And no todo, slug-holder, or hold record is read or changed by the operation
 ```gherkin
 Given successor selection succeeded and the predecessor process exited
 When the service prepares the fresh successor launch
-Then the predecessor's provider-bound native session identifier is released before the successor can emit a hook
+Then the existing session row records the selected successor as its active agent
+And the predecessor's provider-bound native session identifier is released before the successor can emit a hook
 And the predecessor's native transcript remains available as the transcript-chain source
 When the successor announces its native metadata
 Then that event resolves to the existing TeleClaude session id
-And the session reports the successor as its active agent with the successor's native session identifier and transcript
+And the metadata updates only the successor's native session identifier and transcript
+And the session continues to report the already-selected successor as its active agent
 And the predecessor transcript is appended to the session's transcript chain
 And no replacement session identity is minted and no successor hook is dropped
 ```
