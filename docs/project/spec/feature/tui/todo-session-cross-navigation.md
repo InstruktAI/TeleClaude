@@ -308,6 +308,7 @@ And no revive affordance is rendered
 And no native session id fallback is rendered
 ```
 
+<!-- planned:tui-todo-detail-provenance -->
 #### UC-XNAV-24: Prepared-session row renders from durable preparation provenance
 
 ```gherkin
@@ -357,6 +358,7 @@ And later re-enters preparation because its prepared contract changed
 When another TeleClaude session completes preparation
 Then the prepared-session detail row identifies the later completing session
 ```
+<!-- /planned:tui-todo-detail-provenance -->
 
 ## Known caveats
 
