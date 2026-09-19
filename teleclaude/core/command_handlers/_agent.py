@@ -80,9 +80,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
-_RESTART_QUIET_S = 1.0
-_RESTART_STOP_TIMEOUT_S = 30.0
-_RESTART_STOP_POLL_INTERVAL_S = 1.0
+_RESTART_QUIET_S, _RESTART_STOP_TIMEOUT_S, _RESTART_STOP_POLL_INTERVAL_S = 1.0, 30.0, 1.0
 _PROMPT_ARGUMENT_SEPARATOR = " "
 _AGENT_START_DEBUG_LOG = (
     "agent_start: session=%s agent_name=%r base_command=%s prompt_len=%s prompt_sha=%s config_agents=%s"
@@ -103,17 +101,12 @@ _HANDOFF_CONTEXT_WITHOUT_TRANSCRIPT_TEMPLATE = (
     "then re-derive state through the role command."
 )
 _HANDOFF_NO_TRANSCRIPT = "no predecessor agent was recorded"
-_HANDOFF_LIVE_STATE = "live"
-_HANDOFF_CLOSED_STATE = "closed"
-_HANDOFF_RESULT_OK = "ok"
-_HANDOFF_RESULT_ERROR = "error"
-_HANDOFF_RESULT_SELECTED_AGENT = "selected_agent"
-_HANDOFF_CONTEXT_SEPARATOR = "\n\n"
-_HANDOFF_COMMAND_PREFIX = "/"
-_HANDOFF_BACKGROUND_TASK = "agent-handoff-restart"
+_HANDOFF_LIVE_STATE, _HANDOFF_CLOSED_STATE = "live", "closed"
+_HANDOFF_RESULT_OK, _HANDOFF_RESULT_ERROR = "ok", "error"
+_HANDOFF_RESULT_SELECTED_AGENT, _HANDOFF_CONTEXT_SEPARATOR = "selected_agent", "\n\n"
+_HANDOFF_COMMAND_PREFIX, _HANDOFF_BACKGROUND_TASK = "/", "agent-handoff-restart"
 _HANDOFF_LAUNCHED_EVENT = "agent_runtime.handoff.launched"
-_HANDOFF_EVENT_SOURCE = "agent_restart"
-_HANDOFF_EVENT_DOMAIN = "agent_runtime"
+_HANDOFF_EVENT_SOURCE, _HANDOFF_EVENT_DOMAIN = "agent_restart", "agent_runtime"
 _HANDOFF_DELIVERY_FAILURE = "Handoff startup brief could not be delivered; session kept alive for inspection."
 
 
@@ -793,6 +786,18 @@ async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered
         elapsed_ms=stop_elapsed_ms,
     )
 
+    handoff_owner_updated = cmd.fresh_start and cmd.startup_message is not None
+    if handoff_owner_updated:
+        await db.update_session(
+            session.session_id,
+            active_agent=target_agent,
+            native_session_id=None,
+        )
+        refreshed = await db.get_session(session.session_id)
+        if refreshed is None:
+            raise ValueError(f"Handoff session disappeared before launch: {session.session_id}")
+        session = refreshed
+
     restart_mode = session.thinking_mode if session.thinking_mode else "slow"
     launch = await resolve_launch_model(
         target_agent,
@@ -823,7 +828,15 @@ async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered
 
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
 
-        await execute_terminal_command(session.session_id, restart_cmd, None, True)
+        submitted = await execute_terminal_command(session.session_id, restart_cmd, None, True)
+        if handoff_owner_updated and not submitted:
+            event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
+            await db.update_session(
+                session.session_id,
+                active_agent=active_agent,
+                native_session_id=native_session_id,
+            )
+            return False, "Handoff successor launch was rejected."
         logger.info(
             _AGENT_RESTART_READINESS_OPPORTUNITY_EVENT,
             session_id=session.session_id,
