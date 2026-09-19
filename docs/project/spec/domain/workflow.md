@@ -47,41 +47,6 @@ feature specs remain the current contract.
   context consumes.
 <!-- /planned:agent-artifact-source-layout -->
 
-<!-- planned:tui-todo-detail-provenance -->
-### Preparation completion provenance
-
-The Todo lifecycle state owns `prepared_session_id`, the TeleClaude session
-that most recently completed preparation. The prepare state machine writes the
-authenticated caller session while deriving the PREPARED lifecycle phase and
-before committing that transition. The phase and provenance land through one
-state-writer commit; when the completing caller has no TeleClaude session
-identity, the transition fails before either value persists. A later
-preparation pass replaces the value through the same boundary. The terminal
-completion handler reads the committed fact for logging and handoff but performs
-no provenance mutation. Claims, artifact writes, review verdicts, and
-intermediate phase transitions never set it.
-
-Todo state advances to schema v13 through one forward migration. The upcycle
-entrypoint captures the persisted source version before its sequential hops and
-passes that fact only to the v12-to-v13 migration. That migration seeds
-`prepared_session_id` only when the source version was exactly v12, the record
-is currently PREPARED, and it still carries an authoritative `active_runner`;
-the runner value becomes the preparation-session provenance. A record that
-merely passes through v12 from an older schema therefore stays unstamped, as do
-later-stage records and records without that exact evidence. Domain consumers
-see only the v13 shape and contain no compatibility branch.
-
-The Todo query projection publishes `prepared_session_id` and an
-`artifact_updated_at` mapping keyed by artifact name. The timestamps come from
-the current artifact records owned by this context. The existing `files` list
-remains the ordered artifact-name contract, so consumers that need names alone
-do not acquire a new shape or interpretation.
-
-This contract applies `software-development/policy/domain-ownership`: workflow
-defines each durable workflow fact once and consumers receive it through the
-published query projection rather than re-deriving workflow policy.
-<!-- /planned:tui-todo-detail-provenance -->
-
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md
