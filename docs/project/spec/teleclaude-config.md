@@ -645,6 +645,7 @@ telegram:
   bot_token: string | null # normally ${TELEGRAM_BOT_TOKEN}
   alert_username: string | null # normally ${TELEGRAM_ALERT_USERNAME}
   alert_chat_id: string | null # normally ${TELEGRAM_ALERT_CHAT_ID}
+<!-- planned-change:move-discord-reflection-state-to-db -->
 discord:
   enabled: boolean
   token: string | null # normally ${DISCORD_BOT_TOKEN}
@@ -652,6 +653,12 @@ discord:
   help_desk_channel_id: integer | null # normally ${DISCORD_HELP_DESK_CHANNEL_ID}
   all_sessions_channel_id: integer | null # normally ${DISCORD_ALL_SESSIONS_CHANNEL_ID}
   escalation_channel_id: integer | null # normally ${DISCORD_ESCALATION_CHANNEL_ID}
+<!-- change:move-discord-reflection-state-to-db -->
+discord:
+  enabled: boolean
+  token: string | null # normally ${DISCORD_BOT_TOKEN}
+  guild_id: integer | null # normally ${DISCORD_GUILD_ID}
+<!-- /planned-change:move-discord-reflection-state-to-db -->
 whatsapp:
   enabled: boolean
   phone_number_id: string | null # normally ${WHATSAPP_PHONE_NUMBER_ID}
