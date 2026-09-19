@@ -31,6 +31,7 @@ from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commi
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_CHANGED, CODE_COMMIT
+from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
 from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
 from teleclaude.core.db import get_db
@@ -394,7 +395,7 @@ def handle_code_commit(args: list[str]) -> None:
         raise SystemExit(2)
 
     approved = parsed.has(F.FLAG_COMMIT_APPROVED)
-    human_involved = parsed.has(F.FLAG_HUMAN_INVOLVED_COMMIT)
+    human_involved_reason = parsed.value(F.FLAG_HUMAN_INVOLVED_COMMIT)
     includes = list(parsed.values(F.FLAG_COMMIT_INCLUDE))
     only = list(parsed.values(F.FLAG_COMMIT_ONLY))
 
@@ -442,6 +443,8 @@ def handle_code_commit(args: list[str]) -> None:
         )
         raise SystemExit(2)
 
+    human_involved = _validate_human_involvement_declaration(human_involved_reason)
+
     with main_branch_lock():
         _commit_under_lock(
             message=message,
@@ -454,6 +457,26 @@ def handle_code_commit(args: list[str]) -> None:
             only=only or None,
             human_involved=human_involved,
         )
+
+
+def _validate_human_involvement_declaration(reason: str | None) -> bool:
+    """Resolve one commit-local declaration through the authenticated runtime owner."""
+    if reason is None:
+        return False
+    try:
+        response = tool_api_request(
+            "POST",
+            "/sessions/self/human-involvement",
+            json_body={"reason": reason},
+            timeout=10.0,
+        )
+    except ToolAPIError as exc:
+        print(f"Error: {exc.message}", file=sys.stderr)
+        raise SystemExit(1) from None
+    if isinstance(response, dict) and response.get("human_involved") is True:
+        return True
+    print("Error: human involvement validation returned an invalid response", file=sys.stderr)
+    raise SystemExit(1)
 
 
 def _commit_under_lock(

@@ -27,3 +27,21 @@ class AgentRestartResponseDTO(BaseModel):
     status: Literal["accepted"]
     completion_event: str
     selected_agent: AgentName | None = None
+
+
+class HumanInvolvementValidationRequest(BaseModel):
+    """Ephemeral declaration submitted for one fact-producing action."""
+
+    model_config = ConfigDict(frozen=True)
+
+    reason: str | None = None
+
+
+class HumanInvolvementValidationResponseDTO(BaseModel):
+    """Reason-safe result of self-scoped involvement validation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    human_involved: bool
+    refusal: str | None = None
+    latest_human_input_age_seconds: int | None = None

@@ -163,7 +163,7 @@ def _handle_bugs_report(args: list[str]) -> None:
     slug = parsed.value(F.FLAG_BUG_SLUG)
     body = parsed.value(F.FLAG_BUG_BODY)
     project_name = parsed.value(F.FLAG_BUG_PROJECT)
-    human_involved = parsed.has(F.FLAG_HUMAN_INVOLVED)
+    human_involvement_reason = parsed.value(F.FLAG_HUMAN_INVOLVED)
     approved = parsed.has(F.FLAG_BUG_APPROVED)
     project_root = resolve_invocation_cwd()
 
@@ -201,7 +201,8 @@ def _handle_bugs_report(args: list[str]) -> None:
         content=bug_content,
         kind=TODO_KIND_BUG,
         cwd=str(project_root),
-        human_involved=human_involved,
+        human_involved=human_involvement_reason is not None,
+        human_involvement_reason=human_involvement_reason,
     )
     api_result = tool_api_request(
         "POST",

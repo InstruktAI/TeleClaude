@@ -531,7 +531,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a todo with substantive content",
-                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved]",
+                args=f"<slug> <content> --kind <{TODO_KIND_USAGE}> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved <reason>]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_AFTER_DEPS,
@@ -548,10 +548,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
-                    "Include the observed trigger — what happened, what was asked, or what shaped this filing — "
-                    "verbatim in <content> whenever a human conversation produced it, and pass --human-involved. "
-                    "The gap this closes is the reporting invitation, not the schema: a filing whose trigger "
-                    "context lives nowhere is unauditable later.",
+                    "--human-involved accepts a non-empty action-local reason only after recent qualified human input. "
+                    "The reason is never stored; omission records false and does not affect later actions.",
                     "Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, "
                     "affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT "
                     "prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — "
@@ -844,7 +842,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Interrogate the pre-filing decisions before scaffolding a bug; a completed filing "
                     "enters the bug lane and the lifecycle router dispatches /next-prepare"
                 ),
-                args="<description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved]",
+                args="<description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved <reason>]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_BUG_APPROVED,
@@ -1420,7 +1418,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "commit": CommandDef(
                 desc="Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)",
-                args='"<message>" [--approved] [--human-involved] [--include <path> ...] [--only <path> ...]',
+                args='"<message>" [--approved] [--human-involved <reason>] [--include <path> ...] [--only <path> ...]',
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_COMMIT_APPROVED,
@@ -1429,7 +1427,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_HUMAN_INVOLVED_COMMIT,
                 ],
                 notes=[
-                    "Accepts only: one quoted message, --approved, --human-involved, --include <path> ..., and --only <path> ... .",
+                    "Accepts only: one quoted message, --approved, --human-involved <reason>, --include <path> ..., and --only <path> ... .",
                     "Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.",
                     "NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec code add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).",
                     "--only commits exactly the declared paths and is mutually exclusive with --include.",

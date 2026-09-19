@@ -56,13 +56,10 @@ FLAG_AFTER_DEPS = Flag("--after", desc="Comma-separated dependency slugs", arity
 FLAG_HUMAN_INVOLVED = Flag(
     "--human-involved",
     desc=(
-        "Declares a human was in the conversation that produced this filing — saw it, asked "
-        "for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives "
-        "this automatically and ignores the flag. Omitting it for an agent filing records "
-        "false — a forgotten flag lands the todo in the started-without-me audit bucket, "
-        "never a hidden autonomous filing."
+        "Declare one filing was shaped by recent qualified human input. The non-empty reason stays "
+        "ephemeral; omission records false and never inherits from another action."
     ),
-    arity=SWITCH,
+    arity=VALUE,
 )
 FLAG_JSON_MACHINE_READABLE = Flag("--json", desc="Emit machine-readable JSON output", arity=SWITCH)
 
@@ -557,12 +554,4 @@ FLAG_COMMIT_ONLY = Flag(
     ),
     arity=GREEDY,
 )
-FLAG_HUMAN_INVOLVED_COMMIT = Flag(
-    "--human-involved",
-    desc=(
-        "Declare that a human was genuinely present in this session. Carried as "
-        "Human-Involved: true in the commit footer; absent when not passed (defaults to "
-        "false). Never derived from the todo record."
-    ),
-    arity=SWITCH,
-)
+FLAG_HUMAN_INVOLVED_COMMIT = FLAG_HUMAN_INVOLVED

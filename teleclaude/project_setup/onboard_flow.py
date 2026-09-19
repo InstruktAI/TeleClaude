@@ -117,7 +117,7 @@ def _dispatch_session(project_root: Path, command: OnboardingCommand, label: str
         return False
 
     # exclude_unset preserves an omitted agent until the daemon's routing boundary.
-    request = RunSessionRequest(command=command.value, project=str(project_root))
+    request = RunSessionRequest(command=command.value, project=str(project_root), dispatch_door="delegated")
     try:
         tool_api_request(
             "POST",
