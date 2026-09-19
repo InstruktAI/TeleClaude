@@ -140,8 +140,9 @@ And NO event-bus emit call is made for this path — outbox serialization depend
 ```gherkin
 Given a claimed entry has event type in {agent-session-start, user-prompt-submit, tool-use, agent-stop}
 When the dispatcher runs past the state-mutation fork
-Then it first validates the entry's provider and native execution identity against the session's committed runtime owner
-And a mismatched predecessor or unrelated runtime is terminally dropped before activity, stop, polling, or fan-out behavior
+Then it validates the entry's provider and native execution identity against the session's committed runtime owner
+And during handoff-successor-committed only an agent-session-start from the committed provider with a present native session id different from the quarantined predecessor binding is admitted as the successor-establishment exception
+And every other mismatched predecessor or unrelated runtime is terminally dropped before activity, stop, polling, or fan-out behavior
 And a matching entry becomes a typed agent payload and agent-event context
 And the local agent-event coordinator is awaited DIRECTLY
 And the outbox worker only marks the entry delivered AFTER the coordinator returns
@@ -149,6 +150,7 @@ And NO event-bus emit call is made for this path
 ```
 <!-- /planned-change:session-handoff-state-convergence -->
 
+<!-- planned-change:session-handoff-state-convergence -->
 #### UC-D6c: Agent-error is the only event-bus emit path
 
 ```gherkin
@@ -160,6 +162,20 @@ And the event bus emits the error event with cluster visibility
 And any cluster subscriber to error receives the event asynchronously
 And the entry is then removed by the worker as processed
 ```
+<!-- change:session-handoff-state-convergence -->
+#### UC-D6c: Owner-matched agent-error is the only event-bus emit path
+
+```gherkin
+Given a claimed entry has event type agent-error
+When the dispatcher runs past the state-mutation fork
+Then it validates the entry's provider and native execution identity against the session's committed runtime owner
+And an error from the quarantined predecessor or any unrelated runtime is terminally dropped without an event-bus emit
+And a matching error is converted to an error event context containing severity, retryable, code, details, message, and session id
+And the event bus emits that error event with cluster visibility
+And any cluster subscriber to error receives the event asynchronously
+And the entry is then removed by the worker as processed
+```
+<!-- /planned-change:session-handoff-state-convergence -->
 
 #### UC-D7: Retry with exponential backoff on retryable failure
 
