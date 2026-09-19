@@ -75,6 +75,16 @@ When installation runs
 Then that configuration is left byte-for-byte unchanged
 And no field is added, removed, or re-derived from the schema
 ```
+
+#### UC-CFG-LOAD-13: Installation can load generation before runtime configuration exists
+
+```gherkin
+Given a host carrying no machine configuration at <RuntimeConfig.home>/config.yml
+When an installation agent loads the config-owned generation contract
+Then loading that contract neither reads nor creates the machine configuration
+And the agent can explicitly create the machine configuration through that contract
+But a runtime consumer requesting the effective configuration still fails fast while the file is absent
+```
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
