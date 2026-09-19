@@ -16,9 +16,11 @@ from typing import Protocol
 from dotenv import dotenv_values
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config.person_secrets import MissingPersonSecretError, PersonSecretStorageError
 from teleclaude.mcp.protocol import JsonObject, McpProtocolError, StdioMcpClient, ToolCatalog
 from teleclaude.mcp.registry import (
     McpConcurrency,
+    McpCredentialScope,
     McpRegistry,
     McpServerConfig,
     McpTransport,
@@ -47,6 +49,11 @@ _MACHINE_RUNTIME_IDENTIFIER = "machine"
 _PROJECT_RUNTIME_IDENTIFIER_TEMPLATE = "project:{digest}"
 
 type RegistryLoader = Callable[[], McpRegistry]
+type PersonSecretResolver = Callable[[str, tuple[str, ...]], dict[str, str]]
+
+_GLOBAL_CREDENTIAL_OWNER = "global"
+_PERSON_IDENTITY_REQUIRED_MESSAGE = "MCP server requires verified person identity"
+_PERSON_SECRET_UNAVAILABLE_MESSAGE = "Personal MCP credentials are unavailable"
 
 
 class McpRuntimeError(RuntimeError):
@@ -76,8 +83,24 @@ class McpRuntimeError(RuntimeError):
         return data
 
 
+@dataclass(frozen=True)
+class McpInvocationContext:
+    """Verified caller ownership available to a protected MCP invocation."""
+
+    person_slug: str | None = None
+
+
+@dataclass(frozen=True)
+class McpLeaseKey:
+    """One owner-isolated MCP lease identity within a project runtime."""
+
+    server_slug: str
+    credential_owner: str
+
+
 @dataclass
 class _Lease:
+    key: McpLeaseKey
     server: McpServerConfig
     fingerprint: str
     client: StdioMcpClient
@@ -96,23 +119,25 @@ class McpRuntime:
         env_path: Path = ENV_PATH,
         registry: McpRegistry | None = None,
         registry_loader: RegistryLoader | None = None,
+        person_secret_resolver: PersonSecretResolver | None = None,
         clock: _Clock | None = None,
     ) -> None:
         self._repo_root = repo_root
         self._env_path = env_path
         self._registry = registry
         self._registry_loader = registry_loader
+        self._person_secret_resolver = person_secret_resolver
         self._clock = clock
-        self._leases: dict[str, _Lease] = {}
+        self._leases: dict[McpLeaseKey, _Lease] = {}
         self._lease_lock = asyncio.Lock()
 
     def list_servers(self, *, exclude: set[str] | None = None) -> list[JsonObject]:
         """Return the configured server catalog without starting leases."""
         return [server.to_catalog_dict() for server in self._load_registry().enabled_servers(exclude=exclude)]
 
-    async def list_tools(self, slug: str) -> JsonObject:
+    async def list_tools(self, slug: str, invocation: McpInvocationContext | None = None) -> JsonObject:
         """Return a server's tool catalog, initializing only that server."""
-        lease = await self._lease_for(slug)
+        lease = await self._lease_for(slug, invocation or McpInvocationContext())
         async with lease.lock:
             try:
                 if lease.tools is None or lease.client.tool_list_changed:
@@ -120,16 +145,22 @@ class McpRuntime:
                         lease.client.list_tools(), timeout=MCP_LIST_TOOLS_TIMEOUT_SECONDS
                     )
             except TimeoutError as exc:
-                await self._close_lease(slug)
+                await self._close_lease(lease.key)
                 raise McpRuntimeError("MCP tools/list timed out", code="tool_timeout", slug=slug) from exc
             except _CALLER_SAFE_PROTOCOL_FAILURES as exc:
                 raise McpRuntimeError("MCP tools/list failed", code="tool_list_failed", slug=slug) from exc
             self._refresh_deadline(lease)
             return {"server": slug, "tools": lease.tools.tools}
 
-    async def call_tool(self, slug: str, tool_name: str, arguments: JsonObject) -> JsonObject:
+    async def call_tool(
+        self,
+        slug: str,
+        tool_name: str,
+        arguments: JsonObject,
+        invocation: McpInvocationContext | None = None,
+    ) -> JsonObject:
         """Call one tool through the selected server lease."""
-        lease = await self._lease_for(slug)
+        lease = await self._lease_for(slug, invocation or McpInvocationContext())
         async with lease.lock:
             try:
                 result = await asyncio.wait_for(
@@ -137,7 +168,7 @@ class McpRuntime:
                     timeout=MCP_TOOL_CALL_TIMEOUT_SECONDS,
                 )
             except TimeoutError as exc:
-                await self._close_lease(slug)
+                await self._close_lease(lease.key)
                 raise McpRuntimeError("MCP tool call timed out", code="tool_timeout", slug=slug) from exc
             except _CALLER_SAFE_PROTOCOL_FAILURES as exc:
                 raise McpRuntimeError("MCP tool call failed", code="tool_call_failed", slug=slug) from exc
@@ -147,44 +178,38 @@ class McpRuntime:
     async def reap_idle(self) -> None:
         """Close leases whose idle deadlines have passed."""
         now = self._now()
-        expired = [slug for slug, lease in self._leases.items() if lease.idle_deadline <= now]
-        for slug in expired:
-            await self._close_lease(slug)
+        expired = [key for key, lease in self._leases.items() if lease.idle_deadline <= now]
+        for key in expired:
+            await self._close_lease(key)
 
     async def close(self) -> None:
         """Close all active MCP leases."""
-        for slug in list(self._leases):
-            await self._close_lease(slug)
+        for key in list(self._leases):
+            await self._close_lease(key)
 
     def active_lease_slugs(self) -> list[str]:
         """Return active lease slugs for diagnostics and tests."""
-        return sorted(self._leases)
+        return sorted({lease.key.server_slug for lease in self._leases.values()})
 
-    async def _lease_for(self, slug: str) -> _Lease:
+    async def _lease_for(self, slug: str, invocation: McpInvocationContext) -> _Lease:
         async with self._lease_lock:
             registry = self._load_registry()
             try:
                 server = registry.require_server(slug)
             except RegistryError as exc:
                 raise McpRuntimeError(str(exc), code="unknown_server", slug=slug) from exc
-            env_values = self._load_env_values()
-            missing = tuple(name for name in server.env_references if name not in env_values)
-            if missing:
-                raise McpRuntimeError(
-                    "MCP server is missing required environment values",
-                    code="missing_env",
-                    slug=slug,
-                    missing_env=missing,
-                )
+            credential_owner, env_values = self._credential_values(server, invocation)
+            key = McpLeaseKey(server_slug=slug, credential_owner=credential_owner)
             fingerprint = server.fingerprint(env_values)
-            existing = self._leases.get(slug)
+            existing = self._leases.get(key)
             if existing is not None and existing.fingerprint == fingerprint:
                 self._refresh_deadline(existing)
                 return existing
             if existing is not None:
-                await self._close_lease(slug)
+                await self._close_lease(key)
             client = await self._start_client(server, env_values)
             lease = _Lease(
+                key=key,
                 server=server,
                 fingerprint=fingerprint,
                 client=client,
@@ -192,8 +217,52 @@ class McpRuntime:
                 tools=None,
                 idle_deadline=self._now() + server.idle_ttl_seconds,
             )
-            self._leases[slug] = lease
+            self._leases[key] = lease
             return lease
+
+    def _credential_values(
+        self, server: McpServerConfig, invocation: McpInvocationContext
+    ) -> tuple[str, dict[str, str]]:
+        if server.credential_scope is McpCredentialScope.GLOBAL:
+            env_values = self._load_env_values()
+            missing = tuple(name for name in server.env_references if not env_values.get(name))
+            if missing:
+                raise McpRuntimeError(
+                    "MCP server is missing required environment values",
+                    code="missing_env",
+                    slug=server.slug,
+                    missing_env=missing,
+                )
+            return _GLOBAL_CREDENTIAL_OWNER, env_values
+        person_slug = invocation.person_slug
+        if person_slug is None:
+            raise McpRuntimeError(
+                _PERSON_IDENTITY_REQUIRED_MESSAGE,
+                code="person_identity_required",
+                slug=server.slug,
+            )
+        if self._person_secret_resolver is None:
+            raise McpRuntimeError(
+                _PERSON_SECRET_UNAVAILABLE_MESSAGE,
+                code="person_secret_unavailable",
+                slug=server.slug,
+            )
+        try:
+            env_values = self._person_secret_resolver(person_slug, server.env_references)
+        except MissingPersonSecretError as exc:
+            raise McpRuntimeError(
+                "MCP server is missing required environment values",
+                code="missing_env",
+                slug=server.slug,
+                missing_env=exc.names,
+            ) from exc
+        except PersonSecretStorageError as exc:
+            raise McpRuntimeError(
+                _PERSON_SECRET_UNAVAILABLE_MESSAGE,
+                code="person_secret_unavailable",
+                slug=server.slug,
+            ) from exc
+        return person_slug, env_values
 
     async def _start_client(self, server: McpServerConfig, env_values: dict[str, str]) -> StdioMcpClient:
         process: asyncio.subprocess.Process | None = None
@@ -248,8 +317,8 @@ class McpRuntime:
     def _refresh_deadline(self, lease: _Lease) -> None:
         lease.idle_deadline = self._now() + lease.server.idle_ttl_seconds
 
-    async def _close_lease(self, slug: str) -> None:
-        lease = self._leases.pop(slug, None)
+    async def _close_lease(self, key: McpLeaseKey) -> None:
+        lease = self._leases.pop(key, None)
         if lease is None:
             return
         await lease.client.close()
@@ -268,13 +337,20 @@ class McpRuntimePool:
         *,
         repo_root: Path,
         env_path: Path = ENV_PATH,
+        person_secret_resolver: PersonSecretResolver | None = None,
         clock: _Clock | None = None,
     ) -> None:
         self._repo_root = repo_root
         self._env_path = env_path
+        self._person_secret_resolver = person_secret_resolver
         self._clock = clock
         self._runtimes: dict[Path, McpRuntime] = {
-            repo_root: McpRuntime(repo_root=repo_root, env_path=env_path, clock=clock)
+            repo_root: McpRuntime(
+                repo_root=repo_root,
+                env_path=env_path,
+                person_secret_resolver=person_secret_resolver,
+                clock=clock,
+            )
         }
 
     @property
@@ -304,6 +380,7 @@ class McpRuntimePool:
                 repo_root=self._repo_root,
                 env_path=self._env_path,
                 registry_loader=lambda: load_effective_registry(self._repo_root, project_root=canonical_root),
+                person_secret_resolver=self._person_secret_resolver,
                 clock=self._clock,
             )
             self._runtimes[canonical_root] = runtime

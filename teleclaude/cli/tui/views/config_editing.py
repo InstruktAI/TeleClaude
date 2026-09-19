@@ -10,8 +10,11 @@ from pydantic import BaseModel, ValidationError
 
 from teleclaude.cli.config_handlers import (
     EnvVarStatus,
+    PersonMcpSecretManagementError,
+    clear_person_mcp_secret_value,
     get_global_config,
     get_person_config,
+    replace_person_mcp_secret_value,
     save_global_config,
     save_person_config,
     save_raw_machine_config,
@@ -217,8 +220,13 @@ class ConfigContentEditingMixin:
     def _begin_edit(self, field_or_status: Any) -> None:
         """Enter editing mode for reflected fields or env vars."""
         if isinstance(field_or_status, ReflectedField):
+            if field_or_status.write_only and not field_or_status.secret_available:
+                self._status_message = field_or_status.description or "Personal secret storage is unavailable."  # type: ignore[attr-defined]
+                self._status_is_error = True  # type: ignore[attr-defined]
+                self.refresh(layout=True)  # type: ignore[attr-defined]
+                return
             self._editing_var_name = field_or_status.key  # type: ignore[attr-defined]
-            val = field_or_status.value
+            val = "" if field_or_status.write_only else field_or_status.value
             if isinstance(val, list):
                 self._edit_buffer = ",".join(val)  # type: ignore[attr-defined]
             else:
@@ -269,6 +277,33 @@ class ConfigContentEditingMixin:
             return
         self._edit_buffer = ""  # type: ignore[attr-defined]
         self.refresh(layout=True)  # type: ignore[attr-defined]
+
+    def clear_personal_secret_or_edit_buffer(self) -> None:
+        """Clear a write-only personal secret, or clear an ordinary active buffer."""
+        if not self.is_editing:  # type: ignore[attr-defined]
+            return
+        field = self._active_personal_secret_field()
+        if field is None:
+            self.clear_edit_buffer()
+            return
+        operation_id = str(uuid4())
+        observe_config_tui(ConfigTuiOutcome.SAVE_REQUESTED, operation_id=operation_id, field_paths=[field.key])
+        try:
+            clear_person_mcp_secret_value(self._expanded_person, field.name)  # type: ignore[attr-defined]
+        except PersonMcpSecretManagementError:
+            observe_config_tui(
+                ConfigTuiOutcome.FAILED, operation_id=operation_id, field_paths=[field.key], source="config"
+            )
+            self._status_message = "Personal MCP secret management failed."  # type: ignore[attr-defined]
+            self._status_is_error = True  # type: ignore[attr-defined]
+            self.refresh(layout=True)  # type: ignore[attr-defined]
+            return
+        self._editing_var_name = None  # type: ignore[attr-defined]
+        self._edit_buffer = ""  # type: ignore[attr-defined]
+        self._status_message = f"Cleared {field.name}."  # type: ignore[attr-defined]
+        self._status_is_error = False  # type: ignore[attr-defined]
+        observe_config_tui(ConfigTuiOutcome.SAVED, operation_id=operation_id, field_paths=[field.key], source="config")
+        self.refresh_data()  # type: ignore[attr-defined]
 
     def save_edit(self) -> None:
         """Persist the current env-var or reflected field edit."""
@@ -466,6 +501,21 @@ class ConfigContentEditingMixin:
         if f is None:
             return
 
+        if f.write_only:
+            try:
+                self._save_personal_secret(f, str(raw_value), operation_id)
+            except PersonMcpSecretManagementError:
+                observe_config_tui(
+                    ConfigTuiOutcome.FAILED,
+                    operation_id=operation_id,
+                    field_paths=[key],
+                    source="config",
+                )
+                self._status_message = "Personal MCP secret management failed."  # type: ignore[attr-defined]
+                self._status_is_error = True  # type: ignore[attr-defined]
+                self.refresh(layout=True)  # type: ignore[attr-defined]
+            return
+
         try:
             deserialized = deserialize_value(raw_value, f.field_type, f.choices)
 
@@ -564,6 +614,33 @@ class ConfigContentEditingMixin:
             self._status_message = f"Failed to save {f.name}: {exc}"  # type: ignore[attr-defined]
             self._status_is_error = True  # type: ignore[attr-defined]
             self.refresh(layout=True)  # type: ignore[attr-defined]
+
+    def _active_personal_secret_field(self) -> ReflectedField | None:
+        """Return the currently edited write-only personal secret field, if any."""
+        if self._expanded_person is None:  # type: ignore[attr-defined]
+            return None
+        return next(
+            (
+                field
+                for field in self.person_reflected_fields
+                if field.key == self._editing_var_name and field.write_only  # type: ignore[attr-defined]
+            ),
+            None,
+        )
+
+    def _save_personal_secret(self, field: ReflectedField, value: str, operation_id: str) -> None:
+        """Keep or replace a personal secret without placing its prior value in UI state."""
+        if value:
+            replace_person_mcp_secret_value(self._expanded_person, field.name, value)  # type: ignore[attr-defined]
+            outcome = f"Updated {field.name}."
+        else:
+            outcome = f"Kept {field.name}."
+        self._editing_var_name = None  # type: ignore[attr-defined]
+        self._edit_buffer = ""  # type: ignore[attr-defined]
+        self._status_message = outcome  # type: ignore[attr-defined]
+        self._status_is_error = False  # type: ignore[attr-defined]
+        observe_config_tui(ConfigTuiOutcome.SAVED, operation_id=operation_id, field_paths=[field.key], source="config")
+        self.refresh_data()  # type: ignore[attr-defined]
 
     def cancel_edit(self) -> None:
         """Cancel the current env-var or person-field edit."""

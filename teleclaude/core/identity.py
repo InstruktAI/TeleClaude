@@ -160,6 +160,7 @@ class IdentityResolver:
 
     def __init__(self) -> None:
         self._by_email: dict[str, PersonEntry] = {}
+        self._email_matches: dict[str, list[PersonEntry]] = {}
         self._by_slug: dict[str, list[PersonEntry]] = {}
         self._by_context_root: dict[Path, PersonEntry] = {}
         self._by_username: dict[str, PersonEntry] = {}
@@ -242,6 +243,7 @@ class IdentityResolver:
     def _load_config(self) -> None:
         """Load global and per-person configuration to build lookup maps."""
         self._by_email.clear()
+        self._email_matches.clear()
         self._by_slug.clear()
         self._by_context_root.clear()
         self._by_username.clear()
@@ -265,7 +267,9 @@ class IdentityResolver:
         self._registered_people_count = len(global_config.people)
         people_by_key: dict[str, PersonEntry] = {}
         for person in global_config.people:
-            self._by_email[person.email.lower()] = person
+            normalized_email = person.email.lower()
+            self._email_matches.setdefault(normalized_email, []).append(person)
+            self._by_email[normalized_email] = person
             if person.slug:
                 self._by_slug.setdefault(person.slug, []).append(person)
                 context_root = self._context_root_for(person)
@@ -347,6 +351,23 @@ class IdentityResolver:
                 avatar_url=self._avatar_url_for(person),
             )
         return IdentityContext()
+
+    def resolve_exact_one_by_email(self, email: str) -> IdentityContext:
+        """Resolve a person only when the verified email has exactly one configured owner."""
+        self._reload_if_stale()
+        matches = self._email_matches.get(email.lower(), [])
+        if len(matches) != 1:
+            return IdentityContext()
+        person = matches[0]
+        return IdentityContext(
+            person_name=person.name,
+            person_email=person.email,
+            person_slug=person.slug,
+            person_role=self._normalize_role(person.role),
+            display_name_override=self._display_name_override_for(person),
+            chip_color=self._color_by_email.get(person.email.lower()),
+            avatar_url=self._avatar_url_for(person),
+        )
 
     @property
     def registered_people_count(self) -> int:

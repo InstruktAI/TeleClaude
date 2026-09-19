@@ -63,6 +63,7 @@ from teleclaude.api_models import (
 )
 from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.config import config
+from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
@@ -129,7 +130,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.task_registry = task_registry
         self.runtime_settings = runtime_settings
         self.__event_db_inner: EventDB | None = None  # backing store for _event_db property
-        self.mcp_runtimes = McpRuntimePool(repo_root=resolve_project_root(Path.cwd()))
+        self.mcp_runtimes = McpRuntimePool(
+            repo_root=resolve_project_root(Path.cwd()),
+            person_secret_resolver=resolve_person_mcp_secret_values,
+        )
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
 

@@ -22,6 +22,7 @@
     "omi-memory": {
       "trigger": "Use to retrieve memories created on the go with the third-party Omi service. Use when the word omi appears or STT may have translated it as \"oh me\".",
       "transport": "http",
+      "credentialScope": "person",
       "url": "https://api.omi.me/v1/mcp/sse",
       "headers": {
         "Authorization": "Bearer ${OMI_API_KEY}"

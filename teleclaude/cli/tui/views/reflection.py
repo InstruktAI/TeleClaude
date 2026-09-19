@@ -44,6 +44,10 @@ class ReflectedField:
     env_var: str | None = None  # Backing environment variable when the config value is a ${VAR} reference
     environment: EnvironmentProvenance | None = None
     owning_source: str = "global"  # The config source owning this field
+    write_only: bool = False
+    secret_is_set: bool = False
+    secret_available: bool = True
+    requiring_services: tuple[str, ...] = ()
 
 
 def resolve_env_placeholders(

@@ -202,7 +202,27 @@ class ConfigContentRenderMixin:
         subpad = pad + "    "
         if self._editing_var_name == f.key:  # type: ignore[attr-defined]
             result.append(f"{pad}{prefix} {f.name} = {self._edit_buffer}█\n", style=row_style)  # type: ignore[attr-defined]
-            result.append(f"{subpad}Enter save  Esc cancel  Ctrl+U clear\n", style=_DIM)
+            instruction = (
+                "Enter replace/keep  Esc cancel  Ctrl+U clear"
+                if f.write_only
+                else "Enter save  Esc cancel  Ctrl+U clear"
+            )
+            result.append(f"{subpad}{instruction}\n", style=_DIM)
+            return
+
+        if f.write_only:
+            status = "unavailable" if not f.secret_available else "set" if f.secret_is_set else "unset"
+            result.append(
+                f"{pad}{prefix} {'✔' if f.secret_is_set else '○'} ",
+                style=_OK if f.secret_is_set and f.secret_available else _DIM,
+            )
+            result.append(f"{f.name}: ", style=_DIM)
+            result.append(status, style=row_style)
+            if f.requiring_services:
+                result.append(f" ({', '.join(f.requiring_services)})", style=_DIM)
+            result.append("\n")
+            if f.description:
+                result.append(f"{subpad}{f.description}\n", style=_DIM)
             return
 
         if f.field_type is bool:

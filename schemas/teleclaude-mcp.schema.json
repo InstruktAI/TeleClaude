@@ -71,6 +71,12 @@
           "default": true,
           "description": "Disabled entries remain configured but hidden from runtime catalog."
         },
+        "credentialScope": {
+          "type": "string",
+          "enum": ["global", "person"],
+          "default": "global",
+          "description": "Credential owner. Person-scoped services resolve secrets only from the verified caller's personal store."
+        },
         "lazy": {
           "type": "object",
           "additionalProperties": false,

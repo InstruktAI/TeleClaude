@@ -21,6 +21,7 @@ from teleclaude.cli.config_handlers import (
     ValidationResult,
     check_env_vars,
     get_person_config,
+    get_person_mcp_secret_statuses,
     list_people,
     validate_all,
 )
@@ -67,6 +68,7 @@ from teleclaude.config import (
 )
 from teleclaude.config._summarizer import parse_summarizer_config
 from teleclaude.config.loader import find_person_config_path
+from teleclaude.config.person_secrets import PersonSecretStorageError
 from teleclaude.config.schema import PersonEntry
 from teleclaude.config.tiers import Tier
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
@@ -261,7 +263,7 @@ class ConfigView(Widget, can_focus=True):
             event.stop()
             return
         if event.key == "ctrl+u":
-            content.clear_edit_buffer()
+            content.clear_personal_secret_or_edit_buffer()
             event.stop()
             return
         if event.character and event.is_printable:
@@ -660,7 +662,39 @@ class ConfigContent(
                 person_path.with_name(ConfigFileName.ENV),
                 "overlay",
             )
-        fields = entry_fields + overlay_fields
+        try:
+            secret_statuses = get_person_mcp_secret_statuses(self._expanded_person)
+        except PersonSecretStorageError:
+            secret_statuses = []
+            secret_fields = [
+                ReflectedField(
+                    key="secrets.unavailable",
+                    name="Personal MCP secrets",
+                    field_type=str,
+                    value="",
+                    section="Secrets",
+                    owning_source="personal-mcp-secret",
+                    write_only=True,
+                    secret_available=False,
+                    description="Personal secret storage is unavailable.",
+                )
+            ]
+        else:
+            secret_fields = [
+                ReflectedField(
+                    key=f"secrets.{status.name}",
+                    name=status.name,
+                    field_type=str,
+                    value="",
+                    section="Secrets",
+                    owning_source="personal-mcp-secret",
+                    write_only=True,
+                    secret_is_set=status.is_set,
+                    requiring_services=status.requiring_servers,
+                )
+                for status in secret_statuses
+            ]
+        fields = entry_fields + overlay_fields + secret_fields
         logger.info(
             "config_tui_person_overlay_rendered",
             render_cycle_id=render_cycle_id,

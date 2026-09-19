@@ -34,16 +34,28 @@ from teleclaude.config.loader import (
 )
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
+from teleclaude.config.person_secrets import (
+    PersonMcpSecretStatus,
+    clear_person_mcp_secret,
+    list_person_mcp_secret_statuses,
+    replace_person_mcp_secret,
+)
 from teleclaude.config.roster import RosterOutcome, remove_person_from_rosters
 from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
-from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, TELECLAUDE_HOME, ConfigFileName
+from teleclaude.mcp.registry import load_effective_registry
+from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, REPO_ROOT, TELECLAUDE_HOME, ConfigFileName
 
 logger = get_logger(__name__)
 
 _PEOPLE_DIR = TELECLAUDE_HOME / "people"
 _COMPUTER = "computer"
 _TMUX_BINARY = "tmux_binary"
+_PERSON_MCP_SECRET_MANAGEMENT_FAILED = "Personal MCP secret management failed"
+
+
+class PersonMcpSecretManagementError(ValueError):
+    """Stable operator-facing failure for personal MCP secret mutations."""
 
 
 # --- Data classes ---
@@ -546,6 +558,28 @@ def set_env_var(name: str, value: str, env_path: Path | None = None) -> Path:
     os.environ[name] = value  # fmt: skip  # guard: direct-env-read - allowed: environment-file management
     logger.info("Updated env var %s in %s", name, target)
     return target
+
+
+def get_person_mcp_secret_statuses(person_slug: str) -> list[PersonMcpSecretStatus]:
+    """Return registry-derived, write-only MCP secret status for one person."""
+    requirements = load_effective_registry(REPO_ROOT).person_secret_requirements()
+    return list_person_mcp_secret_statuses(person_slug, requirements)
+
+
+def replace_person_mcp_secret_value(person_slug: str, name: str, value: str) -> None:
+    """Replace one personal MCP secret without returning its stored value."""
+    try:
+        replace_person_mcp_secret(person_slug, name, value)
+    except (OSError, ValueError) as exc:
+        raise PersonMcpSecretManagementError(_PERSON_MCP_SECRET_MANAGEMENT_FAILED) from exc
+
+
+def clear_person_mcp_secret_value(person_slug: str, name: str) -> None:
+    """Clear one personal MCP secret without touching unrelated stored values."""
+    try:
+        clear_person_mcp_secret(person_slug, name)
+    except (OSError, ValueError) as exc:
+        raise PersonMcpSecretManagementError(_PERSON_MCP_SECRET_MANAGEMENT_FAILED) from exc
 
 
 # --- Schema discovery ---

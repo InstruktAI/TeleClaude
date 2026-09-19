@@ -53,6 +53,13 @@ class McpConcurrency(StrEnum):
     PARALLEL = "parallel"
 
 
+class McpCredentialScope(StrEnum):
+    """Credential owner selected for one MCP server declaration."""
+
+    GLOBAL = "global"
+    PERSON = "person"
+
+
 @dataclass(frozen=True)
 class McpServerConfig:
     """A normalized TeleClaude MCP server definition."""
@@ -70,6 +77,7 @@ class McpServerConfig:
     lazy: bool = True
     idle_ttl_seconds: float = DEFAULT_IDLE_TTL_SECONDS
     concurrency: McpConcurrency = McpConcurrency.SERIALIZED
+    credential_scope: McpCredentialScope = McpCredentialScope.GLOBAL
 
     @property
     def env_references(self) -> tuple[str, ...]:
@@ -106,6 +114,7 @@ class McpServerConfig:
                 "idleTtlSec": self.idle_ttl_seconds,
                 "concurrency": self.concurrency.value,
             },
+            "credentialScope": self.credential_scope.value,
         }
         if self.trigger is not None:
             data["trigger"] = self.trigger
@@ -169,6 +178,16 @@ class McpRegistry:
         if server is None or not server.enabled:
             raise RegistryError(f"Unknown MCP server: {slug}")
         return server
+
+    def person_secret_requirements(self) -> dict[str, tuple[str, ...]]:
+        """Return secret names grouped by the person-scoped services that require them."""
+        requirements: dict[str, list[str]] = {}
+        for server in self.enabled_servers():
+            if server.credential_scope is not McpCredentialScope.PERSON:
+                continue
+            for name in server.env_references:
+                requirements.setdefault(name, []).append(server.slug)
+        return {name: tuple(slugs) for name, slugs in sorted(requirements.items())}
 
 
 def project_mcp_root(root: Path) -> Path | None:
@@ -314,6 +333,7 @@ def _parse_server(slug: str, spec: JsonObject) -> McpServerConfig:
         lazy=lazy.enabled,
         idle_ttl_seconds=lazy.idle_ttl_seconds,
         concurrency=lazy.concurrency,
+        credential_scope=_parse_credential_scope(slug, spec),
     )
 
 
@@ -325,6 +345,14 @@ def _parse_transport(slug: str, spec: JsonObject) -> McpTransport:
         return McpTransport(str(raw))
     except ValueError as exc:
         raise RegistryError(f"Invalid MCP server {slug}: unsupported transport {raw!r}.") from exc
+
+
+def _parse_credential_scope(slug: str, spec: JsonObject) -> McpCredentialScope:
+    raw = spec.get("credentialScope", McpCredentialScope.GLOBAL.value)
+    try:
+        return McpCredentialScope(str(raw))
+    except ValueError as exc:
+        raise RegistryError(f"Invalid MCP server {slug}: credentialScope must be global or person.") from exc
 
 
 @dataclass(frozen=True)

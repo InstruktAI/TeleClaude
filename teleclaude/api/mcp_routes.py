@@ -9,8 +9,9 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, verify_caller
+from teleclaude.core.identity import get_identity_resolver
 from teleclaude.mcp.protocol import JsonObject
-from teleclaude.mcp.runtime import McpRuntime, McpRuntimeError, McpRuntimePool
+from teleclaude.mcp.runtime import McpInvocationContext, McpRuntime, McpRuntimeError, McpRuntimePool
 
 _PROJECT_ROOT_HEADER = "x-teleclaude-project-root"
 _INVALID_PROJECT_CONTEXT_CODE = "invalid_project_context"
@@ -47,7 +48,7 @@ async def list_tools(
     """Initialize one server lazily and return its tools."""
     try:
         runtime = _runtime_for(project_root)
-        return await runtime.list_tools(slug)
+        return await runtime.list_tools(slug, _invocation_context(_identity))
     except McpRuntimeError as exc:
         _log_project_context_rejection(exc, _identity)
         raise _http_error(exc) from exc
@@ -66,7 +67,7 @@ async def call_tool(
         raise HTTPException(400, "MCP tool arguments must be a JSON object")
     try:
         runtime = _runtime_for(project_root)
-        return await runtime.call_tool(slug, tool_name, dict(arguments))
+        return await runtime.call_tool(slug, tool_name, dict(arguments), _invocation_context(_identity))
     except McpRuntimeError as exc:
         _log_project_context_rejection(exc, _identity)
         raise _http_error(exc) from exc
@@ -92,8 +93,24 @@ def _log_project_context_rejection(exc: McpRuntimeError, identity: CallerIdentit
         _INVALID_PROJECT_CONTEXT_EVENT,
         reason=exc.code,
         caller_session_id=identity.session_id,
-        caller_principal=identity.principal,
+        caller_entry_point=(identity.entry_point.value if identity.entry_point is not None else identity.system_role),
     )
+
+
+def _invocation_context(identity: CallerIdentity) -> McpInvocationContext:
+    """Translate authoritative caller identity into owner-safe runtime context."""
+    email = identity.email or _human_email_from_principal(identity.principal)
+    if email is None:
+        return McpInvocationContext()
+    context = get_identity_resolver().resolve_exact_one_by_email(email)
+    return McpInvocationContext(person_slug=context.person_slug)
+
+
+def _human_email_from_principal(principal: str | None) -> str | None:
+    if principal is None or not principal.startswith("human:"):
+        return None
+    email = principal.removeprefix("human:").strip()
+    return email or None
 
 
 def _http_error(exc: McpRuntimeError) -> HTTPException:

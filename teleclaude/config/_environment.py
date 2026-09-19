@@ -132,7 +132,32 @@ def read_environment_file(path: Path, *, company_restricted: bool = False) -> di
 
 def write_environment_value(path: Path, name: str, value: str, *, creation_mode: int | None = None) -> None:
     """Atomically replace one environment value while preserving unrelated lines."""
-    write_environment_values(path, {name: value}, creation_mode=creation_mode)
+    mutate_environment_value(path, name, value, creation_mode=creation_mode)
+
+
+def mutate_environment_value(path: Path, name: str, value: str | None, *, creation_mode: int | None = None) -> None:
+    """Atomically replace or clear one key while consuming every existing assignment."""
+    if value is None:
+        _validate_environment_name(name)
+    else:
+        _validate_environment_values({name: value})
+    with file_transaction(path) as transaction:
+        lines = transaction.read_text().splitlines(keepends=True)
+        rewritten: list[str] = []
+        found = False
+        for line in lines:
+            assignment = _environment_assignment(line)
+            if assignment is None or assignment.name != name:
+                rewritten.append(line)
+                continue
+            if not found and value is not None:
+                rewritten.append(_assignment_line(name, value, assignment.prefix))
+            found = True
+        if rewritten and not rewritten[-1].endswith(_NEWLINE):
+            rewritten[-1] = f"{rewritten[-1]}{_NEWLINE}"
+        if value is not None and not found:
+            rewritten.append(_assignment_line(name, value))
+        transaction.replace_text("".join(rewritten), creation_mode=creation_mode)
 
 
 def write_environment_values(path: Path, values: Mapping[str, str], *, creation_mode: int | None = None) -> None:
@@ -355,10 +380,14 @@ def _require_owner_only_company_environment(path: Path) -> None:
 
 def _validate_environment_values(values: Mapping[str, str]) -> None:
     for name, value in values.items():
-        if not name or any(character in name for character in "\r\n="):
-            raise ValueError("Invalid environment variable name")
+        _validate_environment_name(name)
         if any(character in value for character in "\r\n"):
             raise ValueError("Environment variable value cannot contain newlines")
+
+
+def _validate_environment_name(name: str) -> None:
+    if not name or any(character in name for character in "\r\n="):
+        raise ValueError("Invalid environment variable name")
 
 
 @dataclass(frozen=True)
