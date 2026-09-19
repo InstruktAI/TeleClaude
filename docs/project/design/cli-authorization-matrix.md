@@ -144,7 +144,7 @@ This table's system-role columns predate Integrator and System (see the code's `
 
 | Command                      | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                           |
 | ---------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
-| `telec config wizard`        | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Interactive config wizard modifies system config. Admin only.                                                       |
+| `telec config wizard`        | W    | ❌     | ❌   | ✅    | ❌     | ❌          | ❌       | ❌       | Human-only interactive config wizard; hidden from command discovery and reserved for direct invocation by an admin. |
 | `telec config get`           | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading config values is a read operation. Workers may need config context. Customers should not see system config. |
 | `telec config patch`         | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Patching config is system modification. Admin only.                                                                 |
 | `telec config validate`      | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Validation is a read/check operation. Same as config get.                                                           |

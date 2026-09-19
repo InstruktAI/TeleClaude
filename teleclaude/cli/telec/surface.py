@@ -1049,7 +1049,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "wizard": CommandDef(
                 desc="Open the interactive configuration wizard",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                auth=CommandAuth(system=frozenset(), human=_HR_ADMIN),
+                hidden=True,
             ),
             "get": CommandDef(
                 desc="Get config values",
