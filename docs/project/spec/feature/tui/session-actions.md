@@ -101,7 +101,6 @@ And confirming with an agent chosen requests exactly one handoff for that sessio
 And dismissing the modal sends no request
 ```
 
-<!-- planned:session-handoff-state-convergence -->
 #### UC-SACT-7: A handoff refreshes the visible session row without another gesture
 
 ```gherkin
@@ -110,4 +109,3 @@ When a session update reports that a handoff successor is now the active agent
 Then the row displays the successor and the session's current thinking mode
 And the operator does not need to reselect the row or reload the TUI
 ```
-<!-- /planned:session-handoff-state-convergence -->

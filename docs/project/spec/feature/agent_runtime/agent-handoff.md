@@ -129,7 +129,6 @@ Then the handoff proceeds exactly as for a session that drives a todo
 And no todo, slug-holder, or hold record is read or changed by the operation
 ```
 
-<!-- planned:session-handoff-state-convergence -->
 #### UC-AH12: The successor adopts the existing session before its hooks can diverge
 
 ```gherkin
@@ -145,9 +144,7 @@ And the session continues to report the already-selected successor as its active
 And the predecessor transcript is appended to the session's transcript chain
 And no replacement session identity is minted and no successor hook is dropped
 ```
-<!-- /planned:session-handoff-state-convergence -->
 
-<!-- planned:session-handoff-state-convergence -->
 #### UC-AH13: Handoff preserves every session-scoped behavior
 
 ```gherkin
@@ -158,7 +155,6 @@ And accepted input and control delivery continue in order without loss or duplic
 And later activity and turn completion trigger the same links, listeners, parent attention, workflow transitions, attribution, and projections as if the predecessor agent had continued
 And only the active agent, its native session identity, and the transcript chain change
 ```
-<!-- /planned:session-handoff-state-convergence -->
 
 ### Cross-context references
 
