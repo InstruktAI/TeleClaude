@@ -44,9 +44,17 @@ credential broker or requiring provider OAuth. MCP assigns connection
 authorization, lifecycle, and isolation to the host; Omi exposes a scoped
 developer API key as the credential used by its client; and VS Code provides a
 production host precedent where sensitive MCP inputs are stored outside server
-configuration and injected only when the server starts. TeleClaude follows the
-same host-owned boundary while binding the stored secret and reusable client
-state to its already-verified person identity.
+configuration and injected only when the server starts.
+
+The official MCP TypeScript SDK is the reference implementation for the owner
+binding. Its client auth provider owns credential storage, stamps and looks up
+stored credentials by authorization-server issuer, and supplies the token to
+the transport instead of exposing credential selection to tool arguments. The
+official Go SDK applies the same isolation shape to connection lifecycle by
+binding a session to verified token user identity and rejecting subsequent
+requests whose identity differs. TeleClaude adapts those owner-keyed
+credential and session boundaries to its existing verified person identity and
+static provider-key store.
 
 ## Inputs/Outputs
 
@@ -136,3 +144,5 @@ stale lease; leases owned by other people and the global owner remain active.
 - https://docs.omi.me/api-reference/api-keys/create-api-key
 - https://code.visualstudio.com/docs/agents/reference/mcp-configuration
 - https://code.visualstudio.com/docs/agents/run/security
+- https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/src/client/auth.ts
+- https://github.com/modelcontextprotocol/go-sdk/blob/main/docs/protocol.md
