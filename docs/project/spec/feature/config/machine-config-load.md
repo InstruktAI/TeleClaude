@@ -156,17 +156,6 @@ And an undeclared setting preserves the built-in runtime behavior
 And ambient process environment values cannot override the selected value
 ```
 
-<!-- planned:machine-config-reader-is-unlocked-and-non-retrying -->
-#### UC-CFG-LOAD-12: A concurrent replacement does not expose an incomplete machine config
-
-```gherkin
-Given a human operator is replacing machine configuration while a TeleClaude process loads it
-And the configuration is a complete valid mapping before and after the replacement
-When the target is briefly absent, empty, or truncated during that replacement
-Then the process obtains a complete pre-replacement or post-replacement mapping before constructing its effective configuration
-And the human operator is not shown a structural validation failure caused only by the incomplete intermediate file
-```
-<!-- /planned:machine-config-reader-is-unlocked-and-non-retrying -->
 
 ### Cross-context references
 
