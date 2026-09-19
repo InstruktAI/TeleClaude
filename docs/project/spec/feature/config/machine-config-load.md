@@ -160,11 +160,11 @@ And ambient process environment values cannot override the selected value
 #### UC-CFG-LOAD-12: A concurrent replacement does not expose an incomplete machine config
 
 ```gherkin
-Given an agent-facing process loads machine configuration while a human operator is replacing the file
+Given a human operator is replacing machine configuration while a TeleClaude process loads it
 And the configuration is a complete valid mapping before and after the replacement
 When the target is briefly absent, empty, or truncated during that replacement
 Then the process obtains a complete pre-replacement or post-replacement mapping before constructing its effective configuration
-And it does not report a structural validation failure caused only by the incomplete intermediate file
+And the human operator is not shown a structural validation failure caused only by the incomplete intermediate file
 ```
 <!-- /planned:machine-config-reader-is-unlocked-and-non-retrying -->
 
