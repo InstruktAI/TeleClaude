@@ -511,7 +511,7 @@ environment_variables:
   # commented out in .env and is NOT part of make install yet.
   # Email and backup — editable in the Providers subtab, saved to .env.
   # Firecrawl is supplied by the person's own environment for MCP loading.
-  - EMAIL_SENDER
+  - EMAIL_EMAIL_FROM
   - EMAIL_REPLY_TO
   - EMAIL_SMTP_USERNAME
   - EMAIL_SMTP_KEY
@@ -653,7 +653,7 @@ email:
   enabled: boolean # outbound SMTP; disabled or incomplete config is unavailable
   smtp_username: string | null # sensitive; ${EMAIL_SMTP_USERNAME}
   smtp_key: string | null # sensitive; ${EMAIL_SMTP_KEY}
-  sender: string | null # sensitive; ${EMAIL_SENDER}
+  email_from: string | null # sensitive; ${EMAIL_EMAIL_FROM}
   reply_to: string | null # sensitive; ${EMAIL_REPLY_TO}
   smtp_relay: string # sensitive; ${EMAIL_SMTP_RELAY}; defaults to smtp-relay.brevo.com:587
 backup:
