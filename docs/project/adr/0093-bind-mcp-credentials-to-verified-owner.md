@@ -75,4 +75,4 @@ the host still needs owner-scoped storage and client isolation for those keys.
 - https://docs.omi.me/doc/developer/mcp/setup
 - https://code.visualstudio.com/docs/agents/reference/mcp-configuration
 - https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/src/client/auth.ts
-- https://github.com/modelcontextprotocol/go-sdk/blob/main/docs/protocol.md
+- https://github.com/modelcontextprotocol/go-sdk/blob/main/mcp/streamable.go

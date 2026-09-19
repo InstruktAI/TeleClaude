@@ -122,4 +122,4 @@ stale lease; leases owned by other people and the global owner remain active.
 - https://code.visualstudio.com/docs/agents/reference/mcp-configuration
 - https://code.visualstudio.com/docs/agents/run/security
 - https://github.com/modelcontextprotocol/typescript-sdk/blob/main/packages/client/src/client/auth.ts
-- https://github.com/modelcontextprotocol/go-sdk/blob/main/docs/protocol.md
+- https://github.com/modelcontextprotocol/go-sdk/blob/main/mcp/streamable.go
