@@ -209,8 +209,10 @@ When a preparation or work review reaches its documented threshold, apply
 `software-development/procedure/lifecycle/review` §6. Nothing is refused: the
 count is reported once and the orchestrator dispatches an assist against the
 loop, keeping it alive as one of its children for the life of that loop. The
-assist says what shape the loop is in; the reviewer retains the verdict and the
-orchestrator retains every decision the contracts assign it.
+assist owns the loop-level disposition: whether another review pass is useful
+and which party or owning phase has the next act. The reviewer retains its
+verdict, the producer retains its finding dispositions, and this orchestrator
+retains lifecycle execution and state mutation.
 `general/policy/human-contract` governs any escalation.
 
 1. Inspect current evidence:
@@ -224,9 +226,11 @@ orchestrator retains every decision the contracts assign it.
      while a finding remains unresolved.
    - If every finding is resolved, mark `review=approved`. The verdict is
      arithmetic: zero unresolved findings means APPROVE.
-   - If the loop is stuck, classify and route it under the shared review
-     procedure. A technical recovery or further bounded review does not
-     require human approval. A decision in the closed human lane does.
+   - If the loop is stuck or its remediation has become disproportionate to the
+     concern, wake the assist and follow its disposition under the shared review
+     procedure. A technical recovery, return to an owning phase, or further
+     bounded review does not require human approval. A decision in the closed
+     human lane does.
 3. Record rationale in todo artifacts so the closure is auditable.
 
 When an orchestrator or human closes any preparation or build review through a
@@ -243,13 +247,17 @@ findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
 When a prepare or work review crosses its threshold, the orchestrator dispatches
-`next-assist` against the slug and sends it a line each time a pass lands. It
-stamps no exceptional verdict and emits no unclassified reviewer dispatch. The
-assist admits nothing and decides nothing that the contracts assign elsewhere;
-it reads both sessions and says what it sees, and this orchestrator acts on
-that. The report is emitted once and the obligation to dispatch stands until an
-assist is live. Reminder ownership follows `general/policy/reminder`; a crossed
-threshold never transfers the next move to the human.
+`next-assist` against the slug and sends it a line each time a pass lands. Before
+re-entering the state machine for another reviewer pass, it waits for the
+assist's turn to complete. A silent assist turn leaves continuation available;
+a stated disposition is the next action this orchestrator executes. That may
+mean messaging one party, returning the target to its owning phase, routing a
+contract dispute, or stopping review continuation while preserving every
+unresolved finding and the arithmetic verdict. The assist stamps no verdict and
+mutates no lifecycle state. The report is emitted once and the obligation to
+dispatch stands until an assist is live. Reminder ownership follows
+`general/policy/reminder`; a crossed threshold never transfers the next move to
+the human.
 
 - Point workers to the kind-resolved approved intent artifact, optional
   `architecture` when present, and `implementation-plan` for the execution

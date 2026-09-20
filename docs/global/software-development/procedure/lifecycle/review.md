@@ -190,21 +190,28 @@ and is not reminded a second time.
 
 The assist is an ordinary child of the orchestrator and lives for the loop. The
 orchestrator sends it a line when a pass lands; it reads both sessions and the
-review evidence itself, and says what shape the loop is in or says nothing. It
-admits no passes, records no verdict and stamps nothing: what it produces is a
-statement in its own session, and the orchestrator acts on what it read. Its
+review evidence itself, and says what shape the loop is in or says nothing. The
+orchestrator waits for that turn before starting another review pass. A silent
+turn leaves continuation available; a stated disposition binds the next act.
+The assist records no verdict and stamps nothing: it owns whether another pass
+is useful and where the loop goes next, while the reviewer and producer retain
+their existing verdict, finding-disposition, and remediation authority. Its
 procedure is `software-development/procedure/lifecycle/assist`.
 
 Nothing classifies the halt into a recorded vocabulary. Whether a loop is
 converging, contested, moving under its reviewer, or stuck on a contract that
-admits two grounded readings is what the assist says in its own words. A dispute
-the assist judges to be in the contract rather than in the work leaves the loop
-and goes to that contract's decision owner. Human escalation follows the closed
-human lane, never the round count.
+admits two grounded readings is what the assist says in its own words. It also
+recognises when the target or remediation has become disproportionate to the
+concern being resolved and returns it to its owning phase for reduction or
+re-derivation. A dispute the assist judges to be in the contract rather than in
+the work leaves the loop and goes to that contract's decision owner. Human
+escalation follows the closed human lane, never the round count.
 
-Crossing the threshold refuses nothing, so an orchestrator that ignores the
-report and keeps dispatching is doing something no mechanism prevents. The
-obligation to dispatch is carried by this contract rather than by a refusal.
+Crossing the threshold refuses nothing mechanically. The obligation to dispatch
+the assist and follow its loop-level disposition is carried by this contract
+rather than by a gate or continuation stamp. An orchestrator does not start
+another reviewer pass after the assist directs correction, re-derivation,
+routing, or closure.
 
 Findings and their dispositions persist with the reviewed work. A fresh reviewer
 derives independently before reading prior dispositions, then reconciles; a

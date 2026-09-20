@@ -228,8 +228,10 @@ reverts what the amendment invalidates, keeps what still serves, and continues.
 - Failed recovery iterations require a grounded reassessment and an accountable
   owner, not automatic human escalation; apply `general/policy/human-contract`.
 - At the review threshold, dispatch an assist against the loop and keep it
-  alive for that loop; it says what shape the loop is in and this orchestrator
-  acts on that. Unresolved findings still block approval.
+  alive for that loop; its loop-level disposition governs whether another pass
+  is useful and where the next contribution belongs. This orchestrator executes
+  that disposition without changing verdict ownership or weakening unresolved
+  findings, which still block approval.
 - The state machine checkpoint is crash-safe — re-calling `telec todo work` resumes from last state.
 
 ## See also

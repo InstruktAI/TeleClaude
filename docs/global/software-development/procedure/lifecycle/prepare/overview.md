@@ -57,8 +57,10 @@ focused procedure and advances through the machine-owned transitions.
    count once and instructs this session to dispatch an assist against the loop;
    it refuses no pass and preserves the active prepare session. That instruction
    is reported once and the obligation to dispatch stands until an assist is
-   live. The assist reads both sides and says what shape the loop is in;
-   escalation follows
+   live. The assist reads both sides and owns the loop-level disposition: this
+   session continues review, redirects a party, returns to the owning phase for
+   reduction or re-derivation, routes a contract dispute, or stops review
+   continuation while preserving the current verdict and findings. Escalation follows
    `general/policy/human-contract` rather than the review count.
    Legacy prepare-review state that predates cycle identity initializes through
    the one-time migration rule in the shared review procedure.
@@ -104,7 +106,7 @@ is in — the slug's presence and the human's presence determine the posture:
   prepare orchestrator from Step 1.
 - **Slug + direct human invocation.** Treat this as the human reassessing or
   refining that todo, not autonomous continuation. Do not call `telec todo
-  prepare {slug}` before assessing the conversation and the human's intent for
+prepare {slug}` before assessing the conversation and the human's intent for
   the slug; advance only once that intent is clear, then proceed from Step 1.
 - **Slug + daemon or agent dispatch.** Stand-in path: proceed directly from the
   artifacts through the prepare state machine (Step 1 onward). A later direct
