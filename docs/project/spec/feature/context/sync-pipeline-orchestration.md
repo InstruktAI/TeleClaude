@@ -85,7 +85,6 @@ Scenario: Full sync on a clean Mother project checkout
 And the run exits zero
 ```
 
-<!-- planned:fix-documentation-deployment-through-telec-s -->
 #### UC-SPO22: A legacy documentation-root symlink does not strand deployment
 
 ```gherkin
@@ -96,7 +95,6 @@ Then the invocation exits zero
 And the deployed documentation root is a real directory containing the complete replacement snapshot
 And no displaced legacy symlink remains beside the deployed root
 ```
-<!-- /planned:fix-documentation-deployment-through-telec-s -->
 
 
 
