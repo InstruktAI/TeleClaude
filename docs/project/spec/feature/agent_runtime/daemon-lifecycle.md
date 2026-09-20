@@ -150,6 +150,16 @@ And every step is best-effort: a hiccup in one step is logged and the next step 
 And because the task registry step precedes the adapter stop step, a voice transcription that runs as a tracked task is cancelled while the adapters are still alive, so its cancellation handler can mark the persisted row interrupted and edit the user's placeholder in place before the adapter that owns that message is torn down
 ```
 
+<!-- planned:fix-daemon-stop-repeatedly-emits-a-cancelpla -->
+#### UC-DL4: Shutdown without active playback avoids invalid cancellation
+
+```gherkin
+Given the service has no active playback generation to cancel
+When a human operator stops the service
+Then shutdown completes without reporting a playback-cancellation validation failure
+```
+<!-- /planned:fix-daemon-stop-repeatedly-emits-a-cancelpla -->
+
 #### Request-surface exit detection
 
 ```
