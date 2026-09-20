@@ -1,0 +1,9 @@
+{
+  "search.followSymlinks": false,
+  "yaml.schemas": {
+    "./schemas/teleclaude-company.schema.json": "companies/**/teleclaude.yml",
+    "./schemas/teleclaude-global.schema.json": "./teleclaude.yml",
+    "./schemas/teleclaude-person.schema.json": "people/**/teleclaude.yml",
+    "./schemas/teleclaude-project.schema.json": "people/**/projects/**/teleclaude.yml",
+  },
+}
