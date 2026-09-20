@@ -480,22 +480,30 @@ environment_variables:
 environment_variables:
   # Telegram adapter
   - TELEGRAM_BOT_TOKEN
+  - TELEGRAM_ALERT_USERNAME
+  - TELEGRAM_ALERT_CHAT_ID
   # Discord adapter
   - DISCORD_TOKEN
   - DISCORD_GUILD_ID
+  - DISCORD_HELP_DESK_CHANNEL_ID
+  - DISCORD_ESCALATION_CHANNEL_ID
+  - DISCORD_ALL_SESSIONS_CHANNEL_ID
   # WhatsApp adapter
   - WHATSAPP_PHONE_NUMBER_ID
   - WHATSAPP_ACCESS_TOKEN
   - WHATSAPP_WEBHOOK_SECRET
   - WHATSAPP_VERIFY_TOKEN
-  - WHATSAPP_TEMPLATE_NAME
   - WHATSAPP_BUSINESS_NUMBER
   # Summarizer providers; also editable in the Providers subtab (AI section)
-  - SUMMARIZER_ANTHROPIC_API_KEY
-  - SUMMARIZER_OPENAI_API_KEY
-  - SUMMARIZER_GOOGLE_API_KEY
   - SUMMARIZER_LOCAL_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
   - SUMMARIZER_LOCAL_MODEL # model id loaded in the local server
+  - SUMMARIZER_LOCAL_API_KEY
+  - SUMMARIZER_OPENAI_MODEL
+  - SUMMARIZER_OPENAI_API_KEY
+  - SUMMARIZER_ANTHROPIC_MODEL
+  - SUMMARIZER_ANTHROPIC_API_KEY
+  - SUMMARIZER_GOOGLE_MODEL
+  - SUMMARIZER_GOOGLE_API_KEY
   # Voice providers are operator-authored entries under an `ungoverned_body`;
   # their references are authored in the configuration, not derived here.
   # Redis transport — essential infrastructure. Editable in the Infra subtab (Redis section)
@@ -503,6 +511,8 @@ environment_variables:
   # complete until REDIS_URL is set). Also listed in the config TUI's environment section.
   - REDIS_URL
   - REDIS_PASSWORD
+  # Current machine-config field with no runtime consumer.
+  - DATABASE_URL
   # RuntimeConfig one-shot path control. RuntimeConfig reads this once at
   # process startup and freezes it; it is the only env var that moves a
   # TeleClaude-owned path.
@@ -521,7 +531,7 @@ environment_variables:
   - BACKUP_AWS_S3_HOST
   - BACKUP_AWS_S3_REGION
   - BACKUP_AWS_S3_BUCKET
-  - BACKUP_PREFIX
+  - BACKUP_BACKUP_PREFIX
 ```
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
@@ -616,19 +626,19 @@ telegram:
   bot_token: string | null # normally ${TELEGRAM_BOT_TOKEN}
   alert_username: string | null # normally ${TELEGRAM_ALERT_USERNAME}
   alert_chat_id: string | null # normally ${TELEGRAM_ALERT_CHAT_ID}
-<!-- planned-change:move-discord-reflection-state-to-db -->
 discord:
   enabled: boolean
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
   token: string | null # normally ${DISCORD_BOT_TOKEN}
+<!-- change:config-sample-regeneration-leaves-sync -->
+  token: string | null # sensitive; ${DISCORD_TOKEN}
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
   guild_id: integer | null # normally ${DISCORD_GUILD_ID}
+<!-- planned-change:move-discord-reflection-state-to-db -->
   help_desk_channel_id: integer | null # normally ${DISCORD_HELP_DESK_CHANNEL_ID}
   all_sessions_channel_id: integer | null # normally ${DISCORD_ALL_SESSIONS_CHANNEL_ID}
   escalation_channel_id: integer | null # normally ${DISCORD_ESCALATION_CHANNEL_ID}
 <!-- change:move-discord-reflection-state-to-db -->
-discord:
-  enabled: boolean
-  token: string | null # normally ${DISCORD_BOT_TOKEN}
-  guild_id: integer | null # normally ${DISCORD_GUILD_ID}
 <!-- /planned-change:move-discord-reflection-state-to-db -->
 whatsapp:
   enabled: boolean
@@ -636,7 +646,11 @@ whatsapp:
   access_token: string | null # normally ${WHATSAPP_ACCESS_TOKEN}
   webhook_secret: string | null # normally ${WHATSAPP_WEBHOOK_SECRET}
   verify_token: string | null # normally ${WHATSAPP_VERIFY_TOKEN}
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
   template_name: string | null # normally ${WHATSAPP_TEMPLATE_NAME}
+<!-- change:config-sample-regeneration-leaves-sync -->
+  template_name: string | null
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
   template_language: string
   business_number: string | null # normally ${WHATSAPP_BUSINESS_NUMBER}
 database_url: string | null # no current consumer; normally ${DATABASE_URL}
@@ -662,7 +676,7 @@ backup:
   aws_s3_host: string | null # sensitive; ${BACKUP_AWS_S3_HOST}
   aws_s3_region: string | null # sensitive; ${BACKUP_AWS_S3_REGION}
   aws_s3_bucket: string | null # ${BACKUP_AWS_S3_BUCKET}
-  backup_prefix: string | null # ${BACKUP_PREFIX}
+  backup_prefix: string | null # sensitive; ${BACKUP_BACKUP_PREFIX}
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
 agents:
   default: string
@@ -688,13 +702,24 @@ process_janitor:
 summarizer:
   local: # OpenAI-compatible local provider (e.g. LM Studio); tried first when enabled
     enabled: boolean
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
     base_url: string # ${SUMMARIZER_LLM_BASE_URL}
     model: string # ${SUMMARIZER_LLM_MODEL}
+<!-- change:config-sample-regeneration-leaves-sync -->
+    base_url: string # sensitive; ${SUMMARIZER_LOCAL_BASE_URL}
+    model: string # sensitive; ${SUMMARIZER_LOCAL_MODEL}
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
     api_key: string | null # normally ${SUMMARIZER_LOCAL_API_KEY}
   provider_priority: list[string] # cloud fallback order: openai|anthropic|google
+<!-- planned-change:config-sample-regeneration-leaves-sync -->
   openai: { model: string, api_key: string | null } # API key normally ${OPENAI_API_KEY}
   anthropic: { model: string, api_key: string | null } # API key normally ${ANTHROPIC_API_KEY}
   google: { model: string, api_key: string | null } # API key normally ${GOOGLE_API_KEY}; uses Gemini's OpenAI-compatible endpoint
+<!-- change:config-sample-regeneration-leaves-sync -->
+  openai: { model: string, api_key: string | null } # sensitive; ${SUMMARIZER_OPENAI_MODEL}, ${SUMMARIZER_OPENAI_API_KEY}
+  anthropic: { model: string, api_key: string | null } # sensitive; ${SUMMARIZER_ANTHROPIC_MODEL}, ${SUMMARIZER_ANTHROPIC_API_KEY}
+  google: { model: string, api_key: string | null } # sensitive; ${SUMMARIZER_GOOGLE_MODEL}, ${SUMMARIZER_GOOGLE_API_KEY}; uses Gemini's OpenAI-compatible endpoint
+<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 stt:
   enabled: boolean
   services:
