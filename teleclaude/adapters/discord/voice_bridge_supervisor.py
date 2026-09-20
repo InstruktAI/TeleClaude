@@ -172,6 +172,8 @@ class VoiceBridgeSupervisor:
         await self._send(PlayArtifact(generation=self._generation, type="play_artifact", path=str(path)))
 
     async def cancel_playback(self) -> None:
+        if self._closed:
+            return
         await self._send(CancelPlayback(generation=self._generation, type="cancel_playback"))
 
     async def _send(self, message: InboundBridgeMessage) -> None:
