@@ -214,9 +214,11 @@ And every non-master may verify and use the existing container without creating 
 And no computer writes its provider identity to configuration
 Given a session or relay thread exists inside a shared forum
 When the fleet accepts or reconciles that child
-Then exactly one computer durably owns the child independently of the shared container
+Then every computer publishes observational ownership while any retained fleet member has not adopted the child-ownership protocol
+And observational ownership does not change the previously agreed handling
+And after every retained fleet member has adopted the protocol, exactly one computer durably owns each newly bound child independently of the shared container
 And foreign computers do not mutate the claimed child
-And the master treats the child as ownerless only after every configured computer has completed ownership adoption and two complete reconciliation epochs find no claim
+And the master treats the child as ownerless only after every retained computer has completed ownership adoption and the same child survives two complete reconciliation epochs without a claim
 And incomplete or mixed-version ownership evidence causes no provider deletion
 ```
 <!-- /planned-change:discord-reflection-contract-no-protected-unidentified -->

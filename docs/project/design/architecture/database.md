@@ -179,6 +179,63 @@ conclusive provider not-found clears or replaces a record, and an inconclusive
 lookup leaves the record untouched. The contract the table serves is
 `project/spec/feature/integration/discord-admin-reflection-state`.
 
+<!-- planned:discord-reflection-contract-no-protected-unidentified -->
+### Shared Discord child ownership
+
+```mermaid
+erDiagram
+    DISCORD_SHARED_THREAD_CLAIMS {
+        int thread_id PK
+        int parent_id
+        text child_kind
+        text owner_computer
+        text local_identity
+        text lifecycle
+        int protocol_generation
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    DISCORD_THREAD_CLAIM_MEMBERS {
+        text computer PK
+        int protocol_generation
+        text adoption_state
+        timestamp first_observed_at
+        timestamp inventory_completed_at
+    }
+
+    DISCORD_THREAD_ORPHAN_CANDIDATES {
+        int thread_id PK
+        int parent_id
+        int first_qualifying_epoch
+        int last_qualifying_epoch
+        int consecutive_complete_epochs
+        timestamp updated_at
+    }
+```
+
+The master database is the single durable authority for child ownership inside
+shared Discord forums. Claims are source-bound to the computer authenticated by
+the fleet transport; one computer cannot claim or transition another computer's
+child. The member registry retains every computer observed through fleet
+discovery, including offline members, and adoption remains incomplete until each
+member has published a complete inventory for the current protocol generation.
+
+Before fleet-wide activation, inventories and contender claims are observational
+only and cannot change which computer handles a child. After every retained
+member has adopted the must-negotiate protocol, new Help Desk and relay bindings
+require a winning durable claim. Existing conflicting contenders remain
+quarantined and produce no destructive decision.
+
+An unclaimed provider child has its own durable orphan-candidate row. A complete
+reconciliation epoch advances that row only when every retained member's
+inventory is complete and no claim exists. Any claim, conflict, incomplete
+inventory, capability disagreement, or repository failure resets or freezes the
+candidate without provider mutation. The master may delete the child only after
+the same candidate survives two consecutive complete epochs; restart and
+concurrent passes therefore cannot erase or fabricate the proof.
+<!-- /planned:discord-reflection-contract-no-protected-unidentified -->
+
 
 The daemon owns `voice_transcriptions`; it is the single source of truth for
 the durability requirement in `@prd#scope` (a transcription in progress at

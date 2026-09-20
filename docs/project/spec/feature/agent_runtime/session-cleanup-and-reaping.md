@@ -255,11 +255,13 @@ And another computer does not mutate the thread
 ```
 Given an operator has a Discord thread in the shared Help Desk forum
 When the fleet accepts or reconciles that thread
-Then exactly one computer durably claims the child before binding it to a local session
+Then every computer publishes observational claims and inventories while any retained fleet member has not adopted the ownership protocol
+And observational claims do not change the previously agreed handling or authorize deletion
+And after every retained fleet member has adopted the protocol, exactly one computer must durably claim a new child before binding it to a local session
 And the claiming computer leaves the thread in place while its local session row is open
 And the claiming computer deletes the thread after its local session is no longer open
 And every foreign computer leaves the claimed thread unchanged
-And the master deletes an unclaimed non-launcher only after ownership adoption is complete, every fleet member supports the claim protocol, and two complete reconciliation epochs find no claim
+And the master deletes an unclaimed non-launcher only after ownership adoption is complete, every retained fleet member supports the claim protocol, and the same child remains unclaimed through two complete reconciliation epochs
 And incomplete discovery, an incomplete adoption barrier, or mixed-version disagreement leaves the shared forum unchanged
 And no age floor, archived state, or starter-message identity line grants a conclusively ownerless non-launcher preservation
 And when the forum's launcher thread cannot be conclusively resolved, the sweep skips that forum's pass without deleting anything
@@ -270,11 +272,12 @@ And when the forum's launcher thread cannot be conclusively resolved, the sweep 
 ```
 Given an operator has a Discord thread in the shared escalation forum
 When the adapter stale-resource sweep runs
-Then the computer that created the relay durably claims the child and owns its reconciliation
+Then every computer publishes observational claims and inventories while any retained fleet member has not adopted the ownership protocol
+And after every retained fleet member has adopted the protocol, the computer creating a new relay must durably claim the child before activating it
 And that owner leaves the thread in place while its local relay session is active
 And that owner deletes the thread after its local relay is no longer active
 And every foreign computer leaves the claimed relay thread unchanged
-And the master deletes an unclaimed relay thread only after ownership adoption is complete, every fleet member supports the claim protocol, and two complete reconciliation epochs find no claim
+And the master deletes an unclaimed relay thread only after ownership adoption is complete, every retained fleet member supports the claim protocol, and the same child remains unclaimed through two complete reconciliation epochs
 And incomplete ownership evidence produces no provider deletion
 ```
 <!-- /planned-change:discord-reflection-contract-no-protected-unidentified -->
