@@ -249,12 +249,13 @@ And a thread whose mapped session row is still live is left in place
 And a thread with no mapped session row is handled per UC-SCR-6
 ```
 
-#### UC-SCR-6: Managed session forums reflect local session records
+#### UC-SCR-6: Managed session forums converge under their destructive owner
 
 ```
-Given a Discord thread in a managed session forum that no open session row on this computer maps to
-When the adapter stale-resource sweep classifies the thread
-Then the thread is deleted unless it is the forum's launcher thread
+Given an operator has a Discord thread in a managed session forum
+When the adapter stale-resource sweep runs
+Then a non-master computer leaves a shared fleet forum unchanged
+And the computer that owns destructive reconciliation deletes the thread when no open session row maps to it, unless it is the forum's launcher thread
 And no age floor, archived state, or starter-message identity line grants a non-launcher thread preservation
 And when the forum's launcher thread cannot be conclusively resolved, the sweep skips that forum's pass without deleting anything
 ```
@@ -262,10 +263,11 @@ And when the forum's launcher thread cannot be conclusively resolved, the sweep 
 #### UC-SCR-7: Escalation relay threads reflect active relays
 
 ```
-Given a Discord thread in the escalation forum that no active relay session backs
-When the adapter stale-resource sweep classifies the thread
-Then the thread is deleted
-And a thread whose relay session is still active is left in place
+Given an operator has a Discord thread in the shared escalation forum
+When the adapter stale-resource sweep runs
+Then a non-master computer leaves the forum unchanged
+And the master computer deletes the thread when no active relay session backs it
+And the master computer leaves a thread whose relay session is still active in place
 ```
 <!-- /planned-change:discord-reflection-contract-no-protected-unidentified -->
 
