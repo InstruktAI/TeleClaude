@@ -115,8 +115,8 @@ procedure is ever dispatched.
 
 - Updated target artifact (code, `architecture`, `implementation-plan`,
   or legacy `requirements`).
-- Updated findings artifact with a "Dispositions" section and a verdict reflecting
-  the remaining unresolved Requirement-Violation, Critical, and Important findings.
+- Updated findings artifact with a "Dispositions" section carrying the
+  producer's evidence; its verdict remains reviewer-authored.
 
 ## Recovery
 
