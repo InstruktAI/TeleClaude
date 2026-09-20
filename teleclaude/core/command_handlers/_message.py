@@ -44,6 +44,7 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_startup_message import compose_command_loader, resolve_command_input
 from teleclaude.core.session_status import is_agent_turn_running, is_session_terminal
 from teleclaude.core.session_utils import resolve_working_dir
@@ -667,7 +668,8 @@ async def deliver_inbound(
             session_id=session_id,
             source_occurrence_id=row["occurrence_key"],
         )
-    results = await asyncio.gather(_tmux_inject(), return_exceptions=True)
+    async with session_runtime_owner(session_id, wait=True):
+        results = await asyncio.gather(_tmux_inject(), return_exceptions=True)
     tmux_result = results[0]
     if isinstance(tmux_result, Exception):
         if is_active_agent_delivery:

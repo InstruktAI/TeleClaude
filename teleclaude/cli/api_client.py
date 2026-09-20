@@ -795,7 +795,7 @@ class _TelecSessionAPI:
         handoff: bool = False,
         agent: str | None = None,
     ) -> AgentRestartResponseDTO:
-        """Restart the agent in a session while preserving conversation state."""
+        """Restart or hand off the agent in a session while preserving its durable identity."""
         params = {"computer": computer} if computer else None
         resp = await self._request(
             "POST",

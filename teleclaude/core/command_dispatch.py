@@ -20,12 +20,14 @@ from teleclaude.core.models import AgentDispatchMode, JsonDict, JsonValue, Messa
 from teleclaude.core.reconciliation import (
     DEFAULT_FEATURE_ID_REGISTRY,
     DETERMINISTIC_AGENT_ROUTING_FEATURE_ID,
+    HANDOFF_AGENT_FEATURE_ID,
     INTERACTIVE_COMMAND_INPUT_FEATURE_ID,
     decode_capability_set,
 )
 from teleclaude.types.commands import (
     CommandType,
     CreateSessionCommand,
+    HandoffAgentCommand,
     InternalCommand,
     ProcessMessageCommand,
     ResponseMode,
@@ -44,6 +46,7 @@ COMMAND_HANDLER_METHODS: dict[CommandType, str] = {
     CommandType.START_AGENT: "start_agent",
     CommandType.RESUME_AGENT: "resume_agent",
     CommandType.RESTART_AGENT: "restart_agent",
+    CommandType.HANDOFF_AGENT: "handoff_agent",
     CommandType.RUN_AGENT_COMMAND: "run_agent_command",
     CommandType.GET_SESSION_DATA: "get_session_data",
     CommandType.UNSUBSCRIBE_SESSION: "unsubscribe",
@@ -232,33 +235,46 @@ async def execute_command_envelope(command: InternalCommand) -> JsonDict:
     return {"status": "success", "data": data}
 
 
+def required_command_capabilities(command: InternalCommand) -> frozenset[str]:
+    """Return capabilities required by a command's concrete routing semantics."""
+    required: set[str] = set()
+    if isinstance(command, (CreateSessionCommand, ProcessMessageCommand)) and (
+        command.command_input_mode is CommandInputMode.INTERACTIVE_SHORTHAND
+    ):
+        required.add(INTERACTIVE_COMMAND_INPUT_FEATURE_ID)
+    if isinstance(command, CreateSessionCommand):
+        intent = command.launch_intent
+        if intent is not None and intent.dispatch_mode in {
+            AgentDispatchMode.AUTOMATIC,
+            AgentDispatchMode.MANUAL_PREFERENCE,
+        }:
+            required.add(DETERMINISTIC_AGENT_ROUTING_FEATURE_ID)
+    if isinstance(command, HandoffAgentCommand):
+        required.add(HANDOFF_AGENT_FEATURE_ID)
+    return frozenset(required)
+
+
 async def forward_command_to_peer(client: AdapterClient, command: InternalCommand) -> JsonValue | None:
     """Forward a serialized command to the peer named by ``command.computer``."""
     target_computer = command.computer
     if not target_computer:
         raise ValueError("command.computer is required for peer forwarding")
 
-    carries_interactive_command_input = isinstance(command, (CreateSessionCommand, ProcessMessageCommand)) and (
-        command.command_input_mode is CommandInputMode.INTERACTIVE_SHORTHAND
-    )
-    if carries_interactive_command_input:
-        peer = next(
-            (item for item in await client.discover_peers() if item.get(PEER_NAME_FIELD) == target_computer),
-            None,
+    peer = next((item for item in await client.discover_peers() if item.get(PEER_NAME_FIELD) == target_computer), None)
+    capabilities = frozenset(decode_capability_set(peer.get(PEER_CAPABILITY_SET_FIELD))) if peer else frozenset()
+    missing_capabilities = required_command_capabilities(command) - capabilities
+    if missing_capabilities:
+        emit_agent_dispatch_decision(
+            stage=AgentDispatchStage.TRANSPORT,
+            outcome=AgentDispatchOutcome.REFUSED,
+            reason=AgentDispatchReason.TARGET_CAPABILITY_MISSING,
+            request_id=command.request_id,
         )
-        capabilities = frozenset(decode_capability_set(peer.get(PEER_CAPABILITY_SET_FIELD))) if peer else frozenset()
-        if INTERACTIVE_COMMAND_INPUT_FEATURE_ID not in capabilities:
-            emit_agent_dispatch_decision(
-                stage=AgentDispatchStage.TRANSPORT,
-                outcome=AgentDispatchOutcome.REFUSED,
-                reason=AgentDispatchReason.TARGET_CAPABILITY_MISSING,
-                request_id=command.request_id,
-            )
-            raise RemoteDispatchError(
-                "Target computer must support interactive command input",
-                reason=RemoteDispatchReason.TARGET_DISPATCH_CAPABILITY_REQUIRED,
-            )
-
+        missing = ", ".join(sorted(missing_capabilities))
+        raise RemoteDispatchError(
+            f"Target computer lacks required command capabilities: {missing}",
+            reason=RemoteDispatchReason.TARGET_DISPATCH_CAPABILITY_REQUIRED,
+        )
     if isinstance(command, CreateSessionCommand):
         intent = command.launch_intent
         needs_target_resolution = intent is not None and intent.dispatch_mode in {
@@ -266,27 +282,6 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
             AgentDispatchMode.MANUAL_PREFERENCE,
         }
         if needs_target_resolution:
-            peer = next(
-                (item for item in await client.discover_peers() if item.get(PEER_NAME_FIELD) == target_computer),
-                None,
-            )
-            capabilities = (
-                frozenset(decode_capability_set(peer.get(PEER_CAPABILITY_SET_FIELD))) if peer else frozenset()
-            )
-            if DETERMINISTIC_AGENT_ROUTING_FEATURE_ID not in capabilities:
-                emit_agent_dispatch_decision(
-                    stage=AgentDispatchStage.TRANSPORT,
-                    outcome=AgentDispatchOutcome.REFUSED,
-                    reason=AgentDispatchReason.TARGET_CAPABILITY_MISSING,
-                    request_id=command.request_id,
-                    dispatch_mode=intent.dispatch_mode,
-                    entry_point=command.entry_point,
-                    job_role=command.job,
-                )
-                raise RemoteDispatchError(
-                    "Target computer must support deterministic agent routing",
-                    reason=RemoteDispatchReason.TARGET_DISPATCH_CAPABILITY_REQUIRED,
-                )
             emit_agent_dispatch_decision(
                 stage=AgentDispatchStage.TRANSPORT,
                 outcome=AgentDispatchOutcome.FORWARDED,

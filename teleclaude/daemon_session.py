@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core import polling_coordinator, session_cleanup, tmux_io
+from teleclaude.core import polling_coordinator, session_cleanup
 from teleclaude.core.agent_readiness import await_agent_readiness
 from teleclaude.core.agent_startup_delivery import (
     AgentStartupDeliveryMode,
-    emit_agent_startup_delivery_decision,
+    deliver_startup_message,
 )
 from teleclaude.core.agents import _get_agent_config
 from teleclaude.core.db import db
@@ -452,28 +452,15 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
             return {"status": "success", "message": "Message supplied with agent start"}
 
-        # Verify agent is actually running before injecting message
-        if not await tmux_io.is_process_running(session):
-            logger.error("agent_then_message: process not running after readiness (session=%s)", session_id)
-            return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
-
         logger.debug("agent_then_message: delivering startup message to session=%s", session_id)
-
-        delivery_result = await tmux_io.inject_user_turn(
-            session,
-            message,
-            active_agent=session.active_agent,
-        )
-        emit_agent_startup_delivery_decision(
-            session_id=session_id,
+        delivery_result = await deliver_startup_message(
+            session=session,
             agent_name=agent_name,
+            message=message,
+            ready_future=ready_future,
+            quiet_s=AGENT_START_STABILIZE_QUIET_S,
+            timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
             delivery_mode=AgentStartupDeliveryMode.FRESH_START,
-            outcome=delivery_result.outcome.value,
-            reason=delivery_result.reason.value,
-            stage=delivery_result.stage.value,
-            paste_performed=delivery_result.paste_performed,
-            platform_enter_sent=delivery_result.platform_enter_sent,
-            existing_input_preserved=delivery_result.existing_input_preserved,
         )
         if not delivery_result.succeeded:
             return {"status": "error", "message": "Failed to submit message into agent prompt"}

@@ -229,7 +229,7 @@ class TelecAppActionsMixin:
                 agent=message.agent,
             )
             successor = result.selected_agent or "selected successor"
-            self.notify_text(f"Handed off to {successor}")  # type: ignore[attr-defined]
+            self.notify_text(f"Handoff to {successor} started")  # type: ignore[attr-defined]
         except APP_ACTION_ERRORS as error:
             self.notify_text(f"Failed to hand off session: {error}", severity="error")  # type: ignore[attr-defined]
 
@@ -248,7 +248,7 @@ class TelecAppActionsMixin:
                 failures += 1
                 logger.exception("Failed to hand off session %s", session_id)
         completed = len(message.session_ids) - failures
-        self.notify_text(f"Handed off {completed}/{len(message.session_ids)} sessions")  # type: ignore[attr-defined]
+        self.notify_text(f"Started handoff for {completed}/{len(message.session_ids)} sessions")  # type: ignore[attr-defined]
 
     async def on_settings_changed(self, message: SettingsChanged) -> None:
         """Apply footer-initiated setting changes."""

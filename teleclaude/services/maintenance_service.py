@@ -40,6 +40,7 @@ from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_runtime_gate import session_runtime_owner
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.task_registry import TaskRegistry
@@ -683,7 +684,7 @@ class MaintenanceService:
                 except Exception as exc:
                     logger.warning("Adapter %s cleanup failed: %s", adapter_type, exc)
 
-    async def _restore_tmux_session(self, session: Session) -> None:
+    async def _restore_tmux_session_owned(self, session: Session) -> None:
         """Recreate a missing tmux session and restart the agent. Runs as a background task.
 
         Critical: only inject the launcher when the tmux session is actually missing.
@@ -808,6 +809,11 @@ class MaintenanceService:
         finally:
             if release_guard:
                 self._restoring_sessions.discard(session.session_id)
+
+    async def _restore_tmux_session(self, session: Session) -> None:
+        """Serialize restoration with restart, handoff, and terminal input delivery."""
+        async with session_runtime_owner(session.session_id):
+            await self._restore_tmux_session_owned(session)
 
     async def _resolve_restore_tmux_failure(
         self,

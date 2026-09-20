@@ -555,23 +555,23 @@ async def agent_restart(
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
         # Quick validation before dispatching
+        handoff = restart_request.handoff if restart_request else False
         if not is_remote_target(computer, config.computer.name):
             session = await db.get_session(session_id)
             if not session:
                 raise HTTPException(status_code=404, detail="Session not found")
             if not session.active_agent:
                 raise HTTPException(status_code=409, detail="No active agent for this session")
-            if not session.native_session_id and not (restart_request and restart_request.handoff):
+            if not session.native_session_id and not handoff:
                 raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
         # Dispatch work asynchronously - don't await
-        handoff = restart_request.handoff if restart_request else False
         self_restart = restart_request.self_restart if restart_request else False
         agent = restart_request.agent.value if restart_request and restart_request.agent else None
         request_id = str(uuid.uuid4())
         metadata = _build_metadata()
         cmd = CommandMapper.map_api_input(
-            "agent_restart",
+            "agent_handoff" if handoff else "agent_restart",
             {
                 "session_id": session_id,
                 "args": [],

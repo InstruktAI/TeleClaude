@@ -356,6 +356,7 @@ class TelecAppWsMixin:
     def on_session_updated(self, message: SessionUpdated) -> None:
         """Handle session updates from the websocket."""
         session = message.session
+        previous_agent = self._session_agents.get(session.session_id)  # type: ignore[attr-defined]
         prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
         prep_view.update_session(
             session.session_id,
@@ -368,6 +369,8 @@ class TelecAppWsMixin:
         # Update pane bridge catalog so layout runs have current data
         pane_bridge = self.query_one("#pane-bridge", PaneManagerBridge)  # type: ignore[attr-defined]
         pane_bridge.update_single_session(session)
+        if session.active_agent and session.active_agent != previous_agent:
+            pane_bridge.reapply_colors()
 
         sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
         sessions_view.update_session(session)

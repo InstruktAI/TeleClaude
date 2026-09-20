@@ -32,6 +32,7 @@ class InjectedTextSourceFeature(StrEnum):
     PEER_BUNDLE = "peer_bundle"
     LISTENER = "listener"
     AGENT_RESTART = "agent_restart"
+    AGENT_HANDOFF = "agent_handoff"
     REMINDER = "reminder"
 
 
@@ -41,6 +42,7 @@ class PlatformTextLabel(StrEnum):
     CHECKPOINT = "Checkpoint"
     NOTIFICATION = "Notification"
     RESTART_CONTINUATION = "Restart Continuation"
+    HANDOFF = "Handoff"
 
 
 class EnvelopeName(StrEnum):
@@ -50,6 +52,7 @@ class EnvelopeName(StrEnum):
     NOTIFICATION = "notification"
     WAKE = "wake"
     RESTART_CONTINUATION = "restart_continuation"
+    HANDOFF = "handoff"
     PEER = "peer"
     CALLER_IDENTITY = "caller_identity"
     REMINDER = "reminder"
@@ -124,6 +127,7 @@ _CHECKPOINT_ENVELOPE = EnvelopeName.CHECKPOINT
 _NOTIFICATION_ENVELOPE = EnvelopeName.NOTIFICATION
 _WAKE_ENVELOPE = EnvelopeName.WAKE
 _RESTART_CONTINUATION_ENVELOPE = EnvelopeName.RESTART_CONTINUATION
+_HANDOFF_ENVELOPE = EnvelopeName.HANDOFF
 _PEER_ENVELOPE = EnvelopeName.PEER
 _CALLER_IDENTITY_ENVELOPE = EnvelopeName.CALLER_IDENTITY
 _REMINDER_ENVELOPE = EnvelopeName.REMINDER
@@ -133,6 +137,7 @@ _CHECKPOINT_BRACKET_OPENING = "[TeleClaude Checkpoint]"
 _NOTIFICATION_BRACKET_OPENING = "[TeleClaude Notification]"
 _WAKE_BRACKET_OPENING = "[TeleClaude Wake]"
 _RESTART_CONTINUATION_BRACKET_OPENING = "[TeleClaude Restart Continuation]"
+_HANDOFF_BRACKET_OPENING = "[TeleClaude Handoff]"
 _PEER_BRACKET_OPENING = "[Peer ({session_id} · {author_token} · {occurred_at})]"
 _CALLER_IDENTITY_BRACKET_OPENING = "[{role}{category} ({session_id}) on {computer} · {occurred_at}]"
 _CALLER_IDENTITY_KEYED_SUFFIX = " · {occurrence_key}]"
@@ -141,6 +146,7 @@ _ACTION_BRACKET_OPENING = "[Action ({topic} · {occurred_at})]"
 _CHECKPOINT_BRACKET_CLOSING = "[/TeleClaude Checkpoint]"
 _NOTIFICATION_BRACKET_CLOSING = "[/TeleClaude Notification]"
 _RESTART_CONTINUATION_BRACKET_CLOSING = "[/TeleClaude Restart Continuation]"
+_HANDOFF_BRACKET_CLOSING = "[/TeleClaude Handoff]"
 _PEER_BRACKET_CLOSING = "[/TeleClaude - Peer]"
 _CALLER_IDENTITY_BRACKET_CLOSING = "[/{role}{category} ({session_id}) on {computer} · {occurred_at}]"
 _REMINDER_BRACKET_CLOSING = "[/Reminder {slug} {occurrence_key}]"
@@ -149,6 +155,7 @@ _CHECKPOINT_XML_TAG = "teleclaude-checkpoint"
 _NOTIFICATION_XML_TAG = "teleclaude-notification"
 _WAKE_XML_TAG = "teleclaude-wake"
 _RESTART_CONTINUATION_XML_TAG = "teleclaude-restart-continuation"
+_HANDOFF_XML_TAG = "teleclaude-handoff"
 _PEER_XML_TAG = "teleclaude-peer"
 _CALLER_IDENTITY_XML_TAG = "teleclaude-caller"
 _REMINDER_XML_TAG = "teleclaude-reminder"
@@ -157,6 +164,7 @@ _CHECKPOINT_OPENING_RE = re.compile(re.escape(_CHECKPOINT_BRACKET_OPENING))
 _NOTIFICATION_OPENING_RE = re.compile(re.escape(_NOTIFICATION_BRACKET_OPENING))
 _WAKE_OPENING_RE = re.compile(re.escape(_WAKE_BRACKET_OPENING))
 _RESTART_CONTINUATION_OPENING_RE = re.compile(re.escape(_RESTART_CONTINUATION_BRACKET_OPENING))
+_HANDOFF_OPENING_RE = re.compile(re.escape(_HANDOFF_BRACKET_OPENING))
 _PEER_OPENING_RE = re.compile(r"\[Peer \([^\]\n]+ · [^\]\n]+ · [^\]\n]+\)\]")
 _CALLER_IDENTITY_OPENING_RE = re.compile(
     r"\[(?:Orchestrator|Integrator|System|Worker|Tasker|Job Runner|Agent)(?: - [^\]\n]+)? \([^\]\n]+\) on [^\]\n]+(?: · [^\]\n]+)?\]"
@@ -175,6 +183,7 @@ _PLATFORM_LABEL_ENVELOPES: Mapping[PlatformTextLabel, EnvelopeName] = MappingPro
         PlatformTextLabel.CHECKPOINT: EnvelopeName.CHECKPOINT,
         PlatformTextLabel.NOTIFICATION: EnvelopeName.NOTIFICATION,
         PlatformTextLabel.RESTART_CONTINUATION: EnvelopeName.RESTART_CONTINUATION,
+        PlatformTextLabel.HANDOFF: EnvelopeName.HANDOFF,
     }
 )
 _XML_ATTRIBUTE_TEMPLATE = ' {name}="{value}"'
@@ -221,6 +230,15 @@ ENVELOPE_REGISTRY: Mapping[EnvelopeName, EnvelopeDefinition] = MappingProxyType(
             _RESTART_CONTINUATION_BRACKET_CLOSING,
             _RESTART_CONTINUATION_XML_TAG,
             _RESTART_CONTINUATION_OPENING_RE,
+        ),
+        _HANDOFF_ENVELOPE: EnvelopeDefinition(
+            _HANDOFF_ENVELOPE,
+            TranscriptEntryKind.PLATFORM_CONTROL,
+            EnvelopeClosure.PAIRED,
+            _HANDOFF_BRACKET_OPENING,
+            _HANDOFF_BRACKET_CLOSING,
+            _HANDOFF_XML_TAG,
+            _HANDOFF_OPENING_RE,
         ),
         _PEER_ENVELOPE: EnvelopeDefinition(
             _PEER_ENVELOPE,
