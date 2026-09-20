@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Protocol
 
 from teleclaude.core.models import Session
+from teleclaude.core.session_transcript_chain import append_transcript_once
 
 if TYPE_CHECKING:
 
@@ -24,18 +24,6 @@ def optional_payload_str_value(data: Mapping[str, object], key: str) -> str | No
     """Return a non-empty string value from a loose outbox payload."""
     value = data.get(key)
     return value if isinstance(value, str) and value else None
-
-
-def _append_transcript_history(transcript_files: str | None, previous_native_log_file: str) -> str:
-    """Append a replaced transcript path to the serialized transcript chain."""
-    try:
-        loaded_chain = json.loads(transcript_files or "[]")
-    except (TypeError, json.JSONDecodeError):
-        loaded_chain = []
-    chain = loaded_chain if isinstance(loaded_chain, list) else []
-    if previous_native_log_file not in chain:
-        chain.append(previous_native_log_file)
-    return json.dumps(chain)
 
 
 async def handle_checkpoint_seen(
@@ -70,7 +58,7 @@ async def handle_native_metadata_update(
     if native_log_file and session.native_log_file != native_log_file:
         previous_native_log_file = (session.native_log_file or "").strip()
         if previous_native_log_file:
-            updates["transcript_files"] = _append_transcript_history(
+            updates["transcript_files"] = append_transcript_once(
                 session.transcript_files,
                 previous_native_log_file,
             )

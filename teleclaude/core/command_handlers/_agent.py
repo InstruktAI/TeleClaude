@@ -31,7 +31,6 @@ from teleclaude.core.agent_dispatch import (
     resolve_launch_model,
 )
 from teleclaude.core.agent_readiness import await_agent_readiness
-from teleclaude.core.agent_startup_delivery import AgentStartupDeliveryMode, emit_agent_startup_delivery_decision
 from teleclaude.core.agents import AgentName, _get_agent_config, assert_agent_enabled, get_agent_command
 from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handoff_control_payload
 from teleclaude.core.db import db
@@ -57,6 +56,12 @@ from teleclaude.core.models import (
     ThinkingMode,
 )
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_runtime_gate import (
+    RuntimeMutationInProgress,
+    SessionRuntimeLease,
+    acquire_session_runtime_lease,
+    session_runtime_owner,
+)
 from teleclaude.core.session_startup_message import compose_command_loader
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.tmux_bridge._session import safe_session_tmp_component
@@ -65,6 +70,8 @@ from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.paths import TMP_SESSIONS_DIR
 from teleclaude.types.commands import (
+    HandoffAgentCommand,
+    HandoffAgentResult,
     RestartAgentCommand,
     RestartAgentResult,
     ResumeAgentCommand,
@@ -72,6 +79,7 @@ from teleclaude.types.commands import (
     StartAgentCommand,
 )
 
+from ._handoff import execute_handoff
 from ._keys import _ensure_tmux_for_headless
 from ._utils import with_session
 
@@ -569,13 +577,22 @@ def _handoff_startup_message(session: Session, *, predecessor: str, was_closed: 
     return _HANDOFF_CONTEXT_SEPARATOR.join((loader, context_block))
 
 
-async def _resolve_handoff_restart(
+@with_session
+async def handoff_agent(
     session: Session,
-    cmd: RestartAgentCommand,
+    cmd: HandoffAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
-) -> RestartAgentResult:
+) -> HandoffAgentResult:
     """Resolve a successor before scheduling any session mutation."""
+    try:
+        lease = await acquire_session_runtime_lease(session.session_id)
+    except RuntimeMutationInProgress:
+        return {
+            _HANDOFF_RESULT_OK: False,
+            _HANDOFF_RESULT_ERROR: "runtime_mutation_in_progress",
+            _HANDOFF_RESULT_SELECTED_AGENT: None,
+        }
     command = f"{_HANDOFF_COMMAND_PREFIX}{session.command}" if session.command else None
     role_info = None
     if session.command:
@@ -609,6 +626,7 @@ async def _resolve_handoff_restart(
             entry_point=SessionEntryPoint.AGENT_HANDOFF,
             preferred_agent=preferred_agent,
         )
+        lease.release()
         return {_HANDOFF_RESULT_OK: False, _HANDOFF_RESULT_ERROR: str(exc), _HANDOFF_RESULT_SELECTED_AGENT: None}
 
     emit_agent_dispatch_decision(
@@ -634,36 +652,42 @@ async def _resolve_handoff_restart(
         was_closed=session.closed_at is not None,
         elapsed_seconds=max(elapsed_seconds, 0),
     )
-    successor_command = RestartAgentCommand(
+    successor_command = HandoffAgentCommand(
         session_id=session.session_id,
         agent_name=decision.agent,
-        self_restart=True,
-        fresh_start=True,
-        startup_message=startup_message,
+        caller_system_role=cmd.caller_system_role,
         request_id=cmd.request_id,
     )
     asyncio.create_task(
-        agent_restart(successor_command, client, execute_terminal_command),
+        _execute_handoff(session, successor_command, client, execute_terminal_command, startup_message, lease),
         name=_HANDOFF_BACKGROUND_TASK,
     )
     return {_HANDOFF_RESULT_OK: True, _HANDOFF_RESULT_ERROR: None, _HANDOFF_RESULT_SELECTED_AGENT: decision.agent}
 
 
+async def _execute_handoff(
+    initial_session: Session,
+    cmd: HandoffAgentCommand,
+    client: "AdapterClient",
+    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
+    startup_message: str,
+    lease: SessionRuntimeLease,
+) -> None:
+    await execute_handoff(initial_session, cmd, client, execute_terminal_command, startup_message, lease)
+
+
 @with_session
-async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered stop-and-relaunch transaction
+async def _restart_agent(
     session: Session,
     cmd: RestartAgentCommand,
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
 ) -> tuple[bool, str | None] | RestartAgentResult:
     """Restart an AI agent in the session by resuming the native session."""
-    if cmd.handoff:
-        return await _resolve_handoff_restart(session, cmd, client, execute_terminal_command)
-
     active_agent = session.active_agent
     native_session_id = session.native_session_id
 
-    target_agent = cmd.agent_name or active_agent
+    target_agent = active_agent
     if not target_agent:
         error = "Cannot restart agent: no active agent for this session."
         logger.error("agent_restart blocked (session=%s): %s", session.session_id, error)
@@ -675,7 +699,7 @@ async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered
         await client.send_message(session, f"❌ {error}")
         return False, error
 
-    if not native_session_id and not cmd.fresh_start:
+    if not native_session_id:
         error = "Cannot restart agent: no native session ID stored. Start the agent first."
         logger.error("agent_restart blocked (session=%s): %s", session.session_id, error)
         event_bus.emit(
@@ -786,18 +810,6 @@ async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered
         elapsed_ms=stop_elapsed_ms,
     )
 
-    handoff_owner_updated = cmd.fresh_start and cmd.startup_message is not None
-    if handoff_owner_updated:
-        await db.update_session(
-            session.session_id,
-            active_agent=target_agent,
-            native_session_id=None,
-        )
-        refreshed = await db.get_session(session.session_id)
-        if refreshed is None:
-            raise ValueError(f"Handoff session disappeared before launch: {session.session_id}")
-        session = refreshed
-
     restart_mode = session.thinking_mode if session.thinking_mode else "slow"
     launch = await resolve_launch_model(
         target_agent,
@@ -809,7 +821,7 @@ async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered
         agent=target_agent,
         thinking_mode=restart_mode,
         exec=False,
-        native_session_id=None if cmd.fresh_start else native_session_id,
+        native_session_id=native_session_id,
         profile=_get_session_profile(session),
         resolved_flags=launch.flags,
     )
@@ -828,15 +840,7 @@ async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered
 
         ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
 
-        submitted = await execute_terminal_command(session.session_id, restart_cmd, None, True)
-        if handoff_owner_updated and not submitted:
-            event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
-            await db.update_session(
-                session.session_id,
-                active_agent=active_agent,
-                native_session_id=native_session_id,
-            )
-            return False, "Handoff successor launch was rejected."
+        await execute_terminal_command(session.session_id, restart_cmd, None, True)
         logger.info(
             _AGENT_RESTART_READINESS_OPPORTUNITY_EVENT,
             session_id=session.session_id,
@@ -894,37 +898,6 @@ async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered
                 )
                 return
 
-            if cmd.startup_message:
-                delivery_result = await tmux_io.inject_user_turn(
-                    session,
-                    cmd.startup_message,
-                    active_agent=target_agent,
-                )
-                emit_agent_startup_delivery_decision(
-                    session_id=session.session_id,
-                    agent_name=target_agent,
-                    delivery_mode=AgentStartupDeliveryMode.HANDOFF,
-                    outcome=delivery_result.outcome.value,
-                    reason=delivery_result.reason.value,
-                    stage=delivery_result.stage.value,
-                    paste_performed=delivery_result.paste_performed,
-                    platform_enter_sent=delivery_result.platform_enter_sent,
-                    existing_input_preserved=delivery_result.existing_input_preserved,
-                )
-                if not delivery_result.succeeded:
-                    await client.send_message(session, _HANDOFF_DELIVERY_FAILURE)
-                    return
-                await db.update_last_activity(session.session_id)
-                await emit_event(
-                    _HANDOFF_LAUNCHED_EVENT,
-                    source=_HANDOFF_EVENT_SOURCE,
-                    level=EventLevel.OPERATIONAL,
-                    domain=_HANDOFF_EVENT_DOMAIN,
-                    visibility=EventVisibility.LOCAL,
-                    payload={"session_id": session.session_id, "successor": target_agent},
-                )
-                return
-
             # The shared control-delivery handoff persists the semantic payload and
             # queues only the content-free wake; the adapter drains the payload at
             # its declared hook boundary.
@@ -955,6 +928,18 @@ async def agent_restart(  # noqa: C901 - restart lifecycle preserves one ordered
     )
 
     return True, None
+
+
+@with_session
+async def agent_restart(
+    session: Session,
+    cmd: RestartAgentCommand,
+    client: "AdapterClient",
+    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
+) -> tuple[bool, str | None] | RestartAgentResult:
+    """Serialize ordinary restart with every other session runtime mutation."""
+    async with session_runtime_owner(session.session_id):
+        return await _restart_agent(session, cmd, client, execute_terminal_command)
 
 
 @with_session

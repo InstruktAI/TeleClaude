@@ -5,6 +5,7 @@ Re-exports all public names from submodules for backward compatibility.
 
 from ._agent import (
     agent_restart,
+    handoff_agent,
     resume_agent,
     run_agent_command,
     start_agent,
@@ -71,6 +72,7 @@ __all__ = [
     "get_session_data",
     "handle_file",
     "handle_voice",
+    "handoff_agent",
     "keys",
     "kill_command",
     "list_projects",

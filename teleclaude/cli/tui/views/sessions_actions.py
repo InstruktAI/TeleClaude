@@ -373,13 +373,13 @@ class SessionsViewActionsMixin:
     def action_handoff_session(self) -> None:
         """o: hand the selected session to automatic dispatch."""
         row = self._current_session_row()  # type: ignore[attr-defined]
-        if row:
+        if row and row.session.status != "closed":
             self.post_message(HandoffSessionRequest(row.session_id, row.session.computer or "local"))  # type: ignore[attr-defined]
 
     def action_handoff_session_select(self) -> None:
         """O: choose the successor for the selected session."""
         row = self._current_session_row()  # type: ignore[attr-defined]
-        if not row:
+        if not row or row.session.status == "closed":
             return
         modal = StartSessionModal(
             computer=row.session.computer or "local",

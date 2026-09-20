@@ -14,6 +14,7 @@ from teleclaude.types.commands import (
     CreateSessionCommand,
     HandleFileCommand,
     HandleVoiceCommand,
+    HandoffAgentCommand,
     InternalCommand,
     KeysCommand,
     ProcessMessageCommand,
@@ -255,16 +256,22 @@ class CommandMapper:
                 computer,
             )
 
-        if command_name == "agent_restart":
+        if command_name in {"agent_restart", "agent_handoff"}:
             args = cast(list[str], payload.get("args", []))
             agent_name = args[0] if args else None
+            if command_name == "agent_handoff" or bool(payload.get("handoff")):
+                return _with_computer(
+                    HandoffAgentCommand(
+                        session_id=session_id,
+                        agent_name=cast(str | None, payload.get("agent")) or agent_name,
+                        caller_system_role=cast(str | None, payload.get("caller_system_role")),
+                    ),
+                    computer,
+                )
             return _with_computer(
                 RestartAgentCommand(
                     session_id=session_id,
-                    agent_name=cast(str | None, payload.get("agent")) or agent_name,
                     self_restart=bool(payload.get("self_restart")),
-                    handoff=bool(payload.get("handoff")),
-                    caller_system_role=cast(str | None, payload.get("caller_system_role")),
                 ),
                 computer,
             )

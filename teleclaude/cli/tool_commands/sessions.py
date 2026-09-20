@@ -574,7 +574,8 @@ def handle_sessions_restart(args: list[str]) -> None:
     except Exception:
         data = None
         ok = False
-    _emit_tmux_feedback(f"Agent restarting ({session_id})..." if ok else f"Restart failed ({session_id})")
+    action = "Agent handoff started" if handoff else "Agent restarting"
+    _emit_tmux_feedback(f"{action} ({session_id})..." if ok else f"Restart failed ({session_id})")
     if not ok:
         raise SystemExit(1)
     print_json(data)

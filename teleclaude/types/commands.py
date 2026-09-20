@@ -25,6 +25,7 @@ class CommandType(str, Enum):
     PROCESS_MESSAGE = "process_message"
     RUN_AGENT_COMMAND = "run_agent_command"
     RESTART_AGENT = "restart_agent"
+    HANDOFF_AGENT = "handoff_agent"
     UNSUBSCRIBE_SESSION = "unsubscribe_session"
     GET_SESSION_DATA = "get_session_data"
     CLOSE_SESSION = "close_session"
@@ -42,6 +43,14 @@ class ResponseMode(str, Enum):
 
 class RestartAgentResult(TypedDict):
     """Immediate outcome of a restart request that resolves a successor."""
+
+    ok: bool
+    error: str | None
+    selected_agent: str | None
+
+
+class HandoffAgentResult(TypedDict):
+    """Immediate outcome of accepting or refusing an agent handoff."""
 
     ok: bool
     error: str | None
@@ -529,43 +538,56 @@ class RestartAgentCommand(InternalCommand):
     """Intent to restart an agent in the session."""
 
     session_id: str
-    agent_name: str | None = None
     self_restart: bool = False
-    handoff: bool = False
+
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        self_restart: bool = False,
+        request_id: str | None = None,
+    ):
+        super().__init__(
+            command_type=CommandType.RESTART_AGENT,
+            request_id=request_id,
+            response_mode=ResponseMode.FIRE_AND_FORGET,
+            completion_event="agent.restart_dispatched",
+        )
+        self.session_id = session_id
+        self.self_restart = self_restart
+
+    def to_payload(self) -> dict[str, object]:
+        return {"session_id": self.session_id, "args": []}
+
+
+@dataclass(kw_only=True)
+class HandoffAgentCommand(InternalCommand):
+    """Intent to replace a running agent CLI without changing its TeleClaude session."""
+
+    session_id: str
+    agent_name: str | None = None
     caller_system_role: str | None = None
-    fresh_start: bool = False
-    startup_message: str | None = None
 
     def __init__(
         self,
         *,
         session_id: str,
         agent_name: str | None = None,
-        self_restart: bool = False,
-        handoff: bool = False,
         caller_system_role: str | None = None,
-        fresh_start: bool = False,
-        startup_message: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(
-            command_type=CommandType.RESTART_AGENT,
+            command_type=CommandType.HANDOFF_AGENT,
             request_id=request_id,
-            response_mode=ResponseMode.IMMEDIATE if handoff else ResponseMode.FIRE_AND_FORGET,
-            completion_event="agent.restart_dispatched",
+            response_mode=ResponseMode.IMMEDIATE,
+            completion_event="agent_runtime.handoff.completed",
         )
         self.session_id = session_id
         self.agent_name = agent_name
-        self.self_restart = self_restart
-        self.handoff = handoff
         self.caller_system_role = caller_system_role
-        self.fresh_start = fresh_start
-        self.startup_message = startup_message
 
     def to_payload(self) -> dict[str, object]:
-        args: list[str] = []
-        if self.agent_name:
-            args.append(self.agent_name)
+        args = [self.agent_name] if self.agent_name else []
         return {"session_id": self.session_id, "args": args}
 
 
@@ -707,6 +729,7 @@ COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.PROCESS_MESSAGE: ProcessMessageCommand,
     CommandType.RUN_AGENT_COMMAND: RunAgentCommand,
     CommandType.RESTART_AGENT: RestartAgentCommand,
+    CommandType.HANDOFF_AGENT: HandoffAgentCommand,
     CommandType.UNSUBSCRIBE_SESSION: UnsubscribeSessionCommand,
     CommandType.GET_SESSION_DATA: GetSessionDataCommand,
     CommandType.CLOSE_SESSION: CloseSessionCommand,
