@@ -46,6 +46,12 @@ class VoicePlayback:
         await self._supervisor.cancel_playback()
         logger.info("voice_playback_cancelled")
 
+    async def cancel_for_focus_change(self) -> None:
+        """Stop speech immediately when conversation focus moves."""
+        previous_session_id = self._observed_session
+        await self._supervisor.cancel_playback()
+        logger.info("voice_playback_cancelled", previous_session_id=previous_session_id)
+
     async def play_current(self, person_slug: str, session_id: str) -> None:
         cache = self._client.cache
         if cache is None or not self._active():
@@ -93,6 +99,13 @@ class VoicePlayback:
         session_id = focus.focused_session_id
         if session_id is None:
             await self._stop_observation()
+            return
+        await self.observe_session(session_id)
+
+    async def observe_session(self, session_id: str) -> None:
+        """Observe one authoritative focused session without re-deriving stale cache state."""
+        cache = self._client.cache
+        if cache is None or not self._active():
             return
         snapshot = next((item for item in cache.get_sessions() if item.session_id == session_id), None)
         if snapshot is None or snapshot.computer in {None, "", "local", config.computer.name}:

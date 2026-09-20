@@ -112,7 +112,7 @@ class GatewayHandlersMixin:
     - _discord_actor_avatar_url(author) -> str | None
     - _handle_cancel_slash(interaction) (async)
     - _voice_room.handle_voice_state(member, before, after) (async)
-    - _voice_room.forward_gateway_payload(event_type, payload) (async)
+    - _handle_socket_event_type(event_type) (async)
     - _restore_listen_controls() (async)
     """
 
@@ -248,8 +248,8 @@ class GatewayHandlersMixin:
         async def on_voice_state_update(member: object, before: object, after: object) -> None:
             await self._handle_voice_state_update(member, before, after)
 
-        async def on_socket_response(payload: object) -> None:
-            await self._handle_socket_response(payload)
+        async def on_socket_event_type(event_type: str) -> None:
+            await self._handle_socket_event_type(event_type)
 
         self._client.event(on_ready)  # type: ignore[attr-defined]
         self._client.event(on_message)  # type: ignore[attr-defined]
@@ -257,23 +257,16 @@ class GatewayHandlersMixin:
         self._client.event(on_raw_thread_update)  # type: ignore[attr-defined]
         self._client.event(on_interaction)  # type: ignore[attr-defined]
         self._client.event(on_voice_state_update)  # type: ignore[attr-defined]
-        self._client.event(on_socket_response)  # type: ignore[attr-defined]
+        self._client.event(on_socket_event_type)  # type: ignore[attr-defined]
 
     async def _handle_voice_state_update(self, member: object, before: object, after: object) -> None:
         if self._voice_room is not None:
             await self._voice_room.handle_voice_state(member, before, after)
 
-    async def _handle_socket_response(self, payload: object) -> None:
-        if not isinstance(payload, Mapping):
-            return
-        event_type = payload.get("t")
-        data = payload.get("d")
-        if not isinstance(event_type, str) or not isinstance(data, Mapping):
-            return
+    async def _handle_socket_event_type(self, event_type: str) -> None:
+        """Observe selected Gateway events without enabling raw-payload debug dispatch."""
         if event_type in {"VOICE_STATE_UPDATE", "READY", "INTERACTION_CREATE"}:
-            logger.info("discord_gateway_event_received", event_type=event_type, guild_id=data.get("guild_id"))
-        if self._voice_room is not None:
-            await self._voice_room.forward_gateway_payload(event_type, data)
+            logger.info("discord_gateway_event_received", event_type=event_type, guild_id=self._guild_id)
 
     async def _handle_launcher_interaction_observation(self, interaction: object) -> None:
         """Observe unmatched current launcher receipts without consuming the interaction."""

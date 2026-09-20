@@ -342,24 +342,6 @@ class DiscordCreds(BaseModel):
     nick: str | None = None
     avatar_url: str | None = None
     voice_bot_token: str | None = None
-    voice_channel_id: str | None = None
-
-    @field_validator("voice_channel_id")
-    @classmethod
-    def validate_voice_channel_id(cls, value: str | None) -> str | None:
-        """A Discord channel id is a snowflake: digits only."""
-        if value is not None and not value.isdigit():
-            raise ValueError(f"voice_channel_id must be a digits-only snowflake, got: {value}")
-        return value
-
-    @model_validator(mode="after")
-    def validate_voice_declaration_pairing(self) -> DiscordCreds:
-        """Voice ownership requires both a bot token and a room; neither alone is usable."""
-        has_token = self.voice_bot_token is not None
-        has_channel = self.voice_channel_id is not None
-        if has_token != has_channel:
-            raise ValueError("voice_bot_token and voice_channel_id must both be set or both be absent")
-        return self
 
 
 class WhatsAppCreds(BaseModel):

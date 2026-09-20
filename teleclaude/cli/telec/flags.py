@@ -487,6 +487,11 @@ FLAG_PEOPLE_EXPERTISE = Flag(
 )
 FLAG_PEOPLE_TELEGRAM_USER = Flag("--telegram-user", desc="Telegram username", arity=VALUE)
 FLAG_PEOPLE_TELEGRAM_ID = Flag("--telegram-id", desc="Telegram numeric user id", arity=VALUE)
+FLAG_PEOPLE_DISCORD_VOICE_BOT = Flag(
+    "--discord-voice-bot",
+    desc="Bind the active Discord bot credential to this person's voice configuration",
+    arity=SWITCH,
+)
 FLAG_PEOPLE_NO_INVITE = Flag("--no-invite", desc="Skip automatic invite generation", arity=SWITCH)
 FLAG_PEOPLE_NAME_ALIAS = Flag("--name", desc="Legacy alias for the positional <name>", hidden=True, arity=VALUE)
 FLAG_PEOPLE_DELETE_DIR = Flag(

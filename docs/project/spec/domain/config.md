@@ -41,14 +41,15 @@ TeleClaudeNext.
 - **Does not own:** provider-returned identifiers or other observed external
   state. The bounded context that observes such state persists it through its
   own state contract rather than through machine configuration.
-- **Also owns:** the person tier's voice-room declaration as typed settings —
-  the voice bot credential reference and the private voice channel. These are
-  declared fields rather than tolerated extras, so a missing or malformed value
-  is rejected at validation instead of surfacing as absent capability at
-  runtime. The credential resolves only through the person overlay's own
-  tier-local environment; no global or foreign-person fallback exists, and the
-  resolved value is never logged or persisted. Which computer acts on the
-  declaration is not a person setting: the machine configuration's existing
+- **Also owns:** the person tier's voice-bot declaration as a typed credential
+  reference. The semantic `telec config people edit --discord-voice-bot`
+  operation copies the currently resolved machine Discord credential into the
+  person's owner-only environment under the canonical `DISCORD_TOKEN` name and
+  persists only `${DISCORD_TOKEN}` in the overlay. Missing references fail full
+  configuration validation. The live private voice channel is provider-returned
+  state resolved by integration from the identified person's voice-state event,
+  not a configuration field or fallback. Which computer acts on the declaration
+  is not a person setting: the machine configuration's existing
   `computer.is_master` — exactly one in the mesh — already names the one
   computer that provisions this bot's shared Discord structure, and voice
   ownership follows it. Owning the declaration is not owning what it means.

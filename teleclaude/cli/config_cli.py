@@ -52,6 +52,7 @@ from teleclaude.cli.telec.surface import (
 from teleclaude.config import config
 from teleclaude.config._environment import write_environment_value
 from teleclaude.config.migrations import migrate_person_slugs_if_needed
+from teleclaude.config.person_voice import configure_person_discord_voice_bot
 from teleclaude.config.roster import RosterDelta, RosterRefused, apply_roster_delta, person_has_roster_membership
 from teleclaude.config.schema import CompanyRole, PersonEntry, TelegramCreds
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_CUSTOMER
@@ -453,6 +454,7 @@ def _people_edit(args: list[str]) -> None:
     expertise_raw = parsed.value(F.FLAG_PEOPLE_EXPERTISE)
     telegram_user = parsed.value(F.FLAG_PEOPLE_TELEGRAM_USER)
     telegram_id = parsed.value(F.FLAG_PEOPLE_TELEGRAM_ID)
+    discord_voice_bot = parsed.has(F.FLAG_PEOPLE_DISCORD_VOICE_BOT)
     roster_delta = _parse_roster_delta(parsed, _CONFIG_PEOPLE_EDIT_PATH)
 
     changed = False
@@ -493,12 +495,23 @@ def _people_edit(args: list[str]) -> None:
         _set_telegram_creds(person.slug or normalize_slug(name), telegram_user, telegram_id)
         changed = True
 
+    discord_fields = _maybe_set_discord_voice_bot(
+        person.slug or normalize_slug(name),
+        enabled=discord_voice_bot,
+        use_json=use_json,
+    )
+    updated_fields.extend(discord_fields)
+    changed = changed or bool(discord_fields)
+
     if roster_delta is not None:
         updated_fields.extend(_apply_person_roster_change(person.slug or normalize_slug(name), roster_delta, use_json))
         changed = True
 
     if not changed:
-        msg = "No changes specified. Use --role, --email, --username, --expertise, --telegram-user, --telegram-id"
+        msg = (
+            "No changes specified. Use --role, --email, --username, --expertise, "
+            "--telegram-user, --telegram-id, --discord-voice-bot"
+        )
         if use_json:
             print(json.dumps({"error": msg}))
         else:
@@ -570,6 +583,28 @@ def _set_telegram_creds(slug: str, user_name: str | None, user_id: str | None) -
     if tg_user and tg_id:
         pc.creds.telegram = TelegramCreds(user_name=tg_user, user_id=int(tg_id))
         save_person_config(slug, pc)
+
+
+def _set_discord_voice_bot(slug: str, *, use_json: bool) -> list[str]:
+    """Bind the active Discord bot into one person's credential tier."""
+    try:
+        result = configure_person_discord_voice_bot(slug, config.discord.token)
+    except (OSError, ValueError) as exc:
+        msg = f"Discord voice bot configuration failed: {exc}"
+        if use_json:
+            print(json.dumps({"error": msg}))
+        else:
+            print(f"Error: {msg}")
+        raise SystemExit(1) from exc
+    fields = ["discord_voice_bot"]
+    if result.environment_secured:
+        fields.append("personal_env_permissions")
+    return fields
+
+
+def _maybe_set_discord_voice_bot(slug: str, *, enabled: bool, use_json: bool) -> list[str]:
+    """Apply the optional voice-bot edit without branching the edit orchestrator."""
+    return _set_discord_voice_bot(slug, use_json=use_json) if enabled else []
 
 
 # --- Env ---

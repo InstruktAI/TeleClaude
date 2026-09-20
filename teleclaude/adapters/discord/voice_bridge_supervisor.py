@@ -24,6 +24,7 @@ from teleclaude.adapters.discord.voice_bridge_messages import (
     Leave,
     OutboundBridgeMessage,
     PlayArtifact,
+    ProtocolError,
     VoiceServerUpdate,
     VoiceStateUpdate,
 )
@@ -81,11 +82,15 @@ class VoiceBridgeSupervisor:
             node_binary = shutil.which("node")
             if node_binary is None:
                 raise RuntimeError("Node.js is required for the Discord voice sidecar")
+            ffmpeg_binary = shutil.which("ffmpeg")
+            if ffmpeg_binary is None:
+                raise RuntimeError("FFmpeg is required for Discord voice playback")
             # Deliberately do not inherit the daemon environment: the child gets
-            # Node's lookup path and the configured speaker id, never credentials.
+            # only executable paths and its bounded recording identity, never credentials.
             child_env = {
                 "PATH": os.defpath,
                 "TELECLAUDE_CONFIGURED_USER_ID": configured_user_id,
+                "TELECLAUDE_FFMPEG_BIN": ffmpeg_binary,
                 "TELECLAUDE_VOICE_RECORDING_DIR": self._recording_dir.name,
             }
             self._process = await asyncio.create_subprocess_exec(
@@ -93,6 +98,8 @@ class VoiceBridgeSupervisor:
                 str(_BRIDGE_ENTRYPOINT),
                 "--fd",
                 str(child_socket.fileno()),
+                "--generation",
+                str(self._generation),
                 pass_fds=(child_socket.fileno(),),
                 cwd=str(_BRIDGE_DIR),
                 env=child_env,
@@ -200,6 +207,9 @@ class VoiceBridgeSupervisor:
         finally:
             if not self._closed:
                 logger.warning("discord_voice_connection_closed", generation=self._generation, reason="sidecar_exited")
+                await self._handler(
+                    ProtocolError(generation=self._generation, type="protocol_error", message="sidecar_exited")
+                )
 
     async def _handle_line(self, line: bytes) -> None:
         try:
@@ -221,6 +231,5 @@ class VoiceBridgeSupervisor:
         if message.type == "protocol_error":
             logger.warning("bridge_protocol_error", generation=self._generation, reason="sidecar_rejected_message")
             await self._handler(cast(OutboundBridgeMessage, message))
-            asyncio.create_task(self.close(), name="discord-voice-bridge-failure")
             return
         await self._handler(cast(OutboundBridgeMessage, message))

@@ -23,8 +23,9 @@ Gateway connection and exactly one owner of the voice connection.
 **Inputs:**
 
 - Voice-state and voice-server events from the existing Discord Gateway client.
-- The person-scoped voice configuration: bot token and voice channel; the
-  machine configuration's master flag, which names the owning computer.
+- The person-scoped voice-bot credential and the identified person's live
+  Discord voice-state transition, which supplies the current private channel;
+  the machine configuration's master flag names the owning computer.
 - Rendered audio artifacts produced by the TTS render contract.
 
 **Outputs:**
@@ -91,10 +92,12 @@ Gateway connection and exactly one owner of the voice connection.
 8. **Only the configured person is received.** Audio from any other speaker in
    the room is discarded at the transport boundary and never becomes agent
    input.
-9. **Identity fails closed.** Person, Discord user, channel, bot identity, and
-   session are resolved before any capture or playback. An unresolved or
-   ambiguous mapping starts nothing. A room's name is presentation and
-   identifies nobody.
+9. **Identity fails closed.** Person, Discord user, the channel carried by that
+   person's current voice state, bot identity, and session are resolved before
+   any capture or playback. The channel must deny guild-wide visibility and
+   connection while allowing the bot to view, connect, and speak. An unresolved
+   or ambiguous mapping starts nothing. A room's name is presentation and
+   identifies nobody, and no provider channel identifier is copied into config.
 10. **Secrets and payloads stay out of logs.** Bot tokens, voice-server tokens,
     session keys, decrypted audio, and transcription bodies are never logged at
     routine levels.
@@ -129,10 +132,12 @@ Gateway connection and exactly one owner of the voice connection.
 
 ### Reaching a session on another computer
 
-17. **Focus derivation needs no new publication.** The cluster session snapshot
-    already carries the identified human and the time their input was last
-    accepted, which is exactly what the focus rule orders on. The voice-owning
-    computer derives focus from snapshots it already holds.
+17. **Accepted input moves focus at the acceptance boundary.** The existing
+    cluster-visible accepted session-status event carries the session and its
+    acceptance time to the voice owner. The owner verifies that session belongs
+    to the room's identified person, records it as derived focus, and observes
+    that exact session without waiting for a snapshot refresh. A later snapshot
+    can supersede it only with a newer accepted-input timestamp.
 18. **A remote focused session is observed for as long as it is focused.**
     Snapshot refresh for sessions runs at bootstrap and on request, never on a
     cadence, so the master learns of a remote stop through the agent-runtime
@@ -189,8 +194,8 @@ sequenceDiagram
     participant N as Node voice sidecar
     participant C as Core voice-input workflow
 
-    D->>P: voice state update (person joins room)
-    P->>P: resolve person, channel, owner; refuse if foreign
+    D->>P: voice state update (identified person joins a channel)
+    P->>P: resolve person, verify private channel and owner; refuse if foreign
     P->>N: open voice session (adapter handshake)
     N->>P: request voice-state change
     P->>D: change voice state (public API)

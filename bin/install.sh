@@ -898,6 +898,19 @@ converge_plumbing() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.project_setup.plumbing "$INSTALL_DIR"
 }
 
+install_voice_bridge() {
+    VOICE_BRIDGE_DIR="$INSTALL_DIR/teleclaude/adapters/discord/voice_bridge"
+    if [ -d "$VOICE_BRIDGE_DIR" ]; then
+        print_info "Installing and building Discord voice bridge..."
+        if (cd "$VOICE_BRIDGE_DIR" && pnpm install --frozen-lockfile && pnpm build) >> "$LOG_FILE" 2>&1; then
+            print_success "Discord voice bridge installed and built"
+        else
+            print_error "Failed to install or build Discord voice bridge"
+            exit 1
+        fi
+    fi
+}
+
 install_deps_only() {
     print_header "Installing Project Dependencies"
 
@@ -910,16 +923,7 @@ install_deps_only() {
 
     check_node
     setup_corepack
-    VOICE_BRIDGE_DIR="$INSTALL_DIR/teleclaude/adapters/discord/voice_bridge"
-    if [ -d "$VOICE_BRIDGE_DIR" ]; then
-        print_info "Installing Discord voice bridge dependencies..."
-        if (cd "$VOICE_BRIDGE_DIR" && pnpm install --frozen-lockfile) >> "$LOG_FILE" 2>&1; then
-            print_success "Discord voice bridge dependencies installed"
-        else
-            print_error "Failed to install Discord voice bridge dependencies"
-            exit 1
-        fi
-    fi
+    install_voice_bridge
 
     converge_plumbing
     print_success "Project dependencies installed"
@@ -1375,6 +1379,7 @@ main() {
         install_log_runtime
     fi
     setup_corepack
+    install_voice_bridge
     # Agent CLI enablement/install resolves from config and can invoke external
     # installers against the host; CI never needs it (this repository has no
     # test lane that exercises it).

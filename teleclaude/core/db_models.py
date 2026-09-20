@@ -126,6 +126,7 @@ class PendingMessageDeletion(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     session_id: str
+    adapter_key: str
     message_id: str
     deletion_type: str
     created_at: datetime | None = None

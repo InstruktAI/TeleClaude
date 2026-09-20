@@ -100,6 +100,27 @@ def replace_person_mcp_secret(
     mutate_environment_value(path, name, value, creation_mode=_OWNER_ONLY_MODE)
 
 
+def secure_person_secret_store(person_slug: str, *, people_dir: Path = PEOPLE_DIR) -> bool:
+    """Converge an existing personal environment file to owner-only mode.
+
+    Returns whether the file mode changed. Non-regular and foreign-owned paths
+    remain unavailable rather than being repaired across an ownership boundary.
+    """
+    path = person_secret_store_path(person_slug, people_dir=people_dir)
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise PersonSecretStorageError("Personal secret store is unavailable") from exc
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+        raise PersonSecretStorageError("Personal secret store is unavailable")
+    if not metadata.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+        return False
+    path.chmod(_OWNER_ONLY_MODE)
+    return True
+
+
 def clear_person_mcp_secret(person_slug: str, name: str, *, people_dir: Path = PEOPLE_DIR) -> None:
     """Atomically remove every assignment for one personal secret."""
     path = person_secret_store_path(person_slug, people_dir=people_dir)

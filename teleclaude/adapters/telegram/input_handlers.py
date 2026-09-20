@@ -379,7 +379,7 @@ class InputHandlersMixin:
                 metadata=host._metadata(),
             )
             if message_id:
-                await db.add_pending_deletion(session.session_id, message_id)
+                await db.add_pending_deletion(session.session_id, "telegram", message_id)
             decision.reject(ConversationInputReason.DELIVERY_FAILED)
 
     async def _handle_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -103,14 +103,14 @@ async def derive(person_slug: str, cluster_sessions: Iterable[SessionSnapshot]) 
     latest = _latest_accepted_input(person_slug, cluster_sessions)
     if latest is None:
         return record.focused_session_id
-    focused_session_id, _ = latest
+    focused_session_id, accepted_at = latest
     if record.focused_session_id != focused_session_id or record.basis is not VoiceFocusBasis.DERIVED:
         await db.upsert_voice_focus_row(
             person_slug,
             focus_id=record.focus_id,
             focused_session_id=focused_session_id,
             basis=VoiceFocusBasis.DERIVED.value,
-            set_at=datetime.now(UTC),
+            set_at=accepted_at,
         )
         logger.info(_VOICE_FOCUS_DERIVED_EVENT, focus_id=record.focus_id, focused_session_id=focused_session_id)
     return focused_session_id
@@ -133,6 +133,28 @@ async def set_explicit(person_slug: str, session_id: str) -> VoiceFocusRecord:
     )
 
 
+async def accept_input(person_slug: str, session_id: str, accepted_at: str) -> VoiceFocusRecord | None:
+    """Record a newer accepted-input transition, returning ``None`` for stale delivery."""
+    record = await _load_record(person_slug)
+    set_at = parse_iso_datetime(accepted_at) or datetime.now(UTC)
+    if record.focused_session_id is not None and set_at <= record.set_at:
+        return None
+    await db.upsert_voice_focus_row(
+        person_slug,
+        focus_id=record.focus_id,
+        focused_session_id=session_id,
+        basis=VoiceFocusBasis.DERIVED.value,
+        set_at=set_at,
+    )
+    logger.info(_VOICE_FOCUS_DERIVED_EVENT, focus_id=record.focus_id, focused_session_id=session_id)
+    return VoiceFocusRecord(
+        focus_id=record.focus_id,
+        focused_session_id=session_id,
+        basis=VoiceFocusBasis.DERIVED,
+        set_at=set_at,
+    )
+
+
 async def resolve(person_slug: str, cluster_sessions: Iterable[SessionSnapshot]) -> VoiceFocusRecord:
     """Resolve the currently focused session: explicit wins unless a newer accepted input supersedes it.
 
@@ -142,25 +164,25 @@ async def resolve(person_slug: str, cluster_sessions: Iterable[SessionSnapshot])
     record = await _load_record(person_slug)
     latest = _latest_accepted_input(person_slug, cluster_sessions)
 
-    stays_explicit = record.basis is VoiceFocusBasis.EXPLICIT and (latest is None or latest[1] <= record.set_at)
-    if stays_explicit:
+    record_is_current = record.focused_session_id is not None and (latest is None or latest[1] <= record.set_at)
+    if record_is_current:
         resolved = record
     elif latest is not None:
-        focused_session_id, _ = latest
+        focused_session_id, accepted_at = latest
         if record.focused_session_id != focused_session_id or record.basis is not VoiceFocusBasis.DERIVED:
             await db.upsert_voice_focus_row(
                 person_slug,
                 focus_id=record.focus_id,
                 focused_session_id=focused_session_id,
                 basis=VoiceFocusBasis.DERIVED.value,
-                set_at=datetime.now(UTC),
+                set_at=accepted_at,
             )
             logger.info(_VOICE_FOCUS_DERIVED_EVENT, focus_id=record.focus_id, focused_session_id=focused_session_id)
         resolved = VoiceFocusRecord(
             focus_id=record.focus_id,
             focused_session_id=focused_session_id,
             basis=VoiceFocusBasis.DERIVED,
-            set_at=record.set_at,
+            set_at=accepted_at,
         )
     else:
         resolved = record

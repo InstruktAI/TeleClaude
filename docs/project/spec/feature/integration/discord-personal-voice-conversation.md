@@ -7,7 +7,7 @@ description: Personal Discord voice rooms provide push-to-talk agent input, auto
 
 ## What it is
 
-A human can converse aloud with one TeleClaude agent session while remaining in a private Discord voice channel. Entering the configured room brings the voice bot into the call. Push-to-talk speech is transcribed and delivered to the human's selected session; that session's complete reply is rendered in the one Discord voice configured for the rendering speech service and played into the room automatically.
+A human can converse aloud with one TeleClaude agent session while remaining in their private personal Discord voice channel. Entering that room brings the voice bot into the call. The room is resolved from the identified human's live voice state rather than copied into configuration. Push-to-talk speech is transcribed and delivered to the human's selected session; that session's complete reply is rendered in the one Discord voice configured for the rendering speech service and played into the room automatically.
 
 The selected session follows the human's latest accepted input across sessions. A thread-level `Listen here` control explicitly selects a different session and plays its latest complete reply, so listening can move between agent threads without sending a prompt.
 
@@ -21,7 +21,7 @@ The human can move between visible agent threads and voice conversation without 
 
 ### Conversation contract
 
-- A personal voice room is bound through the identified person, Discord user, configured channel, and authenticated voice bot.
+- A personal voice room is bound through the identified person, Discord user, their current private voice channel, and their person-scoped authenticated voice bot. The channel is provider state observed from the identified person's voice-state transition, never a configured provider identifier.
 - Entering the room activates voice delivery and joins the bot; leaving disconnects it and cancels incomplete input and pending output for that listener.
 - Voice focus identifies exactly one live agent session. An accepted human input updates focus to its session; `Listen here` updates focus without creating agent input.
 - An incoming transmission captures the focused session at its start. Later focus changes never redirect an utterance already being transcribed or delivered.
@@ -32,16 +32,17 @@ The human can move between visible agent threads and voice conversation without 
 - Audio cached for replay is identified by session, final-output version, rendering service, and voice. Replaying unchanged output reuses that audio.
 - Changing focus or leaving the room stops stale playback and removes queued speech belonging to the previous selection.
 - Voice connection ownership is singular for a bot identity within a guild. Fleet peers that do not own the connection never join, move, receive, or play through it.
-- Thread controls use generation-specific identity and exact-message registration. A process-wide component handler never claims unrelated Discord messages.
+- Thread controls use generation-specific identity and exact-message registration. Each session exposes at most one button-only `Listen here` control: the existing pending-message cleanup lifecycle removes it when the next human input starts, and the completed reply recreates it at the bottom of the thread. A process-wide component handler never claims unrelated Discord messages.
 
 ### Use cases
 
 #### UC-DPVC-1
 
 ```gherkin
-Given a human has a configured private Discord voice room
+Given a human has a person-scoped voice bot credential
+And is present in their private personal Discord voice room
 When the human enters that room
-Then the configured voice bot joins automatically
+Then the person's authenticated voice bot joins that observed room automatically
 And the room becomes available for that human's agent conversation
 When the human leaves
 Then the bot disconnects
@@ -85,6 +86,18 @@ Given received voice data has no complete explicit transmission-end framing
 When silence or elapsed time follows the received data
 Then no transcription is submitted to an agent
 And the incomplete recording is discarded through an explicit lifecycle transition
+```
+
+#### UC-DPVC-6
+
+```gherkin
+Given an agent thread has completed a substantive reply
+When its Listen here control is presented
+Then the thread contains exactly one button-only Listen here control
+And the control is the last message in the thread
+When the human sends the next input
+Then the existing pending-message cleanup removes that control
+And the next completed reply recreates one control at the bottom
 ```
 
 #### UC-DPVC-7
@@ -140,7 +153,7 @@ And nothing from their audio reaches any session
 - Discord message components remain attached to messages and scroll with their thread; Discord provides no fixed thread-footer control for bots.
 - Discord documents transmission stop-tail framing but does not guarantee voice reception as a stable public bot API. Missing or ambiguous framing therefore fails without submission rather than falling back to inferred silence.
 - One bot identity can maintain only one voice connection per guild. Supporting simultaneous personal rooms in one guild requires distinct bot identities and is a later capability.
-- The first delivery requires the configured personal voice bot token to authenticate the same bot identity already owned by the Discord adapter. Separate voice-only bot identities are not provisioned here.
+- The first delivery requires the person overlay's `${DISCORD_TOKEN}` reference to resolve from that person's owner-only environment file and authenticate the same bot identity already owned by the Discord adapter. Missing references fail configuration validation. Separate voice-only bot identities are not provisioned here.
 
 ## See Also
 

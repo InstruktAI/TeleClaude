@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any, cast
+
+from discord import VoiceProtocol as DiscordVoiceProtocol
 
 from teleclaude.adapters.discord.voice_bridge_supervisor import VoiceBridgeSupervisor
 
 
-class VoiceProtocol:
+class VoiceProtocol(DiscordVoiceProtocol):
     """Forward Discord's voice Gateway events to the sidecar bridge.
 
     discord.py instantiates this object when a voice channel connects.  It
@@ -17,8 +19,7 @@ class VoiceProtocol:
     """
 
     def __init__(self, client: object, channel: object, *, supervisor: VoiceBridgeSupervisor) -> None:
-        self.client = client
-        self.channel = channel
+        super().__init__(client, channel)  # type: ignore[arg-type]
         self._supervisor = supervisor
 
     async def connect(
@@ -28,7 +29,14 @@ class VoiceProtocol:
 
     async def disconnect(self, *, force: bool = False) -> None:
         del force
-        await self._supervisor.close()
+        try:
+            await self._supervisor.close()
+            guild = self.guild
+            change_voice_state = getattr(guild, "change_voice_state", None)
+            if callable(change_voice_state):
+                await cast(Callable[..., Awaitable[object]], change_voice_state)(channel=None)
+        finally:
+            self.cleanup()
 
     async def on_voice_state_update(self, data: Mapping[str, object]) -> None:
         await self._supervisor.forward_voice_state(data)
@@ -37,10 +45,16 @@ class VoiceProtocol:
         await self._supervisor.forward_voice_server(data)
 
     def cleanup(self) -> None:
-        """Match discord.py's protocol lifecycle hook; supervisor close is async."""
+        """Remove this protocol from discord.py's one-client-per-guild registry."""
+        super().cleanup()
 
     async def move_to(self, channel: object, *, timeout: float | None = None) -> None:
-        del channel, timeout
+        del timeout
+        guild = self.guild
+        change_voice_state = getattr(guild, "change_voice_state", None)
+        if callable(change_voice_state):
+            await cast(Callable[..., Awaitable[object]], change_voice_state)(channel=channel)
+            self.channel = channel  # type: ignore[assignment]
 
     def is_connected(self) -> bool:
         return self._supervisor.is_open

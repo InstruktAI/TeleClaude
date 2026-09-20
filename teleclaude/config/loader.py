@@ -24,6 +24,7 @@ from teleclaude.config._file_migrations import (
     migrate_global_file,
     move_person_invite_token,
     remove_person_notifications,
+    remove_person_voice_channel_id,
 )
 from teleclaude.config.advancement import advance_config
 from teleclaude.config.context_root import load_declared_config_kind, resolve_context_root
@@ -133,7 +134,9 @@ def load_config[T: BaseModel](
     references = find_environment_references(raw)
     environment_path = path.with_name(ConfigFileName.ENV)
     local_environment = (
-        read_environment_file(environment_path, company_restricted=kind is ConfigKind.COMPANY) if references else {}
+        read_environment_file(environment_path, owner_only=kind in (ConfigKind.COMPANY, ConfigKind.PERSON))
+        if references
+        else {}
     )
     expanded = expand_environment_references(raw, local_environment, config_path=path)
     try:
@@ -260,6 +263,7 @@ def _person_claim_pre_validation(path: Path, registered_slug: str | None) -> Cal
         people: Iterable[PersonEntry] = load_global_config().people
         migrate_person_claim_for_target(path, people)
         remove_person_notifications(path)
+        remove_person_voice_channel_id(path)
         slug = registered_slug or next(
             (
                 person.slug
@@ -354,7 +358,7 @@ def load_company_credentials(slug: str, companies_root: Path | None = None) -> d
       returning empty credentials.
     """
     env_path = _company_dir(slug, companies_root) / ConfigFileName.ENV
-    return read_environment_file(env_path, company_restricted=True)
+    return read_environment_file(env_path, owner_only=True)
 
 
 def _write_overlay_config(
@@ -379,7 +383,10 @@ def _reconcile_overlay_document(
     raw = _read_config_mapping(path) if path.exists() else {}
     references = find_environment_references(raw)
     environment = (
-        read_environment_file(path.with_name(ConfigFileName.ENV), company_restricted=kind is ConfigKind.COMPANY)
+        read_environment_file(
+            path.with_name(ConfigFileName.ENV),
+            owner_only=kind in (ConfigKind.COMPANY, ConfigKind.PERSON),
+        )
         if references
         else {}
     )

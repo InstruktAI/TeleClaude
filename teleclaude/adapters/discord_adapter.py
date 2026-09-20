@@ -33,7 +33,13 @@ from teleclaude.core.command_dispatch import dispatch_command
 from teleclaude.core.db import db
 from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.event_bus import EventHandler, event_bus
-from teleclaude.core.events import AgentEventContext, SystemCommand, SystemCommandContext, VoiceFocusSetContext
+from teleclaude.core.events import (
+    AgentEventContext,
+    SessionStatusContext,
+    SystemCommand,
+    SystemCommandContext,
+    VoiceFocusSetContext,
+)
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField, MessageMetadata
 from teleclaude.types.commands import SetVoiceFocusCommand
@@ -84,6 +90,7 @@ class DiscordAdapter(
 
     ADAPTER_KEY: str = "discord"
     OUTPUT_MESSAGE_ID_FIELD = "id"
+    supports_message_deletion = True
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
 
@@ -149,6 +156,7 @@ class DiscordAdapter(
         self._voice_focus_handler: EventHandler | None = None
         self._voice_agent_event_handler: EventHandler | None = None
         self._voice_system_command_handler: EventHandler | None = None
+        self._voice_session_status_handler: EventHandler | None = None
         self._registered_listen_message_ids: set[int] = set()
         # project_path -> discord_forum_id mapping, built at startup
         self._project_forum_map: dict[str, int] = {}
@@ -179,7 +187,7 @@ class DiscordAdapter(
     async def start(self) -> None:
         """Initialize Discord client and start gateway task."""
         if not self._token:
-            raise ValueError("DISCORD_BOT_TOKEN is required to start Discord adapter")
+            raise ValueError("DISCORD_TOKEN is required to start Discord adapter")
 
         intents = self._discord.Intents.default()
         intents.guilds = True
@@ -192,6 +200,7 @@ class DiscordAdapter(
         self._voice_focus_handler = event_bus.subscribe("voice_focus_set", self._handle_voice_focus_set)
         self._voice_agent_event_handler = event_bus.subscribe("agent_event", self._handle_voice_agent_event)
         self._voice_system_command_handler = event_bus.subscribe("system_command", self._handle_voice_system_command)
+        self._voice_session_status_handler = event_bus.subscribe("session_status", self._handle_voice_session_status)
         self._register_cancel_slash_command()
         self._register_gateway_handlers()
         self._ready_event.clear()
@@ -228,6 +237,9 @@ class DiscordAdapter(
         if self._voice_system_command_handler is not None:
             event_bus.unsubscribe("system_command", self._voice_system_command_handler)
             self._voice_system_command_handler = None
+        if self._voice_session_status_handler is not None:
+            event_bus.unsubscribe("session_status", self._voice_session_status_handler)
+            self._voice_session_status_handler = None
         if self._voice_room is not None:
             await self._voice_room.close()
             self._voice_room = None
@@ -254,6 +266,10 @@ class DiscordAdapter(
             and payload is not None
         ):
             await self._voice_room.handle_observed_stop(payload.session_id)
+
+    async def _handle_voice_session_status(self, _event: str, context: SessionStatusContext) -> None:
+        if self._voice_room is not None and context.status == "accepted" and context.reason == "user_prompt_accepted":
+            await self._voice_room.input_accepted(context.session_id, context.timestamp)
 
     async def send_output_update(
         self,
@@ -288,18 +304,22 @@ class DiscordAdapter(
         dc = self._dc(session)
         if dc.thread_id is None or self._client is None:
             return
+        if not await self._retire_listen_control(session):
+            logger.warning("discord.listen.attach_skipped", session_id=session.session_id, reason="prior_delete_failed")
+            return
         channel = await self._get_channel(dc.thread_id)
         send = getattr(channel, "send", None)
         if not callable(send):
             return
         control = await self._require_async_callable(send, label="Discord listen control send")(
-            "Listen here", view=ListenHereView(session.session_id, self._handle_listen_click)
+            view=ListenHereView(session.session_id, self._handle_listen_click)
         )
         control_id = getattr(control, "id", None)
         add_view = getattr(self._client, "add_view", None)
         if isinstance(control_id, int) and callable(add_view):
             add_view(ListenHereView(session.session_id, self._handle_listen_click), message_id=control_id)
             self._registered_listen_message_ids.add(control_id)
+            await db.add_pending_deletion(session.session_id, self.ADAPTER_KEY, str(control_id))
             await db.set_system_setting(f"discord_listen:{session.session_id}", str(control_id))
         logger.info(
             "discord.listen.attached",
@@ -307,6 +327,26 @@ class DiscordAdapter(
             output_message_id=output_message_id,
             control_message_id=control_id,
         )
+
+    async def _retire_listen_control(self, session: Session) -> bool:
+        """Delete the one current control while preserving retry state on failure."""
+        setting_key = f"discord_listen:{session.session_id}"
+        control_id = self._parse_optional_int(await db.get_system_setting(setting_key))
+        if control_id is None:
+            return True
+        destination = resolve_destination(session, self.ADAPTER_KEY)
+        deleted = await self.delete_message(destination, str(control_id))
+        if not deleted:
+            return False
+        self._registered_listen_message_ids.discard(control_id)
+        await db.remove_pending_deletion(session.session_id, self.ADAPTER_KEY, str(control_id))
+        await db.set_system_setting(setting_key, "")
+        return True
+
+    async def _pre_handle_user_input(self, session: Session) -> None:
+        """Run shared ephemeral cleanup and reconcile exact control registration."""
+        await self._retire_listen_control(session)
+        await super()._pre_handle_user_input(session)
 
     async def _handle_listen_click(self, interaction: object, session_id: str) -> None:
         message_id = self._parse_optional_int(getattr(getattr(interaction, "message", None), "id", None))

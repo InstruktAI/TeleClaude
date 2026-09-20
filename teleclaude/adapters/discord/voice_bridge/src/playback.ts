@@ -34,7 +34,11 @@ class OpusEncodingStream extends Readable {
   constructor(path: string) {
     super({ objectMode: true });
     this.encoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.AUDIO);
-    this.ffmpeg = spawn('ffmpeg', [
+    const ffmpegBinary = process.env.TELECLAUDE_FFMPEG_BIN;
+    if (!ffmpegBinary) {
+      throw new Error('TELECLAUDE_FFMPEG_BIN is required');
+    }
+    this.ffmpeg = spawn(ffmpegBinary, [
       '-i',
       path,
       '-f',

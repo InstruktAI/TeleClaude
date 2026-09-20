@@ -13,6 +13,7 @@ Track user input and feedback messages for automatic deletion to keep UiAdapter 
 
 - **User Input**: Text messages, voice transcriptions, file notifications sent by user → deleted on next input
 - **Feedback**: Confirmation messages ("✅ Sent to AI", "🎤 Transcribing...") → deleted on next feedback
+- **Turn Controls**: Replaceable controls such as Discord `Listen here` → deleted on next input and recreated after the next completed output
 - **Output**: AI response messages → NEVER deleted, edited in-place
 - **Artifacts**: File uploads, result documents → NEVER deleted
 
@@ -25,9 +26,11 @@ Track user input and feedback messages for automatic deletion to keep UiAdapter 
 
 **Implementation**:
 
-- Store message_id in `pending_message_deletions` table with session_id
-- Query and delete all pending messages before sending new feedback
-- Clear `pending_message_deletions` after successful deletion
+- Store message_id in `pending_message_deletions` with session_id and the owning adapter key; platform identifiers never cross adapter boundaries
+- The shared `UiAdapter` input lifecycle deletes tracked next-input messages; adapters add only their platform-specific state reconciliation after that shared operation
+- Only adapters that declare message-deletion capability create pending rows; a non-deleting adapter never accumulates retry work it cannot complete
+- Query and delete all pending feedback before sending new feedback
+- Remove each `pending_message_deletions` entry only after its platform deletion succeeds so a transient failure remains retryable
 
 ## Rationale
 
@@ -59,6 +62,7 @@ Does NOT apply to:
 
 - Use `AdapterClient.send_message(..., cleanup_trigger=CleanupTrigger.NEXT_NOTICE)` for feedback
 - Call `AdapterClient.pre_handle_command(session, origin)` before processing user input
+- Use the shared `UiAdapter` pre/post handlers for next-input tracking; adapters must not duplicate the deletion loop
 - Never use raw UiAdapter `reply_text` - always route through tracking APIs
 
 **Testing**:

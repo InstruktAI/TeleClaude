@@ -683,12 +683,16 @@ class DbSessionsMixin:
     # State management functions (DB-backed via ux_state)
 
     async def get_pending_deletions(
-        self, session_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"
+        self,
+        session_id: str,
+        adapter_key: str,
+        deletion_type: Literal["user_input", "feedback"] = "user_input",
     ) -> list[str]:
         """Get list of pending deletion message IDs for session.
 
         Args:
             session_id: Session identifier
+            adapter_key: UI adapter that owns the platform message identifier
             deletion_type: Type of deletion - 'user_input' (cleaned on next user input)
                           or 'feedback' (cleaned when next feedback is sent)
 
@@ -697,6 +701,7 @@ class DbSessionsMixin:
         """
         stmt = select(db_models.PendingMessageDeletion.message_id).where(
             db_models.PendingMessageDeletion.session_id == session_id,
+            db_models.PendingMessageDeletion.adapter_key == adapter_key,
             db_models.PendingMessageDeletion.deletion_type == deletion_type,
         )
         async with self._session() as db_session:
@@ -705,12 +710,17 @@ class DbSessionsMixin:
             return [str(row) for row in rows]
 
     async def add_pending_deletion(
-        self, session_id: str, message_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"
+        self,
+        session_id: str,
+        adapter_key: str,
+        message_id: str,
+        deletion_type: Literal["user_input", "feedback"] = "user_input",
     ) -> None:
         """Add message ID to pending deletions for session.
 
         Args:
             session_id: Session identifier
+            adapter_key: UI adapter that owns the platform message identifier
             message_id: Message ID to delete later
             deletion_type: Type of deletion - 'user_input' (cleaned on next user input)
                           or 'feedback' (cleaned when next feedback is sent)
@@ -720,6 +730,7 @@ class DbSessionsMixin:
                 db_session.add(
                     db_models.PendingMessageDeletion(
                         session_id=session_id,
+                        adapter_key=adapter_key,
                         message_id=message_id,
                         deletion_type=deletion_type,
                     )
@@ -727,25 +738,50 @@ class DbSessionsMixin:
                 await db_session.commit()
         except SQLAlchemyError as exc:
             logger.error(
-                "Failed to add pending deletion: session=%s message_id=%s deletion_type=%s error=%s",
+                "Failed to add pending deletion: session=%s adapter=%s message_id=%s deletion_type=%s error=%s",
                 session_id,
+                adapter_key,
                 message_id,
                 deletion_type,
                 exc,
             )
 
     async def clear_pending_deletions(
-        self, session_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"
+        self,
+        session_id: str,
+        adapter_key: str,
+        deletion_type: Literal["user_input", "feedback"] = "user_input",
     ) -> None:
         """Clear all pending deletions for session.
 
         Args:
             session_id: Session identifier
+            adapter_key: UI adapter that owns the platform message identifier
             deletion_type: Type of deletion to clear
         """
         stmt = (
             db_models.PendingMessageDeletion.__table__.delete()
             .where(db_models.PendingMessageDeletion.session_id == session_id)
+            .where(db_models.PendingMessageDeletion.adapter_key == adapter_key)
+            .where(db_models.PendingMessageDeletion.deletion_type == deletion_type)
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)  # type: ignore[arg-type]
+            await db_session.commit()
+
+    async def remove_pending_deletion(
+        self,
+        session_id: str,
+        adapter_key: str,
+        message_id: str,
+        deletion_type: Literal["user_input", "feedback"] = "user_input",
+    ) -> None:
+        """Remove one successfully deleted platform message from the pending set."""
+        stmt = (
+            db_models.PendingMessageDeletion.__table__.delete()
+            .where(db_models.PendingMessageDeletion.session_id == session_id)
+            .where(db_models.PendingMessageDeletion.adapter_key == adapter_key)
+            .where(db_models.PendingMessageDeletion.message_id == message_id)
             .where(db_models.PendingMessageDeletion.deletion_type == deletion_type)
         )
         async with self._session() as db_session:

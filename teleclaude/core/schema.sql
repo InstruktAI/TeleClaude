@@ -220,14 +220,16 @@ CREATE INDEX IF NOT EXISTS idx_control_outbox_pending_session
 CREATE TABLE IF NOT EXISTS pending_message_deletions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
+    adapter_key TEXT NOT NULL,
     message_id TEXT NOT NULL,
     deletion_type TEXT NOT NULL CHECK(deletion_type IN ('user_input', 'feedback')),
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(session_id, message_id, deletion_type),
+    UNIQUE(session_id, adapter_key, message_id, deletion_type),
     FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_pending_deletions_session ON pending_message_deletions(session_id);
+CREATE INDEX IF NOT EXISTS idx_pending_deletions_session
+    ON pending_message_deletions(session_id, adapter_key);
 
 -- Durable operations
 CREATE TABLE IF NOT EXISTS operations (

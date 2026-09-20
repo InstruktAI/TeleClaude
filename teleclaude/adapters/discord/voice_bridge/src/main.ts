@@ -29,14 +29,29 @@ function parseFdArg(argv: readonly string[]): number {
   return fd;
 }
 
+function parseGenerationArg(argv: readonly string[]): number {
+  const flagIndex = argv.indexOf('--generation');
+  if (flagIndex === -1 || flagIndex + 1 >= argv.length) {
+    process.stderr.write('missing --generation argument\n');
+    process.exit(1);
+  }
+  const generation = Number(argv[flagIndex + 1]);
+  if (!Number.isInteger(generation) || generation < 1) {
+    process.stderr.write('invalid --generation argument\n');
+    process.exit(1);
+  }
+  return generation;
+}
+
 class Bridge {
   private readonly socket: Socket;
   private connection: VoiceConnection | null = null;
   private playback: PlaybackQueue | null = null;
-  private currentGeneration = 0;
+  private currentGeneration: number;
 
-  constructor(fd: number) {
-    this.socket = new Socket({ fd });
+  constructor(fd: number, generation: number) {
+    this.socket = new Socket({ fd, readable: true, writable: true });
+    this.currentGeneration = generation;
     const lines = createInterface({ input: this.socket });
     lines.on('line', (line) => this.handleLine(line));
     this.socket.once('close', () => process.exit(0));
@@ -176,8 +191,10 @@ class Bridge {
 }
 
 function main(): void {
-  const fd = parseFdArg(process.argv.slice(2));
-  const bridge = new Bridge(fd);
+  const argv = process.argv.slice(2);
+  const fd = parseFdArg(argv);
+  const generation = parseGenerationArg(argv);
+  const bridge = new Bridge(fd, generation);
   bridge.announceReady();
 }
 

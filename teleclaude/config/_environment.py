@@ -24,8 +24,8 @@ _OWNER_ONLY_MODE: Final = 0o600
 _LIST_IDENTITY_KEYS: Final = ("id", "slug", "key", "name", "email", "address")
 
 
-class CompanyCredentialsError(Exception):
-    """Raised when a required company environment file is unsafe to read."""
+class CompanyCredentialsError(ValueError):
+    """Raised when an owner-only tier environment file is unsafe to read."""
 
 
 class MissingEnvironmentReferenceError(ValueError):
@@ -121,12 +121,12 @@ def _expand_environment_references(
     )
 
 
-def read_environment_file(path: Path, *, company_restricted: bool = False) -> dict[str, str]:
-    """Read one environment file, applying company secret access policy when required."""
+def read_environment_file(path: Path, *, owner_only: bool = False) -> dict[str, str]:
+    """Read one environment file, enforcing owner-only secret storage when required."""
     if not path.exists():
         return {}
-    if company_restricted:
-        _require_owner_only_company_environment(path)
+    if owner_only:
+        _require_owner_only_environment(path)
     return {key: value for key, value in dotenv_values(path).items() if value is not None}
 
 
@@ -394,14 +394,20 @@ def _render_reference_path(path: tuple[str | int, ...]) -> str:
     return ".".join(str(part) for part in path) or "<root>"
 
 
-def _require_owner_only_company_environment(path: Path) -> None:
-    file_mode = path.stat().st_mode
+def _require_owner_only_environment(path: Path) -> None:
+    try:
+        metadata = os.lstat(path)
+    except OSError as exc:
+        raise CompanyCredentialsError(f"Environment file is unavailable: {path}") from exc
+    file_mode = metadata.st_mode
+    if not stat.S_ISREG(file_mode) or metadata.st_uid != os.getuid():
+        raise CompanyCredentialsError(f"Environment file is not an owner-controlled regular file: {path}")
     if file_mode & (stat.S_IRWXG | stat.S_IRWXO):
         raise CompanyCredentialsError(
-            f"Company environment file is group/world-accessible ({stat.filemode(file_mode)}); expected owner-only: {path}"
+            f"Environment file is group/world-accessible ({stat.filemode(file_mode)}); expected owner-only: {path}"
         )
     if not os.access(path, os.R_OK):
-        raise CompanyCredentialsError(f"Company environment file is not readable: {path}")
+        raise CompanyCredentialsError(f"Environment file is not readable: {path}")
 
 
 def _validate_environment_values(values: Mapping[str, str]) -> None:

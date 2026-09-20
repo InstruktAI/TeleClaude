@@ -1116,7 +1116,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             " [--company <slug>] [--company-role <admin|member>]"
                             " [--remove-company <slug>] [--assign <project-slug>]... [--unassign <project-slug>]..."
                             " [--expertise '<json>']"
-                            " [--telegram-user <user>] [--telegram-id <id>] [--json]"
+                            " [--telegram-user <user>] [--telegram-id <id>]"
+                            " [--discord-voice-bot] [--json]"
                         ),
                         flags=[
                             F.FLAG_HELP,
@@ -1131,6 +1132,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             F.FLAG_PEOPLE_EXPERTISE,
                             F.FLAG_PEOPLE_TELEGRAM_USER,
                             F.FLAG_PEOPLE_TELEGRAM_ID,
+                            F.FLAG_PEOPLE_DISCORD_VOICE_BOT,
                             F.FLAG_JSON_MACHINE_READABLE,
                         ],
                         auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),

@@ -39,6 +39,8 @@ _DOCUMENT_MAPPING_ERROR: Final = "Configuration document must be a mapping"
 _JSON_INDENT: Final = 2
 _NEWLINE: Final = "\n"
 _DISCORD: Final = "discord"
+_CREDS: Final = "creds"
+_VOICE_CHANNEL_ID: Final = "voice_channel_id"
 _COMPUTER_SECTION: Final = "computer"
 _TRUSTED_DIRS: Final = "trusted_dirs"
 _NAME: Final = "name"
@@ -200,6 +202,19 @@ def remove_person_notifications(path: Path) -> bool:
         if not isinstance(visibility, dict) or _NOTIFICATIONS not in visibility:
             return False
         visibility.pop(_NOTIFICATIONS)
+        _write_mapping(transaction, document)
+        return True
+
+
+def remove_person_voice_channel_id(path: Path) -> bool:
+    """Drop the retired configured room; Discord voice state now owns it."""
+    with file_transaction(path) as transaction:
+        document = _load_mapping(transaction.read_text())
+        creds = document.get(_CREDS)
+        discord = creds.get(_DISCORD) if isinstance(creds, dict) else None
+        if not isinstance(discord, dict) or _VOICE_CHANNEL_ID not in discord:
+            return False
+        discord.pop(_VOICE_CHANNEL_ID)
         _write_mapping(transaction, document)
         return True
 

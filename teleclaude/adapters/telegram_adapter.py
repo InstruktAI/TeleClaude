@@ -20,8 +20,6 @@ from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import telegram_policy
 from teleclaude.config import config
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
-from teleclaude.core.db import db
-from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.models import MessageMetadata, PeerInfo, Session, TelegramAdapterMetadata
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
@@ -55,6 +53,7 @@ class TelegramAdapter(
 
     ADAPTER_KEY = "telegram"
     OUTPUT_MESSAGE_ID_FIELD = "message_id"
+    supports_message_deletion = True
 
     # -------------------------------------------------------------------------
     # Markdown strategy — MarkdownV2
@@ -213,58 +212,6 @@ class TelegramAdapter(
         if not self._fits_budget(display_output, TELEGRAM_MAX_MESSAGE_BYTES):
             display_output = truncate_markdown_v2(display_output, self.max_message_size, "")
         return display_output
-
-    async def _pre_handle_user_input(self, session: Session) -> None:
-        """UI adapter pre-handler: Delete ephemeral messages from previous interaction.
-
-        Called by AdapterClient BEFORE processing new user input.
-        Cleans up UI state from previous interaction (all ephemeral messages).
-
-        Unified design: All messages tracked via pending_deletions are cleaned here,
-        including user input messages, feedback, errors, etc.
-
-        Args:
-            session: Session object
-        """
-        logger.info("PRE-HANDLER CALLED for session %s", session.session_id)
-        # Delete pending ephemeral messages from previous interaction
-        pending = await db.get_pending_deletions(session.session_id)
-        logger.debug(
-            "Pre-handler pending deletions: session=%s count=%d",
-            session.session_id,
-            len(pending),
-        )
-        if pending:
-            destination = resolve_destination(session, self.ADAPTER_KEY)
-            for msg_id in pending:
-                try:
-                    await self.delete_message(destination, msg_id)
-                    logger.debug(
-                        "Deleted pending message %s for session %s",
-                        msg_id,
-                        session.session_id,
-                    )
-                except Exception as e:
-                    # Resilient to already-deleted messages
-                    logger.warning("Failed to delete message %s: %s", msg_id, e)
-            await db.clear_pending_deletions(session.session_id)
-
-    async def _post_handle_user_input(self, session: Session, message_id: str) -> None:
-        """UI adapter post-handler: Track current message for next cleanup.
-
-        Called by AdapterClient AFTER processing user input.
-        Tracks current message ID so it can be deleted on next interaction.
-
-        Args:
-            session: Session object
-            message_id: Current message ID to track for deletion
-        """
-        await db.add_pending_deletion(session.session_id, message_id)
-        logger.debug(
-            "Tracked message %s for deletion on next input (session %s)",
-            message_id,
-            session.session_id,
-        )
 
     # ==================== Output QoS Integration ====================
 

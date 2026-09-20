@@ -52,6 +52,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     # Platform API property name for the message ID (e.g. "id" for Discord/WhatsApp,
     # "message_id" for Telegram). Used when constructing platform API calls.
     OUTPUT_MESSAGE_ID_FIELD: str = "id"
+    supports_message_deletion: bool = False
 
     # Platform message size limit (subclasses can override)
     max_message_size: int = UI_MESSAGE_MAX_CHARS
@@ -343,12 +344,38 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
 
         return "\n".join(lines)
 
-    async def _pre_handle_user_input(self, _session: Session) -> None:
+    async def _pre_handle_user_input(self, session: Session) -> None:
         """Called before handling user input - cleanup ephemeral messages.
 
-        All tracked messages (feedback, user input) cleaned here.
+        Every UI adapter uses the same durable next-input deletion set. Platform
+        deletion remains adapter-owned; successful rows are removed one by one
+        so a transient failure remains retryable.
         """
-        # User input messages (pending_deletions) cleaned via event handler, not here
+        if not self.supports_message_deletion:
+            return
+        pending = await db.get_pending_deletions(session.session_id, self.ADAPTER_KEY)
+        if not pending:
+            return
+        destination = resolve_destination(session, self.ADAPTER_KEY)
+        for message_id in pending:
+            try:
+                deleted = await self.delete_message(destination, message_id)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to delete pending UI message %s for session %s: %s",
+                    message_id,
+                    session.session_id,
+                    exc,
+                )
+                continue
+            if not deleted:
+                continue
+            await db.remove_pending_deletion(session.session_id, self.ADAPTER_KEY, message_id)
+
+    async def _post_handle_user_input(self, session: Session, message_id: str) -> None:
+        """Track one accepted platform input for deletion on the next input."""
+        if self.supports_message_deletion:
+            await db.add_pending_deletion(session.session_id, self.ADAPTER_KEY, message_id)
 
     async def send_typing_indicator(self, session: Session) -> None:
         """Send platform-specific typing indicator.

@@ -194,6 +194,11 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         # Convert cleanup_trigger enum to feedback boolean (internal implementation)
         feedback = cleanup_trigger == CleanupTrigger.NEXT_NOTICE
+        feedback_adapter = (
+            metadata.target_adapter_key
+            if metadata is not None and metadata.target_adapter_key
+            else session.last_input_origin
+        ) or ""
 
         # Skip feedback for AI-to-AI sessions (listeners already deliver)
         if feedback and session.initiator_session_id:
@@ -201,7 +206,16 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         # Feedback mode: delete old feedback before sending new
         if feedback:
-            pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
+            feedback_target = self.adapters.get(feedback_adapter)
+            pending = (
+                await db.get_pending_deletions(
+                    session.session_id,
+                    feedback_adapter,
+                    deletion_type="feedback",
+                )
+                if isinstance(feedback_target, UiAdapter) and feedback_target.supports_message_deletion
+                else []
+            )
             if pending:
                 logger.debug(
                     "Feedback cleanup: session=%s pending_count=%d",
@@ -212,12 +226,21 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             failed = 0
             for msg_id in pending:
                 try:
-                    ok = await self.delete_message(
+                    result = await self._route_to_ui(
                         session,
+                        "delete_message",
                         msg_id,
+                        include_adapters={feedback_adapter},
                     )
+                    ok = bool(result)
                     if ok:
                         deleted += 1
+                        await db.remove_pending_deletion(
+                            session.session_id,
+                            feedback_adapter,
+                            msg_id,
+                            deletion_type="feedback",
+                        )
                     else:
                         failed += 1
                 except Exception as e:
@@ -230,7 +253,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                     deleted,
                     failed,
                 )
-                await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
         # Fetch fresh session from DB (session object may be stale after entry point update)
         fresh_session = await db.get_session(session.session_id)
@@ -273,9 +295,14 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         # Track for deletion if ephemeral
         if ephemeral and message_ids:
             deletion_type: Literal["user_input", "feedback"] = "feedback" if feedback else "user_input"
+            tracking_adapter = next(iter(include_adapters)) if include_adapters else session_to_use.last_input_origin
+            tracking_target = self.adapters.get(tracking_adapter or "")
+            if not isinstance(tracking_target, UiAdapter) or not tracking_target.supports_message_deletion:
+                return message_id
             for tracked_message_id in message_ids:
                 await db.add_pending_deletion(
                     session.session_id,
+                    tracking_target.ADAPTER_KEY,
                     tracked_message_id,
                     deletion_type=deletion_type,
                 )

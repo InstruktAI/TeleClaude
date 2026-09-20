@@ -249,7 +249,7 @@ Valid **only** in `~/.teleclaude/people/{slug}/teleclaude.yml`.
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }
-  discord: { user_id, nick, avatar_url, voice_bot_token, voice_channel_id } # voice_bot_token normally ${DISCORD_BOT_TOKEN} in the person .env; voice_channel_id a channel snowflake; both present or both absent; the token must authenticate the same bot the Discord adapter runs
+  discord: { user_id, nick, avatar_url, voice_bot_token } # voice_bot_token is ${DISCORD_TOKEN} in the owner-only person .env and must authenticate the same bot the Discord adapter runs; the person's live private channel comes from Discord voice state and is not config
   whatsapp: { phone_number }
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
