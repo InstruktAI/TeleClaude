@@ -58,27 +58,16 @@ The user experience holds five guarantees:
    blockers from optional adapter incompleteness. On close, it summarises
    remaining blockers in one screen.
 
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-The wizard delegates to the existing TUI in guided mode and reuses the
-established adapter-tab, env-var-registry, guidance-registry, and
-atomic-config-write infrastructure. Persistence flows through five
-<!-- change:config-sample-regeneration-leaves-sync -->
 The wizard delegates to the existing TUI in guided mode and reuses the
 established adapter-tab and atomic-config-write infrastructure, and the
 schema's own sensitivity declarations in place of a separate registry.
 Persistence flows through five
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 distinct surfaces (see "Persistence surfaces and writers" below): YAML
 overlays are typed by the config bounded context's overlay schemas
 (global, project, per-person), the machine `config.yml` is typed by the
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-runtime configuration aggregate, and adapter / API credentials persist
-through the documented env-var registry and the env-file writer. Every
-<!-- change:config-sample-regeneration-leaves-sync -->
 runtime configuration aggregate, and adapter / API credentials persist
 through the env-file writer under the environment variables the machine-config
 schema's sensitivity declarations derive. Every
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 persisted surface the wizard writes is documented in
 `project/spec/teleclaude-config`.
 
@@ -123,11 +112,7 @@ And no question that was reachable in `bin/init.sh` requires the human
 Given a wizard run where every required section is `configured`
 When the human re-opens `telec config wizard`
 Then every section's default value is the current persisted value
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-And secrets are presented in masked form with default "keep existing"
-<!-- change:config-sample-regeneration-leaves-sync -->
 And a sensitive field shows only whether it is set, never a value
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 When the human accepts every default without modification
 And the human exits the wizard
 Then the persisted config is byte-stable relative to its prior state
@@ -263,11 +248,7 @@ And the wizard reminds the human that existing agent sessions must be restarted
 ```
 Given the human opens `telec config wizard`
 When any config section renders
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-Then fields are derived from the canonical config schema or env-var registry for that section
-<!-- change:config-sample-regeneration-leaves-sync -->
 Then fields are derived from the canonical config schema for that section, environment-backed ones from its sensitivity declarations
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 And TUI-local shadow models do not define the field contract
 And the field's owning source determines the writer used on save
 And sensitive-looking paths remain reachable unless explicitly excluded by documented view metadata
@@ -339,24 +320,14 @@ lands in one of the six surfaces below.
 | Per-person MCP service secrets                        | `~/.teleclaude/people/<slug>/.env`           | MCP registry-derived secret requirements (untyped) | person-secret writer (config bounded context)                         |
 | Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)    | project overlay schema                             | project-config writer (atomic — per `atomic-project-config-write.md`) |
 | Agent environment allow list                          | `~/.teleclaude/teleclaude.yml` (global YAML) | global overlay schema (`env_allow_list`)           | global-config writer (config bounded context)                         |
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-| Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                  | env-var registry (untyped)                         | env-file writer (atomic — per `atomic-env-file-write.md`)             |
-<!-- change:config-sample-regeneration-leaves-sync -->
 | Machine-config secrets and external identifiers       | `.env` file                                  | machine-config sensitivity descriptors             | env-file writer (atomic — per `atomic-env-file-write.md`)             |
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 | Computer identity, agents inventory, runtime settings | `config.yml` (machine config)                | runtime configuration aggregate                    | machine-config writer (per `machine-config-write.md`)                 |
 
 
 YAML overlays and machine config are typed and validated; the `.env`
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-file path holds adapter and provider credentials and is intentionally
-untyped, with semantics carried by the documented env-var registry and
-`_ADAPTER_ENV_VARS`. UC-WIZ-4's secret-hygiene contract applies
-<!-- change:config-sample-regeneration-leaves-sync -->
 file path holds adapter and provider credentials and is intentionally
 untyped, with semantics carried by the machine-config schema's sensitivity
 declarations and the variable names they derive. UC-WIZ-4's secret-hygiene contract applies
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 uniformly across both typed and env-file persistence.
 
 The machine-config writer does not exist today — `bin/init.sh`

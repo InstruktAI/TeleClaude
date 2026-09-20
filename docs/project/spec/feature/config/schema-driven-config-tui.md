@@ -28,11 +28,7 @@ schema-backed editable tree:
 - global `~/.teleclaude/teleclaude.yml`;
 - project `<project>/teleclaude.yml`;
 - per-person `~/.teleclaude/people/<name>/teleclaude.yml`;
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-- env-backed fields declared by the env-var registry.
-<!-- change:config-sample-regeneration-leaves-sync -->
 - machine environment-backed fields declared sensitive by the canonical machine-config schema.
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 The company layer (`~/.teleclaude/companies/<slug>/teleclaude.yml`,
 `CompanyConfig`) is not wizard-owned; it is maintained through the CLI.
@@ -117,13 +113,8 @@ And projected output for that person hides tool calls on every projected surface
 Given a config field belongs under a credentials section owned by a typed config surface
 When the human opens the config TUI section that owns that surface
 Then the field is reachable through the same schema-driven renderer as non-credential fields
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-And the TUI does not suppress the field solely because the path contains "creds", "token", "secret", or "key"
-And any masking or reveal-on-edit behavior is a rendering rule layered on top of the same editable field
-<!-- change:config-sample-regeneration-leaves-sync -->
 And the TUI does not suppress the field solely because the path contains "creds", "token", "secret", or "key"
 And a schema-declared sensitive field is set through that same renderer without its value being displayed
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 ```
 
 #### UC-CFG-TUI-SCHEMA-6: Edits persist to the owning config file
@@ -188,18 +179,6 @@ And an unset optional nested structure still renders its leaf fields, derived fr
 And editing a nested leaf persists to that leaf's dotted path in the owning config file
 ```
 
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-#### UC-CFG-TUI-SCHEMA-11: Env-sourced values are masked unless the field is being edited
-
-```
-Given a rendered field whose value is sourced from an environment variable
-When the field is displayed and is not being edited
-Then its value is shown masked
-When the human edits the field
-Then the actual value is revealed in the edit buffer
-And masking is a rendering rule only, leaving the persistence target and editability unchanged
-```
-<!-- change:config-sample-regeneration-leaves-sync -->
 #### UC-CFG-TUI-SCHEMA-11: Sensitive values are never displayed and are only set
 
 ```
@@ -211,7 +190,6 @@ Then the entered value replaces the stored one and is never revealed back
 And submitting without entering a value leaves the stored value unchanged
 And removing a stored value is a separate deliberate action
 ```
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 #### UC-CFG-TUI-SCHEMA-12: Nested structures render as an indented tree
 
@@ -255,11 +233,7 @@ And `internal` and `public` fields do not render
 And the tier declaration is the view-metadata authority, not a TUI-local field name list
 Given a new machine-config field is added without a tier declaration
 Then it is `internal` and does not render in the config TUI
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-And it is absent from the generated config.yml public sample
-<!-- change:config-sample-regeneration-leaves-sync -->
 And it is absent from a fresh machine configuration generated from the schema
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 ```
 
 
@@ -283,7 +257,6 @@ And the TUI introduces no role gate beyond its trusted local machine and termina
 ```
 
 
-<!-- planned:config-sample-regeneration-leaves-sync -->
 
 #### UC-CFG-TUI-SCHEMA-17: Required fields are marked, and a set sensitive field is distinguishable from an unset one
 
@@ -296,7 +269,6 @@ And the unconfigured required field is distinguishable from the configured one w
 And the marking reflects the same required-field rule the write path enforces, so the two cannot disagree
 ```
 
-<!-- /planned:config-sample-regeneration-leaves-sync -->
 
 The `tui` tier is the wizard's render set: the operator-facing fields the config
 wizard shows, declared per field in code. The `tier` marker is the opt-in form of
@@ -346,11 +318,7 @@ blacklist is retired as the authority.
 ## Allowed values
 
 - Output visibility override values: `null`, `off`, `mobile`, `web`, `both`.
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-- Schema field source: canonical config models or env-var registry descriptors.
-<!-- change:config-sample-regeneration-leaves-sync -->
 - Schema field source: canonical config models and their sensitivity descriptors; personal MCP secrets remain registry-derived.
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 - Persistence source: machine config, global overlay, project overlay,
   per-person overlay, or env file.
 - Field render disposition: `visible` (rendered through the schema-driven
@@ -369,18 +337,11 @@ blacklist is retired as the authority.
 - Overlay models reject undeclared keys at their file-backed load boundary. The
   TUI edits only schema-declared fields and never preserves arbitrary unknown
   subtrees.
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-- Masking is keyed on value provenance, not on field-name heuristics: a value
-  resolved from an environment variable (`${VAR}` reference) is masked unless the
-  field is being edited (UC-CFG-TUI-SCHEMA-11). Masking is a rendering rule layered
-  over the same editable field and does not change the persistence contract.
-<!-- change:config-sample-regeneration-leaves-sync -->
 - Non-display is keyed on the schema's sensitivity declaration, not on
   field-name heuristics: a field declared sensitive shows whether it is set and
   never its value, in display and in editing alike (UC-CFG-TUI-SCHEMA-11).
   Non-display is a rendering rule layered over the same editable field and does
   not change the persistence contract.
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 - `invite_token` is relocated out of `PersonConfig` into an ephemeral
   invitations store under `~/.teleclaude/state/` by this delivery. The config
   delta is the field's removal from the `PersonConfig` overlay; the invitation

@@ -159,14 +159,8 @@ checkout-owned artifact and follows the project-state root.
 the four tier models. Generating from the model is what keeps a published
 schema from drifting from the shape it describes.
 
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-Reconciliation owns the writing. The same boundary that regenerates the
-machine-config sample from the field-exposure map and composes the home docs and
-skills roots writes the four canonical schemas at this repository's root, deploys
-<!-- change:config-sample-regeneration-leaves-sync -->
 Reconciliation owns the writing. The same boundary that composes the home docs and
 skills roots writes the four canonical schemas at this repository's root, deploys
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 all four into the home tree beside the home's own configuration files, and
 deploys the project-tier schema to a project root beside that project's
 configuration file — the boundary that already writes that project's generated

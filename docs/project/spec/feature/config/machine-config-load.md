@@ -42,19 +42,6 @@ And the resulting Config object is bound to the module-level `config` global
 And the module-level `config_path` global is set to the absolute path
 ```
 
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-#### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
-
-```
-Given the bundled read-only blueprint exists at <_project_root>/templates/config.yml
-When the machine config path is resolved at process start
-Then the blueprint is deep-merged underneath the machine config at <RuntimeConfig.home>/config.yml
-And values already present in the machine config win over blueprint values
-And blueprint keys absent from the machine config are written into it
-And the machine config is rewritten only when that merge changed it
-And the blueprint file itself is never written
-```
-<!-- change:config-sample-regeneration-leaves-sync -->
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
 #### UC-CFG-LOAD-10: Installation produces a machine configuration from the schema
@@ -85,19 +72,7 @@ Then loading that contract neither reads nor creates the machine configuration
 And the agent can explicitly create the machine configuration through that contract
 But a runtime consumer requesting the effective configuration still fails fast while the file is absent
 ```
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-#### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
-
-```
-Given _config_path resolves to a file that does NOT exist on disk
-When the machine config loads at process start
-Then a FileNotFoundError is raised with the message:
-  "Config file not found: <path>. Run 'telec config wizard' to create it."
-And no Config object is bound (import fails for every consumer)
-```
-<!-- change:config-sample-regeneration-leaves-sync -->
 #### UC-CFG-LOAD-3: Missing config.yml is a fail-fast import error
 
 #### UC-CFG-LOAD-14: Missing machine configuration fails runtime aggregate access
@@ -108,7 +83,6 @@ When a runtime consumer requests the effective machine configuration outside ins
 Then the request fails fast with a diagnostic naming the missing file and the creation surface
 And no effective configuration aggregate is bound
 ```
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 
 #### UC-CFG-LOAD-4: Environment variables in YAML values are expanded
 
@@ -155,13 +129,8 @@ And config construction raises a validation error downstream because the require
 #### UC-CFG-LOAD-8: Env-backed credentials remain file-declared and service-available
 
 ```gherkin
-<!-- planned-change:config-sample-regeneration-leaves-sync -->
-Given a human operator declares a service credential or externally supplied service identifier in machine configuration as an environment-backed placeholder
-And the referenced value exists in the runtime secret environment
-<!-- change:config-sample-regeneration-leaves-sync -->
 Given the configuration schema declares a service credential or externally supplied service identifier sensitive, and the machine configuration carries its derived environment reference
 And the referenced value exists in the runtime secret environment
-<!-- /planned-change:config-sample-regeneration-leaves-sync -->
 When the runtime loads configuration and starts the configured service
 Then the typed effective configuration contains the resolved value
 And the service is available using that effective configuration
