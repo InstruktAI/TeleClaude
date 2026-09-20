@@ -222,17 +222,6 @@ Then reconciliation does not create, delete, or mutate Discord provider artifact
 And startup surfaces an operator-visible failure or degraded state
 ```
 
-<!-- planned:discord-shared-thread-backing-authority -->
-#### UC-DARS-14: Shared forum cleanup uses fleet-authoritative backing
-
-```gherkin
-Given a reconciliation agent evaluates a thread in a shared Discord forum for destructive cleanup
-When session or relay backing may be owned by any computer in the fleet
-Then one authoritative contract reports whether any computer still backs the thread
-And incomplete or unavailable fleet authority stops the pass before provider mutation
-And a non-master computer does not independently decide deletion
-```
-<!-- /planned:discord-shared-thread-backing-authority -->
 
 ### Cross-context references
 
