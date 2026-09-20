@@ -1155,7 +1155,10 @@ def deploy_documentation(
     except DocsPublisherResolutionError as exc:
         raise SystemExit(str(exc)) from exc
     if previous_root is not None:
-        shutil.rmtree(previous_root)
+        if previous_root.is_symlink():
+            previous_root.unlink()
+        else:
+            shutil.rmtree(previous_root)
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
