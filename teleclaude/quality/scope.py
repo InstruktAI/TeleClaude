@@ -11,7 +11,7 @@ import logging
 import subprocess
 import tomllib
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 
 import yaml
@@ -51,6 +51,13 @@ _ROOT_RUST_METADATA = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml"}
 class WorkspaceScopeKind(Enum):
     WORKTREE = "worktree"
     SHARED_BRANCH = "shared_branch"
+
+
+class ContextPathResolutionMode(StrEnum):
+    """How invocation path validation resolves a terminal filesystem component."""
+
+    FOLLOW_TERMINAL = "follow_terminal"
+    PRESERVE_TERMINAL = "preserve_terminal"
 
 
 class DirtyOp(Enum):
@@ -196,7 +203,13 @@ def resolve_workspace_scope_resolution(
     )
 
 
-def validate_context_paths(paths: list[str], project_root: Path, context_root: Path | None) -> list[str]:
+def validate_context_paths(
+    paths: list[str],
+    project_root: Path,
+    context_root: Path | None,
+    *,
+    resolution_mode: ContextPathResolutionMode = ContextPathResolutionMode.FOLLOW_TERMINAL,
+) -> list[str]:
     """Return repository-relative declared paths eligible to the acting context."""
     if context_root is None:
         return []
@@ -206,15 +219,31 @@ def validate_context_paths(paths: list[str], project_root: Path, context_root: P
             logger.warning("Rejected leading-dash path from invocation context: %s", raw_path)
             continue
         candidate = Path(raw_path)
-        absolute_path = candidate.resolve() if candidate.is_absolute() else (context_root / candidate).resolve()
+        if not candidate.is_absolute() and ".." in candidate.parts:
+            logger.warning("Rejected traversal path from invocation context: %s", raw_path)
+            continue
+        raw_absolute_path = candidate if candidate.is_absolute() else context_root / candidate
+        absolute_path = _resolve_context_path(raw_absolute_path, resolution_mode)
         try:
             relative_path = absolute_path.relative_to(project_root.resolve()).as_posix()
         except ValueError:
             logger.warning("Rejected path outside repository root: %s", raw_path)
             continue
-        if _is_eligible_path(project_root, relative_path, context_root=context_root):
+        if _is_eligible_path(
+            project_root,
+            relative_path,
+            context_root=context_root,
+            resolution_mode=resolution_mode,
+        ):
             safe.append(relative_path)
     return safe
+
+
+def _resolve_context_path(path: Path, resolution_mode: ContextPathResolutionMode) -> Path:
+    """Resolve ancestors while preserving a Git-facing terminal path when required."""
+    if resolution_mode is ContextPathResolutionMode.PRESERVE_TERMINAL:
+        return path.parent.resolve() / path.name
+    return path.resolve()
 
 
 def resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
@@ -263,12 +292,18 @@ def _eligible_dirty_paths(
     )
 
 
-def _is_eligible_path(project_root: Path, path: str, *, context_root: Path | None) -> bool:
+def _is_eligible_path(
+    project_root: Path,
+    path: str,
+    *,
+    context_root: Path | None,
+    resolution_mode: ContextPathResolutionMode = ContextPathResolutionMode.FOLLOW_TERMINAL,
+) -> bool:
     if context_root is None:
         return False
     repository = project_root.resolve()
     context = context_root.resolve()
-    candidate = (repository / path).resolve()
+    candidate = _resolve_context_path(repository / path, resolution_mode)
     try:
         candidate.relative_to(context)
     except ValueError:

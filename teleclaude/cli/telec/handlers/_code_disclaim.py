@@ -5,8 +5,8 @@ from __future__ import annotations
 import sys
 
 from teleclaude.cli.telec.handlers._code_invocation import resolve_invocation_state
-from teleclaude.hooks.checkpoint_flags import record_disclaimed_paths
-from teleclaude.quality.scope import validate_context_paths
+from teleclaude.hooks.checkpoint_disclaimers import record_disclaimed_paths
+from teleclaude.quality.scope import ContextPathResolutionMode, validate_context_paths
 from teleclaude.session_identity import get_session_id
 
 
@@ -17,9 +17,9 @@ def handle_code_disclaim(args: list[str]) -> None:
     says this is not. Neither asks the agent to work out whose it is — sorting
     a reported path stays the agent's judgment, and this command resolves no
     ownership of its own. It stages nothing, touches no index, and writes no
-    declaration; it only records a session-scoped advisory exemption that
-    lapses when the path is committed, goes clean, or the next real user
-    input arrives.
+    declaration; it records a session-scoped advisory exemption for that exact
+    dirty state. The exemption lapses when the path is committed, goes clean,
+    or materially changes.
     """
     positionals: list[str] = []
     for token in args:
@@ -44,7 +44,12 @@ def handle_code_disclaim(args: list[str]) -> None:
 
     state = resolve_invocation_state()
     project_root = state.project_root
-    validated_positionals = validate_context_paths(positionals, project_root, state.context_root)
+    validated_positionals = validate_context_paths(
+        positionals,
+        project_root,
+        state.context_root,
+        resolution_mode=ContextPathResolutionMode.PRESERVE_TERMINAL,
+    )
     if len(validated_positionals) != len(positionals):
         print("ERROR: one or more paths were rejected outside the invocation context", file=sys.stderr)
         raise SystemExit(1)
@@ -56,7 +61,7 @@ def handle_code_disclaim(args: list[str]) -> None:
         raise SystemExit(1)
 
     try:
-        record_disclaimed_paths(session_id, positionals)
+        record_disclaimed_paths(session_id, project_root, positionals)
     except OSError as exc:
         print(f"ERROR: failed to record disclaimed path(s): {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

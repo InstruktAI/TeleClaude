@@ -1431,7 +1431,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "this is not. Neither asks the agent to work out whose it is.",
                     "Stages nothing, touches no index, and writes no declaration — records a "
                     "session-scoped advisory exemption only.",
-                    "Lapses when the path is committed, goes clean, or the next real user input arrives.",
+                    "Lapses when the path is committed, goes clean, or its dirty state materially changes.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

@@ -40,10 +40,8 @@ from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
-from teleclaude.hooks.checkpoint_flags import (
-    clear_disclaimed_paths,
-    record_authored_main_commit,
-)
+from teleclaude.hooks.checkpoint_disclaimers import clear_disclaimed_paths
+from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
 from teleclaude.project_root import (
     DOC_LAYER_PATTERN,
     forbidden_slug_worktree_agent_artifact_paths,

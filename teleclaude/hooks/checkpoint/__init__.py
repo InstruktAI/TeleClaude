@@ -65,13 +65,13 @@ from teleclaude.hooks.checkpoint._models import (
     CheckpointResult,
     TranscriptObservability,
 )
+from teleclaude.hooks.checkpoint_disclaimers import reconcile_disclaimed_paths
 from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
     consume_integrator_maintenance_marker,
     discharge_integrator_maintenance_action,
     has_authored_main_commit_flag,
     read_integrator_maintenance_marker,
-    reconcile_disclaimed_paths,
 )
 from teleclaude.project_root import declaration_root
 from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
@@ -612,7 +612,7 @@ def get_checkpoint_content(
 
         if not effective_files and not force_main_commit_checkpoint:
             dirty_paths_now = _dirty_repo_paths(project_path)
-            disclaimed_paths = reconcile_disclaimed_paths(session_id, dirty_paths_now)
+            disclaimed_paths = reconcile_disclaimed_paths(session_id, Path(project_path), dirty_paths_now)
             unaccounted_paths = sorted(dirty_paths_now - set(effective_files) - disclaimed_paths)
             if not unaccounted_paths:
                 logger.info(
