@@ -21,6 +21,7 @@ A special `self` form is dispatched by orchestrators that want to restart themse
 
 ### Use cases
 
+<!-- planned-change:simplify-agent-handoff-live-swap -->
 #### UC-AR13: Restart eligibility distinguishes handoff from native resume
 
 ```
@@ -31,6 +32,18 @@ And if no active agent is bound to the session, the request is refused with a "n
 And if no native session identifier has been recorded and the request does not ask for a handoff, the request is refused with a "no native session ID — start agent first" error
 And a request that asks for a handoff is not refused for a missing native session identifier; the agent-handoff feature spec owns that path
 ```
+<!-- change:simplify-agent-handoff-live-swap -->
+#### UC-AR13: Restart eligibility requires a resumable native binding
+
+```
+Given a caller asks the agent_runtime service to restart the agent for a session
+When the service loads the session row
+Then if the row does not exist, the request is refused with a "session not found" error
+And if no active agent is bound to the session, the request is refused with a "no active agent for this session" error
+And if no native session identifier has been recorded, the request is refused with a "no native session ID — start agent first" error
+And restart performs no fresh-agent selection or cross-agent handoff behavior
+```
+<!-- /planned-change:simplify-agent-handoff-live-swap -->
 
 #### UC-AR14: Accepted restart names its asynchronous completion event
 

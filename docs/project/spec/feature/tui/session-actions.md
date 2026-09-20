@@ -16,6 +16,7 @@ plain click, Shift-click, Space, or Enter revives the session instead of
 previewing it. The keyboard `k` binding closes the selected session through a
 confirmation modal.
 
+<!-- planned-change:simplify-agent-handoff-live-swap -->
 Three keyboard gestures hand a session to a different agent. `o` on a session
 row hands that session off with the successor chosen automatically; `o` on a
 project header asks the operator to choose an agent and hands off every live
@@ -23,6 +24,16 @@ session of that project currently running on it; `O` on a session row opens the
 existing start-session modal with the session fixed and the agent selector live,
 so the operator names the successor. The handoff itself is owned by
 `project/spec/feature/agent_runtime/agent-handoff`; the view only requests it.
+<!-- change:simplify-agent-handoff-live-swap -->
+Three keyboard gestures request handoff only for open sessions. `o` on an open
+session row requests automatic successor selection; `o` on a project header
+asks the operator to choose a source agent and requests handoff for every open
+session of that project currently running on it; `O` on an open session row
+opens a handoff form containing only the successor selector. Closed rows receive
+no handoff request. The view reports request acceptance as started, never as
+completed, and the handoff itself remains owned by
+`project/spec/feature/agent_runtime/agent-handoff`.
+<!-- /planned-change:simplify-agent-handoff-live-swap -->
 
 Close and revive are distinct destinations that must not fire from one gesture.
 The fast-close chord routes to the session-close funnel; the headless-revive
@@ -72,6 +83,7 @@ And the view requests no close for that session
 
 #### UC-SACT-4: Pressing `o` on a session row hands the session off automatically
 
+<!-- planned-change:simplify-agent-handoff-live-swap -->
 ```gherkin
 Given a human operator selects a session row in the TUI Sessions view
 When the operator presses `o`
@@ -79,6 +91,16 @@ Then the view requests exactly one handoff for that session with no successor na
 And the view requests no restart, revive, preview, or close for that session
 And the operator is told which successor was selected or why the handoff was refused
 ```
+<!-- change:simplify-agent-handoff-live-swap -->
+```gherkin
+Given a human operator selects an open session row in the TUI Sessions view
+When the operator presses `o`
+Then the view requests exactly one handoff for that session with no successor named
+And the view requests no restart, revive, preview, or close for that session
+And the operator is told which successor was selected and that handoff started, or why it was refused
+And a closed session row receives no handoff request
+```
+<!-- /planned-change:simplify-agent-handoff-live-swap -->
 
 #### UC-SACT-5: Pressing `o` on a project header hands off every live session on a chosen agent
 
@@ -93,6 +115,7 @@ And dismissing the choice sends no request
 
 #### UC-SACT-6: Pressing `O` on a session row opens the start-session modal for an explicit successor
 
+<!-- planned-change:simplify-agent-handoff-live-swap -->
 ```gherkin
 Given a human operator selects a session row in the TUI Sessions view
 When the operator presses `O`
@@ -100,12 +123,32 @@ Then the existing start-session modal opens with the session fixed and the agent
 And confirming with an agent chosen requests exactly one handoff for that session naming that agent
 And dismissing the modal sends no request
 ```
+<!-- change:simplify-agent-handoff-live-swap -->
+```gherkin
+Given a human operator selects an open session row in the TUI Sessions view
+When the operator presses `O`
+Then a handoff form opens with the session fixed and only the agent selector and action buttons visible
+And confirming with an agent chosen requests exactly one handoff for that session naming that agent
+And dismissing the modal sends no request
+And a closed session row opens no handoff form
+```
+<!-- /planned-change:simplify-agent-handoff-live-swap -->
 
 #### UC-SACT-7: A handoff refreshes the visible session row without another gesture
 
+<!-- planned-change:simplify-agent-handoff-live-swap -->
 ```gherkin
 Given the TUI displays a session row and its attached or sticky pane
 When a session update reports that a handoff successor is now the active agent
 Then the row displays the successor and the session's current thinking mode
 And the operator does not need to reselect the row or reload the TUI
 ```
+<!-- change:simplify-agent-handoff-live-swap -->
+```gherkin
+Given the TUI displays a session row and its attached or sticky pane
+When a session update reports that a handoff successor is now the active agent
+Then the row displays the successor and the session's current thinking mode
+And every attached or sticky pane reapplies the successor's agent palette
+And the operator does not need to reselect the row or reload the TUI
+```
+<!-- /planned-change:simplify-agent-handoff-live-swap -->
