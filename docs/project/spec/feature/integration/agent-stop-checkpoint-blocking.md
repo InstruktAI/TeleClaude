@@ -13,9 +13,7 @@ on agent-stop events. It reads the current turn's transcript, the working
 tree's version-control state scoped to the turn window, and a session's
 project context, then classifies changed files into categories (code,
 
-
 tests, docs, configs, infra) and produces a checkpoint
-
 
 result listing required actions. If any actions are required, the receiver
 emits an adapter-formatted block decision that causes the agent CLI to
@@ -236,7 +234,6 @@ When the checkpoint evaluates the agent-stop boundary
 Then the agent receives a checkpoint requiring the commit step
 ```
 
-
 #### UC-CP10: Code categories with no per-category action
 
 ```gherkin
@@ -264,7 +261,6 @@ And no action is surfaced, because its evidence was observed
 (The changed-category summary reports the branch-eligible category set, independent of evidence suppression. Off-main deferrals are separate affirmative decisions and never appear as required actions.)
 ```
 
-
 #### UC-CP11: Integrator post-advance log-check force-fire
 
 ```gherkin
@@ -286,7 +282,6 @@ And no checkout-scoped log-check marker is present
 When the heuristic engine evaluates the turn window
 Then no checkpoint is force-fired on account of the moved main HEAD
 ```
-
 
 #### UC-CP13: Parent snippet edited without its pending companion
 
@@ -336,8 +331,6 @@ Then the file is not categorized as daemon code
 And the restart maintenance action is not among the actions it owes
 (The boundary is daemon-import membership, not directory: only CLI modules the daemon holds at runtime require a restart.)
 ```
-
-
 
 #### UC-CP18: A clean working tree raises no commit action
 
@@ -412,7 +405,6 @@ When the heuristic engine evaluates that session
 Then the accumulated log-check obligation is surfaced to the successor
 ```
 
-
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
 
 ```gherkin
@@ -479,7 +471,6 @@ And its required action instructs the agent to declare the paths it wrote and di
 And the decision attributes no path to any session
 ```
 
-<!-- planned-change:checkpoint-disclaimer-not-retained-across-stop-turns -->
 #### UC-CP27: A disclaimed path stops being reported
 
 ```gherkin
@@ -489,18 +480,6 @@ When the session reaches a further agent-stop checkpoint boundary
 Then those paths are not reported again
 And a decision is still produced when a path becomes unaccounted for after that disclaimer
 ```
-<!-- change:checkpoint-disclaimer-not-retained-across-stop-turns -->
-#### UC-CP27: An unchanged disclaimed path stays accounted for across turns
-
-```gherkin
-Given an agent session was told about a dirty path it had not accounted for
-And the session disclaimed that path in its current worktree state
-When the session reaches later agent-stop checkpoint boundaries
-And the path's content, mode, file type, deletion state, cleanliness, and commit state are unchanged
-Then the path is not reported again regardless of intervening user-input turns
-But when any part of that worktree state changes, the path becomes unaccounted for and is reported again
-```
-<!-- /planned-change:checkpoint-disclaimer-not-retained-across-stop-turns -->
 
 ### Cross-context references
 
