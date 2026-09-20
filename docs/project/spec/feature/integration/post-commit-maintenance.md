@@ -35,6 +35,14 @@ contract governs only what happens when maintenance runs.
 - **Trigger.** A recorded commit on canonical main, or a successful canonical-main
   merge operation, including a fast-forward. Maintenance is not conditioned on
   who or what advanced main, nor on whether a session is present.
+<!-- planned:retire-docs-watcher -->
+- **Immutable activation range.** Hook ingress resolves symbolic Git names to
+  object ids before action selection or logging. An ordinary commit records its
+  parent and committed tip; a root commit records an absent parent and its tip;
+  a merge or fast-forward records the resolved pre-activation and post-activation
+  tips. Changed-file resolution, command expansion, outcomes, and replay all use
+  those immutable fields.
+<!-- /planned:retire-docs-watcher -->
 - **Owed set.** The `main_only` actions the committed paths resolve from the
   maintenance registry and shared bindings. Actions in the same precedence
   wave run concurrently; the next precedence wave starts after every action in
@@ -153,6 +161,16 @@ When an agent retries that recorded maintenance action
 Then the executor performs publication for the original range and action id
 And its structured records identify the replayed range and terminal outcome
 And no current working-tree state replaces the original input
+```
+
+#### UC-PCM9: A root commit has an immutable activation range
+
+```gherkin
+Given a repository whose canonical main has no parent commit
+When its first qualifying commit invokes post-commit maintenance
+Then maintenance records an absent before revision and the immutable committed tip
+And changed-file resolution includes the complete root-commit tree
+And every action command and outcome carries that same normalized activation range
 ```
 <!-- /planned:retire-docs-watcher -->
 
