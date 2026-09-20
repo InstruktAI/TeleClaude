@@ -8,7 +8,6 @@ from types import UnionType
 from typing import Any, Literal, Union, get_args, get_origin
 
 from instrukt_ai_logging import get_logger
-from pydantic import BaseModel, Field
 from rich.style import Style
 
 from teleclaude.cli.config_handlers import EnvVarStatus
@@ -52,57 +51,6 @@ class Subtab(StrEnum):
 
 # Ordered tabs for index-based navigation (active_subtab).
 _SUBTABS = tuple(Subtab)
-
-
-class SttConfig(BaseModel):
-    """Pydantic model for dynamic reflection of Speech-to-Text configuration."""
-
-    stt_enabled: bool = Field(default=True, description="Enable Speech-to-Text")
-    stt_service_priority: list[str] = Field(
-        default_factory=lambda: ["parakeet", "openai"],
-        description="Speech-to-Text engine priorities",
-    )
-
-
-class TtsConfig(BaseModel):
-    """Pydantic model for dynamic reflection of Text-to-Speech configuration."""
-
-    tts_enabled: bool = Field(default=False, description="Enable Text-to-Speech")
-    tts_service_priority: list[str] = Field(
-        default_factory=lambda: ["voxcpm", "kokoro", "qwen3", "openai", "elevenlabs", "macos", "pyttsx3"],
-        description="Text-to-Speech engine priorities",
-    )
-
-
-class BackupAdapterConfig(BaseModel):
-    """S3 backup target. Credentials are .env secrets."""
-
-    aws_access_key_id: str = Field(default="", description="S3 access key id")
-    aws_secret_access_key: str = Field(default="", description="S3 secret access key")
-    aws_s3_host: str = Field(default="", description="S3 endpoint host")
-    aws_s3_region: str = Field(default="", description="S3 region")
-    aws_s3_bucket: str = Field(default="", description="S3 bucket name")
-    backup_prefix: str = Field(default="", description="Key prefix for backups")
-
-
-class FirecrawlAdapterConfig(BaseModel):
-    """Firecrawl web-scraping provider."""
-
-    api_key: str = Field(default="", description="Firecrawl API key (web scraping)")
-
-
-class RedisInfraConfig(BaseModel):
-    """Redis connection — essential infrastructure. Values are .env secrets."""
-
-    url: str = Field(default="", description="Redis connection URL (redis://host:port)")
-    password: str = Field(default="", description="Redis password (blank if the server has no auth)")
-
-
-class ProvidersConfig(BaseModel):
-    """External provider settings that are not machine config credentials."""
-
-    backup: BackupAdapterConfig = Field(default_factory=BackupAdapterConfig)
-    firecrawl: FirecrawlAdapterConfig = Field(default_factory=FirecrawlAdapterConfig)
 
 
 _PERSON_EDITABLE_FIELDS = ("name", "email", "role", "username", "preferences", "expertise")

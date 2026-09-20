@@ -282,7 +282,7 @@ def resolve_run_session_thinking_mode(
 
 
 def _configured_enabled(agent: str) -> bool:
-    entry = config.agents.get(agent)
+    entry = config.agents.get(AgentName.from_str(agent))
     return entry is not None and entry.enabled
 
 
@@ -312,7 +312,7 @@ async def resolve_launch_model(
     session_id: str | None = None,
 ) -> LaunchModelResolution:
     """Resolve one computed launch through its declared model fallback chain."""
-    agent_cfg = config.agents.get(agent)
+    agent_cfg = config.agents.get(AgentName.from_str(agent))
     if agent_cfg is None:
         raise AgentDispatchFailure(AgentDispatchReason.UNKNOWN_AGENT, f"Unknown agent '{agent}'")
     default_chain = agent_cfg.mode_chains.get(thinking_mode)

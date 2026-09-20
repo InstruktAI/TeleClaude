@@ -167,6 +167,14 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "reply_to": None,
         "smtp_relay": "smtp-relay.brevo.com:587",
     },
+    "backup": {
+        "aws_access_key_id": None,
+        "aws_secret_access_key": None,
+        "aws_s3_host": None,
+        "aws_s3_region": None,
+        "aws_s3_bucket": None,
+        "backup_prefix": None,
+    },
     "database_url": None,
     "workflow": {
         "autostart": {

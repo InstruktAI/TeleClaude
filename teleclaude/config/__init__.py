@@ -27,6 +27,7 @@ from teleclaude.config._environment import expand_environment_references
 from teleclaude.config._file_migrations import remove_matching_tmux_binary
 from teleclaude.config._machine_input import EXPERIMENTS_FILE_INPUT, MACHINE_CONFIG_INPUT
 from teleclaude.config._models import AgentConfig as AgentConfig
+from teleclaude.config._models import BackupConfig as BackupConfig
 from teleclaude.config._models import ComputerConfig as ComputerConfig
 from teleclaude.config._models import CredsConfig as CredsConfig
 from teleclaude.config._models import DaemonConfig as DaemonConfig
@@ -526,6 +527,7 @@ def _build_config(
     process_janitor_raw = raw.get("process_janitor", None)
     workflow_raw = raw.get("workflow", None)
     deployment_raw = raw.get("deployment", None)
+    backup_raw = raw.get("backup", {})
     summarizer_raw = raw.get("summarizer", None)
     experiments_raw = raw.get("experiments", [])
     agents_registry, default_agent = build_agents_registry(raw, load_id=load_id)
@@ -696,6 +698,24 @@ def _build_config(
             reply_to=_parse_optional_str(email_raw.get("reply_to")) if isinstance(email_raw, dict) else None,
             smtp_relay=_parse_optional_str(email_raw.get("smtp_relay")) if isinstance(email_raw, dict) else None,
         ),
+        backup=BackupConfig(
+            aws_access_key_id=_parse_optional_str(backup_raw.get("aws_access_key_id"))
+            if isinstance(backup_raw, dict)
+            else None,
+            aws_secret_access_key=_parse_optional_str(backup_raw.get("aws_secret_access_key"))
+            if isinstance(backup_raw, dict)
+            else None,
+            aws_s3_host=_parse_optional_str(backup_raw.get("aws_s3_host")) if isinstance(backup_raw, dict) else None,
+            aws_s3_region=_parse_optional_str(backup_raw.get("aws_s3_region"))
+            if isinstance(backup_raw, dict)
+            else None,
+            aws_s3_bucket=_parse_optional_str(backup_raw.get("aws_s3_bucket"))
+            if isinstance(backup_raw, dict)
+            else None,
+            backup_prefix=_parse_optional_str(backup_raw.get("backup_prefix"))
+            if isinstance(backup_raw, dict)
+            else None,
+        ),
         tts=parse_tts_config(tts_raw),  # type: ignore[arg-type]
         stt=parse_stt_config(stt_raw),  # type: ignore[arg-type]
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
@@ -796,14 +816,27 @@ def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
 
 
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.
-_config_path = resolve_runtime_config_path(_project_root / "templates" / ConfigFileName.MACHINE, deep_merge)
-
-if not _config_path.exists():
-    raise FileNotFoundError(f"Config file not found: {_config_path}. Run 'telec config wizard' to create it.")
-
-config = _load_config_from_disk(_config_path)
+_config_path = resolve_runtime_config_path()
+_config: TeleclaudeConfig | None = None
 config_path = _config_path
 dotenv_path = _dotenv_path  # public alias; the config watcher watches config_path + dotenv_path
+
+
+def _runtime_config() -> TeleclaudeConfig:
+    """Load the runtime aggregate only when a runtime consumer requests it."""
+    global _config
+    if _config is None:
+        if not _config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {_config_path}. Run 'telec config wizard' to create it.")
+        _config = _load_config_from_disk(_config_path)
+    return _config
+
+
+def __getattr__(name: str) -> TeleclaudeConfig:
+    """Expose the lazy runtime aggregate through the established package surface."""
+    if name == "config":
+        return _runtime_config()
+    raise AttributeError(name)
 
 
 def reload_config() -> list[str]:
@@ -814,11 +847,12 @@ def reload_config() -> list[str]:
     sections that changed. Changed sections in ``HOT_RELOADABLE_SECTIONS`` take effect live;
     any other changed section needs a daemon restart (see ``restart_required_sections``).
     """
+    current = _runtime_config()
     fresh = _load_config_from_disk(_config_path)
     changed = [
         f.name
         for f in fields(TeleclaudeConfig)
-        if f.name != CONFIG_LOAD_ID and getattr(config, f.name) != getattr(fresh, f.name)
+        if f.name != CONFIG_LOAD_ID and getattr(current, f.name) != getattr(fresh, f.name)
     ]
-    config.__dict__.update(fresh.__dict__)
+    current.__dict__.update(fresh.__dict__)
     return changed

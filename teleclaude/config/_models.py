@@ -29,10 +29,11 @@ and is keyed by its enum instead.
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from teleclaude.agent_registry import AgentName
 from teleclaude.config._chiptunes import ChiptunesConfig
 from teleclaude.config._remote_computers import RemoteComputerConfig
 from teleclaude.config._summarizer import SummarizerConfig
-from teleclaude.config.tiers import Tier
+from teleclaude.config.tiers import SENSITIVE_METADATA_KEY, Tier
 
 
 @dataclass
@@ -144,8 +145,8 @@ class AgentConfig:
 class RedisConfig:
     """Redis configuration with user-configurable and internal settings."""
 
-    url: str
-    password: str | None
+    url: str = field(metadata={SENSITIVE_METADATA_KEY: True})
+    password: str | None = field(metadata={SENSITIVE_METADATA_KEY: True})
     max_connections: int
     socket_timeout: int
     message_stream_maxlen: int
@@ -185,9 +186,9 @@ class TelegramConfig:
     """Telegram adapter configuration."""
 
     enabled: bool = False
-    bot_token: str | None = None
-    alert_username: str | None = None
-    alert_chat_id: str | None = None
+    bot_token: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    alert_username: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    alert_chat_id: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
     qos: TelegramQoSConfig = field(default_factory=TelegramQoSConfig, metadata={"tier": Tier.INTERNAL})
 
 
@@ -210,11 +211,11 @@ class DiscordConfig:
     """Discord adapter configuration."""
 
     enabled: bool
-    token: str | None
-    guild_id: int | None
-    help_desk_channel_id: int | None = None
-    escalation_channel_id: int | None = None
-    all_sessions_channel_id: int | None = None
+    token: str | None = field(metadata={SENSITIVE_METADATA_KEY: True})
+    guild_id: int | None = field(metadata={SENSITIVE_METADATA_KEY: True})
+    help_desk_channel_id: int | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    escalation_channel_id: int | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    all_sessions_channel_id: int | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
     operator_chat_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
     announcements_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
     general_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
@@ -227,11 +228,11 @@ class WhatsAppConfig:
     """WhatsApp adapter configuration."""
 
     enabled: bool = False
-    phone_number_id: str | None = None
-    access_token: str | None = None
-    webhook_secret: str | None = None
-    verify_token: str | None = None
-    business_number: str | None = None
+    phone_number_id: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    access_token: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    webhook_secret: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    verify_token: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    business_number: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
     api_version: str = field(default="v21.0", metadata={"tier": Tier.INTERNAL})
     template_name: str | None = None
     template_language: str = "en_US"
@@ -243,11 +244,23 @@ class EmailConfig:
     """Email (SMTP) sending capability and its typed delivery fields."""
 
     enabled: bool = False
-    smtp_username: str | None = None
-    smtp_key: str | None = None
-    email_from: str | None = None
-    reply_to: str | None = None
-    smtp_relay: str | None = None
+    smtp_username: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    smtp_key: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    email_from: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    reply_to: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    smtp_relay: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+
+
+@dataclass
+class BackupConfig:
+    """Machine-wide backup destination and credential configuration."""
+
+    aws_access_key_id: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    aws_secret_access_key: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    aws_s3_host: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    aws_s3_region: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    aws_s3_bucket: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    backup_prefix: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
 
 
 @dataclass
@@ -513,20 +526,12 @@ class TeleclaudeConfig:
     telegram: TelegramConfig = field(metadata={"tier": Tier.TUI})
     discord: DiscordConfig = field(metadata={"tier": Tier.TUI})
     creds: CredsConfig = field(metadata={"tier": Tier.INTERNAL})
-    agents: dict[str, AgentConfig] = field(
-        metadata={
-            "tier": Tier.PUBLIC,
-            "ungoverned_body": (
-                "closed vocabulary modelled as a str-keyed map: the keys are exactly the known agent "
-                "names, enforced at load by _validate_known_agent_keys rather than by the type. Governing "
-                "AgentConfig leaf-by-leaf requires keying this map by that enum first."
-            ),
-        }
-    )
-    default_agent: str = field(metadata={"tier": Tier.PUBLIC})
+    agents: dict[AgentName, AgentConfig] = field(metadata={"tier": Tier.PUBLIC})
+    default_agent: AgentName = field(metadata={"tier": Tier.PUBLIC})
     terminal: TerminalConfig = field(metadata={"tier": Tier.INTERNAL})
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig, metadata={"tier": Tier.TUI})
     email: EmailConfig = field(default_factory=EmailConfig, metadata={"tier": Tier.TUI})
+    backup: BackupConfig = field(default_factory=BackupConfig, metadata={"tier": Tier.TUI})
     tts: TTSConfig | None = field(default=None, metadata={"tier": Tier.TUI})
     stt: STTConfig | None = field(default=None, metadata={"tier": Tier.TUI})
     chiptunes: ChiptunesConfig | None = field(default=None, metadata={"tier": Tier.TUI})
@@ -535,7 +540,7 @@ class TeleclaudeConfig:
     )
     workflow: WorkflowConfig = field(default_factory=WorkflowConfig, metadata={"tier": Tier.PUBLIC})
     deployment: DeploymentConfig = field(default_factory=DeploymentConfig, metadata={"tier": Tier.PUBLIC})
-    database_url: str | None = field(default=None, metadata={"tier": Tier.PUBLIC})
+    database_url: str | None = field(default=None, metadata={"tier": Tier.PUBLIC, SENSITIVE_METADATA_KEY: True})
     summarizer: SummarizerConfig | None = field(default=None, metadata={"tier": Tier.TUI})
     load_id: str = field(default="", metadata={"tier": Tier.INTERNAL})
     experiments: list[ExperimentConfig] = field(

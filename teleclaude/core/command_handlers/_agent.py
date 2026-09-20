@@ -250,7 +250,7 @@ async def start_agent(
             "Agent start rejected: %r (session=%s, available=%s, error=%s)",
             agent_name,
             session.session_id,
-            list(config.agents.keys()),
+            [agent.value for agent in config.agents],
             error,
         )
         await client.send_message(session, error)
@@ -338,7 +338,7 @@ async def start_agent(
         base_cmd,
         prompt_len,
         prompt_sha,
-        list(config.agents.keys()),
+        [agent.value for agent in config.agents],
     )
     logger.info(_AGENT_START_COMMAND_LOG, agent_name, base_cmd, prompt_len, prompt_sha)
 

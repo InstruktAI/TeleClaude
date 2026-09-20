@@ -53,7 +53,7 @@ def get_known_agents() -> tuple[str, ...]:
 
 def get_enabled_agents() -> tuple[str, ...]:
     """Return known agents currently enabled by config policy."""
-    return tuple(name for name in KNOWN_AGENT_IDS if bool(config.agents.get(name) and config.agents[name].enabled))
+    return tuple(agent.value for agent in AgentName if config.agents[agent].enabled)
 
 
 def is_agent_enabled(name: str) -> bool:
@@ -62,14 +62,15 @@ def is_agent_enabled(name: str) -> bool:
         normalized = normalize_agent_name(name)
     except ValueError:
         return False
-    cfg = config.agents.get(normalized)
+    cfg = config.agents.get(AgentName.from_str(normalized))
     return bool(cfg and cfg.enabled)
 
 
 def assert_agent_enabled(name: str) -> str:
     """Validate selection against config-enabled policy and return normalized name."""
     normalized = normalize_agent_name(name)
-    cfg = config.agents.get(normalized)
+    agent_name = AgentName.from_str(normalized)
+    cfg = config.agents.get(agent_name)
     if cfg is None:
         allowed = ", ".join(get_known_agents())
         raise ValueError(f"Unknown agent '{name}'. Allowed agents: {allowed}.")
@@ -84,7 +85,7 @@ def assert_agent_enabled(name: str) -> str:
 
 def get_default_agent() -> str:
     """Return the config-declared default agent name."""
-    return assert_agent_enabled(config.default_agent)
+    return assert_agent_enabled(config.default_agent.value)
 
 
 def is_agent_title(title: str) -> bool:
@@ -95,7 +96,7 @@ def is_agent_title(title: str) -> bool:
 
 def _get_agent_config(agent: str) -> AgentConfig:
     """Fetch AgentConfig or raise clear error for unknown agent."""
-    cfg = config.agents.get(agent)
+    cfg = config.agents.get(AgentName.from_str(agent))
     if not cfg:
         raise ValueError(f"Unknown agent '{agent}'")
     return cfg

@@ -348,7 +348,7 @@ class DiscordAdapter(
                 self._registered_listen_message_ids.add(control_id)
 
     def _get_enabled_agents(self) -> list[str]:
-        return [name for name, agent_cfg in config.agents.items() if agent_cfg.enabled]
+        return [name.value for name, agent_cfg in config.agents.items() if agent_cfg.enabled]
 
     @property
     def _multi_agent(self) -> bool:
