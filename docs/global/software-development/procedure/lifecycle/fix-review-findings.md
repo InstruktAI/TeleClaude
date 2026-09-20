@@ -68,11 +68,9 @@ procedure is ever dispatched.
    `software-development/policy/definition-of-done-lanes`. A valid omission
    finding — a missing reflection, verification, or gate the policies require
    on the authorized work — adds material within scope and is fixed, not
-   rejected. A newly introduced mechanism does not itself justify kickback: when
-   removing it restores the frozen contract, remove it in the current phase.
-   Kick back only when the finding is valid and evidence establishes that the
-   authorized upstream artifact or a different owner must change; reviewer
-   closure wording alone establishes neither. For each finding
+   rejected. Kick back only when a valid finding establishes that resolution
+   belongs to an upstream authority or different owner. A finding cannot create
+   that boundary by proposing it. For each finding
    you fix:
    - Understand the issue and its referenced location.
    - Apply the minimal fix that satisfies the independently validated invariant.

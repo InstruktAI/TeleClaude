@@ -30,7 +30,7 @@ Parse `$ARGUMENTS` as a comma-separated list. Confirm every SHA exists with
 
 ### 2. Inspect each named commit in isolation
 
-For each SHA, inspect its complete diff, metadata, and file list:
+For each SHA, inspect its authored message, complete diff, and file list:
 
 ```bash
 git show <sha>
@@ -39,6 +39,8 @@ git show --stat <sha>
 
 Read full changed-file context at the named commit with
 `git show <sha>:<path>`. Do not use neighboring commit state.
+
+Mechanically attached records are outside the authored review target.
 
 Never compute a range diff or range log. Range forms silently include commits
 the reviewer was not given.

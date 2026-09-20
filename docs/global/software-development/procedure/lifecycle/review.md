@@ -106,6 +106,9 @@ this contract exists to prevent. Absence of a specific prohibition is never a
 finding's basis when a principle covers the case; "the design feels wrong" is
 not a finding under any citation.
 
+An observation without a causal relationship to the reviewed target is outside
+the review, not an investigation lead.
+
 Use this format:
 
 ```text
@@ -151,18 +154,9 @@ Scope is frozen before review begins: the authorized intent, and the
 independently reviewed architecture or plan where one exists, form the fixed
 denominator every finding is judged against. Remediation closes valid findings
 within that scope; a valid omission finding may add material, but scope growth
-is semantic and line count proves nothing either way.
-
-On a remediation pass, establish whether each newly introduced mechanism
-belongs inside the frozen denominator before judging it for completeness. Trace
-any new durable state, migration, ownership boundary, interface, control, or
-recovery protocol to the frozen scope or an applicable governing contract. When
-that trace does not exist, the unauthorized addition is the finding. Complete
-the discovery pass, but record defects that exist only inside the unadmitted
-mechanism as investigation leads, not as demands to finish building it. A
-closure condition states the invariant the target must satisfy and never
-presumes the submitted mechanism survives. If upstream authority later admits
-the mechanism, reassess those leads under the normal substantive-drift rules.
+is semantic and line count proves nothing either way. A remediation changes the
+target, not its authority; every addition remains answerable to the same frozen
+denominator.
 
 The first review of a target is one complete discovery pass over the frozen
 digest. A remediation review closes existing findings and inspects the
