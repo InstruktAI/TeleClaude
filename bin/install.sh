@@ -903,6 +903,7 @@ install_voice_bridge() {
     if [ -d "$VOICE_BRIDGE_DIR" ]; then
         print_info "Installing and building Discord voice bridge..."
         if (
+            set -e
             cd "$VOICE_BRIDGE_DIR"
             ulimit -n 4096
             pnpm install --frozen-lockfile

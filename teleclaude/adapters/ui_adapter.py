@@ -358,16 +358,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             return
         destination = resolve_destination(session, self.ADAPTER_KEY)
         for message_id in pending:
-            try:
-                deleted = await self.delete_message(destination, message_id)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to delete pending UI message %s for session %s: %s",
-                    message_id,
-                    session.session_id,
-                    exc,
-                )
-                continue
+            deleted = await self.delete_message(destination, message_id)
             if not deleted:
                 continue
             await db.remove_pending_deletion(session.session_id, self.ADAPTER_KEY, message_id)

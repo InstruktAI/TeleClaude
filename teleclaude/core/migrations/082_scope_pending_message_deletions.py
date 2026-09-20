@@ -5,7 +5,7 @@ from __future__ import annotations
 import aiosqlite
 
 _MIGRATION_SQL = """
-DROP TABLE IF EXISTS pending_message_deletions;
+ALTER TABLE pending_message_deletions RENAME TO pending_message_deletions_unscoped;
 
 CREATE TABLE pending_message_deletions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,11 +20,28 @@ CREATE TABLE pending_message_deletions (
 
 CREATE INDEX idx_pending_deletions_session
     ON pending_message_deletions(session_id, adapter_key);
+
+INSERT INTO pending_message_deletions (
+    session_id,
+    adapter_key,
+    message_id,
+    deletion_type,
+    created_at
+)
+SELECT
+    session_id,
+    'legacy-unscoped',
+    message_id,
+    deletion_type,
+    created_at
+FROM pending_message_deletions_unscoped;
+
+DROP TABLE pending_message_deletions_unscoped;
 """
 
 
 async def up(db: aiosqlite.Connection) -> None:
-    """Replace unowned ephemeral rows with the adapter-scoped current shape."""
+    """Preserve unowned legacy rows explicitly while installing the scoped shape."""
     await db.executescript(_MIGRATION_SQL)  # guard: raw-sql
     await db.commit()
 
