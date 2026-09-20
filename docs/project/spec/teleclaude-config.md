@@ -78,7 +78,13 @@ Machine-config fields (`config.yml` / `TeleclaudeConfig`) declare an editability
 - `internal` (default, unmarked): constants, TTLs, QoS blocks, channel
   identifiers, and runtime-derived values. Not in a generated machine
   configuration, not in the TUI, not human-editable.
+<!-- planned-change:move-discord-reflection-state-to-db -->
 - `public`: the `config.yml` surface; agents patch `config.yml` directly.
+<!-- change:move-discord-reflection-state-to-db -->
+- `public`: the `config.yml` surface; agents mutate it through `telec config`,
+  while runtime and UI callers submit named semantic operations to the config
+  context. The backing file is not an editing surface.
+<!-- /planned-change:move-discord-reflection-state-to-db -->
 - `tui`: the operator-facing render set — the only tier `telec config wizard`
   renders.
 

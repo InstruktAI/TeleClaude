@@ -15,8 +15,15 @@ visibility: internal
   runtime-derived or system-resolved values. It is absent from a generated
   machine configuration, absent from the config TUI, and not presented as
   human-editable.
+<!-- planned-change:move-discord-reflection-state-to-db -->
 - **`public`** fields are the `config.yml` surface; agents patch `config.yml`
   directly.
+<!-- change:move-discord-reflection-state-to-db -->
+- **`public`** fields are the `config.yml` surface. Agents mutate them through
+  `telec config`; runtime and UI callers submit named semantic operations to
+  the config context. The backing file is not an agent or caller editing
+  surface.
+<!-- /planned-change:move-discord-reflection-state-to-db -->
 - **`tui`** is the operator-facing render set: the only tier the config wizard
   renders.
 - **A field may additionally be declared sensitive.** Sensitivity and tier are
@@ -52,6 +59,12 @@ visibility: internal
   members.
 
 ## Rationale
+
+<!-- planned:move-discord-reflection-state-to-db -->
+- Routing mutation through the config context preserves one transaction-wide
+  lock and validation-before-replacement authority; direct backing-file edits
+  would split that authority between callers.
+<!-- /planned:move-discord-reflection-state-to-db -->
 
 - Default-internal editability prevents accidental human exposure: a field is
   invisible until declared.
