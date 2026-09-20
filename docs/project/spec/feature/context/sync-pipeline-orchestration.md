@@ -329,7 +329,7 @@ And no global agent-artifact publication path opens from the tier's home
 ```
 <!-- /planned:docs-tier-layering -->
 
-<!-- planned:home-tier-commit-maintenance -->
+<!-- planned:docs-tier-layering -->
 #### UC-SPO21: A commit under a participating tier's home republishes the snapshot
 
 ```
@@ -340,7 +340,7 @@ Then the commit-boundary maintenance republishes the deployed documentation snap
 And the tier's committed material is in that snapshot, exactly as a registered project's would be
 And a saved but uncommitted change under the home deploys nothing
 ```
-<!-- /planned:home-tier-commit-maintenance -->
+<!-- /planned:docs-tier-layering -->
 
 <!-- planned-change:retire-docs-watcher -->
 #### UC-SPO12: Concurrent syncs observe a complete documentation deployment
