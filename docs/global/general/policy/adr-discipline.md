@@ -21,8 +21,8 @@ visibility: 'public'
   snippet's `## See Also` section — a soft reference. A global snippet never
   points to a project ADR: global doctrine must remain usable in another
   repository without a project dependency. The project ADR remains discoverable
-  through the project ADR index and records why the mother project adopted the
-  global contract. Never name ADR reasoning inline in a primary artifact body;
+  through its project ADR index and records why that project adopted the global
+  contract. Never name ADR reasoning inline in a primary artifact body;
   the body states current contract.
 - An ADR's **body** (Context / Decision / Consequences / Alternatives Considered) is an immutable historical record — never edited after the fact. The single mutable element is its **`## Status`**: an optional section recording the decision's standing. A new ADR never edits an earlier ADR's body; a decision that reverses or narrows an earlier one is recorded as its own new ADR, and the earlier ADR's `## Status` is then set to `Superseded by ADR-NNNN` (or `Superseded in part by ADR-NNNN`, or `Deprecated`) — the one change permitted to an existing ADR. An ADR with no `## Status` is live and accepted. **ADRs are superseded, never deleted:** the record of what was decided, and that it no longer holds, both stay on the timeline.
 - An ADR is one **atomic** decision — an immutable reasoning report on the architecture's decision timeline. One ADR records one decision. A cohesive contract whose parts must cross-reference is a spec or domain doc, not a set of mutually-referencing ADRs; each constituent decision is still its own standalone ADR.
