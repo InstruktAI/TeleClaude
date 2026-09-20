@@ -24,3 +24,7 @@
 
 - Never create a todo without an explicit `--kind`.
 - When passing Markdown or prose through a shell, use a single-quoted argument with correct embedded-quote handling. Never place prose containing backticks or shell substitutions inside double quotes.
+
+## Contest Review Premises
+
+- Under blocking review pressure, you normalize the reviewer's closure or the submitted remediation mechanism and optimize it toward green. Before editing or grading internals, re-establish whether that premise belongs to the frozen scope; when it does not, do not elaborate it.

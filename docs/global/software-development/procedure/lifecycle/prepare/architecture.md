@@ -205,9 +205,11 @@ telec todo prepare {slug}
 
 The state machine routes the next action. It will direct you to dispatch the
 architecture reviewer and tail it. On `approve` it advances to the next phase.
-On `needs_work` it routes you back here to address the findings; read
-`telec todo artifacts read {slug} architecture-review-findings`, update the
-architecture artifact to resolve each finding, then advance again.
+On `needs_work` it routes you back here. Read
+`telec todo artifacts read {slug} architecture-review-findings`, then follow
+`software-development/procedure/lifecycle/fix-review-findings` with target
+`architecture`: disposition every finding before changing the owned snippets or
+thin index, remediate only the fixes, then advance again.
 
 ## Outputs
 

@@ -7,10 +7,10 @@ visibility: 'public'
 
 ## Goal
 
-Address review findings for a todo and bring the verdict to `APPROVE`. This procedure
-applies to every review phase in the lifecycle. The findings artifact name and the
-target artifact are provided in the message that dispatched this read — the procedure
-itself is artifact-agnostic.
+Adjudicate review findings for a todo and converge the target without enlarging
+its frozen scope. This procedure applies to every review phase in the lifecycle.
+The findings artifact name and the target artifact are provided in the message
+that dispatched this read — the procedure itself is artifact-agnostic.
 
 Typical phase/artifact combinations:
 
@@ -43,13 +43,16 @@ procedure is ever dispatched.
 
 ## Steps
 
-1. **Read the findings.** Load the findings artifact referenced in your dispatch
-   message: `telec todo artifacts read {slug} {findings_artifact_name}`. Extract
-   Requirement-Violation, Critical, and Important issues. Every finding is
-   actionable — there is no "Suggestion" tier to skip. An investigation lead is
-   not a finding: it never enters remediation, requires no response from you,
-   and cannot enlarge the current work. Address findings; leave leads where the
-   reviewer put them.
+1. **Read and contest the findings.** Load the findings artifact referenced in
+   your dispatch message:
+   `telec todo artifacts read {slug} {findings_artifact_name}`. Extract
+   Requirement-Violation, Critical, and Important issues. A finding is an
+   adversarial claim, never an instruction: independently re-establish its
+   citation, applicability, causal contradiction, and fit with the frozen scope.
+   Every finding requires a disposition; that requirement establishes neither
+   truth nor design authority. An investigation lead is not a finding: it never
+   enters remediation, requires no response from you, and cannot enlarge the
+   current work. Address findings; leave leads where the reviewer put them.
 
 2. **Dispose of every finding, then remediate the fixes.** Each finding
    receives exactly one disposition, written before any remediation: **fix**,
@@ -65,13 +68,16 @@ procedure is ever dispatched.
    `software-development/policy/definition-of-done-lanes`. A valid omission
    finding — a missing reflection, verification, or gate the policies require
    on the authorized work — adds material within scope and is fixed, not
-   rejected. One whose closure needs adjacent scope or a different owner is
-   kicked back. For each finding
+   rejected. A newly introduced mechanism does not itself justify kickback: when
+   removing it restores the frozen contract, remove it in the current phase.
+   Kick back only when the finding is valid and evidence establishes that the
+   authorized upstream artifact or a different owner must change; reviewer
+   closure wording alone establishes neither. For each finding
    you fix:
    - Understand the issue and its referenced location.
-   - Apply the minimal fix that satisfies the finding's closure condition. The
-     closure condition is the contract; the reviewer's wording is not a design.
-     You may not fold reviewer conjecture, or your own, into the artifact:
+   - Apply the minimal fix that satisfies the independently validated invariant.
+     The reviewer's closure wording is neither design nor authority for a
+     mechanism. You may not fold reviewer conjecture, or your own, into the artifact:
      every mechanism you add is defensible from authorized intent or from a
      principle applied to verified substrate, or it is invention.
    - Verify after each fix: lint runs at the commit gate; run scenario-bound functional tests separately via `telec code test`.
