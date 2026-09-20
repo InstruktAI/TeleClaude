@@ -54,9 +54,9 @@ contract governs only what happens when maintenance runs.
   no failure withdraws, amends, or blocks the commit.
 <!-- planned:retire-docs-watcher -->
 - **Committed source.** A publication action receives the recorded range that
-  selected it and reads source from that range's committed tip. Uncommitted
-  files in the canonical checkout and in any registered publisher checkout are
-  not publication inputs.
+  selected it and advances only that repository contribution to the range tip.
+  Every other repository remains at its previously activated revision until its
+  own commit or merge maintenance runs. Working-tree files are never inputs.
 - **Recovery.** A failed action is replayed through this executor for its
   original recorded range and action id. Recovery emits the same attempt and
   outcome records as the first run and never substitutes the current working
@@ -137,10 +137,11 @@ But the integration worktree performs no maintenance action
 
 ```gherkin
 Given a canonical-main commit whose changed paths owe publication
-And the canonical checkout or another registered publisher contains a later uncommitted edit
+And another registered repository carries source that has not run its own publication action
 When commit-boundary maintenance performs the publication action for that recorded range
-Then the published generation is composed from committed source at each participating root
-And no later uncommitted edit appears in the generation
+Then the triggering repository contribution advances to the recorded range tip
+And every other repository contribution remains at its previously activated revision
+And no unactivated source appears in the generation
 ```
 
 #### UC-PCM8: Recovery replays the failed action for its original range

@@ -40,8 +40,9 @@ The sync pipeline is:
 <!-- change:retire-docs-watcher -->
 The publication pipeline is:
 
-1. **Resolve committed source** — materialize the recorded tip for the
-   triggering project and committed heads for every participating publisher.
+1. **Resolve activated source** — materialize the recorded tip for the
+   triggering project and retain every other publisher at its previously
+   activated revision.
 2. **Build indexes** — write fresh derived doc indexes inside those committed
    source snapshots.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
@@ -127,10 +128,11 @@ And the run exits zero
 
 ```gherkin
 Given a recorded canonical commit whose changed paths owe publication
-And a participating checkout contains a later uncommitted source edit
+And another registered repository has a newer committed or uncommitted source state that has not run its own publication action
 When the internal publication action runs for that recorded range
-Then derived indexes and runtime artifacts are built from committed source
-And the later uncommitted edit is absent from every deployed output
+Then the triggering repository contribution advances to the recorded tip
+And every other repository contribution remains at its previously activated revision
+And no unactivated source appears in a deployed output
 ```
 <!-- /planned-change:retire-docs-watcher -->
 
@@ -226,6 +228,15 @@ Then publication resolves the original committed input
 And the later source does not replace it
 And the replay reports its terminal outcome for that original range
 ```
+
+#### UC-SPO26: The working-tree publication command is absent
+
+```gherkin
+Given an operator invokes telec sync
+When the root command parser resolves the requested command
+Then the invocation is rejected as an unknown command
+And no validation, index build, distribution, or runtime-output write starts
+```
 <!-- /planned-change:retire-docs-watcher -->
 
 
@@ -239,6 +250,8 @@ Scenario: Delivery completes before sync
   And sync performs no additional source markdown mutations
 ```
 <!-- change:retire-docs-watcher -->
+#### UC-SPO27: Delivery reconciliation is published as part of its commit
+
 ```
 Scenario: Delivery reconciliation is part of the published commit
   Given integration stages snippet lifecycle reconciliation in its delivery commit
@@ -454,8 +467,14 @@ And validation reports a finding only when that source target is missing
   project's subscribed outputs. An explicit initial activation, when used,
   requires a clean recorded `HEAD` and blocking validation.
 <!-- /planned-change:retire-docs-watcher -->
+<!-- planned-change:retire-docs-watcher -->
 - The distribution step is optional in stripped-down deployments because a
   missing distribution entrypoint silently skips phase 3.
+<!-- change:retire-docs-watcher -->
+- Publication fails explicitly when its distribution implementation is
+  unavailable; a recorded activation never reports success after omitting a
+  runtime-output phase.
+<!-- /planned-change:retire-docs-watcher -->
 <!-- planned-change:retire-docs-watcher -->
 - The v1 CLI namespace is `telec sync`. The v2 target is `telec context sync`.
 <!-- change:retire-docs-watcher -->
