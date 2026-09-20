@@ -44,6 +44,9 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 #### Use cases (index of feature specs)
 
 - **project-plumbing-convergence** — `docs/project/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities
+<!-- planned:home-tier-commit-maintenance -->
+- **home-template-materialization** — `docs/project/spec/feature/reconciliation/home-template-materialization.md` — materializing repository-owned regular-file templates into the TeleClaude home before activation
+<!-- /planned:home-tier-commit-maintenance -->
 
 
 ## See Also
