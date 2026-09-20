@@ -36,3 +36,7 @@ The deploy command remains directly invocable; it loses its ambient caller, not 
 - Retain the watcher for live reload alongside commit-boundary deployment. Rejected: two deployment paths keep the ambient writer and require retaining the validation bypass to serve it, preserving the whole class of problem in exchange for a latency window the author closes with their own commit.
 - Deploy from the pre-commit gate instead. Rejected: it would deploy state that may fail validation or may never be committed, so the deployed tree could describe a commit that does not exist.
 - Trigger deployment from a daemon poll over the registered roots. Rejected: the same ambient class as the watcher with a coarser trigger, and it reintroduces mutation with no committed source to attribute it to.
+
+## Status
+
+Superseded in part by ADR-0094: publication no longer keeps a directly invocable command or an unscoped bootstrap/recovery caller.
