@@ -23,9 +23,17 @@ visibility: 'public'
 - `telec sync` behavior is the model: explicit project root handling, deterministic validation, and stable execution across invocation contexts.
 - One-shot migration utilities, personal tooling, temporary debugging scripts, and AI scratch helpers must not be created in `scripts/`.
 - Internal-only utilities must live outside the symlinked runtime surface (for example under `tools/` or `devtools/`).
+<!-- planned-change:align-scripts-runtime-boundary -->
 - Scripts must not import the `teleclaude` package at module level. Inline any needed types, constants, or utilities directly into the script. Lazy `teleclaude` imports are acceptable only inside a `try/except` that handles the package's absence gracefully.
 - Scripts must not manipulate `sys.path` (no `sys.path.insert`, no `parents[N]` walks) to locate the `teleclaude` package — the symlinked runtime surface makes such tricks break when the script runs from `~/.teleclaude/scripts` rather than the repo checkout.
 - Importing between scripts within `scripts/` is acceptable (they share the symlinked location); importing from `teleclaude.*` is not.
+<!-- change:align-scripts-runtime-boundary -->
+- Standalone execution never creates a second implementation owner. Each public capability names one canonical module; every in-process consumer imports that owner instead of maintaining a package-side copy.
+- A portable public script owns its complete capability under `scripts/` and carries its PEP 723 dependencies there. Shared first-party types, constants, parsing, and decisions stay in that script and are imported by consumers; they are never copied into `teleclaude/`.
+- A repo-bound process entrypoint may import its canonical `teleclaude` module directly when the package owns the capability. The entrypoint contains only argument, startup, and presentation adaptation; domain and workflow behavior stay in the package owner.
+- Scripts never manipulate `sys.path` to locate first-party code. Repo-bound entrypoints validate package availability and fail with an actionable diagnostic when invoked outside their declared runtime.
+- Importing between canonical modules under `scripts/` is permitted. A cross-boundary import never grants permission to duplicate the imported owner's knowledge.
+<!-- /planned-change:align-scripts-runtime-boundary -->
 - Runnable scripts must have the executable bit set in the repository.
 
 ## Rationale
@@ -34,6 +42,10 @@ visibility: 'public'
 - Portable scripts reduce operational drift across local, remote, and agent-driven usage.
 - PEP 723 metadata makes dependency resolution deterministic and self-contained.
 - Preflight validation prevents brittle failures and lowers troubleshooting cost.
+<!-- planned:align-scripts-runtime-boundary -->
+- Standalone is an invocation property, not an ownership model. Copying a package implementation into a public script creates two authorities that drift; one canonical owner preserves both portability and internal reuse.
+- Keeping internal tooling, migrations, and experiments outside the whole-tree symlink makes the deployed surface tell the truth about what operators and agents may rely on.
+<!-- /planned:align-scripts-runtime-boundary -->
 
 ## Scope
 
@@ -48,6 +60,10 @@ visibility: 'public'
 - Confirm repo-dependent scripts expose explicit root resolution (`__file__` anchor and/or `--project-root`).
 - Confirm validation errors are explicit and actionable.
 - Confirm script classification: if it is not a stable public command, it must not be under `scripts/`.
+<!-- planned:align-scripts-runtime-boundary -->
+- Confirm the command names its canonical implementation owner and that no parallel implementation of the same capability exists in another source root.
+- A broad directory-level lint exemption for `scripts/**` is rejected; a surviving exception is the narrow declaration already owned by the applicable configuration.
+<!-- /planned:align-scripts-runtime-boundary -->
 
 ## Exceptions
 
