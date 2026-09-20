@@ -101,8 +101,11 @@ description: Decide whether a todo should exist, audit that decision at preparat
 - **Repair before retiring.** Correct the project, input, missing
   documentation, dependencies, or other repairable omission in place. Retire
   only a confirmed duplicate, an owner that cannot be corrected in place,
-  unauthorized process intent, or an input for which no defensible intent
-  remains. Scheduling and `hold` state do not decide validity.
+  process intent defensible from neither authorized intent nor applicable
+  principles, or an input for which no defensible intent remains. A
+  human-owned consequence is repaired by returning only that consequence to
+  its owner; technical process intent remains agent-owned. Scheduling and
+  `hold` state do not decide validity.
 - **Repeat after `input` changes.** A prior reading of different intent does
   not authorize new derivation.
 - **Perform the kind's deeper landscape judgment at its actual phase.** These

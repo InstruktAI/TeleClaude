@@ -530,8 +530,10 @@ snippet-body rules — and two checks do:
   for. Text authored where the intent called only for removal or correction is
   the `scope` lane's finding (below), raised there.
 - **Process-change.** Directive text that alters a process-layer behavioral
-  contract traces to a human decision per
-  `software-development/policy/process-change-authority`.
+  contract is governed by `software-development/policy/process-change-authority`:
+  verify the agent-owned mechanism is covered by a current or pending contract
+  and independently reviewed, and classify only its underlying consequence
+  under `general/policy/human-contract`.
 
 **Frontmatter liveness check.** `delivered_by` is authorship provenance, not a
 dispatch gate. The reviewer checks frontmatter shape and stale delivered
@@ -551,10 +553,14 @@ decision. This is reviewer judgment over the changed files, not an automated
 free-text grader.
 
 **Process-change check.** When changed prose alters a process-layer behavioral
-contract, flag it per `software-development/policy/process-change-authority`:
-the change must trace to a human decision, and an agent-authored approval claim
-in a human's name is itself a blocking finding. Descriptive edits that preserve
-behavior do not trigger this check.
+contract, apply `software-development/policy/process-change-authority`: verify
+the before/after guarantee and material reason are recorded, the mechanism is
+covered by the changed contract, and ordinary independent review applies. A
+control relaxation additionally requires explicit approval from a reviewer
+with no stake in the work it unblocks. Return to the human only for an
+underlying consequence in the closed human lane; asking for human approval of
+the mechanism is itself a finding. Descriptive edits that preserve behavior do
+not trigger this check.
 
 **Language-owner check.** When changed generic software-development prose or an
 agent-executable example prescribes syntax, a type construct, library, runner,

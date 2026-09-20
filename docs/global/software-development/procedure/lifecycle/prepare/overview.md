@@ -145,9 +145,12 @@ carried it; it does not establish what a human decided.
    deriving from the revision.
 
 Retire only a confirmed duplicate, work whose owning project cannot be repaired
-in place, unauthorized process intent, or a todo for which no defensible intent
-remains. `hold` and scheduling are not changed by this audit. A task performs
-the same bounded audit before entering its task-specific preparation lane.
+in place, process intent defensible from neither authorized intent nor
+applicable principles, or a todo for which no defensible intent remains.
+Classify only the underlying consequence under the human contract; process
+mechanics themselves remain agent-owned. `hold` and scheduling are not changed
+by this audit. A task performs the same bounded audit before entering its
+task-specific preparation lane.
 
 ### 1. Pre-flight input viability
 
