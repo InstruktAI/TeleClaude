@@ -902,7 +902,12 @@ install_voice_bridge() {
     VOICE_BRIDGE_DIR="$INSTALL_DIR/teleclaude/adapters/discord/voice_bridge"
     if [ -d "$VOICE_BRIDGE_DIR" ]; then
         print_info "Installing and building Discord voice bridge..."
-        if (cd "$VOICE_BRIDGE_DIR" && pnpm install --frozen-lockfile && pnpm build) >> "$LOG_FILE" 2>&1; then
+        if (
+            cd "$VOICE_BRIDGE_DIR"
+            ulimit -n 4096
+            pnpm install --frozen-lockfile
+            pnpm build
+        ) >> "$LOG_FILE" 2>&1; then
             print_success "Discord voice bridge installed and built"
         else
             print_error "Failed to install or build Discord voice bridge"
