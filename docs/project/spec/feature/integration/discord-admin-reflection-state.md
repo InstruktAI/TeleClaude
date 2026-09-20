@@ -190,6 +190,7 @@ And any existing launcher in that forum is not treated as a valid project launch
 And a button click without a launch target returns user-safe feedback without creating a session
 ```
 
+<!-- planned-change:discord-reflection-contract-no-protected-unidentified -->
 #### UC-DARS-11: Shared artifacts obey master ownership without config writes
 
 ```gherkin
@@ -202,6 +203,23 @@ Then it may verify and use existing reflection state
 And it does not create the shared artifact when no usable record exists
 And neither computer writes the shared provider ID to config.yml
 ```
+<!-- change:discord-reflection-contract-no-protected-unidentified -->
+#### UC-DARS-11: Shared containers and their children retain distinct owners
+
+```gherkin
+Given a Discord category, forum, or channel is a singleton shared container across the fleet
+When the fleet reconciles that container
+Then only the master computer may create or adopt it
+And every non-master may verify and use the existing container without creating a duplicate
+And no computer writes its provider identity to configuration
+Given a session or relay thread exists inside a shared forum
+When the fleet accepts or reconciles that child
+Then exactly one computer durably owns the child independently of the shared container
+And foreign computers do not mutate the claimed child
+And the master treats the child as ownerless only after every configured computer has completed ownership adoption and two complete reconciliation epochs find no claim
+And incomplete or mixed-version ownership evidence causes no provider deletion
+```
+<!-- /planned-change:discord-reflection-contract-no-protected-unidentified -->
 
 #### UC-DARS-12: Explicit reset is a database operation
 

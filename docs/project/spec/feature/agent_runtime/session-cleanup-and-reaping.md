@@ -242,21 +242,26 @@ And a row-less identified thread that is still active or younger than the age fl
 #### UC-SCR-5: Adapter stale-thread reconciliation reaches project-specific session forums
 
 ```
-Given a Discord thread in a project-specific session forum, and every session row mapped to that thread is closed
-When the maintenance cleanup tick runs the adapter stale-resource sweep
-Then the thread is deleted from that project forum
-And a thread whose mapped session row is still live is left in place
-And a thread with no mapped session row is handled per UC-SCR-6
+Given an operator has a Discord thread in a project-specific or Unknown session forum beneath one computer's project category
+When that computer runs the adapter stale-resource sweep
+Then the parent forum hierarchy establishes that computer as the thread's destructive owner
+And the owner leaves the thread in place while an open local session row maps to it
+And the owner deletes the thread when no open local session row maps to it, unless it is the forum's launcher thread
+And another computer does not mutate the thread
 ```
 
-#### UC-SCR-6: Managed session forums converge under their destructive owner
+#### UC-SCR-6: Shared Help Desk threads converge through durable child ownership
 
 ```
-Given an operator has a Discord thread in a managed session forum
-When the adapter stale-resource sweep runs
-Then a non-master computer leaves a shared fleet forum unchanged
-And the computer that owns destructive reconciliation deletes the thread when no open session row maps to it, unless it is the forum's launcher thread
-And no age floor, archived state, or starter-message identity line grants a non-launcher thread preservation
+Given an operator has a Discord thread in the shared Help Desk forum
+When the fleet accepts or reconciles that thread
+Then exactly one computer durably claims the child before binding it to a local session
+And the claiming computer leaves the thread in place while its local session row is open
+And the claiming computer deletes the thread after its local session is no longer open
+And every foreign computer leaves the claimed thread unchanged
+And the master deletes an unclaimed non-launcher only after ownership adoption is complete, every fleet member supports the claim protocol, and two complete reconciliation epochs find no claim
+And incomplete discovery, an incomplete adoption barrier, or mixed-version disagreement leaves the shared forum unchanged
+And no age floor, archived state, or starter-message identity line grants a conclusively ownerless non-launcher preservation
 And when the forum's launcher thread cannot be conclusively resolved, the sweep skips that forum's pass without deleting anything
 ```
 
@@ -265,9 +270,12 @@ And when the forum's launcher thread cannot be conclusively resolved, the sweep 
 ```
 Given an operator has a Discord thread in the shared escalation forum
 When the adapter stale-resource sweep runs
-Then a non-master computer leaves the forum unchanged
-And the master computer deletes the thread when no active relay session backs it
-And the master computer leaves a thread whose relay session is still active in place
+Then the computer that created the relay durably claims the child and owns its reconciliation
+And that owner leaves the thread in place while its local relay session is active
+And that owner deletes the thread after its local relay is no longer active
+And every foreign computer leaves the claimed relay thread unchanged
+And the master deletes an unclaimed relay thread only after ownership adoption is complete, every fleet member supports the claim protocol, and two complete reconciliation epochs find no claim
+And incomplete ownership evidence produces no provider deletion
 ```
 <!-- /planned-change:discord-reflection-contract-no-protected-unidentified -->
 
