@@ -60,21 +60,6 @@ only; no later capability change edits it.
 
 Source: `teleclaude/project_setup/gitattributes.py:update_gitattributes()`
 
-<!-- planned-change:automatic-plumbing-convergence -->
-### 4. Converge the git smudge/clean filter driver
-
-Converges the driver to the declaration: a project subscribing `docs` gets the driver
-installed, and a project that does not has TeleClaude's driver removed from its git
-config. The driver handles tilde expansion — smudge expands the portable
-`@~/.teleclaude` reference to the absolute home path on checkout, and clean contracts
-it back on commit.
-
-Tracked files a checkout left unexpanded, and files still carrying a prior filter
-pattern's residue, are re-checked out so the smudge filter applies to them; a locally
-modified file is left untouched.
-
-Source: `teleclaude/project_setup/git_filters.py:ensure_git_filters()`
-<!-- change:automatic-plumbing-convergence -->
 ### 4. Converge the project's git plumbing
 
 Converges the installed plumbing to the declaration in one act, and the same act
@@ -101,7 +86,6 @@ A root carrying no project declaration is not adopted by this act: it is left
 byte-for-byte unchanged, with no hook and no filter written or read for it.
 
 Source: `teleclaude/project_setup/plumbing.py:converge_plumbing()`
-<!-- /planned-change:automatic-plumbing-convergence -->
 
 ### 5. Sync project artifacts
 
@@ -117,25 +101,6 @@ project is registered.
 
 Source: `teleclaude/project_setup/sync.py:sync_project_artifacts()`
 
-<!-- planned-change:automatic-plumbing-convergence -->
-### 6. Install code plumbing (`code` only)
-
-Deploys the quality skeleton (downstream projects only) and installs the
-TeleClaude-owned `pre-commit`, `post-commit`, `post-merge`, and `pre-push` hooks
-into `.git/hooks/` from the canonical sources under `templates/quality/githooks/`.
-The hooks are language-neutral, so any code project receives the same set
-regardless of language.
-
-Installation goes through a provenance-aware seam: a hook the project authored
-itself is preserved rather than overwritten.
-
-A project that does not subscribe `code` — a data or documentation repository —
-receives no skeleton, and a project whose declaration resolves no executable action
-receives no hooks.
-
-Source: `teleclaude/project_setup/hooks.py:install_code_hooks()`
-and `teleclaude/project_setup/skeleton.py:deploy_skeleton()`
-<!-- change:automatic-plumbing-convergence -->
 ### 6. Deploy the quality skeleton (`code` only)
 
 Deploys the quality skeleton for a downstream project subscribing `code`. The
@@ -145,7 +110,6 @@ Hook installation is not part of this step; it belongs to the convergence act
 above, which every trigger shares.
 
 Source: `teleclaude/project_setup/skeleton.py:deploy_skeleton()`
-<!-- /planned-change:automatic-plumbing-convergence -->
 
 ### 7. Ensure `project_slug` and register the project root
 
