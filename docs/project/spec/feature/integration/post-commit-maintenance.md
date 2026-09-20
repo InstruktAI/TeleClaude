@@ -174,6 +174,19 @@ And every action command and outcome carries that same normalized activation ran
 ```
 <!-- /planned:retire-docs-watcher -->
 
+<!-- planned:home-tier-commit-maintenance -->
+#### UC-PCM10: A tier-documentation commit in the platform home owes publication
+
+```gherkin
+Given the platform home carries the installed maintenance hook
+And a person or company documentation source inside it participates in the documentation surface
+When a commit on the platform home's canonical main records a change to that source
+Then committed-state publication is included in the maintenance owed by that activation range
+And an agent reading the structured records observes the immutable range and the publication action's terminal outcome
+But the same path shape in an ordinary project does not acquire a home-only maintenance binding
+```
+<!-- /planned:home-tier-commit-maintenance -->
+
 ## See Also
 
 - docs/project/adr/0087-mechanical-maintenance-executes-in-a-hook.md — the decision this contract realizes.
