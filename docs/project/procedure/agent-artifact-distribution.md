@@ -24,7 +24,7 @@ Build and distribute agent artifacts in this repository.
 <!-- planned-change:retire-docs-watcher -->
 2. The docs watcher publishes the change; runtime-specific outputs regenerate on save.
 <!-- change:retire-docs-watcher -->
-2. Commit the change; the post-commit hook publishes it and runtime-specific outputs regenerate.
+2. Commit the change; commit or merge maintenance publishes the recorded range and runtime-specific outputs regenerate.
 <!-- /planned-change:retire-docs-watcher -->
 
 ## Outputs

@@ -59,8 +59,8 @@ path runs two phases:
 
 Global skill publication is a separate composed surface. Every registered
 project contributes each direct `agents/skills/<name>/` folder; no configuration
-capability is required because folder existence is the declaration. Sync
-materializes the contributed packages under `~/.teleclaude/skills/` and the
+capability is required because folder existence is the declaration.
+Sync materializes the contributed packages under `~/.teleclaude/skills/` and the
 Mother project alone supplies the catalog `AGENTS.master.md`. Side-project
 catalog masters are not parsed. After the skill links exist, the Mother-owned
 catalog master runs through the normal renderer and its generated `AGENTS.md` is
@@ -635,7 +635,7 @@ And that change is not yet committed
 When the agent reads the deployed tree for that project
 Then the deployed tree still carries the content of the previous commit
 When the agent commits that change
-Then the commit-boundary maintenance records that the deployed tree was republished
+Then commit-boundary maintenance records that the committed range was published
 And the agent reads the committed content from the deployed tree
 ```
 <!-- /planned:retire-docs-watcher -->
@@ -684,7 +684,7 @@ And the agent reads the committed content from the deployed tree
 
 <!-- planned-change:retire-docs-watcher -->
 - The distribution step is always fatal: a non-zero distribution exit propagates
-  and fails the sync (there is no suppress-on-warn mode). A split domain
+  and fails publication (there is no suppress-on-warn mode). A split domain
   ownership declaration and a bundle-inflation failure both abort the deploy this
   way. The docs watcher, which must not block, catches that failure at its own
   subprocess boundary instead.

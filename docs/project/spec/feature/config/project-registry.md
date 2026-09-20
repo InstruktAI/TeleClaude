@@ -51,6 +51,7 @@ And the worktree is absent from the registry
 And adopting it again leaves the registry unchanged
 ```
 
+<!-- planned-change:retire-docs-watcher -->
 #### UC-CFG-REG2: Synchronization never writes the registry
 
 ```gherkin
@@ -60,6 +61,17 @@ When an agent invokes a deploy-mode synchronization for that project
 Then the registry still does not list that project
 And the synchronization completes its own phases
 ```
+<!-- change:retire-docs-watcher -->
+#### UC-CFG-REG2: Publication never writes the registry
+
+```gherkin
+Given a project that is not recorded in the registry
+And that project publishes a documentation domain
+When recorded-commit maintenance publishes that project's committed source
+Then the registry still does not list that project
+And publication completes its own phases
+```
+<!-- /planned-change:retire-docs-watcher -->
 
 ## Known caveats
 

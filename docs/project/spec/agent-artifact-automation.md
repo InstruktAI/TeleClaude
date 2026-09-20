@@ -33,7 +33,7 @@ between a save and its commit.
 <!-- planned-change:retire-docs-watcher -->
 - **Command**: the docs watcher (`teleclaude.cli.watch`), which deploys on change via the hidden, watcher-only `telec sync --skip-validation` — live reload never blocks; the commit gate is the real validation contract.
 <!-- change:retire-docs-watcher -->
-- **Command**: the post-commit hook, which deploys the committed state via `telec sync` — the commit gate has already validated it.
+- **Command**: commit or merge maintenance invokes the internal publication action for its recorded range after the commit gate has validated it.
 <!-- /planned-change:retire-docs-watcher -->
 
 
@@ -49,7 +49,7 @@ between a save and its commit.
 - Generated artifacts are overwritten on the next automated run.
 <!-- change:retire-docs-watcher -->
 - A commit made on a host where the hook is not installed distributes nothing
-  and surfaces no obligation; a deliberate `telec sync` publishes in that case.
+  and surfaces no obligation. Recovery replays the recorded maintenance action;
+  it never publishes the current working tree.
 - Generated artifacts are overwritten on the next automated run.
 <!-- /planned-change:retire-docs-watcher -->
-

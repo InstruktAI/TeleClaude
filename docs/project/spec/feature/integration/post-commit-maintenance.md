@@ -52,6 +52,16 @@ contract governs only what happens when maintenance runs.
 - **Failure posture.** The commit is already recorded before maintenance
   begins. A failing action is reported and the remaining actions still run;
   no failure withdraws, amends, or blocks the commit.
+<!-- planned:retire-docs-watcher -->
+- **Committed source.** A publication action receives the recorded range that
+  selected it and reads source from that range's committed tip. Uncommitted
+  files in the canonical checkout and in any registered publisher checkout are
+  not publication inputs.
+- **Recovery.** A failed action is replayed through this executor for its
+  original recorded range and action id. Recovery emits the same attempt and
+  outcome records as the first run and never substitutes the current working
+  tree or a newer head.
+<!-- /planned:retire-docs-watcher -->
 - **Absence.** A commit made where the hook is not installed performs no
   maintenance and raises no signal. Nothing detects that absence here:
   installed plumbing is machine state whose comparison against the project's
@@ -121,6 +131,29 @@ Then the actions execute from the canonical checkout without an agent instructio
 And the structured records contain a terminal outcome for every action
 But the integration worktree performs no maintenance action
 ```
+
+<!-- planned:retire-docs-watcher -->
+#### UC-PCM7: Publication uses the recorded commit, not later working-tree state
+
+```gherkin
+Given a canonical-main commit whose changed paths owe publication
+And the canonical checkout or another registered publisher contains a later uncommitted edit
+When commit-boundary maintenance performs the publication action for that recorded range
+Then the published generation is composed from committed source at each participating root
+And no later uncommitted edit appears in the generation
+```
+
+#### UC-PCM8: Recovery replays the failed action for its original range
+
+```gherkin
+Given a recorded commit range whose publication action failed
+And repository heads or working trees have changed since that failure
+When an agent retries that recorded maintenance action
+Then the executor performs publication for the original range and action id
+And its structured records identify the replayed range and terminal outcome
+And no current working-tree state replaces the original input
+```
+<!-- /planned:retire-docs-watcher -->
 
 ## See Also
 

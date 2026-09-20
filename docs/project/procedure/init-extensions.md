@@ -49,6 +49,17 @@ agent handles authentication, interactivity, and confirmation as judgment, not
 code branches. A project with no company resolves no org and stays local-only;
 remote setup never gates project setup.
 
+<!-- planned:retire-docs-watcher -->
+### 1b. Project initialization installs plumbing but does not publish
+
+`telec projects init` materializes the declaration and converges the project's
+filters and hooks. It does not publish documentation or agent artifacts from
+the setup working tree. The first validated canonical commit activates those
+sources through commit maintenance; an initial activation before that boundary
+must identify and validate a clean recorded `HEAD` rather than deploying the
+current working tree.
+<!-- /planned:retire-docs-watcher -->
+
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
 A dedicated `make launchers` target compiles the `.app` bundles from one parameterized
@@ -155,6 +166,19 @@ The step is skipped in CI mode and in the deps-only install a git worktree resol
 
 Source: `bin/install.sh:install_log_runtime()`
 
+<!-- planned:retire-docs-watcher -->
+### 5. Configuration-schema link (`make install`)
+
+The shared-runtime linking step exposes the canonical checkout's `schemas/`
+directory at the TeleClaude home. An already-correct symlink is unchanged. A
+known legacy generated schema directory is replaced only when its contents are
+the generated schema set; any unexpected entry or conflicting target type
+fails installation without deleting it. Documentation and artifact publication
+never writes the home schema path.
+
+Source: `bin/init/link_shared_scripts.sh:link_shared_scripts()`
+<!-- /planned:retire-docs-watcher -->
+
 ## Outputs
 
 - Help desk workspace scaffolded (TeleClaude project only).
@@ -163,6 +187,10 @@ Source: `bin/install.sh:install_log_runtime()`
 
 - Logging runtime present, current, and wired by `make install`, with the resolved log
   root and health status reported to the user.
+<!-- planned:retire-docs-watcher -->
+- The TeleClaude home schema path linked to the canonical checkout's generated
+  schema directory, with legacy generated content migrated safely.
+<!-- /planned:retire-docs-watcher -->
 
 ## Recovery
 

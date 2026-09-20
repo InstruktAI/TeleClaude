@@ -45,6 +45,7 @@ resolution contract is `project/spec/feature/config/tier-declaration`.
 The machine runtime `config.yml` is outside this: it carries a different
 filename and takes no part in tier resolution.
 
+<!-- planned-change:retire-docs-watcher -->
 One JSON Schema per tier is generated from the same models the runtime
 validates against and committed at repo-root
 `schemas/teleclaude-{global,project,person,company}.schema.json`, beside the MCP
@@ -52,6 +53,16 @@ registry schema. All four are deployed into the TeleClaude home tree beside the
 home's own configuration files; the project-tier schema is deployed to each
 project root beside that project's `teleclaude.yml`, by the same step that
 writes that project's generated entrypoints, and is committed as they are.
+<!-- change:retire-docs-watcher -->
+One JSON Schema per tier is generated from the same models the runtime
+validates against and committed at repo-root
+`schemas/teleclaude-{global,project,person,company}.schema.json`, beside the MCP
+registry schema. Machine installation exposes that canonical schema directory
+at the TeleClaude home through one symlink; publication generates or deploys no
+home schema copy. The project-tier schema is still deployed to each project
+root beside that project's `teleclaude.yml`, by the project-output step that
+writes that project's generated entrypoints, and is committed as they are.
+<!-- /planned-change:retire-docs-watcher -->
 
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
 modeline naming a schema in its own tree — a sibling for a project config, the
@@ -715,7 +726,11 @@ projects:
 All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
 location, etc.) lives in each project's own `teleclaude.yml` and is loaded
 through `ProjectCatalogService`. `telec projects init` is the sole writer of the
+<!-- planned-change:retire-docs-watcher -->
 registry; `telec sync` no longer registers projects. `project_slug` is the
+<!-- change:retire-docs-watcher -->
+registry; publication never registers projects. `project_slug` is the
+<!-- /planned-change:retire-docs-watcher -->
 canonical machine identity used for the log namespace
 (`instrukt-ai-logs {project_slug}`), the cross-project docs namespace, and
 service-level project lookup. `project_name` remains display-only.
