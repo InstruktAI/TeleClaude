@@ -34,14 +34,11 @@ description: Pyright configuration path resolution, execution-environment matchi
   environment, allowing a bounded subtree to carry a different severity while
   the repository default remains strict.
 
-## Verified local edge
+## Documented gap
 
-Pyright's upstream documentation defines an execution-environment root as the
-root path for the code in that environment and documents containment-based
-matching. It does not separately promise file-root behavior. TeleClaude's
-pinned Pyright accepts `teleclaude/api_server.py` as an environment root; the
-delivery that relies on this shape keeps a direct probe as its evidence rather
-than presenting the local result as a general upstream guarantee.
+The configuration reference defines an execution-environment root as a path for
+the code in that environment and documents containment-based matching. It does
+not separately specify whether a regular file path is accepted as a root.
 
 ## Sources
 
