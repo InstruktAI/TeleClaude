@@ -243,11 +243,13 @@ shared Discord forums. Pre-activation contenders and inventory items retain
 every `(thread, computer)` observation without collapsing competing local
 claims. After activation, the separate owner row permits exactly one winning
 computer per thread. Every mutation is source-bound to the computer
-authenticated by the fleet transport; one computer cannot observe, claim, or
-transition another computer's child. The member registry retains every computer
-observed through fleet discovery, including offline members, and adoption
-remains incomplete until each member has published a complete inventory for the
-current protocol generation.
+authenticated by the fleet transport. The master may receive, retain, and
+aggregate each computer's authenticated contender and inventory observations;
+one computer cannot author or alter another computer's observations, claim its
+children, or transition their lifecycle or provider state. The member registry
+retains every computer observed through fleet discovery, including offline
+members, and adoption remains incomplete until each member has published a
+complete inventory for the current protocol generation.
 
 Before fleet-wide activation, inventory replacement writes the member's complete
 item set and refreshes its composite-key contender rows; these observations
