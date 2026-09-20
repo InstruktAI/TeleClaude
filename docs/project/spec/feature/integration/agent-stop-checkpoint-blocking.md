@@ -479,6 +479,7 @@ And its required action instructs the agent to declare the paths it wrote and di
 And the decision attributes no path to any session
 ```
 
+<!-- planned-change:checkpoint-disclaimer-not-retained-across-stop-turns -->
 #### UC-CP27: A disclaimed path stops being reported
 
 ```gherkin
@@ -488,6 +489,18 @@ When the session reaches a further agent-stop checkpoint boundary
 Then those paths are not reported again
 And a decision is still produced when a path becomes unaccounted for after that disclaimer
 ```
+<!-- change:checkpoint-disclaimer-not-retained-across-stop-turns -->
+#### UC-CP27: An unchanged disclaimed path stays accounted for across turns
+
+```gherkin
+Given an agent session was told about a dirty path it had not accounted for
+And the session disclaimed that path in its current worktree state
+When the session reaches later agent-stop checkpoint boundaries
+And the path's content, mode, file type, deletion state, cleanliness, and commit state are unchanged
+Then the path is not reported again regardless of intervening user-input turns
+But when any part of that worktree state changes, the path becomes unaccounted for and is reported again
+```
+<!-- /planned-change:checkpoint-disclaimer-not-retained-across-stop-turns -->
 
 ### Cross-context references
 

@@ -357,6 +357,7 @@ And the path is still reported to every other session that has not accounted for
 And disclaiming attributes the path to no one
 ```
 
+<!-- planned-change:checkpoint-disclaimer-not-retained-across-stop-turns -->
 #### UC-CGIP-37 — A disclaimer covers a situation, not a filename
 
 ```gherkin
@@ -364,6 +365,16 @@ Given a session has disclaimed a dirty path
 When that path is committed, becomes clean, or the session receives new user input
 Then the disclaimer no longer applies to that path
 ```
+<!-- change:checkpoint-disclaimer-not-retained-across-stop-turns -->
+#### UC-CGIP-37 — A disclaimer remains valid while the path is unchanged
+
+```gherkin
+Given a session has disclaimed a dirty path in its current worktree state
+When later turns observe the same path with unchanged content, mode, file type, deletion state, cleanliness, and commit state
+Then the disclaimer remains effective across user-input and agent-stop turns
+And any change to that worktree state invalidates the disclaimer for the path
+```
+<!-- /planned-change:checkpoint-disclaimer-not-retained-across-stop-turns -->
 
 
 ### Commit-time gates — in-process, no framework stash
