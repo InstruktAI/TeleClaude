@@ -14,6 +14,7 @@ from ._agent_stops import DbAgentStopsMixin
 from ._base import DbBase
 from ._control_delivery import ControlDeliveryRecord, DbControlDeliveryMixin
 from ._conversation_delivery import DbConversationDeliveryMixin
+from ._discord_reflection import DbDiscordReflectionMixin
 from ._hooks import DbHooksMixin
 from ._inbound import (
     AcceptedTurnBindingRecord,
@@ -49,6 +50,7 @@ from ._webhooks import DbWebhooksMixin
 
 
 class Db(
+    DbDiscordReflectionMixin,
     DbAgentStopsMixin,
     DbControlDeliveryMixin,
     DbRemindersMixin,

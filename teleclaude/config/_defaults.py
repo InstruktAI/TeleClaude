@@ -89,13 +89,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "enabled": False,
         "token": None,
         "guild_id": None,
-        "help_desk_channel_id": None,
-        "escalation_channel_id": None,
-        "all_sessions_channel_id": None,
-        "operator_chat_channel_id": None,
-        "announcements_channel_id": None,
-        "general_channel_id": None,
-        "categories": None,
     },
     "whatsapp": {
         "enabled": False,

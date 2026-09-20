@@ -17,7 +17,6 @@ from teleclaude.cli.config_handlers import (
     replace_person_mcp_secret_value,
     save_global_config,
     save_person_config,
-    save_raw_machine_config,
     set_env_var,
 )
 from teleclaude.cli.tui.views._config_constants import (
@@ -30,49 +29,11 @@ from teleclaude.cli.tui.views._config_constants import (
     observe_config_tui,
 )
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
-from teleclaude.config import DEFAULT_CONFIG, build_config_from_raw, config, config_path, reload_config
+from teleclaude.config import reload_config
 from teleclaude.config._environment import mutate_environment_value
+from teleclaude.config.machine_config_mutation import set_machine_field
 from teleclaude.config.schema import PersonEntry
-from teleclaude.config.validation import is_unresolved_placeholder, missing_required_fields, validated_sections
-
-
-def _apply_field_to_global_config(key: str, deserialized: Any) -> None:
-    parts = key.split(".")
-    obj = config
-    for part in parts[:-1]:
-        obj = _descend(obj, part)
-    _assign(obj, parts[-1], deserialized)
-
-
-def _descend(node: Any, part: str) -> Any:
-    if isinstance(node, list):
-        return node[int(part)]
-    if isinstance(node, dict):
-        return node[part]
-    return getattr(node, part)
-
-
-def _assign(node: Any, part: str, value: Any) -> None:
-    if isinstance(node, list):
-        node[int(part)] = value
-    elif isinstance(node, dict):
-        node[part] = value
-    else:
-        setattr(node, part, value)
-
-
-_NO_DEFAULT = object()
-
-
-def _default_for_key(key: str) -> Any:
-    """The DEFAULT_CONFIG value for a dotted key, or a sentinel when none exists."""
-    node: Any = DEFAULT_CONFIG
-    for part in key.split("."):
-        if isinstance(node, dict) and part in node:
-            node = node[part]
-        else:
-            return _NO_DEFAULT
-    return node
+from teleclaude.config.validation import is_unresolved_placeholder
 
 
 def _zero_value(annotation: Any) -> Any:
@@ -430,78 +391,7 @@ class ConfigContentEditingMixin:
 
                 self._save_reflected_field(f.key, items)
 
-    def _apply_field_to_raw_config(self, key: str, deserialized: object) -> None:
-        """Write a non-env field into config.yml, dropping it when it equals its default.
-
-        Persisting only deviations keeps config.yml sparse; the loader re-fills
-        defaults on read, so the dropped value still renders via the default.
-        """
-        path = key.split(".")
-        if deserialized == _default_for_key(key) and self._prune_raw_key(path):
-            return
-        node = self._raw_config  # type: ignore[attr-defined]
-        for part in path[:-1]:
-            if isinstance(node, list):
-                node = node[int(part)]
-                continue
-            child = node.get(part)
-            if not isinstance(child, (dict, list)):
-                child = {}
-                node[part] = child
-            node = child
-        _assign(node, path[-1], deserialized)
-
-    def _prune_raw_key(self, path: list[str]) -> bool:
-        """Remove a dotted dict key from the raw config, pruning emptied parents.
-
-        Returns True when the key is handled (absent or removed); False when the
-        path crosses a non-dict node, in which case the caller writes it normally.
-        """
-        node = self._raw_config  # type: ignore[attr-defined]
-        chain: list[tuple[dict[str, Any], str]] = []  # guard: loose-dict - raw YAML config tree
-        for part in path[:-1]:
-            if not isinstance(node, dict):
-                return False
-            if part not in node:
-                return True  # ancestor absent: default was never stored
-            chain.append((node, part))
-            node = node[part]
-        if not isinstance(node, dict):
-            return False
-        node.pop(path[-1], None)
-        for container, part in reversed(chain):
-            if isinstance(container[part], dict) and not container[part]:
-                container.pop(part)
-            else:
-                break
-        return True
-
-    def _section_write_block_reason(self, key: str, deserialized: object) -> str | None:
-        """Reason to refuse persisting this edit, or None if it may be written.
-
-        Integrity gate: never persist a config section that is enabled while its
-        required fields are missing. Reuses the same validator the daemon runs at
-        startup so the two surfaces cannot disagree.
-        """
-        if "." not in key:
-            return None
-        section_name, field_name = key.split(".", 1)
-        if section_name not in validated_sections():
-            return None
-        candidate_raw = dict(self._raw_config)  # type: ignore[attr-defined]
-        section = dict(candidate_raw.get(section_name) or {})
-        section[field_name] = deserialized
-        candidate_raw[section_name] = section
-        candidate = build_config_from_raw(candidate_raw, config_path.parent)
-        typed_section = getattr(candidate, section_name)
-        if not typed_section.enabled:
-            return None  # disabled (or being disabled) never blocks
-        missing = missing_required_fields(section_name, typed_section)
-        if missing:
-            return f"{section_name} is enabled but not configured: fill {', '.join(missing)} (or disable it)."
-        return None
-
-    def _save_reflected_field(self, key: str, raw_value: Any) -> None:  # noqa: C901 - owner-local persistence transitions
+    def _save_reflected_field(self, key: str, raw_value: Any) -> None:
         """Parse, validate, and write a reflected field value back to its source."""
         operation_id = str(uuid4())
         observe_config_tui(ConfigTuiOutcome.SAVE_REQUESTED, operation_id=operation_id, field_paths=[key])
@@ -551,23 +441,8 @@ class ConfigContentEditingMixin:
                 if f.owning_source == "machine":
                     reload_config()
             elif f.owning_source == "machine":
-                block_reason = self._section_write_block_reason(key, deserialized)
-                if block_reason is not None:
-                    observe_config_tui(
-                        ConfigTuiOutcome.BLOCKED,
-                        operation_id=operation_id,
-                        field_paths=[key],
-                        source="config",
-                    )
-                    self._status_message = block_reason  # type: ignore[attr-defined]
-                    self._status_is_error = True  # type: ignore[attr-defined]
-                    return
-                # Update the sparse raw tree (drops values equal to their default).
-                self._apply_field_to_raw_config(key, deserialized)
-                # Update global config singleton for live consistency.
-                _apply_field_to_global_config(key, deserialized)
-                # Persist the sparse raw tree; the loader re-fills defaults on read.
-                save_raw_machine_config(self._raw_config)  # type: ignore[attr-defined]
+                result = set_machine_field(tuple(key.split(".")), deserialized)
+                self._raw_config = dict(result.raw)  # type: ignore[attr-defined]
             elif f.owning_source == "global":
                 global_config = get_global_config()
                 person_key = self._expanded_person  # type: ignore[attr-defined]

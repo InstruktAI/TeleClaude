@@ -21,7 +21,7 @@ _TELEGRAM_QOS_INPUT = ClosedMapping(
         "rounding_ms": SCALAR,
     }
 )
-_TRUSTED_DIRECTORY_INPUT = ClosedMapping({"name": SCALAR, "desc": SCALAR, "path": SCALAR, "discord_forum": SCALAR})
+_TRUSTED_DIRECTORY_INPUT = ClosedMapping({"name": SCALAR, "desc": SCALAR, "path": SCALAR})
 _TTS_VOICE_INPUT = ClosedMapping({"name": SCALAR, "voice_id": SCALAR, "params": OPEN})
 _TTS_SERVICE_INPUT = ClosedMapping(
     {
@@ -113,13 +113,6 @@ MACHINE_CONFIG_INPUT = ClosedMapping(
                 "enabled": SCALAR,
                 "token": SCALAR,
                 "guild_id": SCALAR,
-                "help_desk_channel_id": SCALAR,
-                "escalation_channel_id": SCALAR,
-                "all_sessions_channel_id": SCALAR,
-                "operator_chat_channel_id": SCALAR,
-                "announcements_channel_id": SCALAR,
-                "general_channel_id": SCALAR,
-                "categories": NamedMapping(SCALAR),
                 "qos": _MODE_QOS_INPUT,
             }
         ),

@@ -138,60 +138,16 @@ _yaml_python() {
 
 get_current_agent_enabled() {
     local agent="$1"
-    if [ ! -f "$TC_CONFIG" ]; then
-        echo "unset"
-        return
-    fi
-    "$(_yaml_python)" -c "
-import sys
-try:
-    import yaml
-except ImportError:
-    print('unset'); sys.exit(0)
-try:
-    with open('$TC_CONFIG') as f:
-        data = yaml.safe_load(f) or {}
-    agent_cfg = (data.get('agents') or {}).get('$agent')
-    if not isinstance(agent_cfg, dict):
-        print('unset'); sys.exit(0)
-    if 'enabled' not in agent_cfg:
-        print('unset'); sys.exit(0)
-    val = agent_cfg.get('enabled')
-    if isinstance(val, bool):
-        print('true' if val else 'false')
-    else:
-        print('unset')
-except Exception:
-    print('unset')
-" 2>/dev/null || echo "unset"
+    PYTHONPATH="$INSTALL_DIR" "$(_yaml_python)" "$INSTALL_DIR/bin/init/configure_machine_agents.py" --inspect 2>/dev/null \
+        | awk -F= -v key="$agent" '$1 == key {print $2; found=1} END {if (!found) print "unset"}'
 }
 
 get_current_default_agent() {
     local default_val="$1"
-    if [ -f "$TC_CONFIG" ]; then
-        "$PYTHON_CMD" -c "
-try:
-    lines = open('$TC_CONFIG').read().splitlines()
-    in_agents = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith('agents:'):
-            in_agents = True
-            continue
-        if in_agents:
-            if line and not line.startswith(' ') and not line.startswith('\t'):
-                in_agents = False
-                continue
-            if stripped.startswith('default:'):
-                print(stripped.split(':', 1)[1].strip())
-                import sys; sys.exit(0)
-except Exception:
-    pass
-print('$default_val')
-" 2>/dev/null || echo "$default_val"
-    else
-        echo "$default_val"
-    fi
+    local configured
+    configured=$(PYTHONPATH="$INSTALL_DIR" "$(_yaml_python)" "$INSTALL_DIR/bin/init/configure_machine_agents.py" --inspect 2>/dev/null \
+        | awk -F= '$1 == "default" {print $2; found=1} END {if (!found) print ""}')
+    echo "${configured:-$default_val}"
 }
 
 _resolve_agent_enabled() {
@@ -407,62 +363,9 @@ setup_agents_interactive() {
     fi
 
     print_info "Updating config.yml agents settings..."
-    # Python code to update config.yml
-    "$PYTHON_CMD" -c "
-from pathlib import Path
-import sys
-
-def update_agents(path_str, claude_on, agy_on, codex_on, deepseek_on, default_name):
-    path = Path(path_str)
-    if not path.exists():
-        return
-    content = path.read_text()
-
-    # The config key is 'gemini' (binary resolves to agy); heal any config that
-    # a prior installer wrote with the unparseable 'agy:' key.
-    content = content.replace('agy:', 'gemini:')
-
-    lines = content.splitlines()
-    in_agents = False
-    current_agent = None
-    default_idx = None
-    
-    states = {
-        'claude': claude_on == 'true',
-        'gemini': agy_on == 'true',
-        'codex': codex_on == 'true',
-        'deepseek': deepseek_on == 'true'
-    }
-    
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith('agents:'):
-            in_agents = True
-            continue
-        if in_agents:
-            if line and not line.startswith(' ') and not line.startswith('\t'):
-                in_agents = False
-                continue
-            if stripped.startswith('default:'):
-                default_idx = i
-                continue
-            if stripped.endswith(':') and not stripped.startswith('enabled:'):
-                name = stripped[:-1].strip()
-                current_agent = name if name in states else None
-                continue
-            if current_agent and stripped.startswith('enabled:'):
-                indent = len(line) - len(stripped)
-                val = 'true' if states[current_agent] else 'false'
-                lines[i] = ' ' * indent + f'enabled: {val}'
-                
-    if default_idx is not None:
-        indent = len(lines[default_idx]) - len(lines[default_idx].lstrip())
-        lines[default_idx] = ' ' * indent + f'default: {default_name}'
-        
-    path.write_text('\n'.join(lines) + '\n')
-
-update_agents('$TC_CONFIG', '$claude_enabled', '$agy_enabled', '$codex_enabled', '$deepseek_enabled', '$default_agent')
-"
+    PYTHONPATH="$INSTALL_DIR" "$(_yaml_python)" "$INSTALL_DIR/bin/init/configure_machine_agents.py" --apply \
+        --claude "$claude_enabled" --gemini "$agy_enabled" --codex "$codex_enabled" \
+        --deepseek "$deepseek_enabled" --default "$default_agent"
     print_success "config.yml agents updated successfully (default: $default_agent)"
 }
 

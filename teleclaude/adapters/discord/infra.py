@@ -7,6 +7,7 @@ messages, project forum mapping, team channels, and config persistence.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -18,6 +19,18 @@ from teleclaude.adapters.discord.channel_ops import fetch_thread_starter_message
 from teleclaude.adapters.discord.provisioning import ProvisioningMixin
 from teleclaude.adapters.discord.team_channels import TeamChannelsMixin
 from teleclaude.config import config
+from teleclaude.config.machine_config_mutation import (
+    clear_legacy_discord_provider_ids,
+    legacy_discord_provider_ids,
+)
+from teleclaude.core.integration.discord_admin_state import (
+    DiscordArtifactKind,
+    DiscordProvider,
+    DiscordReflectionRecord,
+    DiscordReflectionScope,
+    DiscordScopeKind,
+    session_launcher_key,
+)
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -39,12 +52,30 @@ _CHANNEL_FIELD = "channel"
 _MESSAGE_FIELD = "message"
 _CATEGORY_FIELD = "category"
 _CATEGORY_ID_FIELD = "category_id"
-_LAUNCHER_SETTING_PREFIX = "discord_launcher:"
-_THREAD_ID_SUFFIX = ":thread_id"
-_MESSAGE_ID_SUFFIX = ":message_id"
-_EMPTY_SETTING_VALUE = ""
 _REGISTRATION_UNAVAILABLE_LOG = "Discord launcher exact-message registration is unavailable"
 _REGISTRATION_FAILED_LOG = "Failed to register persistent Discord launcher view for forum %s message %s: %s"
+_CATEGORY_SOURCE_SEGMENT = ".categories."
+_FORUM_SOURCE_SEGMENT = "discord_forum"
+_PROJECT_FORUM_KEY_PREFIX = "project_forum:"
+_DISCORD_SOURCE_PREFIX = "discord."
+_CATEGORIES_SOURCE_PREFIX = "discord.categories."
+_REFLECTED_ID_ATTRIBUTES = {
+    "help_desk_channel_id": "_help_desk_channel_id",
+    "all_sessions_channel_id": "_all_sessions_channel_id",
+    "escalation_channel_id": "_escalation_channel_id",
+    "operator_chat_channel_id": "_operator_chat_channel_id",
+    "announcements_channel_id": "_announcements_channel_id",
+    "general_channel_id": "_general_channel_id",
+}
+
+
+def _legacy_artifact_kind(source: str) -> DiscordArtifactKind:
+    """Classify one retained config provider ID for its first durable reflection row."""
+    if _CATEGORY_SOURCE_SEGMENT in source:
+        return DiscordArtifactKind.CATEGORY
+    if source.startswith(_PROJECT_FORUM_KEY_PREFIX) or source.endswith(_FORUM_SOURCE_SEGMENT):
+        return DiscordArtifactKind.FORUM
+    return DiscordArtifactKind.TEXT_CHANNEL
 
 
 class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
@@ -168,6 +199,8 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         non-master never creates a shared channel. Persists provisioned IDs to
         config.yml.
         """
+        await self._migrate_legacy_discord_provider_ids()
+        existing_cats = await self._load_reflected_discord_ids()
         if self._client is None or self._guild_id is None:
             return
 
@@ -179,7 +212,6 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         is_master = config.computer.is_master
         changes: dict[str, int | dict[str, int]] = {}
         cat_changes: dict[str, int] = {}
-        existing_cats = config.discord.categories or {}
 
         # --- Category: Operations (shared — master provisions, others resolve) ---
         ops_cat = await self._ensure_category(guild, "Operations", existing_cats, cat_changes, create=is_master)
@@ -260,7 +292,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             await self._sync_project_forum_positions(proj_cat)
 
             # Build project-path-to-forum mapping for session routing
-            self._build_project_forum_map()
+            await self._build_project_forum_map()
 
         # --- Category: Team (shared — master provisions, others resolve) ---
         try:
@@ -281,8 +313,49 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         if cat_changes:
             changes["categories"] = cat_changes
         if changes:
-            self._persist_discord_channel_ids(changes)
+            await self._persist_discord_channel_ids(changes)
             logger.info("Discord infrastructure provisioned: %s", list(changes.keys()))
+
+    async def _load_reflected_discord_ids(self) -> dict[str, int]:
+        """Restore stored shared reflection IDs before the existing reconciliation flow runs."""
+        categories: dict[str, int] = {}
+        for record in await db.list_discord_reflections():
+            if not record.logical_key.startswith(_DISCORD_SOURCE_PREFIX):
+                continue
+            source = record.logical_key.removeprefix(_DISCORD_SOURCE_PREFIX)
+            if source.startswith(_CATEGORIES_SOURCE_PREFIX.removeprefix(_DISCORD_SOURCE_PREFIX)):
+                categories[source.removeprefix(_CATEGORIES_SOURCE_PREFIX.removeprefix(_DISCORD_SOURCE_PREFIX))] = (
+                    record.provider_id
+                )
+                continue
+            attribute = _REFLECTED_ID_ATTRIBUTES.get(source)
+            if attribute is not None:
+                setattr(self, attribute, record.provider_id)
+        return categories
+
+    async def _migrate_legacy_discord_provider_ids(self) -> None:
+        """Durably import retained config provider IDs before removing their legacy source."""
+        legacy = legacy_discord_provider_ids()
+        if not legacy.present:
+            return
+        try:
+            for entry in legacy.entries:
+                await db.upsert_discord_reflection(
+                    DiscordReflectionRecord(
+                        provider=DiscordProvider.DISCORD,
+                        logical_key=entry.logical_key,
+                        artifact_kind=_legacy_artifact_kind(entry.logical_key),
+                        scope=DiscordReflectionScope(kind=DiscordScopeKind.SHARED, value="legacy"),
+                        provider_id=entry.provider_id,
+                        parent_provider_id=None,
+                        metadata_json="{}",
+                        verified_at=None,
+                    )
+                )
+            clear_legacy_discord_provider_ids()
+        except Exception as error:
+            logger.exception("Discord legacy reflection migration failed before provider mutation")
+            raise RuntimeError("Discord legacy reflection migration failed") from error
 
     async def _ensure_category(
         self,
@@ -385,17 +458,18 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             logger.warning("Failed to fetch channels for category lookup '%s': %s", name, exc)
             return None, False
 
-    def _build_project_forum_map(self) -> None:
+    async def _build_project_forum_map(self) -> None:
         """Build project_path -> forum_id mapping from trusted dirs.
 
         Sorted by path length descending so most-specific paths match first
         during prefix lookup (e.g. ~/Workspace/InstruktAI before ~).
         """
-        entries = [
-            (td.path, td.discord_forum)
-            for td in config.computer.get_all_trusted_dirs()
-            if td.discord_forum is not None and td.path
-        ]
+        records = {record.logical_key: record.provider_id for record in await db.list_discord_reflections()}
+        entries: list[tuple[str, int]] = []
+        for trusted_dir in config.computer.get_all_trusted_dirs():
+            provider_id = records.get(f"project_forum:{trusted_dir.name}")
+            if trusted_dir.path and provider_id is not None:
+                entries.append((trusted_dir.path, provider_id))
         entries.sort(key=lambda e: len(e[0]), reverse=True)
         self._project_forum_map = dict(entries)
         self._forum_project_map = {forum_id: project_path for project_path, forum_id in entries}
@@ -450,11 +524,6 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         self._registered_launcher_message_ids.add(message_id)
         return True
 
-    @staticmethod
-    def _launcher_setting_keys(forum_id: int) -> tuple[str, str, str]:
-        setting_prefix = f"{_LAUNCHER_SETTING_PREFIX}{forum_id}"
-        return setting_prefix, f"{setting_prefix}{_THREAD_ID_SUFFIX}", f"{setting_prefix}{_MESSAGE_ID_SUFFIX}"
-
     async def _post_or_update_launcher(self, forum_id: int) -> None:
         """Converge a forum to exactly one current, pinned, registered launcher thread.
 
@@ -506,11 +575,9 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
             if message is not None:
                 candidates.append((thread, message))
 
-        legacy_message_key, thread_key, message_key = self._launcher_setting_keys(forum_id)
-
-        stored_thread_id = self._parse_optional_int(await db.get_system_setting(thread_key))
-        if stored_thread_id is None:
-            stored_thread_id = self._parse_optional_int(await db.get_system_setting(legacy_message_key))
+        launcher_key = session_launcher_key(forum_id)
+        stored = await db.get_discord_reflection(launcher_key)
+        stored_thread_id = stored.provider_id if stored is not None else None
 
         survivor = self._select_launcher_survivor(candidates, stored_thread_id)
         survivor_thread = survivor[0] if survivor is not None else None
@@ -539,9 +606,18 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         await self._pin_launcher_message(launcher_message, forum_id=forum_id)
         await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
 
-        await db.set_system_setting(thread_key, str(launcher_thread_id))
-        await db.set_system_setting(message_key, str(launcher_message_id))
-        await db.set_system_setting(legacy_message_key, str(launcher_message_id))
+        await db.upsert_discord_reflection(
+            DiscordReflectionRecord(
+                provider=DiscordProvider.DISCORD,
+                logical_key=launcher_key,
+                artifact_kind=DiscordArtifactKind.FORUM_THREAD,
+                scope=DiscordReflectionScope(kind=DiscordScopeKind.PROJECT, value=str(forum_id)),
+                provider_id=launcher_thread_id,
+                parent_provider_id=forum_id,
+                metadata_json=json.dumps({_MESSAGE_FIELD: launcher_message_id}),
+                verified_at=None,
+            )
+        )
         registration_succeeded = self._register_session_launcher_view(
             forum_id=forum_id,
             message_id=launcher_message_id,
@@ -595,9 +671,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         if candidate_thread_ids != deleted_thread_ids:
             return
 
-        legacy_message_key, thread_key, message_key = self._launcher_setting_keys(forum_id)
-        for setting_key in (legacy_message_key, thread_key, message_key):
-            await db.set_system_setting(setting_key, _EMPTY_SETTING_VALUE)
+        await db.delete_discord_reflection(session_launcher_key(forum_id))
 
         reconciliation_run_id = str(uuid4())
         for thread, message in candidates:
@@ -858,21 +932,20 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         project_changes: list[tuple[str, int | None]] = []
 
         for td in trusted_dirs:
+            current = await db.get_discord_reflection(f"project_forum:{td.name}")
             stale_cleared = False
-            if td.discord_forum is not None:
-                if await self._trusted_dir_forum_is_current(td.discord_forum, category):
+            if current is not None:
+                if await self._trusted_dir_forum_is_current(current.provider_id, category):
                     continue
-                td.discord_forum = None
                 stale_cleared = True
             forum_id = await self._find_or_create_forum(guild, category, td.name, td.desc or f"Sessions for {td.name}")
             if forum_id is not None:
-                td.discord_forum = forum_id
                 project_changes.append((td.name, forum_id))
             elif stale_cleared:
                 project_changes.append((td.name, None))
 
         if project_changes:
-            self._persist_project_forum_ids(project_changes)
+            await self._persist_project_forum_ids(project_changes)
 
     async def _sync_project_forum_positions(self, category: object | None) -> None:
         """Reorder project forums within this computer's category to match trusted_dirs.
@@ -890,9 +963,10 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         trusted_dirs = config.computer.get_all_trusted_dirs()
         position = 0
         for td in trusted_dirs:
-            if td.discord_forum is None:
+            record = await db.get_discord_reflection(f"project_forum:{td.name}")
+            if record is None:
                 continue
-            channel = await self._get_channel(td.discord_forum)
+            channel = await self._get_channel(record.provider_id)
             if channel is None:
                 continue
 

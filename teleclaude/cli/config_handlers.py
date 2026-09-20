@@ -10,7 +10,6 @@ Both the interactive menu and onboarding wizard consume this layer.
 from __future__ import annotations
 
 import dataclasses
-import importlib
 import os
 import secrets
 import shutil
@@ -34,6 +33,7 @@ from teleclaude.config.loader import (
 )
 from teleclaude.config.loader import save_global_config as save_global_config
 from teleclaude.config.loader import save_person_config as save_person_config
+from teleclaude.config.machine_config_mutation import inspect_machine_config
 from teleclaude.config.person_secrets import (
     PersonMcpSecretStatus,
     clear_person_mcp_secret,
@@ -296,13 +296,16 @@ def validate_all() -> list[ValidationResult]:
         )
         return results
 
-    # Validate the runtime app config (~/.teleclaude/config.yml: adapters,
-    # summarizer, agents, etc.). Import-time validation raises on schema errors;
-    # we capture them as a result rather than letting them crash the validator.
-    app_config: Any | None = None
+    # Validate the current-schema inspection projection without reloading the
+    # runtime singleton, so an invalid committed document remains repairable.
+    app_config: _tc_config_module.TeleclaudeConfig | None = None
     try:
-        importlib.reload(_tc_config_module)
-        app_config = _tc_config_module.config
+        inspection = inspect_machine_config()
+        app_config = _tc_config_module.build_config_from_raw(
+            inspection.raw,
+            _tc_config_module.config_path.parent,
+            config_source=_tc_config_module.config_path,
+        )
         results.append(ValidationResult(area=ConfigFileName.MACHINE, passed=True))
     except Exception as e:
         results.append(

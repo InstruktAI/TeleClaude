@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from typing import Final
@@ -36,6 +38,101 @@ _INVITATION_OWNERSHIP_ERROR: Final = "Invitation token ownership conflicts for {
 _DOCUMENT_MAPPING_ERROR: Final = "Configuration document must be a mapping"
 _JSON_INDENT: Final = 2
 _NEWLINE: Final = "\n"
+_DISCORD: Final = "discord"
+_COMPUTER_SECTION: Final = "computer"
+_TRUSTED_DIRS: Final = "trusted_dirs"
+_NAME: Final = "name"
+_DISCORD_FORUM: Final = "discord_forum"
+_CATEGORIES: Final = "categories"
+_LEGACY_DISCORD_FIELD_NAMES: Final = frozenset(
+    {
+        "help_desk_channel_id",
+        "escalation_channel_id",
+        "all_sessions_channel_id",
+        "operator_chat_channel_id",
+        "announcements_channel_id",
+        "general_channel_id",
+    }
+)
+
+
+@dataclass(frozen=True)
+class LegacyDiscordProviderId:
+    """One provider identifier retained only until reflection import completes."""
+
+    source: str
+    logical_key: str
+    provider_id: int
+
+
+@dataclass(frozen=True)
+class LegacyDiscordProviderIds:
+    """Retired Discord identifiers projected out of current-schema config input."""
+
+    entries: tuple[LegacyDiscordProviderId, ...]
+
+    @property
+    def present(self) -> bool:
+        """Return whether the stored document still carries legacy provider state."""
+        return bool(self.entries)
+
+
+def partition_legacy_discord_provider_ids(
+    raw_document: object,
+) -> tuple[dict[object, object], LegacyDiscordProviderIds]:
+    """Return a current-schema projection while retaining the source document unchanged."""
+    if not isinstance(raw_document, dict):
+        return {}, LegacyDiscordProviderIds(entries=())
+    projected = deepcopy(raw_document)
+    entries: list[LegacyDiscordProviderId] = []
+    discord = projected.get(_DISCORD)
+    if isinstance(discord, dict):
+        for field in _LEGACY_DISCORD_FIELD_NAMES:
+            value = discord.pop(field, None)
+            if isinstance(value, int):
+                source = f"{_DISCORD}.{field}"
+                entries.append(LegacyDiscordProviderId(source=source, logical_key=source, provider_id=value))
+        categories = discord.pop(_CATEGORIES, None)
+        if isinstance(categories, dict):
+            for name, value in categories.items():
+                if isinstance(value, int):
+                    entries.append(
+                        LegacyDiscordProviderId(
+                            source=f"{_DISCORD}.{_CATEGORIES}.{name}",
+                            logical_key=f"{_DISCORD}.{_CATEGORIES}.{name}",
+                            provider_id=value,
+                        )
+                    )
+    computer = projected.get(_COMPUTER_SECTION)
+    trusted_dirs = computer.get(_TRUSTED_DIRS) if isinstance(computer, dict) else None
+    if isinstance(trusted_dirs, list):
+        for index, entry in enumerate(trusted_dirs):
+            if not isinstance(entry, dict):
+                continue
+            value = entry.pop(_DISCORD_FORUM, None)
+            if isinstance(value, int):
+                entries.append(
+                    LegacyDiscordProviderId(
+                        source=f"{_COMPUTER_SECTION}.{_TRUSTED_DIRS}.{index}.{_DISCORD_FORUM}",
+                        logical_key=f"project_forum:{entry.get(_NAME, index)}",
+                        provider_id=value,
+                    )
+                )
+    return projected, LegacyDiscordProviderIds(entries=tuple(entries))
+
+
+def contains_legacy_discord_provider_fields(raw_document: object) -> bool:
+    """Return whether a raw edit candidate introduces retired provider-ID keys."""
+    if not isinstance(raw_document, dict):
+        return False
+    discord = raw_document.get(_DISCORD)
+    if isinstance(discord, dict) and (set(discord) & _LEGACY_DISCORD_FIELD_NAMES or _CATEGORIES in discord):
+        return True
+    computer = raw_document.get(_COMPUTER_SECTION)
+    trusted_dirs = computer.get(_TRUSTED_DIRS) if isinstance(computer, dict) else None
+    return isinstance(trusted_dirs, list) and any(
+        isinstance(entry, dict) and _DISCORD_FORUM in entry for entry in trusted_dirs
+    )
 
 
 def migrate_global_file(path: Path, people_dir: Path | None = None) -> bool:

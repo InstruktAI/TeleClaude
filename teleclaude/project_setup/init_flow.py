@@ -13,10 +13,11 @@ from ruamel.yaml import YAML
 
 from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
 from teleclaude.checkpoint_model import load_checkpoint_model
-from teleclaude.config import config, config_path
+from teleclaude.config import config
+from teleclaude.config._models import ReleaseChannel
 from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.config.declaration import write_declared_config
-from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_write
+from teleclaude.config.machine_config_mutation import inspect_machine_config, set_deployment
 from teleclaude.config.schema import ConfigKind
 from teleclaude.docs_index import ensure_project_config
 from teleclaude.git import Repo
@@ -110,31 +111,7 @@ def _declare_inferred_capabilities(project_root: Path) -> Capabilities:
     return resolve_capabilities(project_root)
 
 
-def _write_deployment_block(machine_config_path: Path, channel: str, pinned_minor: str) -> None:
-    """Persist the ``deployment`` block into the machine ``config.yml``, preserving comments.
-
-    On a read or parse failure of an existing config, the error propagates and the
-    file is left untouched — an unreadable config is never overwritten with a fresh
-    deployment-only document, which would destroy the rest of the machine config.
-    The write goes through the atomic config-layer writer after a successful
-    round-trip load.
-    """
-    if machine_config_path.exists():
-        ryaml = YAML()
-        ryaml.preserve_quotes = True
-        doc = ryaml.load(machine_config_path.read_text(encoding="utf-8"))
-        if not isinstance(doc, dict):
-            raise ValueError(f"Refusing to rewrite {machine_config_path}: existing content is not a YAML mapping")
-    else:
-        doc = {}
-    if "deployment" not in doc or not isinstance(doc["deployment"], dict):
-        doc["deployment"] = {}
-    doc["deployment"]["channel"] = channel
-    doc["deployment"]["pinned_minor"] = pinned_minor
-    _atomic_yaml_write(machine_config_path, doc)
-
-
-def migrate_legacy_deployment_channel(source_path: Path, machine_config_path: Path) -> bool:
+def migrate_legacy_deployment_channel(source_path: Path) -> bool:
     """Fold a legacy ``deployment:`` block from a ``teleclaude.yml`` into machine ``config.yml``.
 
     The release channel moved from the per-project config to the machine config, so
@@ -159,12 +136,12 @@ def migrate_legacy_deployment_channel(source_path: Path, machine_config_path: Pa
     if isinstance(legacy, dict):
         channel = str(legacy.get("channel", "alpha") or "alpha")
         pinned_minor = str(legacy.get("pinned_minor", "") or "")
-        _write_deployment_block(machine_config_path, channel, pinned_minor)
+        set_deployment(ReleaseChannel(channel), pinned_minor)
 
     del source_doc["deployment"]
     source_kind = ConfigKind.GLOBAL if source_path == GLOBAL_CONFIG_PATH else ConfigKind.PROJECT
     write_declared_config(source_path, source_kind, source_doc, schema_root=source_path.parent)
-    logger.info("Migrated legacy deployment block from %s to %s", source_path, machine_config_path)
+    logger.info("Migrated legacy deployment block from %s", source_path)
     return True
 
 
@@ -177,32 +154,28 @@ def migrate_legacy_deployment_sources(project_root: Path) -> bool:
     per-project ``teleclaude.yml`` is migrated to the machine surface rather than
     silently falling back to the seeded default. Returns whether any source migrated.
     """
-    machine_config_path = config_path
     migrated = False
     for source in (GLOBAL_CONFIG_PATH, resolve_project_config_path(project_root)):
-        if migrate_legacy_deployment_channel(source, machine_config_path):
+        if migrate_legacy_deployment_channel(source):
             migrated = True
     return migrated
 
 
 def _prompt_release_channel(project_root: Path) -> None:
     """Migrate any legacy block, then prompt for release-channel enrollment on the machine config."""
-    machine_config_path = config_path
-    migrate_legacy_deployment_channel(resolve_project_config_path(project_root), machine_config_path)
+    migrate_legacy_deployment_channel(resolve_project_config_path(project_root))
 
     current_channel = "alpha"
     current_pinned = ""
-    if machine_config_path.exists():
-        try:
-            raw = yaml.safe_load(machine_config_path.read_text(encoding="utf-8"))
-        except (yaml.YAMLError, OSError) as exc:
-            logger.warning("Could not read %s: %s — skipping release channel prompt", machine_config_path, exc)
-            return
-        if isinstance(raw, dict):
-            deployment = raw.get("deployment", {})
-            if isinstance(deployment, dict):
-                current_channel = deployment.get("channel", "alpha")
-                current_pinned = deployment.get("pinned_minor", "")
+    try:
+        raw = inspect_machine_config().raw
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not inspect machine config for release channel prompt: %s", exc)
+        return
+    deployment = raw.get("deployment", {})
+    if isinstance(deployment, dict):
+        current_channel = deployment.get("channel", "alpha")
+        current_pinned = deployment.get("pinned_minor", "")
 
     if not sys.stdin.isatty():
         # Non-interactive: keep current settings.
@@ -235,7 +208,7 @@ def _prompt_release_channel(project_root: Path) -> None:
             print("  Stable channel requires a pinned minor. Keeping current settings.")
             return
 
-    _write_deployment_block(machine_config_path, choice, pinned_minor)
+    set_deployment(ReleaseChannel(choice), pinned_minor)
     print(f"  Release channel set to '{choice}'.")
 
 

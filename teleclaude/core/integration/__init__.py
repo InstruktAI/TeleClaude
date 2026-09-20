@@ -1,5 +1,15 @@
-"""Integration event model package."""
+"""Integration bounded-context contracts and workflows."""
 
+from teleclaude.core.integration.discord_admin_state import (
+    DiscordArtifactKind,
+    DiscordProvider,
+    DiscordReflectionOutcome,
+    DiscordReflectionRecord,
+    DiscordReflectionRepository,
+    DiscordReflectionScope,
+    DiscordScopeKind,
+    DiscordVerificationResult,
+)
 from teleclaude.core.integration.lease import (
     IntegrationLeaseError,
     IntegrationLeaseStore,
@@ -11,6 +21,14 @@ from teleclaude.core.integration.lease import (
 )
 
 __all__ = [
+    "DiscordArtifactKind",
+    "DiscordProvider",
+    "DiscordReflectionOutcome",
+    "DiscordReflectionRecord",
+    "DiscordReflectionRepository",
+    "DiscordReflectionScope",
+    "DiscordScopeKind",
+    "DiscordVerificationResult",
     "IntegrationLeaseError",
     "IntegrationLeaseStore",
     "LeaseAcquireResult",

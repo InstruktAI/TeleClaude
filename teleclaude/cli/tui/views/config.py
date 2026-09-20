@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import yaml
 from instrukt_ai_logging import get_logger
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -35,7 +37,6 @@ from teleclaude.cli.tui.views._config_constants import (
     observe_config_tui,
     project_adapter_sections,
 )
-from teleclaude.cli.tui.views._project_actions import _load_raw_config, _resolve_config_path
 from teleclaude.cli.tui.views.config_editing import ConfigContentEditingMixin
 from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
 from teleclaude.cli.tui.views.reflection import (
@@ -66,6 +67,7 @@ from teleclaude.config import (
 )
 from teleclaude.config._summarizer import parse_summarizer_config
 from teleclaude.config.loader import find_person_config_path
+from teleclaude.config.machine_config_mutation import inspect_machine_config
 from teleclaude.config.person_secrets import PersonSecretStorageError
 from teleclaude.config.schema import PersonEntry
 from teleclaude.config.tiers import Tier
@@ -81,6 +83,15 @@ def _default_section(name: str) -> dict[str, Any]:  # guard: loose-dict - DEFAUL
     """Return a DEFAULT_CONFIG section as a plain dict for safe merge/unpack."""
     section = DEFAULT_CONFIG.get(name, {})
     return section if isinstance(section, dict) else {}
+
+
+def _load_overlay_raw_config(path: Path) -> dict[str, Any]:  # guard: loose-dict - YAML overlay data
+    """Read a non-machine config document used solely for TUI overlay projection."""
+    with path.open(encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("Configuration document must be a YAML mapping.")
+    return raw
 
 
 def _apply_tts_applicability(tts: TTSConfig, fields: list[ReflectedField]) -> list[ReflectedField]:
@@ -631,7 +642,7 @@ class ConfigContent(
             inherited_tier=Tier.TUI,
         )
 
-        global_raw = _load_raw_config(GLOBAL_CONFIG_PATH)
+        global_raw = _load_overlay_raw_config(GLOBAL_CONFIG_PATH)
         global_people = global_raw.get("people", [])
         raw_person = next(
             (
@@ -648,7 +659,7 @@ class ConfigContent(
         if person_path is not None:
             bind_environment_provenance(
                 overlay_fields,
-                _load_raw_config(person_path),
+                _load_overlay_raw_config(person_path),
                 person_path.with_name(ConfigFileName.ENV),
                 "overlay",
             )
@@ -702,7 +713,7 @@ class ConfigContent(
         """Reload env vars, people, derived projections, and config.yml from disk."""
         self._reflected_cache.clear()
         try:
-            self._raw_config = _load_raw_config(_resolve_config_path())  # type: ignore[assignment]
+            self._raw_config = dict(inspect_machine_config().raw)  # type: ignore[assignment]
         except Exception as exc:
             self._raw_config = {}
             self._status_message = f"Failed to load config.yml: {exc}"

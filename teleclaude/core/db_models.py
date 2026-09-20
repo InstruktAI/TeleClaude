@@ -142,6 +142,23 @@ class SystemSetting(SQLModel, table=True):
     updated_at: datetime | None = None
 
 
+class DiscordReflectionRow(SQLModel, table=True):
+    """Durable observed Discord provider state keyed by provider and logical identity."""
+
+    __tablename__ = "discord_reflection_state"
+    __table_args__ = {"extend_existing": True}
+
+    provider: str = Field(primary_key=True)
+    logical_key: str = Field(primary_key=True)
+    artifact_kind: str
+    scope_kind: str
+    scope_value: str
+    provider_id: int
+    parent_provider_id: int | None = None
+    metadata_json: str = "{}"
+    verified_at: datetime | None = None
+
+
 class AgentAvailability(SQLModel, table=True):
     """agent_availability table."""
 

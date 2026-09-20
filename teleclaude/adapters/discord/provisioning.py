@@ -8,17 +8,22 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude import config as teleclaude_config
 from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
+from teleclaude.core.db import db
+from teleclaude.core.integration.discord_admin_state import (
+    DiscordArtifactKind,
+    DiscordProvider,
+    DiscordReflectionRecord,
+    DiscordReflectionScope,
+    DiscordScopeKind,
+)
 
 logger = get_logger(__name__)
 
 
 AsyncDiscordCallable = Callable[..., Awaitable[object]]
-config_persist_exceptions = (AttributeError, OSError, TypeError, ValueError, yaml.YAMLError)
 discord_operation_exceptions: tuple[type[Exception], ...] = (AttributeError, RuntimeError, TypeError, ValueError)
 
 try:
@@ -60,9 +65,9 @@ class ProvisioningMixin:
         """Public wrapper for guild resolution used by infrastructure callers."""
         return await self._resolve_guild()
 
-    def persist_discord_channel_ids(self, changes: dict[str, int | dict[str, int]]) -> None:
-        """Public wrapper for config persistence used by infrastructure callers."""
-        self._persist_discord_channel_ids(changes)
+    async def persist_discord_channel_ids(self, changes: dict[str, int | dict[str, int]]) -> None:
+        """Public wrapper for reflection persistence used by infrastructure callers."""
+        await self._persist_discord_channel_ids(changes)
 
     async def _resolve_guild(self) -> object | None:
         """Resolve the configured guild by ID."""
@@ -233,55 +238,37 @@ class ProvisioningMixin:
             logger.warning("Failed to create Discord text channel '%s': %s", name, exc)
             return None
 
-    @staticmethod
-    def _persist_project_forum_ids(project_changes: list[tuple[str, int | None]]) -> None:
-        """Write auto-provisioned project forum IDs to config.yml trusted_dirs.
+    async def _persist_project_forum_ids(self, project_changes: list[tuple[str, int | None]]) -> None:
+        """Persist project forum observations without returning provider state to config."""
+        for project_name, forum_id in project_changes:
+            if forum_id is None:
+                continue
+            await self._upsert_reflection_id(f"project_forum:{project_name}", forum_id, DiscordArtifactKind.FORUM)
 
-        A None value removes the discord_forum key for that entry so stale IDs
-        do not persist across restarts when re-provisioning fails.
-        """
-        try:
-            with open(teleclaude_config.config_path, encoding="utf-8") as f:
-                raw = yaml.safe_load(f) or {}
-
-            comp = raw.get("computer", {})
-            trusted_dirs = comp.get("trusted_dirs", [])
-            name_to_id = dict(project_changes)
-
-            for td in trusted_dirs:
-                if isinstance(td, dict) and td.get("name") in name_to_id:
-                    new_id = name_to_id[td["name"]]
-                    if new_id is None:
-                        td.pop("discord_forum", None)
-                    else:
-                        td["discord_forum"] = new_id
-
-            with open(teleclaude_config.config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False)
-
-            logger.info("Persisted project forum IDs to %s: %s", teleclaude_config.config_path, name_to_id)
-        except config_persist_exceptions as exc:
-            logger.warning("Failed to persist project forum IDs to config: %s", exc)
+    async def _persist_discord_channel_ids(self, changes: dict[str, int | dict[str, int]]) -> None:
+        """Persist newly observed shared provider identifiers through reflection state."""
+        for key, value in changes.items():
+            if key == "categories" and isinstance(value, dict):
+                for name, provider_id in value.items():
+                    await self._upsert_reflection_id(
+                        f"discord.categories.{name}", provider_id, DiscordArtifactKind.CATEGORY
+                    )
+                continue
+            if isinstance(value, int):
+                await self._upsert_reflection_id(f"discord.{key}", value, DiscordArtifactKind.TEXT_CHANNEL)
 
     @staticmethod
-    def _persist_discord_channel_ids(changes: dict[str, int | dict[str, int]]) -> None:
-        """Write auto-provisioned channel IDs to config.yml."""
-        try:
-            with open(teleclaude_config.config_path, encoding="utf-8") as f:
-                raw = yaml.safe_load(f) or {}
-
-            discord_section = raw.setdefault("discord", {})
-            for key, value in changes.items():
-                if key == "categories" and isinstance(value, dict):
-                    existing_cats = discord_section.get("categories") or {}
-                    existing_cats.update(value)
-                    discord_section["categories"] = existing_cats
-                else:
-                    discord_section[key] = value
-
-            with open(teleclaude_config.config_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False)
-
-            logger.info("Persisted discord channel IDs to %s: %s", teleclaude_config.config_path, changes)
-        except config_persist_exceptions as exc:
-            logger.warning("Failed to persist discord channel IDs to config: %s", exc)
+    async def _upsert_reflection_id(logical_key: str, provider_id: int, artifact_kind: DiscordArtifactKind) -> None:
+        """Store one shared provider identifier without returning it to machine config."""
+        await db.upsert_discord_reflection(
+            DiscordReflectionRecord(
+                provider=DiscordProvider.DISCORD,
+                logical_key=logical_key,
+                artifact_kind=artifact_kind,
+                scope=DiscordReflectionScope(kind=DiscordScopeKind.SHARED, value="shared"),
+                provider_id=provider_id,
+                parent_provider_id=None,
+                metadata_json="{}",
+                verified_at=None,
+            )
+        )

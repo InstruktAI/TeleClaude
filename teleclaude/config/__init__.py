@@ -24,7 +24,7 @@ from teleclaude.config._chiptunes import parse_chiptunes_config as _parse_chiptu
 from teleclaude.config._coerce import as_bool as _as_bool
 from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
 from teleclaude.config._environment import expand_environment_references
-from teleclaude.config._file_migrations import remove_matching_tmux_binary
+from teleclaude.config._file_migrations import partition_legacy_discord_provider_ids, remove_matching_tmux_binary
 from teleclaude.config._machine_input import EXPERIMENTS_FILE_INPUT, MACHINE_CONFIG_INPUT
 from teleclaude.config._models import AgentConfig as AgentConfig
 from teleclaude.config._models import BackupConfig as BackupConfig
@@ -219,18 +219,6 @@ def prune_defaults(
     return pruned
 
 
-def _parse_categories(raw: object) -> dict[str, int] | None:
-    """Parse Discord categories dict from config (name -> channel ID)."""
-    if not isinstance(raw, dict):
-        return None
-    result: dict[str, int] = {}
-    for key, val in raw.items():
-        parsed = _parse_optional_int(val)
-        if parsed is not None:
-            result[str(key)] = parsed
-    return result or None
-
-
 def _parse_trusted_dirs(
     raw_dirs: list[object],
 ) -> list[TrustedDir]:
@@ -247,13 +235,12 @@ def _parse_trusted_dirs(
     trusted_dirs = []
     for item in raw_dirs:
         if isinstance(item, dict):
-            # New format: dict with name, desc, path, optional discord_forum
+            # Current format: dict with name, desc, and path.
             trusted_dirs.append(
                 TrustedDir(
                     name=str(item["name"]),
                     desc=str(item.get("desc", "")),
                     path=str(item["path"]),
-                    discord_forum=_parse_optional_int(item.get("discord_forum")),
                 )
             )
         else:
@@ -643,31 +630,6 @@ def _build_config(
                 str(discord_raw.get("token")) if isinstance(discord_raw, dict) and discord_raw.get("token") else None
             ),
             guild_id=(_parse_optional_int(discord_raw.get("guild_id")) if isinstance(discord_raw, dict) else None),
-            help_desk_channel_id=(
-                _parse_optional_int(discord_raw.get("help_desk_channel_id")) if isinstance(discord_raw, dict) else None
-            ),
-            escalation_channel_id=(
-                _parse_optional_int(discord_raw.get("escalation_channel_id")) if isinstance(discord_raw, dict) else None
-            ),
-            all_sessions_channel_id=(
-                _parse_optional_int(discord_raw.get("all_sessions_channel_id"))
-                if isinstance(discord_raw, dict)
-                else None
-            ),
-            operator_chat_channel_id=(
-                _parse_optional_int(discord_raw.get("operator_chat_channel_id"))
-                if isinstance(discord_raw, dict)
-                else None
-            ),
-            announcements_channel_id=(
-                _parse_optional_int(discord_raw.get("announcements_channel_id"))
-                if isinstance(discord_raw, dict)
-                else None
-            ),
-            general_channel_id=(
-                _parse_optional_int(discord_raw.get("general_channel_id")) if isinstance(discord_raw, dict) else None
-            ),
-            categories=(_parse_categories(discord_raw.get("categories")) if isinstance(discord_raw, dict) else None),
             qos=DiscordQoSConfig(),
         ),
         creds=CredsConfig(telegram=tg_creds, whatsapp=whatsapp_creds),
@@ -812,7 +774,8 @@ def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
     remove_matching_tmux_binary(path, resolve_tmux_binary())
     with open(path, encoding="utf-8") as f:
         raw_user_config = yaml.safe_load(f)
-    return build_config_from_raw(raw_user_config, path.parent, config_source=path)
+    current_schema_raw, _ = partition_legacy_discord_provider_ids(raw_user_config)
+    return build_config_from_raw(current_schema_raw, path.parent, config_source=path)
 
 
 # Runtime config lives at ~/.teleclaude/config.yml, seeded from the repo blueprint.

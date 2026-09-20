@@ -471,6 +471,22 @@ CREATE TABLE IF NOT EXISTS system_settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS discord_reflection_state (
+    provider TEXT NOT NULL,
+    logical_key TEXT NOT NULL,
+    artifact_kind TEXT NOT NULL,
+    scope_kind TEXT NOT NULL,
+    scope_value TEXT NOT NULL,
+    provider_id INTEGER NOT NULL,
+    parent_provider_id INTEGER,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    verified_at TIMESTAMP,
+    PRIMARY KEY (provider, logical_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discord_reflection_scope
+    ON discord_reflection_state (provider, scope_kind, scope_value);
+
 -- Memory observations and FTS
 CREATE TABLE IF NOT EXISTS memory_observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

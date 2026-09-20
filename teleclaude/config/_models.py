@@ -49,7 +49,6 @@ class TrustedDir:
     name: str
     desc: str
     path: str
-    discord_forum: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
 
 
 @dataclass
@@ -213,13 +212,6 @@ class DiscordConfig:
     enabled: bool
     token: str | None = field(metadata={SENSITIVE_METADATA_KEY: True})
     guild_id: int | None = field(metadata={SENSITIVE_METADATA_KEY: True})
-    help_desk_channel_id: int | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    escalation_channel_id: int | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    all_sessions_channel_id: int | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
-    operator_chat_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
-    announcements_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
-    general_channel_id: int | None = field(default=None, metadata={"tier": Tier.INTERNAL})
-    categories: dict[str, int] | None = field(default=None, metadata={"tier": Tier.INTERNAL})
     qos: DiscordQoSConfig = field(default_factory=DiscordQoSConfig, metadata={"tier": Tier.INTERNAL})
 
 
