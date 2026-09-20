@@ -625,31 +625,6 @@ Scenario: UC-ARD28 Person-tier artifacts reach only that person's workspace
 
 <!-- /planned:cross-tier-native-emission -->
 
-<!-- planned:fleet-artifact-sync -->
-
-#### UC-ARD29: Sync reconciles every registered root regardless of where it runs
-
-```
-Scenario: UC-ARD29 Sync reconciles every registered root regardless of where it runs
-  Given registered projects and company and person homes carry authored docs/ and agents/
-  When sync is invoked in deploy mode from any directory
-  Then every registered root is built into its outputs in that one run
-  And the result is identical whichever directory the invocation started in
-  And no directory outside the registered set is searched
-```
-
-#### UC-ARD30: A reference validates against its source, never against the deployed tree
-
-```
-Scenario: UC-ARD30 A reference validates against its source, never against the deployed tree
-  Given an artifact references a document by its deployed path
-  And the referenced document exists in its owner's source tree
-  When validation runs
-  Then the reference is accepted whether or not the deployed tree currently carries it
-  And a reference whose target exists in no owner's source tree is refused with a message naming the file and the reference
-```
-
-<!-- /planned:fleet-artifact-sync -->
 
 <!-- planned:retire-docs-watcher -->
 #### UC-ARD31: A saved source deploys nothing; its commit deploys it

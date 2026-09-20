@@ -121,19 +121,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
 
 <!-- /planned:cross-tier-native-emission -->
 
-<!-- planned:fleet-artifact-sync -->
-
-- **Build outputs serve runtime readers; validation reads only sources.**
-  References are written in deployed vocabulary so any agent anywhere knows
-  where to read. Whether a referenced target exists is answered against its
-  source of truth — the owner's tree, found through the publisher registry —
-  never by dereferencing the deployed tree. Nothing the build writes is ever an
-  input to the build.
-- **Reconciliation is location-independent.** Sync processes every registered
-  root into its outputs in one run, from wherever it was invoked; where the
-  invoking session stands is not an input.
-
-<!-- /planned:fleet-artifact-sync -->
 
 <!-- planned:docs-tier-layering -->
 - **Belonging is binary for reading a company.** A company role carries business
@@ -177,17 +164,6 @@ company directories from their designated locations, and load the registered
 project roots from the manifest. That set is the whole configuration surface;
 there is no fifth place to look.
 
-<!-- planned:fleet-artifact-sync -->
-
-**Reconciling artifacts.** Take the same tier set — registered project roots
-plus the company and person homes at their designated locations — and build
-each root's authored `agents/` into every consumer's location for that root,
-composing a project's native directories from its own artifacts and its owning
-company's. Validation runs against sources first; the deployed documentation
-tree is then swapped into place atomically so no reader observes it partially
-rebuilt.
-
-<!-- /planned:fleet-artifact-sync -->
 
 <!-- planned-change:docs-tier-layering -->
 **Reading documentation.** Sources are aggregated into an index and the caller
@@ -255,12 +231,3 @@ named tier in full.
 
 <!-- /planned:agent-artifact-source-layout -->
 
-<!-- planned:fleet-artifact-sync -->
-
-- **Validating against a build output.** Checking a reference by
-  dereferencing the deployed tree couples validation to the previous deploy: a
-  new domain, a first deploy on a fresh machine, or a generated bundle cannot
-  validate before the deploy that would create its mapping, and a concurrent
-  rebuild makes valid references fail. Validation reads sources.
-
-<!-- /planned:fleet-artifact-sync -->
