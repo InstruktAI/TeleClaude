@@ -29,7 +29,7 @@ own spec.
 
 The approved target it preserves: one tiered source shape at every repository
 root (`@prd#included`), global commands partitioned by declared domain and
-refused outside declared reach (`@prd#sc-2-global-commands-publish-by-declared-domain-and-out-of-reach-sources-fail-loudly`),
+refused outside declared reach before commit (`@prd#sc-2-global-commands-publish-by-declared-domain-and-out-of-reach-sources-fail-before-commit`),
 general commands and global skills from the mother alone (`@prd#sc-6-the-global-skill-catalog-is-composed-from-the-mother-alone`),
 `.agents/` as delivery output only (`@prd#sc-4-authored-input-and-generated-output-never-share-a-location`),
 domain-qualified command names everywhere the platform names one (`@prd#sc-3-a-global-command-is-named-by-its-domain-everywhere-the-platform-names-it`),
@@ -64,7 +64,9 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   command output side's contract. `.agents/` is a delivery location and is never
   read as an authored source.
 - Validation findings that name the file and the reach it exceeds, or both
-  files and the colliding name, and fail sync.
+  files and the colliding name. Pathspec-scoped findings refuse the sealed
+  commit; publication repeats source validation as defense in depth and
+  refuses that publication run on a finding.
 - The deployed-commands ownership manifest, keyed by relative corpus path.
 - The artifact-source registry: one typed owner declaring every source
   boundary, the kind it carries, its tier and reach, and whether its content is
@@ -136,14 +138,11 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   declares the path authored or incorporated. Authored content is TeleClaude's
   own — commands, masters, and addenda — and a commit touching it routes to
   required doc-hygiene review. Incorporated content is a third-party skill
-  package the platform republishes unchanged, and a commit touching it routes
-  to no review.
-- The exemption is not a weakening of the review contract: the package body is
-  explicitly outside TeleClaude's artifact taxonomy, so a doc-hygiene reviewer
-  grades it against a schema it does not claim to satisfy and can find nothing.
-  The risk that is real — executable content, egress, credential reach,
-  injected directives — is inspected by the adopting agent before the commit,
-  under `general/procedure/skill-management`.
+  package the platform republishes unchanged, so a commit touching it routes
+  to no separate post-commit doc-hygiene review. The adoption security gate is
+  owned by `general/procedure/skill-management` under
+  `software-development/policy/ai-agent-security`; this design classifies
+  doc-hygiene routing and neither restates nor weakens that gate.
 - The mixed global-skills tree is represented by two disjoint registry
   boundaries: the exact `agents/global/skills/AGENTS.master.md` file is an
   authored catalog-master record, while each immediate
@@ -162,8 +161,10 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   `commands/` or `skills/` is refused as outside the artifact model.
 - Nothing under `.agents/` is ever enumerated as a source by any consumer.
 - A global source outside a repository's reach is a finding, never a silent
-  skip: the global phase in `scripts/distribute.py` composes from every
-  publisher root's admitted sources and refuses the rest by name.
+  skip. The sealed commit runs Context's artifact validation over its pathspec
+  and refuses the commit on that finding. Publication repeats the same reach
+  validation before composition as defense in depth and refuses the run rather
+  than publishing an inadmissible source.
 
 ### Corpus layout and names
 
@@ -238,6 +239,13 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 - Contraction is a plain deletion: the existing reconciler retracts the flat
   root's keys on the next publication, and this design adds no mechanism for
   it.
+- **Persisted session-command identity migrates forward before exact matching.**
+  Agent Runtime owns a one-way migration from each recognized TeleClaude bare
+  command value already stored on a session to that command's domain-qualified
+  canonical value. Already-qualified values, unknown external command values,
+  and null remain unchanged. The migration runs before live-session attribution
+  performs exact equality, and runtime consumers carry no permanent old-shape
+  compatibility branch (`software-development/policy/backward-compatibility-hygiene`).
 
 ## Primary flows
 
@@ -245,10 +253,14 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 flowchart TD
     R[Registered roots] --> REG[Context: artifact-source registry<br/>boundary · tier · kind · reach · authorship]
     CFG[config: business.publishes] --> OWN[Context: one owner per domain<br/>PublisherRegistry]
-    REG --> V[Context: validation<br/>reach gate · kind gate]
+    COMMIT[Agent Runtime: sealed commit<br/>candidate pathspec] --> V[Context: source validation<br/>reach gate · kind gate]
+    REG --> V
     OWN --> V
-    V -->|finding| FAIL[sync fails: file + exceeded reach]
-    V -->|admitted| C[Context: composition]
+    V -->|finding| FAIL[commit refused:<br/>file + exceeded reach]
+    V -->|admitted| RECORDED[committed source]
+    RECORDED --> PV[Context: publication revalidation]
+    PV -->|finding| PFAIL[publication refused]
+    PV -->|admitted| C[Context: composition]
     C --> CORPUS[~/.teleclaude/commands/&lt;domain&gt;/&lt;name&gt;.md]
     C --> CAT[~/.teleclaude/skills/ catalog: mother only]
     C --> LOCAL[project: .agents/skills + runtime skill dirs, written]
@@ -276,18 +288,19 @@ sequenceDiagram
 
 ## Failure modes
 
-- **A root publishes a global command for a domain it does not declare.** Sync
-  fails with the file and the reach it exceeds; nothing is composed for that
-  run.
+- **A root authors a global command for a domain it does not declare.** The
+  sealed commit is refused with the file and the reach it exceeds. If an
+  inadmissible source reaches publication outside that path, defense-in-depth
+  validation refuses the publication run and composes nothing.
 - **A bare token names a command in two domains.** The loader refuses, naming
   both. Domain-qualified dispatch is unaffected.
 - **An edit lands on one root and not the other.** While both roots exist the
   same command is two files, and they can diverge. The window is bounded by the
   contraction, and the corpus composes from both, so a divergence surfaces as
   two sources for one name rather than as a silent loss.
-- **A commit touches an incorporated package and no review runs.** Intended:
-  the adopting agent's pre-commit inspection is the gate, and the registry's
-  authorship class is what routes it.
+- **A commit touches an incorporated package and no post-commit doc-hygiene
+  review runs.** The registry suppresses only taxonomy grading; adoption remains
+  gated by `general/procedure/skill-management` and the AI-agent security policy.
 - **A legacy `.agents/` file a project authored by hand.** Never read, never
   adopted, never deleted by this delivery; it stays until the native-output
   sibling lands ownership records.
