@@ -894,27 +894,8 @@ install_python_deps() {
     print_success "Python dependencies installed"
 }
 
-install_hook() {
-    local hook_name="$1"
-    local hook_dest hook_src
-    if hook_dest=$(git -C "$INSTALL_DIR" rev-parse --git-path "hooks/$hook_name" 2>/dev/null); then
-        case "$hook_dest" in
-            /*) ;;
-            *) hook_dest="$INSTALL_DIR/$hook_dest" ;;
-        esac
-    else
-        hook_dest="$INSTALL_DIR/.git/hooks/$hook_name"
-    fi
-
-    mkdir -p "$(dirname "$hook_dest")"
-    hook_src="$INSTALL_DIR/templates/quality/githooks/$hook_name"
-    if [ -f "$hook_src" ]; then
-        cp "$hook_src" "$hook_dest"
-        chmod +x "$hook_dest"
-        print_success "$hook_name hook installed"
-    else
-        print_warning "$hook_name hook source not found; skipping"
-    fi
+converge_plumbing() {
+    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.project_setup.plumbing "$INSTALL_DIR"
 }
 
 install_deps_only() {
@@ -940,10 +921,7 @@ install_deps_only() {
         fi
     fi
 
-    install_hook pre-commit
-    install_hook post-commit
-    install_hook post-merge
-    install_hook pre-push
+    converge_plumbing
     print_success "Project dependencies installed"
 }
 
@@ -1357,24 +1335,6 @@ activate_home_repository() {
     fi
 }
 
-setup_git_filters() {
-    print_header "Setting up Git Filters"
-    print_info "Configuring teleclaude-docs smudge/clean filters..."
-
-    local cmd=(env "PYTHONPATH=$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "-c" "
-from pathlib import Path
-from teleclaude.project_setup.git_filters import setup_git_filters
-setup_git_filters(Path('$INSTALL_DIR'))
-")
-
-    if "${cmd[@]}"; then
-        print_success "Git filters configured"
-    else
-        print_error "Failed to configure Git filters"
-        exit 1
-    fi
-}
-
 # Load modular install steps
 # shellcheck source=/dev/null
 source "$INSTALL_DIR/bin/init/redis_locality.sh"
@@ -1410,9 +1370,6 @@ main() {
 
     install_system_deps
     install_python_deps
-    install_hook pre-commit
-    install_hook post-commit
-    install_hook post-merge
     install_blueprint_engine
     if [ "$CI_MODE" = false ]; then
         install_log_runtime
@@ -1441,7 +1398,7 @@ main() {
         configure_agent_cli
         activate_home_repository
     fi
-    setup_git_filters
+    converge_plumbing
     if [ "$CI_MODE" = false ]; then
         link_shared_scripts
     fi

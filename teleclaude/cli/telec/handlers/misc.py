@@ -26,10 +26,13 @@ from teleclaude.project_root import (
 )
 from teleclaude.project_setup import init_project
 from teleclaude.project_setup.onboard_flow import run_analyze, run_assess, run_onboard
+from teleclaude.project_setup.plumbing import PlumbingConvergenceRunOutcome, converge_registered_roots
 
 _NO_TUI_RUNNING = "No running telec TUI to reload."
 _RELOADED_TUIS = "Reloaded %d telec TUI(s): %s"
 _PID_SEPARATOR = ", "
+_PLUMBING_ROOT_RESULT = "{project_root}: {outcome}"
+_PLUMBING_RUN_RESULT = "Plumbing convergence {outcome}: {root_count} registered root(s)."
 
 __all__ = [
     "_attach_tmux_session",
@@ -255,6 +258,19 @@ def _handle_projects(args: list[str]) -> None:
         return
     if subcommand == "init":
         init_project(resolve_invocation_cwd())
+        return
+    if subcommand == "converge":
+        result = converge_registered_roots()
+        for root_result in result.results:
+            print(
+                _PLUMBING_ROOT_RESULT.format(
+                    project_root=root_result.project_root,
+                    outcome=root_result.outcome,
+                ),
+            )
+        print(_PLUMBING_RUN_RESULT.format(outcome=result.outcome, root_count=result.root_count))
+        if result.outcome is PlumbingConvergenceRunOutcome.FAILED:
+            raise SystemExit(1)
         return
     if subcommand == "onboard":
         run_onboard(resolve_invocation_cwd())

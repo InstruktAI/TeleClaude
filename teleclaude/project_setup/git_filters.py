@@ -11,6 +11,7 @@ already-checked-out files that are still unexpanded.
 """
 
 import re
+from enum import StrEnum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -39,7 +40,15 @@ _FILTER_REMOVED_MESSAGE = "git_filters: docs filter driver removed."
 _FILTER_SECTION_ABSENT_MESSAGE = "no such section"
 
 
-def ensure_git_filters(project_root: Path, *, enabled: bool = True) -> None:
+class GitFilterDisposition(StrEnum):
+    """Terminal disposition for one repository's docs filter driver."""
+
+    CONFIGURED = "configured"
+    REMOVED = "removed"
+    NOT_A_REPOSITORY = "not_a_repository"
+
+
+def ensure_git_filters(project_root: Path, *, enabled: bool = True) -> GitFilterDisposition:
     """Converge the filter driver to the docs capability declaration.
 
     Idempotent and CI-safe. Installs the driver into ``.git/config`` and re-runs
@@ -52,12 +61,12 @@ def ensure_git_filters(project_root: Path, *, enabled: bool = True) -> None:
     """
     if not (project_root / ".git").exists():
         print("git_filters: not a git repository, skipping filter setup.")
-        return
+        return GitFilterDisposition.NOT_A_REPOSITORY
 
     repo = Repo(project_root)
     if not enabled:
         _remove_filter_driver(repo)
-        return
+        return GitFilterDisposition.REMOVED
     _configure_filter_driver(repo)
     reconciled = _reconcile_filter_residue(repo, project_root)
     if reconciled:
@@ -67,24 +76,7 @@ def ensure_git_filters(project_root: Path, *, enabled: bool = True) -> None:
         print(f"git_filters: re-smudged {restored} file(s) to absolute paths.")
     elif not reconciled:
         print("git_filters: filter driver configured; working tree already smudged.")
-
-
-def setup_git_filters(project_root: Path) -> None:
-    """Configure git smudge/clean filters for tilde expansion (config only).
-
-    - Smudge: Expands @~/.teleclaude to @$HOME/.teleclaude on checkout
-    - Clean: Converts @$HOME/.teleclaude back to @~/.teleclaude on commit
-
-    Args:
-        project_root: Path to the project root directory.
-    """
-    if not (project_root / ".git").exists():
-        print("git_filters: not a git repository, skipping filter setup.")
-        return
-
-    repo = Repo(project_root)
-    _configure_filter_driver(repo)
-    print("git_filters: configured smudge/clean filters for tilde expansion.")
+    return GitFilterDisposition.CONFIGURED
 
 
 def _configure_filter_driver(repo: Repo) -> None:

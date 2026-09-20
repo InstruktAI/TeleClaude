@@ -343,6 +343,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "converge": CommandDef(
+                desc="Converge plumbing for every registered root on this machine",
+                flags=[F.FLAG_HELP],
+                notes=["Writes no tracked files."],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "onboard": CommandDef(
                 desc="Full project bootstrap: init plumbing, then dispatch config assessment and doc-snippet analysis",
                 flags=[F.FLAG_HELP],

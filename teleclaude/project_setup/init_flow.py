@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
 from teleclaude.capabilities import Capabilities, CapabilityName, resolve_capabilities
-from teleclaude.checkpoint_model import load_checkpoint_model
 from teleclaude.config import config
 from teleclaude.config._models import ReleaseChannel
 from teleclaude.config.advancement import advance_reachable_roots
@@ -25,10 +24,8 @@ from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
 from teleclaude.project_manifest import register_root
 from teleclaude.project_root import resolve_project_root
 from teleclaude.project_setup.domain_seeds import seed_event_domains
-from teleclaude.project_setup.git_filters import ensure_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
-from teleclaude.project_setup.hooks import install_code_hooks
 from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.project_setup.sync import sync_project_artifacts
 from teleclaude.quality.scope import get_project_languages
@@ -45,13 +42,6 @@ _MAKEFILE_NAME = "Makefile"
 _MARKDOWN_SUFFIX = ".md"
 _FRONTMATTER_DELIMITER = "---"
 _ENABLED_KEY = "enabled"
-
-
-def _has_executable_maintenance(project_root: Path, capabilities: Capabilities) -> bool:
-    """Return whether effective bindings resolve an executable action."""
-    _ = capabilities
-    model = load_checkpoint_model(str(project_root))
-    return any(action_id in model.maintenance for binding in model.bindings for action_id in binding.actions)
 
 
 def _is_teleclaude_project(project_root: Path) -> bool:
@@ -290,12 +280,12 @@ def init_project(project_root: Path) -> None:
     capabilities = _declare_inferred_capabilities(project_root)
     if capabilities.docs:
         update_gitattributes(project_root)
-    ensure_git_filters(project_root, enabled=capabilities.docs)
+    from teleclaude.project_setup.plumbing import converge_plumbing  # noqa: PLC0415 - avoids entrypoint preload.
+
+    converge_plumbing(project_root)
     sync_project_artifacts(project_root)
     if not is_mother and capabilities.code:
         deploy_skeleton(project_root)
-    if _has_executable_maintenance(project_root, capabilities):
-        install_code_hooks(project_root)
     _ensure_project_slug(project_root)
     register_root(project_root=resolve_project_root(project_root))
     advance_reachable_roots()

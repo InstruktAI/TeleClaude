@@ -16,6 +16,7 @@ from teleclaude.paths import PROJECTS_MANIFEST_PATH
 
 MANIFEST_PATH = PROJECTS_MANIFEST_PATH
 _UTF8 = "utf-8"
+_MANIFEST_READ_ERROR = "Unable to read the project registry."
 
 
 class RegisteredProjectRoot(NamedTuple):
@@ -67,7 +68,7 @@ def load_roots(path: Path = MANIFEST_PATH) -> list[Path]:
     return [entry.path for entry in load_registered_roots(path) if entry.is_present]
 
 
-def load_registered_roots(path: Path = MANIFEST_PATH) -> list[RegisteredProjectRoot]:
+def load_registered_roots(path: Path = MANIFEST_PATH, *, strict: bool = False) -> list[RegisteredProjectRoot]:
     """Load every registered project root, retaining unavailable entries."""
     manifest_path = _normalize_manifest_path(path)
     if not manifest_path.exists():
@@ -75,7 +76,9 @@ def load_registered_roots(path: Path = MANIFEST_PATH) -> list[RegisteredProjectR
 
     try:
         raw_data: object = yaml.safe_load(manifest_path.read_text(encoding=_UTF8))
-    except (yaml.YAMLError, OSError):
+    except (yaml.YAMLError, OSError) as exc:
+        if strict:
+            raise RuntimeError(_MANIFEST_READ_ERROR) from exc
         return []
 
     roots = _parse_manifest_data(raw_data)

@@ -28,6 +28,10 @@ business:
 # This overlay adds TeleClaude's runtime-specific actions.
 checkpoint:
   maintenance:
+    plumbing-convergence:
+      main_only: true
+      precedence: 15
+      command: [telec, projects, converge]
     restart:
       main_only: true
       precedence: 100
@@ -85,6 +89,9 @@ checkpoint:
     - scope:
         include: [teleclaude/install/**, teleclaude/project_setup/**, teleclaude/hooks/adapters/**, templates/**]
       actions: [install]
+    - scope:
+        include: [templates/quality/githooks/**]
+      actions: [plumbing-convergence]
     - scope:
         include: [teleclaude/cli/tui/**]
       actions: [tui-reload]
