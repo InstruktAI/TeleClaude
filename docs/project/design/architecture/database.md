@@ -152,7 +152,6 @@ erDiagram
     MEMORY_MANUAL_SESSIONS ||--o{ MEMORY_SUMMARIES : "project summaries"
 ```
 
-<!-- planned:move-discord-reflection-state-to-db -->
 
 ### Discord reflection state
 
@@ -180,7 +179,6 @@ conclusive provider not-found clears or replaces a record, and an inconclusive
 lookup leaves the record untouched. The contract the table serves is
 `project/spec/feature/integration/discord-admin-reflection-state`.
 
-<!-- /planned:move-discord-reflection-state-to-db -->
 
 The daemon owns `voice_transcriptions`; it is the single source of truth for
 the durability requirement in `@prd#scope` (a transcription in progress at

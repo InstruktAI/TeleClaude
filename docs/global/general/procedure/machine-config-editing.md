@@ -1,8 +1,8 @@
 ---
-description: Inspect, mutate, and diagnose TeleClaude machine configuration through its agent-facing CLI authority.
-activation_trigger: Use whenever an agent needs to inspect, change, repair, or validate TeleClaude machine configuration.
-delivered_by:
-  - move-discord-reflection-state-to-db
+description: Inspect, mutate, and diagnose TeleClaude machine configuration through
+  its agent-facing CLI authority.
+activation_trigger: Use whenever an agent needs to inspect, change, repair, or validate
+  TeleClaude machine configuration.
 ---
 
 # Machine Config Editing — Procedure

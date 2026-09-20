@@ -1,189 +1,123 @@
 ---
-description: 'The machine-config writer mutates `config.yml` atomically — dump to a sibling temp file, durably flush, atomically replace, cleanup on failure — mirroring the project-config writer but targeting the machine config aggregate.'
-visibility: 'public'
+description: The config context owns a validated, transaction-wide mutation boundary for machine configuration.
+visibility: public
 ---
 
 # Machine Config Write — Spec
 
 ## Required reads
 
-- @docs/project/spec/feature/config/atomic-project-config-write.md
-- @docs/project/spec/feature/config/machine-config-load.md
-- @docs/project/spec/domain/config.md
+@docs/project/spec/domain/config.md
+@docs/project/spec/feature/config/atomic-project-config-write.md
+@docs/project/spec/feature/config/machine-config-load.md
 
 ## What it is
 
-The machine-config writer is the sanctioned write path for the machine
-`config.yml` file. It complements the project-config writer (which
-targets the project overlay YAML) by providing the same atomic-replace
-contract for the file the machine-config loader consumes at process
-start.
+The config context is the sole internal authority that mutates machine configuration. Agent surfaces and runtime components submit semantic operations and values; they never parse the backing file, mutate a caller-owned document, or supply a full-document replacement.
 
-The helper operates on the **raw YAML mapping** (a `dict`), not on the
-loaded runtime configuration aggregate. This is a deliberate constraint:
-the loaded aggregate contains runtime-derived fields that are not part
-of the documented `config.yml` schema and that the loader rejects on
-re-read — for example `computer.tmux_binary` (resolved by runtime
-policy, not user-configurable) and per-agent `binary` / `profiles`
-fields (system-controlled, injected at load time). Persisting the
-loaded aggregate as-is would write a file the next load refuses,
-breaking the PRD's "make start comes up cleanly after the wizard"
-contract.
+One mutation transaction owns the complete lifecycle:
 
-Callers therefore read the existing YAML as a raw mapping, mutate the
-specific keys they own (e.g. `computer.name`), and pass the mutated
-mapping to the writer. The on-disk file thus contains only documented
-`config.yml` keys.
+1. acquire the stable per-file lock;
+2. read and parse the latest committed document;
+3. apply the requested semantic mutation;
+4. validate the complete candidate through the typed machine-config schema;
+5. serialize the candidate to a unique sibling temporary file, flush it, and durably sync it;
+6. atomically replace the target and release the lock.
 
-The contract holds four guarantees:
-
-1. **Atomic visibility.** A concurrent reader on `config.yml` sees
-   either the previous contents or the fully-written new contents,
-   never a partial write. The write happens to a `.tmp` sibling first;
-   the atomic rename happens only after the buffer is
-   flushed and durably synced at the kernel level.
-
-2. **Crash cleanup of the tmp sibling.** If anything between opening
-   the tmp file and the rename raises (disk full, permission failure,
-   serialisation error mid-dump, fsync failure), the writer unlinks
-   the tmp file before re-raising. The target file is left untouched.
-
-3. **Raw-mapping input only.** The helper accepts a raw YAML mapping
-   (the dict the YAML parser produces). It does
-   **not** accept the loaded runtime configuration aggregate — see above.
-
-4. **Caller-validated input.** The helper does NOT validate that the
-   supplied mapping satisfies the documented `config.yml` schema or
-   the invariants in `agents-inventory-requirement`. The caller (the
-   wizard) is responsible for keeping the mapping reloadable. The
-   wizard's discipline is: after a successful machine-config write,
-   attempt to reload the file via the existing machine-config loader;
-   the section is considered `configured` only when the reload
-   succeeds. Reload failure surfaces as `invalid` per UC-WIZ-6.
-
-The helper is sync, takes a `Path` and a raw mapping (`dict`), and
-returns `None` on success.
+Any failure before replacement leaves the committed target unchanged. Successful return means the committed document has already passed validation.
 
 ## Canonical fields
 
+### Mutation request
+
+- A named config-context operation.
+- The typed values required by that operation.
+- No caller-owned raw document and no caller-selected machine-config path.
+
 ### Use cases
 
-#### UC-MCW-1: Successful write replaces target file atomically
+#### UC-MCW-1: A valid mutation commits atomically
 
-```
-Given a raw config mapping and target path ~/.teleclaude/config.yml
-And the mapping contains only documented config.yml keys (no runtime-derived fields)
-And the target path may or may not already exist
-When the machine-config writer runs
-Then a sibling tmp path of ~/.teleclaude/config.tmp is derived from the target path
-And the mapping is serialized as YAML and written to the tmp file
-And the output is flushed and durably synced at the kernel level
-And the tmp file is atomically renamed into place at the target path
-And the call returns None
-And no concurrent reader observes a partially-written config.yml
+```gherkin
+Given a supported semantic mutation and valid values
+When the config context applies the mutation
+Then it holds the machine-config lock across reading, mutation, validation, and replacement
+And validates the complete candidate before persistence
+And writes and durably syncs a unique temporary file
+And atomically replaces the committed machine configuration
+And returns the committed result
 ```
 
-#### UC-MCW-2: Failure mid-write cleans up tmp and re-raises
+#### UC-MCW-2: An invalid candidate leaves committed state unchanged
 
-```
-Given the machine-config writer has opened the tmp file and started writing
-And an exception occurs (disk full during write, fsync failure, etc.)
-When an exception occurs mid-write
-Then the temp file's presence is checked
-And the partial temp file is removed if present
-And the original exception is re-raised unchanged
-And the target path is unchanged from its prior state
+```gherkin
+Given a semantic mutation would produce schema-invalid machine configuration
+When the config context validates the complete candidate
+Then it rejects the mutation with the schema error
+And no replacement occurs
+And the committed machine configuration remains byte-for-byte unchanged
 ```
 
-#### UC-MCW-3: Raw-mapping contract excludes runtime-derived fields
+#### UC-MCW-3: Concurrent mutations preserve both outcomes
 
-```
-Given a caller passes the loaded typed config object directly (not a raw mapping)
-When the machine-config writer runs against that input
-Then the writer's input contract is violated
-And the loaded tree contains runtime-derived fields like computer.tmux_binary
-  and the agent binary field that the machine-config loader rejects on reload
-And the resulting file is not reloadable
-
-Given a caller passes a raw mapping that omits runtime-derived fields
-And contains a valid documented config.yml schema (per teleclaude-config)
-When the machine-config writer runs
-Then the on-disk file reflects exactly the supplied mapping
-And the next load via the existing machine-config loader succeeds
-And the caller is responsible for keeping the mapping reloadable
+```gherkin
+Given two runtime callers concurrently request independent machine-config mutations
+When the config context executes both operations
+Then one transaction completes before the other reads committed state
+And the second transaction applies its mutation over the first committed result
+And neither accepted mutation is lost
 ```
 
-#### UC-MCW-5: Caller validates reloadability after write
+#### UC-MCW-4: Non-config contexts hold no file-write authority
 
-```
-Given a wizard step has called the machine-config writer with (path, raw_mapping)
-And the call returned successfully
-When the wizard re-derives the section's status for UC-WIZ-5/UC-WIZ-6
-Then the wizard attempts to reload the file via the existing machine-config loader
-And on successful reload the section status is `configured`
-And on reload failure the section status is `invalid`
-And the failure does NOT cause the writer to roll back —
-  rollback is the operator's responsibility (re-open the wizard, correct the input)
+```gherkin
+Given a runtime component needs a declared machine-config change
+When it requests that change
+Then it calls a named config-context operation with semantic values
+And it does not read, serialize, or replace the machine-config backing file
 ```
 
-#### UC-MCW-4: No `config.effective.updated` event in v1
+#### UC-MCW-5: Successful mutation requires no validation follow-up
 
+```gherkin
+Given the config context reports a machine-config mutation succeeded
+When the calling agent or runtime component continues
+Then it treats the returned state as the validated committed result
+And it does not invoke a second validation operation as confirmation
 ```
-Given the machine-config writer has successfully completed
-When the function returns
-Then no `config.effective.updated` event is published in v1
-And v1 consumers re-read `config.yml` at startup (daemon) or per-invocation (CLI)
-And the operator triggers reload via `make restart` or daemon restart, not via an event
-And future v1→v2 migration may introduce the filesystem-watcher event without changing this writer's contract
+
+#### UC-MCW-6: A persistence failure preserves the prior target
+
+```gherkin
+Given the config context has started serializing a valid candidate
+And serialization, flushing, syncing, or replacement fails
+When the transaction handles the failure
+Then it removes its temporary file when present
+And re-raises the original failure
+And leaves the prior committed target unchanged
+```
+
+#### UC-MCW-7: Machine-config writes emit no configuration event in v1
+
+```gherkin
+Given a machine-config mutation has committed
+When the transaction returns
+Then no `config.effective.updated` event is emitted in v1
+And runtime reload behavior remains owned by the existing config watcher and service lifecycle
 ```
 
 ### Cross-context references
 
-- The setup wizard (per `project/spec/feature/config/setup-wizard`) is
-  the consumer. The wizard's "Configure System Identity" step (and any
-  future machine-level wizard step) routes its writes through this
-  helper. Release-channel state lives in the project deployment block
-  (project YAML, written by the project-config writer), not in machine
-  config, so it is not a consumer of this helper.
-- `telec config patch` is out of scope for this delivery and is not
-  changed by this spec. A future delivery may route its machine-config
-  writes through this writer; that delivery would update this spec and
-  `telec config patch` together.
-- The atomic-replace contract is one of the inputs into a future
-  filesystem-watcher event in the config bounded context. Layering event
-  emission on top of this writer does not change the contract above.
+- `telec config`, the setup wizard, installation, migrations, and the TUI are callers of config-owned operations; none owns persistence.
+- Discord provider identifiers are integration reflection state and are persisted through the database reflection-state repository rather than through this contract.
 
 ## Allowed values
 
-- `path`: any writable filesystem path; the helper does not constrain
-  filename or directory.
-- `raw_config`: a raw YAML mapping (`dict`) that contains ONLY
-  documented `config.yml` keys (per
-  `project/spec/teleclaude-config#Daemon-runtime-config-keys`). The
-  loaded typed config object is **NOT** an allowed input — see
-  the "What it is" section and UC-MCW-3 for why. The helper does not
-  enforce runtime type checks; the caller is responsible for keeping
-  the mapping reloadable.
+- Mutation operations are the named operations published by the config context.
+- Mutation values are typed by the owning operation and validated as part of the complete candidate.
+- Arbitrary full-document replacement is not an allowed caller operation.
 
 ## Known caveats
 
-- **No parent-directory creation.** The machine-config writer assumes the
-  parent directory of `path` already exists. If it does not,
-  `open(tmp_path, "w")` raises `FileNotFoundError`. Callers that may
-  target a fresh `~/.teleclaude/` tree must create the directory tree
-  themselves.
-- **Writes share a persistent lock.** Writers serialize atomic replacement
-  through the configuration file transaction. Lock acquisition failure aborts
-  the write. Stored-file migrations hold that transaction across their read,
-  decision, and replacement. Raw candidate validation remains the caller's
-  responsibility and does not migrate undeclared keys.
-- **fsync covers data, not the directory entry.** Same caveat as
-  the project-config writer: filesystem-stack durability beyond `fsync` of
-  the file is the operator's filesystem choice.
-- **v1 does not emit `config.effective.updated`.** Per UC-MCW-4. The
-  operator-visible reload story is `make restart` (or daemon restart);
-  CLI invocations naturally re-read at module import.
-- **No diff-and-skip optimisation.** The helper always rewrites the
-  file even when the dumped payload matches the current on-disk
-  content. The atomic-replace contract treats every call as a real
-  write.
+- Data-file syncing does not guarantee containing-directory metadata durability on every filesystem stack.
+- The v1 config watcher owns runtime reload after replacement; the writer emits no domain event.

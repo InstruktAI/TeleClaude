@@ -183,14 +183,6 @@ And the daemon process remains running without a restart
 
 ## Known caveats
 
-<!-- planned-change:move-discord-reflection-state-to-db -->
-- **Stored-file migration and candidate validation are distinct.** Recognized
-  legacy file content is migrated and persisted before the file reaches raw
-  input validation, on initial load and reload. Raw configuration candidates
-  submitted for editing receive current-schema validation without that repair.
-  The local migration contract is specified by
-  `project/spec/feature/config/unknown-key-warning`.
-<!-- change:move-discord-reflection-state-to-db -->
 - **Stored-file migration and candidate validation are distinct.** Legacy
   content owned by the config context is migrated and persisted before the
   file reaches raw input validation, on initial load and reload. A retired
@@ -202,7 +194,6 @@ And the daemon process remains running without a restart
   current-schema validation without either migration path. The local
   config-owned migration contract is specified by
   `project/spec/feature/config/unknown-key-warning`.
-<!-- /planned-change:move-discord-reflection-state-to-db -->
 
 - **Process-start side effects.** The load runs once at process start with no
   opt-out. The initialisation reads files from disk, may fail with a missing

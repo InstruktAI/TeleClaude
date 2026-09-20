@@ -1,7 +1,7 @@
 ---
-delivered_by:
-  - move-discord-reflection-state-to-db
-description: DB-backed Discord admin reflection state for categories, channels, project forums, and launcher messages, with restart-safe reconciliation and no provider IDs written to config.yml.
+description: DB-backed Discord admin reflection state for categories, channels, project
+  forums, and launcher messages, with restart-safe reconciliation and no provider
+  IDs written to config.yml.
 visibility: internal
 ---
 

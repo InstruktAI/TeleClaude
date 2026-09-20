@@ -1,7 +1,6 @@
 ---
-description: Agents mutate TeleClaude machine configuration only through the telec config surface, while the config context owns validation and persistence.
-delivered_by:
-  - move-discord-reflection-state-to-db
+description: Agents mutate TeleClaude machine configuration only through the telec
+  config surface, while the config context owns validation and persistence.
 ---
 
 # Machine Config Mutation Authority — Policy

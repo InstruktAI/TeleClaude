@@ -78,13 +78,9 @@ Machine-config fields (`config.yml` / `TeleclaudeConfig`) declare an editability
 - `internal` (default, unmarked): constants, TTLs, QoS blocks, channel
   identifiers, and runtime-derived values. Not in a generated machine
   configuration, not in the TUI, not human-editable.
-<!-- planned-change:move-discord-reflection-state-to-db -->
-- `public`: the `config.yml` surface; agents patch `config.yml` directly.
-<!-- change:move-discord-reflection-state-to-db -->
 - `public`: the `config.yml` surface; agents mutate it through `telec config`,
   while runtime and UI callers submit named semantic operations to the config
   context. The backing file is not an editing surface.
-<!-- /planned-change:move-discord-reflection-state-to-db -->
 - `tui`: the operator-facing render set — the only tier `telec config wizard`
   renders.
 
@@ -541,12 +537,6 @@ discord:
   enabled: boolean
   token: string | null # sensitive; ${DISCORD_TOKEN}
   guild_id: integer | null # normally ${DISCORD_GUILD_ID}
-<!-- planned-change:move-discord-reflection-state-to-db -->
-  help_desk_channel_id: integer | null # normally ${DISCORD_HELP_DESK_CHANNEL_ID}
-  all_sessions_channel_id: integer | null # normally ${DISCORD_ALL_SESSIONS_CHANNEL_ID}
-  escalation_channel_id: integer | null # normally ${DISCORD_ESCALATION_CHANNEL_ID}
-<!-- change:move-discord-reflection-state-to-db -->
-<!-- /planned-change:move-discord-reflection-state-to-db -->
 whatsapp:
   enabled: boolean
   phone_number_id: string | null # normally ${WHATSAPP_PHONE_NUMBER_ID}
@@ -691,15 +681,6 @@ to the inclusive range from zero through `session_max_pending`. The high
 watermark's omitted-value derivation subtracts the literal value eight and is
 independent of a configured critical reserve.
 
-<!-- planned-change:move-discord-reflection-state-to-db -->
-
-Each machine owns its local `config.yml`, so `trusted_dirs[].discord_forum` is a
-local machine binding. Discord provisioning must only reuse a project forum when
-the channel resolves as a forum inside that machine's `Projects - {computer.name}`
-category. If that category cannot be resolved, project forum routing must be
-withheld rather than reusing stale local forum IDs.
-
-<!-- change:move-discord-reflection-state-to-db -->
 
 Discord provider IDs are not config. `config.yml` carries only the desired setup
 inputs a machine declares — `computer.name`, `computer.is_master`, the registered
@@ -711,7 +692,6 @@ to `config.yml`. Project forum bindings, launcher threads, and launcher starter
 messages are read from and written to that reflection state; see
 `project/spec/feature/integration/discord-admin-reflection-state`.
 
-<!-- /planned-change:move-discord-reflection-state-to-db -->
 
 ### Maintenance
 
