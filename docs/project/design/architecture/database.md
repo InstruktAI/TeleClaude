@@ -213,8 +213,17 @@ erDiagram
         text computer PK
         int protocol_generation
         text adoption_state
+        int inventory_completed_epoch
         timestamp first_observed_at
         timestamp inventory_completed_at
+    }
+
+    DISCORD_THREAD_RECONCILIATION_EPOCHS {
+        int protocol_generation PK
+        int current_epoch
+        text phase
+        timestamp opened_at
+        timestamp completed_at
     }
 
     DISCORD_THREAD_CLAIM_INVENTORY_ITEMS {
@@ -257,6 +266,13 @@ cannot change which computer handles a child. After every retained member has
 adopted the must-negotiate protocol, new Help Desk and relay bindings require a
 winning durable owner row. Existing threads with more than one current contender
 remain quarantined and produce no destructive decision.
+
+The master allocates each reconciliation epoch durably and sends that exact
+generation/epoch token to every retained member. A member's completion row names
+the epoch even when its inventory contains no items. The master completes an
+epoch only when every retained member has acknowledged the same token; restart
+resumes the open epoch instead of allocating another, and concurrent passes
+cannot advance it twice.
 
 An unclaimed provider child has its own durable orphan-candidate row. A complete
 reconciliation epoch advances that row only when every retained member's
