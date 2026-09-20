@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from teleclaude.config._strictness import SCALAR, ClosedMapping, InputList
+from teleclaude.config.tiers import SENSITIVE_METADATA_KEY
 
-KNOWN_CLOUD_PROVIDERS = ("openai", "anthropic", "google")
+
+class SummarizerProvider(StrEnum):
+    """Cloud summarizer providers with schema-declared configuration blocks."""
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GOOGLE = "google"
+
 
 _CLOUD_PROVIDER_INPUT = ClosedMapping({"model": SCALAR, "api_key": SCALAR})
 SUMMARIZER_INPUT = ClosedMapping(
@@ -25,17 +34,17 @@ class SummarizerLocalConfig:
     """Local (OpenAI-compatible) summarizer provider, e.g. LM Studio."""
 
     enabled: bool = False
-    base_url: str | None = "http://localhost:1234/v1"  # OpenAI-compatible endpoint
-    model: str | None = None
-    api_key: str | None = None
+    base_url: str | None = field(default="http://localhost:1234/v1", metadata={SENSITIVE_METADATA_KEY: True})
+    model: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    api_key: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
 
 
 @dataclass
 class SummarizerCloudConfig:
     """Typed model and credential for one cloud summarizer provider."""
 
-    model: str | None = None
-    api_key: str | None = None
+    model: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
+    api_key: str | None = field(default=None, metadata={SENSITIVE_METADATA_KEY: True})
 
 
 @dataclass
@@ -48,7 +57,7 @@ class SummarizerConfig:
     """
 
     local: SummarizerLocalConfig = field(default_factory=SummarizerLocalConfig)
-    provider_priority: list[str] = field(default_factory=list)
+    provider_priority: list[SummarizerProvider] = field(default_factory=list)
     openai: SummarizerCloudConfig = field(default_factory=SummarizerCloudConfig)
     anthropic: SummarizerCloudConfig = field(default_factory=SummarizerCloudConfig)
     google: SummarizerCloudConfig = field(default_factory=SummarizerCloudConfig)
@@ -69,16 +78,24 @@ def parse_summarizer_config(
         api_key=str(local_raw["api_key"]) if local_raw.get("api_key") else None,
     )
     priority_obj = raw.get("provider_priority", [])
-    priority = [str(p) for p in priority_obj if p] if isinstance(priority_obj, list) else []
-    unknown = [p for p in priority if p not in KNOWN_CLOUD_PROVIDERS]
+    priority: list[SummarizerProvider] = []
+    unknown: list[str] = []
+    if isinstance(priority_obj, list):
+        for provider in priority_obj:
+            if not provider:
+                continue
+            try:
+                priority.append(SummarizerProvider(str(provider)))
+            except ValueError:
+                unknown.append(str(provider))
     if unknown:
         raise ValueError(
             f"Invalid config key `config.yml:summarizer.provider_priority`: unknown provider(s) "
-            f"{', '.join(unknown)}. Allowed values: {', '.join(KNOWN_CLOUD_PROVIDERS)}."
+            f"{', '.join(unknown)}. Allowed values: {', '.join(provider.value for provider in SummarizerProvider)}."
         )
-    providers: dict[str, SummarizerCloudConfig] = {}
-    for provider in KNOWN_CLOUD_PROVIDERS:
-        provider_obj = raw.get(provider)
+    providers: dict[SummarizerProvider, SummarizerCloudConfig] = {}
+    for provider in SummarizerProvider:
+        provider_obj = raw.get(provider.value)
         provider_raw = provider_obj if isinstance(provider_obj, dict) else {}
         providers[provider] = SummarizerCloudConfig(
             model=str(provider_raw["model"]) if provider_raw.get("model") else None,
@@ -87,7 +104,7 @@ def parse_summarizer_config(
     return SummarizerConfig(
         local=local,
         provider_priority=priority,
-        openai=providers["openai"],
-        anthropic=providers["anthropic"],
-        google=providers["google"],
+        openai=providers[SummarizerProvider.OPENAI],
+        anthropic=providers[SummarizerProvider.ANTHROPIC],
+        google=providers[SummarizerProvider.GOOGLE],
     )

@@ -30,10 +30,7 @@ from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _SUBTABS,
     AdapterSectionProjection,
-    BackupAdapterConfig,
     ConfigTuiOutcome,
-    FirecrawlAdapterConfig,
-    ProvidersConfig,
     Subtab,
     observe_config_tui,
     project_adapter_sections,
@@ -49,6 +46,7 @@ from teleclaude.cli.tui.views.reflection import (
 )
 from teleclaude.config import (
     DEFAULT_CONFIG,
+    BackupConfig,
     ChiptunesConfig,
     ComputerConfig,
     DaemonConfig,
@@ -543,19 +541,11 @@ class ConfigContent(
             return fields
 
         if tab == Subtab.PROVIDERS:
-            providers_obj = ProvidersConfig(
-                backup=BackupAdapterConfig(
-                    aws_access_key_id="${AWS_ACCESS_KEY_ID}",
-                    aws_secret_access_key="${AWS_SECRET_ACCESS_KEY}",
-                    aws_s3_host="${AWS_S3_HOST}",
-                    aws_s3_region="${AWS_S3_REGION}",
-                    aws_s3_bucket="${AWS_S3_BUCKET}",
-                    backup_prefix="${TELECLAUDE_BACKUP_PREFIX}",
-                ),
-                firecrawl=FirecrawlAdapterConfig(api_key="${FIRECRAWL_API_KEY}"),
-            )
+            backup_data = deep_merge(_default_section("backup"), self._raw_config.get("backup", {}))
+            backup_fields = {field.name for field in dataclasses.fields(BackupConfig)}
+            backup_obj = BackupConfig(**{key: value for key, value in backup_data.items() if key in backup_fields})
             fields = reflect_schema(
-                providers_obj, section="Providers", owning_source="machine", inherited_tier=Tier.TUI
+                backup_obj, prefix="backup", section="Providers", owning_source="machine", inherited_tier=Tier.TUI
             )
             email_data = self._raw_config.get("email", {})
             merged_email = deep_merge(_default_section("email"), email_data)

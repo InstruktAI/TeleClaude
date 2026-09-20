@@ -13,6 +13,7 @@ from typing import Any, Literal, Union, get_args, get_origin, get_type_hints
 from pydantic import BaseModel
 
 from teleclaude.config._environment import environment_reference_at_path
+from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.tiers import (
     Tier,
     dataclass_field_tier,
@@ -20,6 +21,7 @@ from teleclaude.config.tiers import (
     pydantic_field_tier,
     renders_in_tui,
 )
+from teleclaude.config.validation import required_field_names
 
 
 @dataclass(frozen=True)
@@ -48,19 +50,27 @@ class ReflectedField:
     secret_is_set: bool = False
     secret_available: bool = True
     requiring_services: tuple[str, ...] = ()
+    required: bool = False
 
 
 def resolve_env_placeholders(
     fields: list[ReflectedField], environment: Mapping[str, str], environment_path: Path
 ) -> None:
-    """Resolve ``${VAR}`` field values to their environment value in place.
-
-    A config value like ``${DISCORD_BOT_TOKEN}`` is a reference to a ``.env`` secret,
-    not a literal to display or edit. Show the resolved environment value and record
-    the variable so the save path writes back to the environment, leaving the
-    placeholder in the config untouched.
-    """
+    """Attach schema-declared environment provenance without retaining sensitive values."""
+    sensitive_names = {
+        descriptor.dotted_path: descriptor.environment_name
+        for descriptor in machine_config_surface()
+        if descriptor.sensitive
+    }
     for field in fields:
+        derived_name = sensitive_names.get(field.key)
+        if derived_name is not None:
+            field.env_var = derived_name
+            field.environment = EnvironmentProvenance(derived_name, environment_path)
+            field.write_only = True
+            field.secret_is_set = bool(environment.get(derived_name))
+            field.value = ""
+            continue
         value = field.value
         if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
             var = value[2:-1]
@@ -189,6 +199,7 @@ def _reflect_field(
             description=description,
             section=section,
             owning_source=owning_source,
+            required=full_key.rsplit(".", 1)[-1] in required_field_names(full_key.split(".", 1)[0]),
         )
     ]
 

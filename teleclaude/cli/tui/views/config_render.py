@@ -8,7 +8,6 @@ from rich.style import Style
 from rich.text import Text
 
 from teleclaude.cli.config_handlers import EnvVarStatus
-from teleclaude.cli.tui.config_components.guidance import FieldGuidance, guidance_registry
 from teleclaude.cli.tui.views._config_constants import (
     _DIM,
     _FAIL,
@@ -55,29 +54,6 @@ class ConfigContentRenderMixin:
 
         @property
         def person_editable_fields(self) -> list[str]: ...
-
-    def _render_guidance_block(self, result: Text, guidance: FieldGuidance | None) -> None:
-        """Render the inline guidance block, only when it has actionable content."""
-        if guidance is None:
-            return
-        # Suppress the frame entirely when there is nothing to show (no steps/link/example/hint).
-        if not (guidance.steps or guidance.url or guidance.format_example or guidance.validation_hint):
-            return
-        result.append("      ┌─ Guidance\n", style=_SEP)
-        for idx, step in enumerate(guidance.steps, 1):
-            result.append(f"      │ {idx}. {step}\n", style=_DIM)
-        if guidance.url:
-            url_text = Text()
-            url_text.append("      │ Link: ")
-            url_text.append(guidance.url, style=Style(color="#87afd7", link=guidance.url))
-            url_text.append("\n")
-            result.append_text(url_text)
-        if guidance.format_example:
-            result.append("      │ Format: ", style=_DIM)
-            result.append(f"{guidance.format_example}\n", style=Style(color="#87afd7", bold=True))
-        if guidance.validation_hint:
-            result.append(f"      │ Hint: {guidance.validation_hint}\n", style=_DIM)
-        result.append("      └─\n", style=_SEP)
 
     def _render_tab_bar(self, result: Text, tabs: tuple[str, ...], active: int) -> None:
         """Render the clickable subtab bar."""
@@ -186,8 +162,6 @@ class ConfigContentRenderMixin:
             result.append(f"  {prefix} {icon} ", style=icon_style)
             result.append(f"{status.info.name}", style=row_style)
             result.append(f" ({status.info.adapter})\n", style=_DIM)
-            if selected:
-                self._render_guidance_block(result, guidance_registry.get_for_env(status.info.name))
 
     def _render_reflected_field(
         self, result: Text, f: ReflectedField, *, selected: bool, prefix: str, row_style: Style
@@ -197,11 +171,13 @@ class ConfigContentRenderMixin:
         Leaf rows are indented to their depth in the dotted key so they sit beneath
         the branch headers emitted by the caller.
         """
+        label = f"{f.name}{' *' if f.required else ''}"
         depth = max(0, f.key.count(".") - 1)
         pad = "  " * (2 + depth)
         subpad = pad + "    "
         if self._editing_var_name == f.key:  # type: ignore[attr-defined]
-            result.append(f"{pad}{prefix} {f.name} = {self._edit_buffer}█\n", style=row_style)  # type: ignore[attr-defined]
+            edit_value = _MASKED_VALUE if f.write_only else self._edit_buffer  # type: ignore[attr-defined]
+            result.append(f"{pad}{prefix} {label} = {edit_value}█\n", style=row_style)
             instruction = (
                 "Enter replace/keep  Esc cancel  Ctrl+U clear"
                 if f.write_only
@@ -216,7 +192,7 @@ class ConfigContentRenderMixin:
                 f"{pad}{prefix} {'✔' if f.secret_is_set else '○'} ",
                 style=_OK if f.secret_is_set and f.secret_available else _DIM,
             )
-            result.append(f"{f.name}: ", style=_DIM)
+            result.append(f"{label}: ", style=_DIM)
             result.append(status, style=row_style)
             if f.requiring_services:
                 result.append(f" ({', '.join(f.requiring_services)})", style=_DIM)
@@ -268,12 +244,6 @@ class ConfigContentRenderMixin:
 
         if f.description:
             result.append(f"{subpad}{f.description}\n", style=_DIM)
-        if selected:
-            # Env-backed ${VAR} fields carry guidance keyed by the env var, not the field key.
-            guidance = guidance_registry.get_for_env(f.env_var) if f.env_var else None
-            if guidance is None:
-                guidance = guidance_registry.get_for_field_key(f.key)
-            self._render_guidance_block(result, guidance)
 
     def _emit_branch_headers(self, result: Text, key: str, printed: set[str]) -> None:
         """Emit indented headers for any intermediate path segments not yet shown."""

@@ -1,36 +1,12 @@
-"""Runtime config bootstrap: seed the machine-local config from the bundled template."""
+"""Runtime machine-config location declaration."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 
-import yaml
-
-from teleclaude.config._file_io import file_transaction
 from teleclaude.paths import MACHINE_CONFIG_PATH
 
-DeepMerge = Callable[[dict[str, object], dict[str, object]], dict[str, object]]  # guard: loose-dict - YAML config merge
 
-
-def resolve_runtime_config_path(blueprint_path: Path, deep_merge: DeepMerge) -> Path:
-    """Return the runtime config path, seeding/merging from the blueprint.
-
-    The bundled ``templates/config.yml`` is a read-only blueprint
-    (sane defaults + ${VAR} placeholders). The machine-local ``~/.teleclaude/config.yml``
-    is the only file the TUI/daemon read and write: it is seeded from the blueprint on
-    first run, and any blueprint keys missing from the runtime are merged in (runtime
-    values win; placeholders preserved). The blueprint itself is never written.
-    """
-    runtime = MACHINE_CONFIG_PATH
-    if not blueprint_path.exists():
-        return runtime
-
-    blueprint_raw = yaml.safe_load(blueprint_path.read_text(encoding="utf-8")) or {}
-    with file_transaction(runtime) as transaction:
-        runtime_raw: object = yaml.safe_load(transaction.read_text()) or {}
-        if isinstance(blueprint_raw, dict) and isinstance(runtime_raw, dict):
-            seeded = deep_merge(blueprint_raw, runtime_raw)  # runtime wins; blueprint fills gaps
-            if seeded != runtime_raw:
-                transaction.replace_text(yaml.safe_dump(seeded, sort_keys=False))
-    return runtime
+def resolve_runtime_config_path() -> Path:
+    """Return the machine-local path without reading or creating it."""
+    return MACHINE_CONFIG_PATH

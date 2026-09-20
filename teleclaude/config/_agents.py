@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 
-from teleclaude.agent_registry import AgentProtocolDict, registry_digest
+from teleclaude.agent_registry import AgentName, AgentProtocolDict, registry_digest
 from teleclaude.config._coerce import as_bool
 from teleclaude.config._models import AgentConfig, ModelChainEntry
 from teleclaude.config.observation import (
@@ -39,13 +39,14 @@ def require_agents_section(raw_config: dict[str, object]) -> dict[str, object]: 
 
 def _validate_known_agent_keys(
     agents_raw: dict[str, object],  # guard: loose-dict
-    known_agents: tuple[str, ...],
+    known_agents: tuple[AgentName, ...],
     *,
     load_id: str,
     digest: str,
 ) -> None:
     """Reject unknown agent keys under config.yml:agents."""
-    unknown = sorted(str(name) for name in agents_raw.keys() if str(name) not in known_agents)
+    known_agent_ids = frozenset(agent.value for agent in known_agents)
+    unknown = sorted(str(name) for name in agents_raw.keys() if str(name) not in known_agent_ids)
     if unknown:
         log_agent_config_validation(
             load_id=load_id,
@@ -54,7 +55,7 @@ def _validate_known_agent_keys(
             reason=AgentConfigRefusalReason.UNKNOWN_AGENT_KEY,
         )
         raise ValueError(
-            f"Unknown key(s) under `config.yml:agents`: {', '.join(unknown)}. Allowed keys: {', '.join(known_agents)}."
+            f"Unknown key(s) under `config.yml:agents`: {', '.join(unknown)}. Allowed keys: {', '.join(AgentName.choices())}."
         )
 
 
@@ -155,7 +156,7 @@ def build_agents_registry(
     raw: dict[str, object],  # guard: loose-dict - YAML deserialization input
     *,
     load_id: str,
-) -> tuple[dict[str, AgentConfig], str]:
+) -> tuple[dict[AgentName, AgentConfig], AgentName]:
     """Validate `config.yml:agents` and construct the typed per-agent registry.
 
     Emits the closed agent-config-validation observation record family as a
@@ -166,7 +167,7 @@ def build_agents_registry(
     """
     agents_raw = dict(require_agents_section(raw))
 
-    known_agents = tuple(AGENT_PROTOCOL.keys())
+    known_agents = tuple(AgentName)
     digest = registry_digest()
     log_agent_config_validation(load_id=load_id, digest=digest, stage=AgentConfigValidationStage.STARTED)
 
@@ -179,14 +180,15 @@ def build_agents_registry(
             reason=AgentConfigRefusalReason.MISSING_DEFAULT,
         )
         raise ValueError(
-            f"Missing required config key `config.yml:agents.default`. Set it to one of: {', '.join(known_agents)}."
+            f"Missing required config key `config.yml:agents.default`. Set it to one of: {', '.join(AgentName.choices())}."
         )
     if not isinstance(default_agent_raw, str):
         raise ValueError(
-            f"Invalid config key `config.yml:agents.default`: expected a string ({', '.join(known_agents)})."
+            f"Invalid config key `config.yml:agents.default`: expected a string ({', '.join(AgentName.choices())})."
         )
-    default_agent = default_agent_raw.strip().lower()
-    if default_agent not in known_agents:
+    try:
+        default_agent = AgentName.from_str(default_agent_raw)
+    except ValueError as exc:
         log_agent_config_validation(
             load_id=load_id,
             digest=digest,
@@ -195,13 +197,15 @@ def build_agents_registry(
         )
         raise ValueError(
             f"Invalid config key `config.yml:agents.default`: unknown agent '{default_agent_raw}'. "
-            f"Allowed values: {', '.join(known_agents)}."
-        )
+            f"Allowed values: {', '.join(AgentName.choices())}."
+        ) from exc
 
     _validate_known_agent_keys(agents_raw, known_agents, load_id=load_id, digest=digest)
 
-    agents_registry: dict[str, AgentConfig] = {}
-    for name, protocol in AGENT_PROTOCOL.items():
+    agents_registry: dict[AgentName, AgentConfig] = {}
+    for agent_name in AgentName:
+        name = agent_name.value
+        protocol = AGENT_PROTOCOL[name]
         # Get user overrides for this agent if any
         val = agents_raw.get(name)
         if val is not None and not isinstance(val, dict):
@@ -210,7 +214,7 @@ def build_agents_registry(
         _validate_agent_setting_keys(name, user_agent_config)
         model_chains = _parse_model_chains(name, user_agent_config.get("model_chains"), protocol)
 
-        agents_registry[name] = AgentConfig(
+        agents_registry[agent_name] = AgentConfig(
             binary=resolve_agent_binary(name),
             profiles=_parse_profiles(name, user_agent_config.get("profiles"), protocol),
             session_dir=str(protocol["session_dir"]),
@@ -266,7 +270,7 @@ def build_agents_registry(
         load_id=load_id,
         digest=digest,
         outcome=AgentConfigValidationOutcome.ACCEPTED,
-        default_agent=default_agent,
+        default_agent=default_agent.value,
         enabled_count=enabled_count,
         registry_count=len(agents_registry),
     )

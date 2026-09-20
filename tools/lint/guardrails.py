@@ -13,8 +13,6 @@ from functools import cache
 from pathlib import Path
 from typing import NamedTuple, NoReturn
 
-import yaml
-
 
 def _fail(message: str) -> NoReturn:
     """Abort guardrails execution with a formatted failure message."""
@@ -115,9 +113,6 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     # Loose-dict typing guardrail
     _warn_for_loose_dicts(repo_root, selected_paths)
-
-    # templates/config.yml agents: block vs. the canonical agent registry
-    _check_config_template_agent_coverage(repo_root)
 
 
 def _normalize_selected_paths(repo_root: Path, raw_paths: Sequence[str]) -> set[str] | None:
@@ -698,68 +693,6 @@ def _warn_for_loose_dicts(repo_root: Path, selected_paths: set[str] | None = Non
 
     if len(matches) > 0:
         _fail("guardrails warning: loose dict typings detected\n")
-
-
-# ---------------------------------------------------------------------------
-# templates/config.yml agents: block vs. the canonical agent registry
-# ---------------------------------------------------------------------------
-
-AGENT_REGISTRY_SOURCE_PATH = "teleclaude/agent_registry.py"
-CONFIG_TEMPLATE_PATH = "templates/config.yml"
-AGENT_NAME_CLASS_PATTERN = re.compile(r"class AgentName\(StrEnum\):(.*?)(?=\n    @|\n    def |\nclass |\Z)", re.DOTALL)
-AGENT_NAME_MEMBER_PATTERN = re.compile(r'^\s{4}[A-Z_]+\s*=\s*"([a-z0-9_-]+)"', re.MULTILINE)
-
-
-def _canonical_agent_keys(repo_root: Path) -> frozenset[str] | None:
-    """Read AgentName's canonical member values as text, never by import.
-
-    This module grades ``teleclaude`` (including ``agent_registry.py``
-    itself); depending on it here would let a broken package disable its
-    own linter, the same reasoning ``_ignored_paths`` documents for git.
-    """
-    registry_path = repo_root / AGENT_REGISTRY_SOURCE_PATH
-    if not registry_path.is_file():
-        return None
-    text = registry_path.read_text(encoding=UTF8_ENCODING)
-    match = AGENT_NAME_CLASS_PATTERN.search(text)
-    if match is None:
-        return None
-    members = frozenset(AGENT_NAME_MEMBER_PATTERN.findall(match.group(1)))
-    return members or None
-
-
-def _check_config_template_agent_coverage(repo_root: Path) -> None:
-    """Verify templates/config.yml's agents: block matches the canonical registry.
-
-    templates/config.yml is intentionally hand-maintained — it carries
-    human-authored example comments (e.g. claude's model_chains block) that
-    a generic YAML generator would destroy — so it is CHECKED here rather
-    than generated, mirroring bin/install.sh and src/Launcher/build.sh's own
-    completeness guards against the same registry. Runs unconditionally
-    (not scoped to selected_paths) since it is a single cheap file read: a
-    canonical agent added without updating this template is a silent-drift
-    regression regardless of which file a given lint invocation was scoped to.
-    """
-    canonical = _canonical_agent_keys(repo_root)
-    if canonical is None:
-        return
-    template_path = repo_root / CONFIG_TEMPLATE_PATH
-    if not template_path.is_file():
-        return
-    data = yaml.safe_load(template_path.read_text(encoding=UTF8_ENCODING))
-    agents_block = data.get("agents") if isinstance(data, dict) else None
-    if not isinstance(agents_block, dict):
-        _fail(f"{CONFIG_TEMPLATE_PATH}: missing or malformed top-level 'agents:' block")
-    declared = {str(key) for key in agents_block if key != "default"}
-    missing = canonical - declared
-    extra = declared - canonical
-    if missing or extra:
-        _fail(
-            f"{CONFIG_TEMPLATE_PATH}'s agents: block has drifted from the canonical registry "
-            f"({AGENT_REGISTRY_SOURCE_PATH}). missing={sorted(missing)} extra={sorted(extra)}. "
-            f"Add or remove the corresponding agent block by hand in {CONFIG_TEMPLATE_PATH} — "
-            "this file is intentionally checked, not generated."
-        )
 
 
 def _collect_function_guard_ranges(lines: list[str]) -> list[tuple[int, int]]:

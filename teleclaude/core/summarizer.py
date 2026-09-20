@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from teleclaude.config import config
+from teleclaude.config._summarizer import SummarizerProvider
 from teleclaude.services.summarizer_backends import summarize_anthropic, summarize_openai_compatible
 
 # Dateless model aliases so summaries track each provider's latest without config churn.
@@ -80,22 +81,22 @@ async def summarize_agent_output(agent_output: str) -> tuple[str | None, str]:
     return None, summary
 
 
-def _provider_config(provider: str) -> object | None:
+def _provider_config(provider: SummarizerProvider) -> object | None:
     """Return the typed cloud provider record for one configured provider."""
     summarizer = config.summarizer
     if summarizer is None:
         return None
     return {
-        "anthropic": summarizer.anthropic,
-        "openai": summarizer.openai,
-        "google": summarizer.google,
-    }.get(provider)
+        SummarizerProvider.ANTHROPIC: summarizer.anthropic,
+        SummarizerProvider.OPENAI: summarizer.openai,
+        SummarizerProvider.GOOGLE: summarizer.google,
+    }[provider]
 
 
-def _summarizer_model(provider: str) -> str:
+def _summarizer_model(provider: SummarizerProvider) -> str:
     provider_config = _provider_config(provider)
     configured = getattr(provider_config, "model", None)
-    return configured or _DEFAULT_MODELS[provider]
+    return configured or _DEFAULT_MODELS[provider.value]
 
 
 async def _call_summarizer(
@@ -125,18 +126,18 @@ async def _call_summarizer(
         except Exception as e:
             errors.append(f"local: {e}")
 
-    priority = summ.provider_priority if (summ and summ.provider_priority) else ["openai", "anthropic", "google"]
+    priority = summ.provider_priority if (summ and summ.provider_priority) else list(SummarizerProvider)
     for provider in priority:
         provider_config = _provider_config(provider)
         api_key = getattr(provider_config, "api_key", None)
         if not api_key:
             continue  # silent skip — provider not configured
         try:
-            if provider == "anthropic":
+            if provider is SummarizerProvider.ANTHROPIC:
                 return await summarize_anthropic(
-                    prompt, schema, parser, api_key=api_key, model=_summarizer_model("anthropic")
+                    prompt, schema, parser, api_key=api_key, model=_summarizer_model(SummarizerProvider.ANTHROPIC)
                 )
-            base_url = _GOOGLE_OPENAI_BASE_URL if provider == "google" else None
+            base_url = _GOOGLE_OPENAI_BASE_URL if provider is SummarizerProvider.GOOGLE else None
             return await summarize_openai_compatible(
                 prompt, schema, parser, base_url=base_url, api_key=api_key, model=_summarizer_model(provider)
             )

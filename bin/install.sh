@@ -125,13 +125,7 @@ EOF
 }
 
 ensure_config_yml() {
-    if [ ! -f "$TC_CONFIG" ]; then
-        mkdir -p "$TELECLAUDE_HOME"
-        cp "$INSTALL_DIR/templates/config.yml" "$TC_CONFIG"
-        print_success "Created $TC_CONFIG from the bundled config template"
-    else
-        print_info "config.yml already exists at $TC_CONFIG"
-    fi
+    "$(_yaml_python)" "$INSTALL_DIR/bin/init/ensure_machine_config.py"
 }
 
 _yaml_python() {
@@ -1431,16 +1425,6 @@ run_macos_permissions_probe() {
     echo "minus button and add it again — a stale row keeps showing as enabled."
 }
 
-ensure_env_file() {
-    # Seed .env from .env.sample on fresh installs so REDIS_URL (and other
-    # defaults) are visible to validate_config and to subsequent runtime
-    # imports of teleclaude.config, which loads .env at module-import time.
-    if [ ! -f "$INSTALL_DIR/.env" ] && [ -f "$INSTALL_DIR/.env.sample" ]; then
-        cp "$INSTALL_DIR/.env.sample" "$INSTALL_DIR/.env"
-        print_success ".env seeded from .env.sample"
-    fi
-}
-
 validate_config() {
     print_header "Validating config.yml"
     if "$INSTALL_DIR/bin/telec" config validate; then
@@ -1537,7 +1521,6 @@ main() {
     if [ "$CI_MODE" = false ]; then
         setup_agents_interactive
     fi
-    ensure_env_file
     validate_config
     install_global_cli
     _ensure_local_bin_on_path

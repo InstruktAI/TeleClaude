@@ -42,6 +42,7 @@ from teleclaude.config.person_secrets import (
 )
 from teleclaude.config.roster import RosterOutcome, remove_person_from_rosters
 from teleclaude.config.schema import ConfigKind, CredsConfig, GlobalConfig, PersonConfig, PersonEntry
+from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
 from teleclaude.mcp.registry import load_effective_registry
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, REPO_ROOT, TELECLAUDE_HOME, ConfigFileName
@@ -79,7 +80,7 @@ class EnvVarInfo:
     name: str
     adapter: str
     description: str
-    example: str
+    example: str = ""
 
 
 @dataclass
@@ -98,150 +99,6 @@ class ValidationResult:
     passed: bool
     errors: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
-
-
-# --- Adapter env var registry ---
-
-_ADAPTER_ENV_VARS: dict[str, list[EnvVarInfo]] = {
-    "telegram": [
-        EnvVarInfo(
-            "TELEGRAM_BOT_TOKEN",
-            "telegram",
-            "Telegram Bot API token",
-            "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-        ),
-    ],
-    "discord": [
-        EnvVarInfo(
-            "DISCORD_BOT_TOKEN",
-            "discord",
-            "Discord Bot Token",
-            "MTA...",
-        ),
-        EnvVarInfo(
-            "DISCORD_GUILD_ID",
-            "discord",
-            "Discord Server (Guild) ID",
-            "123456789012345678",
-        ),
-    ],
-    "ai": [
-        EnvVarInfo(
-            "ANTHROPIC_API_KEY",
-            "ai",
-            "Anthropic API key (summarizer)",
-            "sk-ant-api03-...",
-        ),
-        EnvVarInfo(
-            "OPENAI_API_KEY",
-            "ai",
-            "OpenAI API key (summarizer fallback, Whisper STT, TTS)",
-            "sk-proj-...",
-        ),
-        EnvVarInfo(
-            "GOOGLE_API_KEY",
-            "ai",
-            "Google Gemini API key (summarizer fallback)",
-            "AIza...",
-        ),
-        EnvVarInfo(
-            "SUMMARIZER_LLM_BASE_URL",
-            "ai",
-            "Local OpenAI-compatible summarizer endpoint (e.g. LM Studio)",
-            "http://localhost:1234/v1",
-        ),
-        EnvVarInfo(
-            "SUMMARIZER_LLM_MODEL",
-            "ai",
-            "Local summarizer model id loaded in the local server",
-            "qwen3.5-0.8b",
-        ),
-    ],
-    "voice": [
-        EnvVarInfo(
-            "ELEVENLABS_API_KEY",
-            "voice",
-            "ElevenLabs API key (text-to-speech)",
-            "sk_...",
-        ),
-    ],
-    "redis": [
-        EnvVarInfo(
-            "REDIS_URL",
-            "redis",
-            "Redis connection URL (multi-computer transport)",
-            "redis://localhost:6379",
-        ),
-        EnvVarInfo(
-            "REDIS_PASSWORD",
-            "redis",
-            "Redis password (multi-computer transport)",
-            "your-redis-password",
-        ),
-    ],
-    "whatsapp": [
-        EnvVarInfo(
-            "WHATSAPP_PHONE_NUMBER_ID",
-            "whatsapp",
-            "Business phone number ID from Meta",
-            "123456789012345",
-        ),
-        EnvVarInfo(
-            "WHATSAPP_ACCESS_TOKEN",
-            "whatsapp",
-            "System user token (long-lived)",
-            "EAAx...",
-        ),
-        EnvVarInfo(
-            "WHATSAPP_WEBHOOK_SECRET",
-            "whatsapp",
-            "App secret for webhook signature verification",
-            "abc123...",
-        ),
-        EnvVarInfo(
-            "WHATSAPP_VERIFY_TOKEN",
-            "whatsapp",
-            "Random string for webhook challenge-response",
-            "my-verify-token",
-        ),
-        EnvVarInfo(
-            "WHATSAPP_TEMPLATE_NAME",
-            "whatsapp",
-            "Template name for 24h window boundary messages",
-            "hello_world",
-        ),
-        EnvVarInfo(
-            "WHATSAPP_TEMPLATE_LANGUAGE",
-            "whatsapp",
-            "Template language code",
-            "en_US",
-        ),
-        EnvVarInfo(
-            "WHATSAPP_BUSINESS_NUMBER",
-            "whatsapp",
-            "Business phone number for invite deep links",
-            "+1234567890",
-        ),
-    ],
-    "email": [
-        EnvVarInfo("EMAIL_FROM", "email", "Sender identity (Name <addr>)", "Some Name <app@doma.in>"),
-        EnvVarInfo("EMAIL_REPLYTO", "email", "Reply-To header", "noreply <no-reply@doma.in>"),
-        EnvVarInfo("SMTP_USERNAME", "email", "SMTP relay username", "1234abcd@smtp-brevo.com"),
-        EnvVarInfo("SMTP_KEY", "email", "SMTP relay key/password", "xsmtpsib-..."),
-        EnvVarInfo("SMTP_RELAY", "email", "SMTP relay host:port", "smtp-relay.brevo.com:587"),
-    ],
-    "backup": [
-        EnvVarInfo("AWS_ACCESS_KEY_ID", "backup", "S3 access key id", "AKIA..."),
-        EnvVarInfo("AWS_SECRET_ACCESS_KEY", "backup", "S3 secret access key", "..."),
-        EnvVarInfo("AWS_S3_HOST", "backup", "S3 endpoint host", "s3.eu-central-1.amazonaws.com"),
-        EnvVarInfo("AWS_S3_REGION", "backup", "S3 region", "eu-central-1"),
-        EnvVarInfo("AWS_S3_BUCKET", "backup", "S3 bucket name", "my-teleclaude-backups"),
-        EnvVarInfo("TELECLAUDE_BACKUP_PREFIX", "backup", "Key prefix for backups", "teleclaude/"),
-    ],
-    "firecrawl": [
-        EnvVarInfo("FIRECRAWL_API_KEY", "firecrawl", "Firecrawl API key (web scraping)", "fc-..."),
-    ],
-}
 
 
 # --- Reading ---
@@ -514,13 +371,29 @@ def validate_all() -> list[ValidationResult]:
 
 
 def get_adapter_env_vars(adapter_name: str) -> list[EnvVarInfo]:
-    """Return registered env vars for a specific adapter, regardless of usage."""
-    return _ADAPTER_ENV_VARS.get(adapter_name, [])
+    """Return schema-declared sensitive variables for one owning config section."""
+    return [info for info in _schema_environment_vars() if info.adapter == adapter_name]
 
 
 def get_all_env_vars() -> dict[str, list[EnvVarInfo]]:
-    """Return all registered env vars, grouped by service."""
-    return dict(_ADAPTER_ENV_VARS)
+    """Return sensitive schema descriptors grouped by their owning section."""
+    groups: dict[str, list[EnvVarInfo]] = {}
+    for info in _schema_environment_vars():
+        groups.setdefault(info.adapter, []).append(info)
+    return groups
+
+
+def _schema_environment_vars() -> list[EnvVarInfo]:
+    """Project the schema-owned sensitive leaves into environment inventory rows."""
+    return [
+        EnvVarInfo(
+            name=descriptor.environment_name or "",
+            adapter=descriptor.path[0],
+            description=descriptor.dotted_path.replace(".", " "),
+        )
+        for descriptor in machine_config_surface()
+        if descriptor.sensitive and descriptor.environment_name is not None
+    ]
 
 
 def get_required_env_vars() -> dict[str, list[EnvVarInfo]]:

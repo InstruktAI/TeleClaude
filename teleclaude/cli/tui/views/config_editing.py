@@ -31,6 +31,7 @@ from teleclaude.cli.tui.views._config_constants import (
 )
 from teleclaude.cli.tui.views.reflection import ReflectedField, deserialize_value
 from teleclaude.config import DEFAULT_CONFIG, build_config_from_raw, config, config_path, reload_config
+from teleclaude.config._environment import mutate_environment_value
 from teleclaude.config.schema import PersonEntry
 from teleclaude.config.validation import is_unresolved_placeholder, missing_required_fields, validated_sections
 
@@ -128,6 +129,9 @@ class ConfigContentEditingMixin:
 
         @property
         def person_reflected_fields(self) -> list[ReflectedField]: ...
+
+        @property
+        def reflected_fields(self) -> list[ReflectedField]: ...
 
     def move_cursor(self, delta: int) -> None:
         """Move the cursor within the active config section."""
@@ -284,6 +288,16 @@ class ConfigContentEditingMixin:
             return
         field = self._active_personal_secret_field()
         if field is None:
+            reflected = next(
+                (candidate for candidate in self.reflected_fields if candidate.key == self._editing_var_name),
+                None,  # type: ignore[attr-defined]
+            )
+            if reflected is not None and reflected.write_only and reflected.environment is not None:
+                mutate_environment_value(reflected.environment.path, reflected.environment.name, None)
+                self._editing_var_name = None  # type: ignore[attr-defined]
+                self._edit_buffer = ""  # type: ignore[attr-defined]
+                self.refresh_data()  # type: ignore[attr-defined]
+                return
             self.clear_edit_buffer()
             return
         operation_id = str(uuid4())
@@ -487,7 +501,7 @@ class ConfigContentEditingMixin:
             return f"{section_name} is enabled but not configured: fill {', '.join(missing)} (or disable it)."
         return None
 
-    def _save_reflected_field(self, key: str, raw_value: Any) -> None:
+    def _save_reflected_field(self, key: str, raw_value: Any) -> None:  # noqa: C901 - owner-local persistence transitions
         """Parse, validate, and write a reflected field value back to its source."""
         operation_id = str(uuid4())
         observe_config_tui(ConfigTuiOutcome.SAVE_REQUESTED, operation_id=operation_id, field_paths=[key])
@@ -499,6 +513,18 @@ class ConfigContentEditingMixin:
 
         f = next((field for field in fields if field.key == key), None)
         if f is None:
+            return
+
+        if f.write_only and f.environment is not None:
+            if not str(raw_value).strip():
+                self._editing_var_name = None  # type: ignore[attr-defined]
+                self._edit_buffer = ""  # type: ignore[attr-defined]
+                self.refresh(layout=True)  # type: ignore[attr-defined]
+                return
+            set_env_var(f.environment.name, str(raw_value), f.environment.path)
+            self._editing_var_name = None  # type: ignore[attr-defined]
+            self._edit_buffer = ""  # type: ignore[attr-defined]
+            self.refresh_data()  # type: ignore[attr-defined]
             return
 
         if f.write_only:

@@ -22,6 +22,7 @@ from enum import StrEnum
 from pydantic.fields import FieldInfo
 
 TIER_METADATA_KEY = "tier"
+SENSITIVE_METADATA_KEY = "sensitive"
 
 # A container field whose members are themselves structured carries this marker
 # with the reason its body is not walked. The schema walker refuses to skip such
@@ -52,6 +53,17 @@ def pydantic_field_tier(field_info: FieldInfo) -> Tier | None:
         if raw is not None:
             return Tier(str(raw))
     return None
+
+
+def dataclass_field_is_sensitive(field: dataclasses.Field[object]) -> bool:
+    """Whether a dataclass field declares environment-backed secret handling."""
+    return bool(field.metadata.get(SENSITIVE_METADATA_KEY)) if field.metadata else False
+
+
+def pydantic_field_is_sensitive(field_info: FieldInfo) -> bool:
+    """Whether a Pydantic field declares environment-backed secret handling."""
+    extra = field_info.json_schema_extra
+    return bool(extra.get(SENSITIVE_METADATA_KEY)) if isinstance(extra, dict) else False
 
 
 def effective_tier(explicit: Tier | None, inherited: Tier) -> Tier:

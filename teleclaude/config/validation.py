@@ -73,6 +73,11 @@ def validated_sections() -> frozenset[str]:
     return frozenset(_REQUIRED_FIELDS)
 
 
+def required_field_names(section: str) -> frozenset[str]:
+    """Return the validation-owned required field names for one config section."""
+    return frozenset(spec.config_attr for spec in _REQUIRED_FIELDS.get(section, ()))
+
+
 def missing_enabled_service_fields(config: object) -> dict[str, list[str]]:
     """Return missing typed fields for enabled optional provider services."""
     missing: dict[str, list[str]] = {}

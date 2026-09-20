@@ -166,6 +166,16 @@ MACHINE_CONFIG_INPUT = ClosedMapping(
                 "smtp_relay": SCALAR,
             }
         ),
+        "backup": ClosedMapping(
+            {
+                "aws_access_key_id": SCALAR,
+                "aws_secret_access_key": SCALAR,
+                "aws_s3_host": SCALAR,
+                "aws_s3_region": SCALAR,
+                "aws_s3_bucket": SCALAR,
+                "backup_prefix": SCALAR,
+            }
+        ),
         "database_url": SCALAR,
     }
 )

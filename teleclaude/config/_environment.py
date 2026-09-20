@@ -179,6 +179,32 @@ def write_environment_values(path: Path, values: Mapping[str, str], *, creation_
         transaction.replace_text("".join(rewritten), creation_mode=creation_mode)
 
 
+def reconcile_environment_values(path: Path, values: Mapping[str, str], removals: frozenset[str]) -> None:
+    """Atomically apply environment additions and remove retired names from one file."""
+    _validate_environment_values(values)
+    for name in removals:
+        _validate_environment_name(name)
+    with file_transaction(path) as transaction:
+        lines = transaction.read_text().splitlines(keepends=True)
+        remaining = dict(values)
+        rewritten: list[str] = []
+        for line in lines:
+            assignment = _environment_assignment(line)
+            if assignment is None:
+                rewritten.append(line)
+                continue
+            if assignment.name in removals:
+                continue
+            if assignment.name in remaining:
+                rewritten.append(_assignment_line(assignment.name, remaining.pop(assignment.name), assignment.prefix))
+                continue
+            rewritten.append(line)
+        if rewritten and not rewritten[-1].endswith(_NEWLINE):
+            rewritten[-1] = f"{rewritten[-1]}{_NEWLINE}"
+        rewritten.extend(_assignment_line(name, value) for name, value in remaining.items())
+        transaction.replace_text("".join(rewritten))
+
+
 def reconcile_environment_references(
     raw: object,
     effective: object,
