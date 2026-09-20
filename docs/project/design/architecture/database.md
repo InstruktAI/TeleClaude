@@ -184,7 +184,20 @@ lookup leaves the record untouched. The contract the table serves is
 
 ```mermaid
 erDiagram
-    DISCORD_SHARED_THREAD_CLAIMS {
+    DISCORD_SHARED_THREAD_CONTENDERS {
+        int thread_id PK
+        text computer PK
+        int parent_id
+        text child_kind
+        text local_identity
+        text lifecycle
+        int protocol_generation
+        int inventory_epoch
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    DISCORD_SHARED_THREAD_OWNERS {
         int thread_id PK
         int parent_id
         text child_kind
@@ -204,6 +217,17 @@ erDiagram
         timestamp inventory_completed_at
     }
 
+    DISCORD_THREAD_CLAIM_INVENTORY_ITEMS {
+        text computer PK
+        int protocol_generation PK
+        int inventory_epoch PK
+        int thread_id PK
+        int parent_id
+        text child_kind
+        text local_identity
+        text lifecycle
+    }
+
     DISCORD_THREAD_ORPHAN_CANDIDATES {
         int thread_id PK
         int parent_id
@@ -215,17 +239,22 @@ erDiagram
 ```
 
 The master database is the single durable authority for child ownership inside
-shared Discord forums. Claims are source-bound to the computer authenticated by
-the fleet transport; one computer cannot claim or transition another computer's
-child. The member registry retains every computer observed through fleet
-discovery, including offline members, and adoption remains incomplete until each
-member has published a complete inventory for the current protocol generation.
+shared Discord forums. Pre-activation contenders and inventory items retain
+every `(thread, computer)` observation without collapsing competing local
+claims. After activation, the separate owner row permits exactly one winning
+computer per thread. Every mutation is source-bound to the computer
+authenticated by the fleet transport; one computer cannot observe, claim, or
+transition another computer's child. The member registry retains every computer
+observed through fleet discovery, including offline members, and adoption
+remains incomplete until each member has published a complete inventory for the
+current protocol generation.
 
-Before fleet-wide activation, inventories and contender claims are observational
-only and cannot change which computer handles a child. After every retained
-member has adopted the must-negotiate protocol, new Help Desk and relay bindings
-require a winning durable claim. Existing conflicting contenders remain
-quarantined and produce no destructive decision.
+Before fleet-wide activation, inventory replacement writes the member's complete
+item set and refreshes its composite-key contender rows; these observations
+cannot change which computer handles a child. After every retained member has
+adopted the must-negotiate protocol, new Help Desk and relay bindings require a
+winning durable owner row. Existing threads with more than one current contender
+remain quarantined and produce no destructive decision.
 
 An unclaimed provider child has its own durable orphan-candidate row. A complete
 reconciliation epoch advances that row only when every retained member's
