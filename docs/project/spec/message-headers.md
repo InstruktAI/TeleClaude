@@ -92,9 +92,7 @@ for machine text.
 | `[TeleClaude Notification]`                            | legacy notification entries   | control  | paired      | no               | no                         |
 | `[TeleClaude Wake]`                                    | control-delivery idle wake    | control  | auto-closed | no               | no                         |
 | `[TeleClaude Restart Continuation]`                    | historical restart entries    | control  | paired      | no               | no                         |
-<!-- planned:simplify-agent-handoff-live-swap -->
 | `[TeleClaude Handoff]`                                 | agent handoff continuation     | control  | paired      | no               | no                         |
-<!-- /planned:simplify-agent-handoff-live-swap -->
 | `[TeleClaude Checkpoint]`                              | checkpoint surface            | control  | paired      | no               | no                         |
 | `[Peer (session · author-token · utc-minute)]`         | peer segment header           | identity | paired      | yes              | yes                        |
 | `[Orchestrator (session) on computer · utc-minute · occurrence-key]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
@@ -111,13 +109,11 @@ entries only. A resumed session receives `[TeleClaude Wake]` as the sole
 foreground marker, and the prompt-submission boundary carries the continuation
 body to the agent through the runtime's context-injection codec.
 
-<!-- planned:simplify-agent-handoff-live-swap -->
 Handoff continuation is a paired platform-control envelope supplied as the
 fresh successor's first startup input. Its body may carry the session's command
 loader and handoff context, but it remains daemon-authored control text: it does
 not establish human authorship, update the last visible human input, or reflect
 onto a human-facing surface.
-<!-- /planned:simplify-agent-handoff-live-swap -->
 
 A caller-origin identity header may carry an optional category segment, rendered
 as `[<role> - <category> (session) on computer · utc-minute · occurrence-key]`;
