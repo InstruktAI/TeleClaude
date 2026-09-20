@@ -493,6 +493,7 @@ environment_variables:
   - WHATSAPP_ACCESS_TOKEN
   - WHATSAPP_WEBHOOK_SECRET
   - WHATSAPP_VERIFY_TOKEN
+  - WHATSAPP_TEMPLATE_NAME
   - WHATSAPP_BUSINESS_NUMBER
   # Summarizer providers; also editable in the Providers subtab (AI section)
   - SUMMARIZER_LOCAL_BASE_URL # OpenAI-compatible local summarizer endpoint (e.g. LM Studio)
@@ -649,7 +650,7 @@ whatsapp:
 <!-- planned-change:config-sample-regeneration-leaves-sync -->
   template_name: string | null # normally ${WHATSAPP_TEMPLATE_NAME}
 <!-- change:config-sample-regeneration-leaves-sync -->
-  template_name: string | null
+  template_name: string | null # sensitive; ${WHATSAPP_TEMPLATE_NAME}
 <!-- /planned-change:config-sample-regeneration-leaves-sync -->
   template_language: string
   business_number: string | null # normally ${WHATSAPP_BUSINESS_NUMBER}
