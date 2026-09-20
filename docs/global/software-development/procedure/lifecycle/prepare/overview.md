@@ -179,24 +179,25 @@ viability check:
 Substantive inputs (clear intent, concrete outcome, identifiable actor — even
 if short) pass the gate and proceed to Step 1a.
 
-### 1a. Process-change authority gate
+### 1a. Process-change governance gate
 
-Apply `software-development/policy/process-change-authority` before any
-artifact work. Assess the input's intent against the process-layer contracts:
-does delivering it require a behavioral delta to a process-layer snippet (a
-`Given / When / Then` changes meaning in a lifecycle procedure, the integration
-or workflow specs, the review-lane catalog, or gate composition)?
+Apply `software-development/policy/process-change-authority` before artifact
+derivation. Assess whether delivery changes a process-layer contract: lifecycle
+state, gate composition, review lanes, lifecycle procedures, or todo semantics.
 
-- **No process change implied** (including descriptive doc edits and restoring
-  code to the current contract) → proceed to Step 2.
-- **The current process-layer doc contract already binds every implied
-  behavior** → proceed to Step 2. The input may point to that contract as
-  implementation scope.
-- **Delivering the input requires process behavior beyond the current doc
-  contract** → **refuse to prepare.** Do not advance the state machine or carry
-  the change through the todo. Surface the exact missing snippet
-  delta under the policy's escalation shape so it can be decided and authored
-  in a human-present session; resume only after that contract is live.
+- **No process change implied** (including descriptive edits and restoring code
+  to the current contract) → proceed to Step 2.
+- **The current process contract already binds every implied behavior** →
+  proceed to Step 2 and reference that contract as implementation scope.
+- **The work changes process behavior** → keep the work in its ordinary lane.
+  Author or update the pending process contract on `main` before planning,
+  record the material reason and before/after guarantee, and route it through
+  independent documentation and plan review. If the delta relaxes a validation
+  or delivery control, the reviewer must be separate and have no stake in the
+  work the relaxation would unblock.
+- **An underlying consequence belongs to the human** → surface only that
+  outcome under `general/policy/human-contract`. Once decided, absorb it into
+  the owning artifact and continue; technical process design remains agent-owned.
 
 ### 1b. Route by todo kind
 

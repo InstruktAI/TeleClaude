@@ -405,18 +405,20 @@ produces it; the key ones to pre-satisfy:
   (blocking); the reviewer does not approve until it is dropped or corrected.
   This bar is the plan reviewer's: the build reviewer never assesses ADRs, because
   the doc layer is authored on `main` during prepare, never in the worktree.
-- **Process-change authority (hard gate)**: per
+- **Process-change governance (hard gate)**: per
   `software-development/policy/process-change-authority`, when any plan task
   implies a behavioral delta to a process-layer contract (lifecycle state
   machines, gate composition, review lanes, lifecycle procedures, todo/state
-  semantics), verify that the current process-layer doc contract already binds
-  every behavior the task implements. A task that exceeds that contract is a
-  Requirement-Violation (blocking): remove it from the todo and surface the
-  exact missing snippet delta for decision and authoring in a human-present
-  session. Process changes never travel through a todo. Code implementing the
-  current contract is ordinary functionality work.
-  Descriptive doc edits and restoring code to the current contract do not
-  trigger this gate.
+  semantics), verify that a current or pending process contract binds every
+  behavior the task implements and records the material reason and before/after
+  guarantee. A task that exceeds that contract is a Requirement-Violation
+  (blocking) and returns to prepare-time contract authoring. If the delta
+  relaxes a validation or delivery control, confirm this reviewer has no stake
+  in the work the relaxation would unblock and explicitly verdict the
+  relaxation on its merits. Classify any human-owned consequence under
+  `general/policy/human-contract`; never ask the human to approve process
+  mechanics. Descriptive edits and restoring code to the current contract do
+  not trigger this gate.
 - **Config surface**: name the config key, the wizard entry, the sample line,
   and the spec section — each with the task that delivers it.
 - **Browser-based frontend or web UI**: name the Playwright smoke path and

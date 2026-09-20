@@ -66,11 +66,13 @@ description: Decide whether a todo should exist, audit that decision at preparat
 - **Use the todo's `log` artifact for a breadcrumb.** A minimal FYI that
   changes neither scope nor a decision does not justify a new todo or a rewrite
   of `input`, `prd`, or `implementation-plan`.
-- **File process-layer work only from a live human decision.** A proposed
-  change to lifecycle state, gate composition, review lanes, or todo semantics
-  is not filed from an agent's inference. Without the decision, do not create
-  the todo; escalate the proposal to the human as
-  `software-development/policy/process-change-authority` directs.
+- **Process-layer work follows ordinary agent-owned intake.** A proposed change
+  to lifecycle state, gate composition, review lanes, or todo semantics may be
+  filed from authorized intent or from applicable principles applied to
+  verified substrate. The process contract is authored doc-first during
+  preparation and independently reviewed. Escalate only an underlying
+  consequence that `general/policy/human-contract` assigns to the human; never
+  send the process mechanism itself for human approval.
 - **Declare genuine human involvement only on the filing act.** An agent whose
   filing was seen, requested, or shaped by a human uses the creation surface's
   involvement declaration. Omitting it declares the filing agent-initiated for
@@ -152,8 +154,9 @@ description: Decide whether a todo should exist, audit that decision at preparat
     returns the suspect premise to the runner with less context and recreates
     the same preparation waste.
   - **Retract.** For work that is truly invalid — including doc-only work,
-    process change without its required human decision, or a confirmed
-    duplicate — end the claimant's children, run `telec todo remove <slug>`,
+    process work defensible from neither authorized intent nor applicable
+    principles, or a confirmed duplicate — end the claimant's children, run
+    `telec todo remove <slug>`,
     and leave the final result. `telec todo remove` snapshots the cleanliness
     of every documentation file carrying that slug's planned markers, clears
     only those markers, and commits the marker-only result automatically only
@@ -244,8 +247,8 @@ and every observer that flags a live claimant under this policy.
 ## Enforcement
 
 - A todo created without the bounded check, in the wrong owning project, for
-  plainly duplicate or amendable work, for in-context work, or for an
-  unauthorized process change violates this policy.
+  plainly duplicate or amendable work, for in-context work, or for process work
+  with no defensible intent or principled basis violates this policy.
 - A prepare claimant that derives from `input` before the entry audit, or
   continues preparation after receiving a flag and before reconciliation,
   violates this policy.

@@ -135,7 +135,14 @@ after it has landed.
 
 ### Safety gates compose on top
 
-Safety gates (destructive, irreversible, security-sensitive, high-cost) compose on top of every mode via the autonomy principle. They require explicit human ratification regardless of how confident the agent feels or which mode applies. Not an exception to leadership; the autonomy filter operating in series with it.
+Safety gates compose on top of every mode only when a move exposes
+human-owned assets or commitments to a material, hard-to-reverse consequence:
+important data, production availability, credentials, privacy, public identity,
+money, legal standing, access, or authority. They require authorization for the
+exposure, never approval of the mechanism. Routine security engineering,
+bounded recovery, safe credential rotation, reversible maintenance, and
+generated-state cleanup are agent-owned. This is the autonomy filter operating
+in series with leadership, not a keyword gate.
 
 ## Rationale
 

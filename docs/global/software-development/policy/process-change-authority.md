@@ -1,5 +1,5 @@
 ---
-description: 'Process changes are decided by humans. An agent that holds no human decision for a process-layer behavioral delta escalates the proposal and goes idle; it never files, prepares, or commits the change on its own judgment.'
+description: Process evolution is agent-owned and doc-first, governed by existing independent review, with human authority determined only by the underlying consequence.
 ---
 
 # Process Change Authority — Policy
@@ -8,228 +8,132 @@ description: 'Process changes are decided by humans. An agent that holds no huma
 
 ### The process layer is its doc contract
 
-The process layer is the machinery that governs how work is validated and
-delivered: the lifecycle state machines (prepare, work, integrate), the quality
-gates and their composition (hooks, lint composition, ratchets, spec coverage),
-the review lanes and lifecycle procedures, and todo/state semantics. Its
-contract is the doc snippets that describe it — the lifecycle procedures, the
-integration and workflow feature specs, the review-lane catalog, and the
-gate-composition specs. Changing the process means changing what those snippets
-bind.
+The process layer governs how software work is validated and delivered:
+lifecycle state machines, quality-gate composition, review lanes, lifecycle
+procedures, and todo/state semantics. Its documentation is executable contract.
+A process change is a behavioral delta to that contract, whether expressed as a
+scenario change or as directive text an agent acts on.
 
-### What is a process change
+Platform behavior does not become process merely because a lifecycle role
+observes it. When one change affects an owning context and one process
+instruction, classify and govern each consequence separately.
 
-A **process change** is a behavioral delta to a process-layer contract, on
-either discriminator `general/policy/documentation-discipline` sets: the change
-alters a contract a test could bind (a `Given / When / Then` changes meaning),
-or it rewrites instruction text an agent acts on — what a gate blocks, in what
-order candidates land, who holds authority, what is skipped, halted, or
-escalated. The process layer is largely expressed as instruction text rather
-than code, so the second discriminator carries most of it: editing a runtime
-decision block or a dispatched worker's brief is a process change precisely
-where no test can bind it.
+### Process evolution is agent-owned
 
-Consumer identity is not a discriminator. Platform behavior does not become
-process layer because a lifecycle role observes it; only changing what that
-role is instructed to decide or do is a process change. A change whose
-implication touches an orchestration instruction carves out that sentence and
-escalates it alone; the owning context's own work continues.
+Agents design, propose, file, prepare, author, and implement process changes.
+They ground the change in current contracts and verified substrate, record the
+material reason and before/after guarantee in the change description or RFC,
+author the process contract before implementation, and carry it through the
+ordinary independent review lifecycle.
 
-Restoring code to match the current process-layer contract is a bug fix, not a
-process change: the docs are the process, and code drifting from them is a
-defect.
+The process artifact creates no human decision. Apply
+`general/policy/human-contract` to the underlying consequence. Only a material
+outcome, commitment, risk, scope boundary, exclusive-domain judgment, or
+participation-contract change in that closed lane returns to the human. The
+agent retains every technical mechanism and never asks the human to approve its
+process design.
 
-### Operating the agreed process is agent-owned
+### Existing review is the control surface
 
-Apply `general/policy/human-contract` when deciding who owns a recovery.
-Classifying a halted review, selecting its remediation owner, resolving a
-technical disagreement, or authorizing a bounded further review under the
-existing contract does not change the process. These are judgments the
-process requires its agents to make, not new human approval gates.
+Process changes use the existing review system; no separate approval lane or
+human sign-off is introduced. Plan review anticipates every applicable review
+lane, build and commit review independently execute them, authors never write
+their own verdicts, and ordinary verdict arithmetic blocks on every unresolved
+finding.
 
-An operational decision does not waive verdict arithmetic, independence,
-scope or safety. Changing those governing requirements is a process change;
-executing their recovery provisions is not. An agent escalating an actual
-process change names the rule that must change, rather than presenting
-uncertainty or a spent review count as the proposed delta.
+The reviewer reconstructs the before/after guarantee, verifies the pending
+process contract covers the implementation, and challenges violations through
+the existing scope, ownership, paradigm, principles, docs, and doc-hygiene
+lanes. Evidence supplied by the author directs attention and never substitutes
+for independent judgment.
 
-### Repairing broken process text is a defect fix, not a process change
+### Relaxing a control requires a no-stake reviewer
 
-Process-layer text that contradicts a higher-scope snippet, or that binds
-something no agent can satisfy as written, is a defect. An agent repairs it and
-reports the repair; it does not escalate and idle. The human is informed, not
-consulted — there is no fork to decide, because the corrected state already
-exists elsewhere in the corpus.
+A change that removes, bypasses, narrows, delays, or makes non-blocking a
+validation or delivery control may be correct, but it receives the same
+protection already applied to quality-defining configuration: a separate
+reviewer session with no stake in the work the relaxation would unblock must
+explicitly approve that relaxation on its merits. The session whose work is
+blocked by the control never approves moving it. Strengthening a control follows
+ordinary independent review.
 
-Two bounds keep this from becoming a self-granted licence:
+This rule adds no review lane and changes no verdict arithmetic. It defines the
+authority existing reviewers apply when the reviewed delta is a relaxation.
+Maintenance framing, convenience, a spent review count, or perceived alignment
+with intent supplies no justification.
 
-- **Coverage.** Every proposition the corrected text asserts is stated by a
-  quoted clause of a higher-authority snippet. More than one source may be
-  cited; what is forbidden is the gap between them. Text that neither source
-  states, reached by combining them, is synthesis — the agent invented the
-  target, which is a design fork and therefore new process: escalate it. "I can
-  see what this should say" is invention unless a quotable clause already says
-  it.
+### Operation and recovery remain with intelligence
 
-  Coverage is judged, not counted. Whether a quote carries the text it licenses
-  is a reading of meaning, and that reading belongs to the reviewer: "the answer
-  comes from intelligence — the agent reading it — not from code that grades it"
-  (`general/principle/intelligence-boundaries`). Attempts to make the judgment
-  mechanical — a clause-splitting unit, a rule for appositives — relocate it
-  rather than remove it, and a rubric precise enough to follow is precise enough
-  to write to, at which point "the rubric becomes the artifact and the artifact
-  becomes hollow". The quote is the evidence the reviewer weighs. It does not
-  spare them the weighing, and it is not owed a unit of decomposition.
+Classifying a halt, selecting remediation ownership, resolving technical
+disagreement, authorizing bounded further review, and operating established
+recovery provisions are not process changes. They remain agent-owned and never
+move to the human because attempts failed or a supported route is missing.
 
-- **Mandatory report, quoting the sources.** A repair is never silent. It lands
-  naming the contradiction, citing the snippet IDs — the broken text and each
-  authority it is repaired against — and reproducing the authorising clause
-  verbatim beside the text it licenses. The quote is what makes the repair
-  checkable: a reviewer compares strings rather than weighing whether a
-  paraphrase was fair.
+Recovery authority cannot approve unresolved findings, weaken a gate, widen
+scope, or forge unsupported state. A missing recovery operation is an
+agent-owned tooling problem.
 
-New process is the human's to drive: a new gate or lane, a changed authority, a
-different order of delivery, any delta whose target state is a judgment rather
-than a derivation. Repair restores the corpus to internal consistency; it never
-extends it.
+### Repairs are agent-owned
 
-These bounds govern repairs landed after they were written, and applicability is
-per commit: each commit is one repair carrying its own report. A later amendment
-to already-corrected text is a new repair under the current rules, never a
-continuation of a predating one — there is no thread an agent can attach new
-work to in order to inherit an exemption. A repair that predates the bounds is
-not retroactively a violation, and its report is not reopened on that ground
-alone; the quotes exist to let a reviewer check a claim, not to convict work
-performed under a rule that did not yet exist. A predating repair whose
-derivation is questioned on its merits is answered the same way any repair is:
-by producing the authorising clauses.
+Restoring code to the current process contract is a bug fix. Correcting process
+text that contradicts a higher-authority contract or binds an impossible act is
+a documentation repair. Neither requires human decision.
 
-### What is NOT a process change
+A repair report names the contradiction, cites the broken text and every
+authority used, and reproduces the clauses that directly carry the corrected
+propositions. Anything those clauses do not carry is new design and follows the
+ordinary agent-owned process-change path with independent review.
 
-A descriptive edit to a process-layer snippet is not a process change: prose
-hygiene, clarification, restructuring, typo fixes, aligning a scenario's
-wording to what the machinery already verifiably does. Behavior bound before
-and after is identical.
+### Process work travels through the normal lifecycle
 
-Two exemption claims are explicitly void:
+Agent-originated process work may be filed and prepared like other functional
+work. Preparation authors or updates its pending process contract before the
+implementation plan. The plan implements that reviewed contract; a builder does
+not invent process behavior in a worktree.
 
-- **"It's minute" is not an exemption.** Size is not the axis. A one-line
-  behavioral change to a gate is gated; a large descriptive cleanup is not.
-- **"It aligns with the process's intent" is not the agent's call.** Perceived
-  intent-alignment is precisely the judgment the human ratifies; an agent never
-  self-grants it.
-
-### The human decides; the agent escalates
-
-A process change is executed only when the human decided it in a live
-conversation, and its doc contract is authored in that same session. Human
-presence supplies the decision context, not permission to edit: the active
-participants first agree the outcome, and the human then releases it for
-authoring. It is never relayed to another session and never delegated through
-a todo (`general/policy/human-contract`). Code that follows from a
-changed process contract is ordinary functionality work, delivered against the
-contract the human's session already authored. An agent that senses a process-layer delta in its work and holds
-no such decision does not file a todo for it, does not prepare it, and does not
-commit it — it escalates the proposal per the escalation shape below and goes
-idle on that thread. It never self-approves and never re-derives approval from
-plausibility.
-
-### Intent past the human's session is the artifact, never a relay
-
-What the human decides in a session is authored there, into the artifact that
-session owns. A process change is never carried to another session or through a
-todo; a sender that does so is the one in violation. A receiver checks only
-whether an artifact applies to its current work and whether later input it
-actually received has superseded it; it never inspects another session's
-transcript.
-
-Lineage, `entry_point`, `human_involved`, the human account on a commit, artifact
-position, emphasis, and repetition are not declarations of what the human
-decided. They identify authority, provenance, or presence. Every commit carries
-the human account because that is the account the work runs under — lineage,
-never authorship (`general/concept/lineage-vs-authorship`) — and involvement is
-orthogonal to authorization (`general/policy/human-involvement-recording`).
-
-**An agent never writes a human's name as an approval or attestation in any
-durable record** — not in a commit message, not in an artifact, not in a doc.
-Writing an approval in the human's name is itself a serious violation traceable
-to the writing agent's session.
-
-### Bug plans never contain process changes
-
-A bug's fix is minimal and targeted **within the existing process contract**.
-When a diagnosed root cause is a process-design gap, the bug lane's output is
-the diagnosis plus an escalation — a proposed change requiring the human's
-decision — never a fix that alters the process layer.
-
-### Escalation shape
-
-A refusing or escalating agent packages the decision so ratification costs one
-read and one word: **what** process delta the work implies (the snippet lines
-that would change), **why** the work appears to demand it, and the **blast
-radius**. Then it idles on that thread only; non-gated work continues. A bare
-"this might be a process change?" without the package is itself a violation of
-this rule.
-
-### The gate never halts running work
-
-The authority question is settled before work starts: at filing and prepare
-entry for todo-driven work, and in the live conversation for doc-only
-in-context work. A builder that discovers mid-flight its task requires an
-undecided process change defers or kicks back under existing scope discipline;
-this policy adds no mid-work stop trigger.
+A bug whose diagnosed cause is a process defect may correct that defect within
+the bug's authorized symptom and causal scope. Adjacent hardening remains scope
+expansion and is rejected normally.
 
 ## Rationale
 
-- The knowledge asymmetry inverts on process: agents hold technical depth, but
-  what the process guards — ordered delivery, forced escalation on blockers,
-  gate authority — is the human's design. An agent that reroutes a gate to keep
-  its own work flowing has optimized away the thing it was supposed to guard.
-- Every downstream gate (diagnosis, plan review, build review) validates
-  execution against the todo's intent artifact. When an agent authors a process
-  change into that intent unratified, the gates faithfully validate a smuggled
-  premise. The only reliable moment to check authority is before the intent
-  gains it.
-- Making intent verifiable across sessions would mean an agent reading the
-  human's conversations to check another agent — the trust violation this policy
-  exists to forbid. Intent past the human's session is the artifact its steward
-  authored, challenged on its merits by peers; a false artifact stands against
-  the authoring session's own record.
+- Agents hold the technical knowledge needed to evolve validation and delivery
+  mechanics. Assigning that machinery to the human transfers responsibility to
+  the participant least able or willing to evaluate it.
+- Independent review, complete lane coverage, reviewer separation, citations,
+  and blocking verdict arithmetic already form the technical catch. Reusing
+  them is stronger and simpler than human approval or a parallel review system.
+- The no-stake rule addresses the real conflict: an agent must not lower the wall
+  that blocks its own work. It does not make every process improvement suspect.
+- Consequence-based ownership preserves the human's actual domain without using
+  `process` as a keyword that claims their attention.
 
 ## Scope
 
-- All agents, all projects driven by the platform lifecycle, every todo and bug
-  report, and doc-only in-context work. Humans are not gated; this policy binds
-  agent-initiated intent.
+- All process-layer documentation and implementation in software-development
+  lifecycle projects.
 
 ## Enforcement
 
-- The prepare orchestrator refuses a process-change intent it cannot trace to a
-  human decision and escalates
-  (`software-development/procedure/lifecycle/prepare/overview`).
-- Plan review: a plan whose tasks alter the process layer beyond what its doc
-  contract — authored with the human present — already binds is a
-  **Requirement-Violation** (blocking). A process change carried into a plan is
-  the authoring session's violation, not the plan's authority.
-- Scope lane at build/commit review: a process-layer behavioral delta the
-  authorized intent does not call for is **Critical** (existing rule; this policy
-  names the process layer as its sharpest case).
-- An agent-authored approval claim in a human's name is escalated to the human
-  when discovered; the session record answers.
-- A change presented as a repair is verified against its cited authority, never
-  accepted on the citation alone. The reviewer reads each quoted clause at its
-  source, confirms the quote is faithful, and judges whether the quotes carry
-  what the corrected text asserts. What the quotes do not carry — including
-  anything reached by combining two sources — is invention, and the change is a
-  process change filed without a decision: **Critical** (blocking). Chaining
-  citations to bridge a gap is the specific evasion this check exists to catch.
-  The judgment is the reviewer's to make and to state; this policy supplies the
-  evidence for it, never a procedure that returns the verdict on its own.
-- A repair landing without its report, or with a report that cites snippet IDs
-  without reproducing the authorising clauses, is blocking on its own: an
-  unquoted repair returns the reviewer to weighing a paraphrase, which is the
-  judgment this bound removes.
+- A plan implementing process behavior not covered by its current or pending
+  process contract is a Requirement-Violation.
+- A control relaxation without explicit approval from an independent no-stake
+  reviewer is Critical.
+- An author approving its own process change or review finding is a violation of
+  reviewer separation.
+- Asking the human to decide process mechanics is a human-contract finding.
+- Taking an underlying human-owned consequence without its decision is the
+  corresponding finding from the other side.
+- Unresolved findings always retain their ordinary blocking force; neither the
+  human nor the author substitutes a technical verdict.
 
 ## Exceptions
 
 - None.
+
+## See Also
+
+- ~/.teleclaude/docs/general/policy/human-contract.md
+- ~/.teleclaude/docs/software-development/policy/definition-of-done-lanes.md
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/review.md
+- ~/.teleclaude/docs/general/policy/agent-artifact-governance.md
