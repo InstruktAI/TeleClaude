@@ -676,7 +676,6 @@ async def _execute_handoff(
     await execute_handoff(initial_session, cmd, client, execute_terminal_command, startup_message, lease)
 
 
-@with_session
 async def _restart_agent(
     session: Session,
     cmd: RestartAgentCommand,
