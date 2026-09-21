@@ -30,6 +30,7 @@ _PASTED_CLOSING_TEMPLATE = '</pasted_content id="{paste_id}">'
 _PASTED_ESCAPE_RE = re.compile(r"<\\(?=/?pasted_content)")
 _PASTED_UNESCAPED_OPENER = "<"
 _PASTED_BOUNDARY_NEWLINE_LIMIT = 2
+_PASTED_SEPARATOR_NEWLINES = 1
 
 
 class _ContentBlockType(StrEnum):
@@ -55,7 +56,11 @@ def clean_command_message_text(text: str) -> str:
 
 
 def _paste_block_start(text: str, opening_start: int, floor: int) -> int:
-    """Absorb the blank line the CLI writes before a paste envelope."""
+    """Absorb the blank line the CLI writes before a paste envelope.
+
+    The wrapper prepends these two unconditionally, so both are framing and
+    any newline the person typed before them survives.
+    """
     start = opening_start
     for _ in range(_PASTED_BOUNDARY_NEWLINE_LIMIT):
         if start <= floor or text[start - 1] != _NEWLINE:
@@ -65,12 +70,22 @@ def _paste_block_start(text: str, opening_start: int, floor: int) -> int:
 
 
 def _paste_block_end(text: str, closing_end: int) -> int:
-    """Absorb the blank line the CLI writes after a paste envelope."""
+    """Absorb the newlines the CLI wrote after a paste envelope.
+
+    The closing delimiter always carries one. The assembler adds a second only
+    when the following text did not already begin with a newline, so that
+    separator and a newline the person typed are mutually exclusive: a run of
+    one more is the assembler's, while a longer run is theirs and is kept.
+    """
     end = closing_end
-    for _ in range(_PASTED_BOUNDARY_NEWLINE_LIMIT):
-        if end >= len(text) or text[end] != _NEWLINE:
-            break
-        end += 1
+    if end >= len(text) or text[end] != _NEWLINE:
+        return end
+    end += 1
+    following = 0
+    while end + following < len(text) and text[end + following] == _NEWLINE:
+        following += 1
+    if following == _PASTED_SEPARATOR_NEWLINES and end + following < len(text):
+        end += _PASTED_SEPARATOR_NEWLINES
     return end
 
 
@@ -95,16 +110,16 @@ def unwrap_pasted_content(text: str) -> str:
     wire format and both frame each body the same way: the interactive one
     expands a ``[Pasted text #N]`` placeholder in place, so typed text may
     follow a paste, while the SDK one appends pastes after all typed text.
-    Every opening is preceded by exactly two newlines the wrapper adds, and
-    the closing carries one of its own plus one separator when anything
-    follows — so after a closing there are one (entry ends), two (typed text
-    follows), or three newlines (typed text follows and the person typed one
-    of them).
+    Every opening is preceded by exactly two newlines the wrapper adds, so
+    both are framing and the leading side absorbs two.
 
-    Absorbing at most two on each side therefore removes the framing and
-    leaves any newline the person typed beyond it, while text they typed
-    around a paste rejoins the body with no separator — which is how they
-    wrote it, the newlines having been the CLI's.
+    The trailing side is not symmetric. The closing delimiter carries one
+    newline, and the assembler adds a separator only when the following text
+    did not already start with one — so its separator and a newline the person
+    typed can never both be present. A run of exactly two is therefore the
+    delimiter's plus the assembler's, and text the person typed rejoins the
+    body with no separator, which is how they wrote it. A longer run is the
+    delimiter's plus their own blank line, which is kept.
 
     The CLI escapes a literal marker anywhere in the submitted text as ``<\\``,
     typed spans included and not only paste bodies. The reversal therefore
