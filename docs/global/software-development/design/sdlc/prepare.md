@@ -30,11 +30,7 @@ human, who is the sole authority on intent.
 - the codebase (ground truth)
 - the todo list (signal about project direction and adjacent work)
 - applicable documentation and domain context
-<!-- planned-change:retire-dispatch-door -->
-- session `additional_context` carrying `human_in_loop: true | false`
-<!-- change:retire-dispatch-door -->
 - whether a human is in the conversation, read from the conversation itself
-<!-- /planned-change:retire-dispatch-door -->
 
 **Outputs**
 
@@ -96,13 +92,8 @@ human approval, or terminate at `PREPARED` / `BLOCKED`.
 
 ### Intake
 
-<!-- planned-change:retire-dispatch-door -->
-The BA interviews the Product Owner (real human, or a dispatched PO emulator
-in standin mode) and fills the PRD template via elicitation. PRD success
-<!-- change:retire-dispatch-door -->
 The BA interviews the Product Owner — the human — and fills the PRD template
 via elicitation. PRD success
-<!-- /planned-change:retire-dispatch-door -->
 criteria are outcome-shaped, in PO language. For Category A work the BA also
 authors the feature spec snippet's Gherkin acceptance scenarios. When the
 work warrants it, the BA stamps `architecture_skipped` with reason. The BA
@@ -123,17 +114,6 @@ active procedure tails the reviewer; on `approve` the chain advances; on
 `needs_work` the active procedure addresses the findings and advances again to
 re-dispatch the reviewer.
 
-<!-- planned-change:retire-dispatch-door -->
-### Standin mode
-
-When session `additional_context` carries `human_in_loop: false`, intake
-dispatches a Product Owner emulator (`/next-emulate-po`) as the BA's
-interviewee. The BA writes a PRD that captures what an experienced PO would
-propose given the input plus standing wishes for quality. The BA does not
-stamp `prd_approved` — that gate is the real human's. The chain pauses at
-PRD approval until the real human engages. Once the PRD is approved, all
-other phases (architecture, plan) proceed under reviewer authority.
-<!-- change:retire-dispatch-door -->
 ### No human in the conversation
 
 With no human to interview, intake has no source for product intent beyond the
@@ -143,7 +123,6 @@ rather than producing a PRD nothing authorized. `prd_approved` is the human's
 gate either way, so the chain pauses there until the human engages. Once the
 PRD is approved, all other phases (architecture, plan) proceed under reviewer
 authority.
-<!-- /planned-change:retire-dispatch-door -->
 
 ### Refinement
 

@@ -199,10 +199,10 @@ viability check:
 
 <!-- planned-change:retire-dispatch-door -->
 - **Mode-dependent resolution:**
-  - Stand-in entry → **hard-stop and escalate.** Do not dispatch intake. The PO
-    emulator has no basis to fill the gap and no direct human conversation is
-    available to complete it. Surface: "Input too sparse for stand-in mode;
-    needs human elaboration or removal." Stop the prepare flow.
+  - Stand-in entry → **hard-stop and escalate.** Do not dispatch intake. Nothing
+    supplies the missing intent and no direct human conversation is available to
+    complete it. Surface: "Input too sparse for stand-in mode; needs human
+    elaboration or removal." Stop the prepare flow.
   - Direct-human entry → **soft-stop and elicit before dispatch.** Point the
 <!-- change:retire-dispatch-door -->
 - **Resolution depends on whether a human is present:**
