@@ -180,8 +180,7 @@ alter the slug's holder. It composes with the claim gate above — a prepare art
 writable only by a caller that is both inside the claiming group, when the slug is
 claimed, and a prepare-phase writer. The claim gate decides first: a caller outside the
 claiming group is refused as a claim conflict regardless of job role, and the role
-refusal applies only to a caller the claim gate has already admitted
-(`@docs/project/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group`).
+refusal applies only to a caller the claim gate has already admitted.
 <!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 The write boundary does not enforce the convention that a work-phase defect in a
 prepare artifact is routed back through prepare.
