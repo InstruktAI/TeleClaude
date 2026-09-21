@@ -99,6 +99,12 @@ artifact, never relayed conversation. Human involvement records whether the
 human shaped one qualifying fact; it is orthogonal to authorization and never
 propagates to later acts.
 
+A human-lane decision is absorbed verbatim: the steward records the human's own
+words for it, together with the exchange that makes them a decision rather than
+an acknowledgement. An agent reading that artifact acts on the decision as
+recorded, for the question those words answer, and needs no corroboration
+beyond it.
+
 ### Orientation is not decision transfer
 
 Before a consequential move, the steward states intent and consequence and
@@ -120,6 +126,12 @@ safety-gated, authorization is separate even when one response carries both.
   and cannot meaningfully review mechanisms outside their lane.
 - Safety authorization protects human-owned assets without transferring the
   technical wheel or making routine security work a human decision.
+- Verbatim absorption makes misrepresenting a human-lane decision a deliberate
+  act rather than an easy drift: a paraphrase is composed after the conclusion
+  it supports and can be shaped to fit it, while words the human never said
+  cannot be written by accident. Reading that record without corroboration is
+  what keeps the artifact authoritative — a reader who audits provenance repeats
+  the steward's work in every downstream session and makes the artifact advisory.
 
 ## Scope
 
@@ -134,6 +146,9 @@ safety-gated, authorization is separate even when one response carries both.
 - A material addition defensible from neither authorized intent nor applicable
   principles is Critical once a downstream gate has accepted it as contract.
 - A material agent decision without a recorded reason is a finding.
+- Discharging a human-lane decision with anything other than the human's
+  recorded words — a peer's draft, a review verdict, or the declaring agent's
+  own reconsideration — is a finding.
 - A reviewer assesses the actual consequence; keywords such as `process`,
   `security`, `destructive`, or `high-cost` never decide ownership by themselves.
 
