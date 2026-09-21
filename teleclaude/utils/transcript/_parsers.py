@@ -89,9 +89,19 @@ def unwrap_pasted_content(text: str) -> str:
     Recognition mirrors the CLI's parser: a four-hex id, an opening that ends
     its line, and the matching closing on a line of its own. Framing that does
     not close is left untouched — a person may type these characters and mean
-    them. The CLI escapes a literal marker inside a paste as ``<\\``; that
-    backslash guards the wire grammar removed here, so it is reversed once an
-    envelope has actually been unwrapped.
+    them.
+
+    This is the inverse of the CLI's own assembly, which frames each body with
+    two newlines before the opening and one or two after the closing. Absorbing
+    at most two on each side therefore removes the framing and leaves any
+    newline the person typed beyond it, while text they typed around a paste
+    rejoins the body with no separator — which is how they wrote it, the
+    newlines having been the CLI's.
+
+    The CLI escapes a literal marker anywhere in the submitted text as ``<\\``,
+    typed spans included and not only paste bodies. The reversal therefore
+    covers the whole entry once an envelope has actually been unwrapped, so a
+    literal marker a person typed survives the round trip unchanged.
     """
     segments: list[str] = []
     cursor = 0
