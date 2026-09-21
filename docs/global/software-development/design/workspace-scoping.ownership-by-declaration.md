@@ -278,14 +278,16 @@ No `teleclaude_identity.json` present. This is a human or CI context.
 
 **Response:** Both legs run the full suite. Expected behavior for manual runs.
 
-### Nothing declared while the workspace holds undeclared dirt
+### A scoped operation runs with nothing declared
 
-A session reaches a commit or a scoped lint with no live declarations, while the
-workspace holds dirty paths no session has declared.
+A session invokes `telec code commit` or a scoped `telec code lint` while holding
+no live declarations of its own.
 
 **Response:** Report it rather than succeeding silently. A scoped run over an
-empty set that reads as a pass, or a commit that records nothing while work sits
-uncommitted, hides the one case the declaration model cannot otherwise see.
+empty set that reads as a pass, and a commit that records nothing, are the two
+outcomes that must never look like success. The condition reads only the acting
+session's own declarations. It inspects no other path's provenance, so dirt this
+session did not declare — a human's direct edits among it — never triggers it.
 
 ### Batch ownership cannot be completed
 
