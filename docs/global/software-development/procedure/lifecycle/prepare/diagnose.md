@@ -100,8 +100,8 @@ Otherwise, proceed to the dispatch.
 
 ### 2. Dispatch the peer — the driving session
 
-Dispatch one peer session for this phase. Agent selection is owned by
-role-ordered dispatch resolution; pass no agent override.
+Dispatch one peer session for this phase. The platform's default dispatch
+resolves the agent; pass no agent override.
 
 The driving session remains the todo's lifecycle claimant throughout diagnosis. The
 dispatched peer authors and revises `diagnosis` under its prepare-author capability and the
