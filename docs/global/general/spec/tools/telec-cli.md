@@ -91,6 +91,7 @@ code` selects which files are in scope and delegates; it does not invoke Cargo
 itself.
 
 
+<!-- planned-change:ownership-by-declaration -->
 `telec code commit` runs the gates carried by the acting invocation context's
 declared tier. Where that tier carries project subscriptions, it runs format then
 lint in-process against `quality_paths` (the commit pathspec filtered to existing
@@ -99,8 +100,25 @@ nothing is applied in their place. No framework stash, no working-tree reset
 outside the pathspec. The installed `.git/hooks/pre-commit` is a thin telec-owned
 guard that performs only a partial-staging check as a backstop for raw
 `git commit` invocations.
+<!-- change:ownership-by-declaration -->
+`telec code add <path>...` is the declaration surface: it records the paths a
+session is working on, accepts paths that are clean or do not yet exist, and
+carries no git state of its own. The declared set is what `telec code commit`
+commits; `--only <path>...` commits a subset of it when the work splits across
+more than one commit.
+
+`telec code commit` runs the gates carried by the acting invocation context's
+declared tier. Where that tier carries project subscriptions, it runs format then
+lint in-process against `quality_paths` (the declared set filtered to existing
+files) before `git commit --no-verify`; where it carries none, neither runs and
+nothing is applied in their place. No framework stash, no working-tree reset
+outside the declared set. The installed `.git/hooks/pre-commit` is a thin
+telec-owned guard that performs only a partial-staging check as a backstop for
+raw `git commit` invocations.
+<!-- /planned-change:ownership-by-declaration -->
 
 
+<!-- planned-change:ownership-by-declaration -->
 In a slug worktree (`trees/<slug>`), `telec code commit` refuses any staged or
 pathspec-resolved path under `docs/**` or `agents/**`: the doc layer is authored
 at prepare on `main` and folded at integration, while agent-artifact sources are
@@ -109,6 +127,16 @@ executes those frozen contracts. Each refusal names the offending paths under
 the class they violate and points at the applicable authoring route. Main-branch
 and integration-worktree invocations are unaffected. `.agents/**` remains a
 generated delivery location and is not part of this refusal.
+<!-- change:ownership-by-declaration -->
+In a slug worktree (`trees/<slug>`), `telec code commit` refuses any staged or
+declared path under `docs/**` or `agents/**`: the doc layer is authored
+at prepare on `main` and folded at integration, while agent-artifact sources are
+authored on `main` in the session where their intent was decided. The work phase
+executes those frozen contracts. Each refusal names the offending paths under
+the class they violate and points at the applicable authoring route. Main-branch
+and integration-worktree invocations are unaffected. `.agents/**` remains a
+generated delivery location and is not part of this refusal.
+<!-- /planned-change:ownership-by-declaration -->
 
 
 <!-- planned:distributed-todo-postgres -->

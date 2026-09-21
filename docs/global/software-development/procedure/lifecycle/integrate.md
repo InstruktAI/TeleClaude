@@ -200,6 +200,7 @@ to own; the state machine never performs it. Divergence has two instruction shap
   steps within its governance, and re-enters `telec todo integrate`; the failure never
   parks the integrator merely because the failed operation was implied by its task.
 
+<!-- planned-change:ownership-by-declaration -->
 #### After the dirty-main quiet window
 
 When the same complete blocking path set remains dirty for the full quiet window, run the
@@ -255,6 +256,20 @@ positive count that persists through the shared three-beat bound follows the one
 protection-condition escalation above; that escalation reports the unresolved safety
 brake and makes no claim about path intent.
 
+<!-- change:ownership-by-declaration -->
+#### After the dirty-main quiet window
+
+Keep waiting. Dirty paths on repo-root main belong to the sessions that declared them
+and those sessions commit them; the integrator queries no ownership, contacts no
+session, and mutates no path it did not deliver. `integrator-main-clearance` stays live
+and re-checks cleanliness on each beat.
+
+When the same complete blocking path set survives three consecutive reminder beats after
+it is first observed, escalate once for that set, cancel the reminder, and hold as the
+single human-blocker beacon without mutating the protected paths or emitting another
+escalation for that set. The next move belongs to the human.
+
+<!-- /planned-change:ownership-by-declaration -->
 #### Reminder: integrator-main-clearance
 
 - **Owner:** Integration procedure.
@@ -264,6 +279,7 @@ brake and makes no claim about path intent.
 - **Duration:** the existing ~2–3 minute interval owned by this procedure.
 - **Recurrence:** recurring while repo-root main remains blocked.
 - **Arm condition:** set on first dirty-main block before yielding.
+<!-- planned-change:ownership-by-declaration -->
 - **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. While waiting, keep this reminder and follow the post-window ownership discipline; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
@@ -275,6 +291,15 @@ brake and makes no claim about path intent.
   live owner or positive undetermined count keeps the reminder live for fresh
   read-only re-resolution only until the single bounded escalation transfers
   the next move to the human; cancel it at that transition.
+<!-- change:ownership-by-declaration -->
+- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. Otherwise keep waiting and keep this reminder; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
+- **Firing behavior:** inspect current repo-root cleanliness and follow
+  **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
+  dirty paths, and without querying or contacting any other session.
+- **Cancellation:** cancel when main clears, the integration session reaches a
+  terminal outcome, or the human explicitly supersedes the wait. Cancel it at
+  the single bounded escalation that transfers the next move to the human.
+<!-- /planned-change:ownership-by-declaration -->
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-queue-watch
