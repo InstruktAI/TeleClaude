@@ -178,10 +178,10 @@ slug's holder, and an admitted writer faces no `active_runner` gate afterward.
 This prepare-author gate is a capability boundary, not a claim: it does not consult or
 alter the slug's holder. It composes with the claim gate above — a prepare artifact is
 writable only by a caller that is both inside the claiming group, when the slug is
-claimed, and a prepare-phase writer. The claim gate decides first. A caller outside the
-group is refused as a claim conflict whatever its job role, because the boundary it
-crossed is ownership and the answer it needs is the holding session and the door; the
-role refusal applies to a caller the claim gate has already admitted.
+claimed, and a prepare-phase writer. The claim gate decides first: a caller outside the
+claiming group is refused as a claim conflict regardless of job role, and the role
+refusal applies only to a caller the claim gate has already admitted
+(`@docs/project/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group`).
 <!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 The write boundary does not enforce the convention that a work-phase defect in a
 prepare artifact is routed back through prepare.
@@ -383,3 +383,9 @@ And the verdict stamp binds the current report digest rather than inferring evid
 - Artifact writes against a delivered todo are blocked to keep delivered todos read-only.
 - The CLI write path constructs the `codebase_sha_at_write` and `referenced_paths` request body by calling the workflow's origin-main-sha helper (the canonical drift anchor per `@spec/feature/workflow/drift-detection`) and the referenced-paths extractor against the invocation cwd; the workflow service uses those if supplied, otherwise recomputes them via the same helper.
 - `list_artifacts` returns names only; version metadata (digest, timestamps) requires a follow-up `artifact_versions` call.
+
+<!-- planned:fix-telec-todo-artifacts-write-mutates-a-cla -->
+## See Also
+
+- docs/project/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group.md — why a claimed todo's artifacts are writable only by the claiming group, and why the claim gate decides before the role gate.
+<!-- /planned:fix-telec-todo-artifacts-write-mutates-a-cla -->
