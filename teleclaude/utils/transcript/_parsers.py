@@ -91,12 +91,20 @@ def unwrap_pasted_content(text: str) -> str:
     not close is left untouched — a person may type these characters and mean
     them.
 
-    This is the inverse of the CLI's own assembly, which frames each body with
-    two newlines before the opening and one or two after the closing. Absorbing
-    at most two on each side therefore removes the framing and leaves any
-    newline the person typed beyond it, while text they typed around a paste
-    rejoins the body with no separator — which is how they wrote it, the
-    newlines having been the CLI's.
+    This is the inverse of the CLI's own assembly. Two assemblers emit this
+    wire format and both frame each body the same way: the interactive one
+    expands a ``[Pasted text #N]`` placeholder in place, so typed text may
+    follow a paste, while the SDK one appends pastes after all typed text.
+    Every opening is preceded by exactly two newlines the wrapper adds, and
+    the closing carries one of its own plus one separator when anything
+    follows — so after a closing there are one (entry ends), two (typed text
+    follows), or three newlines (typed text follows and the person typed one
+    of them).
+
+    Absorbing at most two on each side therefore removes the framing and
+    leaves any newline the person typed beyond it, while text they typed
+    around a paste rejoins the body with no separator — which is how they
+    wrote it, the newlines having been the CLI's.
 
     The CLI escapes a literal marker anywhere in the submitted text as ``<\\``,
     typed spans included and not only paste bodies. The reversal therefore
