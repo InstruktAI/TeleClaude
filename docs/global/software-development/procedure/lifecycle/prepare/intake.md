@@ -107,6 +107,7 @@ children that together sum to the parent and add no new scope.
 The container holds the feature identity and frozen source input. It has no
 lifecycle state of its own; it projects delivered when all children deliver.
 
+<!-- planned-change:retire-dispatch-door -->
 The stakeholder being interviewed is the **Product Owner role** — either the
 real human directly, or a dispatched AI PO emulator standing in. The emulator
 runs the `emulate-product-owner` procedure with a deliberately small loadout:
@@ -117,12 +118,23 @@ answers.
 
 The real human always owns final `prd_approved`. The emulator can give PO
 feedback on the written PRD but cannot stamp approval.
+<!-- change:retire-dispatch-door -->
+The stakeholder being interviewed is the **Product Owner** — the human, in the
+conversation. Nothing stands in for them: product input is theirs to give, and
+an intake that cannot get it stops rather than supplying it.
+
+The human owns final `prd_approved`.
+<!-- /planned-change:retire-dispatch-door -->
 
 ## Preconditions
 
 - The todo is recorded as `kind=feature`; other kinds are routed by the prepare
   overview and do not enter intake.
+<!-- planned-change:retire-dispatch-door -->
 - The session's `additional_context` indicates `human_in_loop: true | false`. Default is `true`.
+<!-- change:retire-dispatch-door -->
+- Whether a human is in the conversation is read from the conversation itself.
+<!-- /planned-change:retire-dispatch-door -->
 - User details injected.
 
 ## Steps
@@ -135,6 +147,7 @@ present. A re-entry after later phases already ran may carry `architecture`,
 `implementation-plan`, or a `log` breadcrumb; read whatever exists that bears
 on re-orienting, not only the two cases below.
 
+<!-- planned-change:retire-dispatch-door -->
 Two cases determine who plays the PO role:
 
 - **`input` artifact exists.** Read it in full before doing anything else. It
@@ -154,6 +167,22 @@ Two cases determine who plays the PO role:
   that point with `--direct` and hand off the PO role.
 
 If no slug exists yet, create one before dispatching the emulator.
+<!-- change:retire-dispatch-door -->
+Two cases determine where the PRD's basis comes from:
+
+- **`input` artifact exists.** Read it in full before doing anything else. It
+  may be a human dump or an agent-authored handoff; either is the authorized
+  basis. Assess whether that basis is rich enough to write the PRD directly
+  without elicitation — if the intent, scope, and success criteria are already
+  clear, skip to step 5. If it is sparse or ambiguous, elicit from the human in
+  the conversation before writing. With no human in the conversation, author no
+  PRD: surface the gap against `@input` and stop, rather than inventing the
+  product detail the input never carried.
+- **No `input` artifact, human is present.** The human is the PO. Conduct
+  elicitation directly in conversation.
+
+If no slug exists yet, create one before writing artifacts against it.
+<!-- /planned-change:retire-dispatch-door -->
 
 ### 1.5 Confirm behavioral feature intent (hard gate before authoring)
 
@@ -437,7 +466,11 @@ re-engages and stamps approval.
 - **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — produced for human-facing and agent/operator-facing behavioral features alike. Concept-named, never slug-named. Frontmatter `delivered_by` includes this slug.
 - **Domain spec / CLI-surface spec / architecture doc touchpoints noted in PRD** — when the behavioral feature also changes domain or cross-cutting design. The architecture phase authors the actual updates; intake names the affected docs in the PRD's "Docs to author or update" section.
 - **No feature-lane artifacts for a non-behavioral kind mismatch** — reclassify to `change`, leave intake, and let prepare routing derive the change lane.
+<!-- planned-change:retire-dispatch-door -->
 - **`prd_approved` stamp** — recorded when the real human confirms. The PO emulator cannot stamp this; the real human always owns final approval.
+<!-- change:retire-dispatch-door -->
+- **`prd_approved` stamp** — recorded when the human confirms. The human always owns final approval.
+<!-- /planned-change:retire-dispatch-door -->
 - **Skip stamp** when applicable: `architecture_skipped`, with reason.
 - **`work_split` stamps** when the BA breaks the work down — references to child slugs.
 - **Dependency edges + overlap reconciliation** (step 1.6) — an undeclared
@@ -450,14 +483,26 @@ re-engages and stamps approval.
 
 - **Human returns after standin review.** The emulator's feedback is visible
   in the session. Human stamps `prd_approved` or refines.
+<!-- planned-change:retire-dispatch-door -->
 - **Input artifact is sparse or contradictory.** BA identifies specific gaps and
   asks the emulator (or human directly) targeted questions. Does not invent
   material. Marks unresolvable gaps as Open questions in the PRD.
+<!-- change:retire-dispatch-door -->
+- **Input artifact is sparse or contradictory.** BA identifies specific gaps and
+  asks the human targeted questions. Does not invent material. Marks
+  unresolvable gaps as Open questions in the PRD.
+<!-- /planned-change:retire-dispatch-door -->
 - **PO contradicts standing wishes.** BA names the contradiction in the
   conversation and captures it in the PRD's Constraints section.
+<!-- planned-change:retire-dispatch-door -->
 - **Daemon-side `additional_context` is missing or ambiguous.** Default to
   human-in-loop: treat the human as the PO unless an input artifact exists or
   they request the standin.
+<!-- change:retire-dispatch-door -->
+- **No human answers an elicitation question.** Treat the `input` artifact as
+  the only authorized basis. Write no PRD content the input cannot support;
+  record the gap as an Open question and stop.
+<!-- /planned-change:retire-dispatch-door -->
 - **A related todo's session is down or flaky (step 1.6).** Do not block intake
   on the best-effort message. The recorded `after` edge is the backbone; the
   message is an enhancement. Record the edge and proceed.

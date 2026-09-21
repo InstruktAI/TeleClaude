@@ -1,5 +1,5 @@
 ---
-description: 'Prepare phase flow for PRD → Architecture → Plan → Prepared, with PRD-only human approval, reviewer-gated derivation artifacts, size-based architecture skipping, standin-mode support, and lean drift analysis.'
+description: 'Prepare phase flow for PRD → Architecture → Plan → Prepared, with PRD-only human approval, reviewer-gated derivation artifacts, size-based architecture skipping, and lean drift analysis.'
 visibility: 'public'
 ---
 
@@ -16,7 +16,11 @@ The flow replaces the prior pair-driven prepare model. One session drives the wh
 **Inputs:**
 
 - A todo slug, with or without an existing `input` artifact (dumped earlier or written in-session).
+<!-- planned-change:retire-dispatch-door -->
 - Session `additional_context`, carrying `human_in_loop: true | false`. Default `true`.
+<!-- change:retire-dispatch-door -->
+- Whether a human is in the conversation, read from the conversation itself.
+<!-- /planned-change:retire-dispatch-door -->
 - User proficiency from PersonDTO injection (or asked at session start when absent).
 - Codebase HEAD for drift detection.
 - The platform-quality-flavors set (where applicable to architecture phase).
@@ -42,11 +46,19 @@ The confirmed plan is the handoff input to the work phase.
 - Plan phase is non-skippable; PRD is non-skippable.
 - `PREPARED` requires: PRD human-approved, plan reviewer-approved, architecture reviewer-approved unless skipped, grounding fresh.
 
+<!-- planned-change:retire-dispatch-door -->
 **Standin mode:**
 
 - When session `additional_context` indicates `human_in_loop: false`, intake dispatches a Product Owner emulator via `/next-emulate-po {slug}`.
 - A standin-produced PRD cannot be stamped `prd_approved` — that gate requires the real human.
 - Downstream phases do not begin until the real human approves the standin-produced PRD.
+<!-- change:retire-dispatch-door -->
+**No human in the conversation:**
+
+- Intake's only authorized basis is the `input` artifact. A basis too sparse to write a PRD from stops the flow against `@input`; nothing supplies the missing intent.
+- A PRD authored without the human cannot be stamped `prd_approved` — that gate is the human's.
+- Downstream phases do not begin until the human approves that PRD.
+<!-- /planned-change:retire-dispatch-door -->
 
 **Refinement:**
 
@@ -70,6 +82,7 @@ The confirmed plan is the handoff input to the work phase.
 
 ### The chain
 
+<!-- planned-change:retire-dispatch-door -->
 ```mermaid
 flowchart TD
     Entry([Entry: /next-prepare invocation<br/>or auto-spawn from dump])
@@ -112,6 +125,52 @@ flowchart TD
     RefineClassify -->|architecture-level| ArchPhase
     RefineClassify -->|plan-level| PlanPhase
 ```
+<!-- change:retire-dispatch-door -->
+```mermaid
+flowchart TD
+    Entry([Entry: /next-prepare invocation<br/>or auto-spawn from dump])
+    Entry --> ModeCheck{human in the<br/>conversation?}
+
+    ModeCheck -->|no| InputOnly{input rich enough<br/>to write the PRD?}
+    InputOnly -->|no| StopSparse[Stop: surface the gap against @input]
+    InputOnly -->|yes| Intake
+    ModeCheck -->|yes| Intake
+
+    Intake[Intake: BA interviews PO<br/>fills PRD template via elicitation<br/>5 Whys, JTBD, MoSCoW, light Pre-mortem<br/>success criteria are outcome-shaped, not Gherkin]
+
+    Intake --> WritePRD[Write PRD artifact]
+    WritePRD --> PRDReview[Independent PRD review<br/>or bounded owner-directed literal stamp]
+    PRDReview --> PRDApprove{Real human approves PRD?}
+
+    PRDApprove -->|standin mode, no human yet| Idle[Idle — await real human]
+    PRDApprove -->|human approves| AssessArch
+
+    Idle -.user invokes /next-prepare.-> PRDApprove
+
+    AssessArch{Architecture phase needed?<br/>BA assesses size and scope}
+    AssessArch -->|skip — stamp with reason| PlanPhase
+    AssessArch -->|proceed| ArchPhase
+
+    ArchPhase[Architecture phase<br/>design authored into domain-spec / design-doc snippets<br/>thin architecture index artifact logs the edits<br/>code-intelligence for brownfield<br/>separate reviewer session verifies]
+    ArchPhase --> ArchReview[Reviewer verdict]
+    ArchReview --> PlanPhase
+
+    PlanPhase[Plan phase<br/>tasks pinned to PRD / feature-spec Gherkin and code surface]
+    PlanPhase --> PlanReview[Reviewer verdict]
+    PlanReview --> Grounding{Grounding fresh?}
+
+    Grounding -->|yes| Prepared([PREPARED → work phase])
+    Grounding -->|drift detected| DriftWorker[Lean drift-analyze worker dispatched<br/>active procedure integrates findings on re-entry]
+    DriftWorker --> Plan[Re-derive affected layers<br/>or proceed if cosmetic]
+    Plan --> Grounding
+
+    %% Refinement
+    Prepared -.user refinement.-> RefineClassify[Classify refinement scope]
+    RefineClassify -->|intent-level| Intake
+    RefineClassify -->|architecture-level| ArchPhase
+    RefineClassify -->|plan-level| PlanPhase
+```
+<!-- /planned-change:retire-dispatch-door -->
 
 ### Use cases (numbered)
 
@@ -119,17 +178,29 @@ flowchart TD
 
 Trigger: user invokes `/next-prepare` (with or without slug), or asks an active agent to load the prepare procedure.
 
+<!-- planned-change:retire-dispatch-door -->
 Mode: human_in_loop.
+<!-- change:retire-dispatch-door -->
+Mode: a human is in the conversation.
+<!-- /planned-change:retire-dispatch-door -->
 
 Flow: agent talks with human; fills PRD template; writes PRD; obtains a current PRD review verdict; presents for approval. Human approves. An exact owner-directed literal correction may be applied and stamped by the active claimant without another reviewer when the intake exception applies. BA assesses size and stamps skip decisions for downstream phases as warranted. Each surviving phase runs through draft → reviewer verdict. Reaches PREPARED when the plan reviewer approves and grounding is fresh.
 
 **Use case 2 — dumped work, auto-spawned, no human present.**
 
+<!-- planned-change:retire-dispatch-door -->
 Trigger: `telec todo create <slug> <description> --kind <kind>` without `--icebox`. Daemon writes input artifact and auto-spawns an orchestrator with `additional_context: human_in_loop: false`.
 
 Mode: standin.
 
 Flow: orchestrator dispatches a Product Owner emulator via `/next-emulate-po {slug}` (cross-model preferred). BA interviews the emulator, fills PRD template, writes PRD artifact. Does NOT stamp `prd_approved` (requires real human). Agent goes idle. When the human later invokes `/next-prepare {slug}`, the state machine reports "PRD authored in standin mode, awaiting your approval." Agent presents PRD to human: "we role-played you and worked this through — here's what we landed on." Human approves or refines. Flow proceeds from there.
+<!-- change:retire-dispatch-door -->
+Trigger: `telec todo create <slug> <description> --kind <kind>` without `--icebox`. Daemon writes input artifact and auto-spawns an orchestrator.
+
+Mode: no human in the conversation.
+
+Flow: the orchestrator's only authorized basis is the `input` artifact. When it is rich enough, the BA fills the PRD template from it and writes the PRD artifact; when it is not, the flow stops against `@input` and authors no PRD. Either way `prd_approved` is not stamped and the agent goes idle. When the human later invokes `/next-prepare {slug}`, the state machine reports the PRD awaiting approval, or the gap awaiting elaboration. Human approves, refines, or elaborates. Flow proceeds from there.
+<!-- /planned-change:retire-dispatch-door -->
 
 **Use case 3 — refinement / resume of existing todo.**
 
@@ -151,8 +222,12 @@ Also covers the parked-create case: human comes back to a slug created with `--i
 - **Work item is too large.** BA at intake recommends breakdown in plain register. Creates a container todo and per-part children via `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child gets its own track through the chain. Parent becomes a holder.
 - **Standard scaffold doesn't exist for a needed surface.** Architecture phase surfaces this as a blocking finding. Options: defer this work until the flavor is built; split the flavor-build as its own todo first; ask the human whether the product constraint permits a documented one-off.
 - **Architecture and PRD disagree post-derivation.** When architecture surfaces something the PRD didn't anticipate (a hidden dependency, an unexpected scope expansion), the Architect surfaces the gap to the human as an open question. May trigger PRD refinement before architecture is finalized.
+<!-- planned-change:retire-dispatch-door -->
 - **Active procedure drifts into orchestrator-shaped action.** If a procedure dispatches new sessions for its sub-work (instead of doing it itself), that's a regression — the design is one session loading procedures, not many sessions dispatched. The only legitimate dispatches in prepare are the PO emulator (intake standin) and the independently dispatched reviewers.
 - **No `additional_context` mode marker.** Default to `human_in_loop: true`. Better to under-trigger standin mode than to standin-mode a real-human session.
+<!-- change:retire-dispatch-door -->
+- **Active procedure drifts into orchestrator-shaped action.** If a procedure dispatches new sessions for its sub-work (instead of doing it itself), that's a regression — the design is one session loading procedures, not many sessions dispatched. The only legitimate dispatches in prepare are the independently dispatched reviewers and the bug lane's diagnosing peer.
+<!-- /planned-change:retire-dispatch-door -->
 
 ### Open design choices still being prototyped
 

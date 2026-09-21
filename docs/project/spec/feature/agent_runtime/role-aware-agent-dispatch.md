@@ -69,7 +69,10 @@ supplies either. System role and job role remain identity and authority facts.
 | `next-prepare-diagnose`     | Codex, Claude, Gemini, DeepSeek                                                       | `med`                 |
 | `next-prepare-plan`         | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
 | `next-prepare-task`         | Claude, Codex, Gemini, DeepSeek                                                       | `med`                 |
+<!-- planned-change:retire-dispatch-door -->
 | `next-emulate-po`           | Claude, Gemini, Codex, DeepSeek                                                       | `med`                 |
+<!-- change:retire-dispatch-door -->
+<!-- /planned-change:retire-dispatch-door -->
 | `next-drift-analyze`        | Codex, Claude, Gemini, DeepSeek                                                       | `fast`                |
 | `next-prepare`              | Claude, Codex, Gemini, DeepSeek                                                       | `slow`                |
 | `next-work`                 | Codex, Claude, Gemini, DeepSeek                                                       | `med`                 |
