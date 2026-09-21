@@ -7,6 +7,12 @@ description: Lifecycle dispatch records ownership directly and carries no time-b
 
 # ADR-0078: Remove time-bound dispatch reservations — ADR
 
+## Status
+
+Superseded in part by ADR-0096: prepare-artifact admission consults the
+claiming group on a claimed todo. The retirement of time-bound dispatch
+reservations is unchanged and remains accepted.
+
 ## Context
 
 ADR-0035 retained a short-lived dispatch claim to bridge the interval between
