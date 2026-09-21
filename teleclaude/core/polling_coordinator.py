@@ -292,6 +292,27 @@ def _stored_preview_matches(session: "Session", text: str, *, require_stored: bo
     return stored == _message_preview(text).strip()
 
 
+def _preserved_visible_input(session: "Session", user_text: str) -> str | None:
+    """Return the stored visible span when an acceptance writer owns this turn.
+
+    A delivered turn can carry a source text that never reaches the transcript
+    — a command shorthand expands into its loader before injection — and the
+    writer that accepted it stored the human's own words. Deriving the span
+    from the transcript would replace those words with the expansion, so the
+    stored span stands.
+
+    A turn typed into the pane has no acceptance writer. Reusing what is stored
+    there pins the row to an earlier turn for the life of the session, because
+    this projection is the only thing that would ever move it.
+    """
+    origin = (session.last_input_origin or "").strip()
+    if not origin or origin == InputOrigin.TERMINAL.value:
+        return None
+    if not has_fresh_origin_for_user(session, user_text):
+        return None
+    return session.last_input
+
+
 def has_fresh_origin_for_user(session: "Session", user_text: str) -> bool:
     """Return whether last_input_origin belongs to this unprojected user turn."""
 
@@ -551,13 +572,17 @@ async def _project_user_reflection(
             last_message_sent=user_text[:200],
             last_message_sent_at=transcript_dt,
             last_projected_at=transcript_dt,
-            **visible_input_update(user_text, accepted_at=transcript_dt, visible_source_text=session.last_input),
+            **visible_input_update(
+                user_text,
+                accepted_at=transcript_dt,
+                visible_source_text=_preserved_visible_input(session, user_text),
+            ),
         )
     else:
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
-            **visible_input_update(user_text, visible_source_text=session.last_input),
+            **visible_input_update(user_text, visible_source_text=_preserved_visible_input(session, user_text)),
         )
     refreshed = await db.get_session(session.session_id)
     return refreshed or session, True, False
