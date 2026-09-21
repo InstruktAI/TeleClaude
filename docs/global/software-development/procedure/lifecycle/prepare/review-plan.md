@@ -299,7 +299,7 @@ or blocker provisions of the preparation artifact quality policy.
 Applies only when the todo carries a `diagnosis` artifact (a `bug`). **Skip this
 section entirely otherwise** — it does not apply to a `feature` or `change`. This
 is the gate that substitutes for a separate diagnosis review: the diagnosis is
-scrutinized here, in the same cross-model pass, against the code.
+scrutinized here, in the same pass, against the code.
 
 Read `telec todo artifacts read {slug} diagnosis` — the diagnosis carries its
 own evidence substrate (the reproduction, the avenues walked, the observations

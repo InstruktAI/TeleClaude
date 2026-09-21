@@ -100,8 +100,8 @@ Otherwise, proceed to the dispatch.
 
 ### 2. Dispatch the peer — the driving session
 
-Dispatch one cross-model peer for this phase, selecting the agent from
-`general/concept/agent-characteristics` rather than a hardcoded name.
+Dispatch one peer session for this phase. Agent selection is owned by
+role-ordered dispatch resolution; pass no agent override.
 
 The driving session remains the todo's lifecycle claimant throughout diagnosis. The
 dispatched peer authors and revises `diagnosis` under its prepare-author capability and the
@@ -256,7 +256,7 @@ chain toward `Unresolved`. The peer's licence to attack the interrogation is the
 the observation that would separate them. Its next contribution is assigned under
 `general/policy/human-contract`; disagreement alone never makes the human its owner.
 
-The diagnosis is judged again by the cross-model plan reviewer; write it to be refuted, not
+The diagnosis is judged again by the plan reviewer; write it to be refuted, not
 to look right.
 
 ## Recovery
