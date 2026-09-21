@@ -178,7 +178,10 @@ slug's holder, and an admitted writer faces no `active_runner` gate afterward.
 This prepare-author gate is a capability boundary, not a claim: it does not consult or
 alter the slug's holder. It composes with the claim gate above — a prepare artifact is
 writable only by a caller that is both inside the claiming group, when the slug is
-claimed, and a prepare-phase writer.
+claimed, and a prepare-phase writer. The claim gate decides first. A caller outside the
+group is refused as a claim conflict whatever its job role, because the boundary it
+crossed is ownership and the answer it needs is the holding session and the door; the
+role refusal applies to a caller the claim gate has already admitted.
 <!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 The write boundary does not enforce the convention that a work-phase defect in a
 prepare artifact is routed back through prepare.
@@ -192,6 +195,7 @@ prepare-author role gate. Like every other writable kind, they are gated by the
 claim.
 <!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
+<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 #### UC-WAV9: Worker write to a prepare artifact is refused by role
 
 ```gherkin
@@ -200,6 +204,17 @@ When the worker attempts to write a prepare artifact (input, prd, architecture, 
 Then the workflow service refuses the write by role with HTTP 403, before any state mutation
 And the artifact's current version is unchanged
 ```
+<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
+#### UC-WAV9: Worker write to a prepare artifact is refused by role
+
+```gherkin
+Given a worker session that carries a non-prepare job role
+And the slug is unclaimed or the worker is inside its claiming group
+When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
+Then the workflow service refuses the write by role with HTTP 403, before any state mutation
+And the artifact's current version is unchanged
+```
+<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
 <!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 #### UC-WAV10: An authorized prepare worker writes while an orchestrator holds the todo
@@ -243,6 +258,7 @@ When the workflow service persists the new version
 Then updated_by is the resolved caller principal, not a constant placeholder
 ```
 
+<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 #### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
 
 ```gherkin
@@ -252,6 +268,18 @@ Then the workflow service refuses the write by role before any state mutation
 And the response status is HTTP 403
 And the artifact's current version is unchanged
 ```
+<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
+#### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
+
+```gherkin
+Given a live work-orchestrator session
+And the slug is unclaimed or the work orchestrator is inside its claiming group
+When it attempts to write a prepare artifact at any lifecycle phase
+Then the workflow service refuses the write by role before any state mutation
+And the response status is HTTP 403
+And the artifact's current version is unchanged
+```
+<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
 #### UC-WAV16: A human-identity write to an unheld slug is accepted without acquiring a claim
 
