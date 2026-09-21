@@ -72,7 +72,11 @@ from teleclaude.hooks.receiver._session import (
 )
 from teleclaude.hooks.receiver_args import parse_receiver_args
 from teleclaude.session_identity import inspect_session_identity_marker
-from teleclaude.utils.transcript import extract_workdir_from_transcript, is_runtime_artifact_text
+from teleclaude.utils.transcript import (
+    extract_workdir_from_transcript,
+    is_runtime_artifact_text,
+    unwrap_pasted_content,
+)
 
 if TYPE_CHECKING:
     from teleclaude.config.schema import CompanyConfig, PersonEntry
@@ -143,6 +147,7 @@ _MANAGED_DESCENDANT_SESSION_START_DROPPED = "Dropped managed descendant session_
 _IDENTITY_PERSON_RESOLUTION_FAILED = "identity_person_resolution_failed"
 _COMPANY_RESOLUTION_FAILED = "company_resolution_failed"
 _HOOK_NORMALIZATION_FAILED = "Hook event normalization failed"
+_PROMPT_FIELD = "prompt"
 _SOURCE_KIND_FIELD = "source_kind"
 _HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
 _EXECUTION_KIND_FIELD = "execution_kind"
@@ -1015,8 +1020,13 @@ def _handle_user_prompt_submit(
 ) -> bool:
     if event_type != AgentHookEvents.USER_PROMPT_SUBMIT:
         return False
-    prompt_value = data.get("prompt")
-    prompt_text = prompt_value if isinstance(prompt_value, str) else ""
+    prompt_value = data.get(_PROMPT_FIELD)
+    prompt_text = unwrap_pasted_content(prompt_value) if isinstance(prompt_value, str) else ""
+    # The CLI's paste framing is transport, never content: strip it here, on the
+    # payload every downstream consumer reads, so classification and the
+    # forwarded event both see the text the sender actually submitted.
+    if prompt_text != prompt_value:
+        data[_PROMPT_FIELD] = prompt_text
     if not prompt_text.strip():
         logger.debug(
             "Allowing empty user_prompt_submit hook event",

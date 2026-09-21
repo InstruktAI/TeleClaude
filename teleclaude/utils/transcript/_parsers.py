@@ -22,6 +22,14 @@ _CONTENT_BLOCK_TYPE_FIELD = "type"
 _MESSAGE_CONTENT_FIELD = "content"
 _MESSAGE_ROLE_FIELD = "role"
 _USER_ROLE = "user"
+_EMPTY_TEXT = ""
+_NEWLINE = "\n"
+_PASTE_ID_GROUP = "paste_id"
+_PASTED_OPENING_RE = re.compile(r'<pasted_content id="(?P<paste_id>[0-9a-f]{4})">\n')
+_PASTED_CLOSING_TEMPLATE = '</pasted_content id="{paste_id}">'
+_PASTED_ESCAPE_RE = re.compile(r"<\\(?=/?pasted_content)")
+_PASTED_UNESCAPED_OPENER = "<"
+_PASTED_BOUNDARY_NEWLINE_LIMIT = 2
 
 
 class _ContentBlockType(StrEnum):
@@ -46,13 +54,78 @@ def clean_command_message_text(text: str) -> str:
     return text
 
 
+def _paste_block_start(text: str, opening_start: int, floor: int) -> int:
+    """Absorb the blank line the CLI writes before a paste envelope."""
+    start = opening_start
+    for _ in range(_PASTED_BOUNDARY_NEWLINE_LIMIT):
+        if start <= floor or text[start - 1] != _NEWLINE:
+            break
+        start -= 1
+    return start
+
+
+def _paste_block_end(text: str, closing_end: int) -> int:
+    """Absorb the blank line the CLI writes after a paste envelope."""
+    end = closing_end
+    for _ in range(_PASTED_BOUNDARY_NEWLINE_LIMIT):
+        if end >= len(text) or text[end] != _NEWLINE:
+            break
+        end += 1
+    return end
+
+
+def unwrap_pasted_content(text: str) -> str:
+    """Replace Claude Code paste envelopes with the text they carry.
+
+    Claude Code 2.1.274+ records a pasted prompt fragment as
+    ``<pasted_content id="XXXX">`` … ``</pasted_content id="XXXX">``. The CLI
+    mints that envelope for any paste over 800 characters or more than two
+    newlines, and the daemon injects every session message through a tmux
+    paste — so the framing now wraps platform control envelopes, peer bundles,
+    and dispatch text exactly as it wraps a person's own paste. It is the
+    CLI's own transport framing, never anything a person sent, and every
+    classifier downstream of this module reads the entry as written.
+
+    Recognition mirrors the CLI's parser: a four-hex id, an opening that ends
+    its line, and the matching closing on a line of its own. Framing that does
+    not close is left untouched — a person may type these characters and mean
+    them. The CLI escapes a literal marker inside a paste as ``<\\``; that
+    backslash guards the wire grammar removed here, so it is reversed once an
+    envelope has actually been unwrapped.
+    """
+    segments: list[str] = []
+    cursor = 0
+    unwrapped_any = False
+    while (opening := _PASTED_OPENING_RE.search(text, cursor)) is not None:
+        closing = _PASTED_CLOSING_TEMPLATE.format(paste_id=opening.group(_PASTE_ID_GROUP))
+        body_start = opening.end()
+        closing_newline = text.find(_NEWLINE + closing, body_start - 1)
+        if closing_newline < 0:
+            break
+        segments.append(text[cursor : _paste_block_start(text, opening.start(), cursor)])
+        segments.append(text[body_start:closing_newline])
+        cursor = _paste_block_end(text, closing_newline + len(_NEWLINE) + len(closing))
+        unwrapped_any = True
+    if not unwrapped_any:
+        return text
+    segments.append(text[cursor:])
+    return _PASTED_ESCAPE_RE.sub(_PASTED_UNESCAPED_OPENER, _EMPTY_TEXT.join(segments))
+
+
+def _normalize_content_text(text: str, *, is_user_content: bool) -> str:
+    """Normalize one content text value for the role that authored it."""
+    unwrapped = unwrap_pasted_content(text) if is_user_content else text
+    return clean_command_message_text(unwrapped)
+
+
 def _clean_message_content(
     message: dict[str, object],  # guard: loose-dict - External message payload
 ) -> dict[str, object]:  # guard: loose-dict - Normalized message payload
     """Return a new message dict with normalized content, avoiding in-place mutation."""
+    is_user_content = message.get(_MESSAGE_ROLE_FIELD) == _USER_ROLE
     content = message.get("content")
     if isinstance(content, str):
-        cleaned_text = clean_command_message_text(content)
+        cleaned_text = _normalize_content_text(content, is_user_content=is_user_content)
         if cleaned_text != content:
             new_message = dict(message)
             new_message["content"] = cleaned_text
@@ -73,7 +146,10 @@ def _clean_message_content(
             break
         if block_type in (_ContentBlockType.TEXT, _ContentBlockType.INPUT_TEXT):
             text_val = block.get(_ContentBlockType.TEXT)
-            if isinstance(text_val, str) and clean_command_message_text(text_val) != text_val:
+            if (
+                isinstance(text_val, str)
+                and _normalize_content_text(text_val, is_user_content=is_user_content) != text_val
+            ):
                 needs_normalization = True
                 break
 
@@ -97,7 +173,7 @@ def _clean_message_content(
         if block_type in (_ContentBlockType.TEXT, _ContentBlockType.INPUT_TEXT):
             text_val = block.get(_ContentBlockType.TEXT)
             if isinstance(text_val, str):
-                cleaned_text = clean_command_message_text(text_val)
+                cleaned_text = _normalize_content_text(text_val, is_user_content=is_user_content)
                 if cleaned_text != text_val:
                     new_block = dict(block)
                     new_block[_ContentBlockType.TEXT] = cleaned_text
@@ -165,7 +241,7 @@ def _normalize_claude_queued_command(
     prompt = attachment.get(_CLAUDE_PROMPT_FIELD)
     if not isinstance(prompt, str) or not prompt.strip():
         return None
-    return {_MESSAGE_ROLE_FIELD: _USER_ROLE, _MESSAGE_CONTENT_FIELD: prompt}
+    return {_MESSAGE_ROLE_FIELD: _USER_ROLE, _MESSAGE_CONTENT_FIELD: unwrap_pasted_content(prompt)}
 
 
 def normalize_transcript_entry_message(

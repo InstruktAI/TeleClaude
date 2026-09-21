@@ -57,6 +57,7 @@ from teleclaude.utils.transcript._iterators import (
 from teleclaude.utils.transcript._parsers import (
     _extract_codex_reasoning_text,
     normalize_transcript_entry_message,
+    unwrap_pasted_content,
 )
 
 if TYPE_CHECKING:
@@ -216,6 +217,7 @@ __all__ = [
     "render_clean_agent_output",
     "resolve_claude_turn_commitment",
     "transcript_has_stop_response",
+    "unwrap_pasted_content",
 ]
 
 

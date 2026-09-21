@@ -69,6 +69,17 @@ flowchart LR
 - **Ingress receipt first.** A queued input and its complete receipt are
   committed before injection. Retried source events reuse the source event key
   and never create a second accepted occurrence.
+- **Harness transport framing is removed before classification.** An agent
+  runtime may re-frame submitted text on its way in: Claude Code encloses any
+  paste above its own size threshold in a paste envelope, and the platform
+  injects every session message as a paste, so that framing now reaches the
+  daemon around platform envelopes and dispatch text as readily as around a
+  person's own paste. It belongs to the runtime's transport and carries no
+  author, so it is stripped at both ingress boundaries — the prompt hook
+  payload and the native transcript entry — before any segmentation runs.
+  Recognition mirrors the runtime's own parser and leaves unclosed framing
+  untouched, so text a person typed that merely resembles it stays that
+  person's words.
 - **The envelope delimits authorship.** A native entry is an ordered composition
   of platform-authored envelopes and prompt input. Content inside an envelope is
   platform-authored and typed by its opening; content outside every envelope,
@@ -168,17 +179,20 @@ flowchart LR
 1. Normalize the inbound event and atomically persist the complete queue row
    under its source event key.
 2. Inject the exact stored payload without clearing any adapter generation.
-3. Cut each native entry into ordered typed segments by reading its envelope
+3. Strip runtime transport framing from the submitted prompt and from the
+   native entry, so both ingress boundaries classify the text the sender
+   actually submitted.
+4. Cut each native entry into ordered typed segments by reading its envelope
    openings and their declared closings, preserving any local prefix and suffix
    as prompt-input segments.
-4. Create one new logical turn generation from the runtime-qualified native
+5. Create one new logical turn generation from the runtime-qualified native
    entry identity.
-5. Route user reflection and subsequent assistant spans by that segmentation.
+6. Route user reflection and subsequent assistant spans by that segmentation.
    Existing human-origin routing decides only whether an ordinary prompt is
    already visible in its origin adapter; it never changes segment kind or
    authorship. Eligible admin lanes reflect envelope content under its parsed
    author, one rendered block per segment.
-6. Each consumer advances only its own cursor after durable handoff.
+7. Each consumer advances only its own cursor after durable handoff.
 
 ### Direct peer delivery
 
@@ -222,6 +236,9 @@ flowchart LR
   recognition freeze or skip conversational content. Classification is total
   instead: a complete registered envelope is typed, and every other span is
   ordinary human input.
+- Runtime transport framing survives into classification, so a platform
+  envelope no longer matches its registered opening and the daemon's own
+  injected text reaches human surfaces as prompt input, under the human's name.
 - Looking up mutable session identity at render time rewrites historical author
   mode or fails when the source row is remote or gone.
 - Blind webhook resend after a lost response duplicates a message that Discord
