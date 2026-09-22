@@ -108,25 +108,6 @@ And the refusal is distinct from the not-found refusal for a well-formed digest 
 
 ### Write authority
 
-<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
-Prepare-artifact writes (`input`, `prd`, `architecture`, `diagnosis`,
-`implementation-plan`) never consult or bind the slug's `active_runner`.
-Artifact authorship is not lifecycle ownership: an accepted write neither
-acquires, moves, nor releases the todo claim, and a different lifecycle
-orchestrator holding that claim does not block the writer. Admission is decided
-by the prepare-artifact class, the caller's registered prepare-author
-capability, and the delivered-todo read-only boundary. A direct human-identity
-writer is admitted through the same prepare-author boundary. Every accepted
-write follows the ordinary version-append, `updated_by`, provenance, and
-digest-bound invalidation consequences while leaving `active_runner` unchanged.
-`active_runner` remains exclusively the lifecycle orchestrator's todo claim while assigned
-workers author prepare artifacts. The bug lane therefore keeps the prepare driver as claimant
-through peer dispatch, diagnosis authorship and revision, interrogation, and settlement. The
-diagnosis peer writes under its prepare-author capability while the state machine remains in the diagnosis phase;
-it receives no todo claim, delegated ownership, artifact lease, expiry window, or liveness
-fallback. Successive accepted writes append digest-keyed content-addressed versions without
-changing lifecycle ownership.
-<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 Artifact writes consult the slug's claim. A todo whose `active_runner` names a
 live session is claimed, and every writable artifact kind on it is writable only
 by that claim's group: the holding session and every session it dispatched,
@@ -154,7 +135,6 @@ and receives no todo claim, delegated ownership, artifact lease, expiry window,
 or liveness fallback. Every accepted write follows the ordinary version-append,
 `updated_by`, provenance, and digest-bound invalidation consequences while
 leaving `active_runner` unchanged.
-<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
 The write path resolves the caller's identity, with parity to the stamp and
 artifact-remove boundaries, and records the resolved principal as `updated_by`.
@@ -171,39 +151,19 @@ orchestrator, a create orchestrator, the integrator, a builder, a reviewer, a fi
 role is not consulted, so a dispatched session carrying a prepare-authoring job is
 admitted on that job while remaining a worker for every purpose that classifies fleet
 sessions. An unregistered session id is an unknown caller and is refused with HTTP 403.
-<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
-This prepare-author gate is authorization, not a claim: it does not consult or alter the
-slug's holder, and an admitted writer faces no `active_runner` gate afterward.
-<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 This prepare-author gate is a capability boundary, not a claim: it does not consult or
 alter the slug's holder. It composes with the claim gate above — a prepare artifact is
 writable only by a caller that is both inside the claiming group, when the slug is
 claimed, and a prepare-phase writer. The claim gate decides first: a caller outside the
 claiming group is refused as a claim conflict regardless of job role, and the role
 refusal applies only to a caller the claim gate has already admitted.
-<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 The write boundary does not enforce the convention that a work-phase defect in a
 prepare artifact is routed back through prepare.
 
-<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
-Work artifacts (`review-findings`, `deferrals`, `quality-checklist`)
-carry no claim gate.
-<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 Work artifacts (`review-findings`, `deferrals`, `quality-checklist`) carry no
 prepare-author role gate. Like every other writable kind, they are gated by the
 claim.
-<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
-<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
-#### UC-WAV9: Worker write to a prepare artifact is refused by role
-
-```gherkin
-Given a worker session that carries a non-prepare job role
-When the worker attempts to write a prepare artifact (input, prd, architecture, diagnosis, or implementation-plan)
-Then the workflow service refuses the write by role with HTTP 403, before any state mutation
-And the artifact's current version is unchanged
-```
-<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 #### UC-WAV9: Worker write to a prepare artifact is refused by role
 
 ```gherkin
@@ -213,20 +173,7 @@ When the worker attempts to write a prepare artifact (input, prd, architecture, 
 Then the workflow service refuses the write by role with HTTP 403, before any state mutation
 And the artifact's current version is unchanged
 ```
-<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
-<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
-#### UC-WAV10: An authorized prepare worker writes while an orchestrator holds the todo
-
-```gherkin
-Given a prepare-stage todo is owned by its lifecycle orchestrator
-And a different registered worker is authorized to author the current prepare artifact
-When that worker writes the artifact
-Then the workflow accepts the write and appends a new version
-And records the worker as the artifact principal
-And lifecycle ownership remains with the orchestrator
-```
-<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 #### UC-WAV10: A dispatched worker writes while the orchestrator that dispatched it holds the todo
 
 ```gherkin
@@ -237,7 +184,6 @@ Then the workflow accepts the write and appends a new version
 And records the worker as the artifact principal
 And lifecycle ownership remains with the orchestrator
 ```
-<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
 #### UC-WAV11: Write to a prepare artifact is accepted and acquires no claim
 
@@ -257,17 +203,6 @@ When the workflow service persists the new version
 Then updated_by is the resolved caller principal, not a constant placeholder
 ```
 
-<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
-#### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
-
-```gherkin
-Given a live work-orchestrator session
-When it attempts to write a prepare artifact for any slug at any lifecycle phase
-Then the workflow service refuses the write by role before any state mutation
-And the response status is HTTP 403
-And the artifact's current version is unchanged
-```
-<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 #### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
 
 ```gherkin
@@ -278,7 +213,6 @@ Then the workflow service refuses the write by role before any state mutation
 And the response status is HTTP 403
 And the artifact's current version is unchanged
 ```
-<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
 #### UC-WAV16: A human-identity write to an unheld slug is accepted without acquiring a claim
 
@@ -301,17 +235,6 @@ And neither write is refused as a claim conflict
 And the slug acquires no live active-runner
 ```
 
-<!-- planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
-#### UC-WAV20: A write by a session bound to a different slug is accepted
-
-```gherkin
-Given a caller whose TeleClaude session is already bound to a different slug
-When the caller writes a prepare artifact for this slug
-Then the workflow service accepts the write and appends a new version
-And this slug's active-runner is unchanged
-And the response is not a conflicting-session-binding refusal
-```
-<!-- change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 #### UC-WAV20: A write by a session outside the claiming group is refused
 
 ```gherkin
@@ -322,7 +245,6 @@ And the refusal names the holding session and the door that addresses it
 And the artifact's current version is unchanged
 And this slug's active-runner is unchanged
 ```
-<!-- /planned-change:fix-telec-todo-artifacts-write-mutates-a-cla -->
 
 #### UC-WAV22: The claimant's own write to its claimed slug is accepted
 
@@ -383,8 +305,6 @@ And the verdict stamp binds the current report digest rather than inferring evid
 - The CLI write path constructs the `codebase_sha_at_write` and `referenced_paths` request body by calling the workflow's origin-main-sha helper (the canonical drift anchor per `@spec/feature/workflow/drift-detection`) and the referenced-paths extractor against the invocation cwd; the workflow service uses those if supplied, otherwise recomputes them via the same helper.
 - `list_artifacts` returns names only; version metadata (digest, timestamps) requires a follow-up `artifact_versions` call.
 
-<!-- planned:fix-telec-todo-artifacts-write-mutates-a-cla -->
 ## See Also
 
 - docs/project/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group.md — why a claimed todo's artifacts are writable only by the claiming group, and why the claim gate decides before the role gate.
-<!-- /planned:fix-telec-todo-artifacts-write-mutates-a-cla -->
