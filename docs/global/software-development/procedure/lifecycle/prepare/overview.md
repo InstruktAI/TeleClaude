@@ -127,14 +127,9 @@ carried it; it does not establish what a human decided.
 2. Take the `input` as the authorized basis for derivation. Its content is the
    creating agent's shaping of the work, which is trusted like any agent's.
 3. Recover the meaning that basis was compressed from. `input` is written from a
-   conversation, and the summary loses what the work is for. Read the sessions
-   that can hold that meaning — the creating session, named by the creation
-   record, and the preparing sessions, named by the prepare phase stamps — and no
-   others. A dispatched worker's transcript carries that worker's derivation of
-   the work rather than the intent the work came from, so reading it recovers a
-   downstream interpretation and imports the drift this audit exists to remove. A
-   human turn inside such a session shaped that execution, not the todo's intent,
-   so it is out of scope here rather than absent from it. Read the human's
+   conversation, and the summary loses what the work is for. Read the session the
+   creation record names and the session holding the todo's claim, and no others.
+   Read the human's
    own turns — a user entry outside any complete recognized platform envelope is
    that human, per `general/policy/message-identity-headers`, while an envelope
    span is a peer or the platform. Sessions with no human turns carry nothing to
@@ -395,9 +390,9 @@ state, not a declaration that the human owns its recovery.
   artifacts; never solicit an attestation from the creator. Reading a named
   session's transcript under Step 0a recovers meaning and is not solicitation.
 - **The input is too thin to derive from.** Recover intent from the input, the
-  creation record, prior artifacts, and the creating and preparing sessions under
-  Step 0a; do not manufacture product detail. If no defensible basis remains
-  after that, stop before kind-specific derivation and surface the gap.
+  creation record, prior artifacts, and the sessions Step 0a names; do not
+  manufacture product detail. If no defensible basis remains after that, stop
+  before kind-specific derivation and surface the gap.
 - **A bug concern is faithfully recovered but not yet proven.** Proceed to
   diagnosis. Filing fidelity establishes what was reported, not whether the
   report is correct or what caused it.
