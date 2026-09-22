@@ -62,7 +62,8 @@ And the role arrives through any door: an automatic spawn, an agent's directed s
 When that session carries the role
 Then no session is recorded above it
 And the session that started it is not woken by its completed turns
-And the human identity the work runs under is recorded on the session exactly as it is for any other session
+And no human identity is recorded on the session, its work having arrived from a queue, a schedule, or the fleet rather than from a person
+And the session resolves to its own system principal
 ```
 
 #### UC-SA2: A standing session survives the cleanup of the session that started it
