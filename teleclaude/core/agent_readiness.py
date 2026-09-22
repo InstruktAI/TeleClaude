@@ -28,6 +28,7 @@ _ANSI_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 _ANSI_ESCAPE_PREFIX = "\x1b["
 _CODEX_FOOTER_INDENTATION = "  "
 _CODEX_WORKSPACE_PATH_PREFIX = "~/"
+_DEEPSEEK_COMPOSER_EXPAND_AFFORDANCE = "⛶"
 
 
 class ReadinessSignal(StrEnum):
@@ -229,6 +230,38 @@ class CodexReadinessProfile:
         return _classify_complete_composer(output, AgentName.CODEX)
 
 
+@dataclass(frozen=True)
+class DeepSeekReadinessProfile:
+    """DeepSeek readiness profile that settles on its composer, not its animated splash.
+
+    Prompt location and composer classification are unchanged from marker-line
+    readiness for DeepSeek; only the region the settle engine must find quiet
+    differs. DeepSeek renders animated splash art in its pre-prompt region while
+    the conversation is empty, so that region never holds a stable digest;
+    stability is measured on the composer's own live region instead.
+    """
+
+    _marker_profile: MarkerLineReadinessProfile = field(
+        default_factory=lambda: MarkerLineReadinessProfile(
+            agent=AgentName.DEEPSEEK,
+            marker=AgentName.DEEPSEEK.prompt_marker,
+        )
+    )
+
+    def locate_prompt(self, output: str) -> PromptMatch | None:
+        """Locate the last visible DeepSeek prompt line."""
+        return self._marker_profile.locate_prompt(output)
+
+    def build_stability_view(self, output: str, prompt: PromptMatch) -> str:
+        """Return the composer's own live region; the splash above it never settles."""
+        del prompt
+        return _extract_complete_live_region(output, AgentName.DEEPSEEK) or ""
+
+    def observe_composer(self, output: str) -> PromptDeliveryObservation:
+        """Classify the complete DeepSeek composer for normal input delivery."""
+        return self._marker_profile.observe_composer(output)
+
+
 _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
     AgentName.CLAUDE: MarkerLineReadinessProfile(
         agent=AgentName.CLAUDE,
@@ -240,13 +273,10 @@ _READINESS_PROFILES: dict[AgentName, AgentReadinessProfile] = {
         match_mode="contains",
     ),
     AgentName.CODEX: CodexReadinessProfile(),
-    # DeepSeek Harness is an interactive TUI in the pane; its input prompt is
-    # the U+276F glyph (same prompt char as Claude), so marker-line readiness
-    # applies just as it does for the other pane-based agents.
-    AgentName.DEEPSEEK: MarkerLineReadinessProfile(
-        agent=AgentName.DEEPSEEK,
-        marker=AgentName.DEEPSEEK.prompt_marker,
-    ),
+    # DeepSeek's pre-prompt region renders animated splash art that never holds
+    # still, so it settles on its own composer instead of the shared pre-prompt
+    # stability view marker-line readiness uses for the other pane-based agents.
+    AgentName.DEEPSEEK: DeepSeekReadinessProfile(),
 }
 
 
@@ -272,6 +302,20 @@ def _classify_complete_composer(output: str, agent: AgentName) -> PromptDelivery
     return PromptDeliveryObservation(PromptDeliveryState.EMPTY)
 
 
+def _find_marker_row_index(lines: list[str], marker: str) -> int | None:
+    """Locate the last raw pane line whose composer marker search matches.
+
+    ANSI removal must run before whitespace stripping: a line's first character is
+    often an escape sequence, so stripping whitespace first is a no-op and leaves
+    any indentation the renderer places after it intact, hiding the marker from a
+    strict ``startswith`` test.
+    """
+    for idx in range(len(lines) - 1, -1, -1):
+        if strip_ansi_codes(lines[idx]).strip().startswith(marker):
+            return idx
+    return None
+
+
 def _extract_complete_live_region(output: str, agent: AgentName) -> str | None:
     lines = output.rstrip().split("\n")
     if agent is AgentName.CODEX:
@@ -283,10 +327,10 @@ def _extract_complete_live_region(output: str, agent: AgentName) -> str | None:
     marker = agent.prompt_marker.strip()
     if not marker:
         return None
-    for idx in range(len(lines) - 1, -1, -1):
-        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
-            return _extract_complete_claude_live_region(lines[idx:])
-    return None
+    idx = _find_marker_row_index(lines, marker)
+    if idx is None:
+        return None
+    return _extract_complete_claude_live_region(lines[idx:])
 
 
 def _extract_complete_claude_live_region(lines: list[str]) -> str | None:
@@ -302,10 +346,10 @@ def _extract_complete_codex_live_region(lines: list[str]) -> str | None:
     marker = AgentName.CODEX.prompt_marker.strip()
     if not marker:
         return None
-    for idx in range(len(lines) - 1, -1, -1):
-        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
-            return _extract_complete_codex_live_input_block(lines[idx:])
-    return None
+    idx = _find_marker_row_index(lines, marker)
+    if idx is None:
+        return None
+    return _extract_complete_codex_live_input_block(lines[idx:])
 
 
 def _extract_complete_codex_live_input_block(lines: list[str]) -> str | None:
@@ -350,14 +394,14 @@ def _extract_complete_deepseek_live_region(lines: list[str]) -> str | None:
     marker = AgentName.DEEPSEEK.prompt_marker.strip()
     if not marker:
         return None
-    for idx in range(len(lines) - 1, -1, -1):
-        if strip_ansi_codes(lines[idx].strip()).startswith(marker):
-            input_lines: list[str] = []
-            for line in lines[idx:]:
-                if input_lines and (_is_horizontal_rule_line(line) or _is_deepseek_rounded_border_line(line)):
-                    return "\n".join(input_lines)
-                input_lines.append(line)
-            return None
+    idx = _find_marker_row_index(lines, marker)
+    if idx is None:
+        return None
+    input_lines: list[str] = []
+    for line in lines[idx:]:
+        if input_lines and (_is_horizontal_rule_line(line) or _is_deepseek_rounded_border_line(line)):
+            return "\n".join(input_lines)
+        input_lines.append(line)
     return None
 
 
@@ -408,7 +452,10 @@ def _live_region_has_input(live_region: str, agent: AgentName) -> bool:
             continue
         input_part = _strip_live_prompt_marker(raw_line, agent)
         input_part = _strip_generated_segments(input_part)
-        if _normalize_text(input_part).strip():
+        normalized = _normalize_text(input_part).strip()
+        if agent is AgentName.DEEPSEEK:
+            normalized = _strip_deepseek_composer_expand_affordance(normalized)
+        if normalized:
             return True
     return False
 
@@ -429,6 +476,13 @@ def _is_codex_composer_chrome_line(line: str) -> bool:
     return ("shift + tab" in normalized and "esc dismiss" in normalized) or (
         normalized.startswith("gpt-") and "·" in normalized
     )
+
+
+def _strip_deepseek_composer_expand_affordance(normalized_text: str) -> str:
+    """Strip DeepSeek's trailing expand-composer affordance; it is chrome, not input."""
+    if normalized_text.endswith(_DEEPSEEK_COMPOSER_EXPAND_AFFORDANCE):
+        return normalized_text[: -len(_DEEPSEEK_COMPOSER_EXPAND_AFFORDANCE)]
+    return normalized_text
 
 
 def _is_horizontal_rule_line(raw_line: str) -> bool:
