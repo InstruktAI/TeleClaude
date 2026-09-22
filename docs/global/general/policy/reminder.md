@@ -43,18 +43,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   future-self intent is needed, then yield with no waiting process left behind;
   the reminder or incoming event re-enters the session through its normal input
   path.
-<!-- planned-change:noop-turn-output-baseline -->
-- A due reminder whose intent is already satisfied or obsolete warrants no
-  authored output beyond the sentinel. A one-shot firing has already consumed
-  its reminder and ends with exactly `NOOP`. A recurring firing cancels its own
-  slug first, then ends with exactly `NOOP`. Neither authors a summary, status,
-  or confirmation. The platform never delivers a bare `NOOP` turn to peers,
-  projected surfaces, or notifications.
-- Retiring a reminder is always an explicit act. No firing is answered by the
-  sentinel alone: `NOOP` closes the turn and does nothing else, and a reminder
-  whose intent has died is cancelled by its own command. The sentinel therefore
-  carries one meaning on every turn, whatever else that turn received.
-<!-- change:noop-turn-output-baseline -->
 - A due reminder whose intent is already satisfied or obsolete warrants no
   authored output beyond the sentinel, whose contract is
   `general/policy/no-output-turn`. A one-shot firing has already consumed its
@@ -64,7 +52,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 - Retiring a reminder is always an explicit act. The sentinel closes the turn
   and retires nothing, so a reminder whose intent has died is cancelled by its
   own command.
-<!-- /planned-change:noop-turn-output-baseline -->
 
 ### Reminder identity and lifecycle
 

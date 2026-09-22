@@ -1,7 +1,6 @@
 ---
-description: How an agent closes a turn that warrants no output, and why a prose stand-in for silence is not silence.
-delivered_by:
-  - noop-turn-output-baseline
+description: How an agent closes a turn that warrants no output, and why a prose stand-in
+  for silence is not silence.
 ---
 
 # No-Output Turn — Policy

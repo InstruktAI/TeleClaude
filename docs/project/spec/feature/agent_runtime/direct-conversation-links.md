@@ -298,7 +298,6 @@ And the (link, A→B) delivery cursor still advances past the turn
 And A's transcript retains the `NOOP` turn as source truth
 ```
 
-<!-- planned:noop-turn-output-baseline -->
 #### UC-DCL23: The ignition intro tells a joining peer how to close a turn that owes nothing
 
 ```gherkin
@@ -308,7 +307,6 @@ Then the intro states that a turn owing no output closes with the no-output sent
 And it states that a prose stand-in for silence is delivered to the peer and is therefore the acknowledgement it was written to avoid
 And this holds for ignition from an existing session and for ignition at session start alike
 ```
-<!-- /planned:noop-turn-output-baseline -->
 
 #### UC-DCL10: Legacy pre-cutover cursor ranges migrate with durable dispositions
 
