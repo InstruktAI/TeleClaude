@@ -27,17 +27,11 @@ _SATISFIED_ONE_SHOT_INTENT = (
     "summary, no status, no confirmation — and end the turn with exactly "
     f"`{NOOP_SENTINEL}` and no other text. This one-shot firing has already consumed the reminder."
 )
-_SATISFIED_AUTO_CANCEL_INTENT = (
-    "If later input or current state shows this intent is already satisfied or obsolete, author no message — no "
-    "summary, no status, no confirmation. End the turn with exactly "
-    f"`{NOOP_SENTINEL}` and no other text."
-)
 _SATISFIED_MANUAL_CANCEL_INTENT = (
     "If later input or current state shows this intent is already satisfied or obsolete, cancel this reminder with "
     "`telec reminders cancel {slug}`, then author no message — no summary, no status, no confirmation — and end "
     f"the turn with exactly `{NOOP_SENTINEL}` and no other text."
 )
-_AUTO_CANCEL_CONSEQUENCE = "Answering with `NOOP` cancels this reminder."
 _FIRING_HISTORY = "Occurrence {firing_number}; armed {elapsed} ago."
 _HOUR_SECONDS = 3600
 _MINUTE_SECONDS = 60
@@ -53,7 +47,6 @@ class ReminderEnvelopeComposition:
     rendered: str
     body: str
     explicit_noop: bool
-    auto_cancel: bool
 
 
 def _canonical(value: datetime) -> str:
@@ -104,9 +97,6 @@ def compose_agent_reminder(entry: ReminderEntry) -> ReminderEnvelopeComposition:
         body_lines.append(_STALE_INTENT)
         if entry.schedule.recurrence is ReminderRecurrence.ONE_SHOT:
             body_lines.append(_SATISFIED_ONE_SHOT_INTENT)
-        elif entry.auto_cancel:
-            body_lines.append(_SATISFIED_AUTO_CANCEL_INTENT)
-            body_lines.append(_AUTO_CANCEL_CONSEQUENCE)
         else:
             body_lines.append(_SATISFIED_MANUAL_CANCEL_INTENT.format(slug=entry.slug))
     body = "\n".join(body_lines)
@@ -114,7 +104,6 @@ def compose_agent_reminder(entry: ReminderEntry) -> ReminderEnvelopeComposition:
         rendered=reminder_envelope(opening, body).rendered,
         body=body,
         explicit_noop=entry.transition is ReminderTransition.FIRING,
-        auto_cancel=entry.auto_cancel,
     )
 
 

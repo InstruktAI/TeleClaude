@@ -405,10 +405,6 @@ class ReminderRow(SQLModel, table=True):
     occurrence_key: str
     firing_count: int = 0
     sliding: bool = False
-    auto_cancel: bool = False
-    pending_answer_occurrence_key: str | None = None
-    pending_answer_inbound_id: int | None = None
-    pending_answer_at: str | None = None
     claimed_occurrence_key: str | None = None
     claimed_at: str | None = None
 
@@ -435,8 +431,6 @@ class ReminderEntryRow(SQLModel, table=True):
     next_fire_at: str | None = None
     occurrence_key: str
     sliding: bool = False
-    auto_cancel: bool = False
-    cancel_reason: str | None = None
     firing_number: int | None = None
 
 
