@@ -126,21 +126,60 @@ carried it; it does not establish what a human decided.
 1. Read the creation record and the current `input`.
 2. Take the `input` as the authorized basis for derivation. Its content is the
    creating agent's shaping of the work, which is trusted like any agent's.
-3. Derive the work from that basis by kind — the outcome and constraints for
+3. Corroborate that basis against the conversation it was written from. The
+   creation record names the creating session; the todo's phase stamps name
+   every later session that shaped it. Tail those sessions and read the human's
+   own turns — a user entry outside any complete recognized platform envelope
+   is that human, per `general/policy/message-identity-headers`, while an
+   envelope span is a peer or the platform. Sessions with no human turns carry
+   nothing to corroborate; that is the ordinary case and costs nothing.
+
+   Where human turns exist, compare substance: an outcome-level requirement
+   present in the conversation and absent from `input` is a compression loss,
+   and `input` is repaired in place to carry it. Nothing downstream reads the
+   conversation (`general/policy/human-contract`), so a requirement the
+   artifact does not carry is a requirement the work will not meet.
+
+   Carry the substance, never its provenance. The repaired `input` states the
+   requirement and defends it on its merits; it never records that a human
+   said, decided, or asked for anything.
+
+   Do not repair, and say so in the audit instead, when:
+   - no shaping session is identifiable, its transcript is unavailable, or its
+     recorded coverage is incomplete for the relevant range;
+   - a shaping session is still live and the conversation is still forming;
+   - the omission is mechanism rather than outcome — how to build it is plan
+     and build's, and restoring it would reinsert the HOW that `input`
+     deliberately excludes;
+   - the clause was superseded later in the same conversation, where the later
+     position governs;
+   - the reading is genuinely ambiguous between alternatives that produce
+     different work; or
+   - a standing contract already determines the question.
+
+   Record what was compared and what came of it. An unrecorded repair of
+   `input` is indistinguishable from the drift this step exists to catch.
+
+   Performed at entry, this reads sessions this one did not author. Repeated
+   under item 7 after this session has itself rewritten `input`, it re-reads
+   the same turns against the new text; the comparison still holds, but it is
+   this session checking its own compression and carries that much less weight.
+
+4. Derive the work from that basis by kind — the outcome and constraints for
    `feature` and `change`; the reported concern, symptom, and
    expected-versus-observed behavior for `bug`, where causal and scope claims
    remain hypotheses diagnosis still tests; the action boundary, result,
    recipient, and timing for `task`; and the same for a kind-less todo before
    classification.
-4. A technical choice needed for safe and correct delivery is plan and build's
+5. A technical choice needed for safe and correct delivery is plan and build's
    to make; it is not enlarged into product or business intent merely because
    the input mentions it. This is a scope discipline on derivation, not a test
    of whether the human said it.
-5. Establish the owning project, repeat the bounded overlap check when its
+6. Establish the owning project, repeat the bounded overlap check when its
    evidence is absent, apply the governing creation and process-authority
    contracts, and confirm that functionality work carries its required pending
    documentation.
-6. If the input changes later in the prepare flow, repeat this audit before
+7. If the input changes later in the prepare flow, repeat this audit before
    deriving from the revision.
 
 Retire only a confirmed duplicate, work whose owning project cannot be repaired
