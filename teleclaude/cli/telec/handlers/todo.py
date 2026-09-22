@@ -599,8 +599,11 @@ def _handle_artifacts_list(args: list[str]) -> None:
         if not artifacts:
             print(f"No artifacts for {slug}")
         else:
-            for name in artifacts:
-                print(f"  {name}")
+            for entry in artifacts:
+                print(f"  {entry['name']}")
+                writers = entry.get("writers") or []
+                if writers:
+                    print(f"    writers: {', '.join(writers)}")
     else:
         print(result)
 
