@@ -48,6 +48,7 @@ from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.operations._command_outcome import command_result_outcome
+from teleclaude.core.operations._delivery import DeliveryOutcome, DeliveryReason, deliver_recovered_operations
 from teleclaude.core.operations._remote_delivery import forward_outcome_to_caller_computer
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.task_registry import TaskRegistry
@@ -128,10 +129,6 @@ TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
 
-_DELIVERY_REASON_DELIVERED = "delivered"
-_DELIVERY_REASON_NO_CALLER = "no_caller"
-_DELIVERY_REASON_CALLER_UNREACHABLE = "caller_unreachable"
-
 
 def _operation_payload_abandon(operation: Operation) -> bool:
     """Read the ``abandon`` discriminator from a todo-integrate operation's payload; absent reads False."""
@@ -178,17 +175,21 @@ class OperationsService:
         self._live_tasks: dict[str, asyncio.Task[None]] = {}
         self._live_guard = asyncio.Lock()
         self._lifecycle_client_factory = lifecycle_client_factory
+        self._pending_startup_recovery: list[Operation] = []
 
     async def start(self) -> None:
-        """Normalize any abandoned nonterminal operations from a previous daemon run."""
+        """Normalize abandoned nonterminal operations; retain them for `deliver_startup_recovery`."""
         staled = await self._db.mark_nonterminal_operations_stale(
             error_text="daemon restarted before operation completed",
         )
         if staled:
             logger.warning("Marked %d abandoned operation(s) stale during startup", len(staled))
-        for operation in staled:
-            self._emit_outcome_event(operation.kind, operation.operation_id, error=operation.error_text)
-            await self._deliver_outcome(operation, outcome="stale")
+        self._pending_startup_recovery = staled
+
+    async def deliver_startup_recovery(self) -> None:
+        """Emit and deliver each operation `start` retained, containing per-row faults."""
+        pending, self._pending_startup_recovery = self._pending_startup_recovery, []
+        await deliver_recovered_operations(pending, emit=self._emit_outcome_event, deliver=self._deliver_outcome)
 
     async def expire_stale_operations(self) -> None:
         """Mark long-silent running operations stale and deliver each one's outcome."""
@@ -199,7 +200,7 @@ class OperationsService:
         )
         for operation in staled:
             self._emit_outcome_event(operation.kind, operation.operation_id, error=operation.error_text)
-            await self._deliver_outcome(operation, outcome="stale")
+            await self._deliver_outcome(operation, outcome=DeliveryOutcome.STALE)
 
     async def submit_todo_work(
         self,
@@ -633,7 +634,7 @@ class OperationsService:
                 datetime.now(UTC).isoformat(),
             )
             self._emit_outcome_event(kind, operation_id)
-            await self._deliver_outcome(operation, outcome="completed")
+            await self._deliver_outcome(operation, outcome=DeliveryOutcome.COMPLETED)
         except asyncio.CancelledError:
             error_text = "operation cancelled before completion"
             await self._db.fail_operation(
@@ -644,7 +645,7 @@ class OperationsService:
             )
             if operation is not None:
                 self._emit_outcome_event(kind, operation_id, error=error_text)
-                await self._deliver_outcome(operation, outcome="stale")
+                await self._deliver_outcome(operation, outcome=DeliveryOutcome.STALE)
             raise
         except Exception as exc:
             error_text = f"{type(exc).__name__}: {exc}"
@@ -660,7 +661,7 @@ class OperationsService:
             )
             if operation is not None:
                 self._emit_outcome_event(kind, operation_id, error=error_text)
-                await self._deliver_outcome(operation, outcome="failed")
+                await self._deliver_outcome(operation, outcome=DeliveryOutcome.FAILED)
             logger.exception(
                 "Background operation failed",
                 operation_id=operation_id,
@@ -906,7 +907,7 @@ class OperationsService:
                 visibility=EventVisibility.CLUSTER,
             )
 
-    async def _deliver_outcome(self, operation: Operation, *, outcome: str) -> None:
+    async def _deliver_outcome(self, operation: Operation, *, outcome: DeliveryOutcome) -> None:
         """Deliver an address — never the result or error — to the operation's recorded caller.
 
         A row with no recorded caller emits its event (already done by the
@@ -919,7 +920,7 @@ class OperationsService:
                 operation_id=operation.operation_id,
                 kind=operation.kind,
                 outcome=outcome,
-                reason=_DELIVERY_REASON_NO_CALLER,
+                reason=DeliveryReason.NO_CALLER,
             )
             return
 
@@ -930,7 +931,7 @@ class OperationsService:
                 operation_id=operation.operation_id,
                 kind=operation.kind,
                 outcome=outcome,
-                reason=_DELIVERY_REASON_DELIVERED if delivered else _DELIVERY_REASON_CALLER_UNREACHABLE,
+                reason=DeliveryReason.DELIVERED if delivered else DeliveryReason.CALLER_UNREACHABLE,
             )
             return
 
@@ -952,7 +953,7 @@ class OperationsService:
                 operation_id=operation.operation_id,
                 kind=operation.kind,
                 outcome=outcome,
-                reason=_DELIVERY_REASON_CALLER_UNREACHABLE,
+                reason=DeliveryReason.CALLER_UNREACHABLE,
             )
             return
 
@@ -961,7 +962,7 @@ class OperationsService:
             operation_id=operation.operation_id,
             kind=operation.kind,
             outcome=outcome,
-            reason=_DELIVERY_REASON_DELIVERED,
+            reason=DeliveryReason.DELIVERED,
         )
 
     def _serialize_operation(self, operation: Operation) -> SerializedOperation:
