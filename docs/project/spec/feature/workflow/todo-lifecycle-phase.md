@@ -124,7 +124,6 @@ And every later reader observes DELIVERED as the canonical phase
 And no caller bypasses derivation by manually overriding the pointer
 ```
 
-<!-- planned:fix-telec-todo-artifacts-write-a-dropped-res -->
 
 #### UC-TLP3: Stored artifact evidence decides whether a review's remediation has landed
 
@@ -136,7 +135,6 @@ Then the derived phase returns the Todo to plan review
 And no blocker reports the remediation write as absent
 ```
 
-<!-- /planned:fix-telec-todo-artifacts-write-a-dropped-res -->
 
 ### Cross-context references
 
