@@ -112,12 +112,10 @@ commit that carries it lands and clears it; `--only` clears just the subset that
 commit carried. Nothing else — file-edit records, shell-command text, or
 transcript inspection of any kind — supplies path evidence.
 
-The record lives beside the session's other session-scoped checkpoint state,
-under that session's temporary directory. It therefore survives an agent restart
-and a handoff, which reuse the session's host pane, and is lost when the host
-pane itself is recreated. A session that has lost its record declares nothing,
-which the scoped-lint and sealed-commit refusals surface directly, and the
-recovery is to declare again.
+The record is session-scoped durable state, keyed by the declaring session and
+released when that session closes. It outlives the agent process, the host pane,
+and the machine, so a declaration stays live across an agent restart, a handoff,
+and a revival of the same session.
 <!-- /planned-change:declarations-are-a-durable-record -->
 
 Every implicit-scope consumer on a shared branch reads this same evidence.
