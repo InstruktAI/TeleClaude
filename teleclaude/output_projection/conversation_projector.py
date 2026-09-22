@@ -72,6 +72,7 @@ from teleclaude.utils.transcript._user_turns import (
     normalize_runtime_user_text,
 )
 from teleclaude.utils.transcript._utils import _parse_timestamp
+from teleclaude.utils.transcript_discovery import agent_for_transcript_path
 
 logger = get_logger(__name__)
 _RUNTIME_ARTIFACT_SKIPPED_LOG = "Skipping runtime-owned transcript entry"
@@ -444,8 +445,12 @@ def project_conversation_chain(
     future mirror/search adoption.
 
     Args:
-        file_paths: Ordered list of transcript file paths (oldest first).
-        agent_name: Agent name for iterator selection.
+        file_paths: Ordered list of transcript file paths (oldest first). A chain
+            can span more than one runtime (cross-agent handoff); each member is
+            resolved to its own producing runtime rather than assumed to match
+            ``agent_name``.
+        agent_name: Fallback runtime for a member whose path resolves to no
+            registered session root.
         policy: Visibility policy controlling which block types are emitted.
         since: Optional ISO 8601 UTC timestamp filter.
         cleanup_runtime_user_spans: Apply legacy mixed-text cleanup for this
@@ -456,7 +461,8 @@ def project_conversation_chain(
     """
     all_blocks: list[ProjectedBlock] = []
     for file_idx, file_path in enumerate(file_paths):
-        entries = _get_entries_for_agent(file_path, agent_name)
+        member_agent = agent_for_transcript_path(file_path, fallback=agent_name)
+        entries = _get_entries_for_agent(file_path, member_agent)
         if entries is None:
             logger.debug("Skipping None entries for file", file_path=file_path, file_index=file_idx)
             continue
@@ -464,7 +470,7 @@ def project_conversation_chain(
             project_entries(
                 entries,
                 policy,
-                agent_name,
+                member_agent,
                 since=since,
                 file_index=file_idx,
                 cleanup_runtime_user_spans=cleanup_runtime_user_spans,

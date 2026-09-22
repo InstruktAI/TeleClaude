@@ -28,6 +28,7 @@ from teleclaude.core.models import JsonDict
 __all__ = [
     "SessionId",
     "TranscriptCandidate",
+    "agent_for_transcript_path",
     "build_source_identity",
     "classify_transcript",
     "discover_transcripts",
@@ -111,6 +112,22 @@ def in_session_root(path: Path | str, agent: AgentName) -> bool:
         except ValueError:
             continue
     return False
+
+
+def agent_for_transcript_path(path: Path | str, *, fallback: AgentName) -> AgentName:
+    """Resolve the runtime whose session root contains a transcript path.
+
+    A transcript chain can span more than one runtime (cross-agent handoff), so a
+    single caller-supplied agent is not a safe parser choice for every member. This
+    is the one place that maps a path back to the runtime that produced it,
+    reusing the same registry-sourced roots ``in_session_root`` already publishes.
+    A path under no registered root returns ``fallback`` — today's behavior for
+    such paths, not a new failure mode.
+    """
+    for agent in AgentName:
+        if in_session_root(path, agent):
+            return agent
+    return fallback
 
 
 _CLAUDE_SUBAGENT_DIR = "subagents"
