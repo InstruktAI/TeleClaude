@@ -427,17 +427,6 @@ And `context` records the parent todo's slug
 And `lineage` records the chain of the acting planner session under its human root
 ```
 
-<!-- planned-change:job-session-missing-system-principal -->
-#### UC-WTC26: Job-runner filing is the only legitimate no-human lineage
-
-```gherkin
-Given a job-runner session files a bug with no human at its chain root
-When the workflow service writes the roadmap row
-Then `lineage` records the job session's system root
-And `human_involved` is `false`
-And any non-job session filing without a resolvable human root is rejected per UC-WTC23
-```
-<!-- change:job-session-missing-system-principal -->
 #### UC-WTC26: A standing session's filing is the legitimate no-human lineage
 
 ```gherkin
@@ -447,7 +436,6 @@ Then `lineage` records that session's own system root
 And `human_involved` is `false`
 And any other session filing without a resolvable human root is rejected per UC-WTC23
 ```
-<!-- /planned-change:job-session-missing-system-principal -->
 
 #### UC-WTC24: Group create succeeds against a prepare-lane parent carrying prepared artifacts
 
