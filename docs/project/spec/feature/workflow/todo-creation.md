@@ -419,6 +419,7 @@ Given an agent files a todo or bug with a missing or blank human-involvement rea
 When the creation surface validates the invocation
 Then it refuses the call before creating the todo
 And it emits no supplied reason
+And the diagnostic directs the agent to rerun without the declaration when the filing is not human-involved
 ```
 
 #### UC-WTC33: A stale declaration records false and the filing proceeds
