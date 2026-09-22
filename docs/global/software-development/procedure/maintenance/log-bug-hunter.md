@@ -17,7 +17,8 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
   snippet ID as the job identity.
 - The project's log name and the job's schedule are available from its configuration.
 - `instrukt-ai-logs`, `telec bugs suppressions`, `telec bugs list`,
-  `telec todo list`, and `telec bugs report` are available.
+  `telec todo list`, `telec todo artifacts read`, `telec docs index`, `git`,
+  and `telec bugs report` are available.
 - The run history is the Markdown reports in the directory named under Outputs.
 
 ## Steps
@@ -52,20 +53,52 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
    - Read `telec bugs suppressions` for the project. Match only active entries,
      using each entry's declared substring or regex semantics. Record matches
      with their suppression IDs. Skip an invalid regex and record that error.
-   - Read `telec bugs list` and `telec todo list`. Record a matching active
-     bug or todo by its slug instead of filing a duplicate.
+   - Read `telec bugs list` and `telec todo list`. These return slugs, and a
+     slug names work rather than a mechanism, so a signal that matches no slug
+     is not thereby untracked. Select candidates by token overlap between the
+     signal — its message, its implicated module or file, and any subsystem or
+     agent it names — and the returned slugs, then read those candidates'
+     artifacts with `telec todo artifacts read <slug> <name>` before concluding
+     a signal is untracked. Read the selected candidates only; the active set is
+     never read in full. Record a matching active bug or todo by its slug
+     instead of filing a duplicate.
+   - Establish whether the implicated code has changed since the signal fired,
+     keyed on the path the signal already carries. On the project's main branch,
+     `git log --since=<last occurrence> -- <path>`: a change there after the
+     signal last fired means the failure is likely already repaired, whether or
+     not any todo records it. Do not file; carry the signal to the next run and
+     file only if it recurs afterwards. On each active branch,
+     `git log <branch> --since=<first occurrence> -- <path>`, together with
+     `telec docs index --target <slug>` for a pending contract on that path: a
+     match means in-flight work owns the mechanism. Record that slug and do not
+     file a sibling.
+   - Delivered, closed, and removed work is not read. Whether a past failure was
+     repaired is answered by the code and its history above, which is the source
+     of truth for that question (`general/principle/grounding`); a record of
+     completed work is neither, and its size grows without bound while its
+     bearing on a current signal does not.
    - Read the latest three reports for this project for prior dispositions and
      context. A previous failed filing or an unresolved signal remains outstanding;
      merely mentioning a signal in a report does not make it handled.
    - New evidence for an already tracked failure belongs with that finding in
      this run's report; it does not create a second bug for the same failure.
+     Route it per the amendment rules in
+     `software-development/policy/todo-creation-discipline`.
 
 4. File every remaining error signal through the bug front door.
    - State the operation and the observed consequence the records support,
      distinguishing the operation's outcome from how that outcome is surfaced.
      An operation the records identify as attempted is stated as the report's
-     subject; where several operations are identified, preserve their evidenced
-     relationship. State an expected outcome only with its supporting source.
+     subject, and one report carries one mechanism
+     (`software-development/policy/todo-creation-discipline`). Where several
+     operations are identified, preserve a relationship only where the records
+     establish it rather than merely display it: failures observed close
+     together, or within one session, are correlated by that observation alone
+     and the correlation is recorded as such, never asserted as a causal
+     sequence (`general/principle/grounding`). Where an operator-initiated or
+     otherwise deliberate action sits in the sequence, establish it before
+     attributing anything downstream of it to a failure upstream.
+     State an expected outcome only with its supporting source.
      Preserve an unknown operation, outcome, or expectation explicitly; never
      infer one from an error signature. A reporting defect is stated as the
      discrepancy in reporting, without asserting that the underlying operation
@@ -83,8 +116,8 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
 5. Write the run report under Outputs, including a clean or failed scan.
    Mark the scan complete only after log collection, causal classification, and
    deduplication succeeded and every eligible error signal has been filed, excluded,
-   or matched to an active suppression or existing work. An outstanding filing keeps
-   the scan incomplete.
+   carried for recurrence, or matched to an active suppression, existing work, or
+   in-flight work. An outstanding filing keeps the scan incomplete.
    Return the outcome to the job brief's structured close-out step.
 
 ## Outputs
@@ -98,8 +131,10 @@ Create the directory when needed. Each report carries:
 
 - **Summary:** project, scan start and end, complete or incomplete, and outcome.
 - **Findings:** each eligible error signal's observed evidence and disposition — filed bug
-  slug, existing work slug, suppression ID, exclusion cause, or outstanding filing. Warning
-  records do not appear as findings.
+  slug, existing work slug, in-flight slug that owns the mechanism, suppression ID, exclusion
+  cause, a signal carried for recurrence after a repair landed, or outstanding filing. Warning
+  records do not appear as findings. A carried signal names the commit that repaired its path,
+  so the next run can file it without repeating this run's history query.
 - **Errors:** collection, deduplication, or filing failures; use "None" when absent.
 
 The report is the scan history consumed by the next run. The structured outcome
@@ -109,8 +144,10 @@ submitted by the job brief records whether this run completed successfully.
 
 - If logs cannot be collected, record the failed collection and an incomplete
   scan. Report failure; do not describe unavailable logs as a clean run.
-- If suppression or active-work lookup fails, preserve the affected signals as
-  outstanding and report failure. Resume deduplication on the next run.
+- If suppression, active-work, or repository-history lookup fails, preserve the
+  affected signals as outstanding and report failure. Resume deduplication on the
+  next run. An unavailable history query never promotes a signal to filing: an
+  unanswered "was this already repaired" is an outstanding signal, not a new one.
 - If the available observations cannot falsify congestion or a computer restart for an error,
   record the causal-evidence gap and exclude that error from filing. Uncertainty never promotes
   an operationally explainable error into a bug report.
