@@ -200,63 +200,6 @@ to own; the state machine never performs it. Divergence has two instruction shap
   steps within its governance, and re-enters `telec todo integrate`; the failure never
   parks the integrator merely because the failed operation was implied by its task.
 
-<!-- planned-change:ownership-by-declaration -->
-#### After the dirty-main quiet window
-
-When the same complete blocking path set remains dirty for the full quiet window, run the
-ownership query with the tool invocation's working directory set to the repo root named by
-the integration instruction:
-
-```
-telec code owners <path>...
-```
-
-Include every blocking path from the integration instruction on each post-window reminder
-beat while the set remains dirty. The command performs no age calculation. Each invocation
-takes one fresh snapshot of open local-project sessions and returns a JSON object keyed by
-every requested project-relative path.
-
-Resolve ownership on every post-window reminder beat while the complete blocking path set
-remains dirty, using a fresh query invocation and therefore a fresh open-session snapshot.
-Coordination remains once per owner per distinct complete blocking set: never contact an
-already-coordinated owner again for that set. If re-resolution exposes a different live
-owner that has not yet been coordinated for the set, send that owner one grouped message.
-If a previously owned path now reports null, the former custodian is no longer live and the
-path enters the null-custody rules below. Hold without mutation or human escalation only
-while the latest result still reports a live custodian or a positive
-`undetermined_session_count`; keep the reminder active so either condition can clear. If
-the same blocking condition — an unchanged live owner-path group or a positive
-undetermined count — survives three consecutive later reminder beats after it is first
-observed, escalate once for the complete blocking set. Name every still-live owner group
-and its paths plus the undetermined count, never the identities behind that count. Do not
-message an owner a second time. At that escalation, cancel the reminder and keep the
-integrator alive as the single human-blocker beacon without mutating the protected paths
-or emitting another escalation for that set. The next move belongs to the human.
-
-Group owned paths by the reported TeleClaude session UUID. Send each live owner one
-coordination message naming its complete blocking-file group and asking it to commit or
-otherwise settle that work. Do not split one owner's group into per-file messages, rescan
-closed sessions, inspect commit authorship, or recheck liveness after the ownership
-snapshot.
-
-A null owner transfers custodianship to the integrator. Inspect the path's diff and
-surrounding intent, then commit discernible intentional work as-is or revert abandoned
-residue through the sanctioned path-scoped surface. Null ownership is never permission to
-discard blindly. Escalate only when the path's intent remains genuinely ambiguous after
-inspection.
-
-If the latest query reports a positive `undetermined_session_count`, a null owner transfers
-inspection custodianship but not destructive authority. Preserve discernible intentional
-work in a commit when safe, but do not classify or revert residue as abandoned on that
-result and do not escalate solely because attribution is temporarily undetermined. Wait
-for the next reminder beat and re-resolve. Revert authority returns only when a later fresh
-result reports zero undetermined sessions and no live owner for the path. Escalate only
-intent that remains genuinely ambiguous after a result has established that custody. A
-positive count that persists through the shared three-beat bound follows the one
-protection-condition escalation above; that escalation reports the unresolved safety
-brake and makes no claim about path intent.
-
-<!-- change:ownership-by-declaration -->
 #### After the dirty-main quiet window
 
 Keep waiting. Dirty paths on repo-root main belong to the sessions that declared them
@@ -269,7 +212,6 @@ it is first observed, escalate once for that set, cancel the reminder, and hold 
 single human-blocker beacon without mutating the protected paths or emitting another
 escalation for that set. The next move belongs to the human.
 
-<!-- /planned-change:ownership-by-declaration -->
 #### Reminder: integrator-main-clearance
 
 - **Owner:** Integration procedure.
@@ -279,19 +221,6 @@ escalation for that set. The next move belongs to the human.
 - **Duration:** the existing ~2–3 minute interval owned by this procedure.
 - **Recurrence:** recurring while repo-root main remains blocked.
 - **Arm condition:** set on first dirty-main block before yielding.
-<!-- planned-change:ownership-by-declaration -->
-- **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. While waiting, keep this reminder and follow the post-window ownership discipline; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
-- **Firing behavior:** inspect current repo-root cleanliness and follow
-  **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
-  dirty paths. After the quiet window, re-run the read-only ownership query for
-  an unchanged dirty set, but never re-contact an owner already coordinated for
-  that set.
-- **Cancellation:** cancel when main clears, the integration session reaches a
-  terminal outcome, or the human explicitly supersedes the wait. A coordinated
-  live owner or positive undetermined count keeps the reminder live for fresh
-  read-only re-resolution only until the single bounded escalation transfers
-  the next move to the human; cancel it at that transition.
-<!-- change:ownership-by-declaration -->
 - **Intent:** `Recheck whether repo-root main is clear without touching another session's work. If clear, resume integration. Otherwise keep waiting and keep this reminder; on escalating to a human, cancel it and hold as a beacon — the next move is theirs.`
 - **Firing behavior:** inspect current repo-root cleanliness and follow
   **REPO ROOT SYNC REQUIRED** without treating the reminder as ownership of the
@@ -299,7 +228,6 @@ escalation for that set. The next move belongs to the human.
 - **Cancellation:** cancel when main clears, the integration session reaches a
   terminal outcome, or the human explicitly supersedes the wait. Cancel it at
   the single bounded escalation that transfers the next move to the human.
-<!-- /planned-change:ownership-by-declaration -->
 - **Invocation:** `telec reminders set integrator-main-clearance`.
 
 #### Reminder: integrator-queue-watch

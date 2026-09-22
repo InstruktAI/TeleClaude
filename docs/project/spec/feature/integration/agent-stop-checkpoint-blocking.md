@@ -459,29 +459,6 @@ Then the judgment action is surfaced
 (The engine resolves the checkpoint registry alone, so a maintenance action a binding names is not a checkpoint obligation at all; log-check and test remain the agent's.)
 ```
 
-<!-- planned-change:ownership-by-declaration -->
-#### UC-CP26: The checkpoint names what it could not account for
-
-```gherkin
-Given an agent session reaches an agent-stop checkpoint boundary
-And the working tree holds dirty paths that are neither registered to that session nor disclaimed by it
-When checkpoint evaluation completes
-Then a checkpoint decision is produced rather than skipped as having no changes
-And the decision names those paths
-And its required action instructs the agent to declare the paths it wrote and disclaim the paths it did not
-And the decision attributes no path to any session
-```
-
-#### UC-CP27: A disclaimed path stops being reported
-
-```gherkin
-Given an agent session was told about dirty paths it had not accounted for
-And the session disclaimed every one of them
-When the session reaches a further agent-stop checkpoint boundary
-Then those paths are not reported again
-And a decision is still produced when a path becomes unaccounted for after that disclaimer
-```
-<!-- change:ownership-by-declaration -->
 #### UC-CP26: The checkpoint names the session's own undelivered work
 
 ```gherkin
@@ -502,7 +479,6 @@ When checkpoint evaluation completes
 Then no obligation is raised for those paths
 And any decision produced for another reason names none of them
 ```
-<!-- /planned-change:ownership-by-declaration -->
 
 ### Cross-context references
 

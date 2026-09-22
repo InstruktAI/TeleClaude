@@ -71,15 +71,6 @@ All Committizen types are allowed.
   conversation into a finished change. Where the human has not released the
   tracked change for commit, report what remains uncommitted and offer to
   commit; do not commit it, revert it, or suppress the automation.
-<!-- planned-change:ownership-by-declaration -->
-- Before committing on shared `main`, run bare `telec code commit` to surface
-  the gate card, then commit with `telec code commit --approved "<message>"`
-  using the scoped pathspec the tool resolves.
-- A repository file the session wrote from a shell command is declared with
-  `telec code add <path>` before the turn ends. New untracked files are declared
-  the same way, or through `--include <path>` at commit. A file the session's
-  own tool edits produced needs no declaration.
-<!-- change:ownership-by-declaration -->
 - Before committing on shared `main`, run bare `telec code commit` to surface
   the gate card, then commit with `telec code commit --approved "<message>"`,
   which commits the set the session declared. Pass `--only <path>...` to split
@@ -89,7 +80,6 @@ All Committizen types are allowed.
   never is not. The declared set is what `telec code commit` commits, so an
   undeclared change does not ship. Declaring is free and repeats safely; when in
   doubt, declare.
-<!-- /planned-change:ownership-by-declaration -->
 - Post-commit review is routed by the committed diff, not by pre-commit
   permission. Functional code/tests are committed first. When the post-commit
   gate determines that independent review is required, the authoring session

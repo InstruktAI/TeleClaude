@@ -1,5 +1,5 @@
 ---
-description: "How telec code commands resolve workspace scope and compose the project's native make targets with the TeleClaude guardrails lane across isolated worktrees, shared branches, and explicit file overrides."
+description: "How telec code commands resolve workspace scope from session declarations and compose the project's native make targets with the TeleClaude guardrails lane across isolated worktrees, shared branches, and explicit file overrides."
 visibility: 'public'
 ---
 
@@ -33,7 +33,7 @@ Three execution contexts drive file resolution:
 1. **Worktree** — isolated by design. All dirty paths in the worktree belong to
    the task.
 2. **Shared branch with session identity** — multiple agents may have
-   uncommitted work. Scope to the current session's touched dirty files.
+   uncommitted work. Scope to the current session's declared dirty files.
 3. **Shared branch without session identity** — human or CI context. Both legs
    run the full suite (no file list).
 4. **Explicit files** — caller passes file arguments directly. Skip workspace
@@ -49,8 +49,8 @@ and runs the guardrails lane over the same scoped paths. A `make lint` with no
 cycle.
 
 `telec code commit` runs format then lint in-process against `quality_paths`
-(the commit pathspec filtered to existing files) before `git commit --no-verify`.
-No framework stash, no working-tree reset outside the pathspec. The installed
+(the declared set filtered to existing files) before `git commit --no-verify`.
+No framework stash, no working-tree reset outside the declared set. The installed
 `.git/hooks/pre-commit` is a thin telec-owned guard performing only a
 partial-staging check as a backstop for raw `git commit` invocations.
 
@@ -69,14 +69,14 @@ guardrails lane).
 
 ## Inputs/Outputs
 
-| Input              | Source                                                                                                                                   |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Execution context  | `resolve_workspace_scope_resolution()`                                                                                                   |
-| Session identity   | `$TMPDIR/teleclaude_identity.json`                                                                                                       |
-| Session transcript | Daemon transcript for the current session                                                                                                |
-| Dirty paths        | `git status --porcelain --untracked-files=all`                                                                                           |
-| Project languages  | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
-| Explicit file list | CLI arguments (`telec code lint <files...>`)                                                                                             |
+| Input                | Source                                                                                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Execution context    | `resolve_workspace_scope_resolution()`                                                                                                   |
+| Session identity     | `$TMPDIR/teleclaude_identity.json`                                                                                                       |
+| Session declarations | Recorded `telec code add` commands for the current session                                                                               |
+| Dirty paths          | `git status --porcelain --untracked-files=all`                                                                                           |
+| Project languages    | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
+| Explicit file list   | CLI arguments (`telec code lint <files...>`)                                                                                             |
 
 | Output                  | Description                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -86,69 +86,40 @@ guardrails lane).
 
 ### Session path declarations
 
-On a shared branch, session-owned path evidence is the union of paths recorded
-by the agent runtime's native file-edit records and live declarations in the
-session's transcript chain. A declaration is a successful, exact executable
-`telec code add <path>...` command record. Its paths carry the record timestamp
-and stay live until a later `telec code commit` command record in the same
-ordered chain. Shell-command text supplies no path evidence.
+On a shared branch, session-owned path evidence is exactly the set of paths the
+session declared. A declaration is a successful, exact executable
+`telec code add <path>...` command record for that session. `add` accepts paths
+that are clean or do not yet exist: declaring is bookkeeping and carries no git
+state of its own. A declaration is live from its record until a later
+`telec code commit` in the same ordered chain clears it; `--only` clears just the
+subset that commit carried. Nothing else — file-edit records, shell-command text,
+or transcript inspection of any kind — supplies path evidence.
 
-Every implicit-scope consumer reads this same evidence. Session-scoped
-`telec code changed`, lint, and commit intersect it with the current dirty set;
-the agent-stop checkpoint intersects it with the turn's anchor delta; and
-`telec code owners` retains its timestamps while applying the existing dirty
-set and last-commit boundaries. Worktrees remain task-scoped and do not consult
-session declarations.
+Every implicit-scope consumer reads this same evidence. Session-scoped lint and
+commit intersect it with the current dirty set, and the agent-stop checkpoint
+intersects it with the turn's anchor delta. Worktrees remain task-scoped and do
+not consult session declarations.
+
+A path is **owned** when it is both declared and dirty. A declared path that is
+clean is not owned and appears in no scope. Several sessions may declare the same
+path; each is an owner, and no arbitration selects between them.
 
 ### Batch dirty-path ownership
 
-The read-only `telec code owners <path>...` query resolves custodianship for a
-caller-supplied batch of project-relative dirty paths. Its inputs are the
-validated paths, one porcelain-derived dirty set, and one snapshot of open
+The read-only `telec code owners <path>...` query reports which live sessions
+have declared a caller-supplied batch of project-relative dirty paths. Its inputs
+are the validated paths, one porcelain-derived dirty set, and one snapshot of open
 sessions whose project root and computer match the caller. Closed sessions are
-outside the snapshot.
-
-The `agent_runtime` attribution query owns a dedicated foreign-session resolver
-that returns timestamp-preserving path-attribution evidence and a closed
-`RESOLVED` / `UNDETERMINED` signal. It consumes the captured session row's
-`active_agent`, `native_log_file`, and `native_session_id` before invoking the
-agent-native parser. For Codex it uses `native_log_file` when present and
-otherwise resolves `native_session_id` through
-`discover_codex_transcript_path()`; it never consults the caller process's
-`CODEX_THREAD_ID` or `discover_current_codex_transcript_path()`. Missing,
-unreadable, malformed, unsupported, or otherwise unresolvable foreign-session
-evidence is `UNDETERMINED`; a successfully parsed transcript with no qualifying
-touch is `RESOLVED` empty. This batch signal is defined independently of the
-quality scope's current-session command model.
-
-The query resolves each requested path's last committed boundary once from
-repository history, without inspecting commit authorship, and discards touch
-evidence at or before that boundary. It then intersects the surviving evidence
-with the captured dirty set, selects the live claimant with the earliest
-surviving touch timestamp, and uses session UUID only as the deterministic
-tie-breaker. A path with no commit history has no boundary. All snapshot
-sessions are resolved in parallel; the candidate set is never refreshed during
-one query invocation.
+outside the snapshot, so a dead session's declarations hold no claim.
 
 The output is one JSON object keyed by every requested path. An owned entry
-carries the TeleClaude session UUID, job role, and title; a path with no
-claimant in the completed snapshot carries `null`. Attribution evidence is
-ephemeral query data: no ownership ledger, git-author inference, or durable
-claim state is introduced.
+carries every live declaring session's UUID, job role, and title; a path no live
+session declared carries `null`. Declarations are read, never inferred: the query
+inspects no transcript for file-edit evidence, consults no commit authorship, and
+introduces no durable claim state beyond the declarations themselves.
 
-A live session whose governed transcript attribution resolves empty contributes
-no claimant evidence. A session whose attribution signal is `UNDETERMINED` also
-contributes no invented claim, but the query carries a privacy-safe batch-level
-`undetermined_session_count` diagnostic. The CLI emits that count on stderr and
-the structured completion record while leaving the stdout ownership JSON
-unchanged. When the count is positive, null transfers inspection custodianship
-only: the integrator may preserve discernible intent in a commit, but it cannot
-classify residue as abandoned or revert it on the strength of that invocation's
-null result. A later reminder beat runs a fresh query over a fresh open-session
-snapshot. Destructive null-custody authority returns only when that fresh result
-reports zero undetermined sessions and no live claimant for the path. Snapshot
-acquisition, dirty-set resolution, and path validation remain structural query
-boundaries and fail the batch when they cannot complete.
+No lifecycle role depends on this query. It exists as a diagnostic for a human or
+agent asking who is working on a path.
 
 ## Invariants
 
@@ -156,15 +127,15 @@ boundaries and fail the batch when they cannot complete.
 2. **Worktrees are task-scoped.** A worktree is isolated — all dirty files
    belong to the task. Existing dirty files drive both legs and the
    commit-staging set; commit staging may also include deleted dirty paths.
-3. **Shared branches are session-scoped.** On a shared branch, only files the
-   current session touched and that are dirty are scoped. This prevents agents
+3. **Shared branches are declaration-scoped.** On a shared branch, only files the
+   current session declared and that are dirty are scoped. This prevents agents
    from linting or committing other agents' in-progress work.
 4. **Explicit files override everything.** When the caller passes files as
    arguments, scoping is skipped and those files drive both legs.
 5. **Commit gates run in-process, no stash.** `telec code commit` runs format
    then lint against `quality_paths` before `git commit --no-verify`; the thin
    `.git/hooks/pre-commit` performs only a partial-staging backstop. No
-   framework stash, no working-tree reset outside the commit pathspec.
+   framework stash, no working-tree reset outside the declared set.
 
 6. **Scope failure is an error.** If workspace scope cannot be resolved and no
    explicit files are provided, the command exits non-zero with guidance:
@@ -190,16 +161,13 @@ boundaries and fail the batch when they cannot complete.
     cross-reference validation runs inside the guardrails lane on full runs, so
     an agent's scoped lint never fails on another agent's in-flight docs.
 
-12. **Null means no usable live claimant, not proof of abandonment.** A captured
-    session with resolved-empty or `UNDETERMINED` batch attribution contributes
-    no claim. `UNDETERMINED` is reported through the batch-level count and
-    prohibits destructive null-custody resolution for that query result. A
-    later fresh query may restore that authority only after the count reaches
-    zero. Invalid paths or a failure to capture the session snapshot or dirty
-    set fail the query instead of producing a partial map.
-13. **A commit clears earlier claims.** Touch evidence at or before a path's
-    last committed boundary is ineligible even when its session remains open.
-    A later uncommitted touch creates a new claim from that later timestamp.
+12. **Ownership is declared, never inferred.** A path with no live declaration is
+    unowned — that is a fact about the record, not a judgment about the work.
+    Undeclared dirt is expected from a human editing the branch directly, and no
+    surface infers a claimant for it.
+13. **A commit clears the declarations it carried.** A committed path's
+    declaration ends at that commit; a later `telec code add` creates a new one.
+    An uncommitted declaration stays live for as long as its session does.
 
 ## Primary flows
 
@@ -221,16 +189,10 @@ telec code test (no args)
 telec code commit (worktree detected)
   → resolve dirty paths once
   → git add dirty paths, including deletions
-  → quality_paths = pathspec filtered to existing files
+  → quality_paths = staged set filtered to existing files
   → handle_format(quality_paths)                          (in-process, no stash)
   → handle_lint(quality_paths)                            (in-process, no stash)
   → git commit --no-verify
-```
-
-```
-telec code changed (worktree detected)
-  → resolve dirty paths once
-  → print dirty paths, including deletions
 ```
 
 ### Shared branch flow (session available)
@@ -238,9 +200,20 @@ telec code changed (worktree detected)
 ```
 telec code lint (no args, not a worktree, session identity present)
   → resolve dirty paths once
-  → intersect dirty files with session-touched files from transcript
+  → intersect dirty files with the session's live declarations
   → validate paths
   → make lint FILES_FROM=<nul tempfile of scoped paths>  +  guardrails lane <scoped>
+```
+
+```
+telec code commit (not a worktree, session identity present)
+  → resolve dirty paths once
+  → declared set = live declarations ∩ dirty paths  (--only narrows it)
+  → git add the declared set, including deletions
+  → quality_paths = declared set filtered to existing files
+  → handle_format / handle_lint                           (in-process, no stash)
+  → git commit --no-verify
+  → clear the declarations this commit carried
 ```
 
 ### Shared branch flow (no session)
@@ -264,11 +237,8 @@ telec code lint <files...>
 telec code owners <path>...
   → validate and normalize every requested project-relative dirty path
   → capture one open local-project session snapshot and one dirty-path set
-  → resolve one last-commit boundary per requested path without author inspection
-  → resolve timestamped session-scoping evidence for snapshot sessions in parallel
-  → carry the count of sessions whose attribution signal is UNDETERMINED
-  → discard touches at or before each path's commit boundary
-  → group surviving candidates by path and select (touch_at, session_uuid) minimum
+  → read each snapshot session's live declarations
+  → group declaring sessions by path
   → emit one complete JSON object in caller path order, including null owners
 ```
 
@@ -294,7 +264,7 @@ telec code lint --all   (or CI, no-session shared branch)
 
 ### Workspace scope unavailable
 
-Git status, session identity, or transcript collection fails while resolving
+Git status, session identity, or declaration collection fails while resolving
 workspace scope.
 
 **Response:** Exit non-zero. Error message includes actionable guidance:
@@ -308,15 +278,24 @@ No `teleclaude_identity.json` present. This is a human or CI context.
 
 **Response:** Both legs run the full suite. Expected behavior for manual runs.
 
+### A scoped operation runs with nothing declared
+
+A session invokes `telec code commit` or a scoped `telec code lint` while holding
+no live declarations of its own.
+
+**Response:** Report it rather than succeeding silently. A scoped run over an
+empty set that reads as a pass, and a commit that records nothing, are the two
+outcomes that must never look like success. The condition reads only the acting
+session's own declarations. It inspects no other path's provenance, so dirt this
+session did not declare — a human's direct edits among it — never triggers it.
+
 ### Batch ownership cannot be completed
 
 An input path is outside the project or not dirty in the captured porcelain
-set, or the session snapshot, dirty-path set, or commit boundary cannot be
-resolved.
+set, or the session snapshot or dirty-path set cannot be resolved.
 
 **Response:** Exit non-zero with a path- or snapshot-specific diagnostic and no
-ownership JSON. An unavailable per-session transcript is not this failure: that
-session contributes no claimant evidence under the governed scope contract.
+ownership JSON.
 
 ### No recognised language artifacts / missing make target
 
