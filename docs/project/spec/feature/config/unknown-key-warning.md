@@ -152,7 +152,6 @@ And both non-conflicting updates remain available after the loads complete
 And neither process removes a source whose destination write did not succeed
 ```
 
-<!-- planned:config-strictness-owned-by-type -->
 
 #### UC-CFG-UNKNOWN-12: A key placed in the wrong checkpoint registry names the registry it belongs to
 
@@ -164,7 +163,6 @@ Then validation fails identifying that entry and naming the registry the key bel
 And the operator reads that guidance rather than the generic undeclared-key failure
 ```
 
-<!-- /planned:config-strictness-owned-by-type -->
 
 ### Cross-context references
 

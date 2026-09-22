@@ -106,7 +106,6 @@ TeleClaudeNext.
   hosts and own neither the name nor the job rule.
 <!-- /planned:agent-artifact-source-layout -->
 
-<!-- planned:config-strictness-owned-by-type -->
 - **Also owns:** schema strictness as a property of the configuration models
   themselves. Every configuration model rejects undeclared keys by its own
   declaration, so a load path that forgets to ask for strictness still gets it,
@@ -114,7 +113,6 @@ TeleClaudeNext.
   aggregate — including those a neighbouring context declares. Consumers never
   supply strictness as a validation argument. The behavioral contract is
   `project/spec/feature/config/unknown-key-warning`.
-<!-- /planned:config-strictness-owned-by-type -->
 
 #### Use cases (index of feature specs)
 
