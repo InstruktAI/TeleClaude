@@ -21,7 +21,7 @@ from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 from teleclaude.core.models import SessionSnapshot
 from teleclaude.core.next_machine.delivery import reclaim_worktree_trash
-from teleclaude.core.operations import OperationsService, set_operations_service
+from teleclaude.core.operations import OperationsService, get_operations_service, set_operations_service
 from teleclaude.core.voice_recovery import recover_voice_transcriptions
 from teleclaude.paths import MAIN_DB_PATH, TELECLAUDE_HOME
 
@@ -179,6 +179,8 @@ class DaemonLifecycle:
         )
         if processed_voice_count:
             logger.info("Processed voice transcription startup work for %d row(s)", processed_voice_count)
+
+        await get_operations_service().deliver_startup_recovery()
 
         logger.info("[STARTUP] Starting inbound queue manager (usually <1s)")
         await get_inbound_queue_manager().startup()
