@@ -340,19 +340,6 @@ And the session's recorded command and title carry the command exactly as dispat
 
 <!-- /planned:agent-artifact-source-layout -->
 
-<!-- planned-change:retire-dispatch-door -->
-#### UC-CLR14: Command loaders carry the authenticated dispatch door
-
-```gherkin
-Given an agent session is opened by direct human invocation or by a daemon or agent dispatch
-When a TeleClaude command loader starts the session
-Then the agent receives the authenticated dispatch door separately from command inputs and additional context
-And direct human invocation is distinguishable from daemon or agent dispatch
-And caller-supplied prose cannot promote a daemon or agent dispatch to direct-human invocation
-And additional context remains complete and carries no entry-mode or involvement meaning
-```
-<!-- change:retire-dispatch-door -->
-<!-- /planned-change:retire-dispatch-door -->
 
 #### Dispatch privilege enforcement
 

@@ -84,18 +84,10 @@ normal completion or material communication wakes the next action. See
 
 - Slug exists in the todo list, or is created during the session at the moment
   intent is concrete enough.
-<!-- planned-change:retire-dispatch-door -->
-- Session was invoked via `/next-prepare [slug]` (direct human invocation) or
-  auto-spawned by the daemon (dump-mode entry).
-- The authenticated dispatch door distinguishes direct human invocation from
-  daemon or agent dispatch. Additional context carries no entry-mode,
-  identity, presence, or involvement semantics.
-<!-- change:retire-dispatch-door -->
 - Session was invoked via `/next-prepare [slug]`, or auto-spawned to work a
   todo already on the list.
 - Either a human is in the conversation or none is. The session reads that from
   the conversation it is having; nothing declares it and nothing carries it in.
-<!-- /planned-change:retire-dispatch-door -->
 
 ## Steps
 
@@ -104,36 +96,21 @@ normal completion or material communication wakes the next action. See
 Before doing anything else, resolve which of three live-entry modes this session
 is in — the slug's presence and the human's presence determine the posture:
 
-<!-- planned-change:retire-dispatch-door -->
-- **No slug + direct human invocation.** The conversation itself is the source
-<!-- change:retire-dispatch-door -->
 - **No slug + a human in the conversation.** The conversation itself is the source
-<!-- /planned-change:retire-dispatch-door -->
   for `@input`. Shape a concrete todo with the human, and once the intent is
   concrete create it held with the hidden specialist control
   `telec todo create <slug> <content> --kind <kind> --hold --reason "<why this waits, or the gate or owner it waits on>"`.
   The `--hold` keeps the runner from claiming the new todo before you continue,
   while the reason records why the brake exists. Then continue as the owning
   prepare orchestrator from Step 1.
-<!-- planned-change:retire-dispatch-door -->
-- **Slug + direct human invocation.** Treat this as the human reassessing or
-<!-- change:retire-dispatch-door -->
 - **Slug + a human in the conversation.** Treat this as the human reassessing or
-<!-- /planned-change:retire-dispatch-door -->
   refining that todo, not autonomous continuation. Do not call `telec todo
 prepare {slug}` before assessing the conversation and the human's intent for
   the slug; advance only once that intent is clear, then proceed from Step 1.
-<!-- planned-change:retire-dispatch-door -->
-- **Slug + daemon or agent dispatch.** Stand-in path: proceed directly from the
-  artifacts through the prepare state machine (Step 1 onward). A later direct
-  human contribution governs only the act it addresses and does not rewrite
-  the session's launch door or any involvement record.
-<!-- change:retire-dispatch-door -->
 - **Slug + no human in the conversation.** Proceed directly from the artifacts
   through the prepare state machine (Step 1 onward). A human who joins later
   governs only the acts from that point on and rewrites no involvement record
   already stamped.
-<!-- /planned-change:retire-dispatch-door -->
 
 `--hold` is the create-time dispatch brake reserved for this orchestration
 context; release it with `telec todo update <slug> --release` once the todo is
@@ -177,15 +154,9 @@ task-specific preparation lane.
 ### 1. Pre-flight input viability
 
 Before calling the state machine, read the `input` artifact and decide whether
-<!-- planned-change:retire-dispatch-door -->
-intake can proceed at all. This gate exists because intake — especially in
-standin mode — will otherwise invent scope from a sparse or accidental input,
-producing artifacts that look real but encode nothing.
-<!-- change:retire-dispatch-door -->
 intake can proceed at all. This gate exists because intake — especially with no
 human to ask — will otherwise invent scope from a sparse or accidental input,
 producing artifacts that look real but encode nothing.
-<!-- /planned-change:retire-dispatch-door -->
 
 Read the input via `telec todo artifacts read {slug} input`. Apply the
 viability check:
@@ -197,21 +168,12 @@ viability check:
     auto-generated dump, with no companion context from a prior session.
   - Input is empty, placeholder text, or matches a known smoke-test pattern.
 
-<!-- planned-change:retire-dispatch-door -->
-- **Mode-dependent resolution:**
-  - Stand-in entry → **hard-stop and escalate.** Do not dispatch intake. Nothing
-    supplies the missing intent and no direct human conversation is available to
-    complete it. Surface: "Input too sparse for stand-in mode; needs human
-    elaboration or removal." Stop the prepare flow.
-  - Direct-human entry → **soft-stop and elicit before dispatch.** Point the
-<!-- change:retire-dispatch-door -->
 - **Resolution depends on whether a human is present:**
   - No human in the conversation → **hard-stop and escalate.** Do not dispatch
     intake. Nothing supplies the missing intent, and no conversation is
     available to complete it. Surface: "Input too sparse and no human to ask;
     needs human elaboration or removal." Stop the prepare flow.
   - A human in the conversation → **soft-stop and elicit before dispatch.** Point the
-<!-- /planned-change:retire-dispatch-door -->
     human at `@input` (do not paste it back), name the gap, ask one direct
     question to surface the goal/actor/outcome. Update the input artifact with
     the elaborated text, then proceed.
@@ -302,15 +264,9 @@ decisions. On confirm, stamp `prd_approved`. On refinement, capture the delta,
 rewrite the PRD, and let the machine invalidate and rerun `prd_review` before
 presenting it again.
 
-<!-- planned-change:retire-dispatch-door -->
-An agent can draft and review but never stamps `prd_approved` without the
-human's direct approval of that PRD in the live conversation. The dispatch door
-does not supply, withhold, or propagate that approval.
-<!-- change:retire-dispatch-door -->
 An agent can draft and review but never stamps `prd_approved` without the
 human's direct approval of that PRD in the live conversation. No signal about
 how the session started supplies, withholds, or propagates that approval.
-<!-- /planned-change:retire-dispatch-door -->
 
 ### 5. Skip phases that don't earn their place
 
@@ -404,19 +360,11 @@ state, not a declaration that the human owns its recovery.
 - **Input changed after creation audit.** Repeat Step 0a before deriving or
   re-deriving preparation artifacts.
 
-<!-- planned-change:retire-dispatch-door -->
-- **Input fails the viability gate after stand-in entry.** Do not dispatch
-<!-- change:retire-dispatch-door -->
 - **Input fails the viability gate with no human in the conversation.** Do not dispatch
-<!-- /planned-change:retire-dispatch-door -->
   intake. Surface the gap by referencing `@input` (do not paste its text), and
   recommend either human elaboration or removal (`telec todo remove {slug}`).
   The prepare flow stops until the input is fixed or the todo is removed.
-<!-- planned-change:retire-dispatch-door -->
-- **Input fails the viability gate after direct-human entry.** Stop before
-<!-- change:retire-dispatch-door -->
 - **Input fails the viability gate with a human in the conversation.** Stop before
-<!-- /planned-change:retire-dispatch-door -->
   dispatch, reference `@input` (do not paste it back), and ask one direct
   question to surface the missing goal/actor/outcome. Update the input artifact
   with the human's elaboration, then repeat the authority and kind gates before
@@ -431,13 +379,8 @@ state, not a declaration that the human owns its recovery.
   substitute for reviewer verification or establish human ownership.
 - **Human disengages mid-flow.** State machine retains current state; next
   session resumes where things were left.
-<!-- planned-change:retire-dispatch-door -->
-- **Conflict between a stand-in-produced artifact and later human intent.**
-  When the human refines a stand-in-produced artifact substantially, treat the
-<!-- change:retire-dispatch-door -->
 - **Conflict between an autonomously produced artifact and later human intent.**
   When the human refines an autonomously produced artifact substantially, treat the
-<!-- /planned-change:retire-dispatch-door -->
   refinement as authoritative and re-derive downstream — even if downstream
   had already been auto-produced. The human's artifact-level decision is the
   source of truth for that refinement only.
