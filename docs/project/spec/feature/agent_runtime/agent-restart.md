@@ -32,6 +32,7 @@ And if no native session identifier has been recorded, the request is refused wi
 And restart performs no fresh-agent selection or cross-agent handoff behavior
 ```
 
+<!-- planned-change:no-async-work-without-a-receipt -->
 #### UC-AR14: Accepted restart names its asynchronous completion event
 
 ```
@@ -41,6 +42,18 @@ Then the service dispatches the restart asynchronously and returns immediately
 And the response carries an acceptance signal and the name of the completion event consumers can subscribe to
 And no readiness information is encoded in the acceptance response
 ```
+<!-- change:no-async-work-without-a-receipt -->
+#### UC-AR14: Accepted restart returns a durable receipt
+
+```
+Given the eligibility gates pass
+When the service accepts the request
+Then the service persists a durable operation row before the restart begins and returns immediately
+And the response carries the operation receipt: its identity, its state, where to read it, the computer that owns it, and the success and failure events it will emit
+And the caller recorded on that row is woken when the restart reaches its outcome
+And no readiness information is encoded in the acceptance response
+```
+<!-- /planned-change:no-async-work-without-a-receipt -->
 
 #### UC-AR15: Restart waits for direct process termination before relaunch
 
@@ -146,8 +159,15 @@ Given a session is owned by a remote computer
 When a caller asks to restart its agent and names the owning computer
 Then the restart is dispatched to the owning computer and runs against that computer's ledger
 And the agent process is replaced on the owning computer exactly as for a local restart
+<!-- planned-change:no-async-work-without-a-receipt -->
 And the acceptance response and the agent_runtime.agent.restarted completion event are the same the caller would receive for a local restart
 And no restart is attempted against the local computer, which does not own the session
+<!-- change:no-async-work-without-a-receipt -->
+And the owning computer persists the operation row, runs the restart, and emits its outcome event there
+And the receipt the caller receives names that computer, so the caller reads the record where it lives
+And the outcome notification crosses back to the caller's computer, which wakes the caller session locally
+And no restart is attempted against the local computer, which does not own the session
+<!-- /planned-change:no-async-work-without-a-receipt -->
 ```
 
 #### UC-AR20: Restart refuses a remote session when its owner is omitted

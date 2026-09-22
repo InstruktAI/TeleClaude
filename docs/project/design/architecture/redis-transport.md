@@ -116,11 +116,19 @@ sequenceDiagram
 - Response streams: Auto-expire after 1 hour (TTL)
 - Heartbeat entries: Redis key expiry after 60s
 
+<!-- planned-change:no-async-work-without-a-receipt -->
 The transport layer reads each command's `response_mode` to determine caller wait
 behavior: `IMMEDIATE` awaits the handler result, `FIRE_AND_FORGET` returns a 202
 with `completion_event`, and `RECEIPT` delegates to `OperationsService`. The handler
 table and the response_mode layer are orthogonal — any handler can operate under any
 mode. See command-classification for the full dispatch model.
+<!-- change:no-async-work-without-a-receipt -->
+The transport layer reads each command's `response_mode` to determine caller wait
+behavior: `IMMEDIATE` awaits the handler result, and `RECEIPT` submits the command to
+the owning computer's `OperationsService` and answers with the receipt that names that
+computer. The handler table and the response_mode layer are orthogonal — any handler can
+operate under any mode. See command-classification for the full dispatch model.
+<!-- /planned-change:no-async-work-without-a-receipt -->
 
 ### 5. Command as wire payload
 

@@ -14,9 +14,15 @@ visibility: 'public'
 Provide a resource-first API for TUI and CLI clients.
 
 - Read endpoints return cached data immediately (local-only if cache is absent).
+<!-- planned-change:no-async-work-without-a-receipt -->
 - Write endpoints map to typed command objects via CommandService. Each command declares
   its `response_mode` (`IMMEDIATE`, `FIRE_AND_FORGET`, or `RECEIPT`); routes derive their
   HTTP status code and response shape from that declaration — never from hardcoded logic.
+<!-- change:no-async-work-without-a-receipt -->
+- Write endpoints map to typed command objects via CommandService. Each command declares
+  its `response_mode` (`IMMEDIATE` or `RECEIPT`); routes derive their
+  HTTP status code and response shape from that declaration — never from hardcoded logic.
+<!-- /planned-change:no-async-work-without-a-receipt -->
 - WebSocket subscriptions drive cache interest tracking and refresh pushes.
 - API handlers do not fetch remote data directly; cache owns refresh.
 - Session updates are merged from local DB and cached remote summaries.
@@ -68,7 +74,11 @@ flowchart LR
 - **Read-Only Cache Access**: API never writes to cache; only reads snapshots.
 - **Explicit Write Boundaries**: Agent/session mutations either go through CommandService or through a documented lifecycle intent handoff owned by the API.
 - **Immediate Response**: API returns cached data instantly; never blocks on refresh.
+<!-- planned-change:no-async-work-without-a-receipt -->
 - **Non-Blocking Mutations**: FIRE_AND_FORGET and RECEIPT commands return immediately; the route never awaits async work. Response shape is derived from `command.response_mode`.
+<!-- change:no-async-work-without-a-receipt -->
+- **Non-Blocking Mutations**: RECEIPT commands return their receipt immediately; the route never awaits async work. Response shape is derived from `command.response_mode`.
+<!-- /planned-change:no-async-work-without-a-receipt -->
 - **Subscription Cleanup**: WebSocket disconnect removes all subscriptions for that client.
 - **No Remote Fetching**: API does not perform remote computer queries; cache owns that responsibility.
 - **Integrated Memory Router**: Memory routes are served by the same API server process and share daemon lifecycle.
@@ -157,8 +167,14 @@ sequenceDiagram
 
 ### 4. Resource Endpoints
 
+<!-- planned-change:no-async-work-without-a-receipt -->
 Response mode is declared on the command, not the route. Routes derive HTTP status from it:
 `IMMEDIATE` → 200/201, `FIRE_AND_FORGET` → 202 + `completion_event`, `RECEIPT` → 202 + `OperationReceipt`.
+<!-- change:no-async-work-without-a-receipt -->
+Response mode is declared on the command, not the route. Routes derive HTTP status from it:
+`IMMEDIATE` → 200/201, `RECEIPT` → 202 + `OperationReceipt`. `READ` marks a read endpoint
+and `—` a route that carries no command at all; neither has a response mode to derive from.
+<!-- /planned-change:no-async-work-without-a-receipt -->
 
 | Method | Endpoint                        | Mode            | Action                             |
 | ------ | ------------------------------- | --------------- | ---------------------------------- |
@@ -170,11 +186,21 @@ Response mode is declared on the command, not the route. Routes derive HTTP stat
 | POST   | /sessions/{id}/voice            | IMMEDIATE       | Handle voice input                 |
 | POST   | /sessions/self/file             | IMMEDIATE       | Deliver file attachment to user    |
 | POST   | /sessions/self/result           | IMMEDIATE       | Send formatted result to user      |
+<!-- planned-change:no-async-work-without-a-receipt -->
 | POST   | /sessions/{id}/agent-restart    | FIRE_AND_FORGET | Restart agent                      |
 | POST   | /sessions/self/escalate         | FIRE_AND_FORGET | Escalate customer session          |
+<!-- change:no-async-work-without-a-receipt -->
+| POST   | /sessions/{id}/agent-restart    | RECEIPT         | Restart agent                      |
+| POST   | /sessions/self/escalate         | IMMEDIATE       | Escalate customer session          |
+<!-- /planned-change:no-async-work-without-a-receipt -->
 | POST   | /sessions/run                   | IMMEDIATE       | Create session + run slash command |
+<!-- planned-change:no-async-work-without-a-receipt -->
 | DELETE | /sessions/{id}                  | FIRE_AND_FORGET | Request async session close        |
 | POST   | /jobs/{name}/run                | FIRE_AND_FORGET | Run background job                 |
+<!-- change:no-async-work-without-a-receipt -->
+| DELETE | /sessions/{id}                  | RECEIPT         | Request async session close        |
+| POST   | /jobs/{name}/run                | —               | Run background job                 |
+<!-- /planned-change:no-async-work-without-a-receipt -->
 | GET    | /tui/bootstrap                  | READ            | TUI partial initial state          |
 | GET    | /computers                      | READ            | List computers (cache + remote)    |
 | GET    | /projects                       | READ            | List projects (cache)              |
