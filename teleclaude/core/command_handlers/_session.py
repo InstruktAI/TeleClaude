@@ -356,7 +356,9 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     initiator_computer = cmd.initiator_computer
     cmd_system_role = cmd.system_role
     cmd_job = cmd.job
-    # A standing role carries no commanding session, whatever door created it.
+    # A standing role carries no commanding session, whatever door created it,
+    # and no human identity — it resolves to system:<session_id> and bootstrap
+    # mints its own credential.
     if is_standing_role(cmd_system_role, cmd_job):
         if initiator_session_id:
             logger.info(
@@ -367,6 +369,9 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
             )
         initiator_session_id = None
         initiator_computer = None
+        human_email = None
+        human_role = None
+        principal = None
 
     if not human_role and not cmd_system_role:
         raise ValueError(f"Session creation failed: no identity resolved and no system_role (origin={origin})")
