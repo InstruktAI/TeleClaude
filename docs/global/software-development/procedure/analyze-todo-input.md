@@ -73,8 +73,9 @@ executes the work itself and never mutates the `input`.
    - Do not edit todo state directly. The stamp command is the validated
      state-write boundary and the only place kind is assigned.
 
-4. **End the session.** On a successful stamp, arm `telec reminders set session-departure`
-   as the final action, then emit only a brief farewell and yield. This is not optional
+4. **End the session.** On a successful stamp, emit only a brief farewell, then arm
+   `telec reminders set session-departure` as the final action — nothing comes after
+   it. This is not optional
    cleanup — it is the dispatch trigger. The analyzer holds the todo's `active_runner`
    lease for as long as it lives, and the lifecycle runner skips the slug as
    already-driven while that lease is held; ending the session releases the lease

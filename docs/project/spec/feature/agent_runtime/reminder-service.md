@@ -265,8 +265,8 @@ And silent turn closure is not used to answer a reminder firing
 
 ```gherkin
 Given a self-owning agent has completed its durable handoff and child cleanup
-When it arms the session-departure profile as its final tool action
-And emits only its brief farewell before yielding
+When it emits only its brief farewell and then arms the session-departure profile
+And nothing follows that arming in the turn
 Then the completed turn records that final output before the reminder fires
 And the reminder re-enters the same session exactly once without a caller-supplied delay
 And the agent checks later input before ending itself
@@ -351,7 +351,6 @@ When the reminder is atomically replaced and later fires
 Then the occurrence number and elapsed time are measured from the replacement
 ```
 
-
 #### UC-RMS27: A newer firing supersedes an undelivered one
 
 ```gherkin
@@ -362,7 +361,6 @@ And the slug has at most one undelivered firing at any time
 When the session next drains its control payloads
 Then it receives only the newest occurrence of that slug
 ```
-
 
 ## Known caveats
 

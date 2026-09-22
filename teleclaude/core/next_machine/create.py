@@ -82,9 +82,7 @@ def _visuals_pending_approval(slug: str, cwd: str) -> str:
 
 
 def _creative_complete(slug: str, live_sessions: list[str]) -> str:
-    end_lines = "telec sessions end"
-    departure_step = "telec reminders set session-departure\n\n"
-    cleanup = f"{end_lines}\n{departure_step}" if live_sessions else departure_step
+    end_step = "telec sessions end\n\n" if live_sessions else ""
     return (
         f"CREATIVE_COMPLETE: {slug}\n\n"
         f"All creative artifacts are confirmed and approved:\n"
@@ -94,9 +92,10 @@ def _creative_complete(slug: str, live_sessions: list[str]) -> str:
         f"The todo is ready for the prepare phase (`telec todo prepare {slug}`), for whoever "
         f"claims it next.\n\n"
         f"Execute in order:\n\n"
-        f"{cleanup}"
-        f"Emit only a brief farewell before the arming above. Arming the reminder is your "
-        f"final action — nothing comes after it."
+        f"{end_step}"
+        f"Emit only a brief farewell, then arm your departure. Arming it is your final "
+        f"action — nothing comes after it:\n\n"
+        f"telec reminders set session-departure"
     )
 
 

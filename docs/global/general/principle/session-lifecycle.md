@@ -26,6 +26,12 @@ and cooperating — that produces continuity. Agents come into existence, live b
 end. This is not loss. The knowledge they produced persists in the shared layers; the
 system remembers even when no individual session does.
 
+An instruction that names the arming before the farewell inverts the order it
+means to impose: the farewell then reads as the final step, a session emits it,
+treats departing as done, and drops the arming — leaving a session that said
+goodbye and stayed. So the farewell is stated first and the arming last, with
+nothing after it.
+
 A session kept alive past its purpose is noise. It hides the sessions that genuinely need
 attention, spends resources for nothing, and blurs the line between what is working and
 what is done. A clean session list tells a true story: everything visible is either working
@@ -88,10 +94,7 @@ So ending flows from context, not from a worker's own initiative.
 - **Recurrence:** one-shot.
 - **Arm condition:** only a session that owns its lifecycle arms it, after work,
   durable handoff, and child cleanup are complete. The farewell comes first;
-  arming is the last action the session takes, and nothing follows it. Naming the
-  arming before the farewell inverts that: the farewell then reads as the final
-  step, the session emits it, and the arming is silently dropped — a session that
-  said goodbye and stayed.
+  arming is the last action the session takes, and nothing follows it.
 - **Intent:** `This session had a job, the job succeeded, and nothing remains to tell the user. Unless later input changed that, end it.`
 - **Firing behavior:** check later input first; when the departure remains valid,
   run `telec sessions end self`.

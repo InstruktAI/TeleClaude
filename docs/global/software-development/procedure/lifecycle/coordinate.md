@@ -136,8 +136,9 @@ evidence and interpretation, kept distinguishable.
 ### 0. Yield to a coordinator already on watch
 
 Run `telec sessions coordinate`. On refusal, end this session without touching
-the incumbent: arm `telec reminders set session-departure` as your final tool
-action, emit only a brief farewell, and yield.
+the incumbent: emit only a brief farewell, then arm
+`telec reminders set session-departure`. Arming it is your final action —
+nothing comes after it.
 
 ### 1. Frame the fleet
 
