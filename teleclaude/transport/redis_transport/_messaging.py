@@ -9,6 +9,7 @@ import json
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
+from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
@@ -26,6 +27,8 @@ from teleclaude.core.events import (
     parse_command_string,
 )
 from teleclaude.core.models import JsonDict, RedisInboundMessage
+from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_outcome
+from teleclaude.core.operations import get_operations_service
 from teleclaude.core.session_listeners import (
     NotificationKind,
     deliver_remote_distress_notification,
@@ -273,7 +276,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 return
 
             cmd_name, cmd_args = parse_command_string(parsed.command)
-            if cmd_name in {"stop_notification", "distress_notification"}:
+            if cmd_name in {"stop_notification", "distress_notification", "operation_outcome"}:
                 result = await self._handle_agent_notification_command(cmd_name, cmd_args, parsed.origin_metadata)
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
@@ -286,10 +289,24 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 "get_session_pane",
                 "history_search",
                 "get_session_final_output",
+                "get_operation",
             }:
                 # ``get_computer_info`` round-trip removed — identity now ships in the heartbeat
                 # payload (see ``_heartbeat.py``); peers read it directly in ``discover_peers``.
-                if cmd_name == "list_sessions":
+                if cmd_name == "get_operation":
+                    requested_operation_id = str((parsed.origin_metadata or {}).get("operation_id") or "")
+                    try:
+                        operation_receipt = await get_operations_service().get_operation_for_caller(
+                            operation_id=requested_operation_id,
+                            caller_session_id=parsed.session_id or "",
+                            human_role=parsed.human_role,
+                        )
+                        payload = dict(operation_receipt)
+                    except HTTPException as exc:
+                        response_json = json.dumps({"status": "error", "error": str(exc.detail)})
+                        await self.send_response(message_id, response_json)
+                        return
+                elif cmd_name == "list_sessions":
                     payload = [s.to_dict() for s in await command_handlers.list_sessions()]
                 elif cmd_name == "list_projects":
                     payload = [project.to_dict() for project in await command_handlers.list_projects()]
@@ -429,6 +446,21 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 title,
                 occurrence_key,
                 _attention_observation_from_metadata(origin_metadata),
+            )
+            return {"status": "success", "data": {"delivered": delivered}}
+
+        if cmd_name == "operation_outcome":
+            if len(args) < 5:
+                return {"status": "error", "error": "invalid operation_outcome args"}
+            operation_id, owning_computer, caller_session_id, kind, outcome = args[:5]
+            slug = args[5] if len(args) > 5 and args[5] != "-" else None
+            delivered = await deliver_remote_operation_outcome(
+                caller_session_id,
+                operation_id,
+                owning_computer,
+                kind,
+                outcome,
+                slug,
             )
             return {"status": "success", "data": {"delivered": delivered}}
 

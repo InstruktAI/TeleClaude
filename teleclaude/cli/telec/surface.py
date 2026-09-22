@@ -431,8 +431,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "get": CommandDef(
                 desc="Fetch durable operation status by operation_id",
-                args="<operation_id>",
-                flags=[F.FLAG_HELP],
+                args="<operation_id> [-c/--computer <computer>]",
+                flags=[F.FLAG_HELP, F.FLAG_COMPUTER],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER),
             ),
         },
@@ -1497,6 +1497,7 @@ TODO_WORK = CLI_SURFACE["todo"].subcommands["work"]
 TODO_PREPARE = CLI_SURFACE["todo"].subcommands["prepare"]
 TODO_INTEGRATE = CLI_SURFACE["todo"].subcommands["integrate"]
 TODO_DESIGN = CLI_SURFACE["todo"].subcommands["design"]
+OPERATIONS_GET = CLI_SURFACE["operations"].subcommands["get"]
 TODO_CREATE = CLI_SURFACE["todo"].subcommands["create"]
 TODO_DELIVER = CLI_SURFACE["todo"].subcommands["deliver"]
 TODO_REMOVE = CLI_SURFACE["todo"].subcommands["remove"]

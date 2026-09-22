@@ -17,12 +17,18 @@ from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
 
+from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, RUNNER_NOT_DISPATCHED
+from teleclaude.core.command_dispatch import invoke_command_handler
+from teleclaude.core.control_delivery import handoff_control_payload
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import EventType, OperationCompletedContext
+from teleclaude.core.events import EventType, OperationFailedContext, OperationSucceededContext
+from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.injected_text import EnvelopeName, semantic_envelope
 from teleclaude.core.integration.state_machine import next_integrate
+from teleclaude.core.models._types import JsonDict
 from teleclaude.core.next_machine.create import next_create
 from teleclaude.core.next_machine.kinds import KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle_runner import (
@@ -41,11 +47,14 @@ from teleclaude.core.next_machine.slug_resolution import resolve_holder_children
 from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
+from teleclaude.core.operations._command_outcome import command_result_outcome
+from teleclaude.core.operations._remote_delivery import forward_outcome_to_caller_computer
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._exceptions import ClaimConflict, OperationErrorPayload, OperationFailure
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.types.commands import CallerProvenance, CommandType, InternalCommand, command_from_dict
 
 logger = get_logger(__name__)
 
@@ -58,7 +67,9 @@ class SerializedOperation(TypedDict, total=False):
     status_path: str
     recovery_command: str
     slug: str
-    completion_event: str
+    success_event: str
+    failure_event: str
+    computer: str
     progress_phase: str
     progress_decision: str
     progress_reason: str
@@ -81,18 +92,45 @@ OPERATION_KIND_TODO_CREATE = "todo_create"
 OPERATION_KIND_TODO_PREPARE = "todo_prepare"
 OPERATION_KIND_TODO_RENAME = "todo_rename"
 OPERATION_KIND_TODO_REMOVE = "todo_remove"
-_COMPLETION_EVENTS: dict[str, EventType] = {
-    OPERATION_KIND_TODO_WORK: "operation.todo_work.completed",
-    OPERATION_KIND_TASK_RUN: "operation.task_run.completed",
-    OPERATION_KIND_TODO_INTEGRATE: "operation.todo_integrate.completed",
-    OPERATION_KIND_TODO_CREATE: "operation.todo_create.completed",
-    OPERATION_KIND_TODO_PREPARE: "operation.todo_prepare.completed",
-    OPERATION_KIND_TODO_RENAME: "operation.todo_rename.completed",
-    OPERATION_KIND_TODO_REMOVE: "operation.todo_remove.completed",
+OPERATION_KIND_SESSION_CLOSE = "session_close"
+OPERATION_KIND_AGENT_RESTART = "agent_restart"
+OPERATION_KIND_AGENT_HANDOFF = "agent_handoff"
+_OUTCOME_EVENTS: dict[str, tuple[EventType, EventType]] = {
+    OPERATION_KIND_TODO_WORK: ("operation.todo_work.completed", "operation.todo_work.failed"),
+    OPERATION_KIND_TASK_RUN: ("operation.task_run.completed", "operation.task_run.failed"),
+    OPERATION_KIND_TODO_INTEGRATE: ("operation.todo_integrate.completed", "operation.todo_integrate.failed"),
+    OPERATION_KIND_TODO_CREATE: ("operation.todo_create.completed", "operation.todo_create.failed"),
+    OPERATION_KIND_TODO_PREPARE: ("operation.todo_prepare.completed", "operation.todo_prepare.failed"),
+    OPERATION_KIND_TODO_RENAME: ("operation.todo_rename.completed", "operation.todo_rename.failed"),
+    OPERATION_KIND_TODO_REMOVE: ("operation.todo_remove.completed", "operation.todo_remove.failed"),
+    OPERATION_KIND_SESSION_CLOSE: ("session.close.completed", "session.close.failed"),
+    OPERATION_KIND_AGENT_RESTART: ("agent.restart.completed", "agent.restart.failed"),
+    OPERATION_KIND_AGENT_HANDOFF: ("agent_runtime.handoff.completed", "agent_runtime.handoff.failed"),
 }
+_COMMAND_TYPE_TO_OPERATION_KIND: dict[CommandType, str] = {
+    CommandType.CLOSE_SESSION: OPERATION_KIND_SESSION_CLOSE,
+    CommandType.RESTART_AGENT: OPERATION_KIND_AGENT_RESTART,
+    CommandType.HANDOFF_AGENT: OPERATION_KIND_AGENT_HANDOFF,
+}
+
+
+def all_outcome_events() -> tuple[EventType, ...]:
+    """Return every outcome event — both members of every kind's success/failure pair.
+
+    The published bridge subscribes to this rather than to ``_OUTCOME_EVENTS``
+    directly, so a new kind's pair is picked up without the subscriber module
+    knowing the map's shape.
+    """
+    return tuple(event for pair in _OUTCOME_EVENTS.values() for event in pair)
+
+
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 _HOLDER_AWARE_LANES = frozenset({RunnerLane.PREPARE, RunnerLane.WORK})
+
+_DELIVERY_REASON_DELIVERED = "delivered"
+_DELIVERY_REASON_NO_CALLER = "no_caller"
+_DELIVERY_REASON_CALLER_UNREACHABLE = "caller_unreachable"
 
 
 def _operation_payload_abandon(operation: Operation) -> bool:
@@ -135,7 +173,7 @@ class OperationsService:
         self._poll_after_ms = poll_after_ms
         self._heartbeat_interval_s = heartbeat_interval_s
         self._stale_after_s = stale_after_s
-        self._submit_locks: dict[tuple[str, str, str, str | None, bool], asyncio.Lock] = {}
+        self._submit_locks: dict[tuple[str, str | None, str | None, str | None, bool], asyncio.Lock] = {}
         self._submit_guard = asyncio.Lock()
         self._live_tasks: dict[str, asyncio.Task[None]] = {}
         self._live_guard = asyncio.Lock()
@@ -143,19 +181,25 @@ class OperationsService:
 
     async def start(self) -> None:
         """Normalize any abandoned nonterminal operations from a previous daemon run."""
-        stale_count = await self._db.mark_nonterminal_operations_stale(
+        staled = await self._db.mark_nonterminal_operations_stale(
             error_text="daemon restarted before operation completed",
         )
-        if stale_count:
-            logger.warning("Marked %d abandoned operation(s) stale during startup", stale_count)
+        if staled:
+            logger.warning("Marked %d abandoned operation(s) stale during startup", len(staled))
+        for operation in staled:
+            self._emit_outcome_event(operation.kind, operation.operation_id, error=operation.error_text)
+            await self._deliver_outcome(operation, outcome="stale")
 
-    async def expire_stale_operations(self) -> int:
-        """Mark long-silent running operations stale."""
+    async def expire_stale_operations(self) -> None:
+        """Mark long-silent running operations stale and deliver each one's outcome."""
         older_than = (datetime.now(UTC) - timedelta(seconds=self._stale_after_s)).isoformat()
-        return await self._db.expire_stale_operations(
+        staled = await self._db.expire_stale_operations(
             older_than,
             error_text="operation heartbeat expired",
         )
+        for operation in staled:
+            self._emit_outcome_event(operation.kind, operation.operation_id, error=operation.error_text)
+            await self._deliver_outcome(operation, outcome="stale")
 
     async def submit_todo_work(
         self,
@@ -173,67 +217,22 @@ class OperationsService:
         records ``todo_work``. No caller flag selects the lane.
         """
         operation_kind = await self._resolve_work_operation_kind(slug=slug, cwd=cwd)
-        lock = await self._get_submit_lock(
+        payload_json = json.dumps(
+            {
+                "kind": operation_kind,
+                "slug": slug,
+                "cwd": cwd,
+            },
+            sort_keys=True,
+        )
+        return await self._submit_operation(
             kind=operation_kind,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
+            client_request_id=client_request_id,
+            payload_json=payload_json,
         )
-        async with lock:
-            if client_request_id:
-                existing = await self._db.get_operation_by_request(
-                    kind=operation_kind,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is not None:
-                    return self._serialize_operation(existing)
-
-            existing = await self._db.find_matching_nonterminal_operation(
-                kind=operation_kind,
-                caller_session_id=caller_session_id,
-                cwd=cwd,
-                slug=slug,
-            )
-            if existing is not None:
-                if existing.state == "queued":
-                    await self._ensure_operation_task(existing.operation_id, kind=operation_kind)
-                return self._serialize_operation(existing)
-
-            payload_json = json.dumps(
-                {
-                    "kind": operation_kind,
-                    "slug": slug,
-                    "cwd": cwd,
-                },
-                sort_keys=True,
-            )
-            operation_id = str(uuid.uuid4())
-            try:
-                created = await self._db.create_operation(
-                    operation_id=operation_id,
-                    kind=operation_kind,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                    cwd=cwd,
-                    slug=slug,
-                    payload_json=payload_json,
-                    state="queued",
-                )
-            except IntegrityError:
-                if not client_request_id:
-                    raise
-                existing = await self._db.get_operation_by_request(
-                    kind=operation_kind,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is None:
-                    raise
-                return self._serialize_operation(existing)
-
-            await self._ensure_operation_task(created.operation_id, kind=operation_kind)
-            return self._serialize_operation(created)
 
     @staticmethod
     def _require_resolved_checkout(cwd: str) -> Path:
@@ -284,69 +283,25 @@ class OperationsService:
         ``abandon`` is part of the submit-lock key and the reattach match, so a
         plain integrate and an ``--abandon`` integrate never reattach to each other.
         """
-        lock = await self._get_submit_lock(
+        payload_json = json.dumps(
+            {
+                "kind": OPERATION_KIND_TODO_INTEGRATE,
+                "slug": slug,
+                "cwd": cwd,
+                "abandon": abandon,
+            },
+            sort_keys=True,
+        )
+        return await self._submit_operation(
             kind=OPERATION_KIND_TODO_INTEGRATE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
+            client_request_id=client_request_id,
+            payload_json=payload_json,
             abandon=abandon,
+            existing_match_ok=lambda op: _operation_payload_abandon(op) == abandon,
         )
-        async with lock:
-            if client_request_id:
-                existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_INTEGRATE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is not None:
-                    return self._serialize_operation(existing)
-
-            existing = await self._db.find_matching_nonterminal_operation(
-                kind=OPERATION_KIND_TODO_INTEGRATE,
-                caller_session_id=caller_session_id,
-                cwd=cwd,
-                slug=slug,
-            )
-            if existing is not None and _operation_payload_abandon(existing) == abandon:
-                if existing.state == "queued":
-                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_INTEGRATE)
-                return self._serialize_operation(existing)
-
-            payload_json = json.dumps(
-                {
-                    "kind": OPERATION_KIND_TODO_INTEGRATE,
-                    "slug": slug,
-                    "cwd": cwd,
-                    "abandon": abandon,
-                },
-                sort_keys=True,
-            )
-            operation_id = str(uuid.uuid4())
-            try:
-                created = await self._db.create_operation(
-                    operation_id=operation_id,
-                    kind=OPERATION_KIND_TODO_INTEGRATE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                    cwd=cwd,
-                    slug=slug,
-                    payload_json=payload_json,
-                    state="queued",
-                )
-            except IntegrityError:
-                if not client_request_id:
-                    raise
-                existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_INTEGRATE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is None:
-                    raise
-                return self._serialize_operation(existing)
-
-            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_INTEGRATE)
-            return self._serialize_operation(created)
 
     async def submit_todo_create(
         self,
@@ -357,63 +312,18 @@ class OperationsService:
         client_request_id: str | None,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-create operation."""
-        lock = await self._get_submit_lock(
+        payload_json = json.dumps(
+            {"kind": OPERATION_KIND_TODO_CREATE, "slug": slug, "cwd": cwd},
+            sort_keys=True,
+        )
+        return await self._submit_operation(
             kind=OPERATION_KIND_TODO_CREATE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
+            client_request_id=client_request_id,
+            payload_json=payload_json,
         )
-        async with lock:
-            if client_request_id:
-                existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_CREATE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is not None:
-                    return self._serialize_operation(existing)
-
-            existing = await self._db.find_matching_nonterminal_operation(
-                kind=OPERATION_KIND_TODO_CREATE,
-                caller_session_id=caller_session_id,
-                cwd=cwd,
-                slug=slug,
-            )
-            if existing is not None:
-                if existing.state == "queued":
-                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_CREATE)
-                return self._serialize_operation(existing)
-
-            payload_json = json.dumps(
-                {"kind": OPERATION_KIND_TODO_CREATE, "slug": slug, "cwd": cwd},
-                sort_keys=True,
-            )
-            operation_id = str(uuid.uuid4())
-            try:
-                created = await self._db.create_operation(
-                    operation_id=operation_id,
-                    kind=OPERATION_KIND_TODO_CREATE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                    cwd=cwd,
-                    slug=slug,
-                    payload_json=payload_json,
-                    state="queued",
-                )
-            except IntegrityError:
-                if not client_request_id:
-                    raise
-                existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_CREATE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is None:
-                    raise
-                return self._serialize_operation(existing)
-
-            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_CREATE)
-            return self._serialize_operation(created)
 
     async def submit_todo_prepare(
         self,
@@ -425,63 +335,18 @@ class OperationsService:
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-prepare operation."""
         self._require_resolved_checkout(cwd)
-        lock = await self._get_submit_lock(
+        payload_json = json.dumps(
+            {"kind": OPERATION_KIND_TODO_PREPARE, "slug": slug, "cwd": cwd},
+            sort_keys=True,
+        )
+        return await self._submit_operation(
             kind=OPERATION_KIND_TODO_PREPARE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
+            client_request_id=client_request_id,
+            payload_json=payload_json,
         )
-        async with lock:
-            if client_request_id:
-                existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_PREPARE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is not None:
-                    return self._serialize_operation(existing)
-
-            existing = await self._db.find_matching_nonterminal_operation(
-                kind=OPERATION_KIND_TODO_PREPARE,
-                caller_session_id=caller_session_id,
-                cwd=cwd,
-                slug=slug,
-            )
-            if existing is not None:
-                if existing.state == "queued":
-                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_PREPARE)
-                return self._serialize_operation(existing)
-
-            payload_json = json.dumps(
-                {"kind": OPERATION_KIND_TODO_PREPARE, "slug": slug, "cwd": cwd},
-                sort_keys=True,
-            )
-            operation_id = str(uuid.uuid4())
-            try:
-                created = await self._db.create_operation(
-                    operation_id=operation_id,
-                    kind=OPERATION_KIND_TODO_PREPARE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                    cwd=cwd,
-                    slug=slug,
-                    payload_json=payload_json,
-                    state="queued",
-                )
-            except IntegrityError:
-                if not client_request_id:
-                    raise
-                existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_PREPARE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is None:
-                    raise
-                return self._serialize_operation(existing)
-
-            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_PREPARE)
-            return self._serialize_operation(created)
 
     async def submit_todo_remove(
         self,
@@ -493,63 +358,18 @@ class OperationsService:
         force: bool = False,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-remove operation."""
-        lock = await self._get_submit_lock(
+        payload_json = json.dumps(
+            {"kind": OPERATION_KIND_TODO_REMOVE, "slug": slug, "cwd": cwd, "force": force},
+            sort_keys=True,
+        )
+        return await self._submit_operation(
             kind=OPERATION_KIND_TODO_REMOVE,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=slug,
+            client_request_id=client_request_id,
+            payload_json=payload_json,
         )
-        async with lock:
-            if client_request_id:
-                existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_REMOVE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is not None:
-                    return self._serialize_operation(existing)
-
-            existing = await self._db.find_matching_nonterminal_operation(
-                kind=OPERATION_KIND_TODO_REMOVE,
-                caller_session_id=caller_session_id,
-                cwd=cwd,
-                slug=slug,
-            )
-            if existing is not None:
-                if existing.state == "queued":
-                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_REMOVE)
-                return self._serialize_operation(existing)
-
-            payload_json = json.dumps(
-                {"kind": OPERATION_KIND_TODO_REMOVE, "slug": slug, "cwd": cwd, "force": force},
-                sort_keys=True,
-            )
-            operation_id = str(uuid.uuid4())
-            try:
-                created = await self._db.create_operation(
-                    operation_id=operation_id,
-                    kind=OPERATION_KIND_TODO_REMOVE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                    cwd=cwd,
-                    slug=slug,
-                    payload_json=payload_json,
-                    state="queued",
-                )
-            except IntegrityError:
-                if not client_request_id:
-                    raise
-                existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_REMOVE,
-                    caller_session_id=caller_session_id,
-                    client_request_id=client_request_id,
-                )
-                if existing is None:
-                    raise
-                return self._serialize_operation(existing)
-
-            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_REMOVE)
-            return self._serialize_operation(created)
 
     async def submit_todo_rename(
         self,
@@ -561,70 +381,146 @@ class OperationsService:
         client_request_id: str | None,
     ) -> SerializedOperation:
         """Create or reattach a receipt-backed todo-rename operation."""
-        lock = await self._get_submit_lock(
+        payload_json = json.dumps(
+            {
+                "kind": OPERATION_KIND_TODO_RENAME,
+                "old_slug": old_slug,
+                "new_slug": new_slug,
+                "cwd": cwd,
+            },
+            sort_keys=True,
+        )
+        return await self._submit_operation(
             kind=OPERATION_KIND_TODO_RENAME,
             caller_session_id=caller_session_id,
             cwd=cwd,
             slug=old_slug,
+            client_request_id=client_request_id,
+            payload_json=payload_json,
+            on_existing=lambda op: self._ensure_rename_target_matches(op, new_slug),
+        )
+
+    async def submit(
+        self,
+        command: InternalCommand,
+        *,
+        caller: CallerProvenance | None,
+        client_request_id: str | None,
+    ) -> SerializedOperation:
+        """Submit a RECEIPT command-backed operation; the command is the row's payload.
+
+        The kind is derived from the command's own type, and the serialized
+        command is persisted as ``payload_json`` — the row is self-contained
+        across a daemon restart, and the wire format and the storage format
+        stay the same object. A caller-less submission records no caller.
+        """
+        kind = _COMMAND_TYPE_TO_OPERATION_KIND.get(command.command_type)
+        if kind is None:
+            raise ValueError(f"unsupported command-backed operation kind: {command.command_type.value}")
+        payload_json = json.dumps(command.to_dict(), sort_keys=True)
+        caller_provenance_json = json.dumps(caller.to_dict(), sort_keys=True) if caller is not None else None
+        return await self._submit_operation(
+            kind=kind,
+            caller_session_id=caller.session_id if caller is not None else None,
+            cwd=None,
+            slug=None,
+            client_request_id=client_request_id,
+            payload_json=payload_json,
+            caller_computer=caller.computer if caller is not None else None,
+            caller_provenance_json=caller_provenance_json,
+        )
+
+    async def _submit_operation(
+        self,
+        *,
+        kind: str,
+        caller_session_id: str | None,
+        cwd: str | None,
+        slug: str | None,
+        client_request_id: str | None,
+        payload_json: str,
+        abandon: bool = False,
+        caller_computer: str | None = None,
+        caller_provenance_json: str | None = None,
+        existing_match_ok: Callable[[Operation], bool] | None = None,
+        on_existing: Callable[[Operation], None] | None = None,
+    ) -> SerializedOperation:
+        """Shared submit body for every operation kind: lock, reattach, or create.
+
+        ``existing_match_ok`` narrows nonterminal reattachment beyond
+        kind/caller/cwd/slug (todo-integrate's abandon flag); ``on_existing``
+        validates every existing row this call returns, new-lookup or
+        re-read, against the current request (todo-rename's target-slug check).
+        A command-backed submission (``cwd is None``) skips nonterminal
+        reattachment: kind/caller/cwd/slug alone cannot disambiguate one
+        command-backed operation's real target (its command's own session id)
+        from another's.
+        """
+        lock = await self._get_submit_lock(
+            kind=kind,
+            caller_session_id=caller_session_id,
+            cwd=cwd,
+            slug=slug,
+            abandon=abandon,
         )
         async with lock:
             if client_request_id:
                 existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_RENAME,
+                    kind=kind,
                     caller_session_id=caller_session_id,
                     client_request_id=client_request_id,
                 )
                 if existing is not None:
-                    self._ensure_rename_target_matches(existing, new_slug)
+                    if on_existing is not None:
+                        on_existing(existing)
                     return self._serialize_operation(existing)
 
-            existing = await self._db.find_matching_nonterminal_operation(
-                kind=OPERATION_KIND_TODO_RENAME,
-                caller_session_id=caller_session_id,
-                cwd=cwd,
-                slug=old_slug,
+            existing = (
+                await self._db.find_matching_nonterminal_operation(
+                    kind=kind,
+                    caller_session_id=caller_session_id,
+                    cwd=cwd,
+                    slug=slug,
+                )
+                if cwd is not None
+                else None
             )
-            if existing is not None:
-                self._ensure_rename_target_matches(existing, new_slug)
+            if existing is not None and (existing_match_ok is None or existing_match_ok(existing)):
+                if on_existing is not None:
+                    on_existing(existing)
                 if existing.state == "queued":
-                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_RENAME)
+                    await self._ensure_operation_task(existing.operation_id, kind=kind)
                 return self._serialize_operation(existing)
 
-            payload_json = json.dumps(
-                {
-                    "kind": OPERATION_KIND_TODO_RENAME,
-                    "old_slug": old_slug,
-                    "new_slug": new_slug,
-                    "cwd": cwd,
-                },
-                sort_keys=True,
-            )
             operation_id = str(uuid.uuid4())
             try:
                 created = await self._db.create_operation(
                     operation_id=operation_id,
-                    kind=OPERATION_KIND_TODO_RENAME,
+                    kind=kind,
                     caller_session_id=caller_session_id,
                     client_request_id=client_request_id,
                     cwd=cwd,
-                    slug=old_slug,
+                    slug=slug,
                     payload_json=payload_json,
                     state="queued",
+                    caller_computer=caller_computer,
+                    caller_provenance_json=caller_provenance_json,
                 )
             except IntegrityError:
                 if not client_request_id:
                     raise
                 existing = await self._db.get_operation_by_request(
-                    kind=OPERATION_KIND_TODO_RENAME,
+                    kind=kind,
                     caller_session_id=caller_session_id,
                     client_request_id=client_request_id,
                 )
                 if existing is None:
                     raise
-                self._ensure_rename_target_matches(existing, new_slug)
+                if on_existing is not None:
+                    on_existing(existing)
                 return self._serialize_operation(existing)
 
-            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_RENAME)
+            await self._ensure_operation_task(created.operation_id, kind=kind)
             return self._serialize_operation(created)
 
     async def get_operation_for_caller(
@@ -646,8 +542,8 @@ class OperationsService:
         self,
         *,
         kind: str,
-        caller_session_id: str,
-        cwd: str,
+        caller_session_id: str | None,
+        cwd: str | None,
         slug: str | None,
         abandon: bool = False,
     ) -> asyncio.Lock:
@@ -670,6 +566,9 @@ class OperationsService:
             OPERATION_KIND_TODO_PREPARE: self._run_todo_prepare,
             OPERATION_KIND_TODO_RENAME: self._run_todo_rename,
             OPERATION_KIND_TODO_REMOVE: self._run_todo_remove,
+            OPERATION_KIND_SESSION_CLOSE: self._run_command_backed_operation,
+            OPERATION_KIND_AGENT_RESTART: self._run_command_backed_operation,
+            OPERATION_KIND_AGENT_HANDOFF: self._run_command_backed_operation,
         }
         factory = factories.get(kind)
         if factory is None:
@@ -698,7 +597,7 @@ class OperationsService:
         caller_token: Token[str | None] | None = None
         latest_progress: tuple[str, str, str] | None = None
         progress_tasks: set[asyncio.Task[None]] = set()
-        completion_event = _COMPLETION_EVENTS.get(kind)
+        operation: Operation | None = None
         try:
             now_iso = datetime.now(UTC).isoformat()
             claimed = await self._db.claim_operation(operation_id, now_iso)
@@ -733,14 +632,19 @@ class OperationsService:
                 result,
                 datetime.now(UTC).isoformat(),
             )
-            self._emit_completion_event(completion_event, operation_id)
+            self._emit_outcome_event(kind, operation_id)
+            await self._deliver_outcome(operation, outcome="completed")
         except asyncio.CancelledError:
+            error_text = "operation cancelled before completion"
             await self._db.fail_operation(
                 operation_id,
-                "operation cancelled before completion",
+                error_text,
                 datetime.now(UTC).isoformat(),
                 state="stale",
             )
+            if operation is not None:
+                self._emit_outcome_event(kind, operation_id, error=error_text)
+                await self._deliver_outcome(operation, outcome="stale")
             raise
         except Exception as exc:
             error_text = f"{type(exc).__name__}: {exc}"
@@ -754,7 +658,9 @@ class OperationsService:
                 datetime.now(UTC).isoformat(),
                 error_payload_json=error_payload_json,
             )
-            self._emit_completion_event(completion_event, operation_id, error=error_text)
+            if operation is not None:
+                self._emit_outcome_event(kind, operation_id, error=error_text)
+                await self._deliver_outcome(operation, outcome="failed")
             logger.exception(
                 "Background operation failed",
                 operation_id=operation_id,
@@ -806,6 +712,32 @@ class OperationsService:
             force=payload["force"],
             current_operation_id=operation.operation_id,
         )
+
+    async def _run_command_backed_operation(self, operation: Operation) -> str:
+        """Reconstruct the operation's carried command and run it through its handler.
+
+        One factory for all three command-backed kinds: they differ only in
+        which command they carry, and the command's own type resolves the
+        handler — three bespoke factories would be three copies of one
+        dispatch. ``invoke_command_handler`` is the execution entry: it runs
+        the handler unconditionally, never re-submitting through the response-
+        mode branch that already ran when this operation was created.
+
+        Some handlers (restart's ``(ok, error)`` tuple) report failure as a
+        returned value rather than a raised exception. Since the terminal
+        transition reads only whether this coroutine raised, an ``ok=False``
+        result is translated into a raised exception here — otherwise a failed
+        restart would be recorded as a completed operation.
+        """
+        payload = json.loads(operation.payload_json)
+        if not isinstance(payload, dict):
+            raise ValueError("command-backed operation payload must be a JSON object")
+        command = command_from_dict(cast(JsonDict, payload))
+        result = await invoke_command_handler(command)
+        ok, error = command_result_outcome(result)
+        if ok is False:
+            raise RuntimeError(error or f"{command.command_type.value} failed")
+        return json.dumps(result, sort_keys=True)
 
     async def _run_todo_prepare(self, operation: Operation) -> str:
         return await self._run_todo_lifecycle_operation(
@@ -958,13 +890,79 @@ class OperationsService:
         phase, decision, reason = latest_progress
         await self._record_progress(operation_id, phase, decision, reason)
 
-    def _emit_completion_event(
-        self, completion_event: str | None, operation_id: str, *, error: str | None = None
-    ) -> None:
-        if not completion_event:
+    def _emit_outcome_event(self, kind: str, operation_id: str, *, error: str | None = None) -> None:
+        events = _OUTCOME_EVENTS.get(kind)
+        if events is None:
             return
-        context = OperationCompletedContext(operation_id=operation_id, error=error)
-        event_bus.emit(completion_event, context, visibility=EventVisibility.CLUSTER)  # type: ignore[arg-type]
+        success_event, failure_event = events
+        if error is None:
+            event_bus.emit(
+                success_event, OperationSucceededContext(operation_id=operation_id), visibility=EventVisibility.CLUSTER
+            )
+        else:
+            event_bus.emit(
+                failure_event,
+                OperationFailedContext(operation_id=operation_id, error=error),
+                visibility=EventVisibility.CLUSTER,
+            )
+
+    async def _deliver_outcome(self, operation: Operation, *, outcome: str) -> None:
+        """Deliver an address — never the result or error — to the operation's recorded caller.
+
+        A row with no recorded caller emits its event (already done by the
+        caller) and delivers nothing. Delivery is not retried: the row already
+        holds the outcome, so a retry buys nothing and risks a duplicate wake.
+        """
+        if not operation.caller_session_id:
+            logger.info(
+                "operation_delivery_decision",
+                operation_id=operation.operation_id,
+                kind=operation.kind,
+                outcome=outcome,
+                reason=_DELIVERY_REASON_NO_CALLER,
+            )
+            return
+
+        if operation.caller_computer and operation.caller_computer != config.computer.name:
+            delivered = await forward_outcome_to_caller_computer(operation, outcome=outcome)
+            logger.info(
+                "operation_delivery_decision",
+                operation_id=operation.operation_id,
+                kind=operation.kind,
+                outcome=outcome,
+                reason=_DELIVERY_REASON_DELIVERED if delivered else _DELIVERY_REASON_CALLER_UNREACHABLE,
+            )
+            return
+
+        body = f"Operation {operation.operation_id} ({operation.kind}) {outcome}"
+        if operation.slug:
+            body += f" for {operation.slug}"
+        body += f" on {config.computer.name}. Run `telec operations get {operation.operation_id}` to read the result."
+
+        try:
+            await handoff_control_payload(
+                session_id=operation.caller_session_id,
+                body=body,
+                source_key=f"operation:{operation.operation_id}",
+                envelope=semantic_envelope(EnvelopeName.NOTIFICATION, body=body),
+            )
+        except SessionMessageRejectedError:
+            logger.info(
+                "operation_delivery_decision",
+                operation_id=operation.operation_id,
+                kind=operation.kind,
+                outcome=outcome,
+                reason=_DELIVERY_REASON_CALLER_UNREACHABLE,
+            )
+            return
+
+        logger.info(
+            "operation_delivery_decision",
+            operation_id=operation.operation_id,
+            kind=operation.kind,
+            outcome=outcome,
+            reason=_DELIVERY_REASON_DELIVERED,
+        )
 
     def _serialize_operation(self, operation: Operation) -> SerializedOperation:
         payload: SerializedOperation = {
@@ -975,9 +973,10 @@ class OperationsService:
             "status_path": f"/operations/{operation.operation_id}",
             "recovery_command": f"telec operations get {operation.operation_id}",
         }
-        completion_event = _COMPLETION_EVENTS.get(operation.kind)
-        if completion_event is not None:
-            payload["completion_event"] = completion_event
+        events = _OUTCOME_EVENTS.get(operation.kind)
+        if events is not None:
+            payload["success_event"], payload["failure_event"] = events
+            payload["computer"] = config.computer.name
         if operation.slug is not None:
             payload["slug"] = operation.slug
         if operation.progress_phase:

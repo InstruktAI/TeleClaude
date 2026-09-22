@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -28,6 +28,7 @@ from teleclaude.api.auth import (
     clearance_sessions_list,
     clearance_sessions_send,
     clearance_sessions_start,
+    resolve_caller_provenance,
 )
 from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.api.run_session_shapes import infer_command_from_message, infer_role_and_slug_from_message
@@ -95,6 +96,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
+from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
     active_direct_peer,
@@ -615,6 +617,7 @@ async def end_session(
         user_agent,
     )
 
+    caller = resolve_caller_provenance(identity)
     if computer and is_remote_target(computer, config.computer.name):
         ownership = await resolve_session_ownership(session_id, db=db, cache=_STATE.cache)
         target_computer: str | None = None
@@ -629,8 +632,11 @@ async def end_session(
             # ADR-0036: cross-host close carries no human-origin signal, so it does not hold (scoped out).
             cmd = CloseSessionCommand(session_id=session_id)
             cmd.computer = target_computer
-            await dispatch_command(_STATE.client, cmd)
-            return _close_accepted(cmd, location_label=target_computer)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+            cmd.caller = caller
+            result = await dispatch_command(_STATE.client, cmd)
+            if not isinstance(result, dict):
+                raise RuntimeError("Remote receipt submission returned no result")
+            return _close_accepted(cast(SerializedOperation, result))  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     # ADR-0036: only a human-initiated close holds the driven todo. A human
     # terminal/TUI caller has an empty identity.session_id; an agent
@@ -655,9 +661,10 @@ async def end_session(
             return response  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
         cmd = CloseSessionCommand(session_id=session_id)
-        await dispatch_command(_STATE.client, cmd)
+        cmd.caller = caller
+        receipt = await get_operations_service().submit(cmd, caller=caller, client_request_id=str(uuid4()))
 
-        return _close_accepted(cmd)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+        return _close_accepted(receipt)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
     except HTTPException as exc:
         raise exc
     except Exception as e:

@@ -39,7 +39,7 @@ from teleclaude.core.command_input import (
 )
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionCloseCompletedPayload, SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionLaunchKind, SessionSnapshot
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
@@ -923,12 +923,7 @@ async def close_session(
     # terminal. It must fall through to terminate_session so closed_at actually gets
     # set; otherwise the row is hidden but never finalized and resurfaces from caches.
     if session.closed_at or session.lifecycle_status == "closed":
-        logger.info("Session %s already terminal; replaying close_completed", session.session_id)
-        event_bus.emit(
-            _cmd.completion_event,  # type: ignore[arg-type]
-            SessionCloseCompletedPayload(session_id=session.session_id),
-            visibility=EventVisibility.CLUSTER,
-        )
+        logger.info("Session %s already terminal; nothing to close", session.session_id)
         return
 
     await terminate_session(
@@ -936,11 +931,6 @@ async def close_session(
         client,
         reason="close_session",
         session=session,
-    )
-    event_bus.emit(
-        _cmd.completion_event,  # type: ignore[arg-type]
-        SessionCloseCompletedPayload(session_id=session.session_id),
-        visibility=EventVisibility.CLUSTER,
     )
 
 

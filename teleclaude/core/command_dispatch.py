@@ -47,6 +47,7 @@ COMMAND_HANDLER_METHODS: dict[CommandType, str] = {
     CommandType.RESUME_AGENT: "resume_agent",
     CommandType.RESTART_AGENT: "restart_agent",
     CommandType.HANDOFF_AGENT: "handoff_agent",
+    CommandType.REVIVE_AGENT: "restart_agent",
     CommandType.RUN_AGENT_COMMAND: "run_agent_command",
     CommandType.GET_SESSION_DATA: "get_session_data",
     CommandType.UNSUBSCRIBE_SESSION: "unsubscribe",
@@ -202,26 +203,44 @@ async def parse_remote_dispatch_data_diagnosed(
         raise diagnosed_error from error
 
 
-async def run_local_command(command: InternalCommand) -> JsonValue | None:
-    """Run an internal command against this computer's command service."""
+async def invoke_command_handler(command: InternalCommand) -> JsonValue | None:
+    """Resolve and run this computer's handler for a command, unconditionally.
+
+    The *execution* entry: it runs the handler regardless of response mode and
+    reads no mode itself. An operation's own work body calls this directly —
+    by the time an operation is running, the submit decision has already been
+    made, and routing back through the *dispatch* entry (``run_local_command``)
+    would re-submit the command it is already executing.
+    """
     cmds = get_command_service()
     handler_name = COMMAND_HANDLER_METHODS.get(command.command_type)
     if handler_name is None:
         raise ValueError(f"No handler registered for command type: {command.command_type.value}")
     handler = getattr(cmds, handler_name)
-
-    if command.response_mode == ResponseMode.RECEIPT:
-        raise ValueError(
-            f"RECEIPT commands must go through OperationsService, "
-            f"not the command dispatcher: {command.command_type.value}"
-        )
-
-    if command.response_mode == ResponseMode.FIRE_AND_FORGET:
-        await handler(command)
-        return None
-
     result = await handler(command)
     return cast(JsonValue, result)
+
+
+async def run_local_command(command: InternalCommand) -> JsonValue | None:
+    """Run an internal command against this computer's command service.
+
+    A RECEIPT command reaching this *dispatch* entry is submitted, never
+    executed here: this computer owns the command (local caller, or a peer's
+    forward that landed on the owning computer), so it persists the row and
+    returns the receipt as this call's result. The operation's own work body
+    is what later calls ``invoke_command_handler`` to actually run it.
+    """
+    if command.response_mode == ResponseMode.RECEIPT:
+        from teleclaude.core.operations.service import (  # noqa: PLC0415 - deferred: operations.service imports invoke_command_handler from this module
+            get_operations_service,
+        )
+
+        receipt = await get_operations_service().submit(
+            command, caller=command.caller, client_request_id=command.request_id
+        )
+        return cast(JsonValue, dict(receipt))
+
+    return await invoke_command_handler(command)
 
 
 async def execute_command_envelope(command: InternalCommand) -> JsonDict:
@@ -310,12 +329,14 @@ async def forward_command_to_peer(client: AdapterClient, command: InternalComman
         session_id=getattr(command, "session_id", None),
         command_payload=command.to_dict(),
     )
-    if command.response_mode == ResponseMode.FIRE_AND_FORGET:
-        return None
 
     timeout = 30.0 if command.command_type is CommandType.CREATE_SESSION else 3.0
     if command.command_type is CommandType.KEYS:
         timeout = 10.0
+    elif command.response_mode is ResponseMode.RECEIPT:
+        # Submission is a persist-and-return on the owning computer — not the
+        # command's own work — so it needs less room than an IMMEDIATE round trip.
+        timeout = 2.0
     response_text = await client.read_response(
         message_id,
         timeout=timeout,

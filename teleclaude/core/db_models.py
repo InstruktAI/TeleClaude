@@ -581,9 +581,11 @@ class Operation(SQLModel, table=True):
 
     operation_id: str = Field(primary_key=True)
     kind: str
-    caller_session_id: str
+    caller_session_id: str | None = None
+    caller_computer: str | None = None
+    caller_provenance_json: str | None = None
     client_request_id: str | None = None
-    cwd: str
+    cwd: str | None = None
     slug: str | None = None
     payload_json: str
     state: str
