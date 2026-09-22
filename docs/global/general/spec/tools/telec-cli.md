@@ -11,13 +11,14 @@ AI-safe `telec` commands for project work. Run `telec <subcommand> --help` for d
 
 > **Source:** `teleclaude/cli/telec.py` — edit `CLI_SURFACE` dict and `CommandDef` entries to change commands, descriptions, and flags.
 
-## Canonical fields
+WHAT THIS DOCOMENT IS NOT: its not a document to add design to, as this document is merely the baseline inclusion listing the cli commands, with some subcommands expanded as they get used a lot. Agents are NOT to modify this file unless more explicit expansion of subcommands is needed.
 
+## Canonical fields
 
 The command table below is generated from the live CLI surface (`CLI_SURFACE`
 in `teleclaude/cli/telec/surface.py`) and re-rendered into this baseline doc on
-every `telec sync`, so it always reflects the current surface. It reveals the
-full set of baseline commands every agent should know out of the box.
+every commit to the cli or this doc, so it always reflects the current surface. It reveals the
+full set of baseline commands every agent should know out of the box:
 
 <!-- @exec: telec -h -->
 
@@ -27,7 +28,7 @@ full surface is already in your context.
 
 The blocks below are the few subcommands whose `--help` carries behavioral
 information (footguns, gate semantics, multi-step flow) you cannot infer from
-the signature alone.
+the signature alone, or which are used frequently enough to warrant a quick reference.
 
 ### `telec sessions run`
 
@@ -52,88 +53,6 @@ only after no direct child remains; a residual child is a command failure.
 ### `telec code`
 
 <!-- @exec: telec code -h -->
-
-`telec code` is the scoping + composition layer; it embeds no toolchain of its
-own. `telec code lint` resolves workspace scope. A scoped (interactive) run first
-applies `make format` over those paths — a best-effort fix+format whose result
-the developer sees and commits — then runs **two decoupled legs**: (1) the
-project's own `make lint` — native tools only (ruff/pyright/mypy,
-eslint/tsc, cargo), zero TeleClaude dependency — receiving the scoped file list
-as a NUL-delimited `FILES_FROM` temp file (paths never travel on the command
-line); and (2) TeleClaude's **guardrails lane** (the policy checks) over the same
-scoped paths. It exits non-zero if either leg fails. Duplication detection
-(jscpd) is percentage-based over the analyzed lines and therefore meaningful
-only repo-wide: it runs exclusively in the full run and is excluded from every
-scoped (`FILES_FROM`) invocation. The full run (no
-`FILES_FROM`) happens on `--all`, CI, or a no-session shared branch; it never
-formats and stays check-only. `telec code test
-[--update-snapshots]` runs `make test` (unscoped; snapshot-update forwarded);
-`telec code format [<files>]` runs `make format` (scoped to the files when
-given); `telec code install` runs `make install`. There is no `--step` flag and
-no guardrails subcommand — guardrails run only as the second leg of `telec code
-lint`.
-
-The project's `Makefile` owns the entire native toolchain and never contains
-guardrails or `telec`; the guardrails lane is TeleClaude's and is never plumbed
-into any `Makefile`. The native Makefile contract is identical for TeleClaude's
-own repo and any adopting project — a project stays installable and lintable
-standalone via `make`. That lane runs from
-the checkout the caller is standing in: inside a linked worktree, that worktree's
-rules, schema, and CLI surface are the ones that execute, so a change is graded
-against itself rather than against the installation. A directory that is not a
-TeleClaude checkout resolves to the installed copy.
-
-Native language support behind `make`: Rust is a first-class language when
-`rust` is declared in `teleclaude.yml` — the project's `make lint`/`format`/`test`
-recipes invoke Cargo tooling from the Cargo workspace root (single-crate changes
-may use `-p <package>`; cross-crate and full runs use workspace scope). `telec
-code` selects which files are in scope and delegates; it does not invoke Cargo
-itself.
-
-
-`telec code add <path>...` is the declaration surface: it records the paths a
-session is working on, accepts paths that are clean or do not yet exist, and
-carries no git state of its own. The declared set is what `telec code commit`
-commits; `--only <path>...` commits a subset of it when the work splits across
-more than one commit.
-
-`telec code commit` runs the gates carried by the acting invocation context's
-declared tier. Where that tier carries project subscriptions, it runs format then
-lint in-process against `quality_paths` (the declared set filtered to existing
-files) before `git commit --no-verify`; where it carries none, neither runs and
-nothing is applied in their place. No framework stash, no working-tree reset
-outside the declared set. The installed `.git/hooks/pre-commit` is a thin
-telec-owned guard that performs only a partial-staging check as a backstop for
-raw `git commit` invocations.
-
-
-In a slug worktree (`trees/<slug>`), `telec code commit` refuses any staged or
-declared path under `docs/**` or `agents/**`: the doc layer is authored
-at prepare on `main` and folded at integration, while agent-artifact sources are
-authored on `main` in the session where their intent was decided. The work phase
-executes those frozen contracts. Each refusal names the offending paths under
-the class they violate and points at the applicable authoring route. Main-branch
-and integration-worktree invocations are unaffected. `.agents/**` remains a
-generated delivery location and is not part of this refusal.
-
-
-<!-- planned:distributed-todo-postgres -->
-
-`telec code commit` is the single commit+push front door for both worktree lanes.
-After a successful worktree commit, under the main-branch lock, it auto-pushes
-through the shared git transport gateway with the target resolved from the
-worktree: a feature worktree (`trees/<slug>`, branch == slug) pushes
-`HEAD:<slug>`; the integration worktree (`trees/_integration`, detached) pushes
-`HEAD:main`. Build commits therefore push per-commit rather than accumulating
-until finalize, so git carries in-progress work across machines. The command's
-exit status reflects the commit; the push result is reported separately as a
-closed-vocabulary, agent-readable outcome — `ok | superseded | transient |
-blocked | skipped_no_remote`. `superseded` is a dead fork (stop); `transient`
-syncs on the next push (push is cumulative, no retry queue); `blocked` escalates;
-`skipped_no_remote` is the expected silent no-op for a local-only project. Stack
-traces are never surfaced as control flow.
-
-<!-- /planned:distributed-todo-postgres -->
 
 ## Known caveats
 
