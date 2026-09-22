@@ -516,6 +516,7 @@ And a command with no slug argument, such as "next-integrate", stamps no working
 
 #### Initiator binding
 
+<!-- planned-change:strip-dead-web-remnants -->
 ```
 Given the caller identity has a session id that does not start with "web:"
 When the run-session preparation captures the initiator
@@ -523,6 +524,14 @@ Then the initiator session id is recorded and propagated as the spawning-session
 And web-origin callers (session id prefixed "web:") do not establish an initiator link
 And email-bearing identities additionally produce a web-origin metadata stamp on the new session
 ```
+<!-- change:strip-dead-web-remnants -->
+```
+Given the caller identity has a session id
+When the run-session preparation captures the initiator
+Then the initiator session id is recorded and propagated as the spawning-session backlink on the new session
+And email-bearing identities additionally produce a terminal-origin metadata stamp on the new session
+```
+<!-- /planned-change:strip-dead-web-remnants -->
 
 #### Launch intent + session-creation handoff
 
@@ -620,7 +629,11 @@ And a menu or ambiguous screen is left unchanged
 
 - **workflow** — commands resolved here correspond to workflow lifecycle verbs (`next-build`, `next-review-build`, `next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command documents the composed loader reads.
 
+<!-- planned-change:strip-dead-web-remnants -->
 - **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Web-origin identities produce web-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
+<!-- change:strip-dead-web-remnants -->
+- **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Email-bearing identities produce terminal-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
+<!-- /planned-change:strip-dead-web-remnants -->
 
 
 - **context** — the command corpus lives in the context bounded context. agent_runtime validates the run-session command token shape, routes the new-session dispatch, and composes the command loader message; it does not interpret command semantics.

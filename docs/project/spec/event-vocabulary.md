@@ -56,9 +56,15 @@ channel and no longer carries any provider turn state.
 
 ### Canonical Outbound Activity Vocabulary
 
+<!-- planned-change:strip-dead-web-remnants -->
 Canonical activity events are the stable outbound vocabulary for all consumer adapters
 (Web, TUI, hooks). They are derived from agent hook events via the canonical contract
 (`teleclaude/core/activity_contract.py`).
+<!-- change:strip-dead-web-remnants -->
+Canonical activity events are the stable outbound vocabulary for all consumer adapters
+(TUI, hooks). They are derived from agent hook events via the canonical contract
+(`teleclaude/core/activity_contract.py`).
+<!-- /planned-change:strip-dead-web-remnants -->
 
 ### Hook-to-canonical mapping
 
@@ -100,7 +106,11 @@ See `docs/project/spec/session-output-routing.md` for scope definitions.
 
 During phased UCAP migration, the `hook_event_type` field preserves the original
 hook-level event type so existing consumers that inspect `type`/`event_type` remain
+<!-- planned-change:strip-dead-web-remnants -->
 functional. Downstream adapters (`ucap-web-adapter-alignment`, `ucap-tui-adapter-alignment`)
+<!-- change:strip-dead-web-remnants -->
+functional. Downstream adapters (`ucap-tui-adapter-alignment`)
+<!-- /planned-change:strip-dead-web-remnants -->
 will migrate to consume `canonical_type` directly in later phases.
 
 ### Core Event Taxonomy

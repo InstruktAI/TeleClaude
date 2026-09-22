@@ -13,7 +13,11 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:strip-dead-web-remnants -->
 TeleClaude uses one identity model across API, TUI, web, and adapters:
+<!-- change:strip-dead-web-remnants -->
+TeleClaude uses one identity model across API, TUI, and adapters:
+<!-- /planned-change:strip-dead-web-remnants -->
 
 - person identity comes from global `people` config,
 - session identity comes from daemon-owned session records,

@@ -213,7 +213,11 @@ The accepted metadata consists of:
 
 - `last_message_sent` — operational preview of the accepted text
 - `last_message_sent_at` — acceptance timestamp used by v1 origin freshness checks
+<!-- planned-change:strip-dead-web-remnants -->
 - `last_input_origin` — canonical input origin (`telegram`, `discord`, `whatsapp`, `web`)
+<!-- change:strip-dead-web-remnants -->
+- `last_input_origin` — canonical input origin (`telegram`, `discord`, `whatsapp`)
+<!-- /planned-change:strip-dead-web-remnants -->
 - origin metadata — typed adapter metadata persisted for the origin when provided
 
 Acceptance code must not write `last_projected_at`. That field is projector-owned, as defined in `project/spec/session-projection`.
@@ -222,7 +226,11 @@ Acceptance code must not write `last_projected_at`. That field is projector-owne
 
 The unique index on `(origin, source_message_id)` (where `source_message_id IS NOT NULL`) prevents duplicate enqueues. `enqueue_inbound` returns `None` on dedup skip. Dedup skips do not refresh accepted metadata; the already accepted queue row remains the source for that adapter message.
 
+<!-- planned-change:strip-dead-web-remnants -->
 Adapters that provide stable message IDs (Discord, Telegram, WhatsApp) must pass `source_message_id`. Web/API input omits it unless the caller supplies a stable client message id. Terminal input can omit it.
+<!-- change:strip-dead-web-remnants -->
+Adapters that provide stable message IDs (Discord, Telegram, WhatsApp) must pass `source_message_id`. API input omits it unless the caller supplies a stable client message id. Terminal input can omit it.
+<!-- /planned-change:strip-dead-web-remnants -->
 
 ### Session Lifecycle Integration
 

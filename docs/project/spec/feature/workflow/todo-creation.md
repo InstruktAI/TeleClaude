@@ -62,7 +62,11 @@ The workflow service emits the event with this payload:
 <!-- change:strip-dead-web-remnants -->
 - `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `agent`, or `split`. Never declared by the caller. A todo created while an agent processes deferrals records `agent` like any other agent filing — the door records how the todo came into existence, not which todo preceded it.
 <!-- /planned-change:strip-dead-web-remnants -->
+<!-- planned-change:strip-dead-web-remnants -->
 - `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`, `web`). For the `agent` door it defaults to `false` and becomes `true` only when this creation call carries a declaration and the acting session's observed human input is recent. It is never inherited from the session, lineage, parent todo, or any preceding act.
+<!-- change:strip-dead-web-remnants -->
+- `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`). For the `agent` door it defaults to `false` and becomes `true` only when this creation call carries a declaration and the acting session's observed human input is recent. It is never inherited from the session, lineage, parent todo, or any preceding act.
+<!-- /planned-change:strip-dead-web-remnants -->
 - `context` — door-specific reference data, never identity: the parent todo slug for the `split` door, derived from its `--group` signal; absent for every other door.
 
 - `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.

@@ -16,7 +16,11 @@ visibility: public
 
 A **conversation link** is the agent_runtime aggregate that turns two (or more) sessions into peers whose subsequent turn-complete outputs are delivered to one another automatically, without re-issuing `telec sessions send` per turn.
 
+<!-- planned-change:session-authority-follows-mandate-not-spawn -->
 The link is established by a single act of _ignition_: any party — typically the caller of `telec sessions send <peer> "<msg>" --direct` — creates the link, the receiving session is added as the second member, and from that moment forward the active-conversation channel supersedes passive listener notifications between the pair. Either party may sever the link with `--close-link`, which closes it for all members at once.
+<!-- change:session-authority-follows-mandate-not-spawn -->
+The link is established by a single act of _ignition_: any party — typically the caller of `telec sessions send <peer> "<msg>" --direct` — creates the link, the receiving session is added as the second member, and from that moment forward the active-conversation channel supersedes passive listener notifications between the pair. A member severs the link with `--close-link`, which closes it for all members at once; a member whose peer sits above it in the dispatch chain cannot, because no session acts on the session above it (`project/spec/feature/agent_runtime/session-authority`).
+<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 
 The link is an associative aggregate of a link record and its member records, persisted durably by agent_runtime; it survives service restarts and is the canonical record of "these sessions are currently talking to each other."
 
@@ -163,6 +167,7 @@ And the per-listener delivery is skipped (NOT removed — the listener row is pr
 And listener delivery resumes on the next event after the link is severed
 ```
 
+<!-- planned-change:session-authority-follows-mandate-not-spawn -->
 #### Closure: `--close-link` severs for ALL members
 
 ```
@@ -177,6 +182,23 @@ And subsequent turn-complete outputs are no longer cross-shared
 And suppressed listener rows resume firing on the next stop event
 And the response reports a successful close, identifying the closed link
 ```
+<!-- change:session-authority-follows-mandate-not-spawn -->
+#### UC-DCL24: Closure severs for ALL members, and never reaches upward
+
+```
+Given a direct link exists between A and B (and conceivably more members in a multi-member scenario)
+When a member whose peer does not sit above it in the dispatch chain invokes `telec sessions send B --close-link` (optionally with a final message)
+Then the close path requires caller session identity
+And resolves any active direct link for the (caller, target) pair — responding "no active direct link found" if none
+And, if a final message was supplied, processes it via the normal message pipeline before severing
+And invokes the closure path for the caller against the target, enumerating every active link between (caller, target) and severing each
+And severance closes the link for EVERY member of that link, not only the caller
+And subsequent turn-complete outputs are no longer cross-shared
+And suppressed listener rows resume firing on the next stop event
+And the response reports a successful close, identifying the closed link
+But a member whose peer sits above it in the dispatch chain is refused, and the link stays open
+```
+<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 
 #### Race rejection on a non-direct send
 
@@ -418,14 +440,22 @@ And the peer output retains its peer authorship and human-facing presentation
 
 ### Cross-context references
 
+<!-- planned-change:strip-dead-web-remnants -->
 - **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a non-web caller session id (web origins are rejected for `--direct`). The link aggregate stores session ids only; the principal binding is owned upstream by identity.
+<!-- change:strip-dead-web-remnants -->
+- **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a caller session id. The link aggregate stores session ids only; the principal binding is owned upstream by identity.
+<!-- /planned-change:strip-dead-web-remnants -->
 - **session_subscriptions** (peer feature): the listener axis (one-shot or persistent stop notifications) and the link axis are intentionally orthogonal. While a link is active, listener delivery for the same (caller, target) pair is suppressed at notification time; the listener row is preserved and resumes after closure.
 - **conversation_delivery** (peer feature inside agent_runtime): the cross-sharing of turn-complete outputs (per-link cursor advancement, transcript-since-cursor bundling, reconciliation of orphaned pending-through cursors) is invoked at hook-stop and at service startup via the post-adapter completion stage — see the service lifecycle spec.
 - **integration**: no direct dependency. Sessions whose initiator/target is an external (non-host-pane) adapter are not eligible for ignition; new-session ignition is only wired from session-spawn paths whose caller is an agent session.
 
 ## Known caveats
 
+<!-- planned-change:strip-dead-web-remnants -->
 - **Ignition requires a caller session identity.** Pure web / unidentified callers cannot ignite a link. The link is always between two agent sessions, not a human and a session.
+<!-- change:strip-dead-web-remnants -->
+- **Ignition requires a caller session identity.** Unidentified callers cannot ignite a link. The link is always between two agent sessions, not a human and a session.
+<!-- /planned-change:strip-dead-web-remnants -->
 - **Closure is associative, not caller-scoped.** Any member calling `--close-link` severs the link for ALL members. There is no "leave but keep the link alive for the others" path in v1.
 - **Reuse short-circuits with an error, not a success.** Calling `--direct` a second time on an already-linked pair returns an error with a rules reminder; the message text is NOT delivered through this path. Members are expected to "just talk" — turn-complete outputs are cross-shared automatically.
 - **Plain-send during an active link is rejected.** A non-direct send toward a peer with whom a direct link is active is refused to prevent obfuscating the exchange from observers.

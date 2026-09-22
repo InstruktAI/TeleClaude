@@ -147,8 +147,13 @@ cursor. Observing the genuine native user entry creates one next output
 generation, and every adapter consumes that generation independently while
 preserving segment order and presentation.
 
+<!-- planned-change:strip-dead-web-remnants -->
 Canonical human UI surfaces remain `telegram`, `discord`, `whatsapp`, and
 `web`; absence of a UI surface is distinct from any of those values.
+<!-- change:strip-dead-web-remnants -->
+Canonical human UI surfaces remain `telegram`, `discord`, and `whatsapp`;
+absence of a UI surface is distinct from any of those values.
+<!-- /planned-change:strip-dead-web-remnants -->
 
 ### Projection ownership
 

@@ -171,7 +171,10 @@ Source mapping is agent-specific but canonical at render time:
 Adapter policy:
 
 - Telegram/Discord/terminal-oriented threaded output renders `thinking` in italics.
+<!-- planned-change:strip-dead-web-remnants -->
 - Web UI may render `thinking` as a dedicated toggle/collapsible reasoning part.
+<!-- change:strip-dead-web-remnants -->
+<!-- /planned-change:strip-dead-web-remnants -->
 - Core owns normalization; adapters own presentation.
 - Session message APIs expose canonical block types (`text`, `thinking`, `pre_tool_use`, `tool_result`) without server-side filtering; clients/adapters decide what to render.
 

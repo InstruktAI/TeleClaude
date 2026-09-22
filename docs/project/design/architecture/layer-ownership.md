@@ -119,6 +119,7 @@ Each arrow is a boundary crossing. At each crossing, the downstream layer receiv
 
 ### Request traversal: Human via origin
 
+<!-- planned-change:strip-dead-web-remnants -->
 ```
 Origin (Telegram, Discord, WhatsApp, Web, Terminal, Daemon)
   -> Edge (normalize platform signals into typed request metadata)
@@ -127,6 +128,16 @@ Origin (Telegram, Discord, WhatsApp, Web, Terminal, Daemon)
         -> Core Services (create/update session, merge session origin sections into origin_metadata)
           -> UI Adapter (translate events to platform UX, where applicable)
 ```
+<!-- change:strip-dead-web-remnants -->
+```
+Origin (Telegram, Discord, WhatsApp, Terminal, Daemon)
+  -> Edge (normalize platform signals into typed request metadata)
+    -> Identity Resolution (resolve human_email, human_role from typed request metadata)
+      -> Command Pipeline (normalize to command, enqueue)
+        -> Core Services (create/update session, merge session origin sections into origin_metadata)
+          -> UI Adapter (translate events to platform UX, where applicable)
+```
+<!-- /planned-change:strip-dead-web-remnants -->
 
 The edge normalizes request-time identity into typed metadata. Identity resolution reads from that typed payload. Core persists the accumulated session view in `origin_metadata` (the record across all requests). Core never knows which platform originated the request.
 

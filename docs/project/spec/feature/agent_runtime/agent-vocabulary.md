@@ -45,6 +45,7 @@ And the session launches with that agent's own execution contract
 And no surface silently substitutes another known agent's identity
 ```
 
+<!-- planned-change:strip-dead-web-remnants -->
 #### UC-AV-2: Web presentation covers every supported agent explicitly
 
 ```gherkin
@@ -55,6 +56,8 @@ And the surface uses that agent's own presentation contract
 And an exhaustive agent-specific mapping has an explicit entry for the agent
 ```
 
+<!-- change:strip-dead-web-remnants -->
+<!-- /planned-change:strip-dead-web-remnants -->
 #### UC-AV-3: Setup recognizes every supported runtime
 
 ```gherkin

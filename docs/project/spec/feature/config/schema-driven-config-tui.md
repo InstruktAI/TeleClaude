@@ -95,6 +95,7 @@ And both sections render from their schema fields rather than from a fixed Peopl
 
 #### UC-CFG-TUI-SCHEMA-4: Output visibility is editable without YAML hand edits
 
+<!-- planned-change:strip-dead-web-remnants -->
 ```
 Given a person has no explicit output visibility overrides
 When the human expands that person in the People view
@@ -106,6 +107,19 @@ Then the per-person overlay YAML is written with that override
 And a subsequent config validation accepts the file
 And projected output for that person hides tool calls on every projected surface
 ```
+<!-- change:strip-dead-web-remnants -->
+```
+Given a person has no explicit output visibility overrides
+When the human expands that person in the People view
+Then settings.output_visibility.system_messages is shown
+And settings.output_visibility.tool_calls is shown
+And each value can be cycled among null, off, mobile, full, and both
+When the human sets settings.output_visibility.tool_calls = off
+Then the per-person overlay YAML is written with that override
+And a subsequent config validation accepts the file
+And projected output for that person hides tool calls on every projected surface
+```
+<!-- /planned-change:strip-dead-web-remnants -->
 
 #### UC-CFG-TUI-SCHEMA-5: Credentials are first-class editable fields
 
@@ -317,7 +331,11 @@ blacklist is retired as the authority.
 
 ## Allowed values
 
+<!-- planned-change:strip-dead-web-remnants -->
 - Output visibility override values: `null`, `off`, `mobile`, `web`, `both`.
+<!-- change:strip-dead-web-remnants -->
+- Output visibility override values: `null`, `off`, `mobile`, `full`, `both`.
+<!-- /planned-change:strip-dead-web-remnants -->
 - Schema field source: canonical config models and their sensitivity descriptors; personal MCP secrets remain registry-derived.
 - Persistence source: machine config, global overlay, project overlay,
   per-person overlay, or env file.
