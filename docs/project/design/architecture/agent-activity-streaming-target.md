@@ -75,7 +75,6 @@ Session/cache updates remain separate (`session_updated`) and are not used as th
 
 - Telegram adapter: maps canonical events to message/edit operations.
 - TUI stream consumer: consumes stream transport for rich live output.
-- Web stream consumer: consumes same stream; optional SSE translation for AI SDK format happens at adapter edge.
 
 ## Failure modes
 

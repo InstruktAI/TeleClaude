@@ -204,7 +204,6 @@ If restart is not enough, use:
 **Likely causes**
 
 - Discord threaded-output experiment suppresses standard poller output, and incremental threaded output has no usable transcript input (`missing_transcript_path` or `no_assistant_messages`).
-- Web SSE transcript conversion skips Codex `response_item` payload entries, so Codex assistant blocks are not emitted to the web client stream.
 
 **Fast checks**
 

@@ -47,7 +47,6 @@ from teleclaude.api.auth import CallerIdentity, verify_caller
 from teleclaude.api.data_routes import router as data_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.operations_routes import router as operations_router
-from teleclaude.api.streaming import router as streaming_router
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
 from teleclaude.api.todo_routes import router as todo_router
 from teleclaude.api.todo_stamp_routes import router as todo_stamp_router
@@ -172,8 +171,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(hooks_router)
 
         self.app.include_router(channels_router)
-
-        self.app.include_router(streaming_router)
 
         self.app.include_router(data_router)
 
