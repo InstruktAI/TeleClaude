@@ -153,7 +153,11 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 - Consumes `config.people` (transitively, via the role lookup) to display the matched role at login time. Identity resolution itself happens inside the identity context from the terminal-email signal — see `feature/identity/principal-resolution` and `feature/identity/caller-verification`.
 - Writes operator-local filesystem state under the session-auth directory. No identity-context state is touched by login itself.
 - Coordinates with the TUI launcher: a successful login is the precondition for `feature/identity/tui-multi-user-login-gate` when more than one person is configured.
-- The same email is also bridged into the trusted `tc_tui` tmux session via a TUI runtime environment variable propagated by the launcher; the identity context's trust of in-tmux email is gated by the trusted-TUI marker (a TUI runtime marker plus tmux session name `tc_tui`).
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
+- The TUI launcher marks the `tc_tui` tmux session with a TUI runtime marker. The marker is carried into that session and into no other: it is absent from the environment filters that build agent sessions.
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+- The TUI launcher carries the identity it resolved in the outer terminal into the `tc_tui` tmux session alongside the TUI runtime marker, and the reader honours that carried identity only where the marker is present. The marker reaches that session and no other: it is absent from the environment filters that build agent sessions.
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - No v1 domain event is emitted by login. In v2 the equivalent action remains a local terminal binding and does not produce an identity event; only `identity.principal.created` is emitted (when a new person is added through config, not at login time).
 
 ## Known caveats
@@ -165,9 +169,14 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 - A terminal's login survives another person logging in, because release is keyed on the device rather than on who logged in last. It does not survive the terminal closing: the device node goes with it, and a later terminal that reuses the same name carries a different allocation time and is treated as unauthenticated.
 - Terminal-device allocation time is the recycling discriminator, and anything that touches the device node's metadata — `mesg y`, for instance — moves it. The cost is one re-login on a terminal that is still open; the alternative discriminators require holding the device open, which the release sweep cannot do for terminals it does not own.
 - A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore no identity. It is not a supported way to run an identity-bearing command.
+- A document that records no device allocation time cannot satisfy the liveness condition and is treated as no document at all. Recording the device's present allocation time instead would bless a terminal that may already have been recycled, so the document is rejected rather than migrated, and every terminal authenticated before that condition existed authenticates once more.
 <!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - `telec auth logout` deliberately does NOT remove the global fallback. After logout from a specific TTY, other TTYs without their own per-TTY document will continue to read the prior global identity. Operators who want a clean wipe must remove the global-identity document manually.
 - Login validation is shallow — empty input and missing `@` are rejected but no RFC-level email validation is performed. A typo'd address is accepted at write time and only surfaces as an unresolved principal when the identity context tries to match it against `people`.
-- Inside a generic tmux session (one that is not the trusted TUI), login still WRITES the document, but the identity context refuses to honor the terminal-email signal from that context — trust is contingent on the trusted-TUI marker (TUI runtime marker plus tmux session `tc_tui`). The auth document is technically present but functionally inert from inside an untrusted tmux pane.
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
+- A tmux pane is a terminal like any other: login writes a document for it and the reader honours that document. Trust is not contingent on the trusted-TUI marker, which today gates nothing.
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+- A tmux pane is a terminal like any other: login writes a document for it and the reader honours that document on the same device terms as any other terminal. The trusted-TUI marker gates one thing only — whether an identity carried in the environment is honoured — and never what a terminal's own document answers.
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - The terminal-email signal is intended as a development/local convenience and is honored only when the identity context is bound to a local-socket transport; v2 hardens this with an explicit config-gated production toggle (see the Known caveats in `docs/project/spec/domain/identity.md`).
 - Legacy plaintext auth documents (a bare email string instead of structured form) are still readable for backward compatibility. There is no automatic rewrite — the document is upgraded only on the next successful login.

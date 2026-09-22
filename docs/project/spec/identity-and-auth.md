@@ -174,8 +174,9 @@ session close.
 - The TUI holds the identity it was launched with for as long as it runs. It does
   not re-resolve identity from its own pane, which is a terminal of its own and
   carries no login document.
-- That carried identity is honoured only inside the trusted TUI context — the TUI
-  runtime marker together with tmux session name `tc_tui`.
+- That carried identity is honoured only where the TUI runtime marker is present.
+  The marker reaches the `tc_tui` session and no other, because it is absent from
+  the environment filters that build agent sessions.
 <!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ### 5) Multi-user enforcement

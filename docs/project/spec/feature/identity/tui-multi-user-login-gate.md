@@ -65,14 +65,23 @@ Then it presents alice@example.com as the terminal-email signal
 And it does so for as long as that TUI runs, without re-resolving identity from its pane
 ```
 
-#### UC-TUIG3: The carried identity is honoured only inside the trusted TUI context
+#### UC-TUIG3: The carried identity is honoured only where the TUI runtime marker is present
 
 ```
-Given a tmux session that is not the trusted TUI — no TUI runtime marker, or a session name other than tc_tui
-And that session's environment carries an identity value of the launcher's shape
+Given a context that carries no TUI runtime marker
+And its environment carries an identity value of the launcher's shape
 When a telec invocation inside it builds outbound identity signals
 Then the carried value is not honoured
 And identity resolves from that terminal's own login document, or from the global record under the rule that governs a terminal with no document of its own
+```
+
+#### UC-TUIG4: The marker reaches the TUI session and no other
+
+```
+Given the launcher creates the tc_tui tmux session with the TUI runtime marker
+When any agent session is created
+Then that session's environment carries no TUI runtime marker
+And no identity value of the launcher's shape is honoured inside it
 ```
 <!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
