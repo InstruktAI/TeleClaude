@@ -38,11 +38,7 @@ A refusal is nonetheless the moment judgment becomes reachable. An agent that me
 - **Focus and integrity are separate layers.** The set of operations a brief includes is focus: declared alongside the brief, cheap to change, and its violation costs a refused call. Interference and contract violation are integrity: enforced against the object, and their violation costs work no one can restore.
 - **Every caller is an agent, so no gate has a human path.** The human's will enters only through the agent it addresses. Capability, ownership, and phase all read the agent and the object; none is lifted, widened, or suspended by human presence, because the human is never in the call.
 - **The human steers by whom they address, not by overriding a gate.** Directing a capable agent gets the act done; directing an incapable one earns the refusal that routes the human to the agent that can. The refusal is the routing, and it is exactly the containment a narrow brief exists to provide.
-<!-- planned-change:human-involvement-is-derived-not-adjudicated -->
-- **The involvement record is orthogonal to authorization.** Whether a human shaped an act is declared for audit, never consulted to permit it. It widens nothing and suspends nothing; a false declaration buys no operation and corrupts only the audit trail, where it is detectable against the session's own transcript.
-<!-- change:human-involvement-is-derived-not-adjudicated -->
 - **The involvement record is orthogonal to authorization.** Whether a human was present at an act is recorded for audit, never consulted to permit it. It widens nothing and suspends nothing, and it refuses nothing: an unsupported claim of presence buys no operation and records the same `false` that silence records, against the session's own transcript.
-<!-- /planned-change:human-involvement-is-derived-not-adjudicated -->
 - **A new gate is evidence of a missing dimension.** When an invariant cannot be expressed against the object, the object model is thinner than the domain. Widen the object; do not add a call site.
 - **A guardrail that cannot name its door is not finished.** A refusal without a sanctioned path teaches agents to treat the platform as an obstacle and to route around it.
 

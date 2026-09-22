@@ -200,13 +200,6 @@ Sealed contract — exactly:
 - `--approved` — agent-owned sealed-gate acknowledgment. Absence triggers
   commit-first and post-commit review-routing guidance; it is not a human
   approval signal.
-<!-- planned-change:human-involvement-is-derived-not-adjudicated -->
-- `--human-involved <reason>` — an action-scoped audit declaration accepted
-  only when the reason is non-empty and authenticated human input is within the
-  code-owned recency window. The reason is consumed for invocation validation
-  and remains only in the invoking session transcript; the commit carries only
-  the existing boolean footer.
-<!-- change:human-involvement-is-derived-not-adjudicated -->
 - `--human-involved <reason>` — an action-scoped audit declaration requiring a
   non-empty reason. The recorded value is resolved in this process from the
   acting session's latest authenticated human input against the code-owned
@@ -215,7 +208,6 @@ Sealed contract — exactly:
   unchanged. The reason is consumed for invocation validation and remains only
   in the invoking session transcript; the commit carries only the existing
   boolean footer.
-<!-- /planned-change:human-involvement-is-derived-not-adjudicated -->
 - `--include <path> [<path> ...]` — declare files outside the resolved
   workspace scope that must be in this commit (e.g., a file the human
   collaboratively edited that the scope heuristic missed). Each declared
@@ -493,6 +485,4 @@ stages the remaining conflicts, then reruns `telec code commit`.
 - docs/global/software-development/design/workspace-scoping.md
 - docs/global/software-development/policy/version-control-safety.md
 - docs/project/adr/0065-integrator-parks-and-drains-with-integrity-only-gating.md — why a slug worktree's only baseline is `origin/main`: the integrator inspects and squashes against it.
-<!-- planned:human-involvement-is-derived-not-adjudicated -->
 - docs/project/adr/0097-involvement-is-observed-not-adjudicated.md — why the involvement record is resolved from observed presence and never refuses the commit.
-<!-- /planned:human-involvement-is-derived-not-adjudicated -->

@@ -73,13 +73,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
   preparation and independently reviewed. Escalate only an underlying
   consequence that `general/policy/human-contract` assigns to the human; never
   send the process mechanism itself for human approval.
-<!-- planned-change:human-involvement-is-derived-not-adjudicated -->
-- **Declare genuine human involvement only on the filing act.** An agent whose
-  filing was seen, requested, or shaped by a human uses the creation surface's
-  involvement declaration. Omitting it declares the filing agent-initiated for
-  later audit. A session, lineage, parent todo, or preceding act never supplies
-  the filing's value.
-<!-- change:human-involvement-is-derived-not-adjudicated -->
 - **Declare genuine human involvement only on the filing act.** An agent filing
   while a human is present in the conversation uses the creation surface's
   involvement declaration. The recorded value is resolved from the human's
@@ -87,7 +80,6 @@ description: Decide whether a todo should exist, audit that decision at preparat
   agent-initiated value that omitting it records, and the filing proceeds either
   way. A session, lineage, parent todo, or preceding act never supplies the
   filing's value.
-<!-- /planned-change:human-involvement-is-derived-not-adjudicated -->
 
 - **The creation surfaces interrogate before creating.** Creation is pipeline
   entry for every kind: the lifecycle runner dispatches preparation as soon as
