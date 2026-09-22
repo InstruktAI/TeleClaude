@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.core.agents import AgentName
+from teleclaude.utils.transcript_discovery import agent_for_transcript_path
 
 
 @dataclass(frozen=True)
@@ -16,14 +17,6 @@ class TranscriptSource:
     path: str
     agent: AgentName
     native_session_id: str | None
-
-
-_RUNTIME_ROOTS = {
-    AgentName.CLAUDE: Path.home() / ".claude" / "projects",
-    AgentName.CODEX: Path.home() / ".codex" / "sessions",
-    AgentName.GEMINI: Path.home() / ".gemini" / "antigravity-cli" / "brain",
-    AgentName.DEEPSEEK: Path.home() / ".dsh" / "sessions",
-}
 
 
 def resolve_transcript_sources(
@@ -52,21 +45,9 @@ def resolve_transcript_sources(
         path = Path(raw_path).expanduser()
         if not path.is_file():
             raise ValueError(f"Session transcript is unreadable: {path}")
-        source_agent = _agent_for_path(path, fallback=agent)
+        source_agent = agent_for_transcript_path(path, fallback=agent)
         source_native_session_id = (
             native_session_id if source_agent is AgentName.CODEX and str(path) == transcript_path else None
         )
         sources.append(TranscriptSource(str(path), source_agent, source_native_session_id))
     return tuple(sources)
-
-
-def _agent_for_path(path: Path, *, fallback: AgentName) -> AgentName:
-    """Select the native parser from the registered runtime transcript roots."""
-    resolved_path = path.resolve()
-    for candidate, root in _RUNTIME_ROOTS.items():
-        try:
-            resolved_path.relative_to(root)
-        except ValueError:
-            continue
-        return candidate
-    return fallback
