@@ -126,23 +126,26 @@ carried it; it does not establish what a human decided.
 1. Read the creation record and the current `input`.
 2. Take the `input` as the authorized basis for derivation. Its content is the
    creating agent's shaping of the work, which is trusted like any agent's.
-3. Corroborate that basis against the conversation it was written from. The
-   creation record names the creating session; the todo's phase stamps name
-   every later session that shaped it. Tail those sessions and read the human's
-   own turns — a user entry outside any complete recognized platform envelope
-   is that human, per `general/policy/message-identity-headers`, while an
-   envelope span is a peer or the platform. Sessions with no human turns carry
-   nothing to corroborate; that is the ordinary case and costs nothing.
+3. Recover the meaning that basis was compressed from. `input` is written from a
+   conversation, and the summary loses what the work is for. Exactly two sessions
+   can still hold it: the creating session, named by the creation record, and the
+   preparing session, named by the prepare phase stamps. Read those two and no
+   others. A dispatched worker had no human in it by construction, so its
+   transcript carries another agent's derivation rather than the original
+   meaning; reading it imports the drift instead of removing it. Read the human's
+   own turns — a user entry outside any complete recognized platform envelope is
+   that human, per `general/policy/message-identity-headers`, while an envelope
+   span is a peer or the platform. Sessions with no human turns carry nothing to
+   recover; that is the ordinary case and costs nothing.
 
    Where human turns exist, compare substance: an outcome-level requirement
    present in the conversation and absent from `input` is a compression loss,
-   and `input` is repaired in place to carry it. Nothing downstream reads the
-   conversation (`general/policy/human-contract`), so a requirement the
-   artifact does not carry is a requirement the work will not meet.
+   and `input` is repaired in place to carry it
+   (`general/policy/human-contract`).
 
    Carry the substance, never its provenance. The repaired `input` states the
    requirement and defends it on its merits; it never records that a human
-   said, decided, or asked for anything.
+   said, decided, or asked for anything (`general/policy/human-contract`).
 
    Do not repair, and say so in the audit instead, when:
    - no shaping session is identifiable, its transcript is unavailable, or its
@@ -157,8 +160,7 @@ carried it; it does not establish what a human decided.
      different work; or
    - a standing contract already determines the question.
 
-   Record what was compared and what came of it. An unrecorded repair of
-   `input` is indistinguishable from the drift this step exists to catch.
+   Record what was compared and what came of it.
 
    Performed at entry, this reads sessions this one did not author. Repeated
    under item 7 after this session has itself rewritten `input`, it re-reads
@@ -388,11 +390,12 @@ state, not a declaration that the human owns its recovery.
 ## Recovery
 
 - **Creation record is absent or incomplete.** Derive from the input and prior
-  artifacts directly; never solicit an attestation from the creator.
+  artifacts; never solicit an attestation from the creator. Reading a named
+  session's transcript under Step 0a recovers meaning and is not solicitation.
 - **The input is too thin to derive from.** Recover intent from the input, the
-  creation record, and prior artifacts; do not manufacture product detail. If no
-  defensible basis remains, stop before kind-specific derivation and surface the
-  gap — never by inspecting the creating session.
+  creation record, prior artifacts, and the creating and preparing sessions under
+  Step 0a; do not manufacture product detail. If no defensible basis remains
+  after that, stop before kind-specific derivation and surface the gap.
 - **A bug concern is faithfully recovered but not yet proven.** Proceed to
   diagnosis. Filing fidelity establishes what was reported, not whether the
   report is correct or what caused it.
