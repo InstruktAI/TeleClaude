@@ -54,17 +54,11 @@ And C receives a single response notification on T's next stop, then the listene
 
 ```
 Given an agent session watches a target session
-<!-- planned-change:notification-subtype-allowlist -->
-When the target finishes its turn, fails its turn, waits for approval or input, or emits a native notification
-<!-- change:notification-subtype-allowlist -->
 When the target finishes its turn, fails its turn, or waits for approval or input
-<!-- /planned-change:notification-subtype-allowlist -->
 Then the watching agent receives the corresponding observation under the audience rules in this spec
 And terminal outcomes retain their shared per-turn outcome slot
 And nonterminal attention preserves distinct source occurrences through the existing delivery boundary
-<!-- planned:notification-subtype-allowlist -->
 And a runtime signal the platform admits into none of those states reaches no audience at all
-<!-- /planned:notification-subtype-allowlist -->
 ```
 
 #### UC-SS1: Re-poke clears the per-turn dedup flag
@@ -262,29 +256,12 @@ Then the distress notification is delivered to its persistent subscribers only
 And the session's human-facing channel receives nothing from this mechanism
 ```
 
-<!-- planned-change:notification-subtype-allowlist -->
-#### UC-SS14: Native notifications reach parent intelligence without a distress precondition
-
-```gherkin
-Given an agent session persistently watches a child session
-When the child runtime emits a native notification
-Then the watching agent receives that observation without waiting for the child to finish
-And an unfamiliar notification subtype is not discarded
-And a notification alone does not assert that the child is blocked or failed
-And the human's terminal-alert preference does not control this delivery
-```
-<!-- change:notification-subtype-allowlist -->
 #### UC-SS14
-<!-- /planned-change:notification-subtype-allowlist -->
 
 #### UC-SS15: Attention carries the evidence needed for autonomous assessment
 
 ```gherkin
-<!-- planned-change:notification-subtype-allowlist -->
-Given a parent agent receives a notification, approval-wait, or failure observation about its child
-<!-- change:notification-subtype-allowlist -->
 Given a parent agent receives an approval-wait or failure observation about its child
-<!-- /planned-change:notification-subtype-allowlist -->
 When the platform presents the observation
 Then it identifies the child, the originating runtime, the observation time, and the available native details
 And it provides an actionable way to inspect the child's current terminal state independently of its transcript
@@ -296,30 +273,13 @@ And the event itself grants no additional permission or authority
 
 ```gherkin
 Given a parent agent has received an attention observation about its child
-<!-- planned-change:notification-subtype-allowlist -->
-When the child produces a distinct notification or approval-wait observation before ending the same turn
-<!-- change:notification-subtype-allowlist -->
 When the child produces a distinct approval-wait observation before ending the same turn
-<!-- /planned-change:notification-subtype-allowlist -->
 Then the parent receives the distinct observation through the existing control-delivery boundary
 And sharing a kind or unresolved condition does not suppress that observation
 And the consumer adds no separate acknowledgement, retry, or duplicate-detection mechanism
 ```
 
-<!-- planned-change:notification-subtype-allowlist -->
-#### UC-SS17: Neutral notifications remain agent-directed
-
-```gherkin
-Given a child runtime emits a notification that does not establish a known distress state
-When the platform routes that observation
-Then it reaches the child's persistent agent watchers, including across a computer boundary or an active conversation link
-And it does not consume a single-reply subscription
-And absence of a persistent watcher does not turn it into a direct human alert
-And the existing no-watcher fallback for known distress is unchanged
-```
-<!-- change:notification-subtype-allowlist -->
 #### UC-SS17
-<!-- /planned-change:notification-subtype-allowlist -->
 
 ### Cross-context references
 

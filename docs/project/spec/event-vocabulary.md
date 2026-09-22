@@ -32,10 +32,6 @@ agent_hook_events:
   - agent_idle
   - agent_blocked
   - agent_turn_failed
-<!-- planned-change:notification-subtype-allowlist -->
-  - agent_notification
-<!-- change:notification-subtype-allowlist -->
-<!-- /planned-change:notification-subtype-allowlist -->
   - error
 
 canonical_outbound_activity_events:
@@ -44,15 +40,6 @@ canonical_outbound_activity_events:
   - agent_stop
 ```
 
-<!-- planned-change:notification-subtype-allowlist -->
-`agent_notification` is a neutral native notification observation. It preserves
-the source subtype and available details without asserting blocked, failed,
-completed, or active lifecycle state. It adds no canonical outbound activity
-type. Parent attention consumes it through the session-subscription contract;
-the shared control-delivery surface owns its delivery.
-
-<!-- change:notification-subtype-allowlist -->
-<!-- /planned-change:notification-subtype-allowlist -->
 `agent_blocked` and `agent_turn_failed` are the distress kinds: a session
 waiting on an approval or input decision it cannot resolve itself, and a turn
 terminated by a runtime or provider failure. Which native provider event
