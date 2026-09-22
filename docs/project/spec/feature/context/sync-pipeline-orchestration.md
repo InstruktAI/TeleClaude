@@ -408,6 +408,7 @@ And the deployed documentation root and its published domains are never absent o
 ```
 <!-- /planned-change:retire-docs-watcher -->
 
+<!-- planned-change:generated-artifacts-used-as-required-read-inputs -->
 #### UC-SPO15: Source validation works before first deployment
 
 ```gherkin
@@ -417,6 +418,19 @@ When an agent validates an artifact or snippet reference to that domain
 Then validation resolves the reference in the owning publisher source tree
 And validation reports a finding only when that source target is missing
 ```
+<!-- change:generated-artifacts-used-as-required-read-inputs -->
+#### UC-SPO15: Source validation works before first deployment
+
+```gherkin
+Given a registered publisher owns a referenced documentation domain
+And no deployed documentation tree has been created on the host
+When an agent validates an authored artifact or snippet reference to that domain
+Then validation resolves the reference in the owning publisher source tree
+And validation reports a finding only when that source target is missing
+But a reference naming that domain's generated baseline bundle resolves against the deployed generation
+And its absence before first deployment is not a finding
+```
+<!-- /planned-change:generated-artifacts-used-as-required-read-inputs -->
 
 
 ### Cross-context references
