@@ -649,6 +649,7 @@ When the commit lands
 Then the message has Human-Involved: false appended
 ```
 
+<!-- planned-change:human-involvement-is-derived-not-adjudicated -->
 #### UC-CGIP-20 — Human-Involved is true when the committing agent declares it
 
 ```gherkin
@@ -660,6 +661,21 @@ And the reason remains only in the invoking session's transcript
 And the reason is absent from the commit message, command output, logs, events, and every other durable record
 And the declaration changes no authorization, scope, gate, or later action
 ```
+<!-- change:human-involvement-is-derived-not-adjudicated -->
+#### UC-CGIP-20 — Human-Involved is true when the committing session's observed human input is recent
+
+```gherkin
+Given the committing agent invokes telec code commit with a non-empty human-involvement reason
+And the session's latest authenticated human input falls within the code-owned recency window
+When the commit lands
+Then the message has Human-Involved: true appended
+And the record is resolved in the committing process from the session store it reads directly
+And no request is issued to the daemon to resolve the record
+And the reason remains only in the invoking session's transcript
+And the reason is absent from the commit message, command output, logs, events, and every other durable record
+And the declaration changes no authorization, scope, gate, or later action
+```
+<!-- /planned-change:human-involvement-is-derived-not-adjudicated -->
 
 #### UC-CGIP-38 — Human involvement requires a non-empty invocation reason
 
@@ -671,6 +687,7 @@ And it emits no supplied reason
 And the diagnostic directs the agent to rerun without the declaration when the act is not human-involved
 ```
 
+<!-- planned-change:human-involvement-is-derived-not-adjudicated -->
 #### UC-CGIP-39 — Stale human activity refuses only the declaration
 
 ```gherkin
@@ -682,6 +699,38 @@ And the diagnostic reports the human-input age without emitting the supplied rea
 And it directs the agent to rerun the same commit without the human-involvement declaration
 And no authorization or commit-content decision changes
 ```
+<!-- change:human-involvement-is-derived-not-adjudicated -->
+#### UC-CGIP-39 — Stale human activity records false and the commit lands
+
+```gherkin
+Given an agent invokes telec code commit with a non-empty human-involvement reason
+And the session's latest authenticated human input is absent or older than the code-owned recency window
+When the sealed surface resolves the record
+Then the message has Human-Involved: false appended
+And the commit lands exactly as it would have without the declaration
+And no authorization or commit-content decision changes
+```
+
+#### UC-CGIP-42 — A discarded commit declaration is observable with its age
+
+```gherkin
+Given an agent invokes telec code commit with a non-empty human-involvement reason
+And the session's latest authenticated human input is absent or older than the code-owned recency window
+When the sealed surface resolves the record to false
+Then a structured record reports the discard, the acting session's full identifier, and the observed age of the last human input
+And that record carries no part of the supplied reason
+```
+
+#### UC-CGIP-43 — An unreachable session store records false rather than failing the commit
+
+```gherkin
+Given an agent invokes telec code commit with a non-empty human-involvement reason
+And the session store cannot be read
+When the sealed surface resolves the record
+Then the message has Human-Involved: false appended
+And the commit lands
+```
+<!-- /planned-change:human-involvement-is-derived-not-adjudicated -->
 
 #### UC-CGIP-40 — Human involvement never propagates between commits
 

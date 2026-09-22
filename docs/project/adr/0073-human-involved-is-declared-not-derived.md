@@ -7,6 +7,13 @@ description: The Human-Involved commit footer is a per-commit declaration made b
 
 # Human-Involved Is Declared, Not Derived — ADR
 
+## Status
+
+Superseded in part by ADR-0097: the value is resolved from the acting session's
+observed human-input recency rather than taken as the agent's declaration, and the
+record never refuses the commit. The decision that no todo record and no worktree
+location supplies the value remains accepted.
+
 ## Context
 
 The sealed commit surface appends a `Human-Involved: <true|false>` footer to every
