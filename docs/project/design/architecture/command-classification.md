@@ -1,5 +1,5 @@
 ---
-description: 'Response-mode classification for API commands: immediate, fire-and-forget, and receipt-backed async.'
+description: 'Response-mode classification for API commands: synchronous results, and receipt-backed asynchronous work that reports its outcome to the caller that asked.'
 visibility: 'public'
 ---
 
@@ -7,11 +7,14 @@ visibility: 'public'
 
 ## Purpose
 
-Every mutating API endpoint maps to one of three response modes. The mode is a property
-of the command, not of the route — it lives on the `InternalCommand` base class and is
-declared by each command subclass. API routes, the transport layer, and the command
-dispatcher all read this property; they do not re-derive it from `isinstance` checks or
-hardcoded status codes.
+Every mutating API endpoint answers one question: does the result arrive with the
+response, or after it. That answer is the command's response mode. There are two,
+and no command sits between them.
+
+The mode is a property of the command, not of the route — it lives on the
+`InternalCommand` base class and is declared by each command subclass. API routes,
+the transport layer, and the command dispatcher all read this property; they do not
+re-derive it from `isinstance` checks or hardcoded status codes.
 
 ```mermaid
 flowchart TD
@@ -19,57 +22,61 @@ flowchart TD
     Router["API Route"]
     Command["InternalCommand<br/>(response_mode declared)"]
     Service["CommandService"]
+    Operations["OperationsService"]
 
     Request --> Router
     Router --> Command
     Command -->|IMMEDIATE| Service
-    Command -->|FIRE_AND_FORGET| Service
-    Command -->|RECEIPT| Service
+    Command -->|RECEIPT| Operations
 
     Service -->|returns data| ImmediateResp["200 + payload"]
-    Service -->|emits event, returns nothing| FFResp["202 accepted<br/>+ completion_event"]
-    Service -->|persists operation row| ReceiptResp["202 + receipt"]
+    Operations -->|persists operation row| ReceiptResp["202 + receipt"]
+    Operations -->|terminal transition| Outcome["success_event or failure_event<br/>+ wake the recorded caller"]
 ```
 
 ## Inputs/Outputs
 
-**Inputs:** Any HTTP mutation request (POST, PUT, PATCH, DELETE) routed through CommandService.
+**Inputs:** Any HTTP mutation request (POST, PUT, PATCH, DELETE) routed through
+CommandService, carrying the caller provenance the API boundary resolves from the
+authenticated request.
 
 **Outputs per mode:**
 
 - `IMMEDIATE` — `200 OK` with the command result in the body.
-- `FIRE_AND_FORGET` — `202 Accepted` with `{status: "accepted", completion_event: "<domain.event>"}`.
-- `RECEIPT` — `202 Accepted` with a full `OperationReceipt` (see below).
+- `RECEIPT` — `202 Accepted` with a full `OperationReceipt`.
 
 Command-to-mode mapping:
 
-| Command                   | Mode                                        | completion_event           |
-| ------------------------- | ------------------------------------------- | -------------------------- |
-| CreateSessionCommand      | IMMEDIATE                                   | None                       |
-| GetSessionDataCommand     | IMMEDIATE                                   | None                       |
-| SystemCommand             | IMMEDIATE (default; instances may override) | None                       |
-| ProcessMessageCommand     | IMMEDIATE                                   | None                       |
-| KeysCommand               | IMMEDIATE                                   | None                       |
-| HandleVoiceCommand        | IMMEDIATE                                   | None                       |
-| HandleFileCommand         | IMMEDIATE                                   | None                       |
-| StartAgentCommand         | IMMEDIATE                                   | None                       |
-| ResumeAgentCommand        | IMMEDIATE                                   | None                       |
-| RunAgentCommand           | IMMEDIATE                                   | None                       |
-| UnsubscribeSessionCommand | IMMEDIATE                                   | None                       |
-| RestartAgentCommand       | FIRE_AND_FORGET                             | "agent.restart_dispatched" |
-| CloseSessionCommand       | FIRE_AND_FORGET                             | "session.close_completed"  |
-| TodoWorkCommand           | RECEIPT                                     | (per operation kind)       |
-| TodoIntegrateCommand      | RECEIPT                                     | (per operation kind)       |
-| TodoCreateCommand         | RECEIPT                                     | (per operation kind)       |
-| TodoPrepareCommand        | RECEIPT                                     | (per operation kind)       |
+| Command                   | Mode                                        | Events                                                             |
+| ------------------------- | ------------------------------------------- | ------------------------------------------------------------------ |
+| CreateSessionCommand      | IMMEDIATE                                   | None                                                               |
+| GetSessionDataCommand     | IMMEDIATE                                   | None                                                               |
+| SystemCommand             | IMMEDIATE (default; instances may override) | None                                                               |
+| ProcessMessageCommand     | IMMEDIATE                                   | None                                                               |
+| KeysCommand               | IMMEDIATE                                   | None                                                               |
+| HandleVoiceCommand        | IMMEDIATE                                   | None                                                               |
+| HandleFileCommand         | IMMEDIATE                                   | None                                                               |
+| StartAgentCommand         | IMMEDIATE                                   | None                                                               |
+| ResumeAgentCommand        | IMMEDIATE                                   | None                                                               |
+| RunAgentCommand           | IMMEDIATE                                   | None                                                               |
+| UnsubscribeSessionCommand | IMMEDIATE                                   | None                                                               |
+| RestartAgentCommand       | RECEIPT                                     | `agent.restart.completed` / `agent.restart.failed`                 |
+| CloseSessionCommand       | RECEIPT                                     | `session.close.completed` / `session.close.failed`                 |
+| HandoffAgentCommand       | RECEIPT                                     | `agent_runtime.handoff.completed` / `agent_runtime.handoff.failed` |
+| TodoWorkCommand           | RECEIPT                                     | (per operation kind)                                               |
+| TodoIntegrateCommand      | RECEIPT                                     | (per operation kind)                                               |
+| TodoCreateCommand         | RECEIPT                                     | (per operation kind)                                               |
+| TodoPrepareCommand        | RECEIPT                                     | (per operation kind)                                               |
+| TodoRenameCommand         | RECEIPT                                     | (per operation kind)                                               |
+| TodoRemoveCommand         | RECEIPT                                     | (per operation kind)                                               |
+| TaskRunCommand            | RECEIPT                                     | (per operation kind)                                               |
 
 ### `ResponseMode` enum
 
 ```python
 class ResponseMode(str, Enum):
-    IMMEDIATE       = "immediate"        # sync result returned in response body
-    FIRE_AND_FORGET = "fire_and_forget"  # async work, event signals completion
-    RECEIPT         = "receipt"          # durable operation row, polling + event
+    IMMEDIATE = "immediate"  # result returned in the response body
+    RECEIPT   = "receipt"    # durable operation row, outcome events, caller delivery
 ```
 
 ### `InternalCommand` base fields
@@ -77,48 +84,49 @@ class ResponseMode(str, Enum):
 ```python
 @dataclass(kw_only=True)
 class InternalCommand:
-    command_type:     CommandType
-    request_id:       str | None      = None
-    response_mode:    ResponseMode    = ResponseMode.IMMEDIATE
-    completion_event: str | None      = None  # required when response_mode != IMMEDIATE
-    computer:         str | None      = None  # owning computer; unset/local ⇒ run here, else forward
+    command_type:   CommandType
+    request_id:     str | None    = None
+    response_mode:  ResponseMode  = ResponseMode.IMMEDIATE
+    success_event:  str | None    = None  # declared if and only if RECEIPT
+    failure_event:  str | None    = None  # declared if and only if RECEIPT
+    computer:       str | None    = None  # owning computer; unset/local ⇒ run here, else forward
+    caller:         CallerProvenance | None = None  # who asked; stamped at the API boundary
 
     def __post_init__(self) -> None:
-        # Construction-time validation: FIRE_AND_FORGET requires a completion_event
-        if self.response_mode == ResponseMode.FIRE_AND_FORGET and self.completion_event is None:
+        declares_events = self.success_event is not None or self.failure_event is not None
+        is_async = self.response_mode is ResponseMode.RECEIPT
+        if declares_events != is_async:
             raise ValueError(
-                f"{type(self).__name__}: FIRE_AND_FORGET requires non-null completion_event"
+                f"{type(self).__name__}: RECEIPT requires both outcome events, "
+                f"and IMMEDIATE declares neither"
             )
+        if is_async and (self.success_event is None or self.failure_event is None):
+            raise ValueError(f"{type(self).__name__}: RECEIPT requires both success_event and failure_event")
 ```
+
+`CallerProvenance` is the caller-identity block the API boundary resolves once and every
+command carries: the caller's session id and computer, its resolved author kind and
+display, its agent runtime and thinking mode, and its machine and job roles. It crosses
+the transport with the command, so an owning computer reconstructs the same caller the
+originating computer resolved.
 
 The `computer` field is the routing key for cross-computer dispatch: it names the computer
 that owns the session the command operates on. The API boundary stamps it from the request;
 the dispatcher reads it to decide local execution versus forwarding.
 
-Construction-time validation enforces the invariant that every FIRE_AND_FORGET command
-declares a `completion_event` at instantiation. A missing `completion_event` raises
-`ValueError` immediately — the invalid command never reaches the dispatcher.
-
 ### `OperationReceipt` fields (RECEIPT mode response)
 
 ```python
 {
-  "operation_id":       str,       # durable identity
-  "kind":               str,       # operation kind (e.g. "todo_work")
-  "state":              str,       # queued | running | completed | failed | stale
-  "status_path":        str,       # /operations/{operation_id}
-  "poll_after_ms":      int,       # suggested polling interval (0 if terminal)
-  "completion_event":   str,       # domain event emitted on terminal transition
-  "recovery_command":   str,       # telec operations get {operation_id}
-}
-```
-
-### FIRE_AND_FORGET 202 response fields
-
-```python
-{
-  "status":             "accepted",
-  "completion_event":   str,       # domain event name to listen for
+  "operation_id":     str,  # durable identity
+  "kind":             str,  # operation kind (e.g. "todo_work")
+  "state":            str,  # queued | running | completed | failed | stale
+  "status_path":      str,  # /operations/{operation_id}
+  "poll_after_ms":    int,  # suggested polling interval (0 if terminal)
+  "computer":         str,  # the computer that owns the row and runs the work
+  "success_event":    str,  # emitted on a successful terminal transition
+  "failure_event":    str,  # emitted on a failed terminal transition
+  "recovery_command": str,  # telec operations get {operation_id}
 }
 ```
 
@@ -129,29 +137,35 @@ declares a `completion_event` at instantiation. A missing `completion_event` rai
   from it.
 - **Dispatcher reads mode, not type.** `_dispatch_command()` must not use `isinstance`
   chains to decide whether to capture a return value. It reads `command.response_mode`.
-- **Atomic terminal transition.** When a RECEIPT operation reaches a terminal state
-  (`completed` | `failed` | `stale`), the `OperationsService` emits the `completion_event`
-  as the final step of marking the row terminal. The event and the DB row transition are
-  never split across separate code paths.
-- **completion_event is required for FIRE_AND_FORGET.** Every command with mode
-  `FIRE_AND_FORGET` must declare a `completion_event` string. Leaving it `None` is a
-  contract violation and a startup assertion failure.
-- **completion_event is informational, not a dispatch key.** Call sites that receive
-  a receipt or a 202 response may use `completion_event` for tracing, monitoring, and
-  test harnesses. They must not use it to dynamically deserialize payloads — payload
-  semantics are expressed in static types.
-
+- **Asynchrony and outcome events are the same declaration.** A command declares both
+  outcome events exactly when its mode is `RECEIPT`, and neither otherwise. Construction
+  rejects every other combination, so a command whose work continues after its response
+  cannot present itself as synchronous.
+- **The outcome is read from the event type.** Success and failure are distinct types.
+  No consumer infers an outcome from a field on a shared type.
+- **Atomic terminal transition.** The `OperationsService` emits the outcome event as the
+  final step of writing the terminal row. The event and the row transition are never split
+  across separate code paths.
+- **The row is the authority, the event is a nudge.** A consumer that sees an outcome event
+  before the row is terminal trusts the row.
+- **The caller is recorded at submission.** The operation row carries the caller provenance
+  the command arrived with. A command that arrives without one submits a caller-less
+  operation; nothing is inferred to fill the gap.
+- **Delivery follows the recorded caller, not the mode.** On the terminal transition, a
+  recorded caller session that is still live is woken with an address — operation identity,
+  outcome, and where to read the record — and never with the record's contents. A
+  caller-less operation wakes nobody and loses nothing, because the row stands on its own.
 - **Dispatch is computer-aware.** A session-scoped command carries `computer`, the computer
   that owns the target session. When it is unset or names the local computer, the dispatcher
   runs the command in-process. When it names a peer, the dispatcher forwards the command to
-  the owning computer, which runs it through the same dispatcher and `response_mode` layer;
-  the caller receives the same response it would for a local command. Forwarding composes
-  with `response_mode`: `IMMEDIATE` forwards and awaits the reply, `FIRE_AND_FORGET` forwards
-  without waiting.
+  the owning computer, which runs it through the same dispatcher and `response_mode` layer.
 - **The command is the cross-computer wire format.** The serialized command itself crosses
   the transport. There is no parallel command-string vocabulary and no per-command remote
   wrapper: the owning computer reconstructs the same `InternalCommand` and dispatches it
   identically to a locally-originated one, keyed on `command_type` and `response_mode`.
+- **Work, row, and emission stay together.** The computer that runs an operation owns its
+  row and emits its outcome events. Neither the row nor the receipt is replicated; only the
+  outcome notification crosses a machine boundary.
 
 ## Primary flows
 
@@ -172,94 +186,79 @@ sequenceDiagram
     Route->>Client: 200 OK + result
 ```
 
-Commands in this mode: `CreateSessionCommand`, `GetSessionDataCommand`, `SystemCommand` (default),
-`ProcessMessageCommand`, `KeysCommand`, `HandleVoiceCommand`, `HandleFileCommand`,
-`StartAgentCommand`, `ResumeAgentCommand`, `RunAgentCommand`, `UnsubscribeSessionCommand`.
-
-### 2. FIRE_AND_FORGET command
+### 2. RECEIPT command, local
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant Route
-    participant CommandService
-    participant Handler
-    participant EventBus
-
-    Client->>Route: DELETE /sessions/{id}
-    Route->>CommandService: CloseSessionCommand(response_mode=FIRE_AND_FORGET)
-    CommandService->>Handler: dispatch
-    Handler->>EventBus: emit SESSION_CLOSE_REQUESTED
-    CommandService->>Route: None
-    Route->>Client: 202 Accepted<br/>{completion_event: "session.close_completed"}
-    EventBus-->>Client: WS push: session.close_completed
-```
-
-Commands in this mode: `RestartAgentCommand` (`completion_event="agent.restart_dispatched"`),
-`CloseSessionCommand` (`completion_event="session.close_completed"`).
-
-### 3. RECEIPT command
-
-```mermaid
-sequenceDiagram
-    participant Client
+    participant Caller as Caller session
     participant Route
     participant OperationsService
     participant BackgroundTask
     participant DB
-    participant EventBus
+    participant Delivery as Control delivery
 
-    Client->>Route: POST /todos/work
-    Route->>OperationsService: submit(kind, response_mode=RECEIPT)
-    OperationsService->>DB: persist operation row (state=queued)
+    Caller->>Route: DELETE /sessions/{id}
+    Route->>OperationsService: submit(CloseSessionCommand, caller)
+    OperationsService->>DB: persist row (state=queued, caller recorded)
     OperationsService->>Route: OperationReceipt
-    Route->>Client: 202 Accepted + receipt
+    Route->>Caller: 202 Accepted + receipt
     BackgroundTask->>DB: claim + heartbeat (state=running)
     BackgroundTask->>DB: terminal result (state=completed)
-    BackgroundTask->>EventBus: emit completion_event
-    Client->>Route: GET /operations/{id}
-    Route->>Client: {state: "completed", result: ...}
+    BackgroundTask->>Delivery: outcome event + wake the recorded caller
+    Delivery->>Caller: address (operation id, outcome, where to read)
+    Caller->>Route: GET /operations/{id}
+    Route->>Caller: {state: "completed", result: ...}
 ```
 
-Commands in this mode: `TodoWorkCommand`, `TodoIntegrateCommand`, `TodoCreateCommand`,
-`TodoPrepareCommand`.
+### 3. RECEIPT command, owned by a remote computer
 
-### 4. Cross-computer command (forwarded)
-
-A command whose `computer` names a peer is forwarded to the owning computer and executed
-there through the identical dispatcher; the reply returns to the caller unchanged.
+The caller's computer forwards the command; the owning computer submits it to its own
+operations service, runs it, owns the row, and notifies the caller's computer on the
+terminal transition. The receipt the caller holds names the owning computer, so the
+caller reads the record there.
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant RouteA as Route (Computer A)
+    participant Caller as Caller session (A)
+    participant RouteA as Route (A)
     participant DispatchA as Dispatcher (A)
-    participant Transport as Redis Transport
-    participant DispatchB as Dispatcher (B, owner)
-    participant Handler
+    participant Transport
+    participant OpsB as OperationsService (B)
+    participant DeliveryA as Control delivery (A)
 
-    Client->>RouteA: POST /sessions/{id}/agent-restart?computer=B
-    RouteA->>DispatchA: RestartAgentCommand(computer=B)
-    DispatchA->>Transport: serialize + forward (foreign computer)
-    Transport->>DispatchB: deserialize → RestartAgentCommand
-    DispatchB->>Handler: dispatch (same handler table)
-    Handler->>DispatchB: result
-    DispatchB->>Transport: reply envelope
-    Transport->>DispatchA: reply
-    DispatchA->>Client: response (per response_mode)
+    Caller->>RouteA: POST /sessions/{id}/agent-restart?computer=B
+    RouteA->>DispatchA: HandoffAgentCommand(computer=B, caller=A-session)
+    DispatchA->>Transport: serialize + forward
+    Transport->>OpsB: reconstruct → submit locally
+    OpsB->>Transport: OperationReceipt (computer=B)
+    Transport->>Caller: 202 Accepted + receipt
+    OpsB->>OpsB: run work, write terminal row, emit outcome event
+    OpsB->>Transport: outcome notification for the recorded caller
+    Transport->>DeliveryA: deliver to the caller's session
+    DeliveryA->>Caller: address, naming B
 ```
 
 ## Failure modes
 
 - **Mode mismatch between route and command.** If a route assumes 200 but the command
-  declares FIRE_AND_FORGET, the client receives the wrong status code. The dispatcher
-  asserts `response_mode` consistency at dispatch time.
-- **RECEIPT operation lost on daemon restart.** Background tasks are not replayed.
-  Queued or running operations are marked `stale` at startup. Clients polling the
-  receipt see `state: "stale"` and may resubmit.
-- **completion_event never fires.** If the background task panics before the terminal
-  DB write, the event is not emitted and polling clients eventually see the stale
-  heartbeat window expire. The receipt remains the source of truth; the event is
-  a convenience, not the authority.
-- **FIRE_AND_FORGET with no completion_event declared.** Assertion failure at startup.
-  No command may ship with `response_mode=FIRE_AND_FORGET` and `completion_event=None`.
+  declares RECEIPT, the client receives the wrong status code. The dispatcher asserts
+  `response_mode` consistency at dispatch time.
+- **Operation lost on daemon restart.** Background tasks are not replayed. Queued or
+  running operations are marked `stale` at startup, which is itself a terminal transition:
+  the outcome event fires and the recorded caller is woken, so a restart is observable
+  rather than silent.
+- **Outcome event never fires.** If the background task dies before the terminal write,
+  the row stays `running` until the heartbeat window expires and then becomes `stale`.
+  The receipt remains the source of truth; the event is a convenience, not the authority.
+- **The caller is gone when the outcome lands.** Delivery fails and is not retried. The row
+  is unaffected and remains readable by whoever arrives next.
+- **A command declares events without being asynchronous, or the reverse.** Construction
+  raises. The invalid command never reaches the dispatcher.
+- **Caller mismatch on read.** Non-admin callers attempting to inspect another session's
+  operation receive a 404 rather than a 403, to avoid operation and session enumeration.
+
+## See Also
+
+- docs/project/adr/0098-async-work-always-carries-a-receipt.md
+- docs/project/design/architecture/operation-receipts.md
+- docs/project/spec/feature/agent_runtime/control-delivery.md

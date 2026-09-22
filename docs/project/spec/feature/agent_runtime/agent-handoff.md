@@ -90,18 +90,6 @@ Then the operations do not overlap their terminal writes or process ownership mu
 And one session never launches two successor agents from one predecessor state
 ```
 
-<!-- planned-change:no-async-work-without-a-receipt -->
-#### UC-AH8: Completion and failure report actual progress
-
-```gherkin
-Given successor selection succeeds
-When the asynchronous handoff is scheduled
-Then the caller is told that handoff started and which successor was selected
-And completion is emitted only after the successor launch and continuation delivery succeed
-And a failure after predecessor termination never restores metadata that falsely claims the stopped predecessor is running
-And the session remains inspectable with the last truthful runtime binding
-```
-<!-- change:no-async-work-without-a-receipt -->
 #### UC-AH8: Completion and failure report actual progress
 
 ```gherkin
@@ -114,7 +102,6 @@ And a failure after predecessor termination emits the failure event rather than 
 And the caller recorded on the row is woken with the outcome and where to read it
 And the session remains inspectable with the last truthful runtime binding
 ```
-<!-- /planned-change:no-async-work-without-a-receipt -->
 
 #### UC-AH9: Remote handoff negotiates capability before dispatch
 
@@ -123,14 +110,9 @@ Given the session is owned by another computer
 When a caller requests handoff on that owner
 Then the command transport checks the target's heartbeat-advertised command capabilities through the shared command-capability gate
 And a target that does not advertise agent handoff is refused before receiving the command
-<!-- planned-change:no-async-work-without-a-receipt -->
-And a supporting target performs the same in-place swap as a local owner
-```
-<!-- change:no-async-work-without-a-receipt -->
 And a supporting target reconstructs the same command, submits it to its own operations service, and performs the same in-place swap as a local owner
 And the receipt returned across the wire names that target as the computer holding the row
 ```
-<!-- /planned-change:no-async-work-without-a-receipt -->
 
 #### UC-AH10: Session-scoped relationships survive unchanged
 

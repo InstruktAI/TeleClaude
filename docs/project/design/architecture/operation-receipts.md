@@ -1,5 +1,5 @@
 ---
-description: 'Receipt-first contract for durable async operations: immediate operation_id, background execution, polling, and completion event.'
+description: 'Receipt-first contract for asynchronous work: immediate operation_id, durable row, background execution, distinct outcome events, and delivery to the caller that asked.'
 visibility: 'public'
 ---
 
@@ -11,35 +11,43 @@ visibility: 'public'
 
 ## Purpose
 
-Any command with `response_mode=RECEIPT` uses a receipt-first contract instead of
-holding the HTTP request open until the work finishes. The daemon persists an operation
-row before execution begins, returns a durable `OperationReceipt` immediately, and runs
-the work in a tracked background task. When the task reaches a terminal state, it emits
-the `completion_event` declared on the command. Callers may poll
-`/operations/{operation_id}` or subscribe to the WebSocket event — both paths are
-authoritative.
+A command whose work finishes after its response uses the receipt-first contract. The
+daemon persists an operation row before execution begins, returns a durable
+`OperationReceipt` immediately, and runs the work in a tracked background task. On the
+terminal transition it emits the command's success or failure event and wakes the caller
+recorded on the row.
 
-This pattern applies to any operation that is too long to hold a request open for:
-state machines, multi-step orchestration, heavy I/O. It is not appropriate for fast
-mutations — those use `IMMEDIATE` or `FIRE_AND_FORGET`.
+This is the only asynchronous contract. A mutation fast enough to answer inside its own
+response is `IMMEDIATE` and carries no operation row; everything else carries one. There
+is no lighter asynchronous form, because an outcome with no row cannot be answered for
+after the fact.
 
 ### Operation kinds inventory
 
-| Kind constant                 | String value     | Endpoint                |
-| ----------------------------- | ---------------- | ----------------------- |
-| OPERATION_KIND_TODO_WORK      | `todo_work`      | `POST /todos/work`      |
-| OPERATION_KIND_TODO_INTEGRATE | `todo_integrate` | `POST /todos/integrate` |
-| OPERATION_KIND_TODO_CREATE    | `todo_create`    | `POST /todos/create`    |
-| OPERATION_KIND_TODO_PREPARE   | `todo_prepare`   | `POST /todos/prepare`   |
+| Kind constant                 | String value     | Endpoint                            |
+| ----------------------------- | ---------------- | ----------------------------------- |
+| OPERATION_KIND_TODO_WORK      | `todo_work`      | `POST /todos/work`                  |
+| OPERATION_KIND_TODO_INTEGRATE | `todo_integrate` | `POST /todos/integrate`             |
+| OPERATION_KIND_TODO_CREATE    | `todo_create`    | `POST /todos/create`                |
+| OPERATION_KIND_TODO_PREPARE   | `todo_prepare`   | `POST /todos/prepare`               |
+| OPERATION_KIND_TODO_RENAME    | `todo_rename`    | `POST /todos/update`                |
+| OPERATION_KIND_TODO_REMOVE    | `todo_remove`    | `POST /todos/remove`                |
+| OPERATION_KIND_TASK_RUN       | `task_run`       | `POST /tasks/run`                   |
+| OPERATION_KIND_AGENT_HANDOFF  | `agent_handoff`  | `POST /sessions/{id}/agent-restart` |
+| OPERATION_KIND_AGENT_RESTART  | `agent_restart`  | `POST /sessions/{id}/agent-restart` |
+| OPERATION_KIND_SESSION_CLOSE  | `session_close`  | `DELETE /sessions/{id}`             |
 
 ## Inputs/Outputs
 
-- **Input:** Any route backed by a RECEIPT command, e.g. `POST /todos/work` with
-  `{slug, cwd, client_request_id}`.
+- **Input:** Any route backed by a RECEIPT command, carrying the caller provenance the
+  API boundary resolved and, for a session-scoped command, the computer that owns the
+  target.
 - **Output (immediate):** `OperationReceipt` — `{operation_id, kind, state: "queued",
-status_path, poll_after_ms, completion_event, recovery_command}`.
+status_path, poll_after_ms, computer, success_event, failure_event, recovery_command}`.
 - **Output (terminal):** `GET /operations/{operation_id}` returns the full receipt with
   `state: "completed"|"failed"|"stale"` and `result` or `error`.
+- **Output (delivery):** the caller recorded on the row is woken with an address —
+  operation identity, outcome, and the command that reads the record.
 - Operation rows are keyed to the caller session; non-admins may only inspect their own.
 
 ## Invariants
@@ -50,37 +58,82 @@ status_path, poll_after_ms, completion_event, recovery_command}`.
 - **Submit dedupe.** `client_request_id` scoped by operation kind and caller session
   prevents duplicate executions. Re-submitting with the same `client_request_id`
   reattaches to a matching nonterminal operation row.
-- **Atomic terminal transition.** The background task emits `completion_event` as the
+- **The caller is recorded at submission.** The row carries the caller provenance the
+  command arrived with. A caller-less submission is recorded as such; nothing is inferred
+  to fill the gap.
+- **Atomic terminal transition.** The background task emits the outcome event as the
   final step of writing the terminal DB state. The event and the row transition happen
   in the same logical unit — never split.
+- **Outcome is carried by event type.** A terminal transition emits the command's
+  `success_event` or its `failure_event`. No consumer distinguishes outcomes by reading a
+  field on a shared event type.
+- **Every terminal transition delivers.** Completion, failure, and staleness each reach
+  the recorded caller if it is still live. Staleness is an outcome, not an absence of one,
+  so a daemon restart is observable to the caller rather than silent.
+- **Delivery carries an address, never the record.** The wake names the operation, its
+  outcome, and where to read it. The row supplies the result, the error, and the progress
+  detail when the caller reads it.
+- **Delivery failure is terminal and harmless.** A wake that cannot be handed off is not
+  retried. The row is unaffected and answers whoever asks later.
 - **Stale on restart.** Operations in `queued` or `running` state are marked `stale`
   at daemon startup. Work is never replayed blindly. The receipt remains truthful.
-- **completion_event is informational.** Callers may use it to avoid polling, but the
-  receipt row is the authority. If the event fires but the row is not yet terminal
-  (race), trust the row.
+- **The row is the authority.** Outcome events are a nudge toward the row, never the
+  record. If an event fires but the row is not yet terminal, trust the row.
+- **The owning computer owns the row.** An operation submitted on behalf of a caller
+  elsewhere is persisted, executed, and emitted by the computer that runs the work. The
+  receipt names that computer so the caller reads the record there.
 
 ## Primary flows
 
-1. Client calls a RECEIPT endpoint. Route creates the command and calls
-   `OperationsService.submit(command)`.
+1. A route receives a RECEIPT command and calls `OperationsService.submit(command)` with
+   the caller provenance the command carries.
 2. `OperationsService` deduplicates via `client_request_id`, persists the row
-   (`state=queued`), and returns the receipt immediately.
+   (`state=queued`, caller recorded), and returns the receipt immediately.
 3. A background task claims the queued row (`state=running`), heartbeats periodically,
    and executes the work.
-4. On completion, the task writes the terminal result to the row and emits
-   `completion_event` on the event bus.
-5. Clients either poll `GET /operations/{operation_id}` or listen for the WebSocket
-   event — both lead to the same terminal payload.
+4. On the terminal transition, the task writes the result to the row and emits the
+   command's success or failure event.
+5. The recorded caller, if still live, is woken through control delivery with an address.
+   A caller on another computer is reached by forwarding the notification to that
+   computer, which delivers it locally.
+6. The caller reads `GET /operations/{operation_id}` for the full record. A caller that
+   chose to wait instead polls the same endpoint and observes the same terminal payload.
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant OperationsService
+    participant DB
+    participant EventBus
+    participant Delivery as Control delivery
+
+    Caller->>OperationsService: submit(command, caller)
+    OperationsService->>DB: persist row (queued, caller)
+    OperationsService->>Caller: OperationReceipt
+    OperationsService->>DB: claim (running) + heartbeat
+    OperationsService->>DB: terminal row (completed | failed | stale)
+    OperationsService->>EventBus: success_event | failure_event
+    OperationsService->>Delivery: wake the recorded caller
+    Delivery->>Caller: address (operation id, outcome, where to read)
+    Caller->>DB: GET /operations/{id}
+```
 
 ## Failure modes
 
 - **Daemon restart:** Leftover `queued` or `running` operations are marked `stale`
-  at startup. Callers polling the receipt see `state: "stale"` and may resubmit.
+  at startup. That transition emits the failure event and wakes the recorded caller, so a
+  caller that was waiting learns the work was abandoned rather than waiting out a timeout.
   Work is never replayed automatically.
 - **Background task panic:** If the task dies before the terminal write, the row stays
-  `running` until the heartbeat window expires. The receipt eventually shows `stale`.
-  The `completion_event` is not emitted. Callers must detect the stale state via polling.
+  `running` until the heartbeat window expires and then becomes `stale`, which delivers.
+- **Caller session gone at delivery:** The wake is dropped without retry and the row is
+  unchanged. The outcome remains answerable by any later reader.
 - **Caller mismatch:** Non-admin callers attempting to access another session's operation
   receive a 404 (not a 403) to avoid session ID enumeration.
 - **Event fires, row not yet terminal:** Trust the row. The event is a convenience
   signal; the DB row is authoritative.
+
+## See Also
+
+- docs/project/adr/0098-async-work-always-carries-a-receipt.md
+- docs/project/spec/feature/agent_runtime/control-delivery.md

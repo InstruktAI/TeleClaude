@@ -1,7 +1,7 @@
 ---
-description: Every durable operation reaches its recorded caller — completion, failure, and staleness each wake the caller with an address, and a caller-less operation stands on its row alone.
-delivered_by:
-  - no-async-work-without-a-receipt
+description: Every durable operation reaches its recorded caller — completion, failure,
+  and staleness each wake the caller with an address, and a caller-less operation
+  stands on its row alone.
 ---
 
 # Durable Operation Outcomes — Spec
