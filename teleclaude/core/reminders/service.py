@@ -14,7 +14,6 @@ from instrukt_ai_logging import get_logger
 from .models import (
     PrescribedReminderSlug,
     Reminder,
-    ReminderAutoCancelOutcome,
     ReminderCancellationProtectedError,
     ReminderEntry,
     ReminderEvent,
@@ -24,12 +23,9 @@ from .models import (
 )
 from .observability import (
     observe_advanced,
-    observe_auto_cancel_evaluation,
-    observe_auto_cancel_sweep,
     observe_cancel,
     observe_clear,
     observe_consumed,
-    observe_correlation_replaced,
     observe_event_match,
     observe_query,
     observe_reconciliation,
@@ -178,11 +174,6 @@ class ReminderService:
 
     async def handle_agent_event(self, event: ReminderEvent) -> int:
         """Evaluate typed predicates and directly fire every matching anchor."""
-        reminders = await self._db.list_reminders(session_id=event.session_id)
-        pending = await self._db.list_pending_answer_reminders(session_id=event.session_id)
-        for reminder in pending:
-            await self._evaluate_pending_answer(reminder, authored_bare_sentinel=event.authored_bare_sentinel)
-        observe_auto_cancel_sweep(event, considered=reminders, correlated=pending)
         reminders = await self._db.list_event_reminders(session_id=event.session_id)
         fired = 0
         for reminder in reminders:
@@ -289,18 +280,7 @@ class ReminderService:
                 self._wake.set()
                 raise
             observe_submission(entry, submission)
-            prior = await self._db.get_reminder(session_id=entry.session_id, slug=entry.slug)
-            advanced = await self._db.accept_reminder_occurrence(entry, inbound_id=submission.inbound_queue_id)
-        if (
-            prior is not None
-            and prior.pending_answer_inbound_id is not None
-            and submission.inbound_queue_id is not None
-        ):
-            observe_correlation_replaced(
-                entry,
-                superseded_inbound_queue_id=prior.pending_answer_inbound_id,
-                inbound_queue_id=submission.inbound_queue_id,
-            )
+            advanced = await self._db.accept_reminder_occurrence(entry)
         if advanced is not None and advanced.schedule.recurrence is ReminderRecurrence.RECURRING:
             observe_advanced(advanced)
         elif entry.schedule.recurrence is ReminderRecurrence.ONE_SHOT:
@@ -335,35 +315,6 @@ class ReminderService:
         observe_slide(slid, observed_last_activity=last_activity)
         self._wake.set()
         return True
-
-    async def _evaluate_pending_answer(
-        self,
-        reminder: Reminder,
-        *,
-        authored_bare_sentinel: bool,
-    ) -> bool:
-        """Resolve one firing against the authored-output fact carried by its answering turn."""
-        if reminder.pending_answer_occurrence_key is None:
-            observe_auto_cancel_evaluation(reminder, outcome=ReminderAutoCancelOutcome.UNRESOLVED)
-            return False
-        outcome = ReminderAutoCancelOutcome.CANCELLED if authored_bare_sentinel else ReminderAutoCancelOutcome.ANSWERED
-
-        async with self._mutation_lock:
-            if outcome is ReminderAutoCancelOutcome.CANCELLED:
-                entry = await self._db.cancel_reminder_for_auto_answer(reminder)
-                if entry is None:
-                    return False
-            else:
-                cleared = await self._db.clear_pending_reminder_answer(reminder)
-                if not cleared:
-                    return False
-                entry = None
-        observe_auto_cancel_evaluation(reminder, outcome=outcome)
-        if entry is not None:
-            observe_transition(entry)
-            self._wake.set()
-            return True
-        return False
 
 
 def _prescribed_slug(value: str) -> PrescribedReminderSlug | None:

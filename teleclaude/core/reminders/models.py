@@ -37,20 +37,6 @@ class ReminderTransition(StrEnum):
     FIRING = "firing"
 
 
-class ReminderCancelReason(StrEnum):
-    """Closed reasons recorded on reminder cancellation entries."""
-
-    AUTO_CANCEL_NOOP = "auto_cancel_noop"
-
-
-class ReminderAutoCancelOutcome(StrEnum):
-    """Closed outcomes for a pending firing-answer evaluation."""
-
-    CANCELLED = "cancelled"
-    ANSWERED = "answered"
-    UNRESOLVED = "unresolved"
-
-
 class ReminderCancellationProtectedError(Exception):
     """A public cancellation selected one or more protected reminder profiles."""
 
@@ -158,10 +144,6 @@ class Reminder:
     occurrence_key: str
     firing_count: int
     sliding: bool = False
-    auto_cancel: bool = False
-    pending_answer_occurrence_key: str | None = None
-    pending_answer_inbound_id: int | None = None
-    pending_answer_at: datetime | None = None
     claimed_occurrence_key: str | None = None
     claimed_at: datetime | None = None
 
@@ -186,8 +168,6 @@ class ReminderEntry:
     occurred_at: datetime
     occurrence_key: str
     sliding: bool = False
-    auto_cancel: bool = False
-    cancel_reason: ReminderCancelReason | None = None
     firing_number: int | None = None
 
     def __post_init__(self) -> None:
@@ -235,7 +215,6 @@ class ReminderSetRequest:
     schedule: ReminderSchedule
     profile: PrescribedReminderSlug | None = None
     sliding: bool = False
-    auto_cancel: bool = False
 
 
 @dataclass(frozen=True)
@@ -245,5 +224,3 @@ class ReminderEvent:
     session_id: str
     event_id: str
     anchor: ReminderEventAnchor
-    authored_bare_sentinel: bool = False
-    """Whether the turn's authored output was nothing but the no-output sentinel."""

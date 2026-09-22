@@ -56,7 +56,6 @@ async def submit_reminder_entry(entry: ReminderEntry) -> ReminderSubmissionResul
     observe_envelope_composed(
         entry,
         explicit_noop=composition.explicit_noop,
-        auto_cancel=composition.auto_cancel,
     )
     del payload
     supersedes = (

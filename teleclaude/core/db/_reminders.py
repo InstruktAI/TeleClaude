@@ -13,7 +13,6 @@ from ..dates import ensure_utc
 from ..reminders.models import (
     PrescribedReminderSlug,
     Reminder,
-    ReminderCancelReason,
     ReminderEntry,
     ReminderEntryReadFailure,
     ReminderEntryReadItem,
@@ -60,10 +59,6 @@ def _decode_reminder(row: db_models.ReminderRow) -> Reminder:
         occurrence_key=row.occurrence_key,
         firing_count=row.firing_count,
         sliding=row.sliding,
-        auto_cancel=row.auto_cancel,
-        pending_answer_occurrence_key=row.pending_answer_occurrence_key,
-        pending_answer_inbound_id=row.pending_answer_inbound_id,
-        pending_answer_at=_parse_datetime(row.pending_answer_at),
         claimed_occurrence_key=row.claimed_occurrence_key,
         claimed_at=_parse_datetime(row.claimed_at),
     )
@@ -87,8 +82,6 @@ def _decode_entry(row: db_models.ReminderEntryRow) -> ReminderEntry:
         occurred_at=occurred_at,
         occurrence_key=row.occurrence_key,
         sliding=row.sliding,
-        auto_cancel=row.auto_cancel,
-        cancel_reason=ReminderCancelReason(row.cancel_reason) if row.cancel_reason is not None else None,
         firing_number=row.firing_number,
     )
 
@@ -110,7 +103,6 @@ def _new_reminder_row(request: ReminderSetRequest, *, generation: int, armed_at:
         occurrence_key=str(uuid4()),
         firing_count=0,
         sliding=request.sliding,
-        auto_cancel=request.auto_cancel,
     )
 
 
@@ -120,7 +112,6 @@ def _entry_row(
     transition: ReminderTransition,
     occurred_at: datetime,
     next_fire_at: datetime | None = None,
-    cancel_reason: ReminderCancelReason | None = None,
     firing_number: int | None = None,
 ) -> db_models.ReminderEntryRow:
     return db_models.ReminderEntryRow(
@@ -141,8 +132,6 @@ def _entry_row(
         else None,
         occurrence_key=reminder.occurrence_key,
         sliding=reminder.sliding,
-        auto_cancel=reminder.auto_cancel,
-        cancel_reason=cancel_reason.value if cancel_reason is not None else None,
         firing_number=firing_number,
     )
 
@@ -247,51 +236,6 @@ class DbRemindersMixin:
             rows = (await db_session.exec(statement)).all()
             return [_decode_reminder(row) for row in rows]
 
-    async def list_pending_answer_reminders(self, *, session_id: str) -> list[Reminder]:
-        """Return declaring reminders whose latest firing still awaits its answering turn."""
-        statement = (
-            select(db_models.ReminderRow)
-            .where(db_models.ReminderRow.session_id == session_id)
-            .where(db_models.ReminderRow.pending_answer_inbound_id.is_not(None))
-        )
-        async with self._session() as db_session:
-            rows = (await db_session.exec(statement)).all()
-            return [_decode_reminder(row) for row in rows]
-
-    async def clear_pending_reminder_answer(self, reminder: Reminder) -> bool:
-        """Clear one terminally evaluated firing-answer association."""
-        key = {"session_id": reminder.session_id, "slug": reminder.slug}
-        async with self._session() as db_session:
-            row = await db_session.get(db_models.ReminderRow, key)
-            if row is None or row.pending_answer_occurrence_key != reminder.pending_answer_occurrence_key:
-                return False
-            row.pending_answer_occurrence_key = None
-            row.pending_answer_inbound_id = None
-            row.pending_answer_at = None
-            db_session.add(row)
-            await db_session.commit()
-            return True
-
-    async def cancel_reminder_for_auto_answer(self, reminder: Reminder) -> ReminderEntry | None:
-        """Cancel a declaring reminder whose bound answer was exactly the sentinel."""
-        key = {"session_id": reminder.session_id, "slug": reminder.slug}
-        now = datetime.now(UTC)
-        async with self._session() as db_session:
-            row = await db_session.get(db_models.ReminderRow, key)
-            if row is None or row.pending_answer_occurrence_key != reminder.pending_answer_occurrence_key:
-                return None
-            entry_row = _entry_row(
-                row,
-                transition=ReminderTransition.CANCELLED,
-                occurred_at=now,
-                cancel_reason=ReminderCancelReason.AUTO_CANCEL_NOOP,
-            )
-            db_session.add(entry_row)
-            await db_session.delete(row)
-            await db_session.commit()
-            await db_session.refresh(entry_row)
-            return _decode_entry(entry_row)
-
     async def cancel_reminder(self, *, session_id: str, slug: str) -> ReminderEntry | None:
         """Atomically remove one live aggregate and append its cancellation entry."""
         now = datetime.now(UTC)
@@ -367,7 +311,7 @@ class DbRemindersMixin:
             await db_session.refresh(entry_row)
             return _decode_entry(entry_row)
 
-    async def accept_reminder_occurrence(self, entry: ReminderEntry, *, inbound_id: int | None) -> Reminder | None:
+    async def accept_reminder_occurrence(self, entry: ReminderEntry) -> Reminder | None:
         """Consume a one-shot or advance a recurring occurrence after acceptance."""
         key = {"session_id": entry.session_id, "slug": entry.slug}
         async with self._session() as db_session:
@@ -384,10 +328,6 @@ class DbRemindersMixin:
             row.occurrence_key = str(uuid4())
             row.claimed_occurrence_key = None
             row.claimed_at = None
-            if row.auto_cancel and inbound_id is not None:
-                row.pending_answer_occurrence_key = entry.occurrence_key
-                row.pending_answer_inbound_id = inbound_id
-                row.pending_answer_at = datetime.now(UTC).isoformat()
             db_session.add(row)
             await db_session.commit()
             return _decode_reminder(row)

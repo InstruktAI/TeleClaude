@@ -8,7 +8,6 @@ from instrukt_ai_logging import get_logger
 
 from .models import (
     Reminder,
-    ReminderAutoCancelOutcome,
     ReminderEntry,
     ReminderEntryReadFailure,
     ReminderEvent,
@@ -23,10 +22,7 @@ _ADVANCED_EVENT = "reminder_occurrence_advanced"
 _SLIDING_DECISION_EVENT = "reminder_sliding_decided"
 _SLIDE_EVENT = "reminder_slide_committed"
 _ENVELOPE_EVENT = "reminder_envelope_composed"
-_AUTO_CANCEL_EVALUATED_EVENT = "reminder_autocancel_evaluated"
 _SUBMISSION_EVENT = "reminder_submission_decided"
-_AUTO_CANCEL_SWEEP_EVENT = "reminder_autocancel_sweep_decided"
-_CORRELATION_REPLACED_EVENT = "reminder_correlation_replaced"
 _CONSUMED_EVENT = "reminder_occurrence_consumed"
 _MATCH_EVENT = "reminder_event_match_decided"
 _QUERY_EVENT = "reminder_query_completed"
@@ -51,10 +47,8 @@ def observe_transition(entry: ReminderEntry) -> None:
         recurrence=entry.schedule.recurrence.value,
         interval_seconds=entry.schedule.interval_seconds,
         sliding=entry.sliding,
-        auto_cancel=entry.auto_cancel,
         next_fire_at=entry.schedule.next_fire_at.isoformat() if entry.schedule.next_fire_at else None,
         prior_generation=entry.generation - 1 if entry.transition is ReminderTransition.REPLACED else None,
-        cancel_reason=entry.cancel_reason.value if entry.cancel_reason is not None else None,
         firing_number=entry.firing_number,
         elapsed_since_armed_seconds=(
             entry.elapsed_since_armed_seconds if entry.transition is ReminderTransition.FIRING else None
@@ -108,7 +102,7 @@ def observe_slide(reminder: Reminder, *, observed_last_activity: datetime) -> No
     )
 
 
-def observe_envelope_composed(entry: ReminderEntry, *, explicit_noop: bool, auto_cancel: bool) -> None:
+def observe_envelope_composed(entry: ReminderEntry, *, explicit_noop: bool) -> None:
     """Record firing instructions without inspecting their rendered body."""
     logger.info(
         _ENVELOPE_EVENT,
@@ -118,8 +112,6 @@ def observe_envelope_composed(entry: ReminderEntry, *, explicit_noop: bool, auto
         occurrence_key=entry.occurrence_key,
         sentinel_mode=_EXPLICIT_NOOP_MODE if explicit_noop else None,
         silent_answer_allowed=False if explicit_noop else None,
-        auto_cancel=auto_cancel,
-        consequence_included=auto_cancel,
         firing_number=entry.firing_number,
         elapsed_since_armed_seconds=entry.elapsed_since_armed_seconds,
     )
@@ -135,25 +127,9 @@ def observe_submission(entry: ReminderEntry, submission: ReminderSubmissionResul
         generation=entry.generation,
         occurrence_key=entry.occurrence_key,
         recurrence=entry.schedule.recurrence.value,
-        auto_cancel=entry.auto_cancel,
         acceptance_path=submission.acceptance_path.value,
         inbound_queue_id=submission.inbound_queue_id,
         human_visibility="agent_only",
-    )
-
-
-def observe_correlation_replaced(
-    entry: ReminderEntry, *, superseded_inbound_queue_id: int, inbound_queue_id: int
-) -> None:
-    """Record the ruled per-slug replacement of one outstanding correlation."""
-    logger.info(
-        _CORRELATION_REPLACED_EVENT,
-        owner_session_id=entry.session_id,
-        slug=entry.slug,
-        generation=entry.generation,
-        occurrence_key=entry.occurrence_key,
-        superseded_inbound_queue_id=superseded_inbound_queue_id,
-        inbound_queue_id=inbound_queue_id,
     )
 
 
@@ -166,36 +142,6 @@ def observe_consumed(entry: ReminderEntry) -> None:
         slug=entry.slug,
         generation=entry.generation,
         occurrence_key=entry.occurrence_key,
-    )
-
-
-def observe_auto_cancel_evaluation(
-    reminder: Reminder,
-    *,
-    outcome: ReminderAutoCancelOutcome,
-) -> None:
-    """Record one pending firing-answer evaluation without transcript content."""
-    logger.info(
-        _AUTO_CANCEL_EVALUATED_EVENT,
-        outcome=outcome.value,
-        owner_session_id=reminder.session_id,
-        slug=reminder.slug,
-        generation=reminder.generation,
-        occurrence_key=reminder.pending_answer_occurrence_key,
-        inbound_queue_id=reminder.pending_answer_inbound_id,
-    )
-
-
-def observe_auto_cancel_sweep(event: ReminderEvent, *, considered: list[Reminder], correlated: list[Reminder]) -> None:
-    """Record every stop-time auto-cancel eligibility sweep, including an empty one."""
-    logger.info(
-        _AUTO_CANCEL_SWEEP_EVENT,
-        outcome="swept",
-        owner_session_id=event.session_id,
-        agent_event_id=event.event_id,
-        considered_count=len(considered),
-        correlated_count=len(correlated),
-        correlated_slugs=[reminder.slug for reminder in correlated],
     )
 
 

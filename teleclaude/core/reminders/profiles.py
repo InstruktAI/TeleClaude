@@ -68,7 +68,6 @@ class PrescribedReminderProfile:
     formatter: ProfileFormatter
     accepted_parameters: frozenset[str]
     sliding: bool = False
-    auto_cancel: bool = False
     cancellation_protected: bool = False
 
 
@@ -166,9 +165,7 @@ def _integrator_queue_watch(session_id: str, inputs: PrescribedReminderInput) ->
 
 
 PROFILE_REGISTRY: dict[PrescribedReminderSlug, PrescribedReminderProfile] = {
-    PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(
-        _goal_drive, frozenset({"intent"}), sliding=True, auto_cancel=True
-    ),
+    PrescribedReminderSlug.GOAL_DRIVE: PrescribedReminderProfile(_goal_drive, frozenset({"intent"}), sliding=True),
     PrescribedReminderSlug.SESSION_DEPARTURE: PrescribedReminderProfile(_session_departure, frozenset()),
     PrescribedReminderSlug.ORCHESTRATION_WATCH: PrescribedReminderProfile(
         _orchestration_watch, frozenset({"target_slug", "after"})
@@ -194,17 +191,12 @@ def format_prescribed_reminder(
     """Resolve one reserved slug through its statically declared formatter."""
     profile = PROFILE_REGISTRY[slug]
     request = profile.formatter(session_id, inputs)
-    return replace(request, sliding=profile.sliding, auto_cancel=profile.auto_cancel)
+    return replace(request, sliding=profile.sliding)
 
 
 def accepted_prescribed_parameters(slug: PrescribedReminderSlug) -> frozenset[str]:
     """Return the profile-owned public parameter names for an API adapter."""
     return PROFILE_REGISTRY[slug].accepted_parameters
-
-
-def profile_auto_cancels(slug: PrescribedReminderSlug | None) -> bool:
-    """Return whether a prescribed profile declares explicit NOOP cancellation."""
-    return slug is not None and PROFILE_REGISTRY[slug].auto_cancel
 
 
 def profile_cancellation_protected(slug: PrescribedReminderSlug | None) -> bool:
