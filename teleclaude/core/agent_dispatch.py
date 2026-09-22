@@ -216,10 +216,6 @@ _COMMAND_POLICIES: dict[SlashCommand, CommandDispatchPolicy] = {
     SlashCommand.NEXT_PREPARE_DIAGNOSE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.MED),
     SlashCommand.NEXT_PREPARE_PLAN: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.NEXT_PREPARE_TASK: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.MED),
-    SlashCommand.NEXT_EMULATE_PO: CommandDispatchPolicy(
-        agent_permutation(AgentName.CLAUDE, AgentName.GEMINI, AgentName.CODEX, AgentName.DEEPSEEK),
-        RunSessionThinkingMode.MED,
-    ),
     SlashCommand.NEXT_DRIFT_ANALYZE: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.FAST),
     SlashCommand.NEXT_PREPARE: CommandDispatchPolicy(_GLOBAL_ORDER, RunSessionThinkingMode.SLOW),
     SlashCommand.NEXT_WORK: CommandDispatchPolicy(_CODEX_FIRST, RunSessionThinkingMode.SLOW),

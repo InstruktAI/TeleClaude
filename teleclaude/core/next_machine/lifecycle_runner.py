@@ -551,7 +551,6 @@ async def dispatch_lifecycle_session(
         "project_path": project_path,
         "args": intent.slug,
         "detach": True,
-        "dispatch_door": "delegated",
     }
     if intent.additional_context:
         kwargs["additional_context"] = intent.additional_context

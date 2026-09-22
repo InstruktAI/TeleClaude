@@ -109,7 +109,6 @@ class SessionLaunchIntent:
     # representation: a remote target resolves its own model availability.
     resolved_model_flags: str | None = None
     command_input_source_text: str | None = None
-    dispatch_door: "SessionDispatchDoor | None" = None
 
     def to_dict(self) -> JsonDict:
         """Serialize launch intent into a JSON-compatible dictionary."""
@@ -129,7 +128,6 @@ class SessionLaunchIntent:
             "decision_basis_digest": self.decision_basis_digest,
             "accepted_at_origin": self.accepted_at_origin,
             "command_input_source_text": self.command_input_source_text,
-            "dispatch_door": self.dispatch_door.value if self.dispatch_door else None,
         }
 
     @classmethod
@@ -159,9 +157,6 @@ class SessionLaunchIntent:
             decision_basis_digest=cast(str | None, data.get("decision_basis_digest")),
             accepted_at_origin=bool(data.get("accepted_at_origin", False)),
             command_input_source_text=cast(str | None, data.get("command_input_source_text")),
-            dispatch_door=(
-                SessionDispatchDoor(str(data["dispatch_door"])) if data.get("dispatch_door") is not None else None
-            ),
         )
 
 
@@ -196,13 +191,6 @@ class SessionEntryPoint(StrEnum):
     CRON = "cron"
     SYSTEM = "system"
     AGENT_HANDOFF = "agent_handoff"
-
-
-class SessionDispatchDoor(StrEnum):
-    """Authenticated provenance for a command-session launch."""
-
-    DIRECT_HUMAN = "direct_human"
-    DELEGATED = "delegated"
 
 
 FIELD_KIND = "kind"

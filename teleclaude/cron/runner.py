@@ -262,7 +262,6 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig, project_root: Path)
                 project_path=project_path,
                 command=_NEXT_RUN_JOB_COMMAND,
                 args=_job_command_args(config),
-                dispatch_door="delegated",
             )
             return response.session_id, None
         except APIError as error:

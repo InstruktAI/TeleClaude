@@ -40,7 +40,6 @@ class CreateSessionRequest(BaseModel):
     origin_metadata: dict[str, object] | None = None  # guard: loose-dict
     command_input_mode: CommandInputMode = CommandInputMode.ORDINARY
     command_input_source_text: str | None = None
-    dispatch_door: Literal["delegated"] | None = None
 
 
 class CreateSessionResponseDTO(BaseModel):
@@ -953,7 +952,6 @@ class RunSessionRequest(BaseModel):
     thinking_mode: Literal["fast", "med", "slow"] | None = None
     detach: bool = False
     additional_context: str = ""
-    dispatch_door: Literal["delegated"] | None = None
 
 
 class SendResultRequest(BaseModel):

@@ -12,20 +12,9 @@ from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.models import (
     AgentDispatchMode,
     Session,
-    SessionDispatchDoor,
     SessionLaunchIntent,
     SessionLaunchKind,
 )
-from teleclaude.types.creation_record import EntryPoint
-
-
-def resolve_dispatch_door(identity: CallerIdentity, declared_door: str | None) -> SessionDispatchDoor:
-    """Derive the privileged human door and constrain agent declarations."""
-    if identity.entry_point in {EntryPoint.TUI, EntryPoint.CLI, EntryPoint.WEB}:
-        return SessionDispatchDoor.DIRECT_HUMAN
-    if declared_door not in {None, SessionDispatchDoor.DELEGATED.value}:
-        raise HTTPException(status_code=400, detail="agent dispatch door must be delegated")
-    return SessionDispatchDoor.DELEGATED
 
 
 def resolve_enabled_agent(requested_agent: str | None) -> str:
@@ -54,10 +43,9 @@ async def build_launch_intent(
 ) -> tuple[SessionLaunchIntent | None, Session | None]:
     """Build the typed launch intent for a new session."""
     launch_kind = resolve_launch_kind(request)
-    dispatch_door = resolve_dispatch_door(identity, request.dispatch_door)
 
     if launch_kind == SessionLaunchKind.EMPTY:
-        return SessionLaunchIntent(kind=SessionLaunchKind.EMPTY, dispatch_door=dispatch_door), None
+        return SessionLaunchIntent(kind=SessionLaunchKind.EMPTY), None
 
     if launch_kind == SessionLaunchKind.AGENT_RESUME:
         if not request.agent:
@@ -70,7 +58,6 @@ async def build_launch_intent(
                 thinking_mode=thinking_mode,
                 native_session_id=request.native_session_id,
                 dispatch_mode=AgentDispatchMode.FIXED,
-                dispatch_door=dispatch_door,
             ),
             None,
         )
@@ -93,7 +80,6 @@ async def build_launch_intent(
                     thinking_mode=thinking_mode,
                     dispatch_mode=dispatch_mode,
                     preferred_agent=preferred_agent,
-                    dispatch_door=dispatch_door,
                 ),
                 caller_session,
             )
@@ -105,7 +91,6 @@ async def build_launch_intent(
                 message=request.message,
                 dispatch_mode=dispatch_mode,
                 preferred_agent=preferred_agent,
-                dispatch_door=dispatch_door,
             ),
             caller_session,
         )
@@ -117,7 +102,6 @@ async def build_launch_intent(
             thinking_mode=thinking_mode,
             dispatch_mode=dispatch_mode,
             preferred_agent=preferred_agent,
-            dispatch_door=dispatch_door,
         ),
         None,
     )

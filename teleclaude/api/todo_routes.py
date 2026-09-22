@@ -124,7 +124,7 @@ class _SlugStatusResponse(BaseModel):
 async def _resolve_human_involved(request: TodoDumpRequest, identity: CallerIdentity) -> bool:
     """Derive one creation-record boolean without propagating prior action state."""
     if identity.entry_point is not EntryPoint.AGENT:
-        return identity.entry_point is not None
+        return identity.entry_point in {EntryPoint.TUI, EntryPoint.CLI, EntryPoint.WEB}
     declaration_requested = request.human_involved or request.human_involvement_reason is not None
     if not declaration_requested:
         return False

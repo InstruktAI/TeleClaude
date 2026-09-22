@@ -40,7 +40,6 @@ from teleclaude.api.run_session_refusals import (
 )
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
 from teleclaude.api.session_access import check_session_access
-from teleclaude.api.session_create_launch import resolve_dispatch_door
 from teleclaude.api.session_human_involvement_routes import router as human_involvement_router
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
@@ -442,7 +441,6 @@ def _prepare_run_session(
             dispatch_mode=dispatch_mode,
             preferred_agent=preferred_agent,
             candidate_order=candidate_order,
-            dispatch_door=resolve_dispatch_door(identity, request.dispatch_door),
         ),
         initiator_session_id=initiator_session_id,
         origin_metadata=origin_metadata,
