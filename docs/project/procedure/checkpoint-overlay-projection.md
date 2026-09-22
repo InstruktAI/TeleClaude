@@ -73,8 +73,8 @@ toggle — the manifest's existence is that subscription.
 Assessment writes the toggles, and that write is the whole of the change: the
 installed plumbing (git hooks, git wrapper) reads the toggles from the
 declaration itself, so a new value takes effect on the next invocation with no
-projection pass to run and nothing that can drift from it. `telec sync`'s
-mutating path also reconciles the docs filter driver (present iff `docs`) and
+projection pass to run and nothing that can drift from it. Project-plumbing
+convergence also reconciles the docs filter driver (present iff `docs`) and
 refreshes the TeleClaude-owned git hooks of a project subscribing `code`, so an
 already-onboarded repository's hooks converge on the declaration-reading source
 on the next sync with no separate pass; a hook the project authored itself is

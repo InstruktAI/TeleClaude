@@ -14,7 +14,6 @@ visibility: public
 
 Lazy MCP runtime gives agents access to configured MCP servers without loading every server into every agent process at startup. The TeleClaude daemon owns MCP server leases, starts or connects to a server only when a caller asks for its tools or invokes a tool, and exposes the capability through `telec mcp` and `/mcp` API endpoints.
 
-
 The TeleClaude MCP registry is the source of available servers. Server entries from `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` are accumulated into the daemon's effective MCP catalog; those source files are inputs, not mutation targets. `mcp.json` and `mcp.local.json` are compatibility import inputs during the transition window only. Each server declares whether its credential owner is global or the verified person behind the caller. Secret placeholders resolve exclusively from that owner's TeleClaude environment file at lease start, and resolved secret values never appear in agent-facing output.
 
 ## Canonical fields
@@ -35,13 +34,9 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 - The daemon owns stdio child processes and remote MCP sessions. Agents never receive raw stdio pipes, session identifiers, or secret-expanded launch commands.
 
-
 - Managed MCP servers use the lazy runtime exclusively; native agent MCP configs are not a publication target, and setup removes TeleClaude-managed entries from them.
 
-
-
 - A lease is keyed by server slug, credential owner, and effective registry fingerprint. Global servers use one global owner key; person-bound servers use the canonical person slug resolved from verified caller identity. The lease remains warm while calls from that owner arrive and expires after its idle TTL.
-
 
 - Tool catalogs are cached per lease after `tools/list`. The cache is invalidated when the server emits `tools/list_changed`, the effective MCP configuration changes, the environment fingerprint changes, or the lease restarts.
 - Calls for a single server are serialized unless that server is explicitly marked parallel-safe. Shared leases preserve response routing by MCP request id, cancellation token, caller timeout, and operation trace.
@@ -60,19 +55,14 @@ The TeleClaude MCP registry is the source of available servers. Server entries f
 
 - Server definitions may declare a top-level `trigger` string. The trigger is human-facing discovery metadata only: it is advertised by `telec mcp list` and does not affect startup, credential lookup, or lease fingerprinting.
 
-
-
 - Server definitions may declare `credentialScope` as `global` or `person`. The default is `global`, preserving existing registries and shared lease behavior. `person` requires a verified human caller that resolves to a configured person and makes every environment placeholder on that server a requirement of that person's secret store.
 - Credential scope is runtime policy, not agent input. The `/mcp` edge translates verified caller identity into typed invocation context; tool arguments never select or override the credential owner.
-
-
 
 - The effective registry is resolved per invocation project. A TeleClaude project's own `teleclaude-mcp.jsonc` and `teleclaude-mcp.local.jsonc` at its checkout root are deep-merged over the machine-wide TeleClaude registry, with project definitions taking precedence over machine-wide definitions and the local overlay taking precedence over the shared file within each root. Invocations from a project subdirectory or a todo worktree resolve the owning project checkout's registry. Invocations from outside any TeleClaude project keep their current per-subcommand behavior.
 - The daemon keys runtimes, leases, and fingerprints per resolved project root. A lease never serves a differing definition from another root; the existing drift and fingerprint rules apply within each root. Environment placeholders on project declarations resolve exactly as machine-wide ones do — from the TeleClaude environment at lease start, never through agent sessions and never into any file.
 - Project declarations use the same wrapper shape and schema as the machine-wide registry.
-- `telec sync` bakes a project MCP server index — the project's own declarations with their activation triggers — into that project's generated agent entrypoint files, parallel to the machine-wide baked index. A project with no registry declarations gets no such section and is untouched.
+- Publication bakes a project MCP server index — the project's own declarations with their activation triggers — into that project's generated agent entrypoint files, parallel to the machine-wide baked index. A project with no registry declarations gets no such section and is untouched.
 - Server definitions in either registry may declare `hidden: true` (default `false`). A hidden server is excluded from the baked agent-entrypoint indexes — machine-wide and project alike — while remaining fully served and listed by the runtime `telec mcp list` surface.
-
 
 ### Use cases
 
@@ -87,7 +77,6 @@ And no MCP server process or remote MCP session is started
 And the human-readable output does not expose transport or environment metadata
 And the response never includes resolved environment secret values
 ```
-
 
 #### UC-LMCP-2: Listing tools lazily initializes one person-bound server
 
@@ -106,8 +95,6 @@ And returns the advertised tools
 And stores the lease and tool catalog for later callers owned by the same person
 ```
 
-
-
 #### UC-LMCP-3: Calling a tool reuses the warm lease for its credential owner
 
 ```
@@ -118,7 +105,6 @@ Then the daemon sends `tools/call` over that person's existing lease
 And returns the MCP tool result as JSON
 And refreshes only that lease's idle deadline
 ```
-
 
 #### UC-LMCP-4: Concurrent callers remain isolated
 
@@ -153,7 +139,6 @@ And closes the stale lease
 And starts a fresh lease from the new effective definition
 ```
 
-
 #### UC-LMCP-7: Missing owner credentials fail secret-safe
 
 ```
@@ -165,7 +150,6 @@ Then the command fails before starting the server
 And the runtime does not consult the global environment or another person's secret store
 And the error names the unmet requirement without exposing a secret value or another person's identity
 ```
-
 
 #### UC-LMCP-8: Registry schema supports offline editor validation
 
@@ -179,7 +163,6 @@ And committed registry files use a portable schema reference
 And machine-local generated examples may use an absolute file schema reference
 
 ```
-
 
 #### UC-LMCP-9: Person-bound access requires authoritative human identity
 
@@ -222,7 +205,6 @@ Then the runtime closes and replaces only that person's stale lease
 And the other person's lease and every global lease remain active
 ```
 
-
 #### UC-LMCP-13: Present header credentials start the remote server secret-safe
 
 ```
@@ -243,7 +225,6 @@ When an agent runs `telec mcp list`
 Then the configured server slugs and their activation triggers are listed from the effective registry
 And the command exits successfully without contacting the daemon
 ```
-
 
 #### UC-LMCP-15: Project registry augments the project's own catalog only
 
@@ -287,7 +268,7 @@ Then each response matches the same invocation from the project checkout root
 
 ```
 Given a TeleClaude project declares MCP servers in its own registry
-When `telec sync` regenerates that project's agent entrypoint files
+When publication regenerates that project's agent entrypoint files for its recorded commit
 Then the generated entrypoint carries an index of the project's declared servers with their activation triggers
 And the machine-wide baked index is unchanged
 And a project with no registry declarations gets no project MCP index section
@@ -303,8 +284,6 @@ And the runtime listing shows it with its activation trigger
 And its tools remain listable and callable
 ```
 
-
-
 ## Known caveats
 
 - Stdio MCP servers cannot be attached to directly after startup. The daemon must broker every interaction because it owns the only stdin/stdout channel.
@@ -312,4 +291,3 @@ And its tools remain listable and callable
 - Specialized procedures can exclude their server from generic discovery while still using the same runtime underneath.
 
 - Compatibility import support for `mcp.json` and `mcp.local.json` preserves migration input compatibility only.
-

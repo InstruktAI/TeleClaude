@@ -51,7 +51,11 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | ---------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `telec sessions list`        | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers need to discover peer sessions for collaboration (e.g., reviewer finding fixer). Customers should not see internal session inventory.                                                 |
 | `telec sessions start`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Starting sessions is orchestration. Workers cannot spawn. Contributors, newcomers, and customers cannot create sessions -- only admins and members can.                                       |
+<!-- planned-change:session-authority-follows-mandate-not-spawn -->
 | `telec sessions send`        | W    | ✅     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Workers need to message each other (reviewer ↔ fixer collaboration) and their orchestrator. Contributors, newcomers, and customers cannot message arbitrary sessions.                         |
+<!-- change:session-authority-follows-mandate-not-spawn -->
+| `telec sessions send`        | W    | ✅     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Workers need to message each other (reviewer ↔ fixer collaboration); a worker reports upward by completing its turn, and messaging a session above it is refused at the API layer. Contributors, newcomers, and customers cannot message arbitrary sessions. |
+<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 | `telec sessions tail`        | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers may read peer transcripts for collaboration context. Customers should not see internal transcripts.                                                                                   |
 | `telec sessions run`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Running slash commands on new sessions is orchestration. Same restrictions as `sessions start`.                                                                                               |
 | `telec sessions revive`      | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Reviving a dead session is admin infrastructure. Admin only.                                                                                                                                  |
@@ -81,7 +85,10 @@ This table's system-role columns predate Integrator and System (see the code's `
 | --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `telec projects init` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the workspace. Workers don't initialize. Only admins and members should initialize projects.        |
 | `telec version`       | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                                     |
+<!-- planned-change:retire-docs-watcher -->
 | `telec sync`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Validate artifact sources; the mutating mode builds and deploys artifacts. Workers don't sync. Only admins and members should sync. |
+<!-- change:retire-docs-watcher -->
+<!-- /planned-change:retire-docs-watcher -->
 
 ### Documentation
 
@@ -191,7 +198,10 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec sessions revive`       | Contributors, newcomers, customers          |
 | `telec sessions result`       | Newcomers, customers                        |
 | `telec projects init`         | Contributors, newcomers, customers          |
+<!-- planned-change:retire-docs-watcher -->
 | `telec sync`                  | Contributors, newcomers, customers          |
+<!-- change:retire-docs-watcher -->
+<!-- /planned-change:retire-docs-watcher -->
 | `telec todo create`           | Newcomers, customers                        |
 | `telec todo design`           | Contributors, newcomers, customers          |
 | `telec todo remove`           | Contributors, newcomers, customers          |

@@ -1,6 +1,6 @@
 ---
 description: Schema, path, ref, and section-shape validation enforced on every taxonomy
-  source snippet during telec sync.
+  source snippet during source validation.
 visibility: public
 ---
 
@@ -13,7 +13,7 @@ visibility: public
 ## What it is
 
 Snippet frontmatter validation is the context gate that runs on every taxonomy
-source file during `telec sync` and pre-commit markdown validation. It enforces
+source file during source validation and the pre-commit markdown gate. It enforces
 the schema of Context snippets so the Index, selection policy, and CRUD
 surface never observe broken frontmatter, broken Required reads, leaked inline
 refs, wrong H1 type suffixes, or wrong taxonomy sections. Validation enforces
@@ -25,8 +25,13 @@ there is no id-to-path check.
 
 Frontmatter shape is always validated: `delivered_by`, when present, must be a
 non-empty list of slug strings; absence means the snippet is current. No
+<!-- planned-change:retire-docs-watcher -->
 `status` field is validated or required. On a full `telec sync` run with the
 todos DB reachable, relationship state is additionally validated against the
+<!-- change:retire-docs-watcher -->
+`status` field is validated or required. When publication runs with the
+todos DB reachable, relationship state is additionally validated against the
+<!-- /planned-change:retire-docs-watcher -->
 **local** todos store: every `delivered_by` slug and every in-body planned /
 planned-change marker slug is checked. A slug resolving to a retained todo —
 active, icebox, or soft-removed — is tolerated. A slug that names **no todo in
@@ -42,6 +47,7 @@ without a reachable todos DB validate shape only.
 
 ### Use cases
 
+<!-- planned-change:retire-docs-watcher -->
 ```
 Scenario: Missing required frontmatter field
   Given a snippet file without a "description" key in frontmatter
@@ -49,6 +55,15 @@ Scenario: Missing required frontmatter field
   Then a missing-frontmatter-field finding is reported for "description"
   And the sync exits with a non-zero status
 ```
+<!-- change:retire-docs-watcher -->
+```
+Scenario: Missing required frontmatter field
+  Given a snippet file without a "description" key in frontmatter
+  When source validation runs over the file
+  Then a missing-frontmatter-field finding is reported for "description"
+  And validation exits with a non-zero status
+```
+<!-- /planned-change:retire-docs-watcher -->
 
 ```
 Scenario: delivered_by is an empty list

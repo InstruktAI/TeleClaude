@@ -47,6 +47,7 @@ does not police cross-project ownership.
 
 #### UC-DIB6: A project's catalog is written from its sources
 
+<!-- planned-change:retire-docs-watcher -->
 ```
 Given a project with valid snippet sources under docs/
 When the operator runs telec sync
@@ -54,6 +55,15 @@ Then the index-build phase runs
 And docs/project/index.yaml is written with one entry per valid Source
 And docs/third-party/index.yaml is written when third-party sources exist
 ```
+<!-- change:retire-docs-watcher -->
+```
+Given a project with valid snippet sources under docs/
+When commit-boundary publication runs for that project's recorded commit
+Then the index-build phase runs
+And docs/project/index.yaml is written with one entry per valid Source
+And docs/third-party/index.yaml is written when third-party sources exist
+```
+<!-- /planned-change:retire-docs-watcher -->
 
 
 #### UC-DIB7: Classification is derived from the source's path

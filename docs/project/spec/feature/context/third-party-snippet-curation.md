@@ -35,7 +35,7 @@ Scenario: Author a third-party snippet under the project tree
   Given a Markdown file at docs/third-party/vendors/acme/widgets.md
   And frontmatter with description "Acme widgets reference" only
   And a "## Sources" section listing a Context7 ID and an https URL
-  When telec sync runs validation
+  When source validation runs
   Then the file passes third-party validation
   And its id and scope are derived from the path
   And it is written into the third-party index as an entry with id, description, scope, and path
@@ -61,9 +61,9 @@ Scenario: Phase 2 auto-loads third-party indexes on prefix match
 ```
 Scenario: Description is required
   Given a third-party Markdown file with no description in frontmatter
-  When telec sync validates the file
+  When source validation runs over the file
   Then a missing-frontmatter-field finding is reported for "description"
-  And the sync exits with a non-zero status
+  And validation exits with a non-zero status
 ```
 
 ### Cross-context references

@@ -54,8 +54,8 @@ after the repository root is synchronized and safe to mutate: it reconciles
 only that delivered slug, publishes the resulting cleanup through its
 canonical-main writer path, and leaves the original delivery record unchanged.
 
-`telec sync` validates snippet shape and builds and deploys indexes; it does not
-perform lifecycle-driven reconciliation.
+Source validation checks snippet shape and publication builds and deploys
+indexes; neither performs lifecycle-driven reconciliation.
 
 ## Canonical fields
 

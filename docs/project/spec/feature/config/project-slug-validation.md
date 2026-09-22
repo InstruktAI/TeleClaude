@@ -114,11 +114,9 @@ And subsequent loads return the project overlay's project_slug = "<computed-slug
   registry; also fills `project_slug` in the project's own
   `teleclaude.yml` when missing.
 
-
-- **Not validated by `telec sync`** — `telec sync` no longer registers
+- **Not validated by the publication pipeline** — publication does not register
   projects; the registry-write responsibility belongs entirely to
   `telec projects init`.
-
 
 ## Allowed values
 

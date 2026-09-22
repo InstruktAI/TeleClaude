@@ -11,7 +11,7 @@ visibility: 'public'
 
 ## What it is
 
-Agent artifact validation is the context gate that runs during `telec sync`.
+Agent artifact validation is the context gate that runs during source validation.
 It enforces the normalized shape of commands, plus a skill identity
 contract. Every `SKILL.md` must declare `name` and `description`, with `name`
 equal to its folder. Skill bodies are never graded against TeleClaude's taxonomy.

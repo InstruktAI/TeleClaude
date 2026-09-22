@@ -44,11 +44,11 @@ Three toggles, each gating a set of mechanisms:
   git wrapper's commit interception are not owned by `code` alone — they follow
   `code ∨ docs` (see the derivation rules), because they are the surface that
   records and evidences the commit obligation.
-- `docs: { enabled }` — the snippet pipeline: the `docs/** → telec sync` base
+- `docs: { enabled }` — the snippet pipeline: the `docs/**` publication base
   binding, the `.gitattributes` docs filters, and snippet validation, indexing,
   and publication.
 - `agents: { enabled }` — agent artifacts: the `agents/**`-family base binding
-  (`telec sync`) and artifact transpilation and deployment.
+  and artifact transpilation and deployment.
 
 An unsubscribed capability means the project has no TeleClaude-supported
 structure of that kind, so none of the functionality around it activates for that
@@ -288,7 +288,7 @@ And its subscribed snippets are still validated, indexed, and published
 
 ```
 Given a repository whose tracked teleclaude.yml declares code and docs unsubscribed
-And a clone of it on which no telec sync has ever run
+And a clone of it on which no publication has ever run
 When the git wrapper runs on a git invocation inside that clone
 Then both capabilities resolve to unsubscribed
 And the wrapper execs the real git binary without intercepting the invocation

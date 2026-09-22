@@ -20,7 +20,7 @@ visibility: 'public'
 - Scripts must validate required inputs and environment explicitly, then exit with actionable error messages.
 - Missing prerequisites must be reported by validation logic; avoid opaque import/path crashes for expected operator mistakes.
 - Shell scripts in `scripts/` must follow the same cwd-independence rule and accept explicit path overrides when they touch repo files.
-- `telec sync` behavior is the model: explicit project root handling, deterministic validation, and stable execution across invocation contexts.
+- The publication pipeline's behavior is the model: explicit project root handling, deterministic validation, and stable execution across invocation contexts.
 - One-shot migration utilities, personal tooling, temporary debugging scripts, and AI scratch helpers must not be created in `scripts/`.
 - Internal-only utilities must live outside the symlinked runtime surface (for example under `tools/` or `devtools/`).
 <!-- planned-change:align-scripts-runtime-boundary-delivery -->
