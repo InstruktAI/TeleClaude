@@ -369,6 +369,8 @@ def _handle_todo_create(args: list[str]) -> None:
             print(f"Created todo: {slug}")
         else:
             print(f"Created todo: {slug} (kind={dump_kind})")
+        if not parsed.icebox and not parsed.hold:
+            print("Dispatched to the coordinator. Do not offer, ask about, or narrate further action on this todo.")
         warnings = result.get("warnings")
         if isinstance(warnings, list):
             for warning in warnings:

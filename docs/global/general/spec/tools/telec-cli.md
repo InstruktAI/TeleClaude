@@ -147,3 +147,9 @@ traces are never surfaced as control flow.
   option parsing; `--option=value` is accepted for value-taking options.
   Historical conversation search is the one command that accepts undeclared
   dash-leading tokens, as search text.
+- `telec todo create --approved` (unless `--icebox` or `--hold` is also
+  supplied) hands the todo to the coordinator's automatic dispatch the moment
+  it prints `Created todo: <slug>`. The creating agent's involvement ends at
+  that call — it does not offer, ask about, or narrate further action on that
+  todo afterward; preparation and build are the coordinator's to initiate, not
+  the caller's.
