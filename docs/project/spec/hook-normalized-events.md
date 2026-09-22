@@ -39,8 +39,14 @@ Current raw-to-normalized lifecycle mapping:
 | Claude      | `SessionStart`                                                                                                                          | `session_start`      | forwarded  |
 | Claude      | `UserPromptSubmit`                                                                                                                      | `user_prompt_submit` | forwarded  |
 | Claude      | `PreToolUse`                                                                                                                            | `pre_tool_use`       | forwarded  |
+<!-- planned-change:notification-subtype-allowlist -->
 | Claude      | `Notification` where `notification_type` is `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, or `elicitation_url_dialog` | `agent_blocked`      | forwarded  |
 | Claude      | `Notification` with any other `notification_type`                                                                                       | `agent_notification` | forwarded  |
+<!-- change:notification-subtype-allowlist -->
+| Claude      | `Notification` where `notification_type` is `permission_prompt`, `agent_needs_input`, `elicitation_dialog`, `elicitation_url_dialog`, or `quota_auto_resume_stale` | `agent_blocked`      | forwarded  |
+| Claude      | `Notification` where `notification_type` is `quota_auto_resume_disabled`                                                                | `agent_turn_failed`  | forwarded  |
+| Claude      | `Notification` with any other `notification_type`, recognized or not                                                                    | (none)               | dropped    |
+<!-- /planned-change:notification-subtype-allowlist -->
 | Claude      | `PostToolUse`                                                                                                                           | `post_tool_use`      | forwarded  |
 | Claude      | `Stop`                                                                                                                                  | `agent_stop`         | forwarded  |
 | Claude      | `StopFailure`                                                                                                                           | `agent_turn_failed`  | forwarded  |
@@ -106,6 +112,7 @@ the DeepSeek Harness the error path raises past the turn-stopping dispatch that
 produces `Stop`. Consumers still treat the outcome as a single slot rather than
 relying on that exclusivity.
 
+<!-- planned-change:notification-subtype-allowlist -->
 `agent_notification` records a native notification without asserting a blocked,
 failed, or completed state. Known distress mappings keep their typed meaning;
 each native notification produces one normalized observation, not parallel
@@ -113,6 +120,20 @@ generic and distress observations. Native subtype and available detail remain
 available to the recipient intelligence. Notification forwarding is independent
 of the user's terminal-alert preference, and unfamiliar native notification
 subtypes remain observations rather than being discarded or graded by text.
+<!-- change:notification-subtype-allowlist -->
+Claude's `Notification` is a multi-purpose carrier whose `notification_type`
+discriminates the cause, so the platform admits subtypes by allowlist: an
+admitted subtype maps to the distress kind its cause already matches, and every
+other subtype — recognized or not — is dropped. A subtype earns admission only
+by naming a state from which no turn outcome is coming; one that restates an
+outcome the platform has already published carries no information, which is why
+`idle_prompt` is not admitted. A usage-limit wait that will not self-resume is
+the same waiting state as an approval wait and normalizes to `agent_blocked`;
+a usage-limit wait the runtime abandons ended the turn without completing it and
+normalizes to `agent_turn_failed`. Native subtype and the provider's own message
+text ride along as evidence, so the recipient intelligence reads the cause
+without inspecting the emitting session, and no code grades that text.
+<!-- /planned-change:notification-subtype-allowlist -->
 
 The emitting child's notification hook is an observation source, not a context
 injection or permission-decision boundary. Parent delivery uses the existing

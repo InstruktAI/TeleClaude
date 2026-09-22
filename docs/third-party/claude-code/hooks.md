@@ -170,16 +170,40 @@ Notification fields:
 
 - `message` (string)
 - `title` (optional string)
-- `notification_type`:
-  - `permission_prompt`
-  - `idle_prompt`
-  - `auth_success`
-  - `elicitation_dialog`
-  - `elicitation_url_dialog`
-  - `elicitation_complete`
-  - `elicitation_response`
-  - `agent_needs_input` (Claude Code 2.1.198+; background session waiting for input)
-  - `agent_completed` (Claude Code 2.1.198+; background session finished or failed)
+- `notification_type`, with the condition the vendor documents for each:
+  - `permission_prompt` — a tool use or a sandboxed command's network request needs
+    approval and the prompt has waited about six seconds. Timed differently in Claude
+    Desktop, the VS Code extension, and other hosts that answer permission requests
+    through the Agent SDK.
+  - `idle_prompt` — Claude finished responding about 60 seconds ago and the user has
+    not typed since.
+  - `auth_success` — authentication completes.
+  - `elicitation_dialog` — an MCP server opens an elicitation form and the user has
+    not typed for about six seconds.
+  - `elicitation_url_dialog` — an MCP server asks the user to open a browser URL and
+    the user has not typed for about six seconds.
+  - `elicitation_complete` — an MCP server reports a URL-mode elicitation complete.
+  - `elicitation_response` — an MCP elicitation response is sent back to the server.
+  - `agent_needs_input` (Claude Code 2.1.198+) — a background session starts waiting
+    on input while agent view is open, or the current session asks an agent-team
+    teammate terminal-setup question and the user has not typed for about six seconds.
+  - `agent_completed` (Claude Code 2.1.198+) — a background session finishes or fails.
+    Fires only while agent view is open.
+  - `quota_auto_resume_fired` — Claude Code continues the task after a claude.ai usage
+    limit paused it: at the reset, or sooner when something the user does during the
+    wait makes usage available again.
+  - `quota_auto_resume_stale` — a usage limit reset while the computer slept for more
+    than about 30 minutes. Claude Code waits for the user to press `Enter` instead of
+    continuing; after a shorter sleep it continues and fires `quota_auto_resume_fired`.
+  - `quota_auto_resume_disabled` — Claude Code ends its usage-limit wait without
+    continuing: `autoContinueAtUsageLimit` off, the reset moved more than 24 hours away
+    during a wait it started on its own, the continued task kept hitting the limit, or
+    the continuation was blocked before it reached the model. Does not fire for `Esc`,
+    `Ctrl+C`, or picking "Don't continue automatically".
+
+The subtypes are a multi-purpose carrier, not one signal: some name a state the session
+cannot leave without a human, and some only restate an outcome another hook already
+reported.
 
 `Notification` is an observability/side-effect hook. It cannot block or modify the
 native notification. `PermissionRequest` is the separate pre-prompt decision hook;

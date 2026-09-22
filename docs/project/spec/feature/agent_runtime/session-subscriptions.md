@@ -54,7 +54,11 @@ And C receives a single response notification on T's next stop, then the listene
 
 ```
 Given an agent session watches a target session
+<!-- planned-change:notification-subtype-allowlist -->
 When the target finishes its turn, fails its turn, waits for approval or input, or emits a native notification
+<!-- change:notification-subtype-allowlist -->
+When the target finishes its turn, fails its turn, or waits for approval or input
+<!-- /planned-change:notification-subtype-allowlist -->
 Then the watching agent receives the corresponding observation under the audience rules in this spec
 And terminal outcomes retain their shared per-turn outcome slot
 And nonterminal attention preserves distinct source occurrences through the existing delivery boundary
