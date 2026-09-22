@@ -89,7 +89,7 @@ _CODEX_AGENTS_INSTRUCTIONS_PATTERN = re.compile(
     re.DOTALL,
 )
 _TELECLAUDE_COMMAND_LOADER_PATTERN = re.compile(
-    r"\ATELECLAUDE COMMAND: [^\r\n]+\r?\n\r?\n(?:DISPATCH DOOR: (?:direct_human|delegated)\r?\n\r?\n)?"
+    r"\ATELECLAUDE COMMAND: [^\r\n]+\r?\n\r?\n(?:[A-Z][A-Z ]*: [^\r\n]+\r?\n\r?\n)*"
     r"Read [^\r\n]+ verbatim and follow it exactly as the active instruction set for this session\.\r?\n\r?\n"
     r"Treat the following as provided inputs to that instruction set:\r?\n[\s\S]*\Z"
 )

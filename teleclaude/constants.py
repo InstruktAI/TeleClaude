@@ -310,7 +310,6 @@ class SlashCommand(str, Enum):
     NEXT_PREPARE_DIAGNOSE = "next-prepare-diagnose"
     NEXT_PREPARE_PLAN = "next-prepare-plan"
     NEXT_PREPARE_TASK = "next-prepare-task"
-    NEXT_EMULATE_PO = "next-emulate-po"
     NEXT_DRIFT_ANALYZE = "next-drift-analyze"
     NEXT_PREPARE = "next-prepare"
     NEXT_WORK = "next-work"
@@ -357,7 +356,6 @@ class JobRole(str, Enum):
     TASK_PREPARER = "task-preparer"
     TASK_RUNNER = "task-runner"
     DRIFT_ANALYZER = "drift-analyzer"
-    PO_EMULATOR = "po-emulator"
     PREPARE_ORCHESTRATOR = "prepare-orchestrator"
     WORK_ORCHESTRATOR = "work-orchestrator"
     CREATE_ORCHESTRATOR = "create-orchestrator"
@@ -393,7 +391,6 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_PREPARE_DIAGNOSE: (ROLE_WORKER, JobRole.DIAGNOSER),
     SlashCommand.NEXT_PREPARE_PLAN: (ROLE_ORCHESTRATOR, JobRole.PLANNER),
     SlashCommand.NEXT_PREPARE_TASK: (ROLE_TASKER, JobRole.TASK_PREPARER),
-    SlashCommand.NEXT_EMULATE_PO: (ROLE_WORKER, JobRole.PO_EMULATOR),
     SlashCommand.NEXT_DRIFT_ANALYZE: (ROLE_WORKER, JobRole.DRIFT_ANALYZER),
     SlashCommand.NEXT_PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
     SlashCommand.NEXT_WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),

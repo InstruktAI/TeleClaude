@@ -135,7 +135,6 @@ class RunSessionArgs(TypedDict, total=False):
     thinking_mode: NotRequired[str]
     detach: NotRequired[bool]
     additional_context: NotRequired[str]
-    dispatch_door: NotRequired[str]
     entry_point: NotRequired[str]
 
 
@@ -652,8 +651,6 @@ class _TelecSessionAPI:
         request = RunSessionRequest.model_validate(request_data)
         if "agent" in kwargs:
             request = request.model_copy(update={"agent": kwargs["agent"]})
-        if "dispatch_door" in kwargs:
-            request = request.model_copy(update={"dispatch_door": kwargs["dispatch_door"]})
         resp = await self._request(
             "POST",
             "/sessions/run",

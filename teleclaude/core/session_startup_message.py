@@ -13,14 +13,12 @@ from teleclaude.core.command_input import (
     ResolvedCommandInput,
     normalize_command_input_token,
 )
-from teleclaude.core.models import SessionDispatchDoor
 from teleclaude.paths import COMMANDS_DIR
 
 _COMMAND_PREFIX = "/"
 _COMMAND_FILE_SUFFIX = ".md"
 _COMMANDS_ROOT = COMMANDS_DIR.resolve()
 _COMMAND_MARKER_TEMPLATE = "TELECLAUDE COMMAND: {command}{args}"
-_DISPATCH_DOOR_TEMPLATE = "DISPATCH DOOR: {dispatch_door}"
 _MARKER_ARGUMENT_PREFIX = " "
 _LOADER_SECTION_SEPARATOR = "\n\n"
 _LINE_SEPARATOR = "\n"
@@ -48,24 +46,21 @@ def resolve_command_document(command_name: str) -> Path | None:
 def compose_command_loader(
     command_name: str,
     args: str,
-    dispatch_door: SessionDispatchDoor | None = None,
 ) -> str:
     """Compose the loader for an already-resolved command name and its arguments.
 
     Raises when the command resolves to no installed document. Argument
-    admissibility is the dispatch door's rule, not this function's — it
-    parses nothing and gates nothing but document existence.
+    admissibility is the caller's rule, not this function's — it parses
+    nothing and gates nothing but document existence.
     """
     prompt_path = resolve_command_document(command_name)
     if prompt_path is None:
         raise StartupMessageError(_UNKNOWN_COMMAND_MESSAGE_TEMPLATE.format(command=command_name))
     marker_args = f"{_MARKER_ARGUMENT_PREFIX}{args}" if args else ""
-    metadata = _DISPATCH_DOOR_TEMPLATE.format(dispatch_door=dispatch_door.value) if dispatch_door is not None else ""
     return _LOADER_SECTION_SEPARATOR.join(
         section
         for section in (
             _COMMAND_MARKER_TEMPLATE.format(command=command_name, args=marker_args),
-            metadata,
             _LOADER_MESSAGE_TEMPLATE.format(prompt_path=prompt_path, args=args),
         )
         if section
@@ -94,7 +89,6 @@ def resolve_command_input(message: str | None, mode: CommandInputMode) -> Comman
 def prepare_startup_message(
     startup_message: str,
     declared_command: str | None,
-    dispatch_door: SessionDispatchDoor | None = None,
 ) -> str:
     """Compose a loader for a dispatched session, from the message's first line only.
 
@@ -121,7 +115,7 @@ def prepare_startup_message(
         command_name = declared_command
         _, _, first_line_args = first_line.partition(" ")
         args = first_line_args.strip()
-    composed = compose_command_loader(command_name, args, dispatch_door)
+    composed = compose_command_loader(command_name, args)
     if trailing:
         composed = f"{composed}{_LOADER_SECTION_SEPARATOR}{trailing}"
     return composed
