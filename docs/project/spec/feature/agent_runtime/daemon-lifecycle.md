@@ -48,6 +48,7 @@ And on completion the started flag is set and total elapsed is logged
 And total elapsed >=30s triggers a slow-startup warning
 ```
 
+<!-- planned-change:operations-start-emits-before-event-bus-ready -->
 #### Post-adapter completion tasks
 
 ```
@@ -61,6 +62,22 @@ And the inbound queue manager is brought up
 And conversation-delivery reconciliation re-sends bounded peer bundles for any conversation link with an orphaned pending-through cursor
 And the request surface starts AFTER these tasks have completed
 ```
+<!-- change:operations-start-emits-before-event-bus-ready -->
+#### Post-adapter completion tasks
+
+```
+Given adapters have started and the event platform is up
+When the post-adapter completion stage runs
+Then outstanding final-output reconciliation replays final agent output to UI adapters that missed it
+And the service's in-memory cache is wired into the transport adapter when present
+And the voice handler is initialized
+And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in pending|in_progress|interrupted (see `database#voice-transcription-durability-and-recovery`) are resubmitted idempotently within a bounded retry cap when their audio still exists — editing the original placeholder when a notice identifier was persisted — or transitioned to a terminal failed state with an audio-lost notice when it does not (orphaned temp-audio sweeping is NOT done here — it is owned by the periodic cleanup loop, consistent with this spec's rule that lifecycle startup performs no orphan sweeps)
+And operations normalized to their stale outcome by the operations stage are delivered to their recorded callers, each delivery decision recorded and a caller that cannot be reached costing the run nothing
+And the inbound queue manager is brought up
+And conversation-delivery reconciliation re-sends bounded peer bundles for any conversation link with an orphaned pending-through cursor
+And the request surface starts AFTER these tasks have completed
+```
+<!-- /planned-change:operations-start-emits-before-event-bus-ready -->
 
 #### Cache warm honesty
 
@@ -283,6 +300,21 @@ When startup runs
 Then the documented stage order is unchanged
 And the contributed work completes inside its own stage rather than deferring a later one
 ```
+
+<!-- planned:operations-start-emits-before-event-bus-ready -->
+
+#### UC-DL5: Operations abandoned by a previous run do not abort the boot
+
+```
+Given durable operations were left queued or running when a previous daemon run stopped
+When startup runs
+Then the operations stage normalizes them to their stale outcome
+And the post-adapter completion stage delivers each of those outcomes to its recorded caller
+And startup proceeds to its running state
+And no stage is skipped, reordered, or added
+```
+
+<!-- /planned:operations-start-emits-before-event-bus-ready -->
 
 ### Cross-context references
 
