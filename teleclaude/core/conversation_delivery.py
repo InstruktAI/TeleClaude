@@ -46,7 +46,7 @@ from teleclaude.core.session_listeners import (
 )
 from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import (
-    WEB_POLICY,
+    FULL_POLICY,
     ProjectedAuthor,
     ProjectedAuthorKind,
     ProjectionSurface,
@@ -87,7 +87,7 @@ async def _collect_visible_conversation_segments_since(
     agent_name: AgentName,
     since_timestamp: datetime,
     session_id: str,
-    policy: VisibilityPolicy = WEB_POLICY,
+    policy: VisibilityPolicy = FULL_POLICY,
 ) -> list[CollectedSegment]:
     """Collect visible user and assistant text after the provided cursor.
 
@@ -389,7 +389,7 @@ async def _deliver_for_peer(
     recipient_policy = visibility_policy_for_person(
         human_role=target_session.human_role if target_session is not None else HUMAN_ROLE_ADMIN,
         person_email=target_session.human_email if target_session is not None else None,
-        surface=ProjectionSurface.WEB,
+        surface=ProjectionSurface.FULL,
     )
     all_projected = await _collect_visible_conversation_segments_since(
         source_session.native_log_file,

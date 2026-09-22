@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import faulthandler
 import os
-import socket
 import tempfile
 import time
 import traceback as _tb
@@ -99,8 +98,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-API_TCP_HOST = "127.0.0.1"
-API_TCP_PORT = config.api.tcp_port
 API_TIMEOUT_KEEP_ALIVE_S = 5
 API_STOP_TIMEOUT_S = 5.0
 API_WATCH_INTERVAL_S = config.api.watch_interval_s
@@ -183,8 +180,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.socket_path = socket_path or API_SOCKET_PATH
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
-        self._tcp_server: uvicorn.Server | None = None
-        self._tcp_server_task: asyncio.Task[object] | None = None
         self._metrics_task: asyncio.Task[object] | None = None
         self._watch_task: asyncio.Task[object] | None = None
         self._mcp_reaper_task: asyncio.Task[object] | None = None
@@ -427,9 +422,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     def _setup_routes(self) -> None:
         """Set up core HTTP endpoints (middleware, health, auth, todos, WebSocket)."""
 
-        identity_headers = {"x-web-user-email", "x-web-user-name", "x-web-user-role"}
-        trusted_hosts = {"127.0.0.1", "::1", "localhost"}
-
         @self.app.exception_handler(Exception)
         async def _unhandled_exception(request, exc):  # type: ignore[no-untyped-def]
             """Last-resort handler: log full traceback, return generic 500 to client."""
@@ -441,24 +433,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 "".join(tb_lines),
             )
             return JSONResponse({"detail": "Internal server error"}, status_code=500)
-
-        @self.app.middleware("http")
-        async def _validate_identity_headers(request, call_next):  # type: ignore[no-untyped-def]
-            """Reject identity headers from non-trusted sources."""
-            has_identity = any(h in identity_headers for h in request.headers)
-            if has_identity:
-                client_host = request.client.host if request.client else None
-                is_trusted = client_host in trusted_hosts or client_host is None or client_host == ""
-                if not is_trusted:
-                    logger.warning(
-                        "Rejected identity headers from untrusted source: %s",
-                        client_host,
-                    )
-                    return JSONResponse(
-                        {"detail": "Identity headers rejected: untrusted source"},
-                        status_code=403,
-                    )
-            return await call_next(request)
 
         @self.app.middleware("http")
         async def _track_requests(request, call_next):  # type: ignore[no-untyped-def]
@@ -717,89 +691,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
         logger.info("API server listening on %s", self.socket_path)
 
-        # Start TCP listener only when server lifecycle is active.
-        # Unit tests call _start_server() directly without setting _running.
-        if self._running:
-            await self._start_tcp_server()
-
-    async def _start_tcp_server(self) -> None:
-        """Start TCP server for web interface access."""
-        if self._tcp_server_task and not self._tcp_server_task.done():
-            logger.warning("TCP server already running; skipping start")
-            return
-
-        # During daemon restarts, the previous listener can briefly keep the
-        # port busy. Probe/retry first so TCP startup doesn't destabilize API
-        # initialization.
-        tcp_port_ready = False
-        for _ in range(20):  # ~2s grace window
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    probe.bind((API_TCP_HOST, API_TCP_PORT))
-                    tcp_port_ready = True
-                    break
-                except OSError:
-                    await asyncio.sleep(0.1)
-
-        if not tcp_port_ready:
-            logger.warning(
-                "TCP port unavailable; skipping TCP listener startup",
-                host=API_TCP_HOST,
-                port=API_TCP_PORT,
-            )
-            return
-
-        tcp_config = uvicorn.Config(
-            self.app,
-            host=API_TCP_HOST,
-            port=API_TCP_PORT,
-            log_level="warning",
-            ws_ping_interval=API_WS_PING_INTERVAL_S,
-            ws_ping_timeout=API_WS_PING_TIMEOUT_S,
-            timeout_keep_alive=API_TIMEOUT_KEEP_ALIVE_S,
-        )
-        self._tcp_server = uvicorn.Server(tcp_config)
-        tcp_server = self._tcp_server
-
-        serve_coro = tcp_server._serve() if hasattr(tcp_server, "_serve") else tcp_server.serve()
-        self._tcp_server_task = asyncio.create_task(serve_coro, name="api-tcp-serve")
-        self._tcp_server_task.add_done_callback(lambda t, s=tcp_server: self._on_tcp_server_task_done(t, s))
-
-        max_retries = 50
-        for _ in range(max_retries):
-            if tcp_server.started:
-                break
-            if self._tcp_server_task.done():
-                exc = self._tcp_server_task.exception()
-                logger.error("TCP server exited during startup: %s", exc)
-                return
-            await asyncio.sleep(0.1)
-
-        if tcp_server.started:
-            logger.info("TCP server listening on %s:%d", API_TCP_HOST, API_TCP_PORT)
-        else:
-            logger.error("TCP server failed to start within timeout")
-
-    def _on_tcp_server_task_done(
-        self,
-        task: asyncio.Task[object],
-        server: uvicorn.Server | None = None,
-    ) -> None:
-        """Handle TCP server exit."""
-        if not self._running:
-            return
-        try:
-            exc = task.exception()
-        except asyncio.CancelledError:
-            return
-        server_ref = server or self._tcp_server
-        should_exit = getattr(server_ref, "should_exit", None) if server_ref else None
-        if exc:
-            logger.error("TCP server task crashed: %s (should_exit=%s)", exc, should_exit, exc_info=True)
-        elif not should_exit:
-            logger.error("TCP server task exited unexpectedly (should_exit=%s)", should_exit)
-
     async def restart_server(self) -> None:
         """Restart uvicorn server without tearing down server state."""
         await self._stop_server()
@@ -813,11 +704,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._on_server_exit = handler
 
     async def _stop_server(self) -> None:
-        """Stop uvicorn server tasks safely (Unix socket + TCP)."""
-        # Stop TCP server first
-        await self._stop_tcp_server()
-
-        # Stop Unix socket server
+        """Stop uvicorn server task safely."""
         server = self.server
         if server:
             logger.debug(
@@ -848,30 +735,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             except Exception as e:
                 # Suppress errors during teardown (socket already gone, etc.)
                 logger.debug("Error during server shutdown: %s", e)
-
-    async def _stop_tcp_server(self) -> None:
-        """Stop TCP server task safely."""
-        tcp_server = self._tcp_server
-        if tcp_server:
-            if tcp_server.started:
-                tcp_server.should_exit = True
-            elif self._tcp_server_task:
-                self._tcp_server_task.cancel()
-
-        if self._tcp_server_task:
-            try:
-                await asyncio.wait_for(self._tcp_server_task, timeout=API_STOP_TIMEOUT_S)
-            except TimeoutError:
-                logger.warning("Timed out stopping TCP server; cancelling task")
-                self._tcp_server_task.cancel()
-                try:
-                    await self._tcp_server_task
-                except asyncio.CancelledError:
-                    pass
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                logger.debug("Error during TCP server shutdown: %s", e)
 
     def _start_metrics_task(self) -> None:
         """Start periodic API server metrics logging."""

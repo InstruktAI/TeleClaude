@@ -25,7 +25,6 @@ class InjectedTextSourceFeature(StrEnum):
     TELEGRAM = "telegram"
     DISCORD = "discord"
     WHATSAPP = "whatsapp"
-    WEB = "web"
     VOICE = "voice"
     RELAY = "relay"
     CALLER_SEND = "caller_send"

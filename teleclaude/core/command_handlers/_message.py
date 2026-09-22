@@ -392,7 +392,7 @@ async def handle_voice(
         await client.pre_handle_command(session, cmd.origin)
 
     # Update origin BEFORE sending feedback so routing targets the correct adapter.
-    # Without this, stale last_input_origin (e.g. "web" from a different edge) causes feedback
+    # Without this, stale last_input_origin (e.g. "telegram" from a different edge) causes feedback
     # to broadcast and track wrong message_ids, preventing cleanup.
     if cmd.origin:
         await db.update_session(cmd.session_id, last_input_origin=cmd.origin)

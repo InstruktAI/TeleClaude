@@ -441,8 +441,8 @@ def project_conversation_chain(
     """Project all entries from a transcript chain through the canonical projection route.
 
     Reads files in order (oldest first) and applies visibility policy to each entry.
-    Provides the stable consumer contract for history API, web live SSE, and
-    future mirror/search adoption.
+    Provides the stable consumer contract for history API and future
+    mirror/search adoption.
 
     Args:
         file_paths: Ordered list of transcript file paths (oldest first). A chain

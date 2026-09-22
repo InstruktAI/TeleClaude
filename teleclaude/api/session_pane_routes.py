@@ -5,11 +5,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, clearance_sessions_tail
-from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_pane_models import SessionPaneDTO
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.config import config
@@ -36,14 +35,11 @@ def configure(client: AdapterClient | None = None) -> None:
 
 @router.get("/sessions/{session_id}/pane")
 async def get_session_pane_endpoint(
-    request: Request,
     session_id: str,
     computer: str | None = Query(None, description="Target computer"),
     _identity: CallerIdentity = Depends(clearance_sessions_tail),
 ) -> SessionPaneDTO:
     """Get an explicit live terminal observation independent of transcripts."""
-    await check_session_access(request, session_id)
-
     try:
         if is_remote_target(computer, config.computer.name):
             if _STATE.client is None:

@@ -24,7 +24,11 @@ from teleclaude.config._chiptunes import parse_chiptunes_config as _parse_chiptu
 from teleclaude.config._coerce import as_bool as _as_bool
 from teleclaude.config._defaults import DEFAULT_CONFIG as DEFAULT_CONFIG
 from teleclaude.config._environment import expand_environment_references
-from teleclaude.config._file_migrations import partition_legacy_discord_provider_ids, remove_matching_tmux_binary
+from teleclaude.config._file_migrations import (
+    partition_legacy_discord_provider_ids,
+    remove_matching_tmux_binary,
+    remove_retired_api_tcp_port,
+)
 from teleclaude.config._machine_input import EXPERIMENTS_FILE_INPUT, MACHINE_CONFIG_INPUT
 from teleclaude.config._models import AgentConfig as AgentConfig
 from teleclaude.config._models import BackupConfig as BackupConfig
@@ -772,6 +776,7 @@ def _load_config_from_disk(path: Path) -> TeleclaudeConfig:
     """Read config.yml (and optional adjacent experiments.yml) and build a typed Config."""
     _refresh_dotenv()  # pick up out-of-process .env edits before expanding ${VAR} placeholders
     remove_matching_tmux_binary(path, resolve_tmux_binary())
+    remove_retired_api_tcp_port(path)
     with open(path, encoding="utf-8") as f:
         raw_user_config = yaml.safe_load(f)
     current_schema_raw, _ = partition_legacy_discord_provider_ids(raw_user_config)

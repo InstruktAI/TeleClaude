@@ -26,7 +26,6 @@ LAG_WARN_THRESHOLD_S = "lag_warn_threshold_s"
 WARN_LOG_INTERVAL_S = "warn_log_interval_s"
 MAX_LAG_SAMPLES = "max_lag_samples"
 STALENESS_TTL_S = "staleness_ttl_s"
-TCP_PORT = "tcp_port"
 WATCH_INTERVAL_S = "watch_interval_s"
 WATCH_LAG_THRESHOLD_MS = "watch_lag_threshold_ms"
 WATCH_INFLIGHT_THRESHOLD_S = "watch_inflight_threshold_s"
@@ -70,7 +69,6 @@ HOOK_OUTBOX_INPUT = ClosedMapping(
 )
 API_INPUT = ClosedMapping(
     {
-        TCP_PORT: SCALAR,
         WATCH_INTERVAL_S: SCALAR,
         WATCH_LAG_THRESHOLD_MS: SCALAR,
         WATCH_INFLIGHT_THRESHOLD_S: SCALAR,
@@ -159,7 +157,6 @@ def parse_api_config(raw: object) -> ApiConfig:
     """Resolve API transport and monitoring tunables."""
     section = _section(raw, API_SECTION)
     return ApiConfig(
-        tcp_port=_int(section[TCP_PORT]),
         watch_interval_s=_float(section[WATCH_INTERVAL_S]),
         watch_lag_threshold_ms=_float(section[WATCH_LAG_THRESHOLD_MS]),
         watch_inflight_threshold_s=_float(section[WATCH_INFLIGHT_THRESHOLD_S]),

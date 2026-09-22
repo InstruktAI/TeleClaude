@@ -207,10 +207,10 @@ class BusinessConfig(ClosedModel):
 
 ProficiencyLevel = Literal["novice", "intermediate", "advanced", "expert"]
 OUTPUT_VISIBILITY_MOBILE: Final = "mobile"
-OUTPUT_VISIBILITY_WEB: Final = "web"
+OUTPUT_VISIBILITY_FULL: Final = "full"
 OUTPUT_VISIBILITY_BOTH: Final = "both"
 OUTPUT_VISIBILITY_OFF: Final = "off"
-OutputVisibilityValue = Literal["mobile", "web", "both", "off"]
+OutputVisibilityValue = Literal["mobile", "full", "both", "off"]
 _PROJECT_OWNER_CONFLICT = "Project configuration cannot declare both company and person owners"
 
 

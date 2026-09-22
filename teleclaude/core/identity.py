@@ -402,7 +402,7 @@ class IdentityResolver:
         """Resolve identity from origin and metadata.
 
         Args:
-            origin: Source of the session (e.g. 'telegram', 'web', 'terminal').
+            origin: Source of the session (e.g. 'telegram', 'terminal').
             origin_metadata: Typed origin metadata or dict with identity signals.
 
         Returns:
@@ -445,22 +445,6 @@ class IdentityResolver:
                         )
                 except (ValueError, TypeError):
                     pass
-
-        if origin == "web":
-            email = origin_metadata.get("email")
-            if isinstance(email, str):
-                person = self._by_email.get(email.lower())
-                if person:
-                    return IdentityContext(
-                        person_name=person.name,
-                        person_email=person.email,
-                        person_slug=person.slug,
-                        person_role=self._normalize_role(person.role),
-                        display_name_override=self._display_name_override_for(person),
-                        platform="web",
-                        platform_user_id=email,
-                        avatar_url=self._avatar_url_for(person),
-                    )
 
         if origin == "discord":
             discord_user_id = origin_metadata.get("user_id") or origin_metadata.get("discord_user_id")

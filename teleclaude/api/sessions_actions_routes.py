@@ -39,7 +39,6 @@ from teleclaude.api.run_session_refusals import (
     resolve_run_session_agent,
 )
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
-from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
 from teleclaude.api.session_pane_routes import router as session_pane_router
@@ -93,7 +92,7 @@ from teleclaude.core.models import (
     SessionLaunchIntent,
     SessionLaunchKind,
 )
-from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
+from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.models._types import SessionOriginMetadata
 from teleclaude.core.next_machine.manual_start import DriverStartGuardResult, guard_driver_start
 from teleclaude.core.origins import InputOrigin
@@ -389,7 +388,7 @@ def _prepare_run_session(
         startup_message = f"{startup_message}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
 
     initiator_session_id: str | None = None
-    if identity.session_id and not identity.session_id.startswith("web:"):
+    if identity.session_id:
         initiator_session_id = identity.session_id
     if normalized_cmd in WORKER_LIFECYCLE_COMMANDS and not normalized_args:
         raise _refuse_missing_argument(normalized_cmd)
@@ -411,9 +410,9 @@ def _prepare_run_session(
                 reason=AgentDispatchReason.WORKTREE_MISMATCH,
             )
 
-    origin_metadata: WebOriginMetadata | None = None
+    origin_metadata: TerminalOriginMetadata | None = None
     if identity.email:
-        origin_metadata = WebOriginMetadata(email=identity.email)
+        origin_metadata = TerminalOriginMetadata(email=identity.email)
 
     role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
 
@@ -454,14 +453,12 @@ def _prepare_run_session(
 
 @router.post("/sessions/{session_id}/keys")
 async def send_keys_endpoint(
-    http_request: Request,
     session_id: str,
     request: KeysRequest,
     computer: str | None = Query(None),
     _identity: CallerIdentity = Depends(clearance_sessions_keys),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send key command to session."""
-    await check_session_access(http_request, session_id)
     try:
         args: list[str] = []
         if request.count:
@@ -486,14 +483,12 @@ async def send_keys_endpoint(
 
 @router.post("/sessions/{session_id}/voice")
 async def send_voice_endpoint(
-    http_request: Request,
     session_id: str,
     request: VoiceInputRequest,
     computer: str | None = Query(None),
     _identity: CallerIdentity = Depends(clearance_sessions_voice),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Send voice input to session."""
-    await check_session_access(http_request, session_id)
     try:
         metadata = _build_metadata()
         cmd = CommandMapper.map_api_input(
@@ -541,14 +536,12 @@ async def send_file_endpoint(
 
 @router.post("/sessions/{session_id}/agent-restart", status_code=202)
 async def agent_restart(
-    http_request: Request,
     session_id: str,
     computer: str | None = Query(None),
     restart_request: AgentRestartRequest | None = None,
     identity: CallerIdentity = Depends(clearance_sessions_agent_restart),
 ) -> dict[str, str]:
     """Restart agent in session (preserves conversation via --resume)."""
-    await check_session_access(http_request, session_id)
     try:
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
@@ -617,7 +610,6 @@ async def revive_session(
 ) -> CreateSessionResponseDTO:
     """Revive a session by TeleClaude or native session ID."""
     session_id = await _resolve_revive_session_id(http_request, session_id, agent, identity)
-    await check_session_access(http_request, session_id)
     try:
         session = await db.get_session(session_id)
         if not is_remote_target(computer, config.computer.name):
@@ -665,14 +657,11 @@ async def revive_session(
 
 @router.get("/sessions/{session_id}/messages")
 async def get_session_messages(
-    request: Request,
     session_id: str,
     query: SessionMessagesQuery = Depends(parse_session_messages_query),
     _identity: CallerIdentity = Depends(clearance_sessions_tail),
 ) -> SessionMessagesDTO:
     """Get structured messages from a session's transcript files."""
-    await check_session_access(request, session_id)
-
     try:
         options = SessionMessageProjectionOptions(
             since=query.since,

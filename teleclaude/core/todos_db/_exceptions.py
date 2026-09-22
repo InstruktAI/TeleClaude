@@ -182,15 +182,15 @@ class ReviewerIdentityUnresolved(OperationFailure):
     """Reviewer-start refused because the caller carries no identity to key dedup on.
 
     Commit review's subject is ``(project, initiating driver, command)`` —
-    there is no todo slug to key on instead. A web-origin caller's identity
-    (``web:<uuid>``) is never persisted as ``initiator_session_id`` (it is not a
-    real session row; see ``sessions_actions_routes._prepare_run_session``), so
-    such a launch cannot be looked up against a prior holder. Admitting it
-    silently would bypass dedup entirely for that origin, which is the gap R1
-    requires closed with no escape hatch — so the create door refuses rather
-    than starting an unkeyed reviewer. This is a sibling member of the same
-    ``OperationFailure`` family as ``ReviewerConflict``, not a widening of it:
-    unlike a real conflict, there is no live holder to name.
+    there is no todo slug to key on instead. A caller with no session identity
+    at all has no ``initiator_session_id`` (see
+    ``sessions_actions_routes._prepare_run_session``), so such a launch cannot
+    be looked up against a prior holder. Admitting it silently would bypass
+    dedup entirely for that caller, which is the gap R1 requires closed with no
+    escape hatch — so the create door refuses rather than starting an unkeyed
+    reviewer. This is a sibling member of the same ``OperationFailure`` family
+    as ``ReviewerConflict``, not a widening of it: unlike a real conflict,
+    there is no live holder to name.
     """
 
     error_kind = "reviewer_identity_unresolved"

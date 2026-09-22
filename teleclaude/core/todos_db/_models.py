@@ -32,7 +32,7 @@ class Todo(SQLModel, table=True):
     # Total by contract for a todo created after this column existed; a legacy
     # pre-migration row may still carry NULL until the backfill task runs.
     lineage: str | None = Field(default=None)
-    # The creation door, stamped by the door itself: tui | cli | web | agent | split.
+    # The creation door, stamped by the door itself: tui | cli | agent | split.
     entry_point: str | None = Field(default=None)
     # Derived true for the human doors; declared by the filing agent for the
     # agent door (default false — a forgotten flag lands in the audit bucket).

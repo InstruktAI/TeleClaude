@@ -116,7 +116,6 @@ class CreateSessionArgs(TypedDict, total=False):
     subdir: NotRequired[str | None]
     title: NotRequired[str | None]
     message: NotRequired[str | None]
-    human_email: NotRequired[str | None]
     human_role: NotRequired[str | None]
     skip_listener_registration: NotRequired[bool]
     metadata: NotRequired[dict[str, object] | None]  # guard: loose-dict - dynamic payload
@@ -608,7 +607,6 @@ class _TelecSessionAPI:
             "launch_kind": kwargs.get("launch_kind", "agent"),
             "title": kwargs.get("title"),
             "message": kwargs.get("message"),
-            "human_email": kwargs.get("human_email"),
             "human_role": kwargs.get("human_role"),
             "metadata": kwargs.get("metadata"),
             "command_input_mode": kwargs.get("command_input_mode", CommandInputMode.ORDINARY),

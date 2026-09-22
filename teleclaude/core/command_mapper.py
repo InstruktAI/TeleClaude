@@ -54,7 +54,6 @@ _SOURCE_FEATURE_BY_ORIGIN = {
     InputOrigin.TELEGRAM.value: InjectedTextSourceFeature.TELEGRAM,
     InputOrigin.DISCORD.value: InjectedTextSourceFeature.DISCORD,
     InputOrigin.WHATSAPP.value: InjectedTextSourceFeature.WHATSAPP,
-    InputOrigin.WEB.value: InjectedTextSourceFeature.WEB,
     InputOrigin.REMINDER.value: InjectedTextSourceFeature.REMINDER,
     InputOrigin.TERMINAL.value: InjectedTextSourceFeature.CALLER_SEND,
 }

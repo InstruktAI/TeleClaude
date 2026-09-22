@@ -159,7 +159,7 @@ class CallerIdentity:
     system_role: str | None  # e.g. "worker" or None (orchestrator/admin)
     human_role: str | None  # e.g. "admin", "member", etc.
     tmux_session_name: str | None  # for diagnostic use only
-    email: str | None = None  # authenticated email from terminal login or web header
+    email: str | None = None  # authenticated email from terminal login
     principal: str | None = None  # "human:<email>" or "system:<id>" (token-auth only)
     principal_role: str | None = None  # role carried with the token (token-auth only)
     entry_point: EntryPoint | None = None  # the creation door, stamped from request shape
@@ -203,12 +203,7 @@ async def _verify_token_identity(x_session_token: str) -> CallerIdentity:
     )
 
 
-def _derive_terminal_entry_point(
-    *,
-    x_telec_email: str | None,
-    x_web_user_email: str | None,
-    tmux_session_name: str | None,
-) -> EntryPoint:
+def _derive_terminal_entry_point(*, tmux_session_name: str | None) -> EntryPoint:
     """Derive the creation door for a non-session caller from request shape.
 
     Best-effort / advisory, like the pre-existing ``tmux_session_name`` field
@@ -218,36 +213,22 @@ def _derive_terminal_entry_point(
     value), so a caller reaching the socket directly and omitting the session
     headers can set any of these headers verbatim to influence the derived
     door. `entry_point`/`lineage`/`human_involved` are audit/display fields
-    only — this never widens authorization. ``X-Web-User-Email`` is set only
-    by the frontend proxy; ``X-Telec-Email`` is set only by a real terminal
-    login. A caller carrying both (not expected in practice) resolves to the
-    terminal door — CLI is the door with an unforgeable session-identity
-    precedent to fall back on.
+    only — this never widens authorization.
     """
     if tmux_session_name == _TUI_TMUX_SESSION_NAME:
         return EntryPoint.TUI
-    if x_telec_email:
-        return EntryPoint.CLI
-    if x_web_user_email:
-        return EntryPoint.WEB
     return EntryPoint.CLI
 
 
 def _build_terminal_identity(
     *,
     x_telec_email: str | None,
-    x_web_user_email: str | None,
     tmux_session_name: str | None,
 ) -> CallerIdentity:
     """Resolve caller identity for non-session callers."""
-    email_header = x_telec_email or x_web_user_email
-    normalized_email = _normalize_email(email_header)
-    terminal_role = get_identity_resolver().effective_terminal_role(email_header)
-    entry_point = _derive_terminal_entry_point(
-        x_telec_email=x_telec_email,
-        x_web_user_email=x_web_user_email,
-        tmux_session_name=tmux_session_name,
-    )
+    normalized_email = _normalize_email(x_telec_email)
+    terminal_role = get_identity_resolver().effective_terminal_role(x_telec_email)
+    entry_point = _derive_terminal_entry_point(tmux_session_name=tmux_session_name)
     if terminal_role:
         return CallerIdentity(
             session_id="",
@@ -306,7 +287,6 @@ async def verify_caller(
     x_session_token: Annotated[str | None, Header()] = None,
     x_caller_session_id: Annotated[str | None, Header()] = None,
     x_telec_email: Annotated[str | None, Header()] = None,
-    x_web_user_email: Annotated[str | None, Header()] = None,
     x_tmux_session: Annotated[str | None, Header()] = None,
 ) -> CallerIdentity:
     """FastAPI dependency: verify caller identity via dual-factor check.
@@ -332,7 +312,6 @@ async def verify_caller(
     if not x_caller_session_id:
         return _build_terminal_identity(
             x_telec_email=x_telec_email,
-            x_web_user_email=x_web_user_email,
             tmux_session_name=x_tmux_session,
         )
 
@@ -347,7 +326,6 @@ async def optional_caller_identity(
     x_session_token: Annotated[str | None, Header()] = None,
     x_caller_session_id: Annotated[str | None, Header()] = None,
     x_telec_email: Annotated[str | None, Header()] = None,
-    x_web_user_email: Annotated[str | None, Header()] = None,
     x_tmux_session: Annotated[str | None, Header()] = None,
 ) -> CallerIdentity | None:
     """Resolve caller identity for an OPEN route without ever gating it.
@@ -364,7 +342,6 @@ async def optional_caller_identity(
             x_session_token=x_session_token,
             x_caller_session_id=x_caller_session_id,
             x_telec_email=x_telec_email,
-            x_web_user_email=x_web_user_email,
             x_tmux_session=x_tmux_session,
         )
     except HTTPException:

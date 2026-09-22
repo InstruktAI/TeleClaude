@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS todo (
     delivered_commit TEXT,
     children        TEXT,
     lineage         TEXT,            -- Creation Record: chain-root authority [>acting agent session] (audit/attribution)
-    entry_point     TEXT,            -- Creation Record: creation door (tui|cli|web|agent|split)
+    entry_point     TEXT,            -- Creation Record: creation door (tui|cli|agent|split)
     human_involved  INTEGER NOT NULL DEFAULT 0,  -- Creation Record: derived true for human doors, declared for agent
     context         TEXT,            -- Creation Record: door-specific reference data (e.g. split's parent slug)
     removed_doc_reconciliation TEXT, -- Exact pending-documentation tombstone snapshot
