@@ -27,7 +27,6 @@ from teleclaude.core.events import (
     AgentOutputPayload,
     AgentSessionStartPayload,
     AgentStopActivityEvent,
-    AgentStopCompletionSource,
     AgentStopPayload,
     ErrorEventContext,
     SessionLifecycleContext,
@@ -42,7 +41,6 @@ from teleclaude.core.reminders.models import ReminderEvent, ReminderEventAnchor
 from teleclaude.core.session_lifecycle import (
     LifecycleTransition,
     LifecycleTransitionReason,
-    decide_codex_stop_recovery,
     transition_session,
 )
 from teleclaude.core.session_listeners import NotificationKind
@@ -82,7 +80,6 @@ _AGENT_SESSION_LIFECYCLE_STATUS = "active"
 _AGENT_IDLE_OBSERVED_EVENT = "agent_idle_observed"
 _AGENT_IDLE_OBSERVED_OUTCOME = "recorded"
 _AGENT_IDLE_MANUAL_NATIVE_COMMAND_REASON = "manual_native_command"
-_AGENT_STOP_RECOVERY_DECIDED_EVENT = "agent_stop_recovery_decided"
 _AGENT_TURN_FAILED_OBSERVED_EVENT = "agent_turn_failed_observed"
 _AGENT_TURN_FAILED_OBSERVED_OUTCOME = "recorded"
 _AGENT_TURN_FAILED_BOUNDARY_REASON = "agent_turn_failed"
@@ -614,23 +611,6 @@ class AgentCoordinator(
         session_id = context.session_id
         payload = cast(AgentStopPayload, context.data)
         source_computer = payload.source_computer
-
-        if payload.completion_source is AgentStopCompletionSource.CODEX_TASK_RECOVERY:
-            decision = decide_codex_stop_recovery(await db.get_session(session_id), payload)
-            if not decision.accepted:
-                logger.info(
-                    _AGENT_STOP_RECOVERY_DECIDED_EVENT,
-                    session_id=session_id,
-                    native_session_id=payload.session_id,
-                    native_turn_id=payload.native_turn_id,
-                    outcome="rejected",
-                    reason=decision.reason.value,
-                    native_completed_at=(
-                        payload.native_completed_at.isoformat() if payload.native_completed_at else None
-                    ),
-                    accepted_input_at=(payload.accepted_input_at.isoformat() if payload.accepted_input_at else None),
-                )
-                return
 
         logger.debug(
             "Agent stop event for session %s (title: %s)",

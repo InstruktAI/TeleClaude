@@ -60,13 +60,6 @@ class AgentHookEvents(StrEnum):
 AgentHookEventType = AgentHookEvents
 
 
-class AgentStopCompletionSource(StrEnum):
-    """Closed vocabulary for the evidence that initiated an agent stop."""
-
-    NATIVE_HOOK = "native_hook"
-    CODEX_TASK_RECOVERY = "codex_task_recovery"
-
-
 ALL_AGENT_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(AgentHookEvents)
 _DISTRESS_REASON_FIELD = "reason"
 _DISTRESS_NOTIFICATION_TYPE_FIELD = "notification_type"
@@ -145,10 +138,7 @@ class AgentStopPayload:
     prompt: str | None = None
     raw: Mapping[str, object] = field(default_factory=dict)
     source_computer: str | None = None
-    completion_source: AgentStopCompletionSource = AgentStopCompletionSource.NATIVE_HOOK
     native_turn_id: str | None = None
-    native_completed_at: datetime | None = None
-    accepted_input_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -315,34 +305,6 @@ def _build_attention_observation(data: Mapping[str, object]) -> AgentAttentionOb
 def _optional_string(value: object) -> str | None:
     """Return a non-empty string from dynamic hook data."""
     return value if isinstance(value, str) and value else None
-
-
-def build_codex_task_recovery_stop_payload(data: Mapping[str, object]) -> AgentStopPayload:
-    """Build the trusted internal payload for a scheduled Codex stop recovery."""
-    native_turn_id = data.get("native_turn_id")
-    native_completed_at = _recovery_timestamp(data.get("native_completed_at"))
-    accepted_input_at = _recovery_timestamp(data.get("accepted_input_at"))
-    if not isinstance(native_turn_id, str) or not native_turn_id:
-        raise ValueError("Codex task recovery requires native_turn_id")
-    if native_completed_at is None or accepted_input_at is None:
-        raise ValueError("Codex task recovery requires completion and accepted-input timestamps")
-    return AgentStopPayload(
-        session_id=cast(str | None, data.get("session_id")),
-        transcript_path=cast(str | None, data.get("transcript_path")),
-        source_computer=cast(str | None, data.get("source_computer")),
-        raw=MappingProxyType(dict(data)),
-        completion_source=AgentStopCompletionSource.CODEX_TASK_RECOVERY,
-        native_turn_id=native_turn_id,
-        native_completed_at=native_completed_at,
-        accepted_input_at=accepted_input_at,
-    )
-
-
-def _recovery_timestamp(value: object) -> datetime | None:
-    """Normalize a recovery timestamp from its durable outbox representation."""
-    if isinstance(value, datetime):
-        return value
-    return parse_iso_datetime(value) if isinstance(value, str) else None
 
 
 class TeleClaudeEvents:
