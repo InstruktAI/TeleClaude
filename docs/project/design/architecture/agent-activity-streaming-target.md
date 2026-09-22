@@ -7,11 +7,7 @@ visibility: 'public'
 
 ## Purpose
 
-<!-- planned-change:strip-dead-web-remnants -->
-Define the intended outbound architecture before building the web interface:
-<!-- change:strip-dead-web-remnants -->
 Define the intended outbound architecture for agent activity streaming:
-<!-- /planned-change:strip-dead-web-remnants -->
 
 - one canonical agent activity stream contract,
 - one fan-out distribution boundary,
@@ -29,11 +25,7 @@ This document is a target-state blueprint, not a description of current implemen
 
 **Outputs:**
 
-<!-- planned-change:strip-dead-web-remnants -->
-- Routed outbound stream events to UI consumers (Telegram, TUI, Web).
-<!-- change:strip-dead-web-remnants -->
 - Routed outbound stream events to UI consumers (Telegram, TUI).
-<!-- /planned-change:strip-dead-web-remnants -->
 - State/snapshot updates through cache/API websocket for low-frequency UI state.
 
 ## Invariants
@@ -48,24 +40,6 @@ This document is a target-state blueprint, not a description of current implemen
 
 ### 1. Target dataflow
 
-<!-- planned-change:strip-dead-web-remnants -->
-```text
-INPUT (already in place)
-UI/API/MCP -> commands -> core handlers -> tmux/agents
-
-OUTPUT (target)
-hook + poller events -> AgentCoordinator (activity hub)
-                   -> Agent Activity Stream Publisher
-                   -> AdapterClient / Output Distributor
-                      -> Telegram Adapter
-                      -> Stream Gateway Adapter
-                         -> TUI stream consumer
-                         -> Web stream consumer
-
-STATE (existing pattern)
-session updates -> DaemonCache -> API websocket -> UI state views
-```
-<!-- change:strip-dead-web-remnants -->
 ```text
 INPUT (already in place)
 UI/API/MCP -> commands -> core handlers -> tmux/agents
@@ -81,7 +55,6 @@ hook + poller events -> AgentCoordinator (activity hub)
 STATE (existing pattern)
 session updates -> DaemonCache -> API websocket -> UI state views
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 ### 2. Event contract
 

@@ -118,22 +118,6 @@ And the prepare chain advances past the architecture phase on next dispatch
 
 #### UC-WSS10: Accepted human approval resumes preparation through one workflow path
 
-<!-- planned-change:strip-dead-web-remnants -->
-```gherkin
-Given a Todo is parked at a human-approval gate
-And the human approves through an interaction surface, or the agent the human addressed records the approval
-And only the human's approval carries human-approval authority
-When workflow accepts the approval command
-Then it records the approval and initiates continuation as one domain outcome
-And preparation continues from the approved fact without another human action
-And conversation, user-interface controls, the command line, the web, and future adapters produce that same outcome
-And every receiving agent trusts the recorded approval without provenance investigation
-And the involvement record keeps the recording session auditable rather than verified at runtime
-But an agent's own judgment cannot enter this human-approval command
-And an approval carrying only agent judgment delivers no notification into any session
-And the agent never messages itself about an approval it recorded
-```
-<!-- change:strip-dead-web-remnants -->
 ```gherkin
 Given a Todo is parked at a human-approval gate
 And the human approves through an interaction surface, or the agent the human addressed records the approval
@@ -148,7 +132,6 @@ But an agent's own judgment cannot enter this human-approval command
 And an approval carrying only agent judgment delivers no notification into any session
 And the agent never messages itself about an approval it recorded
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 #### UC-WSS9: Human task authorization stamps execution approval
 

@@ -57,16 +57,8 @@ The workflow service emits the event with this payload:
 - `project_path` — effective cwd used to resolve the project's workflow state.
 
 - `lineage` — the complete creation lineage in one value: the chain-root authority plus, when an agent session was the hands, that acting session. A direct human filing carries the human root alone; an agent filing under human lineage carries both the human root and the acting session in the same value; a root with no human is legitimate only for a job-runner filing. The human root is denormalized in the value so it stays resolvable after the acting session is garbage-collected. Never null: a create whose caller identity resolves to neither a human nor a session fails loudly.
-<!-- planned-change:strip-dead-web-remnants -->
-- `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `web`, `agent`, or `split`. Never declared by the caller. A todo created while an agent processes deferrals records `agent` like any other agent filing — the door records how the todo came into existence, not which todo preceded it.
-<!-- change:strip-dead-web-remnants -->
 - `entry_point` — the creation door, stamped mechanically by the door itself: `tui`, `cli`, `agent`, or `split`. Never declared by the caller. A todo created while an agent processes deferrals records `agent` like any other agent filing — the door records how the todo came into existence, not which todo preceded it.
-<!-- /planned-change:strip-dead-web-remnants -->
-<!-- planned-change:strip-dead-web-remnants -->
-- `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`, `web`). For the `agent` door it defaults to `false` and becomes `true` only when this creation call carries a declaration and the acting session's observed human input is recent. It is never inherited from the session, lineage, parent todo, or any preceding act.
-<!-- change:strip-dead-web-remnants -->
 - `human_involved` — boolean. Derived `true` for the human doors (`tui`, `cli`). For the `agent` door it defaults to `false` and becomes `true` only when this creation call carries a declaration and the acting session's observed human input is recent. It is never inherited from the session, lineage, parent todo, or any preceding act.
-<!-- /planned-change:strip-dead-web-remnants -->
 - `context` — door-specific reference data, never identity: the parent todo slug for the `split` door, derived from its `--group` signal; absent for every other door.
 
 - `schedule` — optional task execution eligibility: a one-shot ISO-8601 instant or a recurring rule; omitted otherwise.
@@ -332,16 +324,6 @@ And the surface verifies the decisions were faced, never that the answers are tr
 
 #### UC-WTC8: Direct human filing records the human root alone
 
-<!-- planned-change:strip-dead-web-remnants -->
-```gherkin
-Given a human creates a todo from the TUI, a logged-in terminal, or the web frontend, with no agent session
-When the workflow service writes the roadmap row
-Then `lineage` records the human root alone as `human:<email>`
-And `entry_point` records the door used (`tui`, `cli`, or `web`), stamped by the door itself
-And `human_involved` is `true`, derived mechanically from the human door
-And the emitted `workflow.todo.created` payload carries the same creation record
-```
-<!-- change:strip-dead-web-remnants -->
 ```gherkin
 Given a human creates a todo from the TUI or a logged-in terminal, with no agent session
 When the workflow service writes the roadmap row
@@ -350,7 +332,6 @@ And `entry_point` records the door used (`tui` or `cli`), stamped by the door it
 And `human_involved` is `true`, derived mechanically from the human door
 And the emitted `workflow.todo.created` payload carries the same creation record
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 #### UC-WTC9: Agent filing records the complete lineage chain in one value
 

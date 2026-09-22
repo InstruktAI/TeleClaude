@@ -77,11 +77,7 @@ to their contexts by the context map.
 Must never: import adapter-specific code, reference UI concepts, or know about specific transport protocols. Core defines protocols; adapters implement them.
 
 **Edge Layer**
-<!-- planned-change:strip-dead-web-remnants -->
-Owns: inbound origin handling for all platforms. Every origin — UI adapters (Telegram, Discord, WhatsApp), API origins (terminal, web), and daemon-internal origins — passes through an edge that normalizes raw platform signals into typed request metadata. Message flows use typed `MessageMetadata` actor fields. Session-creation flows use typed origin metadata objects such as `TerminalOriginMetadata` and `WebOriginMetadata`. Identity resolution reads those typed inputs. The session handler persists the accumulated session view in `origin_metadata`. Downstream layers never assemble origin context themselves.
-<!-- change:strip-dead-web-remnants -->
 Owns: inbound origin handling for all platforms. Every origin — UI adapters (Telegram, Discord, WhatsApp), the terminal API origin, and daemon-internal origins — passes through an edge that normalizes raw platform signals into typed request metadata. Message flows use typed `MessageMetadata` actor fields. Session-creation flows use the typed origin metadata object `TerminalOriginMetadata`. Identity resolution reads those typed inputs. The session handler persists the accumulated session view in `origin_metadata`. Downstream layers never assemble origin context themselves.
-<!-- /planned-change:strip-dead-web-remnants -->
 Must never: contain domain logic or make domain decisions. Edges translate inbound signals — they don't decide. Domain policies live in core. For outbound UX concerns (message rendering, channel management, platform lifecycle), see the [UI Adapter architecture](ui-adapter.md).
 
 **CLI / TUI**
@@ -119,16 +115,6 @@ Each arrow is a boundary crossing. At each crossing, the downstream layer receiv
 
 ### Request traversal: Human via origin
 
-<!-- planned-change:strip-dead-web-remnants -->
-```
-Origin (Telegram, Discord, WhatsApp, Web, Terminal, Daemon)
-  -> Edge (normalize platform signals into typed request metadata)
-    -> Identity Resolution (resolve human_email, human_role from typed request metadata)
-      -> Command Pipeline (normalize to command, enqueue)
-        -> Core Services (create/update session, merge session origin sections into origin_metadata)
-          -> UI Adapter (translate events to platform UX, where applicable)
-```
-<!-- change:strip-dead-web-remnants -->
 ```
 Origin (Telegram, Discord, WhatsApp, Terminal, Daemon)
   -> Edge (normalize platform signals into typed request metadata)
@@ -137,7 +123,6 @@ Origin (Telegram, Discord, WhatsApp, Terminal, Daemon)
         -> Core Services (create/update session, merge session origin sections into origin_metadata)
           -> UI Adapter (translate events to platform UX, where applicable)
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 The edge normalizes request-time identity into typed metadata. Identity resolution reads from that typed payload. Core persists the accumulated session view in `origin_metadata` (the record across all requests). Core never knows which platform originated the request.
 

@@ -37,31 +37,16 @@ UI messages are a projection of source truth, never the truth itself.
 | `accepted_input_fingerprint` | A fixed-length prefix of the accepted turn, written at every acceptance point and read only to compare one turn against the last. It is never rendered: the prefix cuts mid-entry and severs envelope closures, so it cannot be classified. |
 | `visible_input_span` | What a person sent in one turn, resolved from the turn as written at the moment it is accepted and rendered on the session row. An envelope contributes its body, never its framing; a turn that is wholly platform text — a notification, a wake, a checkpoint — contributes nothing, and the previously stored span stays standing with its own acceptance time rather than being blanked, so a long-lived session's row keeps showing the last thing a person actually sent. Recognition is by declared closure, so a person's own bracketed words stay their words. One bounded exception to the never-classify rule for the fingerprint exists: the one-shot migration backfill (072) restores pre-existing rows from the stored fingerprint using the opening-keyed control classification, and every restored value is replaced by the cleanly resolved span on that session's next accepted turn. The exception's rationale lives with the migration. |
 | `output_visibility_policy` | Per-recipient policy that decides which non-conversational source categories are eligible for projection before adapter rendering. |
-<!-- planned-change:strip-dead-web-remnants -->
-| `projection_surface` | Destination family used by visibility policy: `mobile` for chat adapters, `web` for browser/API projection, and `tui` for the raw terminal pane. |
-<!-- change:strip-dead-web-remnants -->
 | `projection_surface` | Destination family used by visibility policy: `mobile` for chat adapters, `full` for full-surface projection, and `tui` for the raw terminal pane. |
-<!-- /planned-change:strip-dead-web-remnants -->
 
-<!-- planned-change:strip-dead-web-remnants -->
-Per-person category overrides accept `off`, `mobile`, `web`, `both`, or
-`null`. `off` hides the category on every projected surface. `null` inherits
-the recipient role default.
-<!-- change:strip-dead-web-remnants -->
 Per-person category overrides accept `off`, `mobile`, `full`, `both`, or
 `null`. `off` hides the category on every projected surface. `null` inherits
 the recipient role default.
-<!-- /planned-change:strip-dead-web-remnants -->
 
 ### Source truth
 
-<!-- planned-change:strip-dead-web-remnants -->
-- Source order is absolute. Anything rendered to Discord, Telegram, web, or terminal-facing UI must
-  follow the same order as the authoritative source entries.
-<!-- change:strip-dead-web-remnants -->
 - Source order is absolute. Anything rendered to Discord, Telegram, or terminal-facing UI must
   follow the same order as the authoritative source entries.
-<!-- /planned-change:strip-dead-web-remnants -->
 - Adapter state is not source truth. Message ids, edit targets, char offsets, QoS queues, and
   threaded-output anchors are delivery receipts only.
 - Projection may rebuild an adapter view from source truth plus that adapter's cursor. It must not
@@ -211,15 +196,9 @@ Per-person preferences control two configurable categories:
 - `system_messages` — orchestrator, integrator, finalizer, worker, and other system coordination messages.
 - `tool_calls` — tool invocation blocks, never tool result bodies.
 
-<!-- planned-change:strip-dead-web-remnants -->
-Defaults are role-sensitive: admins see `system_messages` and `tool_calls` on mobile
-and web unless their per-person config says otherwise; members, contributors, and
-newcomers see neither by default.
-<!-- change:strip-dead-web-remnants -->
 Defaults are role-sensitive: admins see `system_messages` and `tool_calls` on mobile
 and full-surface projection unless their per-person config says otherwise; members,
 contributors, and newcomers see neither by default.
-<!-- /planned-change:strip-dead-web-remnants -->
 
 Some source categories are not configurable. Tool result bodies are TUI-only.
 Checkpoint messages and agent-CLI side-channel artifacts are dropped from every
@@ -265,30 +244,16 @@ Input delivery origins:
 - `telegram`
 - `discord`
 - `whatsapp`
-<!-- planned-change:strip-dead-web-remnants -->
-- `web`
-<!-- change:strip-dead-web-remnants -->
-<!-- /planned-change:strip-dead-web-remnants -->
 - `terminal`
 
-<!-- planned-change:strip-dead-web-remnants -->
-Human UI origin surfaces remain `telegram`, `discord`, `whatsapp`, and `web`.
-`terminal` carries no human UI surface. Reminder firings use control delivery
-and are not input origins.
-<!-- change:strip-dead-web-remnants -->
 Human UI origin surfaces remain `telegram`, `discord`, and `whatsapp`.
 `terminal` carries no human UI surface. Reminder firings use control delivery
 and are not input origins.
-<!-- /planned-change:strip-dead-web-remnants -->
 
 Projection surfaces:
 
 - `mobile`
-<!-- planned-change:strip-dead-web-remnants -->
-- `web`
-<!-- change:strip-dead-web-remnants -->
 - `full`
-<!-- /planned-change:strip-dead-web-remnants -->
 - `both`
 - `tui`
 
@@ -296,13 +261,8 @@ Per-person visibility setting values:
 
 - `null` - use the role-based default.
 - `mobile` - show the category only on mobile/chat adapters.
-<!-- planned-change:strip-dead-web-remnants -->
-- `web` - show the category only on web/API projection.
-- `both` - show the category on both mobile/chat adapters and web/API projection.
-<!-- change:strip-dead-web-remnants -->
 - `full` - show the category only on full-surface projection.
 - `both` - show the category on both mobile/chat adapters and full-surface projection.
-<!-- /planned-change:strip-dead-web-remnants -->
 
 Projection outcomes:
 

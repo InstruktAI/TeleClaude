@@ -246,20 +246,6 @@ for repository-specific names.
 
 Valid **only** in `~/.teleclaude/people/{slug}/teleclaude.yml`.
 
-<!-- planned-change:strip-dead-web-remnants -->
-```yaml
-creds:
-  telegram: { user_name, user_id, chat_id }
-  discord: { user_id, nick, avatar_url, voice_bot_token } # voice_bot_token is ${DISCORD_TOKEN} in the owner-only person .env and must authenticate the same bot the Discord adapter runs; the person's live private channel comes from Discord voice state and is not config
-  whatsapp: { phone_number }
-subscriptions: list[SubscriptionEntry]
-interests: list[string]
-settings:
-  output_visibility:
-    system_messages: null | off | mobile | web | both
-    tool_calls: null | off | mobile | web | both
-```
-<!-- change:strip-dead-web-remnants -->
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }
@@ -272,7 +258,6 @@ settings:
     system_messages: null | off | mobile | full | both
     tool_calls: null | off | mobile | full | both
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 `accounts` is an additional per-person key: the list of mail accounts a person's
 assistant may act as. Each entry declares the connector it belongs to, drawn from
@@ -641,59 +626,6 @@ sections. Unless marked otherwise, these fields are internal: they retain the
 built-in values shown here and remain absent from a generated machine
 configuration and from the config TUI.
 
-<!-- planned-change:strip-dead-web-remnants -->
-```yaml
-hook_outbox:
-  poll_interval_s: 1
-  batch_size: 25
-  lock_ttl_s: 30
-  base_backoff_s: 1
-  max_backoff_s: 60
-  session_idle_timeout_s: 5
-  session_max_pending: 32
-  session_critical_reserve: 8
-  session_claim_high_watermark: derived # max(1, session_max_pending - 8)
-  session_claim_low_watermark: derived # max(0, session_claim_high_watermark // 3)
-  summary_interval_s: 15
-  backlog_warn_threshold: 20
-  lag_warn_threshold_s: 3
-  warn_log_interval_s: 15
-  max_lag_samples: 2048
-  staleness_ttl_s: 300
-api:
-  tcp_port: 8420
-  watch_interval_s: 5
-  watch_lag_threshold_ms: 250
-  watch_inflight_threshold_s: 1
-  watch_dump_cooldown_s: 30
-  mcp_reaper_interval_s: 30
-  ws_control_send_timeout_s: 30
-  ws_default_send_timeout_s: 15
-  ws_replaceable_send_timeout_s: 5
-daemon:
-  api_restart_max: 5
-  api_restart_window_s: 60
-  api_restart_backoff_s: 1
-  resource_snapshot_interval_s: 60
-  launchd_watch_interval_s: 300
-  launchd_watch_enabled: true
-  startup_gate_timeout_s: 15
-  startup_gate_poll_interval_s: 0.25
-  agent_prompt_ready_timeout_s: 60
-  log_level: INFO # tui
-  legacy_gemini_root: ~/.gemini/tmp
-tts:
-  services:
-    <mlx-service>:
-      cli_bin: null
-      instruct: A clear, natural conversational voice.
-stt:
-  services:
-    parakeet:
-      model: mlx-community/parakeet-tdt-0.6b-v3
-      cli_bin: null
-```
-<!-- change:strip-dead-web-remnants -->
 ```yaml
 hook_outbox:
   poll_interval_s: 1
@@ -744,7 +676,6 @@ stt:
       model: mlx-community/parakeet-tdt-0.6b-v3
       cli_bin: null
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 The service-level TTS and STT settings inherit their existing operator-facing
 tiers. `daemon.log_level` is operator-facing and reaches agent-session subprocesses

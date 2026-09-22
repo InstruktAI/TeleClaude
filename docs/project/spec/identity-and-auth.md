@@ -13,11 +13,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:strip-dead-web-remnants -->
-TeleClaude uses one identity model across API, TUI, web, and adapters:
-<!-- change:strip-dead-web-remnants -->
 TeleClaude uses one identity model across API, TUI, and adapters:
-<!-- /planned-change:strip-dead-web-remnants -->
 
 - person identity comes from global `people` config,
 - session identity comes from daemon-owned session records,
@@ -126,20 +122,7 @@ is the answer only when no session resolves, and it never names a session.
 issued_at, revoked_at. Token lifetime is controlled exclusively by revocation on
 session close.
 
-<!-- planned-change:strip-dead-web-remnants -->
-### 4) Web authentication (NextAuth)
-
-The Web Interface uses **NextAuth (v5 Beta)** with the following flow:
-
-1. **Email entry:** User enters their email address in the login form.
-2. **OTP Delivery:** A 6-digit verification code is sent via `nodemailer` using the `SMTP_*` and `EMAIL_FROM` environment variables in production. In development (`NODE_ENV=development`), the code is logged to server output instead of being emailed.
-3. **Verification:** `NextAuth` verifies the code.
-4. **Authorization:** The `signIn` callback ensures the email matches a `people` entry in `teleclaude.yml`.
-
 ### 4) Terminal + TUI authentication
-<!-- change:strip-dead-web-remnants -->
-### 4) Terminal + TUI authentication
-<!-- /planned-change:strip-dead-web-remnants -->
 
 - `telec auth login <email>` writes a TTY-scoped login file.
 - `telec auth login` is blocked inside generic tmux contexts.

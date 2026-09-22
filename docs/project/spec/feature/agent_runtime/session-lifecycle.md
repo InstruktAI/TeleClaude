@@ -24,19 +24,6 @@ Termination accepted by the service is a request, not a finished close: the end-
 
 #### Creating a session — happy path
 
-<!-- planned-change:strip-dead-web-remnants -->
-```
-Given an authenticated caller has clearance to start sessions
-And the request carries an `origin` (terminal or web) and an enabled `agent`
-When the caller asks the agent_runtime service to create a session with project_path, agent, thinking_mode, launch_kind
-Then a session id is generated (or accepted from the command when pre-supplied)
-And a host-pane reference is composed using the TeleClaude prefix and the session id
-And the session row is recorded in storage with `lifecycle_status="initializing"` and a complete payload (computer name, title, project path, subdir, working slug, human email, human role, principal, active agent, thinking mode)
-And host-pane creation and agent CLI launch are kicked off asynchronously by the bootstrap task (not on the request path)
-And the response carries the session id, host-pane reference, and the resolved agent
-And the `agent_runtime.session.started` event is published when the session is live
-```
-<!-- change:strip-dead-web-remnants -->
 ```
 Given an authenticated caller has clearance to start sessions
 And the request carries an `origin` (terminal) and an enabled `agent`
@@ -48,19 +35,9 @@ And host-pane creation and agent CLI launch are kicked off asynchronously by the
 And the response carries the session id, host-pane reference, and the resolved agent
 And the `agent_runtime.session.started` event is published when the session is live
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 #### UC-SL2: Principal binding from identity
 
-<!-- planned-change:strip-dead-web-remnants -->
-```
-Given the request supplies origin metadata (web or terminal email payload)
-When the agent_runtime service resolves identity via the identity resolver
-Then human_email and human_role are populated from the identity context when not explicitly provided
-And when an initiator session id references a parent session, missing fields (human_email, human_role, principal) are inherited from the parent
-And a session creation without any resolved human_role AND no system role is rejected — the request is refused
-```
-<!-- change:strip-dead-web-remnants -->
 ```
 Given the request supplies terminal origin metadata (email payload)
 When the agent_runtime service resolves identity via the identity resolver
@@ -68,7 +45,6 @@ Then human_email and human_role are populated from the identity context when not
 And when an initiator session id references a parent session, missing fields (human_email, human_role, principal) are inherited from the parent
 And a session creation without any resolved human_role AND no system role is rejected — the request is refused
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 #### UC-SL20: Single-user terminal caller resolves to admin
 
@@ -127,16 +103,6 @@ And no message is pasted or submitted on that evidence
 
 #### Initiator listener registration
 
-<!-- planned-change:strip-dead-web-remnants -->
-```
-Given the caller's session is non-web (initiator session id present and not `web:`-prefixed)
-And the listener-skip flag is false
-When the new session row is created
-Then a stop-listener is registered tying caller -> new session
-And the caller's host-pane reference is captured so completion notifications can route back
-And if the caller has no host pane, registration is skipped with a debug log
-```
-<!-- change:strip-dead-web-remnants -->
 ```
 Given the caller's session has an initiator session id
 And the listener-skip flag is false
@@ -145,23 +111,9 @@ Then a stop-listener is registered tying caller -> new session
 And the caller's host-pane reference is captured so completion notifications can route back
 And if the caller has no host pane, registration is skipped with a debug log
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 #### Listing sessions — caller-scoped default
 
-<!-- planned-change:strip-dead-web-remnants -->
-```
-Given the TUI lists sessions without `?all=true`
-And the request carries the caller-session-id header
-When list-sessions runs
-Then local sessions are loaded via the local command handler
-And cached remote sessions are merged in by session id (local wins on conflict)
-And the merged list is filtered to entries whose initiator session id matches the caller-session-id header
-And role-based filtering is then applied (see below)
-And optional `job` filter narrows further
-And the human display name is enriched from the people configuration for each entry whose email matches
-```
-<!-- change:strip-dead-web-remnants -->
 ```
 Given the TUI lists sessions without `?all=true`
 And the request carries the caller-session-id header
@@ -172,22 +124,7 @@ And the merged list is filtered to entries whose initiator session id matches th
 And optional `job` filter narrows further
 And the human display name is enriched from the people configuration for each entry whose email matches
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
-<!-- planned-change:strip-dead-web-remnants -->
-#### Listing sessions — role-based visibility
-
-```
-Given the web client sends identity headers for email and role
-When the role-based filter applies
-Then role `admin` sees every session
-And role `member` sees their own sessions PLUS sessions with visibility "shared"
-And role `contributor` / `newcomer` / unknown sees only their own sessions (matched by human_email)
-And requests without identity headers (TUI / tool clients) are NOT filtered by role — they see everything reachable
-```
-
-<!-- change:strip-dead-web-remnants -->
-<!-- /planned-change:strip-dead-web-remnants -->
 #### UC-SL22: Listing closed sessions — agent status projection
 
 ```
@@ -396,16 +333,6 @@ And a caller that waits instead reads the same terminal record from the operatio
 
 #### Direct-link sessions
 
-<!-- planned-change:strip-dead-web-remnants -->
-```
-Given the caller passes `direct=true` AND has a non-web caller session
-When the new session is created
-Then the direct-link initiator resolves both endpoints (titles, computer names, fallback to ids)
-And the link is materialized via the standard ignition path
-And the launch intent's message is wrapped with the direct-conversation protocol header and rules block
-And the conversation link operates orthogonally to stop-listener subscriptions
-```
-<!-- change:strip-dead-web-remnants -->
 ```
 Given the caller passes `direct=true` AND has a caller session
 When the new session is created
@@ -414,7 +341,6 @@ And the link is materialized via the standard ignition path
 And the launch intent's message is wrapped with the direct-conversation protocol header and rules block
 And the conversation link operates orthogonally to stop-listener subscriptions
 ```
-<!-- /planned-change:strip-dead-web-remnants -->
 
 ### Cross-context references
 
@@ -438,11 +364,7 @@ And the conversation link operates orthogonally to stop-listener subscriptions
 <!-- change:no-async-work-without-a-receipt -->
 - **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.
 <!-- /planned-change:no-async-work-without-a-receipt -->
-<!-- planned-change:strip-dead-web-remnants -->
-- **Listing without identity headers reveals everything.** TUI and tool clients are intentionally unfiltered. Role-based gating is only applied when the web identity headers are present. The caller-session-id header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
-<!-- change:strip-dead-web-remnants -->
 - **Listing reveals everything reachable.** TUI and tool clients are unfiltered. The caller-session-id header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
-<!-- /planned-change:strip-dead-web-remnants -->
 - **Non-admin non-system-role sessions are jailed to the help-desk directory.** When the request has no system role and the human role is anything other than admin, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
 - **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.
 

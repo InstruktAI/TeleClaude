@@ -440,22 +440,14 @@ And the peer output retains its peer authorship and human-facing presentation
 
 ### Cross-context references
 
-<!-- planned-change:strip-dead-web-remnants -->
-- **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a non-web caller session id (web origins are rejected for `--direct`). The link aggregate stores session ids only; the principal binding is owned upstream by identity.
-<!-- change:strip-dead-web-remnants -->
 - **identity**: caller identity is bound via the caller-session identifier on the request; ignition requires a caller session id. The link aggregate stores session ids only; the principal binding is owned upstream by identity.
-<!-- /planned-change:strip-dead-web-remnants -->
 - **session_subscriptions** (peer feature): the listener axis (one-shot or persistent stop notifications) and the link axis are intentionally orthogonal. While a link is active, listener delivery for the same (caller, target) pair is suppressed at notification time; the listener row is preserved and resumes after closure.
 - **conversation_delivery** (peer feature inside agent_runtime): the cross-sharing of turn-complete outputs (per-link cursor advancement, transcript-since-cursor bundling, reconciliation of orphaned pending-through cursors) is invoked at hook-stop and at service startup via the post-adapter completion stage — see the service lifecycle spec.
 - **integration**: no direct dependency. Sessions whose initiator/target is an external (non-host-pane) adapter are not eligible for ignition; new-session ignition is only wired from session-spawn paths whose caller is an agent session.
 
 ## Known caveats
 
-<!-- planned-change:strip-dead-web-remnants -->
-- **Ignition requires a caller session identity.** Pure web / unidentified callers cannot ignite a link. The link is always between two agent sessions, not a human and a session.
-<!-- change:strip-dead-web-remnants -->
 - **Ignition requires a caller session identity.** Unidentified callers cannot ignite a link. The link is always between two agent sessions, not a human and a session.
-<!-- /planned-change:strip-dead-web-remnants -->
 - **Closure is associative, not caller-scoped.** Any member calling `--close-link` severs the link for ALL members. There is no "leave but keep the link alive for the others" path in v1.
 - **Reuse short-circuits with an error, not a success.** Calling `--direct` a second time on an already-linked pair returns an error with a rules reminder; the message text is NOT delivered through this path. Members are expected to "just talk" — turn-complete outputs are cross-shared automatically.
 - **Plain-send during an active link is rejected.** A non-direct send toward a peer with whom a direct link is active is refused to prevent obfuscating the exchange from observers.

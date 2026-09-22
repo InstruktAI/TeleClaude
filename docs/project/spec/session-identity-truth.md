@@ -92,11 +92,7 @@ Fields that must be explained:
 
 Two related but distinct concepts carry origin information:
 
-<!-- planned-change:strip-dead-web-remnants -->
-- **Request-time typed metadata**: the edge normalizes raw platform signals into typed fields before the command enters core. Message flows use `MessageMetadata.actor_id`, `actor_name`, `actor_avatar_url`, and `platform_message_id`. Session-creation flows use typed origin metadata objects such as `TerminalOriginMetadata` or `WebOriginMetadata`. Identity resolution consumes these typed inputs at request time.
-<!-- change:strip-dead-web-remnants -->
 - **Request-time typed metadata**: the edge normalizes raw platform signals into typed fields before the command enters core. Message flows use `MessageMetadata.actor_id`, `actor_name`, `actor_avatar_url`, and `platform_message_id`. Session-creation flows use the typed origin metadata object `TerminalOriginMetadata`. Identity resolution consumes these typed inputs at request time.
-<!-- /planned-change:strip-dead-web-remnants -->
 - **`origin_metadata`**: per-session JSON column on the sessions table. It is the accumulated merge of session origin sections received during the session's lifetime. Persisted via `update_origin_metadata` (merge-on-write). Carries the `platform` key (last input origin) plus all platform sections.
 
 Identity resolution reads from the typed metadata presented on the active command. Long-term identity derivation (e.g. `derive_identity_key`) reads from `origin_metadata`.
