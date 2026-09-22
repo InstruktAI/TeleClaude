@@ -8,9 +8,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 from teleclaude.config._models import STALL_THRESHOLD_SECONDS
-from teleclaude.core.agents import AgentName
-from teleclaude.core.events import AgentStopCompletionSource, AgentStopPayload
-from teleclaude.core.session_status import SessionLifecycleStatus, is_session_terminal
+from teleclaude.core.session_status import SessionLifecycleStatus
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -31,29 +29,6 @@ class LifecycleTransitionReason(StrEnum):
     CLOSED = "closed"
     MIGRATED_NATIVE_SESSION = "migrated_native_session"
     MIGRATED_UNPROVEN = "migrated_unproven"
-
-
-class CodexStopRecoveryRejectionReason(StrEnum):
-    """Closed reasons a delayed Codex completion cannot finalize the current turn."""
-
-    ACCEPTED = "accepted"
-    MISSING_SESSION = "missing_session"
-    TERMINAL = "terminal"
-    INITIALIZING = "initializing"
-    NOT_CODEX = "not_codex"
-    RUNTIME_NOT_STARTED = "runtime_not_started"
-    MALFORMED = "malformed"
-    SUPERSEDED_INPUT = "superseded_input"
-    NOT_NEWER_THAN_INPUT = "not_newer_than_input"
-    ALREADY_COMPLETED = "already_completed"
-
-
-@dataclass(frozen=True)
-class CodexStopRecoveryDecision:
-    """Eligibility result for the only delayed completion recovery path."""
-
-    accepted: bool
-    reason: CodexStopRecoveryRejectionReason
 
 
 @dataclass(frozen=True)
@@ -131,47 +106,6 @@ def readiness_projection(
     if elapsed < STALL_THRESHOLD_SECONDS:
         return elapsed, None, None
     return elapsed, "readiness_investigation", "general/procedure/orchestration#agent-degradation-handling"
-
-
-def decide_codex_stop_recovery(session: Session | None, payload: AgentStopPayload) -> CodexStopRecoveryDecision:
-    """Decide whether delayed provider evidence still belongs to the current session turn."""
-    if session is None:
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.MISSING_SESSION)
-    if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.TERMINAL)
-    if session.lifecycle_status == SessionLifecycleStatus.INITIALIZING:
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.INITIALIZING)
-    if session.active_agent != AgentName.CODEX.value:
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.NOT_CODEX)
-    if not session.runtime_start_observed:
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.RUNTIME_NOT_STARTED)
-    if (
-        payload.completion_source is not AgentStopCompletionSource.CODEX_TASK_RECOVERY
-        or payload.native_turn_id is None
-        or payload.native_completed_at is None
-        or payload.accepted_input_at is None
-        or session.last_message_sent_at is None
-    ):
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.MALFORMED)
-    current_input_at = _as_utc(session.last_message_sent_at)
-    native_completed_at = _as_utc(payload.native_completed_at)
-    accepted_input_at = _as_utc(payload.accepted_input_at)
-    if current_input_at is None or native_completed_at is None or accepted_input_at is None:
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.MALFORMED)
-    if current_input_at != accepted_input_at:
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.SUPERSEDED_INPUT)
-    if native_completed_at <= current_input_at:
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.NOT_NEWER_THAN_INPUT)
-    last_stop_at = _as_utc(session.last_agent_stop_at)
-    if last_stop_at is not None and last_stop_at >= native_completed_at:
-        return CodexStopRecoveryDecision(False, CodexStopRecoveryRejectionReason.ALREADY_COMPLETED)
-    return CodexStopRecoveryDecision(True, CodexStopRecoveryRejectionReason.ACCEPTED)
-
-
-def _as_utc(value: datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 async def transition_session(store: LifecycleStore, session_id: str, transition: LifecycleTransition) -> None:

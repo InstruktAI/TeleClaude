@@ -24,12 +24,10 @@ from teleclaude.core.events import (
     ALL_AGENT_HOOK_EVENTS,
     AgentEventContext,
     AgentHookEvents,
-    AgentStopCompletionSource,
     ErrorEventContext,
     SessionLifecycleContext,
     TeleClaudeEvents,
     build_agent_payload,
-    build_codex_task_recovery_stop_payload,
 )
 from teleclaude.core.hook_outbox_handlers import (
     handle_checkpoint_seen,
@@ -547,13 +545,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             )
             event_bus.emit(TeleClaudeEvents.ERROR, context, visibility=EventVisibility.CLUSTER)
         else:
-            completion_source = data.get("completion_source")
-            payload = (
-                build_codex_task_recovery_stop_payload(data)
-                if event_type == AgentHookEvents.AGENT_STOP
-                and completion_source == AgentStopCompletionSource.CODEX_TASK_RECOVERY
-                else build_agent_payload(cast(AgentHookEvents, event_type), data)
-            )
+            payload = build_agent_payload(cast(AgentHookEvents, event_type), data)
             context = AgentEventContext(  # type: ignore[assignment]
                 session_id=session_id,
                 event_type=cast(AgentHookEvents, event_type),

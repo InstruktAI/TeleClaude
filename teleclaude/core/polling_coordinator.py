@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
-from teleclaude.core.codex_stop_recovery import cancel_codex_stop_recoveries, schedule_codex_stop_recovery
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.identity import resolve_discord_author_alias
@@ -828,8 +827,6 @@ async def poll_and_send_output(
                 refreshed = await db.get_session(event.session_id)
                 if refreshed and refreshed.last_output_digest != prior_digest and refreshed.runtime_start_observed:
                     await db.update_session(event.session_id, runtime_activity_at=datetime.now(UTC))
-                if refreshed is not None:
-                    await schedule_codex_stop_recovery(refreshed)
 
             elif isinstance(event, ProcessExited):
                 # Fetch session once for all operations
@@ -894,7 +891,6 @@ async def poll_and_send_output(
         raise
 
     finally:
-        cancel_codex_stop_recoveries(session_id)
         await _unregister_polling(session_id)
         _cleanup_codex_input_state(session_id)
         _clear_output_metrics(session_id)
