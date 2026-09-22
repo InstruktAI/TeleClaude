@@ -72,9 +72,15 @@ def _require_delivery_provenance(slug: str, state_model: TodoStateModel | None, 
 
 
 def _delivered_state(raw_state: str) -> str:
-    """Apply delivery through the lifecycle authority before persisting state."""
+    """Apply delivery through the lifecycle authority before persisting state.
+
+    Supplies no artifact write timestamps: this is a synchronous string
+    transform with no ``TodosDb`` to read them from, and the ``delivery_evidence``
+    signal branches to its terminal transition before either derivation site
+    that would consult the mapping.
+    """
     state = TodoState.model_validate(upcycle_state_dict(json.loads(raw_state)))
-    apply_authoritative_signal(state, "delivery_evidence")
+    apply_authoritative_signal(state, "delivery_evidence", artifact_write_timestamps={})
     return json.dumps(canonicalize_state_for_storage(state.model_dump(exclude_none=True)))
 
 

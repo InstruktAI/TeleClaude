@@ -28,6 +28,7 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     WorkPhase,
 )
+from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
@@ -286,7 +287,10 @@ async def _advance_prepared_to_build_started(
     """Persist the work-entry transition."""
     await ensure_quality_checklist(todos_db, slug)
     writer = StateWriter(state)
-    apply_authoritative_signal(writer.state, "build_started", worktree_cwd=worktree_cwd)
+    artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
+    apply_authoritative_signal(
+        writer.state, "build_started", worktree_cwd=worktree_cwd, artifact_write_timestamps=artifact_write_timestamps
+    )
     await writer.commit(todos_db, slug)
 
 

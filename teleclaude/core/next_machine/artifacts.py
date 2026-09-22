@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
@@ -16,6 +18,9 @@ from teleclaude.constants import (
     STATE_KEY_REQUIREMENTS,
     STATE_KEY_TASK_PLAN,
 )
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 
 def compute_artifact_diff(cwd: str, slug: str, artifact_name: str, base_sha: str) -> str:
@@ -39,3 +44,15 @@ def artifact_name_to_state_key(artifact_name: str) -> str:
         ARTIFACT_TASK_PLAN: STATE_KEY_TASK_PLAN,
     }
     return mapping.get(artifact_name, artifact_name.replace(".", "_").replace("-", "_"))
+
+
+async def read_artifact_write_timestamps(todos_db: TodosDb, slug: str) -> dict[str, str]:
+    """Return each stored artifact's durable write timestamp, keyed by state key.
+
+    Reads ``TodoArtifact.updated_at`` — committed atomically with the artifact's
+    content and version row — never a provenance-sync routine's own re-runnable
+    timestamp.
+    """
+    return {
+        artifact_name_to_state_key(row["name"]): row["updated_at"] for row in await todos_db.artifact_metadata(slug)
+    }

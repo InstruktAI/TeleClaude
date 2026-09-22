@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.constants import IntegrationPhase, TodoStatus
+from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     derive_build_status,
@@ -294,7 +295,13 @@ def _with_active_band(todo: TodoDTO, delivered_slug_set: set[str]) -> TodoDTO:
     return todo.model_copy(update={"band": band})
 
 
-def _derive_projection_fields(slug: str, raw_status: str, state: dict[str, StateValue] | None) -> _ProjectionFields:
+def _derive_projection_fields(
+    slug: str,
+    raw_status: str,
+    state: dict[str, StateValue] | None,
+    *,
+    artifact_write_timestamps: dict[str, str],
+) -> _ProjectionFields:
     if state is None:
         return _ProjectionFields(
             todo_status=raw_status,
@@ -342,7 +349,9 @@ def _derive_projection_fields(slug: str, raw_status: str, state: dict[str, State
     )
     lifecycle_phase = None if is_delivered else current_value
     prepare_review_verdict = (
-        prepare_review_verdict_from_state(state) if lifecycle_phase == LifecyclePhase.BLOCKED.value else None
+        prepare_review_verdict_from_state(state, artifact_write_timestamps=artifact_write_timestamps)
+        if lifecycle_phase == LifecyclePhase.BLOCKED.value
+        else None
     )
 
     raw_integration_phase = _non_empty_str(state.get("integration_phase"))
@@ -593,7 +602,12 @@ def assemble_todo_from_db(
 
             # --- Derive display values from canonical lifecycle state ---
 
-            projection = _derive_projection_fields(slug, raw_status, state)
+            artifact_write_timestamps = {
+                artifact_name_to_state_key(str(ar[0])): str(ar[1]) for ar in artifact_rows if isinstance(ar[1], str)
+            }
+            projection = _derive_projection_fields(
+                slug, raw_status, state, artifact_write_timestamps=artifact_write_timestamps
+            )
             hold_audit = state.get("hold_audit")
             # Derive hold once at the projection boundary so every UI edge reads
             # only the verdict.

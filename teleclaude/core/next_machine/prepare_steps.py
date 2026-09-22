@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -13,6 +14,7 @@ from teleclaude.constants import (
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
+from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
@@ -63,8 +65,12 @@ _derive_project_root = prepare_step_support.derive_project_root
 _prepare_step_prepared = prepare_step_support.prepare_step_prepared
 
 
-def _blockers_from_state(state: dict[str, StateValue], *, cwd: str) -> list[str]:
-    return prepare_blockers(StateWriter(state).state, repo_root=cwd)
+def _blockers_from_state(
+    state: dict[str, StateValue], *, cwd: str, artifact_write_timestamps: Mapping[str, str]
+) -> list[str]:
+    return prepare_blockers(
+        StateWriter(state).state, repo_root=cwd, artifact_write_timestamps=artifact_write_timestamps
+    )
 
 
 def _drift_context(drift: dict[str, ArtifactDriftStatus]) -> str:
@@ -448,6 +454,7 @@ async def _prepare_dispatch(
         if _has_status(drift, DRIFT_SUBSTANTIVE):
             return _drift_reprepare_instruction(slug, drift)
         if _has_status(drift, DRIFT_PENDING):
+            artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
             return await _dispatch_worker(
                 db=db,
                 todos_db=todos_db,
@@ -457,7 +464,9 @@ async def _prepare_dispatch(
                 state=state,
                 command=SlashCommand.NEXT_DRIFT_ANALYZE,
                 expected="drift_reviewed stamps for every pending artifact",
-                blockers=_blockers_from_state(state, cwd=project_root),
+                blockers=_blockers_from_state(
+                    state, cwd=project_root, artifact_write_timestamps=artifact_write_timestamps
+                ),
                 additional_context=format_pending_classes_for_dispatch(drift_result),
             )
         return await _prepare_step_prepared(db, todos_db, slug, project_root=project_root)
@@ -465,7 +474,8 @@ async def _prepare_dispatch(
         project_root = _derive_project_root(cwd, slug)
         drift_result = await _derive_and_commit_drift(todos_db=todos_db, slug=slug, cwd=project_root, state=state)
         drift = collapse_drift(drift_result)
-        blockers = _blockers_from_state(state, cwd=project_root)
+        artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
+        blockers = _blockers_from_state(state, cwd=project_root, artifact_write_timestamps=artifact_write_timestamps)
         drift_anomaly_blockers = _drift_anomaly_blockers(state, drift_result)
         if drift_anomaly_blockers:
             return _drift_anomaly_halt_instruction(slug, drift_anomaly_blockers, drift)

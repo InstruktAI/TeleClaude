@@ -65,6 +65,7 @@ from teleclaude.core.human_involvement import (
     HumanInvolvementSurface,
     resolve_human_involvement,
 )
+from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
@@ -519,9 +520,11 @@ async def _sync_artifact_provenance_state(
         snippet_digest_fn=snippet_body_digest_for(repo_root),
     )
     if artifact_name == ARTIFACT_TASK_PLAN:
+        artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
         writer.state.lifecycle_phase = adopt_prepare_handoff_phase(
             writer.state,
             report_digests={},
+            artifact_write_timestamps=artifact_write_timestamps,
             prepared_session_id=prepared_session_id,
         )
     await writer.commit(todos_db, slug)

@@ -191,10 +191,15 @@ async def _adopt_prepare_phase(
         for artifacts in REVIEW_EVIDENCE_ARTIFACTS.values()
         if artifacts.target_artifact_key is not None
     }
+    artifact_write_timestamps = {
+        state_key: artifact_metadata[artifact_name]["updated_at"] if artifact_name in artifact_metadata else ""
+        for state_key, artifact_name in _ADOPTION_ARTIFACTS
+    }
     derived = adopt_prepare_handoff_phase(
         writer.state,
         repo_root=repo_root,
         report_digests=report_digests,
+        artifact_write_timestamps=artifact_write_timestamps,
     )
     for phase, artifacts in REVIEW_EVIDENCE_ARTIFACTS.items():
         if artifacts.target_artifact_key is None:

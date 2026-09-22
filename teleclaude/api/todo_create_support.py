@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.lifecycle import adopt_prepare_handoff_phase
 from teleclaude.core.next_machine.state_mutation import ApprovalsManager, StateWriter
 
@@ -32,7 +33,13 @@ async def seed_plan_drafting(todos_db: TodosDb, slug: str, *, repo_root: str) ->
         raise RuntimeError(msg)
     writer = StateWriter(raw_state)
     writer.state.artifacts.implementation_plan.seeded = True
-    phase = adopt_prepare_handoff_phase(writer.state, repo_root=repo_root, report_digests={})
+    artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
+    phase = adopt_prepare_handoff_phase(
+        writer.state,
+        repo_root=repo_root,
+        report_digests={},
+        artifact_write_timestamps=artifact_write_timestamps,
+    )
     writer.state.lifecycle_phase = phase
     await writer.commit(todos_db, slug)
     return phase.value
@@ -51,9 +58,11 @@ async def seed_task_plan_authorization(
         msg = f"Todo state missing after --kind task --plan creation for {slug!r}"
         raise RuntimeError(msg)
     writer = StateWriter(raw_state)
+    artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
     phase = adopt_prepare_handoff_phase(
         writer.state,
         report_digests={},
+        artifact_write_timestamps=artifact_write_timestamps,
         prepared_session_id=prepared_session_id,
     )
     writer.state.lifecycle_phase = phase

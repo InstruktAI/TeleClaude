@@ -585,16 +585,18 @@ def collapse_drift(
     return collapsed
 
 
-def prepare_blockers(model: TodoState, *, repo_root: str | None = None) -> list[str]:
+def prepare_blockers(
+    model: TodoState, *, repo_root: str | None = None, artifact_write_timestamps: Mapping[str, str]
+) -> list[str]:
     """Return deterministic prepare blockers for advisory payloads and phase derivation."""
     _ = repo_root
-    return _non_drift_prepare_blockers(model)
+    return _non_drift_prepare_blockers(model, artifact_write_timestamps=artifact_write_timestamps)
 
 
-def _non_drift_prepare_blockers(model: TodoState) -> list[str]:
+def _non_drift_prepare_blockers(model: TodoState, *, artifact_write_timestamps: Mapping[str, str]) -> list[str]:
     blockers: list[str] = []
     blockers.extend(_missing_upstream_blockers(model))
-    blockers.extend(_review_remediation_blockers(model))
+    blockers.extend(_review_remediation_blockers(model, artifact_write_timestamps=artifact_write_timestamps))
     blockers.extend(_upcycle_blockers(model))
     return blockers
 
@@ -613,13 +615,13 @@ def _missing_upstream_blockers(model: TodoState) -> list[str]:
     return blockers
 
 
-def _is_review_remediation_pending(verdict: str, *, entry_produced_at: str, reviewed_at: str) -> bool:
+def _is_review_remediation_pending(verdict: str, *, artifact_written_at: str, reviewed_at: str) -> bool:
     if verdict not in ("changes_requested", "needs_work"):
         return False
-    return not entry_produced_at or bool(reviewed_at and entry_produced_at <= reviewed_at)
+    return not artifact_written_at or bool(reviewed_at and artifact_written_at <= reviewed_at)
 
 
-def _review_remediation_blockers(model: TodoState) -> list[str]:
+def _review_remediation_blockers(model: TodoState, *, artifact_write_timestamps: Mapping[str, str]) -> list[str]:
     blockers: list[str] = []
     review_pairs = (
         (STATE_KEY_PRD, model.prd_review),
@@ -627,23 +629,29 @@ def _review_remediation_blockers(model: TodoState) -> list[str]:
         (STATE_KEY_IMPLEMENTATION_PLAN, model.plan_review),
     )
     for artifact_key, review in review_pairs:
-        entry = getattr(model.artifacts, artifact_key)
         if _is_review_remediation_pending(
-            review.verdict, entry_produced_at=entry.produced_at, reviewed_at=review.reviewed_at
+            review.verdict,
+            artifact_written_at=artifact_write_timestamps.get(artifact_key, ""),
+            reviewed_at=review.reviewed_at,
         ):
             blockers.append(f"{artifact_key} review requested changes with no newer artifact write")
     return blockers
 
 
-def prepare_review_verdict_from_state(state: Mapping[str, object]) -> str | None:
+def prepare_review_verdict_from_state(
+    state: Mapping[str, object], *, artifact_write_timestamps: Mapping[str, str]
+) -> str | None:
     """Return the review-remediation verdict pending on this raw state, or None.
 
     This is a review-remediation *detector*: it reports the PRD/architecture/plan
     review verdict that is awaiting remediation (the common BLOCKED cause), and is
     intentionally silent about the other BLOCKED causes. It does NOT itself assert
     the todo is BLOCKED — callers guard on LifecyclePhase.BLOCKED before rendering.
+    Recency is read from ``artifact_write_timestamps`` — each artifact's durable
+    stored-write timestamp, supplied by the caller from the artifact record itself
+    — never from state's own provenance-sync timestamp, which records when a sync
+    routine last ran rather than when the artifact was actually written.
     """
-    artifacts = state.get("artifacts")
     for artifact_key, review_key in (
         (STATE_KEY_PRD, "prd_review"),
         (STATE_KEY_ARCHITECTURE, "architecture_review"),
@@ -653,12 +661,10 @@ def prepare_review_verdict_from_state(state: Mapping[str, object]) -> str | None
         if not isinstance(review, Mapping):
             continue
         verdict = review.get("verdict", "")
-        entry = artifacts.get(artifact_key) if isinstance(artifacts, Mapping) else None
-        entry_produced_at = entry.get("produced_at", "") if isinstance(entry, Mapping) else ""
         reviewed_at = review.get("reviewed_at", "")
         if isinstance(verdict, str) and _is_review_remediation_pending(
             verdict,
-            entry_produced_at=entry_produced_at if isinstance(entry_produced_at, str) else "",
+            artifact_written_at=artifact_write_timestamps.get(artifact_key, ""),
             reviewed_at=reviewed_at if isinstance(reviewed_at, str) else "",
         ):
             return verdict
@@ -677,6 +683,7 @@ def _plan_only_phase(
     artifact_presence: _ArtifactPresence | None,
     repo_root: str | None,
     report_digests: Mapping[str, str] | None,
+    artifact_write_timestamps: Mapping[str, str],
 ) -> LifecyclePhase:
     if not _artifact_present(model, STATE_KEY_IMPLEMENTATION_PLAN, artifact_presence=artifact_presence):
         return LifecyclePhase.PLAN_DRAFTING
@@ -690,7 +697,7 @@ def _plan_only_phase(
         if model.plan_review.cleared_by_substantive_drift:
             return LifecyclePhase.PLAN_DRAFTING
         return LifecyclePhase.PLAN_REVIEW
-    if prepare_blockers(model, repo_root=repo_root):
+    if prepare_blockers(model, repo_root=repo_root, artifact_write_timestamps=artifact_write_timestamps):
         return LifecyclePhase.BLOCKED
     return LifecyclePhase.PREPARED
 
@@ -707,13 +714,18 @@ def _diagnose_phase(
     artifact_presence: _ArtifactPresence | None,
     repo_root: str | None,
     report_digests: Mapping[str, str] | None,
+    artifact_write_timestamps: Mapping[str, str],
 ) -> LifecyclePhase:
     if not _artifact_present(model, STATE_KEY_DIAGNOSIS, artifact_presence=artifact_presence):
         return LifecyclePhase.DIAGNOSE
     if not diagnosis_settled_current(model.approvals.diagnosis_settled, _artifact_digest(model, STATE_KEY_DIAGNOSIS)):
         return LifecyclePhase.DIAGNOSE
     return _plan_only_phase(
-        model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+        model,
+        artifact_presence=artifact_presence,
+        repo_root=repo_root,
+        report_digests=report_digests,
+        artifact_write_timestamps=artifact_write_timestamps,
     )
 
 
@@ -723,6 +735,7 @@ def _feature_phase(
     artifact_presence: _ArtifactPresence | None,
     repo_root: str | None,
     report_digests: Mapping[str, str] | None,
+    artifact_write_timestamps: Mapping[str, str],
 ) -> LifecyclePhase:
     if not any(
         [
@@ -759,7 +772,11 @@ def _feature_phase(
             return LifecyclePhase.ARCHITECTURE_REVIEW
 
     return _plan_only_phase(
-        model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+        model,
+        artifact_presence=artifact_presence,
+        repo_root=repo_root,
+        report_digests=report_digests,
+        artifact_write_timestamps=artifact_write_timestamps,
     )
 
 
@@ -769,6 +786,7 @@ def adopt_prepare_handoff_phase(
     artifact_presence: _ArtifactPresence | None = None,
     repo_root: str | None = None,
     report_digests: Mapping[str, str],
+    artifact_write_timestamps: Mapping[str, str],
     prepared_session_id: str | None = None,
 ) -> LifecyclePhase:
     """Choose the prepare pointer from existing authoritative state and artifacts."""
@@ -776,19 +794,31 @@ def adopt_prepare_handoff_phase(
         target = _task_phase(model, artifact_presence=artifact_presence)
     elif model.kind in FAST_TRACK_PREPARED_KINDS:
         target = LifecyclePhase.PREPARED
-    elif _non_drift_prepare_blockers(model):
+    elif _non_drift_prepare_blockers(model, artifact_write_timestamps=artifact_write_timestamps):
         target = LifecyclePhase.BLOCKED
     elif model.kind in BUG_DIAGNOSE_KINDS:
         target = _diagnose_phase(
-            model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+            model,
+            artifact_presence=artifact_presence,
+            repo_root=repo_root,
+            report_digests=report_digests,
+            artifact_write_timestamps=artifact_write_timestamps,
         )
     elif model.kind in PLAN_ONLY_PREPARE_KINDS:
         target = _plan_only_phase(
-            model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+            model,
+            artifact_presence=artifact_presence,
+            repo_root=repo_root,
+            report_digests=report_digests,
+            artifact_write_timestamps=artifact_write_timestamps,
         )
     else:
         target = _feature_phase(
-            model, artifact_presence=artifact_presence, repo_root=repo_root, report_digests=report_digests
+            model,
+            artifact_presence=artifact_presence,
+            repo_root=repo_root,
+            report_digests=report_digests,
+            artifact_write_timestamps=artifact_write_timestamps,
         )
     if target is LifecyclePhase.PREPARED and model.lifecycle_phase is not LifecyclePhase.PREPARED:
         completing_session_id = prepared_session_id or get_session_id()
@@ -809,6 +839,7 @@ def apply_authoritative_signal(
     *,
     phase: str | None = None,
     worktree_cwd: str | None = None,
+    artifact_write_timestamps: Mapping[str, str],
 ) -> LifecyclePhase:
     """Apply one authoritative signal and advance by at most one step."""
     current = require_lifecycle_phase(model.lifecycle_phase, context="apply_authoritative_signal")
@@ -825,7 +856,10 @@ def apply_authoritative_signal(
         "architecture_skipped",
         "task_approved",
     }:
-        return _move_to(model, adopt_prepare_handoff_phase(model, report_digests={}))
+        return _move_to(
+            model,
+            adopt_prepare_handoff_phase(model, report_digests={}, artifact_write_timestamps=artifact_write_timestamps),
+        )
 
     if signal == "verdict":
         if phase == "build_review" and current in _BUILD_REVIEW_VERDICT_PHASES:
@@ -835,7 +869,10 @@ def apply_authoritative_signal(
                 model.build_completed_at = ""
                 model.build_gate_claim_at = ""
                 return _move_to(model, LifecyclePhase.REVIEW_CHANGES_REQUESTED)
-        return _move_to(model, adopt_prepare_handoff_phase(model, report_digests={}))
+        return _move_to(
+            model,
+            adopt_prepare_handoff_phase(model, report_digests={}, artifact_write_timestamps=artifact_write_timestamps),
+        )
 
     if signal == "build_started" and current == LifecyclePhase.PREPARED:
         model.build_start_base_sha = get_head_commit(worktree_cwd or "")

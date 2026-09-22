@@ -27,6 +27,7 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     WorkPhase,
 )
+from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.build_gates import run_build_gates
 from teleclaude.core.next_machine.git_ops import (
     get_head_commit,
@@ -195,7 +196,10 @@ async def _handle_build_complete_claim(
             f"When the builder reports idle after re-stamping, call telec todo work {slug}."
         )
 
-    apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
+    artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
+    apply_authoritative_signal(
+        writer.state, "build_complete", worktree_cwd=worktree_cwd, artifact_write_timestamps=artifact_write_timestamps
+    )
     await _commit_writer(writer, todos_db, slug, state)
     return True, ""
 
@@ -382,18 +386,27 @@ async def _consume_build_review_verdict(
     if not is_current:
         if not stale_returns_to_review:
             return False
+        artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
         _clear_build_review(writer.state)
         # A settled approval must not stay finalization-eligible on a binding
         # the current worktree no longer matches; the build stands, the review
         # does not, which is exactly BUILD_COMPLETE.
-        apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
+        apply_authoritative_signal(
+            writer.state,
+            "build_complete",
+            worktree_cwd=worktree_cwd,
+            artifact_write_timestamps=artifact_write_timestamps,
+        )
         await _commit_writer(writer, todos_db, slug, state)
         return True
 
     if not br_writer.baseline_commit:
         br_writer.baseline_commit = current_head
     before_phase = writer.state.lifecycle_phase
-    apply_authoritative_signal(writer.state, "verdict", phase=BUILD_REVIEW_PHASE)
+    artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
+    apply_authoritative_signal(
+        writer.state, "verdict", phase=BUILD_REVIEW_PHASE, artifact_write_timestamps=artifact_write_timestamps
+    )
     if writer.state.lifecycle_phase == before_phase:
         return False
     await _commit_writer(writer, todos_db, slug, state)
@@ -662,7 +675,8 @@ async def _handle_finalize_ready_claim(
             next_call=f"telec todo work {slug}",
         )
 
-    apply_authoritative_signal(writer.state, "finalize_ready")
+    artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
+    apply_authoritative_signal(writer.state, "finalize_ready", artifact_write_timestamps=artifact_write_timestamps)
     await _commit_writer(writer, todos_db, slug, state)
     return True, ""
 
