@@ -170,7 +170,7 @@ Given a repository whose canonical main has no parent commit
 When its first qualifying commit invokes post-commit maintenance
 Then maintenance records an absent before revision and the immutable committed tip
 And changed-file resolution includes the complete root-commit tree
-And every action command and outcome carries that same normalized activation range
+And an agent reading the structured records observes that same normalized activation range on every action command and outcome
 ```
 <!-- /planned:retire-docs-watcher -->
 

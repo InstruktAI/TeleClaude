@@ -242,6 +242,7 @@ Scenario: UC-ARD4 Sync composes the per-domain single-owner docs tree
   And a snippet removed from a source domain is absent from the next deployed snapshot
 ```
 
+<!-- planned-change:retire-docs-watcher -->
 ```
 Scenario: UC-ARD5 Distribution invoked directly in no-deploy mode
   Given the distribution step is invoked directly (not through telec sync) in no-deploy mode
@@ -252,6 +253,20 @@ Scenario: UC-ARD5 Distribution invoked directly in no-deploy mode
   And documentation deployment is NOT performed
   And the dist/ output is left in place for inspection
 ```
+<!-- change:retire-docs-watcher -->
+```
+Scenario: UC-ARD5 Distribution invoked directly builds and never deploys
+  Given the distribution step is invoked directly rather than through recorded-commit publication
+  When the distribution pipeline runs
+  Then agent artifacts are emitted under project_root/dist/global and project_root/dist/local
+  And no transient distribution dirs are used
+  And no writes occur to ~/.claude/, ~/.gemini/, ~/.codex/
+  And documentation deployment is NOT performed
+  And the direct entry exposes no mode that writes a runtime destination
+  And the dist/ output is left in place for inspection
+```
+<!-- /planned-change:retire-docs-watcher -->
+
 
 #### UC-ARD13: A generated domain bundle resolves as an explicit Required Read
 
