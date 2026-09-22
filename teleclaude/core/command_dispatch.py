@@ -27,6 +27,7 @@ from teleclaude.core.reconciliation import (
 from teleclaude.types.commands import (
     CommandType,
     CreateSessionCommand,
+    DiscordThreadClaimCommand,
     HandoffAgentCommand,
     InternalCommand,
     ProcessMessageCommand,
@@ -54,6 +55,7 @@ COMMAND_HANDLER_METHODS: dict[CommandType, str] = {
     CommandType.CLOSE_SESSION: "close_session",
     CommandType.SYSTEM: "system_command",
     CommandType.SET_VOICE_FOCUS: "set_voice_focus",
+    CommandType.DISCORD_THREAD_CLAIM: "discord_thread_claim",
 }
 
 PEER_NAME_FIELD = "name"
@@ -203,7 +205,7 @@ async def parse_remote_dispatch_data_diagnosed(
         raise diagnosed_error from error
 
 
-async def invoke_command_handler(command: InternalCommand) -> JsonValue | None:
+async def invoke_command_handler(command: InternalCommand, *, source_computer: str | None = None) -> JsonValue | None:
     """Resolve and run this computer's handler for a command, unconditionally.
 
     The *execution* entry: it runs the handler regardless of response mode and
@@ -217,11 +219,16 @@ async def invoke_command_handler(command: InternalCommand) -> JsonValue | None:
     if handler_name is None:
         raise ValueError(f"No handler registered for command type: {command.command_type.value}")
     handler = getattr(cmds, handler_name)
+
+    if isinstance(command, DiscordThreadClaimCommand):
+        result = await handler(command, source_computer=source_computer or config.computer.name)
+        return cast(JsonValue, result)
+
     result = await handler(command)
     return cast(JsonValue, result)
 
 
-async def run_local_command(command: InternalCommand) -> JsonValue | None:
+async def run_local_command(command: InternalCommand, *, source_computer: str | None = None) -> JsonValue | None:
     """Run an internal command against this computer's command service.
 
     A RECEIPT command reaching this *dispatch* entry is submitted, never
@@ -240,13 +247,15 @@ async def run_local_command(command: InternalCommand) -> JsonValue | None:
         )
         return cast(JsonValue, dict(receipt))
 
-    return await invoke_command_handler(command)
+    return await invoke_command_handler(command, source_computer=source_computer)
 
 
-async def execute_command_envelope(command: InternalCommand) -> JsonDict:
+async def execute_command_envelope(command: InternalCommand, *, source_computer: str | None = None) -> JsonDict:
     """Run a command and return the Redis request/response envelope."""
     try:
-        data = await run_local_command(command)
+        if isinstance(command, DiscordThreadClaimCommand) and not source_computer:
+            raise ValueError("shared Discord child claims require an authenticated transport source")
+        data = await run_local_command(command, source_computer=source_computer)
     except AgentDispatchFailure as exc:
         return {"status": "error", "error": {"kind": "agent_dispatch_failure", "reason": exc.reason.value}}
     except (OSError, RuntimeError, LookupError, ValueError, TypeError) as exc:

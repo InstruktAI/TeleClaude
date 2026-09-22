@@ -32,6 +32,7 @@ class CommandType(str, Enum):
     CLOSE_SESSION = "close_session"
     SYSTEM = "system_command"
     SET_VOICE_FOCUS = "set_voice_focus"
+    DISCORD_THREAD_CLAIM = "discord_thread_claim"
 
 
 class ResponseMode(str, Enum):
@@ -39,6 +40,30 @@ class ResponseMode(str, Enum):
 
     IMMEDIATE = "immediate"
     RECEIPT = "receipt"
+
+
+class DiscordThreadClaimAction(str, Enum):
+    """Typed mutations accepted by the shared Discord child claim ledger."""
+
+    OBSERVE = "observe"
+    CLAIM = "claim"
+    COMPLETE_INVENTORY = "complete_inventory"
+    OPEN_EPOCH = "open_epoch"
+
+
+class DiscordThreadClaimKind(str, Enum):
+    """Shared Discord child kinds accepted by the command boundary."""
+
+    HELP_DESK_SESSION = "help_desk_session"
+    ESCALATION_RELAY = "escalation_relay"
+
+
+class DiscordThreadClaimLifecycle(str, Enum):
+    """Lifecycle values accepted by the command boundary."""
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    TERMINAL = "terminal"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -143,6 +168,22 @@ class InternalCommand:
             else:
                 payload[name] = _json_value(value)
         return payload
+
+
+@dataclass(kw_only=True)
+class DiscordThreadClaimCommand(InternalCommand):
+    """Request a source-bound contender observation or singular shared-child claim."""
+
+    command_type: CommandType = field(init=False, default=CommandType.DISCORD_THREAD_CLAIM)
+    action: DiscordThreadClaimAction
+    thread_id: int
+    parent_id: int
+    kind: DiscordThreadClaimKind
+    local_identity: str
+    lifecycle: DiscordThreadClaimLifecycle
+    protocol_generation: int
+    inventory_epoch: int | None = None
+    inventory_items: list[dict[str, object]] = field(default_factory=list)
 
 
 def _json_value(value: object) -> JsonValue:
@@ -845,6 +886,7 @@ COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.CLOSE_SESSION: CloseSessionCommand,
     CommandType.SYSTEM: SystemCommand,
     CommandType.SET_VOICE_FOCUS: SetVoiceFocusCommand,
+    CommandType.DISCORD_THREAD_CLAIM: DiscordThreadClaimCommand,
 }
 
 
@@ -871,6 +913,12 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
             value = SessionEntryPoint(raw_value)
         elif name == "command_input_mode" and isinstance(raw_value, str):
             value = CommandInputMode(raw_value)
+        elif name == "action" and isinstance(raw_value, str):
+            value = DiscordThreadClaimAction(raw_value)
+        elif name == "kind" and isinstance(raw_value, str):
+            value = DiscordThreadClaimKind(raw_value)
+        elif name == "lifecycle" and isinstance(raw_value, str):
+            value = DiscordThreadClaimLifecycle(raw_value)
         elif name in {"origin_metadata", "data"} and isinstance(raw_value, dict):
             value = dict(raw_value)
         kwargs[name] = value

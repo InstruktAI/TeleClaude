@@ -46,7 +46,14 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.invite import scaffold_personal_workspace
 from teleclaude.slug import normalize_slug
-from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, KeysCommand
+from teleclaude.types.commands import (
+    CreateSessionCommand,
+    DiscordThreadClaimKind,
+    DiscordThreadClaimLifecycle,
+    HandleFileCommand,
+    HandleVoiceCommand,
+    KeysCommand,
+)
 
 logger = get_logger(__name__)
 
@@ -147,6 +154,26 @@ class InputHandlersMixin:
         def _discord_actor_avatar_url(author: object) -> str | None: ...
 
         async def ensure_channel(self, session: Session) -> Session: ...
+
+        async def _observe_discord_shared_thread(
+            self,
+            *,
+            thread_id: int,
+            parent_id: int,
+            kind: DiscordThreadClaimKind,
+            local_identity: str,
+            lifecycle: DiscordThreadClaimLifecycle,
+        ) -> None: ...
+
+        async def _claim_discord_shared_thread(
+            self,
+            *,
+            thread_id: int,
+            parent_id: int,
+            kind: DiscordThreadClaimKind,
+            local_identity: str,
+            lifecycle: DiscordThreadClaimLifecycle,
+        ) -> bool: ...
 
     async def resolve_or_create_session(self, message: object, *, first_message: str | None = None) -> Session | None:
         """Public wrapper for Discord session resolution or creation."""
@@ -423,6 +450,22 @@ class InputHandlersMixin:
 
         async def _create() -> Session | None:
             forum_type, project_path = self._resolve_forum_context(message)
+            if forum_type == "help_desk" and routing_ids.thread_id is not None and routing_ids.channel_id is not None:
+                await self._observe_discord_shared_thread(
+                    thread_id=routing_ids.thread_id,
+                    parent_id=routing_ids.channel_id,
+                    kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
+                    local_identity=str(routing_ids.thread_id),
+                    lifecycle=DiscordThreadClaimLifecycle.PENDING,
+                )
+                if not await self._claim_discord_shared_thread(
+                    thread_id=routing_ids.thread_id,
+                    parent_id=routing_ids.channel_id,
+                    kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
+                    local_identity=str(routing_ids.thread_id),
+                    lifecycle=DiscordThreadClaimLifecycle.PENDING,
+                ):
+                    return None
             return await self._create_session_for_message(
                 message,
                 user_id,

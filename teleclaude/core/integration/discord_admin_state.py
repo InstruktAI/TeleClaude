@@ -53,6 +53,44 @@ class DiscordReflectionOutcome(StrEnum):
     FAILED_CLOSED = "failed_closed"
 
 
+class DiscordSharedChildKind(StrEnum):
+    """Shared Discord child categories governed by the claim ledger."""
+
+    HELP_DESK_SESSION = "help_desk_session"
+    ESCALATION_RELAY = "escalation_relay"
+
+
+class DiscordThreadClaimLifecycle(StrEnum):
+    """Lifecycle state whose owner may reconcile a shared Discord child."""
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    TERMINAL = "terminal"
+
+
+class DiscordThreadClaimOutcome(StrEnum):
+    """Closed outcomes returned by the source-bound shared-child claim boundary."""
+
+    OBSERVED = "observed"
+    CLAIMED = "claimed"
+    NOT_OWNER = "not_owner"
+    REFUSED = "refused"
+
+
+class DiscordThreadClaimMemberState(StrEnum):
+    """Adoption state retained for every computer participating in the protocol."""
+
+    OBSERVED = "observed"
+    ADOPTED = "adopted"
+
+
+class DiscordThreadReconciliationEpochPhase(StrEnum):
+    """Durable state of one master-allocated reconciliation epoch."""
+
+    OPEN = "open"
+    COMPLETED = "completed"
+
+
 @dataclass(frozen=True)
 class DiscordReflectionScope:
     """Opaque reflection ownership identity retained by the repository only."""
@@ -75,6 +113,56 @@ class DiscordReflectionRecord:
     verified_at: datetime | None
 
 
+@dataclass(frozen=True)
+class DiscordSharedThreadClaim:
+    """One source-bound contender or owner observation for a shared provider child."""
+
+    thread_id: int
+    parent_id: int
+    kind: DiscordSharedChildKind
+    computer: str
+    local_identity: str
+    lifecycle: DiscordThreadClaimLifecycle
+    protocol_generation: int
+
+
+@dataclass(frozen=True)
+class DiscordSharedThreadClaimResult:
+    """The durable owner decision for one shared provider child."""
+
+    outcome: DiscordThreadClaimOutcome
+    owner_computer: str | None
+    lifecycle: DiscordThreadClaimLifecycle | None
+
+
+@dataclass(frozen=True)
+class DiscordThreadClaimActivation:
+    """Whether durable membership and live capability evidence permit enforcement."""
+
+    active: bool
+    retained_members: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DiscordThreadClaimInventoryItem:
+    """One local shared-child fact submitted as part of a complete member inventory."""
+
+    thread_id: int
+    parent_id: int
+    kind: DiscordSharedChildKind
+    local_identity: str
+    lifecycle: DiscordThreadClaimLifecycle
+
+
+@dataclass(frozen=True)
+class DiscordThreadOrphanCandidate:
+    """The current durable garbage-collection proof for one shared child."""
+
+    thread_id: int
+    parent_id: int
+    consecutive_complete_epochs: int
+
+
 class DiscordReflectionRepository(Protocol):
     """Repository seam used by reconciliation without exposing database models."""
 
@@ -89,6 +177,43 @@ class DiscordReflectionRepository(Protocol):
     async def touch_discord_reflection(self, logical_key: str, verified_at: datetime) -> None: ...
 
     async def delete_discord_reflection(self, logical_key: str) -> None: ...
+
+    async def observe_discord_shared_thread(
+        self, claim: DiscordSharedThreadClaim, *, source_computer: str, enforce_owner: bool
+    ) -> DiscordSharedThreadClaimResult: ...
+
+    async def get_discord_shared_thread_owner(self, thread_id: int) -> DiscordSharedThreadClaim | None: ...
+
+    async def observe_discord_thread_claim_member(self, computer: str, *, protocol_generation: int) -> None: ...
+
+    async def complete_discord_thread_claim_inventory(
+        self, computer: str, *, protocol_generation: int, epoch: int
+    ) -> bool: ...
+
+    async def replace_discord_thread_claim_inventory(
+        self,
+        computer: str,
+        *,
+        protocol_generation: int,
+        epoch: int,
+        items: tuple[DiscordThreadClaimInventoryItem, ...],
+    ) -> bool: ...
+
+    async def open_discord_thread_reconciliation_epoch(self, *, protocol_generation: int) -> int: ...
+
+    async def complete_discord_thread_reconciliation_epoch(self, *, protocol_generation: int, epoch: int) -> bool: ...
+
+    async def discord_thread_claim_activation(
+        self, *, protocol_generation: int, live_members: frozenset[str], capability_members: frozenset[str]
+    ) -> DiscordThreadClaimActivation: ...
+
+    async def advance_discord_thread_orphan_candidate(
+        self, *, thread_id: int, parent_id: int, epoch: int
+    ) -> DiscordThreadOrphanCandidate: ...
+
+    async def reset_discord_thread_orphan_candidate(self, *, thread_id: int) -> None: ...
+
+    async def completed_discord_thread_claim_epoch(self, *, protocol_generation: int) -> int | None: ...
 
 
 def shared_key(name: str) -> str:

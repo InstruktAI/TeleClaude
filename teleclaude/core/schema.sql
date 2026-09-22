@@ -491,6 +491,69 @@ CREATE TABLE IF NOT EXISTS discord_reflection_state (
 CREATE INDEX IF NOT EXISTS idx_discord_reflection_scope
     ON discord_reflection_state (provider, scope_kind, scope_value);
 
+CREATE TABLE IF NOT EXISTS discord_shared_thread_contenders (
+    thread_id INTEGER NOT NULL,
+    computer TEXT NOT NULL,
+    parent_id INTEGER NOT NULL,
+    child_kind TEXT NOT NULL,
+    local_identity TEXT NOT NULL,
+    lifecycle TEXT NOT NULL,
+    protocol_generation INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (thread_id, computer)
+);
+
+CREATE TABLE IF NOT EXISTS discord_shared_thread_owners (
+    thread_id INTEGER PRIMARY KEY,
+    parent_id INTEGER NOT NULL,
+    child_kind TEXT NOT NULL,
+    owner_computer TEXT NOT NULL,
+    local_identity TEXT NOT NULL,
+    lifecycle TEXT NOT NULL,
+    protocol_generation INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS discord_thread_claim_members (
+    computer TEXT PRIMARY KEY,
+    protocol_generation INTEGER NOT NULL,
+    adoption_state TEXT NOT NULL,
+    inventory_completed_epoch INTEGER,
+    first_observed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    inventory_completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS discord_thread_reconciliation_epochs (
+    protocol_generation INTEGER PRIMARY KEY,
+    current_epoch INTEGER NOT NULL,
+    phase TEXT NOT NULL,
+    opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS discord_thread_claim_inventory_items (
+    computer TEXT NOT NULL,
+    protocol_generation INTEGER NOT NULL,
+    inventory_epoch INTEGER NOT NULL,
+    thread_id INTEGER NOT NULL,
+    parent_id INTEGER NOT NULL,
+    child_kind TEXT NOT NULL,
+    local_identity TEXT NOT NULL,
+    lifecycle TEXT NOT NULL,
+    PRIMARY KEY (computer, protocol_generation, inventory_epoch, thread_id)
+);
+
+CREATE TABLE IF NOT EXISTS discord_thread_orphan_candidates (
+    thread_id INTEGER PRIMARY KEY,
+    parent_id INTEGER NOT NULL,
+    first_qualifying_epoch INTEGER NOT NULL,
+    last_qualifying_epoch INTEGER NOT NULL,
+    consecutive_complete_epochs INTEGER NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Memory observations and FTS
 CREATE TABLE IF NOT EXISTS memory_observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

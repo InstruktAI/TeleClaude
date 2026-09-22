@@ -260,7 +260,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             if parsed.command_payload is not None:
                 command = command_from_dict(parsed.command_payload)
                 command.request_id = message_id
-                result = await execute_command_envelope(command)
+                result = await execute_command_envelope(command, source_computer=parsed.initiator)
                 response_json = json.dumps(result)
                 await self.send_response(message_id, response_json)
                 logger.debug(

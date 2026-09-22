@@ -27,6 +27,7 @@ from teleclaude.core.relay_context import compile_relay_context
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.types.commands import DiscordThreadClaimKind, DiscordThreadClaimLifecycle
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -69,6 +70,26 @@ class AdminReflectionMixin:
             self, forum_channel: object, *, title: str, content: str = ...
         ) -> tuple[int, str]: ...
 
+        async def _observe_discord_shared_thread(
+            self,
+            *,
+            thread_id: int,
+            parent_id: int,
+            kind: DiscordThreadClaimKind,
+            local_identity: str,
+            lifecycle: DiscordThreadClaimLifecycle,
+        ) -> None: ...
+
+        async def _claim_discord_shared_thread(
+            self,
+            *,
+            thread_id: int,
+            parent_id: int,
+            kind: DiscordThreadClaimKind,
+            local_identity: str,
+            lifecycle: DiscordThreadClaimLifecycle,
+        ) -> bool: ...
+
     async def create_escalation_thread(self, **kwargs: str | None) -> int:
         """Create a thread in the escalation forum channel for admin relay."""
         customer_name = str(kwargs.get("customer_name") or "")
@@ -91,6 +112,21 @@ class AdminReflectionMixin:
         body += f"\n\n*Session: {session_id}*"
 
         thread_id, _topper_message_id = await self._create_forum_thread(forum, title=customer_name, content=body)
+        await self._observe_discord_shared_thread(
+            thread_id=thread_id,
+            parent_id=escalation_channel_id,
+            kind=DiscordThreadClaimKind.ESCALATION_RELAY,
+            local_identity=session_id,
+            lifecycle=DiscordThreadClaimLifecycle.PENDING,
+        )
+        if not await self._claim_discord_shared_thread(
+            thread_id=thread_id,
+            parent_id=escalation_channel_id,
+            kind=DiscordThreadClaimKind.ESCALATION_RELAY,
+            local_identity=session_id,
+            lifecycle=DiscordThreadClaimLifecycle.PENDING,
+        ):
+            raise AdapterError("shared escalation thread claim was not accepted")
         return thread_id
 
     async def forward_to_relay_thread(self, session: Session, text: str, message: object) -> None:
