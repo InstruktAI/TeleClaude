@@ -127,9 +127,10 @@ carried it; it does not establish what a human decided.
 2. Take the `input` as the authorized basis for derivation. Its content is the
    creating agent's shaping of the work, which is trusted like any agent's.
 3. Recover the meaning that basis was compressed from. `input` is written from a
-   conversation, and the summary loses what the work is for. Read the session the
-   creation record names and the session holding the todo's claim, and no others.
-   Read the human's
+   conversation, and the summary loses what the work is for. `telec todo show
+{slug}` carries both session ids to read: the session segment of `lineage`
+   created the todo, and `active_runner` holds its claim. Tail those two and no
+   others. Read the human's
    own turns — a user entry outside any complete recognized platform envelope is
    that human, per `general/policy/message-identity-headers`, while an envelope
    span is a peer or the platform. Sessions with no human turns carry nothing to
