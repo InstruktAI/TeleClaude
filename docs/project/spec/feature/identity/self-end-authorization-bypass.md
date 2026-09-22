@@ -16,11 +16,7 @@ visibility: public
 
 `telec sessions end` is normally restricted to the orchestrator/integrator system band — worker-role agent sessions are excluded. But a runner-dispatched driver session (an analyzer, a prepare/work orchestrator) is authorization-classified as a `worker`, holds the todo's `active_runner` lease, and must end itself to release that lease and wake the runner. The self-end clearance gate solves this by recognising a "self-end" shape — an authenticated caller whose own `session_id` equals the target `session_id` and whose target session has no orchestrating parent (`initiator_session_id is None`) — and returning the resolved `CallerIdentity` without consulting the verb allowlist. Every other shape falls through to the standard rule: a sub-worker self-end (parent set) and a cross-session end are evaluated against the normal band, and a worker is rejected there.
 
-<!-- planned-change:session-authority-follows-mandate-not-spawn -->
-The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-set session state, populated only when an orchestrator dispatches a child via `telec sessions run`; runner-dispatched drivers and human-started sessions carry `None`. Because it is never caller-supplied, a sub-worker cannot forge a parentless row to widen its own authority. This mirrors the self-restart carve-out, which grants a worker the right to restart only itself.
-<!-- change:session-authority-follows-mandate-not-spawn -->
 The driver-vs-sub-worker discriminator is `initiator_session_id`. It is daemon-set session state, populated when an orchestrator dispatches a child that takes its work from that dispatcher; runner-dispatched drivers, human-started sessions, and standing roles — the integrator, the project coordinator, a scheduled job runner — carry `None`, because their work arrives from a queue, a schedule, or the fleet rather than from whoever started them (`project/spec/feature/agent_runtime/session-authority`). Because it is never caller-supplied, a sub-worker cannot forge a parentless row to widen its own authority. This mirrors the self-restart carve-out, which grants a worker the right to restart only itself.
-<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 
 ## Canonical fields
 

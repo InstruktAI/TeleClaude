@@ -371,8 +371,6 @@ And the conversation link operates orthogonally to stop-listener subscriptions
 - **Non-admin non-system-role sessions are jailed to the help-desk directory.** When the request has no system role and the human role is anything other than admin, the project_path is forcibly replaced with the configured help-desk directory and `subfolder` / `working_slug` are cleared. This is policy, not failure.
 - **The closed-at marker is set by the cleanup module, not this surface.** This surface only enqueues; see `session-cleanup-and-reaping` for the lifecycle field transitions and `agent_runtime.session.ended` payload.
 
-<!-- planned:session-authority-follows-mandate-not-spawn -->
 ## See Also
 
 - docs/project/spec/feature/agent_runtime/session-authority.md — which session may act on which, and why a standing session is outside every caller-scoped termination.
-<!-- /planned:session-authority-follows-mandate-not-spawn -->

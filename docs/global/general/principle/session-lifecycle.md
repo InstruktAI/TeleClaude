@@ -55,13 +55,6 @@ So ending flows from context, not from a worker's own initiative.
   over when it ends. Governance sits where the wider view genuinely is — with whoever will
   read, reopen, or continue the work — and a starter who will do none of those, because the
   work falls outside what it may see or judge, confers none.
-<!-- planned-change:session-authority-follows-mandate-not-spawn -->
-- **Governance is the parent link, not a judgement.** A session created with an initiator is
-  governed by it. A session created without one — detached, spawned by nobody, or standing on
-  its own — has no governor and holds its own lifecycle. This is read from how the session was
-  made, never reasoned out by the session about itself: an agent weighing its own governance
-  is deciding whether it may stop while holding every reason to prefer stopping.
-<!-- change:session-authority-follows-mandate-not-spawn -->
 - **Governance is the parent link, not a judgement.** A session created with an initiator is
   governed by it. A session created without one — detached, spawned by nobody, or standing on
   its own — has no governor and holds its own lifecycle. This is read from how the session was
@@ -73,7 +66,6 @@ So ending flows from context, not from a worker's own initiative.
   confers no mandate and leaves no governor, whichever door it came through. Such a session
   holds its own lifecycle for the same reason a spawned worker does not: the link records who
   asked, and asking is not commanding.
-<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 - **Role does not decide lifecycle.** What a session is for and who ends it are separate
   questions, and the answer to one never supplies the other. A worker with no initiator ends
   itself; a session holding a live parent does not, whatever it is called. Reaching for a new
@@ -89,7 +81,6 @@ So ending flows from context, not from a worker's own initiative.
   reach, they converge on it directly; only a decision that is genuinely a human's to make
   travels to the human.
 
-<!-- planned:session-authority-follows-mandate-not-spawn -->
 - **Nothing reaches upward but a finished turn.** A session does not message, open or close a
   conversation with, unsubscribe from, end, or restart the session above it. It has no need:
   completing a turn already wakes that session, which then reads what was produced. An upward
@@ -97,7 +88,6 @@ So ending flows from context, not from a worker's own initiative.
   inverts who is driving — the result arrives as a claim about the work instead of as the work.
   Peers are untouched by this: sessions beside each other, and a session with nothing above it,
   reach wherever the work requires.
-<!-- /planned:session-authority-follows-mandate-not-spawn -->
 - **Departing with grace.** When an agent that holds its own lifecycle — one that dispatched the
   work and outlived its children, a singleton answerable only to itself, or one no agent governs —
   ends its own session,

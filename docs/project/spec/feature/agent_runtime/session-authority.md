@@ -1,8 +1,7 @@
 ---
-description: Which session may act on which — a standing role has no session above it, and no session acts on the session above it.
+description: Which session may act on which — a standing role has no session above
+  it, and no session acts on the session above it.
 visibility: internal
-delivered_by:
-  - session-authority-follows-mandate-not-spawn
 ---
 
 # Session Authority — Spec
