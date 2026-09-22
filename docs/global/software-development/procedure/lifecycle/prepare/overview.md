@@ -127,12 +127,14 @@ carried it; it does not establish what a human decided.
 2. Take the `input` as the authorized basis for derivation. Its content is the
    creating agent's shaping of the work, which is trusted like any agent's.
 3. Recover the meaning that basis was compressed from. `input` is written from a
-   conversation, and the summary loses what the work is for. Exactly two sessions
-   can still hold it: the creating session, named by the creation record, and the
-   preparing session, named by the prepare phase stamps. Read those two and no
-   others. A dispatched worker had no human in it by construction, so its
-   transcript carries another agent's derivation rather than the original
-   meaning; reading it imports the drift instead of removing it. Read the human's
+   conversation, and the summary loses what the work is for. Read the sessions
+   that can hold that meaning — the creating session, named by the creation
+   record, and the preparing sessions, named by the prepare phase stamps — and no
+   others. A dispatched worker's transcript carries that worker's derivation of
+   the work rather than the intent the work came from, so reading it recovers a
+   downstream interpretation and imports the drift this audit exists to remove. A
+   human turn inside such a session shaped that execution, not the todo's intent,
+   so it is out of scope here rather than absent from it. Read the human's
    own turns — a user entry outside any complete recognized platform envelope is
    that human, per `general/policy/message-identity-headers`, while an envelope
    span is a peer or the platform. Sessions with no human turns carry nothing to
