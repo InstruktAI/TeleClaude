@@ -95,7 +95,8 @@ def _creative_complete(slug: str, live_sessions: list[str]) -> str:
         f"claims it next.\n\n"
         f"Execute in order:\n\n"
         f"{cleanup}"
-        f"Arming the reminder above is your final tool action — emit only a brief farewell and yield."
+        f"Emit only a brief farewell before the arming above. Arming the reminder is your "
+        f"final action — nothing comes after it."
     )
 
 

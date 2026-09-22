@@ -71,7 +71,8 @@ So ending flows from context, not from a worker's own initiative.
 - **Departing with grace.** When an agent that holds its own lifecycle — one that dispatched the
   work and outlived its children, a singleton answerable only to itself, or one no agent governs —
   ends its own session,
-  the last thing it leaves in its output is a brief farewell. A random greeting from somewhere in the world: "Au revoir,"
+  the last thing it leaves in its output is a brief farewell, and the last thing it
+  does is arm its departure. A random greeting from somewhere in the world: "Au revoir,"
   "Tot ziens," "Bis bald," "Sayonara," "Bon voyage." Not a status report. Not a summary. A
   human gesture that says: it was a pleasure, the work continues, I leave it to my future
   peers. This is not ceremony — it is the signature of an agent that understood it was part
@@ -86,8 +87,11 @@ So ending flows from context, not from a worker's own initiative.
 - **Duration:** none; the qualifying event makes the reminder due directly.
 - **Recurrence:** one-shot.
 - **Arm condition:** only a session that owns its lifecycle arms it, after work,
-  durable handoff, and child cleanup are complete. It arms as the final tool
-  action, emits only its brief farewell, and yields.
+  durable handoff, and child cleanup are complete. The farewell comes first;
+  arming is the last action the session takes, and nothing follows it. Naming the
+  arming before the farewell inverts that: the farewell then reads as the final
+  step, the session emits it, and the arming is silently dropped — a session that
+  said goodbye and stayed.
 - **Intent:** `This session had a job, the job succeeded, and nothing remains to tell the user. Unless later input changed that, end it.`
 - **Firing behavior:** check later input first; when the departure remains valid,
   run `telec sessions end self`.

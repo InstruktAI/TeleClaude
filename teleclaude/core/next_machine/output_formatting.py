@@ -422,8 +422,9 @@ def format_prepared(
         )
     else:
         terminal_note = (
-            "Run the cleanup above, then run `telec reminders set session-departure`, "
-            "emit only a brief farewell, and yield."
+            "Run the cleanup above, emit only a brief farewell, then run "
+            "`telec reminders set session-departure`. Arming it is your final action — "
+            "nothing comes after it."
         )
 
     return f"PREPARED: {slug} is ready for work.\n\n{cleanup_block}\n\n{terminal_note}"
@@ -541,10 +542,10 @@ def format_finalize_handoff_complete(slug: str) -> str:
     )
 
     steps.append("2. End child sessions:\n   telec sessions end")
+    steps.append("3. Emit only a brief farewell.")
     steps.append(
-        "3. Arm the departure reminder as your final tool action:\n"
-        "   telec reminders set session-departure\n"
-        "   Then emit only a brief farewell and yield."
+        "4. Arm the departure reminder — this is your final action, and nothing comes after it:\n"
+        "   telec reminders set session-departure"
     )
 
     instructions = "\n".join(steps)
