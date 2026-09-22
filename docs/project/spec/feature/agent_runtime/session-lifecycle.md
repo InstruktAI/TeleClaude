@@ -225,6 +225,7 @@ And a session that still has no host pane is reported as headless
 And later maintenance cycles do not repeat the same failed restoration while that headless state remains
 ```
 
+<!-- planned-change:codex-stop-synthesis-fakes-completion -->
 #### UC-SL35: An idle runtime repairs a missing turn-completion boundary
 
 ```gherkin
@@ -235,6 +236,8 @@ Then the session reports idle rather than active or stalled
 And the completed turn follows the same downstream completion path as an ordinarily recorded turn
 And a later input remains a distinct new turn
 ```
+<!-- change:codex-stop-synthesis-fakes-completion -->
+<!-- /planned-change:codex-stop-synthesis-fakes-completion -->
 
 #### UC-SL36: Failed headless adoption preserves an adoptable session
 
