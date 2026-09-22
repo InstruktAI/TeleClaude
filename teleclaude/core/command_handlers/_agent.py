@@ -36,7 +36,6 @@ from teleclaude.core.control_delivery import ControlDeliveryWakeDecision, handof
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
-    AgentRestartDispatchedPayload,
     ErrorEventContext,
     SessionLifecycleContext,
     TeleClaudeEvents,
@@ -57,8 +56,6 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import (
-    RuntimeMutationInProgress,
-    SessionRuntimeLease,
     acquire_session_runtime_lease,
     session_runtime_owner,
 )
@@ -71,7 +68,6 @@ from teleclaude.events.producer import emit_event
 from teleclaude.paths import TMP_SESSIONS_DIR
 from teleclaude.types.commands import (
     HandoffAgentCommand,
-    HandoffAgentResult,
     RestartAgentCommand,
     RestartAgentResult,
     ResumeAgentCommand,
@@ -110,9 +106,8 @@ _HANDOFF_CONTEXT_WITHOUT_TRANSCRIPT_TEMPLATE = (
 )
 _HANDOFF_NO_TRANSCRIPT = "no predecessor agent was recorded"
 _HANDOFF_LIVE_STATE, _HANDOFF_CLOSED_STATE = "live", "closed"
-_HANDOFF_RESULT_OK, _HANDOFF_RESULT_ERROR = "ok", "error"
-_HANDOFF_RESULT_SELECTED_AGENT, _HANDOFF_CONTEXT_SEPARATOR = "selected_agent", "\n\n"
-_HANDOFF_COMMAND_PREFIX, _HANDOFF_BACKGROUND_TASK = "/", "agent-handoff-restart"
+_HANDOFF_CONTEXT_SEPARATOR = "\n\n"
+_HANDOFF_COMMAND_PREFIX = "/"
 _HANDOFF_LAUNCHED_EVENT = "agent_runtime.handoff.launched"
 _HANDOFF_EVENT_SOURCE, _HANDOFF_EVENT_DOMAIN = "agent_restart", "agent_runtime"
 _HANDOFF_DELIVERY_FAILURE = "Handoff startup brief could not be delivered; session kept alive for inspection."
@@ -577,22 +572,21 @@ def _handoff_startup_message(session: Session, *, predecessor: str, was_closed: 
     return _HANDOFF_CONTEXT_SEPARATOR.join((loader, context_block))
 
 
-@with_session
-async def handoff_agent(
+async def select_handoff_successor(
     session: Session,
-    cmd: HandoffAgentCommand,
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
-) -> HandoffAgentResult:
-    """Resolve a successor before scheduling any session mutation."""
-    try:
-        lease = await acquire_session_runtime_lease(session.session_id)
-    except RuntimeMutationInProgress:
-        return {
-            _HANDOFF_RESULT_OK: False,
-            _HANDOFF_RESULT_ERROR: "runtime_mutation_in_progress",
-            _HANDOFF_RESULT_SELECTED_AGENT: None,
-        }
+    *,
+    agent_name: str | None,
+    caller_system_role: str | None,
+    request_id: str | None,
+) -> HandoffAgentCommand:
+    """Resolve a handoff successor synchronously, before any operation is submitted.
+
+    Pure selection — no session mutation and no runtime lease — so the caller
+    (the API route) can report ``selected_agent`` on the receipt it returns,
+    and the RECEIPT operation's work body only has to execute the handoff
+    this function already decided. Raises ``AgentDispatchFailure`` when no
+    successor can be resolved.
+    """
     command = f"{_HANDOFF_COMMAND_PREFIX}{session.command}" if session.command else None
     role_info = None
     if session.command:
@@ -602,8 +596,8 @@ async def handoff_agent(
             role_info = None
     role = role_info[0] if role_info else None
     dispatch_mode, preferred_agent = classify_fresh_agent_preference(
-        cmd.agent_name,
-        caller_system_role=cmd.caller_system_role,
+        agent_name,
+        caller_system_role=caller_system_role,
     )
     try:
         decision = await resolve_agent_dispatch(
@@ -620,21 +614,20 @@ async def handoff_agent(
             stage=AgentDispatchStage.RESOLVED,
             outcome=AgentDispatchOutcome.REFUSED,
             reason=exc.reason,
-            request_id=cmd.request_id,
+            request_id=request_id,
             session_id=session.session_id,
             dispatch_mode=dispatch_mode,
             entry_point=SessionEntryPoint.AGENT_HANDOFF,
             preferred_agent=preferred_agent,
         )
-        lease.release()
-        return {_HANDOFF_RESULT_OK: False, _HANDOFF_RESULT_ERROR: str(exc), _HANDOFF_RESULT_SELECTED_AGENT: None}
+        raise
 
     emit_agent_dispatch_decision(
         stage=AgentDispatchStage.RESOLVED,
         outcome=AgentDispatchOutcome.SELECTED,
         reason=decision.reason,
         selected_agent=decision.agent,
-        request_id=cmd.request_id,
+        request_id=request_id,
         session_id=session.session_id,
         dispatch_mode=dispatch_mode,
         entry_point=SessionEntryPoint.AGENT_HANDOFF,
@@ -643,6 +636,23 @@ async def handoff_agent(
         candidate_order=decision.candidate_order,
         order_branch=decision.order_branch,
     )
+    return HandoffAgentCommand(
+        session_id=session.session_id,
+        agent_name=decision.agent,
+        caller_system_role=caller_system_role,
+        request_id=request_id,
+    )
+
+
+@with_session
+async def handoff_agent(
+    session: Session,
+    cmd: HandoffAgentCommand,
+    client: "AdapterClient",
+    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
+) -> None:
+    """Execute a handoff to the successor ``select_handoff_successor`` already resolved."""
+    lease = await acquire_session_runtime_lease(session.session_id)
     predecessor = session.active_agent or _HANDOFF_NO_TRANSCRIPT
     reference_time = session.closed_at if session.closed_at is not None else session.last_activity
     elapsed_seconds = int((datetime.now(UTC) - reference_time).total_seconds()) if reference_time else 0
@@ -652,28 +662,7 @@ async def handoff_agent(
         was_closed=session.closed_at is not None,
         elapsed_seconds=max(elapsed_seconds, 0),
     )
-    successor_command = HandoffAgentCommand(
-        session_id=session.session_id,
-        agent_name=decision.agent,
-        caller_system_role=cmd.caller_system_role,
-        request_id=cmd.request_id,
-    )
-    asyncio.create_task(
-        _execute_handoff(session, successor_command, client, execute_terminal_command, startup_message, lease),
-        name=_HANDOFF_BACKGROUND_TASK,
-    )
-    return {_HANDOFF_RESULT_OK: True, _HANDOFF_RESULT_ERROR: None, _HANDOFF_RESULT_SELECTED_AGENT: decision.agent}
-
-
-async def _execute_handoff(
-    initial_session: Session,
-    cmd: HandoffAgentCommand,
-    client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, str | None, bool], Awaitable[bool]],
-    startup_message: str,
-    lease: SessionRuntimeLease,
-) -> None:
-    await execute_handoff(initial_session, cmd, client, execute_terminal_command, startup_message, lease)
+    await execute_handoff(session, cmd, client, execute_terminal_command, startup_message, lease)
 
 
 async def _restart_agent(
@@ -919,12 +908,6 @@ async def _restart_agent(
         asyncio.create_task(_inject_after_restart(), name="send-restart-stimulus")
     else:
         await execute_terminal_command(session.session_id, restart_cmd, None, True)
-
-    event_bus.emit(
-        cmd.completion_event,  # type: ignore[arg-type]
-        AgentRestartDispatchedPayload(session_id=session.session_id),
-        visibility=EventVisibility.CLUSTER,
-    )
 
     return True, None
 

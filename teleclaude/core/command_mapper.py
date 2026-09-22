@@ -10,6 +10,7 @@ from teleclaude.core.injected_text import InjectedTextSourceFeature, TranscriptE
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import (
+    CallerProvenance,
     CloseSessionCommand,
     CreateSessionCommand,
     HandleFileCommand,
@@ -28,8 +29,11 @@ def _require_origin() -> str:
     raise ValueError("MessageMetadata.origin is required - caller must set it")
 
 
-def _with_computer(command: InternalCommand, computer: str | None) -> InternalCommand:
+def _with_computer(
+    command: InternalCommand, computer: str | None, *, caller: CallerProvenance | None = None
+) -> InternalCommand:
     command.computer = computer
+    command.caller = caller
     return command
 
 

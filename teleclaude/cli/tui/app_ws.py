@@ -13,7 +13,6 @@ from teleclaude.api_models import (
     ChiptunesStateEventDTO,
     ChiptunesTrackEventDTO,
     ErrorEventDTO,
-    OperationCompletedEventDTO,
     ProjectDTO,
     ProjectsInitialEventDTO,
     ProjectWithTodosDTO,
@@ -24,6 +23,7 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
 )
+from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.cli.models import WsEvent
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger
 from teleclaude.cli.tui.messages import AgentActivity, SessionClosed, SessionStarted, SessionUpdated
@@ -167,12 +167,14 @@ class TelecAppWsMixin:
             self.notify_text(event.data.message, severity="error")  # type: ignore[attr-defined]
             return True
 
-        if isinstance(event, OperationCompletedEventDTO):
+        if isinstance(event, OperationFailedEventDTO):
             # Surface background-operation failures (e.g. RemoveRefused) as toasts.
+            self.notify_text(event.error, severity="error")  # type: ignore[attr-defined]
+            return True
+
+        if isinstance(event, OperationSucceededEventDTO):
             # Successful completions stay silent — the relevant view already
             # reflects the new state through its own data refresh.
-            if event.error:
-                self.notify_text(event.error, severity="error")  # type: ignore[attr-defined]
             return True
 
         return False

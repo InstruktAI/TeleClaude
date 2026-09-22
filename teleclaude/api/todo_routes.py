@@ -44,7 +44,8 @@ from teleclaude.api.todo_update_support import (
     validate_kind_for_update,
     validate_update_request,
 )
-from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
+from teleclaude.api_models import TodoDumpRequest
+from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config import config
 from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,

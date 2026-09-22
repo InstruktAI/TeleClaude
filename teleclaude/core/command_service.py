@@ -54,7 +54,6 @@ from teleclaude.types.commands import (
     HandleFileCommand,
     HandleVoiceCommand,
     HandoffAgentCommand,
-    HandoffAgentResult,
     KeysCommand,
     ProcessMessageCommand,
     RestartAgentCommand,
@@ -212,8 +211,8 @@ class CommandService:
     async def restart_agent(self, cmd: RestartAgentCommand) -> tuple[bool, str | None] | RestartAgentResult:
         return await agent_restart(cmd, self.client, self._execute_terminal_command)
 
-    async def handoff_agent(self, cmd: HandoffAgentCommand) -> HandoffAgentResult:
-        return await handoff_agent(cmd, self.client, self._execute_terminal_command)
+    async def handoff_agent(self, cmd: HandoffAgentCommand) -> None:
+        await handoff_agent(cmd, self.client, self._execute_terminal_command)
 
     async def run_agent_command(self, cmd: RunAgentCommand) -> None:
         await run_agent_command(cmd, self.client, self._execute_terminal_command)

@@ -16,19 +16,32 @@ from teleclaude.core.dates import parse_iso_datetime
 
 # Event bus carries internal events (not user commands).
 EventType = Literal[
+    "agent.restart.completed",
+    "agent.restart.failed",
     "agent_activity",
     "agent_availability",
     "agent_event",
     "agent_readiness_timeout",
     "agent_ready",
+    "agent_runtime.handoff.completed",
+    "agent_runtime.handoff.failed",
     "error",
     "operation.todo_create.completed",
+    "operation.todo_create.failed",
     "operation.todo_integrate.completed",
+    "operation.todo_integrate.failed",
     "operation.todo_prepare.completed",
+    "operation.todo_prepare.failed",
     "operation.todo_rename.completed",
+    "operation.todo_rename.failed",
     "operation.todo_remove.completed",
+    "operation.todo_remove.failed",
     "operation.todo_work.completed",
+    "operation.todo_work.failed",
     "operation.task_run.completed",
+    "operation.task_run.failed",
+    "session.close.completed",
+    "session.close.failed",
     "session_close_requested",
     "session_closed",
     "session_started",
@@ -592,23 +605,6 @@ class ErrorEventContext:
     code: str | None = None
 
 
-# Domain event payloads for fire-and-forget mutation completion signals
-
-
-@dataclass(frozen=True)
-class AgentRestartDispatchedPayload:
-    """Emitted after successful agent restart dispatch."""
-
-    session_id: str
-
-
-@dataclass(frozen=True)
-class SessionCloseCompletedPayload:
-    """Emitted when close processing finishes for a session."""
-
-    session_id: str
-
-
 @dataclass(frozen=True)
 class SessionEscalatedPayload:
     """Emitted when session escalation is initiated."""
@@ -654,11 +650,18 @@ class NotificationResolvedPayload:
 
 
 @dataclass(frozen=True)
-class OperationCompletedContext:
-    """Emitted when a long-running operation reaches a terminal state (completed or failed)."""
+class OperationSucceededContext:
+    """Emitted when a long-running operation completes successfully."""
 
     operation_id: str
-    error: str | None = None
+
+
+@dataclass(frozen=True)
+class OperationFailedContext:
+    """Emitted when a long-running operation terminates in failure."""
+
+    operation_id: str
+    error: str
 
 
 # Union of all event context types (for adapter_client handler signatures)
@@ -666,7 +669,6 @@ EventContext = (
     AgentActivityEvent
     | AgentAvailabilityContext
     | AgentEventContext
-    | AgentRestartDispatchedPayload
     | ErrorEventContext
     | JobCompletedPayload
     | JobFailedPayload
@@ -674,8 +676,8 @@ EventContext = (
     | MessageEventContext
     | NotificationClaimedPayload
     | NotificationResolvedPayload
-    | OperationCompletedContext
-    | SessionCloseCompletedPayload
+    | OperationFailedContext
+    | OperationSucceededContext
     | SessionEscalatedPayload
     | SessionLifecycleContext
     | SessionStatusContext

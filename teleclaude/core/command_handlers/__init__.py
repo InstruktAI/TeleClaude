@@ -8,6 +8,7 @@ from ._agent import (
     handoff_agent,
     resume_agent,
     run_agent_command,
+    select_handoff_successor,
     start_agent,
 )
 from ._keys import (
@@ -84,6 +85,7 @@ __all__ = [
     "resolve_working_slug_from_subdir",
     "resume_agent",
     "run_agent_command",
+    "select_handoff_successor",
     "shift_tab_command",
     "start_agent",
     "tab_command",

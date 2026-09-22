@@ -45,6 +45,7 @@ from teleclaude.api import (
 from teleclaude.api.auth import CallerIdentity, verify_caller
 from teleclaude.api.data_routes import router as data_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
+from teleclaude.api.operations_routes import configure as configure_operations_routes
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.todo_artifact_routes import router as todo_artifact_router
 from teleclaude.api.todo_routes import router as todo_router
@@ -53,12 +54,12 @@ from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIME
 from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api_models import (
     AgentStopActivityEventDTO,
-    OperationCompletedEventDTO,
     SessionLifecycleStatusEventDTO,
     TodoDTO,
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
+from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.config import config
 from teleclaude.config.person_secrets import resolve_person_mcp_secret_values
@@ -71,14 +72,15 @@ from teleclaude.core.events import (
     AgentActivityEvent,
     AgentAvailabilityContext,
     ErrorEventContext,
-    OperationCompletedContext,
+    OperationFailedContext,
+    OperationSucceededContext,
     SessionLifecycleContext,
     SessionStatusContext,
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
-from teleclaude.core.operations.service import _COMPLETION_EVENTS as _OPERATION_COMPLETION_EVENTS
+from teleclaude.core.operations.service import all_outcome_events
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.hooks.api_routes import router as hooks_router
@@ -137,6 +139,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         sessions_routes.configure(client=client, cache=cache, reminder_service=reminder_service)
         reminders_routes.configure(reminder_service)
         sessions_actions_routes.configure(client=client)
+        configure_operations_routes(client=client)
         history_routes.configure(client=client)
         readiness_routes.configure(client=client)
         computers_routes.configure(cache=cache)
@@ -210,8 +213,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, self._handle_agent_activity_event)
         event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error_event)
 
-        # Bridge operation completion events to WebSocket clients
-        for _op_event in _OPERATION_COMPLETION_EVENTS.values():
+        # Bridge operation outcome events to WebSocket clients
+        for _op_event in all_outcome_events():
             event_bus.subscribe(_op_event, self._handle_operation_completed_event)
 
         # Set cache through property to trigger subscription
@@ -409,14 +412,21 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     async def _handle_operation_completed_event(
         self,
         event: str,
-        context: OperationCompletedContext,
+        context: OperationSucceededContext | OperationFailedContext,
     ) -> None:
-        """Broadcast operation completion (success or failure) to WebSocket clients."""
-        dto = OperationCompletedEventDTO(
-            event=event,
-            operation_id=context.operation_id,
-            error=context.error,
-        )
+        """Broadcast an operation outcome (success or failure) to WebSocket clients."""
+        dto: OperationSucceededEventDTO | OperationFailedEventDTO
+        if isinstance(context, OperationFailedContext):
+            dto = OperationFailedEventDTO(
+                event=event,
+                operation_id=context.operation_id,
+                error=context.error,
+            )
+        else:
+            dto = OperationSucceededEventDTO(
+                event=event,
+                operation_id=context.operation_id,
+            )
         self._broadcast_payload(event, dto.model_dump(exclude_none=True))
 
     def _setup_routes(self) -> None:

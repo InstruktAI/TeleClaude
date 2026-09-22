@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -31,6 +30,7 @@ from teleclaude.api.auth import (
     clearance_sessions_tail,
     clearance_sessions_unsubscribe,
     clearance_sessions_voice,
+    resolve_caller_provenance,
 )
 from teleclaude.api.run_session_job import normalize_job_run_request
 from teleclaude.api.run_session_refusals import (
@@ -56,7 +56,7 @@ from teleclaude.api_models import (
     SessionMessagesDTO,
     VoiceInputRequest,
 )
-from teleclaude.api_session_actions_models import AgentRestartRequest
+from teleclaude.api_session_actions_models import AgentRestartRequest, AgentRestartResponseDTO
 from teleclaude.config import config
 from teleclaude.constants import (
     COMMAND_ROLE_MAP,
@@ -80,7 +80,7 @@ from teleclaude.core.command_dispatch import (
     dispatch_command,
     parse_remote_dispatch_data_diagnosed,
 )
-from teleclaude.core.command_handlers import resolve_working_slug_from_subdir
+from teleclaude.core.command_handlers import resolve_working_slug_from_subdir, select_handoff_successor
 from teleclaude.core.command_input import REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS
 from teleclaude.core.command_mapper import KEY_COMMANDS, CommandMapper
 from teleclaude.core.command_registry import get_command_service
@@ -96,6 +96,7 @@ from teleclaude.core.models import (
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.models._types import SessionOriginMetadata
 from teleclaude.core.next_machine.manual_start import DriverStartGuardResult, guard_driver_start
+from teleclaude.core.operations.service import SerializedOperation, get_operations_service
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_message_projection import (
     SessionMessageProjectionOptions,
@@ -103,12 +104,18 @@ from teleclaude.core.session_message_projection import (
 )
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
-from teleclaude.types.commands import CreateSessionCommand, UnsubscribeSessionCommand
+from teleclaude.types.commands import (
+    CreateSessionCommand,
+    HandoffAgentCommand,
+    RestartAgentCommand,
+    ReviveAgentCommand,
+    UnsubscribeSessionCommand,
+)
 from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id, recover_native_project
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.types.commands import ResponseMode, SystemCommand
+from teleclaude.types.commands import SystemCommand
 
 logger = get_logger(__name__)
 
@@ -139,9 +146,6 @@ SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
 
 REMOTE_SESSION_MESSAGES_COMMAND = "get_session_messages"
 NO_REMOTE_COMPUTER = ""
-_HANDOFF_STATUS_ACCEPTED = "accepted"
-_HANDOFF_COMPLETION_EVENT = "agent.restart_dispatched"
-_HANDOFF_RESPONSE_OK, _HANDOFF_RESPONSE_ERROR, _HANDOFF_RESPONSE_SELECTED_AGENT = "ok", "error", "selected_agent"
 
 _STATE = SimpleNamespace(client=None)
 router = APIRouter()
@@ -541,14 +545,19 @@ async def agent_restart(
     computer: str | None = Query(None),
     restart_request: AgentRestartRequest | None = None,
     identity: CallerIdentity = Depends(clearance_sessions_agent_restart),
-) -> dict[str, str]:
-    """Restart agent in session (preserves conversation via --resume)."""
+) -> AgentRestartResponseDTO:
+    """Restart agent in session (preserves conversation via --resume), or hand off to a successor.
+
+    Both branches are RECEIPT commands: this returns the operation's receipt
+    immediately, and the terminal outcome is delivered to the caller and
+    readable at ``telec operations get <operation_id>``.
+    """
     try:
         await refuse_act_on_ancestor(identity, session_id, ACT_RESTART)
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
-        # Quick validation before dispatching
         handoff = restart_request.handoff if restart_request else False
+        session = None
         if not is_remote_target(computer, config.computer.name):
             session = await db.get_session(session_id)
             if not session:
@@ -558,43 +567,39 @@ async def agent_restart(
             if not session.native_session_id and not handoff:
                 raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
-        # Dispatch work asynchronously - don't await
         self_restart = restart_request.self_restart if restart_request else False
         agent = restart_request.agent.value if restart_request and restart_request.agent else None
         request_id = str(uuid.uuid4())
-        metadata = _build_metadata()
-        cmd = CommandMapper.map_api_input(
-            "agent_handoff" if handoff else "agent_restart",
-            {
-                "session_id": session_id,
-                "args": [],
-                "self_restart": self_restart,
-                "handoff": handoff,
-                "agent": agent,
-                "caller_system_role": identity.system_role,
-            },
-            metadata,
-            computer=computer,
-        )
-        cmd.request_id = request_id
+        caller = resolve_caller_provenance(identity)
+        selected_agent: str | None = None
+
+        cmd: HandoffAgentCommand | RestartAgentCommand
         if handoff:
+            if session is None:
+                raise HTTPException(status_code=400, detail="Remote handoff is not supported")
+            try:
+                cmd = await select_handoff_successor(
+                    session,
+                    agent_name=agent,
+                    caller_system_role=identity.system_role,
+                    request_id=request_id,
+                )
+            except AgentDispatchFailure as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            selected_agent = cmd.agent_name
+        else:
+            cmd = RestartAgentCommand(session_id=session_id, self_restart=self_restart, request_id=request_id)
+        cmd.computer = computer
+        cmd.caller = caller
+
+        if is_remote_target(computer, config.computer.name):
             result = await dispatch_command(_STATE.client, cmd)
             if not isinstance(result, dict):
-                raise RuntimeError("Handoff restart returned no immediate result")
-            if not result.get(_HANDOFF_RESPONSE_OK):
-                detail = result.get(_HANDOFF_RESPONSE_ERROR)
-                raise HTTPException(status_code=409, detail=str(detail))
-            selected_agent = result.get(_HANDOFF_RESPONSE_SELECTED_AGENT)
-            return {
-                "status": _HANDOFF_STATUS_ACCEPTED,
-                "selected_agent": str(selected_agent),
-                "completion_event": cmd.completion_event or _HANDOFF_COMPLETION_EVENT,
-            }
-        asyncio.create_task(dispatch_command(_STATE.client, cmd), name=f"agent-restart-{session_id}")
-        return {
-            "status": _HANDOFF_STATUS_ACCEPTED,
-            "completion_event": cmd.completion_event or _HANDOFF_COMPLETION_EVENT,
-        }
+                raise RuntimeError("Remote receipt submission returned no result")
+            receipt = cast(SerializedOperation, result)
+        else:
+            receipt = await get_operations_service().submit(cmd, caller=caller, client_request_id=request_id)
+        return AgentRestartResponseDTO(**receipt, selected_agent=selected_agent)
     except HTTPException:
         raise
     except Exception as e:
@@ -622,15 +627,9 @@ async def revive_session(
             if not session.native_session_id:
                 raise HTTPException(status_code=409, detail="No native session ID - start agent first")
 
-        metadata = _build_metadata()
-        cmd = CommandMapper.map_api_input(
-            "agent_restart",
-            {"session_id": session_id, "args": []},
-            metadata,
-            computer=computer,
-        )
-        cmd.response_mode = ResponseMode.IMMEDIATE
-        cmd.completion_event = None
+        cmd = ReviveAgentCommand(session_id=session_id)
+        cmd.computer = computer
+        cmd.caller = resolve_caller_provenance(identity)
         result = await dispatch_command(_STATE.client, cmd)
         if isinstance(result, tuple | list) and len(result) >= 2:
             success = bool(result[0])
@@ -942,8 +941,8 @@ async def escalate_session(
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """Escalate a customer session to an admin via Discord.
 
-    Dispatches through CommandService.escalate_session() as a FIRE_AND_FORGET
-    SystemCommand. Returns 202 with completion_event. Requires dual-factor
+    Dispatches through CommandService.escalate_session() as an IMMEDIATE
+    SystemCommand and returns 200 with the result. Requires dual-factor
     caller identity.
     """
     cmd = SystemCommand(
@@ -954,17 +953,14 @@ async def escalate_session(
             "reason": request.reason,
             "context_summary": request.context_summary,
         },
-        response_mode=ResponseMode.FIRE_AND_FORGET,
-        completion_event="session.escalation_started",
     )
     try:
         result = await get_command_service().escalate_session(cmd)
         return JSONResponse(  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
-            status_code=202,
+            status_code=200,
             content={
-                "status": "accepted",
+                "status": "success",
                 "thread_id": result.get("thread_id") if isinstance(result, dict) else None,  # type: ignore[union-attr]
-                "completion_event": cmd.completion_event,
             },
         )
     except ValueError as e:

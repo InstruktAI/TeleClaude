@@ -12,8 +12,8 @@ import uuid
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
-from teleclaude.cli.telec.surface import TODO_DESIGN, TODO_INTEGRATE, TODO_PREPARE, TODO_WORK
-from teleclaude.cli.tool_client import print_json, tool_api_call
+from teleclaude.cli.telec.surface import OPERATIONS_GET, TODO_DESIGN, TODO_INTEGRATE, TODO_PREPARE, TODO_WORK
+from teleclaude.cli.tool_client import ToolQueryParams, print_json, tool_api_call
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.project_root import resolve_invocation_cwd
 
@@ -228,19 +228,27 @@ Run 'telec operations <subcommand> --help' for subcommand-specific help."""
 def handle_operations_get(args: list[str]) -> None:
     """Fetch durable operation status by operation_id.
 
-    Usage: telec operations get <operation_id>
+    Usage: telec operations get <operation_id> [-c/--computer <computer>]
+
+    Options:
+      -c, --computer    Read the operation from a named remote computer,
+                        forwarded by the local daemon to the owning computer.
 
     Examples:
       telec operations get 4ac5e6bf-53da-4862-95d3-bd75ed25b49f
+      telec operations get 4ac5e6bf-53da-4862-95d3-bd75ed25b49f --computer mac-studio
     """
     if "--help" in args or "-h" in args:
         print(handle_operations_get.__doc__ or "")
         return
 
-    operation_id = next((arg for arg in args if not arg.startswith("-")), None)
+    parsed = parse_command_args(OPERATIONS_GET, args)
+    operation_id = _parse_single_slug(parsed)
     if not operation_id:
         print("Error: operation_id required", file=sys.stderr)
         raise SystemExit(1)
 
-    data = tool_api_call("GET", f"/operations/{operation_id}")
+    computer = parsed.value(F.FLAG_COMPUTER)
+    params: ToolQueryParams | None = {"computer": computer} if computer else None
+    data = tool_api_call("GET", f"/operations/{operation_id}", params=params)
     print_json(data)

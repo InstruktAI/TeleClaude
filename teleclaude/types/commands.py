@@ -26,6 +26,7 @@ class CommandType(str, Enum):
     RUN_AGENT_COMMAND = "run_agent_command"
     RESTART_AGENT = "restart_agent"
     HANDOFF_AGENT = "handoff_agent"
+    REVIVE_AGENT = "revive_agent"
     UNSUBSCRIBE_SESSION = "unsubscribe_session"
     GET_SESSION_DATA = "get_session_data"
     CLOSE_SESSION = "close_session"
@@ -37,20 +38,57 @@ class ResponseMode(str, Enum):
     """Declares how the API/dispatch layer handles a command's response."""
 
     IMMEDIATE = "immediate"
-    FIRE_AND_FORGET = "fire_and_forget"
     RECEIPT = "receipt"
+
+
+@dataclass(frozen=True, kw_only=True)
+class CallerProvenance:
+    """Identity of the session that submitted a command, resolved at the API boundary.
+
+    Carried on every command's ``caller`` field so an owning computer that
+    receives a forwarded command can reconstruct the same caller the
+    originating computer resolved, without a per-command special case.
+    """
+
+    session_id: str
+    author_kind: str
+    author_display: str
+    computer: str | None = None
+    agent_runtime: str | None = None
+    thinking_mode: str | None = None
+    machine_role: str | None = None
+    job_role: str | None = None
+
+    def to_dict(self) -> JsonDict:
+        """Serialize as the nested ``caller`` block of a command's wire payload."""
+        return {
+            "session_id": self.session_id,
+            "author_kind": self.author_kind,
+            "author_display": self.author_display,
+            "computer": self.computer,
+            "agent_runtime": self.agent_runtime,
+            "thinking_mode": self.thinking_mode,
+            "machine_role": self.machine_role,
+            "job_role": self.job_role,
+        }
+
+    @staticmethod
+    def from_dict(data: Mapping[str, object]) -> "CallerProvenance":
+        """Rebuild from the nested ``caller`` block of a command's wire payload."""
+        return CallerProvenance(
+            session_id=cast(str, data["session_id"]),
+            author_kind=cast(str, data["author_kind"]),
+            author_display=cast(str, data["author_display"]),
+            computer=cast("str | None", data.get("computer")),
+            agent_runtime=cast("str | None", data.get("agent_runtime")),
+            thinking_mode=cast("str | None", data.get("thinking_mode")),
+            machine_role=cast("str | None", data.get("machine_role")),
+            job_role=cast("str | None", data.get("job_role")),
+        )
 
 
 class RestartAgentResult(TypedDict):
     """Immediate outcome of a restart request that resolves a successor."""
-
-    ok: bool
-    error: str | None
-    selected_agent: str | None
-
-
-class HandoffAgentResult(TypedDict):
-    """Immediate outcome of accepting or refusing an agent handoff."""
 
     ok: bool
     error: str | None
@@ -65,14 +103,20 @@ class InternalCommand:
     computer: str | None = None
     request_id: str | None = None
     response_mode: ResponseMode = ResponseMode.IMMEDIATE
-    completion_event: str | None = None
+    success_event: str | None = None
+    failure_event: str | None = None
+    caller: CallerProvenance | None = None
 
     def __post_init__(self) -> None:
-        if self.response_mode == ResponseMode.FIRE_AND_FORGET and self.completion_event is None:
+        declares_events = self.success_event is not None or self.failure_event is not None
+        is_receipt = self.response_mode is ResponseMode.RECEIPT
+        if declares_events != is_receipt:
             raise ValueError(
-                f"FIRE_AND_FORGET commands must declare a completion_event, "
-                f"but {type(self).__name__} has completion_event=None"
+                f"{type(self).__name__}: RECEIPT requires both success_event and failure_event, "
+                f"and IMMEDIATE declares neither"
             )
+        if is_receipt and (self.success_event is None or self.failure_event is None):
+            raise ValueError(f"{type(self).__name__}: RECEIPT requires both success_event and failure_event")
 
     def to_payload(self) -> dict[str, object]:
         """Return payload dict for adapter event dispatch."""
@@ -90,6 +134,8 @@ class InternalCommand:
                 payload[name] = value.value
             elif name == "launch_intent":
                 payload[name] = cast("SessionLaunchIntent", value).to_dict()
+            elif name == "caller":
+                payload[name] = cast(CallerProvenance, value).to_dict()
             elif isinstance(value, Mapping):
                 payload[name] = _json_dict(value)
             elif isinstance(value, list):
@@ -253,17 +299,12 @@ class ProcessMessageCommand(InternalCommand):
     source_message_id: str | None = None  # Platform message ID for inbound dedup
     source_channel_id: str | None = None  # Platform channel ID for additional context
     origin_metadata: Mapping[str, object] | None = None
-    # Structural caller-session provenance for a session-originated send
-    # (e.g. plain `telec sessions send`): the caller's resolved event author,
-    # carried as a typed value the whole way to the accepted row. Absent for
-    # ordinary human/adapter-originated input.
-    caller_session_id: str | None = None
-    caller_author_kind: str | None = None
-    caller_author_display: str | None = None
-    caller_agent_runtime: str | None = None
-    caller_thinking_mode: str | None = None
-    caller_machine_role: str | None = None
-    caller_job_role: str | None = None
+    # `caller_origin_prefix_len`/`caller_origin_suffix_len` describe envelope
+    # trimming of the message body — message-projection fields, not caller
+    # identity. The caller's resolved event author lives on the base class's
+    # `caller` field (see the properties below) for a session-originated send
+    # (e.g. plain `telec sessions send`); absent for ordinary human/adapter-
+    # originated input.
     caller_origin_prefix_len: int | None = None
     caller_origin_suffix_len: int | None = None
     command_input_mode: CommandInputMode = CommandInputMode.ORDINARY
@@ -310,17 +351,51 @@ class ProcessMessageCommand(InternalCommand):
         self.source_message_id = source_message_id
         self.source_channel_id = source_channel_id
         self.origin_metadata = origin_metadata
-        self.caller_session_id = caller_session_id
-        self.caller_author_kind = caller_author_kind
-        self.caller_author_display = caller_author_display
-        self.caller_agent_runtime = caller_agent_runtime
-        self.caller_thinking_mode = caller_thinking_mode
-        self.caller_machine_role = caller_machine_role
-        self.caller_job_role = caller_job_role
+        self.caller = (
+            CallerProvenance(
+                session_id=caller_session_id,
+                author_kind=caller_author_kind,
+                author_display=caller_author_display,
+                agent_runtime=caller_agent_runtime,
+                thinking_mode=caller_thinking_mode,
+                machine_role=caller_machine_role,
+                job_role=caller_job_role,
+            )
+            if caller_session_id and caller_author_kind and caller_author_display
+            else None
+        )
         self.caller_origin_prefix_len = caller_origin_prefix_len
         self.caller_origin_suffix_len = caller_origin_suffix_len
         self.command_input_mode = command_input_mode
         self.sender_human_role = sender_human_role
+
+    @property
+    def caller_session_id(self) -> str | None:
+        return self.caller.session_id if self.caller else None
+
+    @property
+    def caller_author_kind(self) -> str | None:
+        return self.caller.author_kind if self.caller else None
+
+    @property
+    def caller_author_display(self) -> str | None:
+        return self.caller.author_display if self.caller else None
+
+    @property
+    def caller_agent_runtime(self) -> str | None:
+        return self.caller.agent_runtime if self.caller else None
+
+    @property
+    def caller_thinking_mode(self) -> str | None:
+        return self.caller.thinking_mode if self.caller else None
+
+    @property
+    def caller_machine_role(self) -> str | None:
+        return self.caller.machine_role if self.caller else None
+
+    @property
+    def caller_job_role(self) -> str | None:
+        return self.caller.job_role if self.caller else None
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -550,9 +625,39 @@ class RestartAgentCommand(InternalCommand):
         super().__init__(
             command_type=CommandType.RESTART_AGENT,
             request_id=request_id,
-            response_mode=ResponseMode.FIRE_AND_FORGET,
-            completion_event="agent.restart_dispatched",
+            response_mode=ResponseMode.RECEIPT,
+            success_event="agent.restart.completed",
+            failure_event="agent.restart.failed",
         )
+        self.session_id = session_id
+        self.self_restart = self_restart
+
+    def to_payload(self) -> dict[str, object]:
+        return {"session_id": self.session_id, "args": []}
+
+
+@dataclass(kw_only=True)
+class ReviveAgentCommand(InternalCommand):
+    """Intent to revive a session's agent, reporting session id, host-pane reference and agent synchronously.
+
+    A separate command type from ``RestartAgentCommand`` — sharing its handler
+    body but declaring ``IMMEDIATE``, because revival's response contract is
+    synchronous by design (``session-revival`` UC-SR9), while restart's is
+    asynchronous. One class carrying two response modes is what forced a
+    post-construction mutation of ``response_mode`` in the first place.
+    """
+
+    session_id: str
+    self_restart: bool = False
+
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        self_restart: bool = False,
+        request_id: str | None = None,
+    ):
+        super().__init__(command_type=CommandType.REVIVE_AGENT, request_id=request_id)
         self.session_id = session_id
         self.self_restart = self_restart
 
@@ -579,8 +684,9 @@ class HandoffAgentCommand(InternalCommand):
         super().__init__(
             command_type=CommandType.HANDOFF_AGENT,
             request_id=request_id,
-            response_mode=ResponseMode.IMMEDIATE,
-            completion_event="agent_runtime.handoff.completed",
+            response_mode=ResponseMode.RECEIPT,
+            success_event="agent_runtime.handoff.completed",
+            failure_event="agent_runtime.handoff.failed",
         )
         self.session_id = session_id
         self.agent_name = agent_name
@@ -652,8 +758,9 @@ class CloseSessionCommand(InternalCommand):
         super().__init__(
             command_type=CommandType.CLOSE_SESSION,
             request_id=request_id,
-            response_mode=ResponseMode.FIRE_AND_FORGET,
-            completion_event="session.close_completed",
+            response_mode=ResponseMode.RECEIPT,
+            success_event="session.close.completed",
+            failure_event="session.close.failed",
         )
         self.session_id = session_id
 
@@ -679,13 +786,15 @@ class SystemCommand(InternalCommand):
         session_id: str | None = None,
         request_id: str | None = None,
         response_mode: ResponseMode = ResponseMode.IMMEDIATE,
-        completion_event: str | None = None,
+        success_event: str | None = None,
+        failure_event: str | None = None,
     ):
         super().__init__(
             command_type=CommandType.SYSTEM,
             request_id=request_id,
             response_mode=response_mode,
-            completion_event=completion_event,
+            success_event=success_event,
+            failure_event=failure_event,
         )
         self.command = command
         self.args = args or []
@@ -730,6 +839,7 @@ COMMAND_CLASS_BY_TYPE: dict[CommandType, type[InternalCommand]] = {
     CommandType.RUN_AGENT_COMMAND: RunAgentCommand,
     CommandType.RESTART_AGENT: RestartAgentCommand,
     CommandType.HANDOFF_AGENT: HandoffAgentCommand,
+    CommandType.REVIVE_AGENT: ReviveAgentCommand,
     CommandType.UNSUBSCRIBE_SESSION: UnsubscribeSessionCommand,
     CommandType.GET_SESSION_DATA: GetSessionDataCommand,
     CommandType.CLOSE_SESSION: CloseSessionCommand,
@@ -749,7 +859,7 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
     constructor_params = signature(command_cls).parameters
     kwargs: dict[str, object] = {}
     for name in constructor_params:
-        if name in {"command_type", "computer"} or name not in data:
+        if name in {"command_type", "computer", "caller"} or name not in data:
             continue
         raw_value: object = data[name]
         value: object = raw_value
@@ -770,5 +880,14 @@ def command_from_dict(data: JsonDict) -> InternalCommand:
     raw_response_mode = data.get("response_mode")
     if isinstance(raw_response_mode, str):
         command.response_mode = ResponseMode(raw_response_mode)
-    command.completion_event = cast(str | None, data.get("completion_event"))
+    command.success_event = cast(str | None, data.get("success_event"))
+    command.failure_event = cast(str | None, data.get("failure_event"))
+    raw_caller = data.get("caller")
+    command.caller = CallerProvenance.from_dict(raw_caller) if isinstance(raw_caller, dict) else None
+    # A subclass whose hand-written __init__ hardcodes response_mode/events (or,
+    # like ProcessMessageCommand, derives `caller` from its own flat kwargs) never
+    # installed these post-construction assignments through the biconditional.
+    # Re-running it here closes that gap on every deserialized command, remote or
+    # local, rather than only on the ones whose __init__ happens to accept them.
+    command.__post_init__()
     return command

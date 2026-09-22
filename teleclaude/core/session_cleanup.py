@@ -446,6 +446,11 @@ async def emit_recently_closed_session_events(
     Emits SESSION_CLOSE_REQUESTED (not SESSION_CLOSED) so that terminate_session runs
     exactly once and clears the channel reference on success.
 
+    Retained: most callers of terminate_session close a session with no command
+    behind them, so no durable operation row exists to answer for their channel
+    cleanup after a daemon restart. Only a CloseSessionCommand-originated close is
+    now covered by the operation row; this sweep is still what recovers the rest.
+
     Returns:
         Number of sessions for which a SESSION_CLOSE_REQUESTED event was emitted.
     """

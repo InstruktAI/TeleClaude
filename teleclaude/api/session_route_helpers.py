@@ -8,7 +8,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import db
 from teleclaude.core.models import JsonDict, MessageMetadata
-from teleclaude.types.commands import CloseSessionCommand
+from teleclaude.core.operations.service import SerializedOperation
 
 
 def build_metadata(*, origin: str = "terminal", **kwargs: object) -> MessageMetadata:
@@ -16,15 +16,13 @@ def build_metadata(*, origin: str = "terminal", **kwargs: object) -> MessageMeta
     return MessageMetadata(origin=origin, **kwargs)
 
 
-def close_accepted(command: CloseSessionCommand, *, location_label: str | None = None) -> JSONResponse:
-    """Return the uniform accepted response for a close command."""
-    message = f"Session {command.session_id} closing"
-    if location_label is not None:
-        message = f"{message} on {location_label}"
-    return JSONResponse(
-        status_code=202,
-        content={"status": "accepted", "message": message, "completion_event": command.completion_event},
-    )
+def close_accepted(receipt: SerializedOperation) -> JSONResponse:
+    """Return the operation receipt as the close command's 202 response.
+
+    The receipt's own ``computer`` field already names the owning computer,
+    so no separate location label is needed here.
+    """
+    return JSONResponse(status_code=202, content=dict(receipt))
 
 
 async def resolve_created_session_transport(data: JsonDict) -> tuple[str, str]:

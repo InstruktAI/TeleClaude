@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import Depends, Header, HTTPException, Request
 
 from teleclaude.cli.telec import is_command_allowed
+from teleclaude.config import config
 from teleclaude.constants import (
     ROLE_INTEGRATOR,
     ROLE_JOB_RUNNER,
@@ -32,9 +33,11 @@ from teleclaude.constants import (
     ROLE_WORKER,
 )
 from teleclaude.core import db_models
+from teleclaude.core.conversation_messages import resolve_session_event_author
 from teleclaude.core.db import SessionIdentityError, db, resolve_session_principal
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.session_status import is_session_terminal
+from teleclaude.types.commands import CallerProvenance
 from teleclaude.types.creation_record import EntryPoint
 
 if TYPE_CHECKING:
@@ -163,6 +166,36 @@ class CallerIdentity:
     principal: str | None = None  # "human:<email>" or "system:<id>" (token-auth only)
     principal_role: str | None = None  # role carried with the token (token-auth only)
     entry_point: EntryPoint | None = None  # the creation door, stamped from request shape
+
+
+def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenance | None:
+    """Build the caller-identity block a command carries, from a verified identity.
+
+    Absent for a caller with no session (e.g. a terminal-only identity, or one
+    whose session fell out of the clearance cache) — a command from such a
+    caller submits without provenance rather than inferring one.
+    """
+    if not identity.session_id:
+        return None
+    session = _get_cached_session(identity.session_id)
+    if session is None:
+        return None
+    author = resolve_session_event_author(
+        session_id=identity.session_id,
+        system_role=session.system_role,
+        active_agent=session.active_agent,
+        thinking_mode=session.thinking_mode,
+    )
+    return CallerProvenance(
+        session_id=identity.session_id,
+        computer=config.computer.name,
+        author_kind=author.kind.value,
+        author_display=author.display,
+        agent_runtime=author.agent_runtime,
+        thinking_mode=author.thinking_mode,
+        machine_role=author.machine_role,
+        job_role=session.job,
+    )
 
 
 async def _get_verified_session(session_id: str) -> Session:

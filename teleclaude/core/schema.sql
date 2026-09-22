@@ -235,9 +235,11 @@ CREATE INDEX IF NOT EXISTS idx_pending_deletions_session
 CREATE TABLE IF NOT EXISTS operations (
     operation_id TEXT PRIMARY KEY,
     kind TEXT NOT NULL,
-    caller_session_id TEXT NOT NULL,
+    caller_session_id TEXT,
+    caller_computer TEXT,
+    caller_provenance_json TEXT,
     client_request_id TEXT,
-    cwd TEXT NOT NULL,
+    cwd TEXT,
     slug TEXT,
     payload_json TEXT NOT NULL,
     state TEXT NOT NULL CHECK(state IN ('queued', 'running', 'completed', 'failed', 'stale', 'cancelled')),

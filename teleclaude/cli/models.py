@@ -8,7 +8,6 @@ from teleclaude.api_models import (
     ChiptunesStateEventDTO,
     ChiptunesTrackEventDTO,
     ErrorEventDTO,
-    OperationCompletedEventDTO,
     ProjectsInitialEventDTO,
     RefreshEventDTO,
     SessionClosedEventDTO,
@@ -17,6 +16,7 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
 )
+from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 
 __all__ = [
     "JsonObject",
@@ -45,7 +45,8 @@ type WsEvent = (
     | AgentActivityEventDTO
     | ChiptunesStateEventDTO
     | ChiptunesTrackEventDTO
-    | OperationCompletedEventDTO
+    | OperationSucceededEventDTO
+    | OperationFailedEventDTO
 )
 
 

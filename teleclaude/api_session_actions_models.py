@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict
 
 from teleclaude.agent_registry import AgentName
+from teleclaude.api_models_operations import OperationStatusDTO
 
 
 class AgentRestartRequest(BaseModel):
@@ -19,11 +18,7 @@ class AgentRestartRequest(BaseModel):
     agent: AgentName | None = None
 
 
-class AgentRestartResponseDTO(BaseModel):
-    """Immediate acceptance or selection result for an agent restart."""
+class AgentRestartResponseDTO(OperationStatusDTO):
+    """Restart/handoff receipt; selection rides the receipt for the handoff branch."""
 
-    model_config = ConfigDict(frozen=True)
-
-    status: Literal["accepted"]
-    completion_event: str
     selected_agent: AgentName | None = None

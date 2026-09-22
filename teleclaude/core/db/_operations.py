@@ -23,19 +23,28 @@ class DbOperationsMixin:
         *,
         operation_id: str,
         kind: str,
-        caller_session_id: str,
+        caller_session_id: str | None,
         client_request_id: str | None,
-        cwd: str,
+        cwd: str | None,
         slug: str | None,
         payload_json: str,
         state: str,
+        caller_computer: str | None = None,
+        caller_provenance_json: str | None = None,
     ) -> db_models.Operation:
-        """Insert a durable operation row."""
+        """Insert a durable operation row.
+
+        ``caller_session_id``/``cwd`` are nullable: a command-backed operation
+        with no recorded caller, or one with no todo checkout to root a ``cwd``
+        in, is a submittable row — nothing is inferred to fill the gap.
+        """
         now = datetime.now(UTC).isoformat()
         row = db_models.Operation(
             operation_id=operation_id,
             kind=kind,
             caller_session_id=caller_session_id,
+            caller_computer=caller_computer,
+            caller_provenance_json=caller_provenance_json,
             client_request_id=client_request_id,
             cwd=cwd,
             slug=slug,
@@ -61,10 +70,14 @@ class DbOperationsMixin:
         self,
         *,
         kind: str,
-        caller_session_id: str,
+        caller_session_id: str | None,
         client_request_id: str,
     ) -> db_models.Operation | None:
-        """Fetch a prior submit by client_request_id."""
+        """Fetch a prior submit by client_request_id.
+
+        ``client_request_id`` is the uniqueness anchor; ``caller_session_id``
+        may be ``None`` for a command-backed, caller-less submission.
+        """
         stmt = (
             select(db_models.Operation)
             .where(db_models.Operation.kind == kind)
@@ -79,7 +92,7 @@ class DbOperationsMixin:
         self,
         *,
         kind: str,
-        caller_session_id: str,
+        caller_session_id: str | None,
         cwd: str,
         slug: str | None,
     ) -> db_models.Operation | None:
@@ -240,50 +253,76 @@ class DbOperationsMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def mark_nonterminal_operations_stale(self, *, error_text: str) -> int:
-        """Mark queued/running operations stale, typically after daemon restart."""
-        now_iso = datetime.now(UTC).isoformat()
-        stmt = (
-            update(db_models.Operation)
-            .where(db_models.Operation.state.in_(["queued", "running"]))
-            .values(
-                state="stale",
-                error_text=error_text,
-                error_payload=None,
-                updated_at=now_iso,
-                heartbeat_at=now_iso,
-                completed_at=now_iso,
-            )
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
-            await db_session.commit()
-            return result.rowcount or 0
+    async def mark_nonterminal_operations_stale(self, *, error_text: str) -> list[db_models.Operation]:
+        """Mark queued/running operations stale, typically after daemon restart.
 
-    async def expire_stale_operations(self, older_than_iso: str, *, error_text: str) -> int:
-        """Mark long-silent running operations stale."""
+        Returns the affected rows (post-transition) rather than a bare count —
+        staleness is an outcome, and a caller cannot be named from a rowcount.
+        """
         now_iso = datetime.now(UTC).isoformat()
-        stmt = (
-            update(db_models.Operation)
-            .where(db_models.Operation.state == "running")
-            .where(
-                or_(
-                    db_models.Operation.heartbeat_at.is_(None),
-                    db_models.Operation.heartbeat_at < older_than_iso,
+        async with self._session() as db_session:
+            id_stmt = select(db_models.Operation.operation_id).where(
+                db_models.Operation.state.in_(["queued", "running"])
+            )
+            ids = list((await db_session.exec(id_stmt)).all())
+            if not ids:
+                return []
+            stmt = (
+                update(db_models.Operation)
+                .where(db_models.Operation.operation_id.in_(ids))
+                .values(
+                    state="stale",
+                    error_text=error_text,
+                    error_payload=None,
+                    updated_at=now_iso,
+                    heartbeat_at=now_iso,
+                    completed_at=now_iso,
                 )
             )
-            .values(
-                state="stale",
-                error_text=error_text,
-                error_payload=None,
-                updated_at=now_iso,
-                completed_at=now_iso,
-            )
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
+            await db_session.exec(stmt)
             await db_session.commit()
-            return result.rowcount or 0
+            refreshed = await db_session.exec(
+                select(db_models.Operation).where(db_models.Operation.operation_id.in_(ids))
+            )
+            return list(refreshed.all())
+
+    async def expire_stale_operations(self, older_than_iso: str, *, error_text: str) -> list[db_models.Operation]:
+        """Mark long-silent running operations stale.
+
+        Returns the affected rows (post-transition) rather than a bare count —
+        staleness is an outcome, and a caller cannot be named from a rowcount.
+        """
+        now_iso = datetime.now(UTC).isoformat()
+        async with self._session() as db_session:
+            id_stmt = select(db_models.Operation.operation_id).where(
+                and_(
+                    db_models.Operation.state == "running",
+                    or_(
+                        db_models.Operation.heartbeat_at.is_(None),
+                        db_models.Operation.heartbeat_at < older_than_iso,
+                    ),
+                )
+            )
+            ids = list((await db_session.exec(id_stmt)).all())
+            if not ids:
+                return []
+            stmt = (
+                update(db_models.Operation)
+                .where(db_models.Operation.operation_id.in_(ids))
+                .values(
+                    state="stale",
+                    error_text=error_text,
+                    error_payload=None,
+                    updated_at=now_iso,
+                    completed_at=now_iso,
+                )
+            )
+            await db_session.exec(stmt)
+            await db_session.commit()
+            refreshed = await db_session.exec(
+                select(db_models.Operation).where(db_models.Operation.operation_id.in_(ids))
+            )
+            return list(refreshed.all())
 
     async def cleanup_terminal_operations(self, older_than_iso: str) -> int:
         """Delete terminal operation receipts older than runtime retention."""
