@@ -22,7 +22,12 @@ from teleclaude.core.todos_db._models import (
     TodoArtifact,
     TodoArtifactVersion,
 )
-from teleclaude.core.todos_db._rows import ArtifactMetadataRow, ArtifactRemovalResult, ArtifactVersionRow
+from teleclaude.core.todos_db._rows import (
+    ArtifactMetadataRow,
+    ArtifactRemovalResult,
+    ArtifactVersionRow,
+    ArtifactWritersRow,
+)
 from teleclaude.utils.transcript_discovery import as_session_id
 
 logger = get_logger(__name__)
@@ -305,6 +310,41 @@ class TodosDbArtifactsMixin:
                 select(TodoArtifact.name).where(TODO_ARTIFACT_TABLE.c.id == row_id).order_by(TODO_ARTIFACT_TABLE.c.name)
             )
             return [str(name) for name in result.all()]
+
+    async def list_artifacts_with_writers(self, slug: str) -> list[ArtifactWritersRow]:
+        """Return every stored artifact for a slug with the distinct writers across its versions.
+
+        Writers are ordered by the version that first recorded each, so a session that
+        later repaired an artifact never displaces the one that created it. An artifact
+        with no version rows is still present, with an empty writer set: the artifact
+        table is the authority for which artifacts exist, and version history
+        contributes writers only.
+        """
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_artifact_id(slug, session)
+            if row_id is None:
+                return []
+            names_result = await session.exec(
+                select(TodoArtifact.name).where(TODO_ARTIFACT_TABLE.c.id == row_id).order_by(TODO_ARTIFACT_TABLE.c.name)
+            )
+            names = [str(name) for name in names_result.all()]
+
+            versions_result = await session.exec(
+                select(TodoArtifactVersion.name, TodoArtifactVersion.updated_by)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.id == row_id)
+                .order_by(TODO_ARTIFACT_VERSION_TABLE.c.created_at.asc())
+            )
+            writers_by_name: dict[str, list[str]] = {name: [] for name in names}
+            for version_name, updated_by in versions_result.all():
+                bucket = writers_by_name.get(str(version_name))
+                if bucket is None:
+                    continue
+                writer = as_session_id(updated_by)
+                if not writer or writer in bucket:
+                    continue
+                bucket.append(writer)
+
+            return [ArtifactWritersRow(name=name, writers=writers_by_name[name]) for name in names]
 
     async def artifact_metadata(self, slug: str) -> list[ArtifactMetadataRow]:
         """Return current artifact metadata for a slug, ordered by artifact name."""

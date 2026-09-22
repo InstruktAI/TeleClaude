@@ -43,6 +43,13 @@ class ArtifactMetadataRow(TypedDict):
     updated_at: str
 
 
+class ArtifactWritersRow(TypedDict):
+    """One stored artifact with the distinct writers recorded across its versions."""
+
+    name: str
+    writers: list[str]
+
+
 class ArtifactRemovalResult(TypedDict):
     """Result from deleting one named todo artifact."""
 

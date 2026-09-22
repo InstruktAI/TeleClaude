@@ -90,12 +90,20 @@ class _ArtifactRemoveResponse(BaseModel):
     versions_deleted: int
 
 
+class _ArtifactListEntry(BaseModel):
+    """One artifact name with the distinct writers recorded across its versions."""
+
+    model_config = ConfigDict(frozen=True)
+    name: str
+    writers: list[str]
+
+
 class _ArtifactListResponse(BaseModel):
     """Response from artifact list."""
 
     model_config = ConfigDict(frozen=True)
     slug: str
-    artifacts: list[str]
+    artifacts: list[_ArtifactListEntry]
 
 
 class _ArtifactDiffResponse(BaseModel):
@@ -254,11 +262,12 @@ async def list_artifacts(
     slug: str,
     cwd: str | None = None,
 ) -> _ArtifactListResponse:
-    """List artifact names for a slug."""
+    """List artifact names for a slug, with each artifact's distinct writers."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    names = await todos_db.list_artifacts(slug)
-    return _ArtifactListResponse(slug=slug, artifacts=names)
+    rows = await todos_db.list_artifacts_with_writers(slug)
+    entries = [_ArtifactListEntry(name=row["name"], writers=row["writers"]) for row in rows]
+    return _ArtifactListResponse(slug=slug, artifacts=entries)
 
 
 @router.get("/artifacts/{slug}/{name}/diff")
