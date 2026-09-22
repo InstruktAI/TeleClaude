@@ -18,6 +18,7 @@ The v1 surface that lets a human authenticate to TeleClaude from an interactive 
 
 ### Use cases
 
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 ```
 Given an interactive terminal with a detectable controlling TTY (e.g. /dev/ttys003)
 And the operator runs `telec auth login alice@example.com`
@@ -26,6 +27,29 @@ Then a structured payload {email, tty, updated_at} is atomically written to the 
 And the same payload is also written to a global-identity fallback location (last-login-wins)
 And the CLI prints "Logged in as alice@example.com[ (<role>)]." plus the TTY and file path
 ```
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+#### UC-TEL1: Login records the terminal device's allocation identity alongside the email
+
+```
+Given an interactive terminal with a detectable controlling TTY (e.g. /dev/ttys003)
+And the operator runs `telec auth login alice@example.com`
+When the login writer normalizes and validates the address
+Then a structured payload carrying the email, the terminal device, the write time, and the device's current allocation time is atomically written to the per-TTY auth location with private file mode
+And the same payload is also written to a global-identity fallback location (last-login-wins)
+And the CLI prints "Logged in as alice@example.com[ (<role>)]." plus the TTY and file path
+```
+
+#### UC-TEL2: Login releases documents whose terminal device is gone and leaves live ones alone
+
+```
+Given per-TTY login documents exist for several terminals
+And the device node of some of those terminals no longer exists
+When any operator completes `telec auth login`
+Then every per-TTY document whose device node no longer exists is removed
+And every per-TTY document whose device node still exists is left untouched, including documents belonging to another person
+And the global-identity document is unaffected by the release
+```
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ```
 Given a person whose email is listed under `people` in the global config
@@ -42,6 +66,7 @@ And the CLI prints the error and exits with a failure status
 And no file is written
 ```
 
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 ```
 Given a subsequent telec invocation from the same TTY as the prior login
 When the CLI builds outbound identity signals
@@ -50,7 +75,6 @@ And the outbound call carries the terminal-email signal
 And the identity context resolves the principal via the terminal-email auth path
 ```
 
-<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 ```
 Given a process with no detectable TTY (no ttyname on fd 0/1/2 and no SSH_TTY)
 When the same flow runs
@@ -58,18 +82,54 @@ Then login writes only the global-identity fallback document
 And the session-auth reader falls back to that global record
 ```
 <!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+#### UC-TEL3: A live per-TTY document answers for its own terminal
+
 ```
-Given a telec invocation from a TTY that has no per-TTY login document of its own
+Given a telec invocation from a TTY whose per-TTY login document records the device's current allocation time
 When the CLI builds outbound identity signals
-Then the session-auth reader falls back to the global-identity document
+Then the session-auth reader returns that document's email
+And the outbound call carries the terminal-email signal
+And the identity context resolves the principal via the terminal-email auth path
+```
+
+#### UC-TEL4: A per-TTY document outlives neither its device nor its allocation
+
+```
+Given a per-TTY login document whose terminal device no longer exists, or exists with a different allocation time than the one recorded at login
+When the CLI builds outbound identity signals from that TTY
+Then the session-auth reader does not return that document's email
+And the terminal is treated as carrying no login document of its own
+```
+
+#### UC-TEL5: The global record answers a fresh terminal only while one person is registered
+
+```
+Given a telec invocation from a TTY that carries no login document of its own
+And exactly one person, or none, is registered
+When the CLI builds outbound identity signals
+Then the session-auth reader returns the global-identity document's email
 And the human is spared logging in again for a shell they just opened
 ```
 
+#### UC-TEL6: A fresh terminal must authenticate once more than one person is registered
+
 ```
-Given a process with no detectable TTY (no ttyname on fd 0/1/2 and no SSH_TTY)
+Given a telec invocation from a TTY that carries no login document of its own
+And more than one person is registered
 When the CLI builds outbound identity signals
 Then the session-auth reader returns no email
 And the outbound call carries no terminal-email signal
+And the operator is told that login is required before the command can proceed
+```
+
+#### UC-TEL7: A process with no terminal presents no human identity
+
+```
+Given a process with no detectable TTY (no ttyname on fd 0/1/2 and no SSH_TTY)
+When it builds outbound identity signals
+Then the session-auth reader returns no email
+And the outbound call carries no terminal-email signal
+And this holds for the daemon and every process it spawns
 ```
 <!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
@@ -98,7 +158,14 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 
 ## Known caveats
 
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - The global-identity fallback is "last-login-wins" by design: a fresh login from any TTY (or from a no-TTY context) overwrites the global record. Operators sharing a host should not rely on the global file to remember a previous identity; it reflects only the most recent login on the machine.
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+- The global-identity fallback is "last-login-wins" by design: a fresh login from any TTY (or from a no-TTY context) overwrites the global record. It answers a terminal that has no document of its own only while at most one person is registered, so on a shared host it spares nobody a login and stands in for nobody.
+- A terminal's login survives another person logging in, because release is keyed on the device rather than on who logged in last. It does not survive the terminal closing: the device node goes with it, and a later terminal that reuses the same name carries a different allocation time and is treated as unauthenticated.
+- Terminal-device allocation time is the recycling discriminator, and anything that touches the device node's metadata — `mesg y`, for instance — moves it. The cost is one re-login on a terminal that is still open; the alternative discriminators require holding the device open, which the release sweep cannot do for terminals it does not own.
+- A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore no identity. It is not a supported way to run an identity-bearing command.
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - `telec auth logout` deliberately does NOT remove the global fallback. After logout from a specific TTY, other TTYs without their own per-TTY document will continue to read the prior global identity. Operators who want a clean wipe must remove the global-identity document manually.
 - Login validation is shallow — empty input and missing `@` are rejected but no RFC-level email validation is performed. A typo'd address is accepted at write time and only surfaces as an unresolved principal when the identity context tries to match it against `people`.
 - Inside a generic tmux session (one that is not the trusted TUI), login still WRITES the document, but the identity context refuses to honor the terminal-email signal from that context — trust is contingent on the trusted-TUI marker (TUI runtime marker plus tmux session `tc_tui`). The auth document is technically present but functionally inert from inside an untrusted tmux pane.

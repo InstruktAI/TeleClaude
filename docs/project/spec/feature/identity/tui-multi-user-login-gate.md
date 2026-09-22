@@ -30,6 +30,7 @@ And the process exits with a failure status
 And no tmux session is created
 ```
 
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 ```
 Given the same multi-user configuration
 And `telec auth login alice@example.com` has been completed on the current TTY
@@ -40,6 +41,40 @@ And spawns a fresh tmux session named "tc_tui" with the TUI runtime marker
 And only the platform-owned TUI environment allowlist is forwarded into the tmux session; the TUI runtime marker is set explicitly by the launcher
 And `telec` is exec'd inside that tmux session
 ```
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+#### UC-TUIG1: A gated launch carries the resolved identity into the TUI session
+
+```
+Given the same multi-user configuration
+And `telec auth login alice@example.com` has been completed on the current TTY
+When the operator runs `telec`
+Then the session-auth reader returns the bound email
+And the launcher kills any existing tc_tui tmux session
+And spawns a fresh tmux session named "tc_tui" with the TUI runtime marker
+And only the platform-owned TUI environment allowlist is forwarded into the tmux session; the TUI runtime marker and the identity resolved in the outer terminal are set explicitly by the launcher
+And `telec` is exec'd inside that tmux session
+```
+
+#### UC-TUIG2: The TUI presents the identity it was launched with, not its own pane's
+
+```
+Given a TUI running inside the tc_tui tmux session that the launcher started for alice@example.com
+And the TUI's own pane carries no login document of its own
+When the TUI builds outbound identity signals for a protected call
+Then it presents alice@example.com as the terminal-email signal
+And it does so for as long as that TUI runs, without re-resolving identity from its pane
+```
+
+#### UC-TUIG3: The carried identity is honoured only inside the trusted TUI context
+
+```
+Given a tmux session that is not the trusted TUI — no TUI runtime marker, or a session name other than tc_tui
+And that session's environment carries an identity value of the launcher's shape
+When a telec invocation inside it builds outbound identity signals
+Then the carried value is not honoured
+And identity resolves from that terminal's own login document, or from the global record under the rule that governs a terminal with no document of its own
+```
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ```
 Given a global config with zero or one person registered

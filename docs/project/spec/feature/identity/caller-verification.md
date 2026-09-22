@@ -116,6 +116,27 @@ And the enclosing session's identity is not returned for that caller
 ```
 
 <!-- /planned:external-session-identity -->
+
+<!-- planned:identity-is-established-at-the-boundary-and-carried-inside -->
+#### UC-CV-DAEMON-SELF: The daemon's own calls resolve to its system principal, never to a person
+
+```
+Given a call carrying the daemon's process-local credential and no session-token or caller-session-id
+When caller verification runs
+Then the returned CallerIdentity carries the daemon's system principal and the system role
+And it carries no email and no session id
+And the terminal-email branch is not taken
+```
+
+#### UC-CV-DAEMON-FORGED: A daemon credential the daemon did not mint resolves nothing
+
+```
+Given a call from outside the daemon process carrying a daemon-credential value the daemon did not mint
+When caller verification runs
+Then the credential resolves no identity
+And verification continues with the caller's remaining signals, rejecting the call when none of them resolve
+```
+<!-- /planned:identity-is-established-at-the-boundary-and-carried-inside -->
 #### UC-CV-SESSION-PRINCIPAL-HUMAN: A human-rooted session resolves to a human principal and clears the human gate
 
 ```

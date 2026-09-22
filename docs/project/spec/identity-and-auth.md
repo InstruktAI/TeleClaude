@@ -42,6 +42,13 @@ Protected local API routes use these headers:
 <!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 - `x-telec-email`: terminal login identity (`telec auth login`) for a human entering
   the platform from outside it.
+- `x-teleclaude-daemon-token`: the daemon's own credential for the calls it makes
+  into its request surface. Its value is generated once per daemon process, held
+  only in that process's memory, and never persisted or exported, so no other
+  process can produce a value that resolves. A caller presenting it resolves to
+  the daemon's system principal with no human identity attached, and is subject
+  to the same command clearance and dispatch privilege as any other system-role
+  caller.
 
 Identity is established once, at the boundary a human crosses to reach the platform,
 and carried by everything inside it. A person running a `telec` command from a shell,
@@ -133,10 +140,18 @@ is the answer only when no session resolves, and it never names a session.
 
 **Principal types:**
 
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 | Format                | When set                                                | Token? |
 | --------------------- | ------------------------------------------------------- | ------ |
 | `human:<email>`       | Session created with a human identity (human_email set) | No     |
 | `system:<session_id>` | Daemon-spawned automated session                        | Yes    |
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+| Format                | When set                                                | Credential                        |
+| --------------------- | ------------------------------------------------------- | --------------------------------- |
+| `human:<email>`       | Session created with a human identity (human_email set) | None                              |
+| `system:<session_id>` | Daemon-spawned automated session                        | Session token                     |
+| `system:daemon`       | The daemon process itself, which owns no session row    | Process-local daemon credential   |
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 **Token ledger table:** `session_tokens` — stores token, session_id, principal, role,
 issued_at, revoked_at. Token lifetime is controlled exclusively by revocation on
@@ -144,17 +159,46 @@ session close.
 
 ### 4) Terminal + TUI authentication
 
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - `telec auth login <email>` writes a TTY-scoped login file.
-- `telec auth login` is blocked inside generic tmux contexts.
-- `telec` startup bridges outer-terminal login into trusted `tc_tui` via environment (`TELEC_AUTH_EMAIL`).
-- Inside tmux, login identity is accepted only for trusted TUI context (`TELEC_TUI_SESSION=1` and tmux session `tc_tui`).
+- The TUI launcher resolves the operator's identity in the outer terminal before it
+  creates the `tc_tui` tmux session, and marks that session with the TUI runtime
+  marker.
+- Inside the `tc_tui` session the TUI's own pane is a terminal of its own, carrying
+  no login document, so identity resolves through the global fallback.
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+- `telec auth login <email>` writes a TTY-scoped login file.
+- The TUI launcher resolves the operator's identity in the outer terminal before it
+  creates the `tc_tui` tmux session, and carries that resolved identity into the
+  session alongside the TUI runtime marker.
+- The TUI holds the identity it was launched with for as long as it runs. It does
+  not re-resolve identity from its own pane, which is a terminal of its own and
+  carries no login document.
+- That carried identity is honoured only inside the trusted TUI context — the TUI
+  runtime marker together with tmux session name `tc_tui`.
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ### 5) Multi-user enforcement
 
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - If `people` contains more than one registered person:
   - TUI launch requires prior `telec auth login`,
   - daemon rejects tmux callers that have no `x-caller-session-id` and no resolvable `x-telec-email`.
 - If `people` has zero/one person, legacy fallback role is still allowed for tmux callers without session identity.
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
+- If `people` contains more than one registered person:
+  - a terminal that carries no login document of its own presents no terminal-email
+    signal, so a person opening a fresh terminal authenticates on it before any
+    identity-bearing command succeeds,
+  - TUI launch requires prior `telec auth login`,
+  - daemon rejects tmux callers that have no `x-caller-session-id` and no resolvable `x-telec-email`.
+- If `people` has zero/one person, the global login record answers a terminal that
+  has no document of its own, and the legacy fallback role is still allowed for
+  tmux callers without session identity.
+- Whichever mode is in force, a login already bound to a live terminal keeps
+  answering for that terminal. One person authenticating never unbinds another
+  person's open terminals; only the terminal's own disappearance does.
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ### 6) Server-side authorization
 
