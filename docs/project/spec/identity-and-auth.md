@@ -37,6 +37,9 @@ Protected local API routes use these headers:
 
 - `x-caller-session-id`: TeleClaude session identity (daemon-owned, for lineage and role derivation).
 - `x-tmux-session`: tmux server session name for cross-check.
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
+- `x-telec-email`: terminal login identity (`telec auth login`) for non-session callers.
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 - `x-telec-email`: terminal login identity (`telec auth login`) for a human entering
   the platform from outside it.
 
@@ -54,6 +57,7 @@ terminal-email signal — the daemon and every process it spawns included. Resol
 identity from ambient state deep inside the platform attributes work to whoever
 last authenticated on the host rather than to whoever it belongs to, and in a
 multi-person installation that is one identity standing in for all of them.
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 <!-- planned:external-session-identity -->
 A local connection additionally carries an attested-caller fact that is not a

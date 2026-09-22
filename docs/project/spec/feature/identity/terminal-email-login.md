@@ -50,6 +50,14 @@ And the outbound call carries the terminal-email signal
 And the identity context resolves the principal via the terminal-email auth path
 ```
 
+<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
+```
+Given a process with no detectable TTY (no ttyname on fd 0/1/2 and no SSH_TTY)
+When the same flow runs
+Then login writes only the global-identity fallback document
+And the session-auth reader falls back to that global record
+```
+<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 ```
 Given a telec invocation from a TTY that has no per-TTY login document of its own
 When the CLI builds outbound identity signals
@@ -63,6 +71,7 @@ When the CLI builds outbound identity signals
 Then the session-auth reader returns no email
 And the outbound call carries no terminal-email signal
 ```
+<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ```
 Given a legacy auth document containing a bare email string (pre-structured format)
