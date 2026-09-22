@@ -286,7 +286,7 @@ its own.
 Given a todo of kind bug whose input is present and whose diagnosis is absent
 When the prepare state machine is dispatched for that slug
 Then the derived phase is DIAGNOSE
-And the emitted script dispatches one cross-model diagnosis peer for the slug
+And the emitted script dispatches one diagnosis peer for the slug
 And the driving session remains the todo's lifecycle claimant throughout the diagnosis phase
 And the dispatched peer writes and revises the diagnosis artifact without acquiring or receiving the todo claim
 And no artifact lease, expiry, or time-based authority participates in that write
