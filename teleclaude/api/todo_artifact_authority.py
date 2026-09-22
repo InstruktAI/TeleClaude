@@ -1,18 +1,26 @@
-"""Caller-authority resolution and the role allowlist for todo artifact writes.
+"""Caller-authority resolution and write gates for todo artifact writes.
 
-The artifact write boundary records *who* wrote (the resolved principal) and, for
-prepare artifacts, enforces *who may write* (the prepare-phase role allowlist).
-Both concerns live here so the route module stays focused on request routing.
+The artifact write boundary records *who* wrote (the resolved principal),
+enforces the claiming-group ownership boundary (every writable artifact kind),
+and, for prepare artifacts, the prepare-phase role allowlist. All three concerns
+live here so the route module stays focused on request routing.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES, ROLE_JOB_RUNNER
 from teleclaude.core.db import db as runtime_db
+from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
+from teleclaude.core.session_utils import session_in_claiming_group
 from teleclaude.types.creation_record import Lineage
+
+if TYPE_CHECKING:
+    from teleclaude.core.todos_db import TodosDb
 
 
 def resolved_write_principal(identity: CallerIdentity) -> str:
@@ -58,6 +66,37 @@ def resolve_creation_lineage(identity: CallerIdentity | None) -> Lineage:
     raise HTTPException(
         status_code=403,
         detail=("creation lineage is unresolvable: the caller has no human root and is not a job-runner session"),
+    )
+
+
+async def refuse_foreign_claim(todos_db: TodosDb, identity: CallerIdentity, slug: str) -> None:
+    """Refuse an artifact write from outside a claimed slug's claiming group.
+
+    A live ``active_runner`` on the slug's state names the claim holder; its
+    claiming group is the holder plus every session it dispatched, transitively
+    through ``initiator_session_id`` (`session_in_claiming_group`). A slug with
+    no live holder carries no claim gate. A direct human-identity caller — no
+    agent session id — is never gated by the claim (UC-WAV16, UC-WAV23). This
+    check consults ``active_runner`` but never sets it.
+    """
+    state = await todos_db.read_state(slug)
+    active_runner = (state or {}).get("active_runner")
+    if not isinstance(active_runner, str) or not active_runner:
+        return
+    if not await is_live_session_id(runtime_db, active_runner):
+        return
+    if not identity.session_id:
+        return
+    if await session_in_claiming_group(identity.session_id, active_runner):
+        return
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"todo '{slug}' is claimed by session '{active_runner}'; write refused. "
+            "Address that session about the concern instead of writing into its "
+            "record (software-development/policy/todo-creation-discipline, "
+            "'Reconcile a flagged live todo')."
+        ),
     )
 
 

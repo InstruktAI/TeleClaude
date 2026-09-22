@@ -22,6 +22,7 @@ from teleclaude.api.auth import (
     clearance_todos_artifacts_write,
 )
 from teleclaude.api.todo_artifact_authority import (
+    refuse_foreign_claim,
     refuse_non_prepare_writer,
     resolved_write_principal,
 )
@@ -172,6 +173,7 @@ async def write_artifact(
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     await require_slug_in_todo(todos_db, slug)
     await _refuse_holder_mutation(todos_db, slug)
+    await refuse_foreign_claim(todos_db, identity, slug)
     if name in PREPARE_ARTIFACT_NAMES:
         await refuse_non_prepare_writer(identity, slug, name)
     effective_updated_by = resolved_write_principal(identity)
