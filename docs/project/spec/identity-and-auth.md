@@ -122,6 +122,7 @@ is the answer only when no session resolves, and it never names a session.
 issued_at, revoked_at. Token lifetime is controlled exclusively by revocation on
 session close.
 
+<!-- planned-change:strip-dead-web-remnants -->
 ### 4) Web authentication (NextAuth)
 
 The Web Interface uses **NextAuth (v5 Beta)** with the following flow:
@@ -132,6 +133,9 @@ The Web Interface uses **NextAuth (v5 Beta)** with the following flow:
 4. **Authorization:** The `signIn` callback ensures the email matches a `people` entry in `teleclaude.yml`.
 
 ### 4) Terminal + TUI authentication
+<!-- change:strip-dead-web-remnants -->
+### 4) Terminal + TUI authentication
+<!-- /planned-change:strip-dead-web-remnants -->
 
 - `telec auth login <email>` writes a TTY-scoped login file.
 - `telec auth login` is blocked inside generic tmux contexts.

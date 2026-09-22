@@ -77,7 +77,11 @@ to their contexts by the context map.
 Must never: import adapter-specific code, reference UI concepts, or know about specific transport protocols. Core defines protocols; adapters implement them.
 
 **Edge Layer**
+<!-- planned-change:strip-dead-web-remnants -->
 Owns: inbound origin handling for all platforms. Every origin — UI adapters (Telegram, Discord, WhatsApp), API origins (terminal, web), and daemon-internal origins — passes through an edge that normalizes raw platform signals into typed request metadata. Message flows use typed `MessageMetadata` actor fields. Session-creation flows use typed origin metadata objects such as `TerminalOriginMetadata` and `WebOriginMetadata`. Identity resolution reads those typed inputs. The session handler persists the accumulated session view in `origin_metadata`. Downstream layers never assemble origin context themselves.
+<!-- change:strip-dead-web-remnants -->
+Owns: inbound origin handling for all platforms. Every origin — UI adapters (Telegram, Discord, WhatsApp), the terminal API origin, and daemon-internal origins — passes through an edge that normalizes raw platform signals into typed request metadata. Message flows use typed `MessageMetadata` actor fields. Session-creation flows use the typed origin metadata object `TerminalOriginMetadata`. Identity resolution reads those typed inputs. The session handler persists the accumulated session view in `origin_metadata`. Downstream layers never assemble origin context themselves.
+<!-- /planned-change:strip-dead-web-remnants -->
 Must never: contain domain logic or make domain decisions. Edges translate inbound signals — they don't decide. Domain policies live in core. For outbound UX concerns (message rendering, channel management, platform lifecycle), see the [UI Adapter architecture](ui-adapter.md).
 
 **CLI / TUI**

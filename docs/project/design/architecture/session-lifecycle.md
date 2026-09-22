@@ -12,7 +12,11 @@ visibility: 'public'
 ### 1. Creation
 
 - **Ingress**: A `/new-session` command arrives via an origin (UI adapter, web, terminal, or daemon-internal).
+<!-- planned-change:strip-dead-web-remnants -->
 - **Origin assembly**: The receiving edge normalizes raw platform signals into typed request metadata. Message flows use `MessageMetadata` actor fields (`actor_id`, `actor_name`, `actor_avatar_url`, `platform_message_id`). Session-creation flows use typed origin metadata objects such as `TerminalOriginMetadata` and `WebOriginMetadata`. Identity resolution reads those typed inputs to derive `human_email`, `human_role`, and `principal`, and the session handler persists the session-level view in `origin_metadata`.
+<!-- change:strip-dead-web-remnants -->
+- **Origin assembly**: The receiving edge normalizes raw platform signals into typed request metadata. Message flows use `MessageMetadata` actor fields (`actor_id`, `actor_name`, `actor_avatar_url`, `platform_message_id`). Session-creation flows use the typed origin metadata object `TerminalOriginMetadata`. Identity resolution reads those typed inputs to derive `human_email`, `human_role`, and `principal`, and the session handler persists the session-level view in `origin_metadata`.
+<!-- /planned-change:strip-dead-web-remnants -->
 - **Queueing**: Command is persisted in the SQLite queue.
 - **Execution**: The `SessionLauncher` starts a new `tmux` session.
 - **Persistence**: Session metadata is saved in the `sessions` table.

@@ -31,8 +31,13 @@ contracts and never creates shared ownership.
   code-integration workflow.
 - `config`: file-backed v1 configuration.
 - `reconciliation`: installation and fleet convergence behavior.
+<!-- planned-change:strip-dead-web-remnants -->
 - `presentation`: the ephemeral display state of TeleClaude's own UI clients —
   the TUI, the CLI, and the web frontend: local projections, caches, and
+<!-- change:strip-dead-web-remnants -->
+- `presentation`: the ephemeral display state of TeleClaude's own UI clients —
+  the TUI and the CLI: local projections, caches, and
+<!-- /planned-change:strip-dead-web-remnants -->
   rendering policy over data other contexts publish. It owns no published
   facts, no persistence, and no other context's semantics; it never redefines,
   validates, defaults, or recovers a publishing context's rules. Its observable
@@ -92,8 +97,13 @@ contracts and never creates shared ownership.
 <!-- /planned:agent-artifact-source-layout -->
 
 The daemon, handler, adapter, database, and background-worker labels are layers
+<!-- planned-change:strip-dead-web-remnants -->
 or hosting mechanisms, not additional contexts. The TUI, the CLI, and the web
 frontend are `presentation`'s hosting surfaces. Existing placement outside
+<!-- change:strip-dead-web-remnants -->
+or hosting mechanisms, not additional contexts. The TUI and the CLI are
+`presentation`'s hosting surfaces. Existing placement outside
+<!-- /planned-change:strip-dead-web-remnants -->
 these relationships is not precedent; the owning context and published contract
 remain authoritative.
 

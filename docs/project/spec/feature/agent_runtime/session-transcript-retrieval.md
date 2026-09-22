@@ -86,8 +86,13 @@ And the resulting message entry's role reflects the projected block's role verba
 
 A slash-command-prefix heuristic exists adjacent to this flow for run-session dispatch — it is NOT used to label transcript reads. Transcript role inference lives inside the conversation projector and the per-agent parsers.
 
+<!-- planned-change:strip-dead-web-remnants -->
 #### UC-STR6: Session not found or access denied
+<!-- change:strip-dead-web-remnants -->
+#### UC-STR6: Session not found
+<!-- /planned-change:strip-dead-web-remnants -->
 
+<!-- planned-change:strip-dead-web-remnants -->
 ```
 Given the caller asks for the transcript of a session that does not exist
 When the storage lookup returns nothing
@@ -98,6 +103,14 @@ Given the caller lacks access (the session-access check fails)
 When the access check raises
 Then the service returns the access-control error from the access check
 ```
+<!-- change:strip-dead-web-remnants -->
+```
+Given the caller asks for the transcript of a session that does not exist
+When the storage lookup returns nothing
+Then the service refuses with "Session not found"
+And no transcript I/O is attempted
+```
+<!-- /planned-change:strip-dead-web-remnants -->
 
 #### UC-STR2: An agent can inspect the live terminal independently of transcript progress
 
