@@ -14,8 +14,7 @@ visibility: 'public'
 
 The phase of Sync that writes Deployed outputs each agent CLI reads at
 runtime. When invoked via publication, the distribution step always runs
-in deploy mode — deploy mode is the only mode publication runs it in. The
-deploy path runs two phases:
+in deploy mode — no other mode exists. The deploy path runs two phases:
 
 
 <!-- planned-change:agent-artifact-source-layout -->
