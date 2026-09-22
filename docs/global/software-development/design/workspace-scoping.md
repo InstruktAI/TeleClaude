@@ -73,11 +73,7 @@ guardrails lane).
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Execution context    | `resolve_workspace_scope_resolution()`                                                                                                   |
 | Session identity     | `$TMPDIR/teleclaude_identity.json`                                                                                                       |
-<!-- planned-change:declarations-are-a-durable-record -->
-| Session declarations | Recorded `telec code add` commands for the current session                                                                               |
-<!-- change:declarations-are-a-durable-record -->
 | Session declarations | The session's own declaration record, written by `telec code add`                                                                        |
-<!-- /planned-change:declarations-are-a-durable-record -->
 | Dirty paths          | `git status --porcelain --untracked-files=all`                                                                                           |
 | Project languages    | Detected from repo artifacts (`pyproject.toml`, `setup.py`, root Python files, `tsconfig.json`, TypeScript `package.json`, `Cargo.toml`) |
 | Explicit file list   | CLI arguments (`telec code lint <files...>`)                                                                                             |
@@ -90,16 +86,6 @@ guardrails lane).
 
 ### Session path declarations
 
-<!-- planned-change:declarations-are-a-durable-record -->
-On a shared branch, session-owned path evidence is exactly the set of paths the
-session declared. A declaration is a successful, exact executable
-`telec code add <path>...` command record for that session. `add` accepts paths
-that are clean or do not yet exist: declaring is bookkeeping and carries no git
-state of its own. A declaration is live from its record until a later
-`telec code commit` in the same ordered chain clears it; `--only` clears just the
-subset that commit carried. Nothing else — file-edit records, shell-command text,
-or transcript inspection of any kind — supplies path evidence.
-<!-- change:declarations-are-a-durable-record -->
 On a shared branch, session-owned path evidence is exactly the set of paths the
 session declared. A declaration is an entry a successful `telec code add` writes
 to the declaring session's own record, carrying the path and the instant it was
@@ -116,7 +102,6 @@ The record is session-scoped durable state, keyed by the declaring session and
 released when that session closes. It outlives the agent process, the host pane,
 and the machine, so a declaration stays live across an agent restart, a handoff,
 and a revival of the same session.
-<!-- /planned-change:declarations-are-a-durable-record -->
 
 Every implicit-scope consumer on a shared branch reads this same evidence.
 Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
