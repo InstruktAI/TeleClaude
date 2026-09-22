@@ -210,9 +210,11 @@ And a write from a caller that is no session records no updated_by
 #### UC-WAV26: The artifact listing names each artifact's writers
 
 ```gherkin
-Given a slug whose artifact has versions written by more than one session
+Given a slug holding an artifact whose versions were written by more than one session
+And an artifact with no version history
 When a caller lists that slug's artifacts
-Then each artifact carries the distinct session ids recorded as updated_by across its versions
+Then every stored artifact is listed
+And each artifact carries the distinct session ids recorded as updated_by across its versions
 And an artifact whose versions recorded no writer carries none
 ```
 <!-- /planned:corroboration-routes-by-artifact-writer -->
