@@ -224,9 +224,9 @@ async def _guard_reviewer_start(
     at ``med``, and a mode-blind subject refuses the cheap lane as a duplicate of
     the expensive one. Silent no-op only when the
     command cannot be resolved — a slugless subject with no caller identity is
-    refused rather than silently admitted, since a web-origin caller's identity
-    is never persisted as ``initiator_session_id`` and so can never be found as
-    a prior holder (see :class:`ReviewerIdentityUnresolved`).
+    refused rather than silently admitted, since a caller with no session
+    identity at all has no ``initiator_session_id`` and so can never be found
+    as a prior holder (see :class:`ReviewerIdentityUnresolved`).
 
     """
     if command is None:

@@ -33,7 +33,7 @@ from teleclaude.api_models import (
     SessionUpdatedEventDTO,
 )
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, CacheEvent
+from teleclaude.constants import CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.events.cartridges.notification import PushNotificationChange
 from teleclaude.events.delivery.message import format_notification_message
@@ -259,16 +259,6 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                 # Send current sessions from cache for this computer
                 if self.cache:
                     cached_sessions = self.cache.get_sessions(computer)
-                    # Apply role-based visibility filtering using WS connection headers
-                    email = websocket.headers.get("x-web-user-email")
-                    role = websocket.headers.get("x-web-user-role")
-                    if email and role != HUMAN_ROLE_ADMIN:
-                        if role == HUMAN_ROLE_MEMBER:
-                            cached_sessions = [
-                                s for s in cached_sessions if s.human_email == email or s.visibility == "shared"
-                            ]
-                        else:
-                            cached_sessions = [s for s in cached_sessions if s.human_email == email]
                     sessions = [SessionDTO.from_core(s, computer=s.computer) for s in cached_sessions]
                     event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
                     await self._send_or_enqueue_payload(websocket, event.event, event.model_dump(exclude_none=True))

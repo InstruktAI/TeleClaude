@@ -254,32 +254,6 @@ class RedisTransportMetadata:
 
 
 @dataclass
-class WebOriginMetadata(Mapping[str, object]):
-    """Web-specific origin metadata for identity resolution."""
-
-    email: str | None = None
-
-    @classmethod
-    def from_dict(cls, raw: dict[str, object]) -> "WebOriginMetadata":  # guard: loose-dict
-        """Deserialize from a dict."""
-        return cls(email=_str_or_none(raw.get("email")))
-
-    def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
-        """Serialize to dict, excluding None fields."""
-        return dict(asdict_exclude_none(self))
-
-    def __getitem__(self, key: str) -> object:
-        d = self.to_dict()
-        return d[key]
-
-    def __len__(self) -> int:
-        return len(self.to_dict())
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.to_dict())
-
-
-@dataclass
 class TerminalOriginMetadata(Mapping[str, object]):
     """Terminal-specific origin metadata for identity resolution."""
 

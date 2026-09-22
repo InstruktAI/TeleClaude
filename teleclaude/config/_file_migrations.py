@@ -26,8 +26,14 @@ _PREFERENCES: Final = "preferences"
 _SETTINGS: Final = "settings"
 _OUTPUT_VISIBILITY: Final = "output_visibility"
 _NOTIFICATIONS: Final = "notifications"
+_SYSTEM_MESSAGES: Final = "system_messages"
+_TOOL_CALLS: Final = "tool_calls"
+_LEGACY_OUTPUT_VISIBILITY_WEB: Final = "web"
+_OUTPUT_VISIBILITY_FULL: Final = "full"
 _COMPUTER: Final = "computer"
 _TMUX_BINARY: Final = "tmux_binary"
+_API: Final = "api"
+_TCP_PORT: Final = "tcp_port"
 _INVITE_TOKEN: Final = "invite_token"
 _LEGACY_GIT_CONFLICT: Final = "Legacy git.checkout_root conflicts with checkout_root in {path}"
 _PEOPLE_MAPPING_ERROR: Final = "Invalid people mapping in {path}"
@@ -206,6 +212,25 @@ def remove_person_notifications(path: Path) -> bool:
         return True
 
 
+def rename_person_output_visibility_web_value(path: Path) -> bool:
+    """Rewrite the retired ``web`` output-visibility token to ``full``."""
+    with file_transaction(path) as transaction:
+        document = _load_mapping(transaction.read_text())
+        settings = document.get(_SETTINGS)
+        visibility = settings.get(_OUTPUT_VISIBILITY) if isinstance(settings, dict) else None
+        if not isinstance(visibility, dict):
+            return False
+        changed = False
+        for field in (_SYSTEM_MESSAGES, _TOOL_CALLS):
+            if visibility.get(field) == _LEGACY_OUTPUT_VISIBILITY_WEB:
+                visibility[field] = _OUTPUT_VISIBILITY_FULL
+                changed = True
+        if not changed:
+            return False
+        _write_mapping(transaction, document)
+        return True
+
+
 def remove_person_voice_channel_id(path: Path) -> bool:
     """Drop the retired configured room; Discord voice state now owns it."""
     with file_transaction(path) as transaction:
@@ -229,6 +254,18 @@ def remove_matching_tmux_binary(path: Path, runtime_binary: str) -> bool:
         if computer[_TMUX_BINARY] != runtime_binary:
             return False
         computer.pop(_TMUX_BINARY)
+        _write_mapping(transaction, document)
+        return True
+
+
+def remove_retired_api_tcp_port(path: Path) -> bool:
+    """Drop the retired loopback TCP listener's stored port key."""
+    with file_transaction(path) as transaction:
+        document = _load_mapping(transaction.read_text())
+        api = document.get(_API)
+        if not isinstance(api, dict) or _TCP_PORT not in api:
+            return False
+        api.pop(_TCP_PORT)
         _write_mapping(transaction, document)
         return True
 

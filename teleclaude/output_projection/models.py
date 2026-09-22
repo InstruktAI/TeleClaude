@@ -8,9 +8,9 @@ from enum import StrEnum
 from teleclaude.config.loader import resolve_person_output_visibility_settings
 from teleclaude.config.schema import (
     OUTPUT_VISIBILITY_BOTH,
+    OUTPUT_VISIBILITY_FULL,
     OUTPUT_VISIBILITY_MOBILE,
     OUTPUT_VISIBILITY_OFF,
-    OUTPUT_VISIBILITY_WEB,
     OutputVisibilitySettings,
     OutputVisibilityValue,
 )
@@ -25,7 +25,7 @@ class ProjectionSurface(StrEnum):
     """Projected destination family for per-recipient visibility policy."""
 
     MOBILE = "mobile"
-    WEB = "web"
+    FULL = "full"
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ class VisibilityPolicy:
     """Tool names that are always emitted regardless of include_tools.
 
     Use this to allowlist explicitly user-visible tools/widgets that should
-    surface in web chat even when include_tools is False.
+    surface even when include_tools is False.
     """
 
 
@@ -62,8 +62,8 @@ def _setting_enabled(
         return True
     if setting == OUTPUT_VISIBILITY_MOBILE:
         return surface is ProjectionSurface.MOBILE
-    if setting == OUTPUT_VISIBILITY_WEB:
-        return surface is ProjectionSurface.WEB
+    if setting == OUTPUT_VISIBILITY_FULL:
+        return surface is ProjectionSurface.FULL
     return False
 
 
@@ -122,9 +122,10 @@ def visibility_policy_for_person(
     )
 
 
-# Canonical web policy: tools and thinking hidden by default.
-# This is the correct policy for both web history and web live SSE.
-WEB_POLICY = VisibilityPolicy(
+# Canonical full-fidelity policy: tools and thinking hidden by default.
+# This is the correct policy for the full pull surface (peer conversation
+# delivery and session message DTOs).
+FULL_POLICY = VisibilityPolicy(
     include_tools=False,
     include_tool_results=False,
     include_thinking=False,

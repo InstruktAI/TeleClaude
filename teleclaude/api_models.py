@@ -33,7 +33,6 @@ class CreateSessionRequest(BaseModel):
     skip_listener_registration: bool = False
     native_session_id: str | None = None
     subdir: str | None = None
-    human_email: str | None = None
     human_role: Literal["admin", "member", "contributor", "newcomer"] | None = None
     metadata: dict[str, object] | None = None  # guard: loose-dict
     origin: str | None = None

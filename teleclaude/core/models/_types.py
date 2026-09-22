@@ -38,13 +38,6 @@ class TerminalOriginSection(TypedDict):
     platform: NotRequired[str | None]
 
 
-class WebOriginSection(TypedDict):
-    """Web-specific origin section keys."""
-
-    email: NotRequired[str | None]
-    platform: NotRequired[str | None]
-
-
 class SessionOriginMetadata(TypedDict):
     """Type-safe schema representing the merged/accumulated session origin metadata."""
 

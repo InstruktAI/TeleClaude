@@ -34,7 +34,6 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "staleness_ttl_s": 300,
     },
     "api": {
-        "tcp_port": 8420,
         "watch_interval_s": 5,
         "watch_lag_threshold_ms": 250,
         "watch_inflight_threshold_s": 1,

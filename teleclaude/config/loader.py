@@ -25,6 +25,7 @@ from teleclaude.config._file_migrations import (
     move_person_invite_token,
     remove_person_notifications,
     remove_person_voice_channel_id,
+    rename_person_output_visibility_web_value,
 )
 from teleclaude.config.advancement import advance_config
 from teleclaude.config.context_root import load_declared_config_kind, resolve_context_root
@@ -264,6 +265,7 @@ def _person_claim_pre_validation(path: Path, registered_slug: str | None) -> Cal
         migrate_person_claim_for_target(path, people)
         remove_person_notifications(path)
         remove_person_voice_channel_id(path)
+        rename_person_output_visibility_web_value(path)
         slug = registered_slug or next(
             (
                 person.slug

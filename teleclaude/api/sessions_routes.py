@@ -31,7 +31,6 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.api.run_session_shapes import infer_command_from_message, infer_role_and_slug_from_message
-from teleclaude.api.session_access import check_session_access
 from teleclaude.api.session_create_launch import (
     build_launch_intent,
     resolve_enabled_agent,
@@ -49,7 +48,7 @@ from teleclaude.api.session_remote import is_remote_create_target, is_remote_tar
 from teleclaude.api.session_route_helpers import build_metadata as _build_metadata
 from teleclaude.api.session_route_helpers import close_accepted as _close_accepted
 from teleclaude.api.session_route_helpers import resolve_created_session_transport as _resolve_created_session_transport
-from teleclaude.api.session_view_models import enrich_human_names, filter_sessions_by_role
+from teleclaude.api.session_view_models import enrich_human_names
 from teleclaude.api.sessions_actions_routes import guard_generic_create_session
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -93,7 +92,7 @@ from teleclaude.core.models import (
     SessionEntryPoint,
     SessionLaunchIntent,
 )
-from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
+from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.next_machine.session_hold import hold_todo_for_manual_session_close
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import (
@@ -158,20 +157,6 @@ def configure(
         _STATE.reminder_service = reminder_service
 
 
-def _check_remote_session_owner(request: Request, ownership: RemoteOwnership) -> None:
-    email = request.headers.get("x-web-user-email")
-    role = request.headers.get("x-web-user-role")
-
-    if not email:
-        return
-    if role == HUMAN_ROLE_ADMIN:
-        return
-    if ownership.snapshot.human_email == email:
-        return
-
-    raise HTTPException(status_code=403, detail="Forbidden: not session owner")
-
-
 def _extract_initiator_session_id(
     request: CreateSessionRequest,
     identity: CallerIdentity,
@@ -182,7 +167,7 @@ def _extract_initiator_session_id(
             detail="direct mode requires caller session identity",
         )
 
-    if identity.session_id and not identity.session_id.startswith("web:"):
+    if identity.session_id:
         return identity.session_id
     return None
 
@@ -195,7 +180,7 @@ def _resolve_origin(
 
     Daemon-internal callers (e.g. WhatsApp handler) may supply origin via top-level
     request fields or nested inside the metadata dict.  When neither is present,
-    origin is derived from identity context (terminal vs web).
+    origin defaults to terminal.
 
     Returns (origin, caller_email, origin_metadata).
     """
@@ -213,15 +198,9 @@ def _resolve_origin(
         return explicit_origin, caller_email, explicit_origin_meta
 
     origin = InputOrigin.TERMINAL.value
-    if request.human_email:
-        origin = InputOrigin.WEB.value
-        caller_email = request.human_email
-    typed_origin: WebOriginMetadata | TerminalOriginMetadata | None = None
+    typed_origin: TerminalOriginMetadata | None = None
     if caller_email:
-        if origin == InputOrigin.WEB.value:
-            typed_origin = WebOriginMetadata(email=caller_email)
-        else:
-            typed_origin = TerminalOriginMetadata(email=caller_email)
+        typed_origin = TerminalOriginMetadata(email=caller_email)
     return origin, caller_email, typed_origin
 
 
@@ -376,11 +355,8 @@ async def list_sessions(
 ) -> list[SessionDTO]:
     """List sessions from local storage and remote cache.
 
-    Applies role-based filtering when identity headers are present
-    (web interface requests). TUI/tool clients without headers see all.
-
     Args:
-        request: FastAPI request (for identity headers)
+        request: FastAPI request
         computer: Optional filter by computer name
         include_closed: Include closed sessions
 
@@ -416,9 +392,6 @@ async def list_sessions(
         caller_session_id = request.headers.get("x-caller-session-id")
         if caller_session_id and not query.all_sessions:
             merged = [s for s in merged if s.initiator_session_id == caller_session_id]
-
-        # Role-based visibility filtering (only when identity headers present)
-        merged = filter_sessions_by_role(request, merged)
 
         # Job filter: narrows existing visibility results
         if query.job:
@@ -633,13 +606,11 @@ async def end_session(
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """End session via CloseSessionCommand through the command system."""
     user_agent = request.headers.get("user-agent", "no-ua")
-    identity_email = request.headers.get("x-web-email", "none")
     logger.info(
-        "DELETE /sessions/%s (computer=%s, ua=%s, identity=%s)",
+        "DELETE /sessions/%s (computer=%s, ua=%s)",
         session_id,
         computer,
         user_agent,
-        identity_email,
     )
 
     if computer and is_remote_target(computer, config.computer.name):
@@ -648,10 +619,8 @@ async def end_session(
         if isinstance(ownership, RemoteOwnership):
             if ownership.computer != computer:
                 raise HTTPException(status_code=404, detail="Session not found on requested computer")
-            _check_remote_session_owner(request, ownership)
             target_computer = ownership.computer
         elif ownership is None:
-            await check_session_access(request, session_id, require_owner=True)
             target_computer = computer
 
         if target_computer is not None:
@@ -661,9 +630,8 @@ async def end_session(
             await dispatch_command(_STATE.client, cmd)
             return _close_accepted(cmd, location_label=target_computer)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
-    await check_session_access(request, session_id, require_owner=True)
     # ADR-0036: only a human-initiated close holds the driven todo. A human
-    # terminal/TUI/web caller has an empty identity.session_id; an agent
+    # terminal/TUI caller has an empty identity.session_id; an agent
     # self-end / orchestrator child-end is token-authed (non-empty session_id)
     # and must not hold — the runner self-heals the stale active_runner link.
     if not identity.session_id:
@@ -884,13 +852,11 @@ async def _handle_direct_message_request(
 
 @router.post("/sessions/{session_id}/message", response_model_exclude_none=True)
 async def send_message_endpoint(
-    http_request: Request,
     session_id: str,
     request: SendMessageRequest,
     computer: str | None = Query(None),
     identity: CallerIdentity = Depends(clearance_sessions_send),
 ) -> SendMessageResponseDTO:
-    await check_session_access(http_request, session_id)
     try:
         target_session = None
         if not is_remote_target(computer, config.computer.name):

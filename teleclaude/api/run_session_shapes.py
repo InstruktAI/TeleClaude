@@ -6,7 +6,7 @@ from teleclaude.core.command_input import (
     infer_command_input_metadata,
 )
 from teleclaude.core.models import SessionEntryPoint, SessionLaunchIntent
-from teleclaude.core.models._adapter import WebOriginMetadata
+from teleclaude.core.models._adapter import TerminalOriginMetadata
 
 _COMMAND_PREFIX = "/"
 
@@ -17,7 +17,7 @@ class RunSessionPlan:
     full_command: str
     launch_intent: SessionLaunchIntent
     initiator_session_id: str | None
-    origin_metadata: WebOriginMetadata | None
+    origin_metadata: TerminalOriginMetadata | None
     system_role: str | None
     job: str | None
     command: str

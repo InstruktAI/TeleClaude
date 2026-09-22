@@ -281,7 +281,6 @@ class HookOutboxConfig:
 class ApiConfig:
     """Resolved API transport and monitoring tunables."""
 
-    tcp_port: int
     watch_interval_s: float
     watch_lag_threshold_ms: float
     watch_inflight_threshold_s: float

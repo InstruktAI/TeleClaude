@@ -21,7 +21,6 @@ class EntryPoint(StrEnum):
 
     TUI = "tui"
     CLI = "cli"
-    WEB = "web"
     AGENT = "agent"
     SPLIT = "split"
 

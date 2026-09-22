@@ -1201,7 +1201,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         Cache invalidation drives a ``todos_updated``/``projects_updated``
         notification through the existing subscriber pipeline, which the WS
-        layer fans out to connected TUIs and web clients.
+        layer fans out to connected TUIs.
         """
         category = envelope.category
         if category is None:

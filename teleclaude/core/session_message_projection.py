@@ -103,7 +103,7 @@ def project_messages(
     policy = visibility_policy_for_person(
         human_role=recipient_role,
         person_email=recipient_email,
-        surface=ProjectionSurface.WEB,
+        surface=ProjectionSurface.FULL,
         include_thinking=options.include_thinking,
     )
     if options.include_tools is False:
