@@ -247,6 +247,7 @@ Then they arrive in their enqueue order through the shared control-delivery surf
 And the reminder service introduces no reminder-specific priority or queue bypass of its own
 ```
 
+<!-- planned-change:retire-reminder-auto-cancel -->
 #### UC-RMS18: Satisfied reminder intent reconciles its schedule before the explicit sentinel
 
 ```gherkin
@@ -260,6 +261,20 @@ And every case authors no summary, status, or confirmation
 And every case ends the turn with exactly `NOOP` and no other text on every runtime
 And silent turn closure is not used to answer a reminder firing
 ```
+<!-- change:retire-reminder-auto-cancel -->
+#### UC-RMS18: Satisfied reminder intent reconciles its schedule before the explicit sentinel
+
+```gherkin
+Given an agent receives a firing reminder
+And later input or current state shows that the reminder intent is already satisfied or obsolete
+When the agent evaluates the reminder
+Then a one-shot firing takes no tool action because it already consumed the reminder
+And a recurring firing explicitly cancels its own slug
+And every case authors no summary, status, or confirmation
+And every case ends the turn with exactly `NOOP` and no other text on every runtime
+And silent turn closure is not used to answer a reminder firing
+```
+<!-- /planned-change:retire-reminder-auto-cancel -->
 
 #### UC-RMS19: A self-owning agent departs only after its final output settles
 
@@ -273,6 +288,7 @@ And the agent checks later input before ending itself
 And it ends itself only while the departure remains valid
 ```
 
+<!-- planned-change:retire-reminder-auto-cancel -->
 #### UC-RMS20: An auto-cancel firing states its consequence in the envelope
 
 ```gherkin
@@ -289,11 +305,35 @@ When the platform observes that answer
 Then the service cancels the reminder
 And records the cancellation with its auto-cancel reason in its durable reminder records
 ```
+<!-- change:retire-reminder-auto-cancel -->
+#### UC-RMS20: A recurring firing states its cancellation instruction in the envelope
+
+```gherkin
+Given a recurring reminder firing is delivered
+When the agent reads the delivered text
+Then it states that an obsolete intent is retired by cancelling this slug
+And it states no consequence attaching to the `NOOP` sentinel
+```
+
+#### UC-RMS21: A bare NOOP turn retires no reminder
+
+```gherkin
+Given a live reminder is armed for a session
+And that session completes a turn whose entire authored output is `NOOP`
+When the platform settles that turn
+Then the reminder remains armed on its existing schedule
+And the service evaluates no answer against the turn
+```
+<!-- /planned-change:retire-reminder-auto-cancel -->
 
 #### UC-RMS22: Only firings reach the agent
 
 ```gherkin
+<!-- planned-change:retire-reminder-auto-cancel -->
 Given a reminder is armed, replaced, or cancelled by any path including auto-cancel
+<!-- change:retire-reminder-auto-cancel -->
+Given a reminder is armed, replaced, or cancelled by any path
+<!-- /planned-change:retire-reminder-auto-cancel -->
 When the transition commits
 Then the service records the transition in its durable reminder records
 And a reminder command's response is a minimal acknowledgement
