@@ -56,6 +56,7 @@ _DIRECT_CONVERSATION_INTRO_RULES: tuple[str, ...] = (
     "- Valid replies answer a question, report a blocker or decision point, provide new information, or deliver a result or artifact.",
     "- Each cross-shared segment carries its own author header as framing, not content; only act on what a segment's body says.",
     "- Do not acknowledge, echo, narrate, or send status-only output such as `idle` or `done`.",
+    "- A turn that owes nothing closes with exactly `NOOP` and no other text; that turn never reaches the peer. A prose stand-in for silence is delivered and wakes them.",
     "",
     "Protocol:",
     "- Agent-only default: `PROTOCOL: phase-locked (L4 inhale/hold, L3 exhale), artifacts in prose`",
