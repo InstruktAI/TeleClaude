@@ -11,12 +11,8 @@ from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.agents import AgentName
-
-from ._declarations import collect_live_declarations
-from ._extractors import normalize_workspace_path, resolve_extractor
+from ._extractors import resolve_extractor
 from ._git import paths_changed_since
-from ._transcript_chain import resolve_transcript_sources
 from ._types import ScopedPathsResult, ScopeMode, WorkspaceKind
 from ._workspace import resolve_workspace
 
@@ -33,10 +29,9 @@ def resolve_scoped_paths(
     scope_mode: ScopeMode,
     transcript_path: str | None = None,
     native_session_id: str | None = None,
-    transcript_files: str | None = None,
     turn_anchor_sha: str | None = None,
 ) -> ScopedPathsResult:
-    """Resolve the session-owned path set for the requested scope mode.
+    """Resolve the session-owned path set for the requested scope mode via the native extractor.
 
     When `turn_anchor_sha` is supplied with `scope_mode="turn_delta"`, the
     extractor runs in cumulative session mode and the result is intersected
@@ -47,7 +42,6 @@ def resolve_scoped_paths(
     if workspace.kind is WorkspaceKind.NONE:
         return ScopedPathsResult(
             paths=(),
-            declared_paths=(),
             scope_mode=scope_mode,
             workspace_kind=WorkspaceKind.NONE,
             strategy="none",
@@ -65,30 +59,18 @@ def resolve_scoped_paths(
             workspace_root=workspace.root,
             scope_mode=extractor_mode,
         )
-        sources = resolve_transcript_sources(
-            transcript_files=transcript_files,
-            transcript_path=transcript_path,
-            agent=AgentName.from_str(agent_name),
-            native_session_id=native_session_id,
-        )
-        declarations = collect_live_declarations(
-            sources,
-            lambda path: _normalize_declaration_path(path, workspace.root),
-        )
-        declared_paths = {declaration.path for declaration in declarations}
 
         if use_anchor:
             assert turn_anchor_sha is not None
             assert workspace.root is not None
             diff_paths = paths_changed_since(workspace.root, turn_anchor_sha)
-            scoped_paths = (native_paths | declared_paths) & diff_paths
+            scoped_paths = native_paths & diff_paths
             strategy = f"{strategy}+anchor_diff"
         else:
-            scoped_paths = native_paths | declared_paths
+            scoped_paths = native_paths
 
         return ScopedPathsResult(
             paths=tuple(sorted(scoped_paths)),
-            declared_paths=tuple(sorted(declared_paths)),
             scope_mode=scope_mode,
             workspace_kind=workspace.kind,
             strategy=strategy,
@@ -107,14 +89,8 @@ def resolve_scoped_paths(
         )
         return ScopedPathsResult(
             paths=(),
-            declared_paths=(),
             scope_mode=scope_mode,
             workspace_kind=workspace.kind,
             strategy="error",
             ledger_updated=False,
         )
-
-
-def _normalize_declaration_path(path: str, workspace_root: str | None) -> str:
-    """Apply the existing structured-path workspace boundary to declaration operands."""
-    return normalize_workspace_path(path, workspace_root)

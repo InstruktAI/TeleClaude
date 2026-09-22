@@ -406,13 +406,11 @@ def _maybe_checkpoint_output(
     checkpoint_reason = get_checkpoint_content(
         session_id=session_id,
         transcript_path=transcript_path,
-        transcript_files=getattr(row, "transcript_files", None),
         agent_name=_resolve_agent_enum(agent),
         project_path=project_path,
         native_session_id=native_session_id,
         working_slug=working_slug,
         elapsed_since_turn_start_s=elapsed,
-        turn_anchor_sha=getattr(row, "turn_anchor_sha", None),
         system_role=getattr(row, "system_role", None),
         receiver_ingress_id=receiver_ingress_id,
     )

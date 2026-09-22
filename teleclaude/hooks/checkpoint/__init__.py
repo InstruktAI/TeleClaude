@@ -1,7 +1,8 @@
 """Context-aware checkpoint builder for agent stop boundaries.
 
 Thin consumer of transcript.py — never reads or parses transcripts directly.
-Uses session_scoping.resolve_scoped_paths for turn-local file attribution and TurnTimeline for transcript-based signals.
+Uses session_scoping.resolve_workspace and the durable declaration record for
+turn-local file attribution, and TurnTimeline for transcript-based signals.
 All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
@@ -71,7 +72,7 @@ from teleclaude.hooks.checkpoint_flags import (
     read_integrator_maintenance_marker,
 )
 from teleclaude.project_root import declaration_root
-from teleclaude.session_scoping import ScopedPathsResult, WorkspaceKind, resolve_scoped_paths
+from teleclaude.session_scoping import ScopedPathsResult, WorkspaceKind, live_declarations, resolve_workspace
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
 logger = get_logger(__name__)
@@ -470,10 +471,8 @@ def get_checkpoint_content(
     agent_name: AgentName,
     project_path: str,
     native_session_id: str | None = None,
-    transcript_files: str | None = None,
     working_slug: str | None = None,
     elapsed_since_turn_start_s: float | None = None,
-    turn_anchor_sha: str | None = None,
     system_role: str | None = None,
     receiver_ingress_id: str = "",
 ) -> str | None:
@@ -553,26 +552,18 @@ def get_checkpoint_content(
                     )
                     return log_judgment_message
 
-        scoped_paths = resolve_scoped_paths(
-            session_id=session_id,
-            workspace_root=project_path,
-            agent_name=agent_name.value,
-            scope_mode="turn_delta",
-            transcript_path=transcript_path,
-            native_session_id=native_session_id,
-            transcript_files=transcript_files,
-            turn_anchor_sha=turn_anchor_sha,
-        )
+        workspace = resolve_workspace(project_path)
+        declared_paths = {declaration.path for declaration in live_declarations(session_id)}
         # Declarations answer ownership only where sessions share a branch. A
         # worktree is one todo's task scope with a single writer, so its
         # obligation is the dirty tree itself; intersecting it with declarations
         # would withhold the obligation from the session that owns every path
         # in it.
         dirty_paths = _dirty_repo_paths(project_path)
-        if scoped_paths.workspace_kind is WorkspaceKind.GIT_WORKTREE:
+        if workspace.kind is WorkspaceKind.GIT_WORKTREE:
             effective_files = sorted(dirty_paths)
         else:
-            effective_files = sorted(set(scoped_paths.declared_paths) & dirty_paths)
+            effective_files = sorted(declared_paths & dirty_paths)
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
         used_session_fallback = False
@@ -585,9 +576,7 @@ def get_checkpoint_content(
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
                     "changed_files": 0,
-                    "workspace_kind": scoped_paths.workspace_kind,
-                    "strategy": scoped_paths.strategy,
-                    "ledger_updated": scoped_paths.ledger_updated,
+                    "workspace_kind": workspace.kind,
                     "categories": [],
                     "required_actions": 0,
                     "observations": 0,
@@ -612,9 +601,7 @@ def get_checkpoint_content(
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
                     "changed_files": len(effective_files),
-                    "workspace_kind": scoped_paths.workspace_kind,
-                    "strategy": scoped_paths.strategy,
-                    "ledger_updated": scoped_paths.ledger_updated,
+                    "workspace_kind": workspace.kind,
                     "mode": "silent_docs_only",
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
@@ -655,9 +642,7 @@ def get_checkpoint_content(
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
                     "changed_files": len(effective_files),
-                    "workspace_kind": scoped_paths.workspace_kind,
-                    "strategy": scoped_paths.strategy,
-                    "ledger_updated": scoped_paths.ledger_updated,
+                    "workspace_kind": workspace.kind,
                     "categories": result.categories,
                     "commit_action_required": result.commit_action_required,
                     "docs_only": _is_docs_only(effective_files),
@@ -685,9 +670,7 @@ def get_checkpoint_content(
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
                     "changed_files": len(effective_files),
-                    "workspace_kind": scoped_paths.workspace_kind,
-                    "strategy": scoped_paths.strategy,
-                    "ledger_updated": scoped_paths.ledger_updated,
+                    "workspace_kind": workspace.kind,
                     "categories": result.categories,
                     "commit_action_required": result.commit_action_required,
                     "docs_only": _is_docs_only(effective_files),
@@ -715,9 +698,7 @@ def get_checkpoint_content(
                 "timeline_has_data": timeline.has_data,
                 "timeline_records": len(timeline.tool_calls),
                 "changed_files": len(effective_files),
-                "workspace_kind": scoped_paths.workspace_kind,
-                "strategy": scoped_paths.strategy,
-                "ledger_updated": scoped_paths.ledger_updated,
+                "workspace_kind": workspace.kind,
                 "categories": result.categories,
                 "commit_action_required": result.commit_action_required,
                 "docs_only": _is_docs_only(effective_files),

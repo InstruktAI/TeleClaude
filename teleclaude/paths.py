@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from enum import StrEnum
 from pathlib import Path
 
@@ -54,6 +56,7 @@ PERSON_CLAIM_MIGRATION_STATE_PATH = STATE_DIR / "person_claim_migration.json"
 PERSON_CLAIM_MIGRATION_LOCK_PATH = STATE_DIR / "person_claim_migration.lock"
 INVITATIONS_PATH = STATE_DIR / "invitations.json"
 DEPLOYED_COMMANDS_MANIFEST_PATH = STATE_DIR / "deployed_commands.json"
+DECLARATIONS_DIR = STATE_DIR / "declarations"
 CHIPTUNES_WORKER_LOG_PATH = LOGS_DIR / "chiptunes_worker.log"
 MAIN_DB_PATH = TELECLAUDE_HOME / "teleclaude.db"
 MIRRORS_DB_PATH = TELECLAUDE_HOME / "mirrors.db"
@@ -69,3 +72,13 @@ PROJECTS_MANIFEST_PATH = TELECLAUDE_HOME / "projects.yaml"
 ENV_PATH = TELECLAUDE_HOME / ConfigFileName.ENV
 HOME_RETAINED_SET_PATH = TELECLAUDE_HOME / ".gitignore"
 PROJECT_ENV_PATH = REPO_ROOT / ConfigFileName.ENV
+
+_SAFE_PATH_COMPONENT_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,128}")
+_SAFE_PATH_COMPONENT_HASH_LENGTH = 32
+
+
+def safe_path_component(value: str) -> str:
+    """Convert an identifier into a filesystem-safe path component."""
+    if _SAFE_PATH_COMPONENT_PATTERN.fullmatch(value):
+        return value
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:_SAFE_PATH_COMPONENT_HASH_LENGTH]

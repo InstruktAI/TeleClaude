@@ -5,15 +5,13 @@ Session-scoped files live under the TeleClaude session TMPDIR base.
 
 from __future__ import annotations
 
-import hashlib
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.project_state import resolve_project_state_root as resolve_project_root
-from teleclaude.paths import TMP_SESSIONS_DIR
+from teleclaude.paths import TMP_SESSIONS_DIR, safe_path_component
 
 logger = get_logger("teleclaude.hooks.checkpoint_flags")
 
@@ -43,16 +41,9 @@ def session_tmp_base_dir() -> Path:
     return TMP_SESSIONS_DIR.resolve()
 
 
-def _safe_path_component(value: str) -> str:
-    """Convert a marker owner identifier into a filesystem-safe path component."""
-    if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
-        return value
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
-
-
 def checkpoint_flag_path(session_id: str, flag_name: str) -> Path:
     """Return the path for a specific session-scoped checkpoint flag."""
-    session_dir = session_tmp_base_dir() / _safe_path_component(session_id)
+    session_dir = session_tmp_base_dir() / safe_path_component(session_id)
     return session_dir / flag_name
 
 
@@ -115,7 +106,7 @@ def consume_checkpoint_flag(session_id: str, flag_name: str) -> bool:
 def _integrator_maintenance_marker_path(project_root: str | Path) -> Path:
     """Return the canonical-checkout-owned integrator-maintenance marker path."""
     canonical_root = resolve_project_root(project_root)
-    return session_tmp_base_dir() / _safe_path_component(str(canonical_root)) / CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG
+    return session_tmp_base_dir() / safe_path_component(str(canonical_root)) / CHECKPOINT_INTEGRATOR_MAINTENANCE_FLAG
 
 
 def _parse_integrator_maintenance_marker(content: str) -> IntegratorMaintenanceMarker:
