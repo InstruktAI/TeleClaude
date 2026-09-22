@@ -193,7 +193,7 @@ And lifecycle ownership remains with the orchestrator
 Given a slug with no live holder
 When a session writes a prepare artifact
 Then the workflow service accepts the write
-And records the resolved caller principal as updated_by
+And records that session's id as updated_by
 And the slug acquires no live active-runner
 ```
 
@@ -223,7 +223,7 @@ And the artifact's current version is unchanged
 Given a slug with no live holder
 When a direct human-identity session writes a prepare artifact
 Then the workflow service accepts the write
-And records the resolved human principal as updated_by
+And records no updated_by, the writer being no session
 And the slug acquires no live active-runner
 ```
 
@@ -264,7 +264,7 @@ And the slug's active-runner is unchanged
 Given a todo in the prepare stage whose active_runner names a different live session
 When the human owner (login-resolved human email and role, no agent session id, no system role) writes a prepare artifact for that slug
 Then the workflow service accepts the write and appends a new version
-And records the resolved human principal as updated_by
+And records no updated_by, the writer being no session
 And the slug's active-runner is unchanged
 ```
 

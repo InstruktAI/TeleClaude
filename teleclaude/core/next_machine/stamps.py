@@ -781,7 +781,7 @@ async def _apply_kickback_stamp(
         new_body = f"{existing_input.rstrip()}\n\n{block}\n"
     else:
         new_body = f"# {slug} — Input\n\n{block}\n"
-    await todos_db.write_artifact(slug, ARTIFACT_INPUT, new_body)
+    await todos_db.write_artifact(slug, ARTIFACT_INPUT, new_body, updated_by=caller_session_id)
 
     artifact_body = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
     await sync_artifact_provenance(
