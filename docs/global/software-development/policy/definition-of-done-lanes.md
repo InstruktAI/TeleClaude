@@ -110,6 +110,19 @@ re-derives, mirrors, or re-implements logic an existing symbol already provides,
 instead of extracting it once and reusing it, is a duplication finding on this
 checklist.
 
+### A restriction answers what it no longer covers
+
+A diff that narrows an existing rule — removing a condition it matched, replacing
+a set it read with a smaller one, or tightening the state that triggers it —
+states what the rule no longer catches. This holds whether the rule is expressed
+in code or in directive text, and it holds however sound the narrowing is: the
+reviewer's question is not whether the change is correct but what coverage it
+withdraws. A restriction whose author cannot name what it drops is reviewed as a
+scope change, not as the correction it was offered as.
+
+The question is asked by every lane against its own subject; it adds no lane and
+no separate report line.
+
 ### Lane catalog
 
 #### Scope verification
@@ -731,6 +744,15 @@ Anchoring them under the Definition of Done makes the coupling explicit: each la
 is the review-time enforcement of a DoD gate (or the requirement contract for
 scope). A new DoD gate should grow a lane; a lane should name the gate it answers
 to. The per-lane **Authority** line is that binding, kept honest in one place.
+
+Every lane asks whether a change is right, and a narrowing can be right at every
+step while the rule it lands on ends up catching nothing. Correctness is
+evaluated per claim; coverage is a property of the whole rule, and no per-claim
+check reads it. That is why a narrowing arrives as its most persuasive form — a
+fact correction, a field-name fix, a false premise removed — and passes review on
+the strength of being true. Asking what a restriction withdraws is the only
+question that reads the rule rather than the claim, and it costs one sentence
+from an author who already knows the answer.
 
 ## Scope
 
