@@ -51,10 +51,17 @@ And the identity context resolves the principal via the terminal-email auth path
 ```
 
 ```
+Given a telec invocation from a TTY that has no per-TTY login document of its own
+When the CLI builds outbound identity signals
+Then the session-auth reader falls back to the global-identity document
+And the human is spared logging in again for a shell they just opened
+```
+
+```
 Given a process with no detectable TTY (no ttyname on fd 0/1/2 and no SSH_TTY)
-When the same flow runs
-Then login writes only the global-identity fallback document
-And the session-auth reader falls back to that global record
+When the CLI builds outbound identity signals
+Then the session-auth reader returns no email
+And the outbound call carries no terminal-email signal
 ```
 
 ```
