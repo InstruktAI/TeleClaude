@@ -179,7 +179,7 @@ def migrate_global_file(path: Path, people_dir: Path | None = None) -> bool:
                         raise ValueError(_LEGACY_FIELD_CONFLICT.format(field=field, path=person_path))
                     candidate = dict(entry)
                     candidate[field] = legacy
-                    PersonEntry.model_validate(candidate, extra="forbid")
+                    PersonEntry.model_validate(candidate)
                     entry[field] = legacy
                     moved.append(field)
                 if moved:
