@@ -285,13 +285,13 @@ analysis.
 substantive `CLAUDE.md`.** Generate a minimal project-specific
 
 `AGENTS.master.md` capturing tech stack, key directories, and primary
-conventions. Subsequent `telec sync` inflates `AGENTS.md` and writes the
+conventions. Subsequent artifact distribution inflates `AGENTS.md` and writes the
 `CLAUDE.md` shim.
 
 **Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** This
 contradicts the shim convention. Halt automatic promotion and flag the
 
-conflict for human inspection. Do not auto-promote: a subsequent `telec sync`
+conflict for human inspection. Do not auto-promote: a subsequent distribution run
 would overwrite `CLAUDE.md` with the shim and silently destroy its content.
 
 The human must decide which file is authoritative before the analysis

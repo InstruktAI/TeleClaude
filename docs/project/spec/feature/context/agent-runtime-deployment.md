@@ -13,7 +13,7 @@ visibility: 'public'
 
 
 The phase of Sync that writes Deployed outputs each agent CLI reads at
-runtime. When invoked via `telec sync`, the distribution step always runs
+runtime. When invoked via publication, the distribution step always runs
 in deploy mode (there is no no-deploy mode through the CLI). The deploy
 path runs two phases:
 

@@ -23,7 +23,7 @@ instructed by the state machine and supervises their progress.
 ### The doc layer is frozen — prepare authors, work executes
 
 Prepare is the only lifecycle phase that authors doc snippets, on `main`,
-serialized by `telec sync`. From PREPARED onward the doc layer is frozen for the
+serialized by the documentation lease. From PREPARED onward the doc layer is frozen for the
 
 slug: no work-phase session — builder, reviewer, fixer, or finalizer — changes
 the doc layer or takes its state as work. Writing under `docs/**`, folding

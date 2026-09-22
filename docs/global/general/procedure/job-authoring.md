@@ -100,8 +100,14 @@ Commit the change. The commit gate validates:
 
 A declaration authored in the global registry is validated through a project that
 subscribes its execution pointer, where the effective set resolves the published
+<!-- planned-change:retire-docs-watcher -->
 declaration onto that project's own: run `telec sync` from that project root. The
 global registry root is not a sync target, so a sync run there validates nothing.
+<!-- change:retire-docs-watcher -->
+declaration onto that project's own: commit from that project root and let its
+publication run. The global registry root is not a publication target, so
+publication there validates nothing.
+<!-- /planned-change:retire-docs-watcher -->
 
 ## Outputs
 

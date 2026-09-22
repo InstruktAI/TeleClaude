@@ -90,7 +90,7 @@ visibility: public
   `general/spec/snippet-authoring-schema`.
 - **Delivery clears `delivered_by`.** The integrator folds the slug's planned
   sections and companions into the live contract and clears the field before the
-  delivery commit — by machine, not by memory, and not by `telec sync`.
+  delivery commit — by machine, not by memory, and not by the documentation pipeline.
 
 ### Organization and boundaries
 

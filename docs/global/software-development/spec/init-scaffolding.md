@@ -155,9 +155,8 @@ normal cases plus the anomaly:
   authoritative. The enrichment writer does not modify it.
 - **Case 2 — Hand-authored `AGENTS.md` exists, no master.** The enrichment
 
-
 writer promotes it: the existing `AGENTS.md` content is moved into a new
-`AGENTS.master.md`. Subsequent `telec sync` regenerates `AGENTS.md`
+`AGENTS.master.md`. Subsequent artifact distribution regenerates `AGENTS.md`
 (possibly with baseline additions) and writes the `CLAUDE.md` shim. By
 convention `CLAUDE.md` is a shim or absent in this case.
 
@@ -167,7 +166,6 @@ convention `CLAUDE.md` is a shim or absent in this case.
   only as an explicit human-driven step.
 - **Case 4 (greenfield) — none of the above.** The enrichment writer generates
 
-
 a minimal project-specific `AGENTS.master.md` (tech stack, key directories,
 primary conventions). Normal artifact inflation then produces `AGENTS.md`
 and the `CLAUDE.md` shim at sync time.
@@ -176,7 +174,7 @@ and the `CLAUDE.md` shim at sync time.
 
 contradicts the shim convention. The enrichment writer halts and flags the
 conflict for human inspection. It does not auto-promote: a subsequent
-`telec sync` would overwrite `CLAUDE.md` with the shim and silently destroy
+distribution run would overwrite `CLAUDE.md` with the shim and silently destroy
 its content.
 
 ### Validation Contract

@@ -122,7 +122,7 @@ from a linked worktree, initialization resolves back to the owning checkout, so
 an ephemeral worktree path never enters the registry.
 
 
-`telec projects init` is the **sole** writer of the project registry. `telec sync`
+`telec projects init` is the **sole** writer of the project registry. Publication
 must not mutate `~/.teleclaude/projects.yaml`. Once registered, the project
 is visible to `ProjectCatalogService` and every consumer that iterates
 projects (docs cross-project namespace, job orchestration, etc.).

@@ -1,5 +1,5 @@
 ---
-description: 'The telec sync pipeline: what each phase does, how per-project capability gating scopes it, and the contract each phase carries.'
+description: 'The publication pipeline: what each phase does, how per-project capability gating scopes it, and the contract each phase carries.'
 visibility: 'public'
 ---
 
