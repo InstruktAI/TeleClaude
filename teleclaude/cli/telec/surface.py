@@ -1330,7 +1330,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Code quality and commit tools",
         notes=[
             "lint, test, format, install, blueprint, and owners require the code capability.",
-            "changed, add, and commit remain available when either code or docs is subscribed.",
+            "add and commit remain available when either code or docs is subscribed.",
         ],
         subcommands={
             "blueprint": CommandDef(
@@ -1388,19 +1388,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 notes=[
                     "Accepts the complete already-aged dirty blocking set; the command performs no age logic.",
-                    "Prints one path-keyed JSON object with each owner or null and emits an identity-free warning when attribution is undetermined.",
+                    "Prints one path-keyed JSON object; each value is the list of every live session that "
+                    "declared that path (no tiebreak), or null when no live session declared it.",
                 ],
                 auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
-            ),
-            "changed": CommandDef(
-                desc="List workspace-scoped changed files",
-                args="[--include <path> ...] [--only <path> ...]",
-                flags=[
-                    F.FLAG_HELP,
-                    F.FLAG_CODE_CHANGED_INCLUDE,
-                    F.FLAG_CODE_CHANGED_ONLY,
-                ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "add": CommandDef(
                 desc="Declare files for the next commit (stages NEW, unmerged, or partial-staged tracked)",
@@ -1417,23 +1408,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Every successful call declares its paths to session-scoping. Modified-tracked files "
                     "that are NOT partial-staged don't need staging — pathspec commits them straight from "
                     "the working tree.",
+                    "A clean tracked path or a path that does not exist yet is declared the same way — "
+                    "declaring is bookkeeping for work about to start, not a claim about current git "
+                    "state, so declaring ahead of the first touch always succeeds.",
                     "NEW files in scope are NOT auto-committed; this is the explicit declaration step. "
                     "Without it, untracked files stay untracked (safety net for temp/scratch artifacts "
                     "the agent may have created incidentally).",
                     "Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.",
-                ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
-            ),
-            "disclaim": CommandDef(
-                desc="Record paths as not this session's work, for the next checkpoint evaluation",
-                args="<path> [<path> ...]",
-                flags=[F.FLAG_HELP],
-                notes=[
-                    "Symmetric answer to `telec code add`: `add` says this is mine, `disclaim` says "
-                    "this is not. Neither asks the agent to work out whose it is.",
-                    "Stages nothing, touches no index, and writes no declaration — records a "
-                    "session-scoped advisory exemption only.",
-                    "Lapses when the path is committed, goes clean, or its dirty state materially changes.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
@@ -1559,7 +1540,6 @@ CODE_TEST = CLI_SURFACE["code"].subcommands["test"]
 CODE_FORMAT = CLI_SURFACE["code"].subcommands["format"]
 CODE_INSTALL = CLI_SURFACE["code"].subcommands["install"]
 CODE_OWNERS = CLI_SURFACE["code"].subcommands["owners"]
-CODE_CHANGED = CLI_SURFACE["code"].subcommands["changed"]
 CODE_ADD = CLI_SURFACE["code"].subcommands["add"]
 CODE_COMMIT = CLI_SURFACE["code"].subcommands["commit"]
 

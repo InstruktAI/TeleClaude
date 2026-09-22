@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -108,22 +107,6 @@ def extract_structured_paths_from_timeline(
     for record in timeline.tool_calls:
         touched_paths.update(_extract_paths_from_record(record, workspace_root, allowed_tools))
     return touched_paths
-
-
-def extract_touch_evidence_from_timeline(
-    timeline: TurnTimeline,
-    *,
-    workspace_root: str | None,
-    structured_tools: set[str],
-) -> tuple[tuple[str, datetime], ...]:
-    """Return successful timestamped mutations from a normalized timeline."""
-    touches: set[tuple[str, datetime]] = set()
-    for record in timeline.tool_calls:
-        if record.timestamp is None or record.timestamp.tzinfo is None:
-            continue
-        paths = _extract_paths_from_record(record, workspace_root, structured_tools)
-        touches.update((path, record.timestamp) for path in paths)
-    return tuple(sorted(touches, key=lambda item: (item[1], item[0])))
 
 
 def _extract_paths_from_record(

@@ -17,7 +17,6 @@ from sqlalchemy.exc import OperationalError
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
-from teleclaude.cli.telec.handlers._code_disclaim import handle_code_disclaim
 from teleclaude.cli.telec.handlers._code_git_state import (
     dirty_paths,
     get_unmerged_files,
@@ -31,7 +30,7 @@ from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merg
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.telec.surface import CODE_CHANGED, CODE_COMMIT
+from teleclaude.cli.telec.surface import CODE_COMMIT
 from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
 from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
@@ -40,7 +39,6 @@ from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
-from teleclaude.hooks.checkpoint_disclaimers import clear_disclaimed_paths
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
 from teleclaude.project_root import (
     DOC_LAYER_PATTERN,
@@ -70,7 +68,6 @@ _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or 
 _OWNERS_USAGE = "Usage: telec code owners <path> [<path> ...]"
 _OWNERS_UNKNOWN_FLAG = "ERROR: unknown flag: {flag}"
 _OWNERS_ERROR = "ERROR: {error}"
-_OWNERS_UNDETERMINED_WARNING = "WARNING: {count} captured session(s) had undetermined attribution; do not revert null-owned paths from this result."
 _DOC_LAYER_WORKTREE_ERROR = "ERROR: doc-layer paths cannot be committed from a slug worktree:"
 _DOC_LAYER_WORKTREE_GUIDANCE = (
     "\nThe doc layer is authored at prepare on main and folded at integration; "
@@ -94,9 +91,7 @@ class CodeSubcommand(StrEnum):
     FORMAT = "format"
     INSTALL = "install"
     COMMIT = "commit"
-    CHANGED = "changed"
     ADD = "add"
-    DISCLAIM = "disclaim"
     BLUEPRINT = "blueprint"
     OWNERS = "owners"
     POST_COMMIT = "post-commit"
@@ -114,9 +109,7 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.OWNERS,
     }
 )
-_COMMIT_SUBCOMMANDS = frozenset(
-    {CodeSubcommand.COMMIT, CodeSubcommand.CHANGED, CodeSubcommand.ADD, CodeSubcommand.DISCLAIM}
-)
+_COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.ADD})
 
 
 def handle_code(args: list[str]) -> None:
@@ -150,12 +143,8 @@ def handle_code(args: list[str]) -> None:
         handle_install(rest)
     elif sub is CodeSubcommand.COMMIT:
         handle_code_commit(rest)
-    elif sub is CodeSubcommand.CHANGED:
-        handle_code_changed(rest)
     elif sub is CodeSubcommand.ADD:
         handle_code_add(rest)
-    elif sub is CodeSubcommand.DISCLAIM:
-        handle_code_disclaim(rest)
     elif sub is CodeSubcommand.BLUEPRINT:
         from teleclaude.cli.telec.handlers.blueprint import handle_code_blueprint  # noqa: PLC0415
 
@@ -195,11 +184,6 @@ def handle_code_owners(args: list[str]) -> None:
         print(_OWNERS_ERROR.format(error=exc), file=sys.stderr)
         raise SystemExit(1) from exc
     print(json.dumps(result.as_json()))
-    if result.undetermined_session_count:
-        print(
-            _OWNERS_UNDETERMINED_WARNING.format(count=result.undetermined_session_count),
-            file=sys.stderr,
-        )
 
 
 def handle_code_add(args: list[str]) -> None:
@@ -222,7 +206,10 @@ def handle_code_add(args: list[str]) -> None:
 
     Every successful call declares its paths to session-scoping. Modified-tracked
     files that are NOT partial-staged therefore succeed without index mutation.
-    Clean paths and missing paths error with the path named.
+    A clean tracked path and a path that does not exist yet are declared the
+    same way: declaring is bookkeeping for work about to start, not a claim
+    about current git state, so declaring before the first touch or ahead of a
+    file's creation both succeed and stage nothing.
     """
     positionals: list[str] = []
     for token in args:
@@ -240,7 +227,9 @@ def handle_code_add(args: list[str]) -> None:
             "\n"
             "Declares paths for the next `telec code commit`; NEW files are also staged.\n"
             "Modified tracked files are declared without staging because pathspec commits\n"
-            "them directly from the working tree.",
+            "them directly from the working tree. Clean and not-yet-created paths are\n"
+            "declared the same way — declare as you start on a file, or the moment you\n"
+            "notice one isn't declared.",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -265,44 +254,33 @@ def handle_code_add(args: list[str]) -> None:
 
     stageable: list[str] = []
     already_tracked: list[str] = []
-    clean: list[str] = []
-    missing: list[str] = []
+    not_yet_dirty: list[str] = []
 
     for path in positionals:
-        full = project_root / path
-        # Stageable classes are checked BEFORE existence: a partial-staged
-        # tracked file with a pending DELETION has staged content (so git
-        # knows the path) but no working-tree file, and the recovery path
-        # must still accept it. Untracked/unmerged files all exist on disk
-        # by construction, so this ordering does not weaken those checks.
+        # Untracked/unmerged/partial-staged paths all exist on disk by
+        # construction, so checking them first never misclassifies a path
+        # that does not exist yet. A clean tracked path and a path that does
+        # not exist yet fall to the same bucket: nothing for git to stage,
+        # so the declaration is bookkeeping only.
         if path in untracked or path in unmerged or path in partial_staged:
             stageable.append(path)
-        elif not full.exists():
-            missing.append(path)
         elif path in dirty:
             already_tracked.append(path)
         else:
-            clean.append(path)
-
-    if missing:
-        print(
-            "ERROR: path(s) not found in working tree:\n  " + "\n  ".join(missing),
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-
-    if clean:
-        print(
-            "ERROR: path(s) have no changes to stage:\n  " + "\n  ".join(clean),
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
+            not_yet_dirty.append(path)
 
     if already_tracked:
         # Modified tracked paths are declarations; pathspec commit needs no index mutation.
         print(
             "Declared already tracked + modified path(s); no staging needed (the pathspec\n"
             "commit takes them straight from the working tree):\n  " + "\n  ".join(already_tracked),
+            file=sys.stderr,
+        )
+
+    if not_yet_dirty:
+        print(
+            "Declared path(s) with nothing yet for git to stage (clean or not created yet):\n  "
+            + "\n  ".join(not_yet_dirty),
             file=sys.stderr,
         )
 
@@ -315,32 +293,6 @@ def handle_code_add(args: list[str]) -> None:
         print(f"Staged {len(stageable)} file(s):")
         for path in stageable:
             print(f"  {path}")
-
-
-def handle_code_changed(args: list[str]) -> None:
-    """List workspace-scoped changed files."""
-    parsed = parse_command_args(CODE_CHANGED, args)
-    if parsed.positionals:
-        print("ERROR: changed accepts paths only after --include or --only", file=sys.stderr)
-        raise SystemExit(2)
-    includes = list(parsed.values(F.FLAG_CODE_CHANGED_INCLUDE))
-    only = list(parsed.values(F.FLAG_CODE_CHANGED_ONLY))
-    if includes and only:
-        print("ERROR: --only cannot be combined with --include.", file=sys.stderr)
-        raise SystemExit(2)
-
-    state = resolve_invocation_state()
-    project_root = state.project_root
-    scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=state.context_root)
-    includes = _resolve_context_payload_paths(includes, project_root, state.context_root)
-    only = _resolve_context_payload_paths(only, project_root, state.context_root)
-    files = _display_context_paths(only, project_root, state.context_root) if only else _changed_paths(scope_resolution)
-    files = [*files, *_display_context_paths(includes, project_root, state.context_root)]
-    if not files:
-        print("No uncommitted workspace-scoped changes.")
-        return
-    for f in sorted(files):
-        print(f)
 
 
 def handle_code_commit(args: list[str]) -> None:
@@ -567,9 +519,16 @@ def _commit_under_lock(
         )
 
     if not pathspec:
+        if scope_resolution.declared_nothing_over_dirty_tree:
+            print(
+                "ERROR: nothing declared, and the workspace holds dirty paths. This commit "
+                "would silently record nothing. Declare what you are working on with "
+                "`telec code add <path>...`, or pass `--include <path>` here.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
         print(
-            "Nothing in workspace scope to commit. Run `telec code changed` to "
-            "see what telec would stage. For NEW files, declare them with "
+            "Nothing in workspace scope to commit. For NEW files, declare them with "
             "`telec code add <path>` first, or pass `--include <path>` here.",
             file=sys.stderr,
         )
@@ -678,12 +637,6 @@ def _resolve_context_payload_paths(paths: list[str], project_root: Path, context
     return resolved
 
 
-def _display_context_paths(paths: list[str], project_root: Path, context_root: Path | None) -> list[str]:
-    if context_root is None:
-        return []
-    return [(project_root / path).resolve().relative_to(context_root.resolve()).as_posix() for path in paths]
-
-
 def _commit_active_merge(
     repo: Repo,
     message: str,
@@ -790,9 +743,6 @@ def _merge_quality_paths(repo: Repo, project_root: Path) -> list[str]:
 def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[str]) -> None:
     """Record checkpoint markers derived from the sealed commit."""
     session_id = get_session_id()
-    if session_id:
-        # Lapse: a committed path no longer needs its advisory exemption.
-        clear_disclaimed_paths(session_id, committed_files)
     current_branch = resolve_current_branch(project_root)
     committed_includes_code = any(
         not any(fnmatch(path, pattern) for pattern in _NON_CODE_DOCUMENTATION_PATTERNS) for path in committed_files
@@ -867,21 +817,17 @@ def _print_commit_review_guidance(project_root: Path) -> None:
         "- a concrete blocker is reached.\n"
         "\n"
         "Required next steps:\n"
-        "1. Inspect scope:\n"
-        "  telec code changed\n"
-        "   Treat that output as your authoritative ownership scope.\n"
-        "   Do not use raw git status to override TeleClaude scope.\n"
-        "\n"
-        "2. Commit the intended scoped work yourself. Never ask the human before committing.\n"
-        "   If this scope contains multiple separable intents, make multiple commits with --only:\n"
-        "  telec code commit --approved '<msg>' --only <path> [<path> ...]\n"
-        "   Then rerun `telec code changed` until the scoped work is clean.\n"
-        "   New files require explicit inclusion:\n"
+        "1. Declare what you are working on, if you have not already:\n"
         "  telec code add <path> [<path> ...]\n"
-        "  telec code commit --approved '<msg>' --include <path>\n"
+        "   The declared set is your authoritative commit scope. Late declaration is fine —\n"
+        "   declare the moment you notice a path isn't declared yet.\n"
+        "\n"
+        "2. Commit the declared work yourself. Never ask the human before committing.\n"
+        "   If your declared set contains multiple separable intents, split with --only:\n"
+        "  telec code commit --approved '<msg>' --only <path> [<path> ...]\n"
         "   A tracked file you wrote from a shell command also needs `telec code add`:\n"
-        "   only your own tool edits are recorded natively, so an undeclared shell write\n"
-        "   is outside scope and will not be committed.\n"
+        "   only declared paths are committed, so an undeclared shell write is outside\n"
+        "   scope and will not be committed.\n"
         "\n"
         "   Foreign staged files are excluded by pathspec. Do not unstage them.\n"
         "\n"
@@ -936,10 +882,6 @@ def _refuse_frozen_paths_in_slug_worktree(
 
 def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
     return list(scope_resolution.repository_scoped_dirty_paths)
-
-
-def _changed_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
-    return list(scope_resolution.scoped_existing_paths)
 
 
 def _stage_files(files: list[str], project_root: Path) -> None:

@@ -821,9 +821,10 @@ For NEW files (untracked), stage them explicitly:
   telec code add <path> [<path> ...]
   (This is the sealed equivalent of 'git add' for the only case that needs it.)
 
-For EXISTING modified files, no staging is needed at all. The commit's
-pathspec takes them straight from the working tree:
-  telec code changed                       # see what's in scope
+For EXISTING modified files, no staging is needed at all. Declare what
+you're working on and the commit's pathspec takes it straight from the
+working tree:
+  telec code add <path> [<path> ...]       # declare what you're working on
   telec code commit                        # surface commit-first review-routing guidance
 
 NEW files in scope are intentionally NOT auto-committed (catches temp/

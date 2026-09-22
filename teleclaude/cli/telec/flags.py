@@ -541,8 +541,6 @@ FLAG_CODE_UPDATE_SNAPSHOTS = Flag(
     arity=SWITCH,
 )
 FLAG_CODE_ALL_FORMAT = Flag("--all", desc="Format all configured sources, skip workspace scoping", arity=SWITCH)
-FLAG_CODE_CHANGED_INCLUDE = Flag("--include", desc="Include eligible paths outside the computed scope.", arity=GREEDY)
-FLAG_CODE_CHANGED_ONLY = Flag("--only", desc="Inspect exactly the declared eligible paths.", arity=GREEDY)
 FLAG_COMMIT_APPROVED = Flag(
     "--approved",
     desc=(
