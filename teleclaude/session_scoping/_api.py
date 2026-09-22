@@ -17,7 +17,7 @@ from ._declarations import collect_live_declarations
 from ._extractors import normalize_workspace_path, resolve_extractor
 from ._git import paths_changed_since
 from ._transcript_chain import resolve_transcript_sources
-from ._types import ScopedPathsResult, ScopeMode
+from ._types import ScopedPathsResult, ScopeMode, WorkspaceKind
 from ._workspace import resolve_workspace
 
 logger = get_logger(__name__)
@@ -44,12 +44,12 @@ def resolve_scoped_paths(
     regardless of whether it was committed in-turn or remains uncommitted.
     """
     workspace = resolve_workspace(workspace_root)
-    if workspace.kind == "none":
+    if workspace.kind is WorkspaceKind.NONE:
         return ScopedPathsResult(
             paths=(),
             declared_paths=(),
             scope_mode=scope_mode,
-            workspace_kind="none",
+            workspace_kind=WorkspaceKind.NONE,
             strategy="none",
             ledger_updated=False,
         )

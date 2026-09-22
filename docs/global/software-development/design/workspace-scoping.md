@@ -95,10 +95,11 @@ state of its own. A declaration is live from its record until a later
 subset that commit carried. Nothing else — file-edit records, shell-command text,
 or transcript inspection of any kind — supplies path evidence.
 
-Every implicit-scope consumer reads this same evidence. Session-scoped lint and
-commit intersect it with the current dirty set, and the agent-stop checkpoint
-intersects it with the turn's anchor delta. Worktrees remain task-scoped and do
-not consult session declarations.
+Every implicit-scope consumer on a shared branch reads this same evidence.
+Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
+with the current dirty set. Worktrees remain task-scoped and do not consult
+session declarations: there the same consumers read the dirty set directly,
+because a todo checkout has one writer and nothing to attribute.
 
 A path is **owned** when it is both declared and dirty. A declared path that is
 clean is not owned and appears in no scope. Several sessions may declare the same

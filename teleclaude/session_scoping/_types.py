@@ -4,10 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 ScopeMode = Literal["turn_delta", "session_dirty"]
-WorkspaceKind = Literal["git_worktree", "git_shared", "non_git", "none"]
+
+
+class WorkspaceKind(StrEnum):
+    """How the resolved workspace root relates to its git repository."""
+
+    GIT_WORKTREE = "git_worktree"
+    GIT_SHARED = "git_shared"
+    NON_GIT = "non_git"
+    NONE = "none"
 
 
 @dataclass(frozen=True)

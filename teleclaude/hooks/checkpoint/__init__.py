@@ -71,7 +71,7 @@ from teleclaude.hooks.checkpoint_flags import (
     read_integrator_maintenance_marker,
 )
 from teleclaude.project_root import declaration_root
-from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
+from teleclaude.session_scoping import ScopedPathsResult, WorkspaceKind, resolve_scoped_paths
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
 logger = get_logger(__name__)
@@ -563,10 +563,16 @@ def get_checkpoint_content(
             transcript_files=transcript_files,
             turn_anchor_sha=turn_anchor_sha,
         )
-        # The checkpoint's file obligation is this session's own live
-        # declarations intersected with what is currently dirty and
-        # uncommitted — never a path this session did not declare.
-        effective_files = sorted(set(scoped_paths.declared_paths) & _dirty_repo_paths(project_path))
+        # Declarations answer ownership only where sessions share a branch. A
+        # worktree is one todo's task scope with a single writer, so its
+        # obligation is the dirty tree itself; intersecting it with declarations
+        # would withhold the obligation from the session that owns every path
+        # in it.
+        dirty_paths = _dirty_repo_paths(project_path)
+        if scoped_paths.workspace_kind is WorkspaceKind.GIT_WORKTREE:
+            effective_files = sorted(dirty_paths)
+        else:
+            effective_files = sorted(set(scoped_paths.declared_paths) & dirty_paths)
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
         used_session_fallback = False

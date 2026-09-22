@@ -55,8 +55,11 @@ The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and is
 wholesale-cleared at user-prompt-submit.
 
-Version control is consulted only as the category oracle (which file maps
-to which category), never as the arbiter of what is in-scope or done.
+On a shared branch, version control is consulted only as the category oracle
+(which file maps to which category), never as the arbiter of what is in-scope
+or done; declarations answer that. In a todo worktree there is nothing to
+arbitrate — the checkout is one todo's task scope with a single writer — so the
+dirty tree is itself the scope and declarations are not consulted.
 
 ## Canonical fields
 
@@ -462,7 +465,7 @@ Then the judgment action is surfaced
 #### UC-CP26: The checkpoint names the session's own undelivered work
 
 ```gherkin
-Given an agent session reaches an agent-stop checkpoint boundary
+Given an agent session on a shared branch reaches an agent-stop checkpoint boundary
 And the session has declared paths that are dirty and not yet committed
 When checkpoint evaluation completes
 Then a checkpoint decision is produced rather than skipped as having no changes
@@ -473,11 +476,21 @@ And its required action instructs the agent to commit them
 #### UC-CP33: Dirty paths the session never declared raise no obligation
 
 ```gherkin
-Given an agent session reaches an agent-stop checkpoint boundary
+Given an agent session on a shared branch reaches an agent-stop checkpoint boundary
 And the working tree holds dirty paths that session has not declared
 When checkpoint evaluation completes
 Then no obligation is raised for those paths
 And any decision produced for another reason names none of them
+```
+
+#### UC-CP34: A worktree's obligation is its dirty tree, not its declarations
+
+```gherkin
+Given an agent session is working from a non-main todo worktree
+And that worktree holds dirty paths the session has declared none of
+When checkpoint evaluation completes
+Then a checkpoint decision is produced naming those paths
+And its required actions are the ones their categories carry
 ```
 
 ### Cross-context references
