@@ -92,3 +92,9 @@ And an adopted agent continues with the remainder of the procedure
   in its session record and is not discoverable by the machine gate. The
   coordination procedure's refusal discipline remains the transition safety
   net until those legacy sessions end.
+
+<!-- planned:session-authority-follows-mandate-not-spawn -->
+## See Also
+
+- docs/project/spec/feature/agent_runtime/session-authority.md — adoption is one of the doors after which no session stands above the coordinator.
+<!-- /planned:session-authority-follows-mandate-not-spawn -->

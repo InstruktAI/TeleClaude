@@ -380,6 +380,20 @@ And a caller that cannot be identified is refused before any session is affected
 And a targetless request with a computer override is refused before any session is affected
 ```
 
+<!-- planned:no-async-work-without-a-receipt -->
+#### UC-SL38: Requested close returns a durable receipt
+
+```gherkin
+Given a caller asks to close a session
+When the request is accepted
+Then a durable operation row is persisted before cleanup begins and the response carries its receipt
+And the receipt names the operation, its state, where to read it, the computer that owns it, and the success and failure events it will emit
+And cleanup runs as that operation's work, so its terminal row and its outcome event are written together
+And the caller recorded on the row is woken with the outcome and where to read it
+And a caller that waits instead reads the same terminal record from the operation itself
+```
+<!-- /planned:no-async-work-without-a-receipt -->
+
 #### Direct-link sessions
 
 <!-- planned-change:strip-dead-web-remnants -->
@@ -419,7 +433,11 @@ And the conversation link operates orthogonally to stop-listener subscriptions
 - **Remote direct-link creation is not the normal path.** Remote create-session supports the TUI/CLI create-session shapes (`agent`, `agent_then_message`, `agent_resume`) and returns peer ownership via `computer=<remote>`. Direct-conversation linkage still materializes through local session records and is not created by the remote dispatch branch.
 - **Host-pane creation and agent launch are off the request path.** Create-session only writes the session row and returns; host-pane creation and agent CLI launch happen on the bootstrap task after acceptance. Callers polling for host-pane readiness must subscribe to the `agent_runtime.session.started` event or poll downstream — this surface does not block until the pane is alive.
 - **Host-pane ensure is silently idempotent.** A name collision joins the existing host pane without recreating — uniqueness is statistical (UUID4) rather than enforced by an explicit precheck. The v2-target "agent_runtime service refuses to start a session whose host-pane name collides" is not a v1 behavior; v1 simply joins the existing host pane if one with the same name already exists.
+<!-- planned-change:no-async-work-without-a-receipt -->
 - **End-session is fire-and-forget.** Acceptance means "accepted for processing", not "closed". The caller does not learn the outcome of cleanup over this surface; subscribing to the completion event (named in the acceptance response) or listing closed sessions is required.
+<!-- change:no-async-work-without-a-receipt -->
+- **End-session answers after the fact, not in its response.** Acceptance means "accepted for processing", not "closed". The outcome of cleanup is carried by the durable operation the receipt names: the caller reads that record whenever it asks, and is woken with its address when the operation reaches a terminal state.
+<!-- /planned-change:no-async-work-without-a-receipt -->
 <!-- planned-change:strip-dead-web-remnants -->
 - **Listing without identity headers reveals everything.** TUI and tool clients are intentionally unfiltered. Role-based gating is only applied when the web identity headers are present. The caller-session-id header is what trims a tool-client's default view to caller-scoped — `?all=true` opts out.
 <!-- change:strip-dead-web-remnants -->

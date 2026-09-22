@@ -135,12 +135,20 @@ launch reuses the existing session-creation command.
   person a caller is resolves through the identity contract. Dispatch owns only
   the rule that binds them.
 <!-- /planned:personal-assistant-launch -->
+<!-- planned-change:session-authority-follows-mandate-not-spawn -->
 - **Initiator pinning.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. This is the canonical link from child to parent and survives daemon restart.
+<!-- change:session-authority-follows-mandate-not-spawn -->
+- **Initiator pinning records dispatch, not command.** The dispatcher's session id is stored as `initiator_session_id` on the Worker record at creation time. It is the canonical link from child to parent, it survives daemon restart, and it is what caller-scoped cleanup and the todo claiming group read. A standing role — the integrator, the project coordinator, a scheduled job runner — takes its work from a queue, a schedule, or the fleet, so no session is pinned for it through any door, including adoption of a session already running. The human identity the work runs under is copied onto the session at creation and does not depend on the link surviving.
+<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 - **Listener kind.** Dispatch registers a persistent listener (`one_shot=false`). Repeat dispatches against the same target are deduplicated by `(caller, target)`.
 - **No destructive coupling.** Opening a direct link to the Worker does not remove the dispatch-time listener. The link toggles delivery (suppression rule) but never mutates the listener row. Refuted code paths: `unregister_listener(...)` calls inside `_link_direct_sessions` and `_create_direct_link`.
 - **Notification source of truth.** Stop events flow through `AgentCoordinator → session_listeners.notify_stop`. No second notification path bypasses the registry.
 - **Tmux is the delivery surface.** Listener notifications are injected via `deliver_listener_message` into the Initiator's tmux session, identified by `caller_tmux_session` on the listener row.
 - **Suppression while linked.** When a direct link is active between the Initiator and the Worker, listener notifications for that Initiator are skipped. The link's cross-delivery channel carries the relevant signal. See `session-subscriptions` for the canonical rule.
+
+<!-- planned:session-authority-follows-mandate-not-spawn -->
+- **Authority runs downward and sideways only.** A session never messages, opens or closes a direct conversation with, unsubscribes from, ends, or restarts a session above it in the dispatch chain. The Worker's completed turn already wakes the Initiator, so the result belongs in the Worker's own output. Peers, downward acts, and a session with nothing above it are unaffected. See `project/spec/feature/agent_runtime/session-authority` for the canonical rule.
+<!-- /planned:session-authority-follows-mandate-not-spawn -->
 
 ## Primary flows
 

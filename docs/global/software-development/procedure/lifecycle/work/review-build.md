@@ -117,14 +117,25 @@ Stamp the arithmetic verdict:
 telec todo stamp {slug} --verdict approve|changes_requested --phase build_review
 ```
 
+<!-- planned-change:session-authority-follows-mandate-not-spawn -->
 Report the summary and verdict to the work orchestrator. The reviewer writes no
 other artifact and makes no source change.
+<!-- change:session-authority-follows-mandate-not-spawn -->
+State the summary and verdict in your own turn output. Completing that turn is
+what reaches the work orchestrator, which reads it there; you send it nothing.
+The reviewer writes no other artifact and makes no source change.
+<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 
 ## Outputs
 
 - `review-findings` persisted on the dispatched slug.
 - `build_review` verdict stamped on the dispatched slug.
+<!-- planned-change:session-authority-follows-mandate-not-spawn -->
 - Summary and verdict reported to the work orchestrator.
+<!-- change:session-authority-follows-mandate-not-spawn -->
+- Summary and verdict stated in the reviewer session's own turn output, which
+  the work orchestrator reads on that turn's completion.
+<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 
 ### Report format
 

@@ -33,12 +33,22 @@ or lifecycle contract.
    for a general-purpose brief. The required-read CLI contract owns argument
    shapes, command examples, and subscription options. Preserve the returned
    session identity and owning computer for follow-up.
+<!-- planned-change:session-authority-follows-mandate-not-spawn -->
 3. Keep ordinary conversation separate from attention handling. For a peer
    discussion, establish a direct link using `telec sessions send ... --direct`.
    Once linked, converse through turn output, which is shared automatically;
    do not replace the conversation with repeated sends or routine transcript
    tailing. Use the published close-link operation when the conversation ends.
    A non-conversational child notification instead enters the assessment below.
+<!-- change:session-authority-follows-mandate-not-spawn -->
+3. Keep ordinary conversation separate from attention handling. For a peer
+   discussion, establish a direct link using `telec sessions send ... --direct`.
+   Once linked, converse through turn output, which is shared automatically;
+   do not replace the conversation with repeated sends or routine transcript
+   tailing. Use the published close-link operation when the conversation ends,
+   from a side that is not below its peer. A non-conversational child
+   notification instead enters the assessment below.
+<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
 4. Read the observation before choosing a response. Identify the child and its
    owning computer, the reported event, its native details and observation time
    when available. Keep missing evidence explicitly unknown. Compare the
@@ -86,10 +96,20 @@ or lifecycle contract.
    obstruction was resolved. Preserve the session and outstanding work while
    its governing contract requires them. Manage any continuing watch through
    that contract and the reminder policy, not a terminal polling loop.
+<!-- planned-change:session-authority-follows-mandate-not-spawn -->
 9. Close links, unsubscribe, and end sessions only when the corresponding
    interest or lifecycle obligation ends. Follow the governing cleanup and
    departure contract, including its child cleanup; do not treat notification
    receipt or context pressure as independent authority to terminate a session.
+<!-- change:session-authority-follows-mandate-not-spawn -->
+9. Close links, unsubscribe, and end sessions only when the corresponding
+   interest or lifecycle obligation ends, and only downward or sideways. Never
+   message, open or close a conversation with, unsubscribe from, end, or restart
+   the session above you: completing your turn already wakes it, so the result
+   belongs in your own output and reaches it there. Follow the governing cleanup
+   and departure contract, including its child cleanup; do not treat notification
+   receipt or context pressure as independent authority to terminate a session.
+<!-- /planned-change:session-authority-follows-mandate-not-spawn -->
    Ending a session that holds a claim is tree-scoped: account for its spawned
    descendants as well as the session itself, and verify cleanup completion.
    Use the governing procedure's cleanup operation where it supplies one;
