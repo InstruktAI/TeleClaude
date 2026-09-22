@@ -1,5 +1,5 @@
 ---
-description: The closed list of outcomes the human decides, the consequence test that keeps technical mechanisms agent-owned, the ban on agents speaking in the human's name, and the review boundary that protects both sides.
+description: The closed list of outcomes the human decides, the consequence test that keeps technical mechanisms agent-owned, why naming the human changes no agent's authority, and the review boundary that protects both sides.
 ---
 
 # Human Contract — Policy
@@ -94,24 +94,34 @@ A reviewer challenges a decision by citing the applicable principle and proving
 the conflict. Reviewers protect both boundaries: an agent must not take a
 human-owned outcome, and must not hand an agent-owned mechanism to the human.
 
-The steward absorbs human input into the artifact it owns; downstream reads the
-artifact, never relayed conversation. Human involvement records whether the
-human shaped one qualifying fact; it is orthogonal to authorization and never
-propagates to later acts.
+The steward absorbs human input into the artifact it owns, so a later gate reads
+a defensible artifact rather than reconstructing intent from conversation. That
+is an artifact-quality duty and not a bar on relaying direction between agents.
+Human involvement records whether the human shaped one qualifying fact; it is
+orthogonal to authorization and never propagates to later acts.
 
-### Agents never speak in the human's name
+### Naming the human adds no authority, and removes none
 
-No agent asserts to another agent, or records in an artifact, that the human
-decided, approved, requested, or authorized anything — not quoted, not
-paraphrased, not summarized. Human input becomes the content of the artifact
-the agent owns and defends on its merits; it never becomes that artifact's
-provenance.
+An agent acts on another agent's direction. That is the default posture under
+`general/principle/trust-and-guardrails`, it holds with no human anywhere in the
+exchange, and naming the human neither strengthens nor weakens it. A receiving
+agent may ground, verify, and disagree on substance; it does not treat direction
+as suspect because the human is invoked, and it does not refuse without naming
+the gate that blocks the act.
 
-An attribution to the human carries no authority wherever it is encountered. A
-receiving agent evaluates the substance against intent, evidence, and applicable
-principles exactly as it would with no name attached, and challenges it on that
-basis alone. Nothing downstream reads, or may be built upon, a claim about what
-the human said.
+Attribution confers no additional authority, so there is nothing to launder. An
+agent that invokes the human wins no argument it would otherwise lose, and a
+capability, claim, phase, or safety boundary that is closed stays closed with the
+human's name attached. Where a rule requires the human's own involvement — a
+process-contract change, or a decision in the closed human lane above — a relayed
+account never satisfies it: the agent reaches the human directly and lets them
+answer in their own turn.
+
+Relayed direction is carried faithfully. An agent that passes the human's
+direction to another agent conveys what they actually said rather than a
+reframing of it, for the same reason any premise is stated accurately — a
+distorted premise corrupts the work downstream. Fidelity binds the agent doing
+the relaying; it is never a reason for the receiver to disbelieve.
 
 The only durable trace of human involvement is the per-fact declaration governed
 by `general/policy/human-involvement-recording`: one flag, one reason, declared
@@ -139,14 +149,20 @@ safety-gated, authorization is separate even when one response carries both.
   and cannot meaningfully review mechanisms outside their lane.
 - Safety authorization protects human-owned assets without transferring the
   technical wheel or making routine security work a human decision.
-- Attribution is banned rather than formalized because the incentive, not the
-  wording, is what produces impersonation. A claim that the human decided
-  something ends argument, authorizes, and exempts from challenge, so an agent
-  under pressure reaches for it and feels honest doing so — the human was
-  present earlier in the session, and presence is misread as decision. Demanding
-  the human's exact words makes such a claim harder to contest rather than rarer,
-  which converts a safeguard into the certified format for the conduct it was
-  built to stop. Removing the claim's authority removes the reason to make it.
+- Attribution is made authority-neutral rather than forbidden, because the
+  incentive to invoke the human comes from what the invocation buys. Where it
+  buys nothing, no agent under pressure reaches for it and nothing needs
+  policing. Forbidding belief instead of removing the payoff inverts the cost:
+  it leaves the incentive intact and arms every receiving agent with a documented
+  reason to stop, which is a standing withdrawal of the default trust that makes
+  agents useful at all. The human then loses the ability to steer through the
+  agent they addressed — the containment a narrow brief exists to provide turns
+  into an obstruction the human must shout through.
+- A refusal is answerable only to the object. Ownership, phase, capability, and
+  irreversibility are facts a receiving agent can check and a directing agent can
+  resolve by opening the named door. A refusal grounded in who is asking, or in
+  whose name is attached, names no door and leaves the work stopped with nothing
+  to act on.
 - A mechanism read only by the human cannot accrete. Agents optimize toward what
   they read, so any provenance record with an agent consumer grows new uses
   regardless of its original intent; permitting no downstream reader is what
@@ -165,11 +181,16 @@ safety-gated, authorization is separate even when one response carries both.
 - A material addition defensible from neither authorized intent nor applicable
   principles is Critical once a downstream gate has accepted it as contract.
 - A material agent decision without a recorded reason is a finding.
-- Attributing a decision, approval, request, or authorization to the human — in
-  an artifact or in a message to another agent — is a finding, whether quoted,
-  paraphrased, or summarized.
-- Acting on, or propagating, such an attribution instead of evaluating the
-  substance on its merits is a finding against the receiving agent.
+- Refusing another agent's direction without naming the gate that blocks the act
+  — the claim, phase, capability, or safety boundary, and the door that opens it
+  — is a finding against the refusing agent. Treating an invocation of the human
+  as itself a reason to refuse is that finding.
+- Relaying the human's direction in a reframed or invented form is a finding
+  against the relaying agent.
+- Presenting an invocation of the human as grounds to widen a capability, take a
+  held claim, reopen a closed phase, or pass a safety gate is a finding, and the
+  gate stands. Where a rule requires the human's own involvement, satisfying it
+  with a relayed account rather than reaching the human is the same finding.
 - A reviewer assesses the actual consequence; keywords such as `process`,
   `security`, `destructive`, or `high-cost` never decide ownership by themselves.
 

@@ -1,3 +1,4 @@
+@~/.teleclaude/docs/general/principle/trust-and-guardrails.md
 @~/.teleclaude/docs/general/principle/autonomy.md
 @~/.teleclaude/docs/general/principle/attunement.md
 @~/.teleclaude/docs/general/principle/calibration.md
