@@ -31,6 +31,7 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api.run_session_refusals import RunSessionRefusal
 from teleclaude.api.run_session_shapes import infer_command_from_message, infer_role_and_slug_from_message
+from teleclaude.api.session_authority import ACT_END, ACT_SEND_MESSAGE, refuse_act_on_ancestor
 from teleclaude.api.session_create_launch import (
     build_launch_intent,
     resolve_enabled_agent,
@@ -605,6 +606,7 @@ async def end_session(
     identity: CallerIdentity = Depends(clearance_sessions_end),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
     """End session via CloseSessionCommand through the command system."""
+    await refuse_act_on_ancestor(identity, session_id, ACT_END)
     user_agent = request.headers.get("user-agent", "no-ua")
     logger.info(
         "DELETE /sessions/%s (computer=%s, ua=%s)",
@@ -858,6 +860,7 @@ async def send_message_endpoint(
     identity: CallerIdentity = Depends(clearance_sessions_send),
 ) -> SendMessageResponseDTO:
     try:
+        await refuse_act_on_ancestor(identity, session_id, ACT_SEND_MESSAGE)
         target_session = None
         if not is_remote_target(computer, config.computer.name):
             target_session = await _load_target_session_for_message(session_id, request.message)

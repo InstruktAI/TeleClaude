@@ -417,6 +417,30 @@ PREPARE_AUTHOR_JOB_ROLES: frozenset[str] = frozenset(
     }
 )
 
+# Standing roles carry no commanding session, whatever door created them. The
+# integrator and the coordinator are identified by the session's `job` field;
+# the job runner is identified by `system_role`, because its own command
+# argument displaces the mapped `job` value before it reaches
+# COMMAND_ROLE_MAP. Neither field alone resolves all three — see
+# project/spec/feature/agent_runtime/session-authority.
+STANDING_JOB_ROLES: frozenset[str] = frozenset(
+    {
+        JobRole.INTEGRATOR.value,
+        JobRole.COORDINATOR.value,
+    }
+)
+STANDING_SYSTEM_ROLES: frozenset[str] = frozenset({ROLE_JOB_RUNNER})
+
+
+def is_standing_role(system_role: str | None, job: str | None) -> bool:
+    """Answer whether a session's persisted ``(system_role, job)`` pair is a standing role.
+
+    Reads both fields because neither alone resolves all three standing
+    roles: ``job`` is authoritative for the integrator and the coordinator,
+    ``system_role`` for the job runner.
+    """
+    return job in STANDING_JOB_ROLES or system_role in STANDING_SYSTEM_ROLES
+
 
 class Platform(str, Enum):
     DARWIN = "darwin"

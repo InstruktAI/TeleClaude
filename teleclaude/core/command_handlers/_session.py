@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude import __version__
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import WORKING_DIR, config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR, SlashCommand
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, WORKTREE_DIR, SlashCommand, is_standing_role
 from teleclaude.core import tmux_bridge
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -70,6 +70,7 @@ _UNBOUND_TMUX_NAME = ""
 
 _LISTENER_REGISTRATION_SKIPPED_EVENT = "session_listener_registration_skipped"
 _LISTENER_REGISTRATION_FAILED_EVENT = "session_listener_registration_failed"
+_LISTENER_SKIP_REASON_STANDING_ROLE = "standing_role"
 _WORKTREE_SUBDIR_TEMPLATE = "{worktree_dir}/{slug}"
 _WORKTREE_DIRECTORY_MISSING_TEMPLATE = "required worktree directory does not exist: {worktree_dir}"
 
@@ -352,8 +353,20 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     subfolder = cmd.subdir
     working_slug: str | None = resolve_working_slug_from_subdir(subfolder) or cmd.working_slug
     initiator_session_id = cmd.initiator_session_id
+    initiator_computer = cmd.initiator_computer
     cmd_system_role = cmd.system_role
     cmd_job = cmd.job
+    # A standing role carries no commanding session, whatever door created it.
+    if is_standing_role(cmd_system_role, cmd_job):
+        if initiator_session_id:
+            logger.info(
+                _LISTENER_REGISTRATION_SKIPPED_EVENT,
+                caller_session_id=initiator_session_id,
+                target_session_id=session_id,
+                reason=_LISTENER_SKIP_REASON_STANDING_ROLE,
+            )
+        initiator_session_id = None
+        initiator_computer = None
 
     if not human_role and not cmd_system_role:
         raise ValueError(f"Session creation failed: no identity resolved and no system_role (origin={origin})")
@@ -453,7 +466,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
         command=cmd.command,
         working_slug=working_slug,
         initiator_session_id=initiator_session_id,
-        initiator_computer=cmd.initiator_computer,
+        initiator_computer=initiator_computer,
         detached=cmd.skip_listener_registration,
         human_email=human_email,
         human_role=human_role,
