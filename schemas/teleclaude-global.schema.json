@@ -13,7 +13,7 @@
       "type": "string"
     },
     "AutonomyMatrix": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Priority-ordered autonomy overrides for domains, cartridges, and events.",
       "properties": {
         "global_default": {
@@ -46,7 +46,7 @@
       "type": "object"
     },
     "DomainConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Configuration for a single domain-specific event pipeline.",
       "properties": {
         "name": {
@@ -70,7 +70,7 @@
       "type": "object"
     },
     "DomainGuardianConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Guardian agent settings used when a domain requires evaluation.",
       "properties": {
         "agent": {
@@ -105,7 +105,7 @@
       "type": "object"
     },
     "DomainsConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Top-level configuration for repo-owned domain event pipelines.",
       "properties": {
         "enabled": {
@@ -125,7 +125,7 @@
       "type": "object"
     },
     "JobScheduleConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "One declarative scheduled job or subscription override.",
       "properties": {
         "category": {
@@ -218,7 +218,7 @@
       "type": "object"
     },
     "JobSubscription": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Job-triggered subscription.",
       "properties": {
         "enabled": {
@@ -260,7 +260,7 @@
       "type": "object"
     },
     "JobWhenConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Job scheduling time configuration.",
       "properties": {
         "every": {
@@ -307,7 +307,7 @@
       "type": "object"
     },
     "PersonEntry": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Person identity and role configuration.",
       "properties": {
         "name": {
@@ -383,7 +383,7 @@
       "type": "object"
     },
     "SubscriptionNotification": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Notification channel preference for a subscription.",
       "properties": {
         "preferred_channel": {
@@ -409,7 +409,7 @@
       "type": "object"
     },
     "YoutubeSubscription": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "YouTube channel subscription.",
       "properties": {
         "enabled": {
@@ -448,7 +448,7 @@
       "type": "object"
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
   "description": "Global-level configuration: the cross-project overlay (people, interests, overlay roots).\n\nLike ``ProjectConfig``, this is an overlay, not the machine runtime config; the\npublic/editable machine surface is the per-field ``tier`` markers on\n``TeleclaudeConfig`` (``project/policy/config-public-surface``). ``checkout_root``\nis the surviving git overlay key, marked ``internal`` \u2014 not human-edited in the\nwizard.",
   "properties": {
     "kind": {

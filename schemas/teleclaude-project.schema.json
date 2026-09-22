@@ -7,7 +7,7 @@
       "type": "string"
     },
     "BusinessConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Business domain configuration.",
       "properties": {
         "publishes": {
@@ -23,7 +23,7 @@
       "type": "object"
     },
     "CapabilityConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Subscription state for one project capability.",
       "properties": {
         "enabled": {
@@ -36,7 +36,7 @@
       "type": "object"
     },
     "ChannelSubscription": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "A subscription that routes messages from a Redis Stream channel to a target.",
       "properties": {
         "channel": {
@@ -68,7 +68,7 @@
       "type": "object"
     },
     "CheckpointActionConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "A project-declared checkpoint action (verb) overlaid on the base registry.",
       "properties": {
         "run": {
@@ -105,7 +105,7 @@
       "type": "object"
     },
     "CheckpointBindingConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Maps a scope to the action ids a matching changed file owes.",
       "properties": {
         "scope": {
@@ -129,7 +129,7 @@
       "type": "object"
     },
     "CheckpointCodeConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "The conventional ``code`` kind: a scope onto which base ``test`` / ``log-check`` attach.",
       "properties": {
         "scope": {
@@ -145,7 +145,7 @@
       "type": "object"
     },
     "CheckpointConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Project checkpoint maintenance overlay merged atop the platform-universal base.\n\nAuthored at analyze-time by intelligence (``telec projects analyze``) per\n``project/procedure/checkpoint-overlay-projection``; consumed structurally by\nthe checkpoint engine. An unreadable overlay degrades to base-only (fail-open).",
       "properties": {
         "actions": {
@@ -210,7 +210,7 @@
       "type": "object"
     },
     "CheckpointExtraActionsConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Optional extra actions appended atop a conventional base binding (``docs`` / ``agents``).",
       "properties": {
         "actions": {
@@ -226,7 +226,7 @@
       "type": "object"
     },
     "CheckpointMaintenanceConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "A project-declared deterministic action overlaid on the maintenance registry.",
       "properties": {
         "command": {
@@ -253,7 +253,7 @@
       "type": "object"
     },
     "CheckpointScopeConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "A glob scope: ``include`` minus ``exclude``, re-added by ``override``.",
       "properties": {
         "include": {
@@ -285,7 +285,7 @@
       "type": "object"
     },
     "HooksConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Hooks and subscriptions configuration.",
       "properties": {
         "inbound": {
@@ -309,7 +309,7 @@
       "type": "object"
     },
     "InboundSourceConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Inbound webhook source configuration.",
       "properties": {
         "path": {
@@ -365,7 +365,7 @@
       "type": "object"
     },
     "JobScheduleConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "One declarative scheduled job or subscription override.",
       "properties": {
         "category": {
@@ -458,7 +458,7 @@
       "type": "object"
     },
     "JobWhenConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Job scheduling time configuration.",
       "properties": {
         "every": {
@@ -505,7 +505,7 @@
       "type": "object"
     },
     "PublishesEntry": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "A published domain and its required always-on activation trigger.\n\nWith domain-resident triggered procedures scoped out of the always-on\nglobal catalog, this trigger is a published domain's only always-on\ntripwire, so both fields are required \u2014 a domain must never be\ndeliverable undiscoverable.",
       "properties": {
         "slug": {
@@ -523,7 +523,7 @@
       "type": "object"
     },
     "SubscriptionConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Hook subscription configuration.",
       "properties": {
         "id": {
@@ -548,7 +548,7 @@
       "type": "object"
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
   "description": "Project-level configuration: per-project ``teleclaude.yml`` overlay.\n\nThis is the project-scoped overlay, not the machine runtime config \u2014 the\npublic/editable machine surface is declared by the per-field ``tier`` markers\non ``TeleclaudeConfig`` (``project/policy/config-public-surface``). Keys that\nbelong machine-wide (the release channel, the workflow control plane) live on\nthe machine config, not here.",
   "properties": {
     "kind": {

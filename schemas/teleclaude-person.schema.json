@@ -1,7 +1,7 @@
 {
   "$defs": {
     "CredsConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Multi-platform credential container.",
       "properties": {
         "telegram": {
@@ -42,7 +42,7 @@
       "type": "object"
     },
     "DiscordCreds": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Discord platform credentials.",
       "properties": {
         "user_id": {
@@ -91,7 +91,7 @@
       "type": "object"
     },
     "JobSubscription": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Job-triggered subscription.",
       "properties": {
         "enabled": {
@@ -133,7 +133,7 @@
       "type": "object"
     },
     "JobWhenConfig": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Job scheduling time configuration.",
       "properties": {
         "every": {
@@ -180,6 +180,7 @@
       "type": "object"
     },
     "MailAccount": {
+      "additionalProperties": false,
       "description": "One declared mail account available to a person's assistant.",
       "properties": {
         "connector": {
@@ -208,13 +209,13 @@
       "type": "string"
     },
     "OutputVisibilitySettings": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Per-person visibility preferences for projected output categories.",
       "properties": {
         "system_messages": {
           "anyOf": [
             {
-              "enum": ["mobile", "web", "both", "off"],
+              "enum": ["mobile", "full", "both", "off"],
               "type": "string"
             },
             {
@@ -227,7 +228,7 @@
         "tool_calls": {
           "anyOf": [
             {
-              "enum": ["mobile", "web", "both", "off"],
+              "enum": ["mobile", "full", "both", "off"],
               "type": "string"
             },
             {
@@ -242,7 +243,7 @@
       "type": "object"
     },
     "PersonChipColor": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Per-person chip color: a background and a text color, each theme-split.\n\nEvery leaf is independently optional and defaults to ``None``. ``None`` is\nthe renderer-default signal, not a stored color \u2014 the chip renderer fills it\nfrom the theme for the active mode. The nested pairs default to empty\ninstances so the whole block can be instantiated as an empty tree and a\nsingle leaf can be set without pre-populating its siblings.",
       "properties": {
         "background": {
@@ -264,7 +265,7 @@
       "type": "object"
     },
     "PersonChipColorPair": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "A theme-split color pair: one value for light mode, one for dark.",
       "properties": {
         "light": {
@@ -296,7 +297,7 @@
       "type": "object"
     },
     "PersonSettings": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Per-person settings container.",
       "properties": {
         "output_visibility": {
@@ -311,7 +312,7 @@
       "type": "object"
     },
     "SubscriptionNotification": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Notification channel preference for a subscription.",
       "properties": {
         "preferred_channel": {
@@ -337,7 +338,7 @@
       "type": "object"
     },
     "TelegramCreds": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Telegram platform credentials.",
       "properties": {
         "user_name": {
@@ -366,7 +367,7 @@
       "type": "object"
     },
     "WhatsAppCreds": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "WhatsApp platform credentials.",
       "properties": {
         "phone_number": {
@@ -379,7 +380,7 @@
       "type": "object"
     },
     "YoutubeSubscription": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "YouTube channel subscription.",
       "properties": {
         "enabled": {
@@ -418,7 +419,7 @@
       "type": "object"
     }
   },
-  "additionalProperties": true,
+  "additionalProperties": false,
   "description": "Per-person configuration.",
   "properties": {
     "kind": {
