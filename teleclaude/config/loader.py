@@ -312,15 +312,26 @@ def save_company_config(slug: str, config: CompanyConfig, companies_root: Path |
     logger.info("Saved company config for %s", slug)
 
 
-def list_company_configs(companies_root: Path | None = None) -> list[tuple[str, CompanyConfig]]:
-    """List folder-discovered companies as ``(slug, CompanyConfig)`` pairs, sorted by slug."""
+def list_company_config_paths(companies_root: Path | None = None) -> list[Path]:
+    """List folder-discovered company overlay paths, sorted by slug.
+
+    Discovery without loading, so a caller that must survive a malformed company
+    — validation especially — can enumerate the full roster and load each entry
+    under its own error handling. ``list_company_configs`` loads eagerly and
+    therefore surfaces the first failure instead of the roster.
+    """
     root = companies_root if companies_root is not None else COMPANIES_ROOT
     if not root.exists():
         return []
-    pairs: list[tuple[str, CompanyConfig]] = []
-    for config_path in sorted(root.glob(f"*/{ConfigFileName.OVERLAY}")):
-        pairs.append((config_path.parent.name, load_company_config(config_path)))
-    return pairs
+    return sorted(root.glob(f"*/{ConfigFileName.OVERLAY}"))
+
+
+def list_company_configs(companies_root: Path | None = None) -> list[tuple[str, CompanyConfig]]:
+    """List folder-discovered companies as ``(slug, CompanyConfig)`` pairs, sorted by slug."""
+    return [
+        (config_path.parent.name, load_company_config(config_path))
+        for config_path in list_company_config_paths(companies_root)
+    ]
 
 
 def find_company_config_path(slug: str, companies_root: Path | None = None) -> Path | None:

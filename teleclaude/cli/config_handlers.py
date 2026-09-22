@@ -28,6 +28,9 @@ from teleclaude.config.declaration import write_yaml_document as _atomic_yaml_wr
 from teleclaude.config.invitations import load_invitations, save_invitations
 from teleclaude.config.loader import (
     find_person_config_path,
+    list_company_config_paths,
+    load_company_config,
+    load_declared_project_config,
     load_global_config,
     load_person_config,
 )
@@ -46,6 +49,7 @@ from teleclaude.config.surface import machine_config_surface
 from teleclaude.config.validation import missing_enabled_service_fields, missing_required_fields
 from teleclaude.mcp.registry import load_effective_registry
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PROJECT_ENV_PATH, REPO_ROOT, TELECLAUDE_HOME, ConfigFileName
+from teleclaude.project_manifest import load_registered_roots
 
 logger = get_logger(__name__)
 
@@ -345,6 +349,61 @@ def validate_all() -> list[ValidationResult]:
                     suggestions=[f"Check {person_path} for errors"],
                 )
             )
+
+    # Validate each folder-discovered company. Discovery is decoupled from loading
+    # so one malformed overlay cannot hide its siblings from the report.
+    for company_path in list_company_config_paths():
+        company_area = f"company:{company_path.parent.name}"
+        try:
+            load_company_config(company_path)
+            results.append(ValidationResult(area=company_area, passed=True))
+        except (ValueError, ValidationError) as e:
+            results.append(
+                ValidationResult(
+                    area=company_area,
+                    passed=False,
+                    errors=[str(e)],
+                    suggestions=[f"Check {company_path} for errors"],
+                )
+            )
+
+    # Validate each registered project root. An unavailable root is a stale
+    # manifest entry — reported like a missing person overlay, never skipped.
+    for root in load_registered_roots():
+        project_area = f"project:{root.path.name}"
+        if not root.is_present:
+            results.append(
+                ValidationResult(
+                    area=project_area,
+                    passed=False,
+                    errors=[f"Registered project directory missing: {root.path}"],
+                    suggestions=[f"Restore {root.path}, or remove it from the project manifest"],
+                )
+            )
+            continue
+        try:
+            declared = load_declared_project_config(root.path)
+        except (ValueError, ValidationError) as e:
+            results.append(
+                ValidationResult(
+                    area=project_area,
+                    passed=False,
+                    errors=[str(e)],
+                    suggestions=[f"Check {root.path / ConfigFileName.OVERLAY} for errors"],
+                )
+            )
+            continue
+        if declared is None:
+            results.append(
+                ValidationResult(
+                    area=project_area,
+                    passed=False,
+                    errors=[f"No project configuration declared at {root.path}"],
+                    suggestions=[f"Run from {root.path}: telec projects init"],
+                )
+            )
+        else:
+            results.append(ValidationResult(area=project_area, passed=True))
 
     missing_sections: dict[str, list[str]] = {}
     if app_config is not None:
