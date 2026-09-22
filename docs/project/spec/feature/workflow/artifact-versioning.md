@@ -206,6 +206,17 @@ Then updated_by is the writing session's id
 And a write from a caller that is no session records no updated_by
 ```
 
+<!-- planned:corroboration-routes-by-artifact-writer -->
+#### UC-WAV26: The artifact listing names each artifact's writers
+
+```gherkin
+Given a slug whose artifact has versions written by more than one session
+When a caller lists that slug's artifacts
+Then each artifact carries the distinct session ids recorded as updated_by across its versions
+And an artifact whose versions recorded no writer carries none
+```
+<!-- /planned:corroboration-routes-by-artifact-writer -->
+
 #### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role
 
 ```gherkin
