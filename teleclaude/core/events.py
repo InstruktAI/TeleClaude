@@ -45,7 +45,6 @@ class AgentHookEvents(StrEnum):
     AGENT_ERROR = "error"
     AGENT_BLOCKED = "agent_blocked"
     AGENT_IDLE = "agent_idle"
-    AGENT_NOTIFICATION = "agent_notification"
     AGENT_SESSION_START = "session_start"
     AGENT_STOP = "agent_stop"
     AGENT_TURN_FAILED = "agent_turn_failed"
@@ -76,7 +75,6 @@ RECEIVER_HANDLED_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(
         AgentHookEvents.AGENT_ERROR,
         AgentHookEvents.AGENT_BLOCKED,
         AgentHookEvents.AGENT_IDLE,
-        AgentHookEvents.AGENT_NOTIFICATION,
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_TURN_FAILED,
@@ -196,7 +194,6 @@ SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
     AgentHookEvents.AGENT_STOP,
     AgentHookEvents.AGENT_BLOCKED,
     AgentHookEvents.AGENT_TURN_FAILED,
-    AgentHookEvents.AGENT_NOTIFICATION,
     AgentHookEvents.PRE_TOOL_USE,
     AgentHookEvents.POST_TOOL_USE,
 }
@@ -247,7 +244,6 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
     if event_type in {
         AgentHookEvents.AGENT_BLOCKED,
         AgentHookEvents.AGENT_TURN_FAILED,
-        AgentHookEvents.AGENT_NOTIFICATION,
     }:
         return AgentDistressPayload(
             session_id=native_id,

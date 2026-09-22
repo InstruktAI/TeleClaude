@@ -80,6 +80,8 @@ class HookNormalizationReason(StrEnum):
     LATER_INVOCATION = "later_invocation"
     PROVIDER_NOT_IDLE = "provider_not_idle"
     UNHANDLED_EVENT = "unhandled_event"
+    NOT_ADMITTED = "not_admitted"
+    USAGE_LIMIT_WAIT = "usage_limit_wait"
 
 
 @dataclass(frozen=True)

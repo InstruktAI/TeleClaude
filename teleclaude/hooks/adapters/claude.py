@@ -56,15 +56,26 @@ class ClaudeHookEvent(StrEnum):
 
 
 class ClaudeNotificationType(StrEnum):
-    """Claude notification types that leave a session waiting for input."""
+    """Claude notification subtypes admitted onto the distress allowlist."""
 
     PERMISSION_PROMPT = "permission_prompt"
     AGENT_NEEDS_INPUT = "agent_needs_input"
     ELICITATION_DIALOG = "elicitation_dialog"
     ELICITATION_URL_DIALOG = "elicitation_url_dialog"
+    QUOTA_AUTO_RESUME_STALE = "quota_auto_resume_stale"
+    QUOTA_AUTO_RESUME_DISABLED = "quota_auto_resume_disabled"
 
 
-_BLOCKING_NOTIFICATION_TYPES: frozenset[str] = frozenset(ClaudeNotificationType)
+_BLOCKED_NOTIFICATION_TYPES: frozenset[str] = frozenset(
+    {
+        ClaudeNotificationType.PERMISSION_PROMPT,
+        ClaudeNotificationType.AGENT_NEEDS_INPUT,
+        ClaudeNotificationType.ELICITATION_DIALOG,
+        ClaudeNotificationType.ELICITATION_URL_DIALOG,
+        ClaudeNotificationType.QUOTA_AUTO_RESUME_STALE,
+    }
+)
+_TURN_FAILED_NOTIFICATION_TYPES: frozenset[str] = frozenset({ClaudeNotificationType.QUOTA_AUTO_RESUME_DISABLED})
 
 
 class ClaudeAdapter(HookAdapter):
@@ -101,7 +112,7 @@ class ClaudeAdapter(HookAdapter):
                 frozenset({HookPurpose.CONTROL_DELIVERY, HookPurpose.MINT}),
                 HookDeliveryMode.HOOK_SPECIFIC_CONTEXT,
             ),
-            ClaudeHookEvent.NOTIFICATION: NativeHookSpec(AgentHookEvents.AGENT_NOTIFICATION, frozenset()),
+            ClaudeHookEvent.NOTIFICATION: NativeHookSpec(AgentHookEvents.AGENT_BLOCKED, frozenset()),
             ClaudeHookEvent.STOP_FAILURE: NativeHookSpec(AgentHookEvents.AGENT_TURN_FAILED, frozenset()),
         }
     )
@@ -119,9 +130,18 @@ class ClaudeAdapter(HookAdapter):
         """Map only provider-confirmed manual compaction to an idle boundary."""
         if raw_event_type == ClaudeHookEvent.NOTIFICATION:
             notification_type = data.get(_NOTIFICATION_TYPE_FIELD)
-            if notification_type in _BLOCKING_NOTIFICATION_TYPES:
-                return HookEventNormalization(AgentHookEvents.AGENT_BLOCKED, HookNormalizationReason.MAPPED_EVENT)
-            return HookEventNormalization(AgentHookEvents.AGENT_NOTIFICATION, HookNormalizationReason.MAPPED_EVENT)
+            if notification_type in _BLOCKED_NOTIFICATION_TYPES:
+                reason = (
+                    HookNormalizationReason.USAGE_LIMIT_WAIT
+                    if notification_type == ClaudeNotificationType.QUOTA_AUTO_RESUME_STALE
+                    else HookNormalizationReason.MAPPED_EVENT
+                )
+                return HookEventNormalization(AgentHookEvents.AGENT_BLOCKED, reason)
+            if notification_type in _TURN_FAILED_NOTIFICATION_TYPES:
+                return HookEventNormalization(
+                    AgentHookEvents.AGENT_TURN_FAILED, HookNormalizationReason.USAGE_LIMIT_WAIT
+                )
+            return HookEventNormalization(None, HookNormalizationReason.NOT_ADMITTED)
         if raw_event_type == ClaudeHookEvent.POST_COMPACT:
             trigger = data.get(_POST_COMPACT_TRIGGER_FIELD)
             if trigger == _POST_COMPACT_MANUAL_TRIGGER:
