@@ -40,11 +40,11 @@ from teleclaude.api.run_session_refusals import (
 )
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
 from teleclaude.api.session_access import check_session_access
-from teleclaude.api.session_human_involvement_routes import router as human_involvement_router
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
 from teleclaude.api.session_pane_routes import router as session_pane_router
 from teleclaude.api.session_remote import is_remote_target
+from teleclaude.api.session_result_routes import router as session_result_router
 from teleclaude.api.sessions_coordinate_routes import router as sessions_coordinate_router
 from teleclaude.api_models import (
     CreateSessionRequest,
@@ -147,7 +147,7 @@ _STATE = SimpleNamespace(client=None)
 router = APIRouter()
 router.include_router(sessions_coordinate_router)
 router.include_router(session_pane_router)
-router.include_router(human_involvement_router)
+router.include_router(session_result_router)
 
 
 def configure(client: AdapterClient | None = None) -> None:

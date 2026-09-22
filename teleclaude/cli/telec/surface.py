@@ -554,8 +554,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates the todo entry, canonical state, and stores content as the input artifact.",
-                    "--human-involved accepts a non-empty action-local reason only after recent qualified human input. "
-                    "The reason is never stored; omission records false and does not affect later actions.",
+                    "--human-involved requires a non-empty reason and resolves the record from observed recency: "
+                    "a stale declaration records false and the todo is still created. The reason is never "
+                    "stored; omission records false and does not affect later actions.",
                     "Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, "
                     "affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT "
                     "prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — "

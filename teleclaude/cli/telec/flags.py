@@ -56,8 +56,9 @@ FLAG_AFTER_DEPS = Flag("--after", desc="Comma-separated dependency slugs", arity
 FLAG_HUMAN_INVOLVED = Flag(
     "--human-involved",
     desc=(
-        "Declare one filing was shaped by recent qualified human input. The non-empty reason stays "
-        "ephemeral; omission records false and never inherits from another action."
+        "Report a human's presence at this act, measured from their last input. The non-empty reason "
+        "stays ephemeral; an observation outside the recency window records false without failing the "
+        "act; omission records false and never inherits from another action."
     ),
     arity=VALUE,
 )

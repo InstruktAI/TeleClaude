@@ -1,4 +1,4 @@
-"""Action-scoped human-involvement admission for agent-authored facts."""
+"""Action-scoped human-involvement resolution for agent-authored facts."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.core.agents import resolve_parser_agent
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.models import Session
@@ -14,23 +16,31 @@ from teleclaude.core.session_message_projection import build_message_chain
 from teleclaude.output_projection.conversation_projector import project_conversation_chain
 from teleclaude.output_projection.models import ProjectedAuthorKind, VisibilityPolicy
 
+logger = get_logger(__name__)
+
 HUMAN_INPUT_RECENCY_WINDOW = timedelta(seconds=90)
 
 
-class HumanInvolvementRefusal(StrEnum):
-    """Reasons an action-local involvement declaration is not admissible."""
+class HumanInvolvementSurface(StrEnum):
+    """The fact-producing boundaries that resolve one involvement record."""
 
-    EMPTY_REASON = "empty_reason"
-    ABSENT_HUMAN_INPUT = "absent_human_input"
-    STALE_HUMAN_INPUT = "stale_human_input"
+    COMMIT = "commit"
+    TODO_CREATION = "todo_creation"
+
+
+class HumanInvolvementReasonInvalid(ValueError):
+    """Raised when a declared reason is missing or blank.
+
+    This is the only way resolution refuses anything; it judges the
+    invocation, never the observed human presence.
+    """
 
 
 @dataclass(frozen=True)
-class HumanInvolvementValidation:
-    """The non-durable result consumed by one fact-producing boundary."""
+class HumanInvolvementResolution:
+    """The non-durable outcome consumed by one fact-producing boundary."""
 
-    admitted: bool
-    refusal: HumanInvolvementRefusal | None = None
+    involved: bool
     latest_human_input_age_seconds: int | None = None
 
 
@@ -40,47 +50,47 @@ class HumanInvolvementSessionStore(Protocol):
     async def get_session(self, session_id: str) -> Session | None: ...
 
 
-async def validate_human_involvement(
+async def resolve_human_involvement(
     *,
     session_id: str,
     reason: str | None,
     session_store: HumanInvolvementSessionStore,
+    surface: HumanInvolvementSurface,
     now: datetime | None = None,
-) -> HumanInvolvementValidation:
-    """Validate one reason-bearing declaration without persisting its reason."""
+) -> HumanInvolvementResolution:
+    """Resolve one reason-bearing declaration against observed human presence.
+
+    Never refuses the act it annotates: a stale or absent observation
+    resolves to ``involved=False`` rather than raising. Only a missing or
+    blank reason raises, because that is an argument error, not a judgement
+    about the human.
+    """
     if reason is None or not reason.strip():
-        return HumanInvolvementValidation(admitted=False, refusal=HumanInvolvementRefusal.EMPTY_REASON)
+        raise HumanInvolvementReasonInvalid("human involvement requires a non-empty reason")
 
     session = await session_store.get_session(session_id)
-    if session is None:
-        return HumanInvolvementValidation(admitted=False, refusal=HumanInvolvementRefusal.ABSENT_HUMAN_INPUT)
-    latest_human_input = _latest_human_input_at(session)
+    latest_human_input = _latest_human_input_at(session) if session is not None else None
     if latest_human_input is None:
-        return HumanInvolvementValidation(admitted=False, refusal=HumanInvolvementRefusal.ABSENT_HUMAN_INPUT)
+        _record_discard(session_id=session_id, surface=surface, age_seconds=None)
+        return HumanInvolvementResolution(involved=False)
 
     current = (now or datetime.now(UTC)).astimezone(UTC)
     age = max(timedelta(), current - latest_human_input)
     age_seconds = int(age.total_seconds())
     if age <= HUMAN_INPUT_RECENCY_WINDOW:
-        return HumanInvolvementValidation(admitted=True)
-    return HumanInvolvementValidation(
-        admitted=False,
-        refusal=HumanInvolvementRefusal.STALE_HUMAN_INPUT,
+        return HumanInvolvementResolution(involved=True)
+    _record_discard(session_id=session_id, surface=surface, age_seconds=age_seconds)
+    return HumanInvolvementResolution(involved=False, latest_human_input_age_seconds=age_seconds)
+
+
+def _record_discard(*, session_id: str, surface: HumanInvolvementSurface, age_seconds: int | None) -> None:
+    """Log one discarded involvement declaration without the supplied reason."""
+    logger.info(
+        "human involvement declaration discarded",
+        session_id=session_id,
+        surface=surface.value,
         latest_human_input_age_seconds=age_seconds,
     )
-
-
-def human_involvement_refusal_detail(validation: HumanInvolvementValidation) -> str:
-    """Render a reason-safe refusal that leaves the undeclared action available."""
-    if validation.refusal is HumanInvolvementRefusal.EMPTY_REASON:
-        return "human involvement requires a non-empty reason"
-    if validation.refusal is HumanInvolvementRefusal.STALE_HUMAN_INPUT:
-        assert validation.latest_human_input_age_seconds is not None
-        return (
-            "human involvement requires recent qualified human input "
-            f"({validation.latest_human_input_age_seconds} seconds ago); rerun without --human-involved"
-        )
-    return "human involvement requires recent qualified human input; rerun without --human-involved"
 
 
 def _latest_human_input_at(session: Session) -> datetime | None:

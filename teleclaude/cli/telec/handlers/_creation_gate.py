@@ -24,7 +24,7 @@ def render_todo_creation_gate(approval_flag: str) -> str:
         "- Ownership & authority - owning project of the changed files correct\n"
         "   (--project-root)? A process-layer change carries a live human\n"
         "   decision per software-development/policy/process-change-authority?\n"
-        "   A human who shaped this filing declared (--human-involved)?\n\n"
+        "   A human was present at this filing, declared (--human-involved)?\n\n"
         "Only once these are faced, create with:\n"
         f"  telec todo create {approval_flag} <slug> <content> --kind <feature|change|bug|task>\n"
     )
