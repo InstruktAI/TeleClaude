@@ -390,3 +390,35 @@ def session_display_title(session: object, *, fallback: str = "Untitled") -> str
     lifecycle = getattr(session, "lifecycle_status", None) or getattr(session, "status", None)
     marker = "[HEADLESS] " if lifecycle == "headless" else ""
     return f"{marker}{body}"
+
+
+# Dispatch chains are shallow in practice; this bounds a malformed cycle in
+# initiator_session_id rather than reflecting any real fleet depth.
+_CLAIM_GROUP_WALK_DEPTH_CAP = 64
+
+
+async def session_in_claiming_group(caller_session_id: str, holder_session_id: str) -> bool:
+    """Return whether ``caller_session_id`` is ``holder_session_id`` or descends from it.
+
+    A todo's claiming group is the session holding the claim (``holder_session_id``)
+    plus every session it dispatched, transitively through ``initiator_session_id``.
+    The walk climbs from the caller toward the holder — cheaper than descending,
+    since it costs only the caller's dispatch depth rather than enumerating the
+    holder's whole subtree — bounded by a depth cap and a visited set so a
+    malformed cycle terminates instead of looping.
+    """
+    if caller_session_id == holder_session_id:
+        return True
+    current_id = caller_session_id
+    visited = {current_id}
+    for _ in range(_CLAIM_GROUP_WALK_DEPTH_CAP):
+        session = await db.get_session(current_id)
+        if session is None or not session.initiator_session_id:
+            return False
+        current_id = session.initiator_session_id
+        if current_id == holder_session_id:
+            return True
+        if current_id in visited:
+            return False
+        visited.add(current_id)
+    return False
