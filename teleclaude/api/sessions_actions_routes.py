@@ -39,6 +39,7 @@ from teleclaude.api.run_session_refusals import (
     resolve_run_session_agent,
 )
 from teleclaude.api.run_session_shapes import RunSessionPlan, infer_working_slug, leading_command_args
+from teleclaude.api.session_authority import ACT_RESTART, ACT_UNSUBSCRIBE, refuse_act_on_ancestor
 from teleclaude.api.session_messages_query import SessionMessagesQuery, parse_session_messages_query
 from teleclaude.api.session_pane_routes import configure as configure_session_pane_routes
 from teleclaude.api.session_pane_routes import router as session_pane_router
@@ -543,6 +544,7 @@ async def agent_restart(
 ) -> dict[str, str]:
     """Restart agent in session (preserves conversation via --resume)."""
     try:
+        await refuse_act_on_ancestor(identity, session_id, ACT_RESTART)
         logger.info("API agent_restart requested (session=%s, origin=api)", session_id)
 
         # Quick validation before dispatching
@@ -924,6 +926,7 @@ async def unsubscribe_session(
     the caller holds with the target. Idempotent: empty state returns success
     with both action flags false. See `project/spec/session-subscriptions`.
     """
+    await refuse_act_on_ancestor(identity, session_id, ACT_UNSUBSCRIBE)
     cmd = UnsubscribeSessionCommand(session_id=session_id, caller_session_id=identity.session_id)
     cmd.computer = computer
     result = await dispatch_command(_STATE.client, cmd)

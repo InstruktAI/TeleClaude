@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ROLE_ORCHESTRATOR, JobRole, SlashCommand
 from teleclaude.core.db import Db, get_db
+from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_title import compose_command_session_title
 
@@ -117,12 +118,21 @@ async def adopt_coordinator(
             )
 
         reason = ADOPTION_REASON_CALLER_ALREADY_HOLDER if holder is not None else ADOPTION_REASON_NO_LIVE_HOLDER
+
+        # Adoption is a door too: a standing role carries no commanding
+        # session no matter which door created it, so the former spawner's
+        # link and its listener are cleared together, before the link is lost.
+        former_spawner = caller.initiator_session_id
+        if former_spawner:
+            await unregister_listener(caller.session_id, former_spawner)
         await runtime_db.update_session(
             caller.session_id,
             title=compose_command_session_title(_COORDINATOR_COMMAND, ""),
             command=_COORDINATOR_COMMAND,
             system_role=ROLE_ORCHESTRATOR,
             job=JobRole.COORDINATOR.value,
+            initiator_session_id=None,
+            initiator_computer=None,
         )
         logger.info(
             "coordinator_adopted",
