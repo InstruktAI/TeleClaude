@@ -26,7 +26,11 @@ The contract resolves four classes of file state at commit time:
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
 
+<!-- planned-change:declarations-are-a-durable-record -->
 The scope itself is strictly `(runtime-recorded file edits ∪ live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. `telec code add <path>...` is the declaration surface: a successful exact command record enters the session's transcript evidence at its recorded time and stays live until a later sealed-commit command record in the same transcript chain. A path named only by arbitrary shell-command text contributes no evidence.
+<!-- change:declarations-are-a-durable-record -->
+The scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. `telec code add <path>...` is the declaration surface: a successful invocation writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and the entry stays live until the commit that carries it lands. A path named only by arbitrary shell-command text contributes no evidence, and no transcript is read to establish a declaration.
+<!-- /planned-change:declarations-are-a-durable-record -->
 
 A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
 
@@ -314,6 +318,7 @@ And the commit proceeds (subject to the other invariants — pathspec constructi
 And this is justified because every change the integrator commits was individually approved via its delivery's lifecycle
 ```
 
+<!-- planned-change:declarations-are-a-durable-record -->
 #### UC-CGIP-33 — A declaration is one session's path evidence across every scope consumer
 
 ```gherkin
@@ -326,6 +331,21 @@ And the declaration remains effective after that session restarts or is handed o
 And a later sealed-commit command record in the session's transcript chain ends the declaration
 And a sealed-commit record whose result has not been observed does not end the declaration
 ```
+<!-- change:declarations-are-a-durable-record -->
+#### UC-CGIP-33 — A declaration is one session's path evidence across every scope consumer
+
+```gherkin
+Given an agent session on a shared branch has a dirty repository file that its native file records do not carry
+When the agent declares the path through the sealed add surface
+Then change inspection, lint, sealed commit, and agent-stop checkpoint receive the path in that session's effective scope
+And dirty-path ownership attributes the path to that session at the declaration time
+And another session does not acquire the declaration
+And the declaration remains effective after that session restarts or is handed off
+And a sealed commit that lands while carrying the path ends the declaration
+And a sealed commit that lands carrying an explicit subset ends only the declarations in that subset
+And an invocation that produces no commit ends no declaration
+```
+<!-- /planned-change:declarations-are-a-durable-record -->
 
 #### UC-CGIP-34 — Sealed add serializes its index mutation with sealed commit
 
@@ -337,6 +357,19 @@ Then it waits on the same main-branch serialization and index-lock recovery path
 And it either stages the declared path after the index becomes available or fails with the existing bounded lock diagnostic
 And it does not fail merely because the concurrent commit temporarily owns the index lock
 ```
+
+<!-- planned:declarations-are-a-durable-record -->
+#### UC-CGIP-44 — A declaration does not depend on the shape of the command that carried it
+
+```gherkin
+Given an agent session on a shared branch invokes the sealed add surface for a dirty path
+And the invocation is carried by a pipeline, a redirection, a chained command, a heredoc, or a script
+When the command succeeds
+Then exactly the named paths are live declarations for that session
+And no shell operator, redirection target, or neighbouring command name is a declaration
+And the session's effective scope is the same as for a bare invocation of the same paths
+```
+<!-- /planned:declarations-are-a-durable-record -->
 
 ### Use cases
 
@@ -564,6 +597,7 @@ And the error directs the agent to author the artifacts on main in the session w
 ```
 
 
+<!-- planned-change:declarations-are-a-durable-record -->
 #### UC-CGIP-14 — A session with no resolvable transcript scopes to empty, not to an error
 
 ```
@@ -575,6 +609,19 @@ And telec code commit applies its documented empty-scope behavior, leaving --inc
 And no path the session did not touch is admitted to the commit pathspec by the empty resolution
 And the empty resolution never widens to the dirty worktree
 ```
+<!-- change:declarations-are-a-durable-record -->
+#### UC-CGIP-14 — An unresolvable transcript neither errors nor withdraws the session's declarations
+
+```
+Given a telec code invocation bound to an agent session on the repo-root shared branch
+And that session has no resolvable transcript to scope its changes from
+When the workspace scope is resolved
+Then the session's native touched-path scope resolves as empty and the resolution returns normally
+And the session's declared paths are still resolved from its declaration record
+And no path the session neither touched nor declared is admitted to the commit pathspec
+And the resolution never widens to the dirty worktree
+```
+<!-- /planned-change:declarations-are-a-durable-record -->
 
 #### UC-CGIP-15 — Sealed commit stamps the agent's author identity and appends the session trailer
 
