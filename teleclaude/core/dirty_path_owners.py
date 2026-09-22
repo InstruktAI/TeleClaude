@@ -4,24 +4,18 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.db import get_db
 from teleclaude.core.models import Session
-from teleclaude.git import GitCommandError, Repo
 from teleclaude.quality.scope import resolve_dirty_paths
 from teleclaude.session_identity import get_session_id
-from teleclaude.session_scoping import (
-    AttributionSignal,
-    SessionAttributionResult,
-    TouchEvidence,
-    resolve_session_attribution,
-)
+from teleclaude.session_scoping import resolve_scoped_paths
 
 logger = get_logger(__name__)
 
@@ -30,9 +24,6 @@ _ERROR_ABSOLUTE_PATH = "Ownership paths must be project-relative: {path}"
 _ERROR_INVALID_PATH = "Ownership path is invalid: {path}"
 _ERROR_DUPLICATE_PATH = "Ownership paths must be unique after normalization: {path}"
 _ERROR_NOT_DIRTY = "Ownership path is not dirty in the captured workspace set: {path}"
-_ERROR_GIT_HISTORY = "Failed to resolve last committed boundary for ownership path: {path}"
-_GIT_LOG_FORMAT = "--format=%cI"
-_GIT_PATH_SEPARATOR = "--"
 _QUERY_STARTED = "dirty_path_owners.query_started"
 _QUERY_COMPLETED = "dirty_path_owners.query_completed"
 _QUERY_FAILED = "dirty_path_owners.query_failed"
@@ -41,7 +32,7 @@ _EMPTY_CALLER_SESSION = ""
 
 @dataclass(frozen=True)
 class DirtyPathOwner:
-    """Minimal session identity needed to coordinate a path's owner."""
+    """Minimal session identity needed to identify a path's declarer."""
 
     session_uuid: str
     job: str | None
@@ -54,22 +45,29 @@ class DirtyPathOwner:
 
 @dataclass(frozen=True)
 class DirtyPathOwnershipResult:
-    """Complete ordered batch result plus the non-identifying safety signal."""
+    """Complete ordered batch result of every live session that declared each path."""
 
-    owners: tuple[tuple[str, DirtyPathOwner | None], ...]
-    undetermined_session_count: int
+    owners: tuple[tuple[str, tuple[DirtyPathOwner, ...]], ...]
     query_id: str
 
-    def as_json(self) -> dict[str, dict[str, str | None] | None]:
+    def as_json(self) -> dict[str, list[dict[str, str | None]] | None]:
         """Return only the documented path-keyed stdout payload."""
-        return {path: owner.as_json() if owner is not None else None for path, owner in self.owners}
+        return {
+            path: [declarer.as_json() for declarer in declarers] if declarers else None
+            for path, declarers in self.owners
+        }
 
 
 async def resolve_dirty_path_owners(
     project_root: Path,
     requested_paths: list[str],
 ) -> DirtyPathOwnershipResult:
-    """Resolve the earliest still-uncommitted live claimant for every requested path."""
+    """Resolve every live session that has declared each requested dirty path.
+
+    Declarations are read, never inferred: no transcript is inspected for
+    file-edit evidence and no commit authorship is consulted. Several live
+    sessions may declare the same path; each is reported, with no tiebreak.
+    """
     query_id = str(uuid4())
     caller_session_id = get_session_id() or _EMPTY_CALLER_SESSION
     normalized_paths = _normalize_requested_paths(project_root, requested_paths)
@@ -83,33 +81,23 @@ async def resolve_dirty_path_owners(
         dirty_paths = resolve_dirty_paths(project_root)
         dirty_path_set = {dirty.path for dirty in dirty_paths}
         _require_dirty_paths(normalized_paths, dirty_path_set)
-        boundaries = _resolve_commit_boundaries(project_root, normalized_paths)
         sessions = await _local_project_sessions(project_root)
-        attributions = await asyncio.gather(
-            *(
-                asyncio.to_thread(resolve_session_attribution, session, workspace_root=str(project_root))
-                for session in sessions
-            )
+        declared_sets = await asyncio.gather(
+            *(asyncio.to_thread(_resolve_session_declared_paths, session, project_root) for session in sessions)
         )
-        owners = _select_owners(normalized_paths, boundaries, sessions, attributions)
-        undetermined_count = sum(attribution.signal is AttributionSignal.UNDETERMINED for attribution in attributions)
+        owners = _select_owners(normalized_paths, sessions, declared_sets)
     except Exception:
         logger.exception(_QUERY_FAILED, query_id=query_id, caller_session_id=caller_session_id)
         raise
-    result = DirtyPathOwnershipResult(
-        owners=owners,
-        undetermined_session_count=undetermined_count,
-        query_id=query_id,
-    )
+    result = DirtyPathOwnershipResult(owners=owners, query_id=query_id)
     logger.info(
         _QUERY_COMPLETED,
         query_id=query_id,
         caller_session_id=caller_session_id,
         requested_count=len(normalized_paths),
         captured_session_count=len(sessions),
-        undetermined_session_count=undetermined_count,
-        owned_count=sum(owner is not None for _, owner in owners),
-        null_count=sum(owner is None for _, owner in owners),
+        owned_count=sum(bool(declarers) for _, declarers in owners),
+        null_count=sum(not declarers for _, declarers in owners),
     )
     return result
 
@@ -146,22 +134,23 @@ def _require_dirty_paths(requested_paths: tuple[str, ...], dirty_path_set: set[s
             raise ValueError(_ERROR_NOT_DIRTY.format(path=path))
 
 
-def _resolve_commit_boundaries(project_root: Path, paths: tuple[str, ...]) -> dict[str, datetime | None]:
-    repo = Repo(str(project_root))
-    return {path: _last_commit_at(repo, path) for path in paths}
-
-
-def _last_commit_at(repo: Repo, path: str) -> datetime | None:
+def _resolve_session_declared_paths(session: Session, project_root: Path) -> frozenset[str]:
+    """Resolve one live session's declared paths from its own transcript record."""
+    agent_raw = (session.active_agent or "").strip()
     try:
-        timestamp = repo.git.log("-1", _GIT_LOG_FORMAT, _GIT_PATH_SEPARATOR, path).strip()
-    except GitCommandError as exc:
-        raise RuntimeError(_ERROR_GIT_HISTORY.format(path=path)) from exc
-    if not timestamp:
-        return None
-    parsed = datetime.fromisoformat(timestamp)
-    if parsed.tzinfo is None:
-        raise RuntimeError(_ERROR_GIT_HISTORY.format(path=path))
-    return parsed.astimezone(UTC)
+        agent = AgentName.from_str(agent_raw) if agent_raw else AgentName.from_str(get_default_agent())
+    except ValueError:
+        return frozenset()
+    scoped = resolve_scoped_paths(
+        session_id=session.session_id,
+        workspace_root=str(project_root),
+        agent_name=agent.value,
+        scope_mode="session_dirty",
+        transcript_path=session.native_log_file or None,
+        native_session_id=session.native_session_id,
+        transcript_files=session.transcript_files,
+    )
+    return frozenset(scoped.declared_paths)
 
 
 async def _local_project_sessions(project_root: Path) -> list[Session]:
@@ -179,38 +168,15 @@ async def _local_project_sessions(project_root: Path) -> list[Session]:
 
 def _select_owners(
     paths: tuple[str, ...],
-    boundaries: dict[str, datetime | None],
     sessions: list[Session],
-    attributions: list[SessionAttributionResult],
-) -> tuple[tuple[str, DirtyPathOwner | None], ...]:
-    candidates: dict[str, list[tuple[datetime, str, DirtyPathOwner]]] = {path: [] for path in paths}
-    for session, attribution in zip(sessions, attributions, strict=True):
-        for touch in attribution.touches:
-            _add_surviving_candidate(candidates, boundaries, session, touch)
-    selected: list[tuple[str, DirtyPathOwner | None]] = []
+    declared_sets: list[frozenset[str]],
+) -> tuple[tuple[str, tuple[DirtyPathOwner, ...]], ...]:
+    selected: list[tuple[str, tuple[DirtyPathOwner, ...]]] = []
     for path in paths:
-        path_candidates = candidates[path]
-        owner = min(path_candidates, default=None, key=lambda candidate: (candidate[0], candidate[1]))
-        selected.append((path, owner[2] if owner is not None else None))
-    return tuple(selected)
-
-
-def _add_surviving_candidate(
-    candidates: dict[str, list[tuple[datetime, str, DirtyPathOwner]]],
-    boundaries: dict[str, datetime | None],
-    session: Session,
-    touch: TouchEvidence,
-) -> None:
-    path_candidates = candidates.get(touch.path)
-    if path_candidates is None:
-        return
-    boundary = boundaries[touch.path]
-    if boundary is not None and touch.touched_at <= boundary:
-        return
-    path_candidates.append(
-        (
-            touch.touched_at,
-            session.session_id,
-            DirtyPathOwner(session_uuid=session.session_id, job=session.job, title=session.title),
+        declarers = tuple(
+            DirtyPathOwner(session_uuid=session.session_id, job=session.job, title=session.title)
+            for session, declared in zip(sessions, declared_sets, strict=True)
+            if path in declared
         )
-    )
+        selected.append((path, declarers))
+    return tuple(selected)

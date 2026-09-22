@@ -44,13 +44,11 @@ from teleclaude.hooks.checkpoint._git import (
     _dirty_repo_paths,
     _extract_apply_patch_paths,
     _extract_shell_command,
-    _extract_turn_file_signals,
     _git_diff_names,
     _is_checkpoint_project_supported,
     _is_docs_only,
     _is_no_action_only,
     _normalize_repo_path,
-    _scope_git_files_to_current_turn,
     _segment_tokens,
     _split_shell_segments,
     _transcript_observability,
@@ -65,7 +63,6 @@ from teleclaude.hooks.checkpoint._models import (
     CheckpointResult,
     TranscriptObservability,
 )
-from teleclaude.hooks.checkpoint_disclaimers import reconcile_disclaimed_paths
 from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
     consume_integrator_maintenance_marker,
@@ -99,14 +96,13 @@ __all__ = [
     "_command_has_evidence",
     "_commit_instruction",
     "_compose_checkpoint_message",
-    "_compose_unaccounted_paths_message",
     "_compute_log_since_window",
     "_current_branch",
+    "_declare_reminder_instruction",
     "_dedupe_strings",
     "_dirty_repo_paths",
     "_extract_apply_patch_paths",
     "_extract_shell_command",
-    "_extract_turn_file_signals",
     "_git_diff_names",
     "_has_commit_evidence",
     "_has_evidence",
@@ -118,7 +114,6 @@ __all__ = [
     "_last_scope_mutation_index",
     "_normalize_repo_path",
     "_post_commit_review_instruction",
-    "_scope_git_files_to_current_turn",
     "_segment_matches_evidence",
     "_segment_tokens",
     "_split_shell_segments",
@@ -346,43 +341,15 @@ def _post_commit_review_instruction() -> str:
     )
 
 
-def _unaccounted_paths_instruction() -> str:
-    """Instruction for dirty paths this turn's attribution could not account for."""
-    return (
-        "Inspect the registered scope (`telec code changed`), declare what you wrote with "
-        "`telec code add <path>`, disclaim what you did not with `telec code disclaim <path>`, "
-        "in that order, before committing."
-    )
-
-
-def _compose_unaccounted_paths_message(unaccounted_paths: list[str]) -> str:
-    """Compose the declare-or-disclaim advisory for dirty paths this cycle could not attribute.
-
-    A session that wrote only through shell commands registers nothing in
-    turn-local attribution, so the usual skip guard never reaches this content.
-    Named explicitly so the report is never mistaken for "no turn-local changes".
-    """
-    lines: list[str] = ["Context-aware checkpoint", "", "Unaccounted working-tree paths:"]
-    for path in unaccounted_paths:
-        lines.append(f"- {path}")
-    lines.extend(
-        [
-            "",
-            "Required actions (BLOCKING — do not resume user-facing work until all complete):",
-            f"1. {_unaccounted_paths_instruction()}",
-            "",
-            _RESPONSE_POLICY,
-            "",
-            _ESCAPE_HATCH,
-        ]
-    )
-    return checkpoint_text("\n".join(lines))
+def _declare_reminder_instruction() -> str:
+    """Reminder emitted beside a commit action, for any file not yet declared."""
+    return "Declare any file you changed that isn't declared yet: `telec code add <path>...`"
 
 
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str | None:
     """Compose checkpoint text, or silence when there is nothing to enforce."""
     commit_line = _commit_instruction(result.on_main)
-    commit_lines = [commit_line] if result.commit_action_required else []
+    commit_lines = [commit_line, _declare_reminder_instruction()] if result.commit_action_required else []
 
     # Special case: docs only (bare *.md/txt/rst with no category and no pending actions)
     if (not git_files or _is_docs_only(git_files)) and not result.required_actions and not result.observations:
@@ -418,6 +385,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     if result.required_actions or result.commit_action_required:
         if result.commit_action_required:
             actions.append(commit_line)
+            actions.append(_declare_reminder_instruction())
 
     if actions:
         lines.append("")
@@ -595,49 +563,17 @@ def get_checkpoint_content(
             transcript_files=transcript_files,
             turn_anchor_sha=turn_anchor_sha,
         )
-        resolved_files = list(scoped_paths.paths)
-        declared_paths = set(scoped_paths.declared_paths).intersection(resolved_files)
-        effective_files = _scope_git_files_to_current_turn(
-            resolved_files,
-            timeline,
-            project_path,
-        )
-        effective_files = sorted(set(effective_files) | declared_paths)
+        # The checkpoint's file obligation is this session's own live
+        # declarations intersected with what is currently dirty and
+        # uncommitted — never a path this session did not declare.
+        effective_files = sorted(set(scoped_paths.declared_paths) & _dirty_repo_paths(project_path))
         authored_main_commit = has_authored_main_commit_flag(session_id)
         force_main_commit_checkpoint = authored_main_commit and _current_branch(project_path) == "main"
-
-        # Native attribution stays turn-local; live declarations deliberately
-        # survive earlier turns and handoffs until later commit evidence.
         used_session_fallback = False
 
         if not effective_files and not force_main_commit_checkpoint:
-            dirty_paths_now = _dirty_repo_paths(project_path)
-            disclaimed_paths = reconcile_disclaimed_paths(session_id, Path(project_path), dirty_paths_now)
-            unaccounted_paths = sorted(dirty_paths_now - set(effective_files) - disclaimed_paths)
-            if not unaccounted_paths:
-                logger.info(
-                    "Checkpoint payload skipped (no turn-local changes)",
-                    extra={
-                        **base_extra,
-                        "timeline_has_data": timeline.has_data,
-                        "timeline_records": len(timeline.tool_calls),
-                        "changed_files": 0,
-                        "workspace_kind": scoped_paths.workspace_kind,
-                        "strategy": scoped_paths.strategy,
-                        "ledger_updated": scoped_paths.ledger_updated,
-                        "categories": [],
-                        "required_actions": 0,
-                        "observations": 0,
-                        "mode": "silent_no_changes",
-                        "message_len": 0,
-                        "used_session_fallback": used_session_fallback,
-                        "authored_main_commit": authored_main_commit,
-                    },
-                )
-                return None
-            unaccounted_message = _compose_unaccounted_paths_message(unaccounted_paths)
             logger.info(
-                "Checkpoint payload computed (unaccounted working-tree paths)",
+                "Checkpoint payload skipped (no declared-and-dirty changes)",
                 extra={
                     **base_extra,
                     "timeline_has_data": timeline.has_data,
@@ -647,15 +583,15 @@ def get_checkpoint_content(
                     "strategy": scoped_paths.strategy,
                     "ledger_updated": scoped_paths.ledger_updated,
                     "categories": [],
-                    "required_actions": 1,
+                    "required_actions": 0,
                     "observations": 0,
-                    "mode": "unaccounted_paths",
-                    "message_len": len(unaccounted_message),
+                    "mode": "silent_no_changes",
+                    "message_len": 0,
                     "used_session_fallback": used_session_fallback,
                     "authored_main_commit": authored_main_commit,
                 },
             )
-            return unaccounted_message
+            return None
 
         docs_committed = _has_commit_evidence_after_last_mutation(
             timeline,

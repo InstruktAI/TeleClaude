@@ -91,6 +91,38 @@ def get_session_active_agent(session_id: str) -> str | None:
     return metadata[0]
 
 
+def _resolve_session_scope_inputs(
+    session_id: str,
+) -> tuple[AgentName, str | None, str | None, str | None] | None:
+    """Resolve the agent and transcript-chain inputs `resolve_scoped_paths` needs.
+
+    Returns None when the session's transcript metadata cannot be loaded at all
+    (unknown session, or an unavailable session DB) — the caller decides how to
+    treat that absence.
+    """
+    try:
+        active_agent_raw, native_log_file, native_session_id, transcript_files = _load_session_transcript_metadata(
+            session_id
+        )
+    except NoSessionTouchedFiles:
+        return None
+
+    try:
+        agent_name = AgentName.from_str(str(active_agent_raw) if active_agent_raw else get_default_agent())
+    except ValueError:
+        agent_name = AgentName.CLAUDE
+
+    transcript_path = native_log_file
+    if agent_name == AgentName.CODEX:
+        current_transcript_path = discover_current_codex_transcript_path()
+        if current_transcript_path:
+            transcript_path = current_transcript_path
+        elif not transcript_path and native_session_id:
+            transcript_path = discover_codex_transcript_path(native_session_id)
+
+    return agent_name, transcript_path, native_session_id, transcript_files
+
+
 def collect_session_touched_files(project_path: str) -> set[str]:
     """Extract files touched by the current agent session from its transcript.
 
@@ -107,21 +139,10 @@ def collect_session_touched_files(project_path: str) -> set[str]:
     if not session_id:
         raise ValueError("session-touched-files lookup requires an active agent session")
 
-    active_agent_raw, native_log_file, native_session_id, transcript_files = _load_session_transcript_metadata(
-        session_id
-    )
-    try:
-        agent_name = AgentName.from_str(str(active_agent_raw) if active_agent_raw else get_default_agent())
-    except ValueError:
-        agent_name = AgentName.CLAUDE
-
-    transcript_path = native_log_file
-    if agent_name == AgentName.CODEX:
-        current_transcript_path = discover_current_codex_transcript_path()
-        if current_transcript_path:
-            transcript_path = current_transcript_path
-        elif not transcript_path and native_session_id:
-            transcript_path = discover_codex_transcript_path(native_session_id)
+    resolved = _resolve_session_scope_inputs(session_id)
+    if resolved is None:
+        raise TranscriptUnavailable(f"No transcript found for session {session_id}")
+    agent_name, transcript_path, native_session_id, transcript_files = resolved
 
     if not transcript_path and agent_name != AgentName.CODEX:
         raise TranscriptUnavailable(f"No transcript found for session {session_id}")
@@ -147,3 +168,32 @@ def collect_session_touched_files(project_path: str) -> set[str]:
         f"Could not determine session-touched files from transcript.\n"
         f"Session: {session_id}, attempted transcript: {transcript_path or '<none>'}"
     )
+
+
+def collect_declared_paths(project_path: str) -> set[str]:
+    """Return this session's live declared paths, independent of transcript-inferred touches.
+
+    Unlike `collect_session_touched_files`, an empty result here is the
+    ordinary case — nothing declared yet — never an error state.
+    """
+    session_id = _get_session_id()
+    if not session_id:
+        return set()
+
+    resolved = _resolve_session_scope_inputs(session_id)
+    if resolved is None:
+        return set()
+    agent_name, transcript_path, native_session_id, transcript_files = resolved
+    if not transcript_path and not native_session_id:
+        return set()
+
+    scoped_paths = resolve_scoped_paths(
+        session_id=session_id,
+        workspace_root=project_path,
+        agent_name=agent_name.value,
+        scope_mode="session_dirty",
+        transcript_path=transcript_path,
+        native_session_id=native_session_id,
+        transcript_files=transcript_files,
+    )
+    return set(scoped_paths.declared_paths)

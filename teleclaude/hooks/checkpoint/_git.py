@@ -16,7 +16,6 @@ from teleclaude.hooks.checkpoint._models import TranscriptObservability
 from teleclaude.shell_path_parser import extract_shell_command as _shared_extract_shell_command
 from teleclaude.shell_path_parser import segment_tokens as _shared_segment_tokens
 from teleclaude.shell_path_parser import split_shell_segments as _shared_split_shell_segments
-from teleclaude.utils.transcript import TurnTimeline
 
 logger = get_logger(__name__)
 
@@ -40,14 +39,12 @@ __all__ = [
     "_dirty_repo_paths",
     "_extract_apply_patch_paths",
     "_extract_shell_command",
-    "_extract_turn_file_signals",
     "_get_uncommitted_files",
     "_git_diff_names",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
     "_is_no_action_only",
     "_normalize_repo_path",
-    "_scope_git_files_to_current_turn",
     "_segment_tokens",
     "_split_shell_segments",
     "_transcript_observability",
@@ -242,90 +239,6 @@ def _extract_apply_patch_paths(patch_text: str, project_path: str) -> set[str]:
             if normalized:
                 paths.add(normalized)
     return paths
-
-
-def _extract_turn_file_signals(timeline: TurnTimeline, project_path: str) -> tuple[set[str], bool]:
-    """Extract turn-local file touches and mutation intent."""
-    touched_files: set[str] = set()
-    saw_mutation_signal = False
-
-    if not timeline.has_data:
-        return touched_files, saw_mutation_signal
-
-    for record in timeline.tool_calls:
-        tool_name = _canonical_tool_name(record.tool_name)
-
-        # Structured file mutators (explicit file_path semantics).
-        if tool_name in {"edit", "write", "multiedit", "apply_patch", "notebookedit"}:
-            saw_mutation_signal = True
-            for key in ("file_path", "path", "filepath", "target_file"):
-                value = record.input_data.get(key)
-                if isinstance(value, str):
-                    normalized = _normalize_repo_path(value, project_path)
-                    if normalized:
-                        touched_files.add(normalized)
-            for key in ("file_paths", "paths"):
-                value = record.input_data.get(key)
-                if isinstance(value, list):
-                    for entry in value:
-                        if isinstance(entry, str):
-                            normalized = _normalize_repo_path(entry, project_path)
-                            if normalized:
-                                touched_files.add(normalized)
-            if tool_name == "apply_patch":
-                for key in ("input", "patch", "raw_arguments", "command", "cmd"):
-                    value = record.input_data.get(key)
-                    if isinstance(value, str):
-                        touched_files.update(_extract_apply_patch_paths(value, project_path))
-            continue
-
-    return touched_files, saw_mutation_signal
-
-
-def _scope_git_files_to_current_turn(
-    git_files: list[str],
-    timeline: TurnTimeline,
-    project_path: str,
-) -> list[str]:
-    """Reduce repo-wide dirty files to likely current-turn changes.
-
-    Rationale:
-    - `git diff --name-only HEAD` returns repo-wide dirty state.
-    - Checkpoint obligations are turn-local.
-    - Without scoping, stale files from previous turns trigger false positives.
-    """
-    if not git_files:
-        return []
-    if not timeline.has_data:
-        # Fail-closed: if turn extraction failed, avoid attributing repo-wide dirty state
-        # to the current stop event.
-        return []
-
-    touched_files, saw_mutation_signal = _extract_turn_file_signals(timeline, project_path)
-    if touched_files:
-        normalized_git: dict[str, str] = {}
-        for filepath in git_files:
-            normalized = _normalize_repo_path(filepath, project_path)
-            if normalized:
-                normalized_git[normalized] = filepath
-
-        scoped = [normalized_git[path] for path in sorted(touched_files) if path in normalized_git]
-        if scoped:
-            return scoped
-
-        # Explicit mutators seen but path mapping failed: prefer fail-closed to
-        # avoid attributing repo-wide stale dirty files to this turn.
-        if saw_mutation_signal:
-            return []
-        return []
-
-    # No mutation signals in this turn: avoid stale dirty-file false positives.
-    if not saw_mutation_signal:
-        return []
-
-    # A structured mutator ran without a recognized path-bearing field.
-    # Prefer fail-closed to avoid broad false positives.
-    return []
 
 
 # ---------------------------------------------------------------------------

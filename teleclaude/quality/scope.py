@@ -20,11 +20,7 @@ from teleclaude.core.reconciliation.home_retained_set import HomeMembership, hom
 from teleclaude.git import GIT_EXECUTABLE, GitCommandError, Repo
 from teleclaude.paths import TELECLAUDE_HOME, ConfigFileName
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
-from teleclaude.todo_scaffold import (  # deferred: heavy transitive imports
-    NoSessionTouchedFiles,
-    TranscriptUnavailable,
-    collect_session_touched_files,
-)
+from teleclaude.todo_scaffold import collect_declared_paths  # deferred: heavy transitive imports
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +85,12 @@ class WorkspaceScopeResolution:
     scoped_existing_paths: tuple[str, ...]
     repository_scoped_dirty_paths: tuple[str, ...] = ()
     repository_scoped_existing_paths: tuple[str, ...] = ()
+    # True only on a shared branch, with session identity, when this session
+    # has declared nothing while the workspace holds dirty paths. Reads only
+    # the acting session's own declaration set and whether anything is dirty
+    # — never whose dirt it is, so it never fires on undeclared human dirt
+    # alone; it fires on this session's own empty-handed invocation over it.
+    declared_nothing_over_dirty_tree: bool = False
 
 
 class RustScopeKind(Enum):
@@ -176,22 +178,20 @@ def resolve_workspace_scope_resolution(
             scoped_existing_paths=(),
         )
 
-    touched = _resolve_session_touched_paths(project_root)
+    declared = collect_declared_paths(str(project_root))
     dirty_path_set = {dirty.path for dirty in eligible_dirty_paths}
     dirty_existing = set(_existing_dirty_paths(project_root, eligible_dirty_paths))
-    # Scope is strictly (this session's touched paths) ∩ (currently dirty paths).
+    # Scope is strictly (this session's declared paths) ∩ (currently dirty paths).
     # We do NOT union in ALL deleted-in-working-tree paths: doing so leaks
     # foreign deletions into this session's scope (agent A deletes foo.py;
     # agent B's scope picks up the deletion and B's commit silently records
-    # A's work). If a Bash-based `rm` falls out of the transcript-touched
-    # extractor, the agent must declare the deletion explicitly with
-    # `telec code commit --approved '<msg>' --include <deleted-path>`; the
-    # include path is the sanctioned channel for "I deleted this; my
-    # transcript didn't capture it."
-    scoped_dirty = tuple(sorted(set(touched) & dirty_path_set))
-    scoped = tuple(sorted(path for path in touched if path in dirty_existing))
-    repository_scoped_dirty = tuple(sorted(set(touched) & dirty_path_set))
-    repository_scoped_existing = tuple(sorted(path for path in touched if path in dirty_existing))
+    # A's work). A deletion the session did not declare is the sanctioned
+    # channel's job to cover: `telec code commit --approved '<msg>' --include
+    # <deleted-path>`.
+    scoped_dirty = tuple(sorted(set(declared) & dirty_path_set))
+    scoped = tuple(sorted(path for path in declared if path in dirty_existing))
+    repository_scoped_dirty = tuple(sorted(set(declared) & dirty_path_set))
+    repository_scoped_existing = tuple(sorted(path for path in declared if path in dirty_existing))
     return WorkspaceScopeResolution(
         kind=WorkspaceScopeKind.SHARED_BRANCH,
         has_session_identity=True,
@@ -200,6 +200,7 @@ def resolve_workspace_scope_resolution(
         scoped_existing_paths=_outward_paths(project_root, scoped, context_root=context_root),
         repository_scoped_dirty_paths=repository_scoped_dirty,
         repository_scoped_existing_paths=repository_scoped_existing,
+        declared_nothing_over_dirty_tree=not declared and bool(dirty_path_set),
     )
 
 
@@ -326,23 +327,6 @@ def _outward_paths(
         path = item.path if isinstance(item, DirtyPath) else item
         result.append((project_root / path).resolve().relative_to(context_root.resolve()).as_posix())
     return tuple(result)
-
-
-def _resolve_session_touched_paths(project_root: Path) -> tuple[str, ...]:
-    try:
-        touched: set[str] = collect_session_touched_files(str(project_root))
-    except (NoSessionTouchedFiles, TranscriptUnavailable):
-        # No transferable-paths signal: either a transcript was read and owns
-        # no paths, or no transcript is resolvable yet (e.g. a session whose
-        # native_log_file has not been bound). Returning an empty scope here
-        # owns no paths; each caller applies its own documented empty-scope
-        # handling (e.g. telec code commit builds an explicit pathspec from
-        # scope plus --include and exits on an empty result) instead of
-        # crashing. There is no pre-staged-index fallback.
-        return ()
-    except Exception as exc:
-        raise RuntimeError(f"Failed to collect session-touched files: {exc}") from exc
-    return tuple(sorted(touched))
 
 
 _FRONTEND_CANDIDATES = ("frontend", "web", "client", "src")
