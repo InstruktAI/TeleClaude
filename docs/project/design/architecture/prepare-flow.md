@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Purpose
 
-Codify the prepare phase as a deterministic chain of artifact-derivation steps where the PRD is the only human approval gate, lean enough that small work skips phases that don't earn their place, and capable of running autonomously in standin mode until real human intent approval is required. PRDs normally receive independent review before that gate; an exact owner-directed literal correction may use the bounded claimant-stamp path defined by the intake contract.
+Codify the prepare phase as a deterministic chain of artifact-derivation steps where the PRD is the only human approval gate, lean enough that small work skips phases that don't earn their place, and capable of running autonomously until human intent approval is required. PRDs normally receive independent review before that gate; an exact owner-directed literal correction may use the bounded claimant-stamp path defined by the intake contract.
 
 The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped procedure for each step (intake, architecture, plan) and doing the phase's work itself. Each derived artifact is verified by an independently dispatched reviewer session. The active procedure dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
 
@@ -36,7 +36,7 @@ The confirmed plan is the handoff input to the work phase.
 
 **Deterministic structure:**
 
-- Intake produces `prd` (and, for Category A work, the feature spec snippet with Gherkin); no downstream phase begins until the current digest has `prd_review=approve` and `prd_approved` is stamped by a real human. An owner-directed literal correction may receive that review verdict from the active prepare claimant only under the narrow intake-policy exception.
+- Intake produces `prd` (and, for Category A work, the feature spec snippet with Gherkin); no downstream phase begins until the current digest has `prd_review=approve` and `prd_approved` is stamped by the human. An owner-directed literal correction may receive that review verdict from the active prepare claimant only under the narrow intake-policy exception.
 - Each subsequent phase produces its output and advances on reviewer verdict. There is no downstream human approval stamp.
 - The `architecture_skipped` stamp carries a reason and lets the chain proceed without the architecture phase.
 - Plan phase is non-skippable; PRD is non-skippable.
@@ -84,9 +84,9 @@ flowchart TD
 
     Intake --> WritePRD[Write PRD artifact]
     WritePRD --> PRDReview[Independent PRD review<br/>or bounded owner-directed literal stamp]
-    PRDReview --> PRDApprove{Real human approves PRD?}
+    PRDReview --> PRDApprove{Human approves PRD?}
 
-    PRDApprove -->|standin mode, no human yet| Idle[Idle — await real human]
+    PRDApprove -->|no human in the conversation| Idle[Idle — await the human]
     PRDApprove -->|human approves| AssessArch
 
     Idle -.user invokes /next-prepare.-> PRDApprove
@@ -117,7 +117,7 @@ flowchart TD
 
 ### Use cases (numbered)
 
-**Use case 1 — new work item, human in the loop (default).**
+**Use case 1 — new work item, human in the conversation (default).**
 
 Trigger: user invokes `/next-prepare` (with or without slug), or asks an active agent to load the prepare procedure.
 
@@ -147,7 +147,7 @@ Also covers the parked-create case: human comes back to a slug created with `--i
 
 ## Failure modes
 
-- **PRD authored in standin mode but human never returns.** Todo sits idle indefinitely. The system does not auto-proceed past `prd_approved` gate. Human's eventual return triggers the approval flow.
+- **PRD authored with no human in the conversation, and the human never returns.** Todo sits idle indefinitely. The system does not auto-proceed past `prd_approved` gate. Human's eventual return triggers the approval flow.
 - **Drift detected mid-chain or at work entry.** Per-class derivation across the six drift classes (see `@spec/feature/workflow/drift-detection`) flags pending or substantive drift. Lean drift-analysis worker dispatched from the prepare BLOCKED branch. If substantive, the affected artifact's review verdict and every downstream review verdict are cleared, and the active procedure re-enters drafting. If cosmetic, the verdict is recorded with an evidence anchor and the chain continues; the verdict expires lazily when evidence later moves past the anchor on any anchored dimension. The same derivation runs at work entry (`telec todo work`); pending/substantive there returns a bounce-to-prepare script and the orchestrator continues through the existing script-driven loop without a human gate.
 - **Reviewer verdict `changes_requested` cannot be addressed by auto-remediation.** Surface to the human as a blocker requiring direction. Do not grind through endless revision rounds.
 - **Work item is too large.** BA at intake recommends breakdown in plain register. Creates a container todo and per-part children via `telec todo create <child> "<content>" --kind <k> --group <container>`. Each child gets its own track through the chain. Parent becomes a holder.
@@ -157,7 +157,6 @@ Also covers the parked-create case: human comes back to a slug created with `--i
 
 ### Open design choices still being prototyped
 
-- **Standin-mode coverage of downstream phases.** Currently standin mode applies only to intake. Whether standin can also run downstream derivation after a real human approves the PRD is an open question. Conservative default: standin produces PRD only; downstream work waits for PRD human approval, then reviewer gates own derived artifacts.
 - **Brownfield code-intelligence dependency.** Architecture phase ideally uses a code-intelligence blueprint (graph of services, events, dependencies). When that blueprint doesn't exist yet, the agents fall back to manual grounding. The architecture procedure notes this fallback explicitly.
 
 ## See Also

@@ -82,7 +82,7 @@ turn of the same driving session.
 
 | Phase        | Procedure                                             | Hat       | Authority gate                          |
 | ------------ | ----------------------------------------------------- | --------- | --------------------------------------- |
-| Intake       | `~/.teleclaude/commands/next-prepare-intake.md`       | BA        | `prd_approved` (real human only)        |
+| Intake       | `~/.teleclaude/commands/next-prepare-intake.md`       | BA        | `prd_approved` (human only)             |
 | Architecture | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect | `architecture_review` verdict `approve` |
 | Plan         | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner   | `plan_review` verdict `approve`         |
 
@@ -100,10 +100,6 @@ work warrants it, the BA stamps `architecture_skipped` with reason. The BA
 writes the PRD and presents it to the human for review and approval. The
 human is the sole authority on PRD correctness because only the human owns
 intent.
-
-In standin mode, the BA writes the PRD but cannot stamp `prd_approved`. The
-chain pauses at the approval gate until the real human re-engages with the
-slug.
 
 ### Derivation phases (architecture, plan)
 
@@ -150,8 +146,8 @@ PREPARED terminal requires fresh grounding.
   snippet, pushing the PO into a test author's grammar.
 - A procedure drifts into orchestrator-shaped action (dispatching workers
   for sub-phases) instead of doing the phase work itself.
-- A standin-produced PRD is auto-stamped `prd_approved` without the real
-  human's review.
+- A PRD written with no human in the conversation is auto-stamped
+  `prd_approved` without the human's review.
 - Reviewer findings cannot be addressed by the active procedure, and the
   chain grinds rather than surfacing the blocker.
 - Drift is detected but the affected phase isn't re-derived, leaving
