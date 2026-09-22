@@ -166,6 +166,7 @@ class CallerIdentity:
     principal: str | None = None  # "human:<email>" or "system:<id>" (token-auth only)
     principal_role: str | None = None  # role carried with the token (token-auth only)
     entry_point: EntryPoint | None = None  # the creation door, stamped from request shape
+    job: str | None = None  # session.job, when resolved from a loaded session
 
 
 def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenance | None:
@@ -233,6 +234,7 @@ async def _verify_token_identity(x_session_token: str) -> CallerIdentity:
         principal=token_record.principal,
         principal_role=token_record.role,
         entry_point=EntryPoint.AGENT,
+        job=session.job,
     )
 
 
@@ -313,6 +315,7 @@ async def _verify_session_identity(
         principal=principal,
         principal_role=principal_role,
         entry_point=EntryPoint.AGENT,
+        job=session.job,
     )
 
 

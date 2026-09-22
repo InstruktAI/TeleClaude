@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
-from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES, ROLE_JOB_RUNNER
+from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES, is_standing_role
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.session_utils import session_in_claiming_group
@@ -44,7 +44,7 @@ def resolve_creation_lineage(identity: CallerIdentity | None) -> Lineage:
     The chain-root authority is a human principal or email whenever one
     resolves; the acting agent session, when present alongside a human root,
     rides additively in the same value. A root with no human is legitimate
-    only for a job-runner session — every other unresolvable identity is a
+    only for a standing-role session — every other unresolvable identity is a
     contract violation, refused before any roadmap row, state, artifact, or
     event is written (see project/spec/domain/workflow, UC-WTC23).
     """
@@ -57,12 +57,16 @@ def resolve_creation_lineage(identity: CallerIdentity | None) -> Lineage:
         if human_root is not None:
             return Lineage.create(root=human_root, acting_session=identity.session_id or None)
 
-        if identity.principal and identity.principal.startswith("system:") and identity.system_role == ROLE_JOB_RUNNER:
+        if (
+            identity.principal
+            and identity.principal.startswith("system:")
+            and is_standing_role(identity.system_role, identity.job)
+        ):
             return Lineage.create(root=identity.principal)
 
     raise HTTPException(
         status_code=403,
-        detail=("creation lineage is unresolvable: the caller has no human root and is not a job-runner session"),
+        detail=("creation lineage is unresolvable: the caller has no human root and is not a standing-role session"),
     )
 
 
