@@ -350,19 +350,6 @@ Deletion-only commits
     the two answer alike for every declared tier, and a root whose declaration
     carries no readable tier is refused rather than resolved to any tier.
 
-13. **Inspection and commit consume one payload resolution, with the same
-    inputs.** The eligible payload — computed scope bounded per invariant 11,
-    minus what the commit itself would drop, plus declared paths — is resolved
-    by one function that both `telec code changed` and `telec code commit`
-    consume. The observation surface accepts every payload-shaping declaration
-    the commit accepts — the explicit include and subset channels among them —
-    so an agent previews the payload of exactly the commit it is about to
-    make, deletions included, in the acting context root's coordinates. The
-    two surfaces are forbidden to project differently: given the same
-    declarations, the pre-commit answer equals the final commit pathspec path
-    for path, because it is the same computation with the same inputs, not a
-    reconciled pair.
-
 ## Primary flows
 
 Every walkthrough below traces an acting context whose declared tier carries project subscriptions, so its gate steps are the ones that tier carries. In a context whose tier carries none, the same flows run with no gate step at all.
@@ -464,7 +451,7 @@ until released. No timeout — the agent waits, no exit code.
 
 **Empty pathspec.** `workspace scope plus --include = ∅`. The agent has
 edited nothing in scope and declared no includes. Exit code 1 with guidance
-pointing at `telec code changed` and the `--include <path>` recipe. There is
+pointing at `telec code add <path>` and the `--include <path>` recipe. There is
 no silent fallback that commits the pre-staged index — committing what the
 agent did not declare is precisely what the pathspec boundary prevents.
 

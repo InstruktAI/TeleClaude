@@ -103,8 +103,8 @@ And the gate routes review by what the diff touches: functional code/tests → a
 <!-- change:agent-artifact-source-layout -->
 And the gate routes review by what the diff touches: functional code/tests → agent-judged med code review; doc snippets (docs/**) or authored agent artifacts → required fast doc-hygiene review; incorporated third-party skill packages under agents/global/skills/<name>/** → no review; neither → no review
 <!-- /planned-change:agent-artifact-source-layout -->
-And the gate points at `telec code changed` for scope inspection
-And the gate surfaces `telec code add` and `--include` for new-file declaration
+And the gate points at `telec code add` for declaring the authoritative commit scope
+And the gate surfaces `--only` for splitting a declared set into separable intents
 ```
 
 #### telec code commit with a message but no --approved is a forgotten gate
