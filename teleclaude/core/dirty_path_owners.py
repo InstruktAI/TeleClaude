@@ -10,12 +10,11 @@ from uuid import uuid4
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.db import get_db
 from teleclaude.core.models import Session
 from teleclaude.quality.scope import resolve_dirty_paths
 from teleclaude.session_identity import get_session_id
-from teleclaude.session_scoping import resolve_scoped_paths
+from teleclaude.session_scoping import live_declarations
 
 logger = get_logger(__name__)
 
@@ -135,22 +134,9 @@ def _require_dirty_paths(requested_paths: tuple[str, ...], dirty_path_set: set[s
 
 
 def _resolve_session_declared_paths(session: Session, project_root: Path) -> frozenset[str]:
-    """Resolve one live session's declared paths from its own transcript record."""
-    agent_raw = (session.active_agent or "").strip()
-    try:
-        agent = AgentName.from_str(agent_raw) if agent_raw else AgentName.from_str(get_default_agent())
-    except ValueError:
-        return frozenset()
-    scoped = resolve_scoped_paths(
-        session_id=session.session_id,
-        workspace_root=str(project_root),
-        agent_name=agent.value,
-        scope_mode="session_dirty",
-        transcript_path=session.native_log_file or None,
-        native_session_id=session.native_session_id,
-        transcript_files=session.transcript_files,
-    )
-    return frozenset(scoped.declared_paths)
+    """Resolve one live session's declared paths from its own durable record."""
+    del project_root
+    return frozenset(declaration.path for declaration in live_declarations(session.session_id))
 
 
 async def _local_project_sessions(project_root: Path) -> list[Session]:

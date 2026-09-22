@@ -32,6 +32,7 @@ from teleclaude.core.session_listeners import cleanup_caller_listeners, cleanup_
 from teleclaude.core.session_status import SessionLifecycleStatus, is_close_started
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 from teleclaude.events.envelope import EventVisibility
+from teleclaude.session_scoping import discard as discard_session_declarations
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -382,6 +383,16 @@ async def _terminate_session_inner(
         except Exception as exc:
             logger.error(
                 "session_close_tmpdir_cleanup_failed",
+                session_id=session.session_id,
+                error=str(exc),
+                exc_info=True,
+            )
+
+        try:
+            discard_session_declarations(session.session_id)
+        except Exception as exc:
+            logger.error(
+                "session_close_declaration_cleanup_failed",
                 session_id=session.session_id,
                 error=str(exc),
                 exc_info=True,

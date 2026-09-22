@@ -52,6 +52,8 @@ from teleclaude.quality.scope import (
     validate_scoped_paths,
 )
 from teleclaude.session_identity import get_session_id, get_system_role
+from teleclaude.session_scoping import clear as clear_session_paths
+from teleclaude.session_scoping import declare as declare_session_paths
 
 logger = get_logger(__name__)
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
@@ -292,6 +294,10 @@ def handle_code_add(args: list[str]) -> None:
         print(f"Staged {len(stageable)} file(s):")
         for path in stageable:
             print(f"  {path}")
+
+    session_id = get_session_id()
+    if session_id:
+        declare_session_paths(session_id, positionals)
 
 
 def handle_code_commit(args: list[str]) -> None:
@@ -609,7 +615,22 @@ def _commit_under_lock(
     except GitCommandError:
         committed_files = list(pathspec)
     _record_commit_checkpoint_markers(project_root, committed_files)
+    _clear_landed_commit_declarations(committed_files, only=only)
     del system_role
+
+
+def _clear_landed_commit_declarations(committed_files: list[str], *, only: list[str] | None) -> None:
+    """Clear exactly the declarations this landed commit carried."""
+    session_id = get_session_id()
+    if not session_id:
+        return
+    cleared = clear_session_paths(session_id, committed_files)
+    logger.info(
+        "session_scoping.declaration_boundary_landed",
+        session_id=session_id,
+        scope="only" if only is not None else "full",
+        cleared_paths=list(cleared),
+    )
 
 
 def _refuse_declared_paths_without_change(

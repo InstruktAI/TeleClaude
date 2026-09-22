@@ -12,7 +12,7 @@ from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import discover_codex_transcript_path, discover_current_codex_transcript_path
 from teleclaude.hooks.receiver._session import _create_sync_engine
 from teleclaude.session_identity import get_session_id as _get_session_id
-from teleclaude.session_scoping import resolve_scoped_paths
+from teleclaude.session_scoping import live_declarations, resolve_scoped_paths
 
 
 class TranscriptUnavailable(ValueError):
@@ -142,7 +142,7 @@ def collect_session_touched_files(project_path: str) -> set[str]:
     resolved = _resolve_session_scope_inputs(session_id)
     if resolved is None:
         raise TranscriptUnavailable(f"No transcript found for session {session_id}")
-    agent_name, transcript_path, native_session_id, transcript_files = resolved
+    agent_name, transcript_path, native_session_id, _transcript_files = resolved
 
     if not transcript_path and agent_name != AgentName.CODEX:
         raise TranscriptUnavailable(f"No transcript found for session {session_id}")
@@ -156,7 +156,6 @@ def collect_session_touched_files(project_path: str) -> set[str]:
         scope_mode="session_dirty",
         transcript_path=transcript_path,
         native_session_id=native_session_id,
-        transcript_files=transcript_files,
     )
 
     if scoped_paths.paths:
@@ -176,24 +175,8 @@ def collect_declared_paths(project_path: str) -> set[str]:
     Unlike `collect_session_touched_files`, an empty result here is the
     ordinary case — nothing declared yet — never an error state.
     """
+    del project_path
     session_id = _get_session_id()
     if not session_id:
         return set()
-
-    resolved = _resolve_session_scope_inputs(session_id)
-    if resolved is None:
-        return set()
-    agent_name, transcript_path, native_session_id, transcript_files = resolved
-    if not transcript_path and not native_session_id:
-        return set()
-
-    scoped_paths = resolve_scoped_paths(
-        session_id=session_id,
-        workspace_root=project_path,
-        agent_name=agent_name.value,
-        scope_mode="session_dirty",
-        transcript_path=transcript_path,
-        native_session_id=native_session_id,
-        transcript_files=transcript_files,
-    )
-    return set(scoped_paths.declared_paths)
+    return {declaration.path for declaration in live_declarations(session_id)}
