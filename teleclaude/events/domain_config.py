@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
+
+from teleclaude.closed_model import ClosedModel
 
 
 class AutonomyLevel(str, Enum):
@@ -16,10 +18,8 @@ class AutonomyLevel(str, Enum):
     AUTONOMOUS = "autonomous"
 
 
-class AutonomyMatrix(BaseModel):
+class AutonomyMatrix(ClosedModel):
     """Priority-ordered autonomy overrides for domains, cartridges, and events."""
-
-    model_config = ConfigDict(extra="allow")
 
     global_default: AutonomyLevel = AutonomyLevel.NOTIFY
     by_domain: dict[str, AutonomyLevel] = Field(default_factory=dict)
@@ -42,10 +42,8 @@ class AutonomyMatrix(BaseModel):
         return self.global_default
 
 
-class DomainGuardianConfig(BaseModel):
+class DomainGuardianConfig(ClosedModel):
     """Guardian agent settings used when a domain requires evaluation."""
-
-    model_config = ConfigDict(extra="allow")
 
     agent: str = "claude"
     mode: str = "med"
@@ -53,10 +51,8 @@ class DomainGuardianConfig(BaseModel):
     evaluation_prompt: str | None = None
 
 
-class DomainConfig(BaseModel):
+class DomainConfig(ClosedModel):
     """Configuration for a single domain-specific event pipeline."""
-
-    model_config = ConfigDict(extra="allow")
 
     name: str
     enabled: bool = True
@@ -64,10 +60,8 @@ class DomainConfig(BaseModel):
     autonomy: AutonomyMatrix = Field(default_factory=AutonomyMatrix)
 
 
-class DomainsConfig(BaseModel):
+class DomainsConfig(ClosedModel):
     """Top-level configuration for repo-owned domain event pipelines."""
-
-    model_config = ConfigDict(extra="allow")
 
     enabled: bool = True
     domains: dict[str, DomainConfig] = Field(default_factory=dict)

@@ -8,9 +8,10 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from teleclaude.agent_registry import AgentName
+from teleclaude.closed_model import ClosedModel
 from teleclaude.config.tiers import Tier
 from teleclaude.constants import CHECKPOINT_BASE_ACTIONS, CHECKPOINT_BASE_MAINTENANCE
 from teleclaude.events.domain_config import DomainsConfig
@@ -49,17 +50,15 @@ def normalize_env_allow_list(value: list[str]) -> list[str]:
     return result
 
 
-class AgentDispatchConfig(BaseModel):
+class AgentDispatchConfig(ClosedModel):
     """Per-agent dispatch configuration."""
 
-    model_config = ConfigDict(extra="allow")
     enabled: bool = True
 
 
-class JobWhenConfig(BaseModel):
+class JobWhenConfig(ClosedModel):
     """Job scheduling time configuration."""
 
-    model_config = ConfigDict(extra="allow")
     every: str | None = None  # e.g. "10m", "2h", "1d"
     at: str | list[str] | None = None  # "HH:MM" or list of times
     weekdays: list[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]] = []
@@ -116,10 +115,9 @@ class JobWhenConfig(BaseModel):
         return self
 
 
-class JobScheduleConfig(BaseModel):
+class JobScheduleConfig(ClosedModel):
     """One declarative scheduled job or subscription override."""
 
-    model_config = ConfigDict(extra="allow")
     category: Literal["subscription", "system"] = "subscription"
     enabled: bool = True
     when: JobWhenConfig | None = None
@@ -171,7 +169,7 @@ def job_identity(declared_name: str, schedule: JobScheduleConfig) -> str:
 PUBLISHES_TRIGGER_MAX_LENGTH: Final = 200
 
 
-class PublishesEntry(BaseModel):
+class PublishesEntry(ClosedModel):
     """A published domain and its required always-on activation trigger.
 
     With domain-resident triggered procedures scoped out of the always-on
@@ -180,7 +178,6 @@ class PublishesEntry(BaseModel):
     deliverable undiscoverable.
     """
 
-    model_config = ConfigDict(extra="allow")
     slug: str = Field(min_length=1)
     trigger: str
 
@@ -198,10 +195,9 @@ class PublishesEntry(BaseModel):
         return stripped
 
 
-class BusinessConfig(BaseModel):
+class BusinessConfig(ClosedModel):
     """Business domain configuration."""
 
-    model_config = ConfigDict(extra="allow")
     # Domains this project owns and contributes global snippets to, each with its
     # required always-on activation trigger. The union of every registered
     # project's `publishes` slugs is the set of valid domains; each domain has
@@ -218,10 +214,9 @@ OutputVisibilityValue = Literal["mobile", "web", "both", "off"]
 _PROJECT_OWNER_CONFLICT = "Project configuration cannot declare both company and person owners"
 
 
-class PersonEntry(BaseModel):
+class PersonEntry(ClosedModel):
     """Person identity and role configuration."""
 
-    model_config = ConfigDict(extra="allow")
     name: str
     email: str = Field(min_length=1)
     slug: str | None = None
@@ -263,17 +258,16 @@ class MailConnector(StrEnum):
     MICROSOFT = "microsoft"
 
 
-class MailAccount(BaseModel):
+class MailAccount(ClosedModel):
     """One declared mail account available to a person's assistant."""
 
     connector: MailConnector
     address: str = Field(min_length=1)
 
 
-class OutputVisibilitySettings(BaseModel):
+class OutputVisibilitySettings(ClosedModel):
     """Per-person visibility preferences for projected output categories."""
 
-    model_config = ConfigDict(extra="allow")
     system_messages: OutputVisibilityValue | None = None
     tool_calls: OutputVisibilityValue | None = None
 
@@ -286,22 +280,20 @@ class OutputVisibilitySettings(BaseModel):
         return value
 
 
-class PersonSettings(BaseModel):
+class PersonSettings(ClosedModel):
     """Per-person settings container."""
 
-    model_config = ConfigDict(extra="allow")
     output_visibility: OutputVisibilitySettings = OutputVisibilitySettings()
 
 
-class PersonChipColorPair(BaseModel):
+class PersonChipColorPair(ClosedModel):
     """A theme-split color pair: one value for light mode, one for dark."""
 
-    model_config = ConfigDict(extra="allow")
     light: str | None = None
     dark: str | None = None
 
 
-class PersonChipColor(BaseModel):
+class PersonChipColor(ClosedModel):
     """Per-person chip color: a background and a text color, each theme-split.
 
     Every leaf is independently optional and defaults to ``None``. ``None`` is
@@ -311,7 +303,6 @@ class PersonChipColor(BaseModel):
     single leaf can be set without pre-populating its siblings.
     """
 
-    model_config = ConfigDict(extra="allow")
     background: PersonChipColorPair = PersonChipColorPair()
     text: PersonChipColorPair = PersonChipColorPair()
 
@@ -325,53 +316,47 @@ class MessagingChannel(StrEnum):
     EMAIL = "email"
 
 
-class TelegramCreds(BaseModel):
+class TelegramCreds(ClosedModel):
     """Telegram platform credentials."""
 
-    model_config = ConfigDict(extra="allow")
     user_name: str
     user_id: int
     chat_id: str | None = None
 
 
-class DiscordCreds(BaseModel):
+class DiscordCreds(ClosedModel):
     """Discord platform credentials."""
 
-    model_config = ConfigDict(extra="allow")
     user_id: str  # Discord user IDs are snowflakes (strings)
     nick: str | None = None
     avatar_url: str | None = None
     voice_bot_token: str | None = None
 
 
-class WhatsAppCreds(BaseModel):
+class WhatsAppCreds(ClosedModel):
     """WhatsApp platform credentials."""
 
-    model_config = ConfigDict(extra="allow")
     phone_number: str
 
 
-class CredsConfig(BaseModel):
+class CredsConfig(ClosedModel):
     """Multi-platform credential container."""
 
-    model_config = ConfigDict(extra="allow")
     telegram: TelegramCreds | None = None
     discord: DiscordCreds | None = None
     whatsapp: WhatsAppCreds | None = None
 
 
-class SubscriptionNotification(BaseModel):
+class SubscriptionNotification(ClosedModel):
     """Notification channel preference for a subscription."""
 
-    model_config = ConfigDict(extra="allow")
     preferred_channel: Literal["telegram", "discord", "whatsapp", "email"] = "telegram"
     email: str | None = None
 
 
-class Subscription(BaseModel):
+class Subscription(ClosedModel):
     """Base subscription model."""
 
-    model_config = ConfigDict(extra="allow")
     enabled: bool = True
     notification: SubscriptionNotification = SubscriptionNotification()
 
@@ -398,64 +383,57 @@ SubscriptionEntry = Annotated[
 ]
 
 
-class InboundSourceConfig(BaseModel):
+class InboundSourceConfig(ClosedModel):
     """Inbound webhook source configuration."""
 
-    model_config = ConfigDict(extra="allow")
     path: str | None = None
     verify_token: str | None = None
     secret: str | None = None
     normalizer: str | None = None
 
 
-class SubscriptionContractConfig(BaseModel):
+class SubscriptionContractConfig(ClosedModel):
     """Subscription matching contract."""
 
-    model_config = ConfigDict(extra="allow")
     source: dict[str, Any] | None = None
     type: dict[str, Any] | None = None
     # Additional property criteria as extra fields
 
 
-class SubscriptionTargetConfig(BaseModel):
+class SubscriptionTargetConfig(ClosedModel):
     """Subscription delivery target."""
 
-    model_config = ConfigDict(extra="allow")
     handler: str | None = None
     url: str | None = None
     secret: str | None = None
 
 
-class SubscriptionConfig(BaseModel):
+class SubscriptionConfig(ClosedModel):
     """Hook subscription configuration."""
 
-    model_config = ConfigDict(extra="allow")
     id: str
     contract: dict[str, Any] = {}  # guard: loose-dict - Config YAML contract is unstructured
     target: dict[str, Any] = {}  # guard: loose-dict - Config YAML target is unstructured
 
 
-class ChannelSubscription(BaseModel):
+class ChannelSubscription(ClosedModel):
     """A subscription that routes messages from a Redis Stream channel to a target."""
 
-    model_config = ConfigDict(extra="allow")
     channel: str
     filter: dict[str, Any] | None = None  # guard: loose-dict - Subscription filter is intentionally unstructured
     target: dict[str, Any] = {}  # guard: loose-dict - Subscription target (notification or project+command)
 
 
-class HooksConfig(BaseModel):
+class HooksConfig(ClosedModel):
     """Hooks and subscriptions configuration."""
 
-    model_config = ConfigDict(extra="allow")
     inbound: dict[str, InboundSourceConfig] = {}
     subscriptions: list[SubscriptionConfig] = []
 
 
-class CheckpointActionConfig(BaseModel):
+class CheckpointActionConfig(ClosedModel):
     """A project-declared checkpoint action (verb) overlaid on the base registry."""
 
-    model_config = ConfigDict(extra="allow")
     run: str = Field(min_length=1)
     evidence: list[str] = []
     main_only: bool = False
@@ -463,47 +441,42 @@ class CheckpointActionConfig(BaseModel):
     evidence_must_follow_last_mutation: bool = False
 
 
-class CheckpointMaintenanceConfig(BaseModel):
+class CheckpointMaintenanceConfig(ClosedModel):
     """A project-declared deterministic action overlaid on the maintenance registry."""
 
-    model_config = ConfigDict(extra="allow")
     command: list[str] = Field(min_length=1)
     main_only: bool = False
     precedence: int = 0
 
 
-class CheckpointScopeConfig(BaseModel):
+class CheckpointScopeConfig(ClosedModel):
     """A glob scope: ``include`` minus ``exclude``, re-added by ``override``."""
 
-    model_config = ConfigDict(extra="allow")
     include: list[str] = []
     exclude: list[str] = []
     override: list[str] = []
 
 
-class CheckpointBindingConfig(BaseModel):
+class CheckpointBindingConfig(ClosedModel):
     """Maps a scope to the action ids a matching changed file owes."""
 
-    model_config = ConfigDict(extra="allow")
     scope: CheckpointScopeConfig = CheckpointScopeConfig()
     actions: list[str] = []
 
 
-class CheckpointCodeConfig(BaseModel):
+class CheckpointCodeConfig(ClosedModel):
     """The conventional ``code`` kind: a scope onto which base ``test`` / ``log-check`` attach."""
 
-    model_config = ConfigDict(extra="allow")
     scope: CheckpointScopeConfig = CheckpointScopeConfig()
 
 
-class CheckpointExtraActionsConfig(BaseModel):
+class CheckpointExtraActionsConfig(ClosedModel):
     """Optional extra actions appended atop a conventional base binding (``docs`` / ``agents``)."""
 
-    model_config = ConfigDict(extra="allow")
     actions: list[str] = []
 
 
-class CheckpointConfig(BaseModel):
+class CheckpointConfig(ClosedModel):
     """Project checkpoint maintenance overlay merged atop the platform-universal base.
 
     Authored at analyze-time by intelligence (``telec projects analyze``) per
@@ -511,13 +484,34 @@ class CheckpointConfig(BaseModel):
     the checkpoint engine. An unreadable overlay degrades to base-only (fail-open).
     """
 
-    model_config = ConfigDict(extra="allow")
     actions: dict[str, CheckpointActionConfig] = {}
     maintenance: dict[str, CheckpointMaintenanceConfig] = {}
     code: CheckpointCodeConfig | None = None
     bindings: list[CheckpointBindingConfig] = []
     docs: CheckpointExtraActionsConfig | None = None
     agents: CheckpointExtraActionsConfig | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_action_key_placement(cls, data: Any) -> Any:
+        """Give a misplaced action/maintenance key registry-specific guidance.
+
+        A closed ``CheckpointActionConfig``/``CheckpointMaintenanceConfig`` rejects an
+        unknown key during its own field validation, which runs before this model's
+        after-validator, so the targeted message must come from the raw mapping here
+        instead of from the parsed fields.
+        """
+        if not isinstance(data, dict):
+            return data
+        for action_id, action in (data.get("actions") or {}).items():
+            if isinstance(action, dict) and "command" in action:
+                raise ValueError(f"checkpoint.actions.{action_id}.command belongs under checkpoint.maintenance")
+        for maintenance_id, maintenance_action in (data.get("maintenance") or {}).items():
+            if isinstance(maintenance_action, dict) and (
+                "run" in maintenance_action or "evidence" in maintenance_action
+            ):
+                raise ValueError(f"checkpoint.maintenance.{maintenance_id} may not declare run or evidence")
+        return data
 
     @model_validator(mode="after")
     def validate_action_references(self) -> CheckpointConfig:
@@ -537,15 +531,6 @@ class CheckpointConfig(BaseModel):
                 f"declared in both actions and maintenance: {', '.join(sorted(duplicate_ids))}"
             )
         valid_ids = action_ids | maintenance_ids
-
-        for action_id, action in self.actions.items():
-            if action.model_extra is not None and "command" in action.model_extra:
-                raise ValueError(f"checkpoint.actions.{action_id}.command belongs under checkpoint.maintenance")
-        for maintenance_id, maintenance_action in self.maintenance.items():
-            if maintenance_action.model_extra is not None and (
-                "run" in maintenance_action.model_extra or "evidence" in maintenance_action.model_extra
-            ):
-                raise ValueError(f"checkpoint.maintenance.{maintenance_id} may not declare run or evidence")
 
         def _check(action_ids: list[str], where: str) -> None:
             if not action_ids:
@@ -567,14 +552,13 @@ class CheckpointConfig(BaseModel):
         return self
 
 
-class CapabilityConfig(BaseModel):
+class CapabilityConfig(ClosedModel):
     """Subscription state for one project capability."""
 
-    model_config = ConfigDict(extra="allow")
     enabled: bool = True
 
 
-class ProjectConfig(BaseModel):
+class ProjectConfig(ClosedModel):
     """Project-level configuration: per-project ``teleclaude.yml`` overlay.
 
     This is the project-scoped overlay, not the machine runtime config — the
@@ -584,7 +568,6 @@ class ProjectConfig(BaseModel):
     the machine config, not here.
     """
 
-    model_config = ConfigDict(extra="allow")
     kind: Literal[ConfigKind.PROJECT] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     project_slug: str | None = None
     project_name: str | None = None
@@ -661,7 +644,7 @@ class ProjectConfig(BaseModel):
         return data
 
 
-class GlobalConfig(BaseModel):
+class GlobalConfig(ClosedModel):
     """Global-level configuration: the cross-project overlay (people, interests, overlay roots).
 
     Like ``ProjectConfig``, this is an overlay, not the machine runtime config; the
@@ -671,7 +654,6 @@ class GlobalConfig(BaseModel):
     wizard.
     """
 
-    model_config = ConfigDict(extra="allow")
     kind: Literal[ConfigKind.GLOBAL] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     env_allow_list: list[str] = []
     people: list[PersonEntry] = []
@@ -708,10 +690,9 @@ class GlobalConfig(BaseModel):
         return data
 
 
-class PersonConfig(BaseModel):
+class PersonConfig(ClosedModel):
     """Per-person configuration."""
 
-    model_config = ConfigDict(extra="allow")
     kind: Literal[ConfigKind.PERSON] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     slug: str = Field(json_schema_extra={"tier": Tier.INTERNAL})
     creds: CredsConfig = CredsConfig()
@@ -751,7 +732,7 @@ class PersonConfig(BaseModel):
         return data
 
 
-class CompanyMember(BaseModel):
+class CompanyMember(ClosedModel):
     """One person's role and explicit project assignments in a company roster."""
 
     role: CompanyRole
@@ -771,7 +752,7 @@ class CompanyMember(BaseModel):
         return projects
 
 
-class CompanyConfig(BaseModel):
+class CompanyConfig(ClosedModel):
     """Company-tier configuration: per-company ``teleclaude.yml`` overlay.
 
     Folder-discovered under ``~/.teleclaude/companies/<slug>/`` (the
@@ -783,7 +764,6 @@ class CompanyConfig(BaseModel):
     overlays reject undeclared fields at their load boundary.
     """
 
-    model_config = ConfigDict(extra="allow")
     kind: Literal[ConfigKind.COMPANY] = Field(json_schema_extra={"tier": Tier.INTERNAL})
     name: str | None = None
     slug: str | None = None

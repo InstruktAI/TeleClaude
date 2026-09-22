@@ -140,7 +140,7 @@ def load_config[T: BaseModel](
     )
     expanded = expand_environment_references(raw, local_environment, config_path=path)
     try:
-        model = model_class.model_validate(expanded, extra="forbid")
+        model = model_class.model_validate(expanded)
     except Exception as exc:
         raise ValueError(f"Failed to validate config file {path}: {exc}") from exc
     return model

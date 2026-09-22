@@ -71,7 +71,7 @@ def configure_person_discord_voice_bot(
             owner_only=True,
         )
         expanded = expand_environment_references(candidate, environment, config_path=overlay_path)
-        PersonConfig.model_validate(expanded, extra="forbid")
+        PersonConfig.model_validate(expanded)
         transaction.replace_text(
             render_declared_config(
                 overlay_path,
