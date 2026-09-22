@@ -88,6 +88,10 @@ The following are invalid output:
 
 Linked-output wrappers do not make a message actionable. The wrapped payload is what determines whether the output is valid.
 
+<!-- planned:noop-turn-output-baseline -->
+When no valid form applies, the turn still has to close. It closes with the no-output sentinel under `general/policy/no-output-turn`; writing the silence out in prose produces one of the invalid forms above.
+<!-- /planned:noop-turn-output-baseline -->
+
 ## Allowed values
 
 - Registers: `human-present`, `human-aware`, `agent-only`, `structured-report`
