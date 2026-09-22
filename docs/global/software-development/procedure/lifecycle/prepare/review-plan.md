@@ -235,7 +235,6 @@ artifact quality policy. Do not add an intent-formation lane to the delivery
 review catalogue; build and commit review validate delivery against already
 approved intent and must not re-litigate it.
 
-<!-- planned:corroboration-routes-by-artifact-writer -->
 `input` is the basis this comparison rests on, so establish whether it was
 corroborated before you weigh the plan against it. `telec todo artifacts list
 {slug}` names each artifact's writers. When the claimant is not among
@@ -249,7 +248,6 @@ the human turns as the entry audit does, and compare substance. A requirement
 present in the conversation and absent from the artifact is returned to the
 intent path as a single question, on the same terms as any other divergence
 above: noticing it is the task, not adjudicating it.
-<!-- /planned:corroboration-routes-by-artifact-writer -->
 
 ### 4. Plan-specific quality
 

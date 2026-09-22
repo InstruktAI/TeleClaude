@@ -126,17 +126,6 @@ carried it; it does not establish what a human decided.
 1. Read the creation record and the current `input`.
 2. Take the `input` as the authorized basis for derivation. Its content is the
    creating agent's shaping of the work, which is trusted like any agent's.
-<!-- planned-change:corroboration-routes-by-artifact-writer -->
-3. Recover the meaning that basis was compressed from. `input` is written from a
-   conversation, and the summary loses what the work is for. `telec todo show
-{slug}` carries both session ids to read: the session segment of `lineage`
-   created the todo, and `active_runner` holds its claim. Tail those two and no
-   others. Read the human's
-   own turns — a user entry outside any complete recognized platform envelope is
-   that human, per `general/policy/message-identity-headers`, while an envelope
-   span is a peer or the platform. Sessions with no human turns carry nothing to
-   recover; that is the ordinary case and costs nothing.
-<!-- change:corroboration-routes-by-artifact-writer -->
 3. Recover the meaning that basis was compressed from. `input` is written from a
    conversation, and the summary loses what the work is for. The sessions that
    still hold it are the ones that wrote the artifacts: `telec todo artifacts
@@ -151,7 +140,6 @@ list {slug}` names each artifact's writers. Read every writer that is not
    recover; that is the ordinary case and costs nothing. A writer the record
    does not name is read, not skipped: an unknown writer is not evidence of a
    foreign one.
-<!-- /planned-change:corroboration-routes-by-artifact-writer -->
 
    Where human turns exist, compare substance: an outcome-level requirement
    present in the conversation and absent from `input` is a compression loss,
