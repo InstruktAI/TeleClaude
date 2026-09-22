@@ -133,21 +133,11 @@ fire; no per-activity store write exists. Profiles declare sliding behavior in
 their prescribed definition; callers cannot select it for profiles that do not
 declare it.
 
-<!-- planned-change:retire-reminder-auto-cancel -->
-Profiles may declare auto-cancel. The firing envelope of a declaring profile
-states that answering with `NOOP` cancels this reminder. The detection
-predicate is runtime-uniform: the answering turn contains no tool actions and
-no authored content beyond the `NOOP` sentinel. On a match the service cancels
-the aggregate and records the cancellation with its auto-cancel reason in its
-durable reminder records. Only firings use delivery; reminder-command
-responses acknowledge minimally.
-<!-- change:retire-reminder-auto-cancel -->
 The service observes no answer to a firing. A firing envelope instructs the
 agent to cancel the slug explicitly when its intent has died, so retirement
 arrives as an ordinary cancellation command and the `NOOP` sentinel stays a
 session-output concern the service never reads. Only firings use delivery;
 reminder-command responses acknowledge minimally.
-<!-- /planned-change:retire-reminder-auto-cancel -->
 
 Profiles may independently declare cancellation protection. Public one-slug and
 all-session cancellation consult that registry metadata inside the service's
@@ -157,37 +147,11 @@ applied. Same-slug set remains replacement, not cancellation, and session-end
 cleanup deliberately bypasses profile protection so an ended session retains no
 live reminder.
 
-<!-- planned-change:retire-reminder-auto-cancel -->
-The answering turn is resolved from the firing entry's occurrence-specific
-registered header. The shared cutter then extracts assistant messages until the
-next real user entry; resolution never queries a receipt binding or body equality.
-Evaluation rides
-the established `agent_stop` dispatch point — after the canonical stop-state
-write, the service receives the typed event for the owning session — but the
-fast path's existing last-message extraction is text-only and skips tool-use
-blocks, so it cannot answer the two-part predicate. The turn-shape judgment is
-owned by the session-output contract's existing bare-`NOOP` predicates, which
-already accept raw normalized assistant messages and reject any tool-use part;
-a small new extraction returns the answering turn's raw content blocks from
-the agent transcript for that call. The predicate's existing consumers sit
-above this service in the session-output path and are not the caller. No new
-hook is installed, no envelope text is parsed, and nothing is evaluated for a
-session with no outstanding delivered auto-cancel firing.
-
-A firing is correlated to its answer at reminder identity. The aggregate is
-`(session, slug)`, so one slug holds at most one outstanding correlation, and
-an accepted later firing of that slug replaces the correlation an earlier
-firing left behind. Other slugs in the same session are untouched by that
-replacement. A recurring reminder is one idempotent aggregate whose
-occurrences supersede one another, never a backlog of independently durable
-obligations awaiting individual answers.
-<!-- change:retire-reminder-auto-cancel -->
 The service holds no per-firing answer state. It receives the typed
 `agent_stop` event for event-anchored firing only, and reads nothing from the
 answering turn's shape or content. A recurring reminder is one idempotent
 aggregate whose occurrences supersede one another, never a backlog of
 independently durable obligations awaiting individual answers.
-<!-- /planned-change:retire-reminder-auto-cancel -->
 
 ## Invariants
 

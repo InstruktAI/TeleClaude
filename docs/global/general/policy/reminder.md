@@ -43,21 +43,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   future-self intent is needed, then yield with no waiting process left behind;
   the reminder or incoming event re-enters the session through its normal input
   path.
-<!-- planned-change:retire-reminder-auto-cancel -->
-- A due reminder whose intent is already satisfied or obsolete warrants no
-  authored output beyond the sentinel. A one-shot firing has already consumed
-  its reminder and ends with exactly `NOOP`. A recurring firing from an
-  auto-cancel profile ends with exactly `NOOP`, which cancels it. A recurring firing without auto-cancel first cancels its own slug,
-  then ends with exactly `NOOP`. None authors a summary, status, or confirmation.
-  The platform never delivers a bare `NOOP` turn to peers, projected surfaces,
-  or notifications.
-- A prescribed profile may declare auto-cancel. A `NOOP`-answered firing of a
-  declaring profile — a turn whose authored content is nothing but the
-  sentinel — cancels that reminder. Establishing that an intent is obsolete may
-  require reading current state, so the answer is judged on what the agent
-  authored, never on whether it used a tool to reach that judgement. Every
-  firing of a declaring profile states this consequence in its envelope.
-<!-- change:retire-reminder-auto-cancel -->
 - A due reminder whose intent is already satisfied or obsolete warrants no
   authored output beyond the sentinel. A one-shot firing has already consumed
   its reminder and ends with exactly `NOOP`. A recurring firing cancels its own
@@ -68,7 +53,6 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
   sentinel alone: `NOOP` closes the turn and does nothing else, and a reminder
   whose intent has died is cancelled by its own command. The sentinel therefore
   carries one meaning on every turn, whatever else that turn received.
-<!-- /planned-change:retire-reminder-auto-cancel -->
 
 ### Reminder identity and lifecycle
 
@@ -150,13 +134,8 @@ choice. Event-triggered profiles have no cadence to override.
 - **Cancellation:** cancel the moment the next move stops being this agent's —
   the goal delivered, abandoned, or handed to a human or dispatcher, or stale
   intent left with no successor. These are one condition, not a catalogue: the
-<!-- planned-change:retire-reminder-auto-cancel -->
-  agent no longer holds the next move. The profile declares auto-cancel: a
-  `NOOP`-answered firing cancels the reminder.
-<!-- change:retire-reminder-auto-cancel -->
   agent no longer holds the next move. A firing that finds the goal retired
   cancels this slug, then ends with exactly `NOOP`.
-<!-- /planned-change:retire-reminder-auto-cancel -->
 - **Invocation:** `telec reminders set goal-drive` (uses the default intent) or `telec reminders set goal-drive --intent <intent>`.
 
 #### Role-owned profiles classified under the rule
@@ -192,15 +171,6 @@ as zombie activity.
 
 Goal drive supplies a low-noise alignment rhythm during sustained work.
 
-<!-- planned-change:retire-reminder-auto-cancel -->
-The sentinel is a declaration, so cancellation reads only what the agent
-authored. A firing asks the agent to establish whether current state has made
-the intent obsolete, and establishing that routinely means reading that state;
-disqualifying the answer because a tool was used to reach it would reward
-guessing over checking. The guard against a working turn retiring a live
-reminder is the sentinel's exclusivity: an agent still pursuing the intent
-writes about it, and that turn cancels nothing.
-<!-- change:retire-reminder-auto-cancel -->
 Keeping retirement explicit is what lets the sentinel mean one thing. A turn
 receives whatever arrives in it — a peer message, a human message, a firing —
 so a single turn-scoped bit cannot answer an occurrence-scoped question without
@@ -208,7 +178,6 @@ guessing which arrival it referred to. Reading cancellation out of that bit
 makes a turn's silence toward one correspondent retire a reminder the agent
 still wanted, and the agent cannot see the pending state that would warn it.
 An explicit cancel costs one command and states what it does.
-<!-- /planned-change:retire-reminder-auto-cancel -->
 
 Yielding instead of terminal-waiting keeps the session receptive to the human
 and lets the platform own re-entry. A terminal process is an execution surface,
