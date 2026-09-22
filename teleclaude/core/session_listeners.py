@@ -51,11 +51,6 @@ _STOP_NOTIFICATION_COMPUTER_SELECTOR_TEMPLATE = " --computer {computer}"
 _STOP_NOTIFICATION_NO_PART = ""
 _BLOCKED_NOTIFICATION_TEMPLATE = "Session{location_part}{title_part} is waiting for approval or input. Use telec sessions tail {target_session_id}{computer_selector} to inspect."
 _FAILED_NOTIFICATION_TEMPLATE = "Session{location_part}{title_part} failed its turn. Use telec sessions tail {target_session_id}{computer_selector} to inspect."
-_NATIVE_NOTIFICATION_TEMPLATE = (
-    "Session{location_part}{title_part} emitted a native notification. Native evidence: {evidence}. "
-    "Assess its current state and recover within your mandate. "
-    "Use telec sessions tail {target_session_id} --pane{computer_selector} to inspect."
-)
 _PARENT_BLOCKED_NOTIFICATION_TEMPLATE = (
     "Session{location_part}{title_part} is waiting for approval or input. Native evidence: {evidence}. "
     "Assess its current state and recover within your mandate. "
@@ -99,7 +94,6 @@ class NotificationKind(StrEnum):
 
     TURN_END = "turn_end"
     BLOCKED = "blocked"
-    NATIVE_NOTIFICATION = "native_notification"
     TURN_FAILED = "turn_failed"
 
 
@@ -548,12 +542,11 @@ def _parent_attention_message(
     """Format parent-only guidance around labelled native evidence."""
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
     locality = _notification_locality(computer)
-    if notification_kind is NotificationKind.NATIVE_NOTIFICATION:
-        template = _NATIVE_NOTIFICATION_TEMPLATE
-    elif notification_kind is NotificationKind.BLOCKED:
-        template = _PARENT_BLOCKED_NOTIFICATION_TEMPLATE
-    else:
-        template = _PARENT_FAILED_NOTIFICATION_TEMPLATE
+    template = (
+        _PARENT_BLOCKED_NOTIFICATION_TEMPLATE
+        if notification_kind is NotificationKind.BLOCKED
+        else _PARENT_FAILED_NOTIFICATION_TEMPLATE
+    )
     return template.format(
         location_part=locality.location_part,
         title_part=title_part,

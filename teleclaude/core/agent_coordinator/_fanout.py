@@ -42,7 +42,6 @@ _ATTENTION_INGRESS_ID_KEY = "ingress_id"
 _DISTRESS_OUTCOME_SUBSCRIBER_DELIVERY = "subscriber_delivery"
 _DISTRESS_OUTCOME_HUMAN_FALLBACK = "human_fallback"
 _DISTRESS_OUTCOME_NO_FALLBACK = "no_fallback"
-_DISTRESS_NO_FALLBACK_NEUTRAL_NOTIFICATION = "neutral_notification"
 _DISTRESS_NO_FALLBACK_BLOCKED_ALREADY_OBSERVED = "blocked_already_observed_this_turn"
 
 
@@ -165,31 +164,29 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         observation: AgentAttentionObservation | None = None,
     ) -> None:
         """Notify parents while retaining terminal and fallback slot semantics."""
-        blocked_claimed = False
-        if notification_kind is not NotificationKind.NATIVE_NOTIFICATION:
-            record = (
-                TurnNotificationRecord.BLOCKED
-                if notification_kind is NotificationKind.BLOCKED
-                else TurnNotificationRecord.TERMINAL_TURN_FAILED
+        record = (
+            TurnNotificationRecord.BLOCKED
+            if notification_kind is NotificationKind.BLOCKED
+            else TurnNotificationRecord.TERMINAL_TURN_FAILED
+        )
+        blocked_claimed, records = await db.claim_turn_notification(target_session_id, record)
+        if not blocked_claimed:
+            logger.info(
+                "turn_notification_slot_claimed",
+                session_id=target_session_id,
+                claimed_member=record,
+                outcome="rejected",
+                recorded_members=sorted(records),
             )
-            blocked_claimed, records = await db.claim_turn_notification(target_session_id, record)
-            if not blocked_claimed:
-                logger.info(
-                    "turn_notification_slot_claimed",
-                    session_id=target_session_id,
-                    claimed_member=record,
-                    outcome="rejected",
-                    recorded_members=sorted(records),
-                )
-                if notification_kind is NotificationKind.TURN_FAILED:
-                    return
-            else:
-                logger.info(
-                    "turn_notification_slot_claimed",
-                    session_id=target_session_id,
-                    claimed_member=record,
-                    outcome="claimed",
-                )
+            if notification_kind is NotificationKind.TURN_FAILED:
+                return
+        else:
+            logger.info(
+                "turn_notification_slot_claimed",
+                session_id=target_session_id,
+                claimed_member=record,
+                outcome="claimed",
+            )
         session = await db.get_session(target_session_id)
         title = session.title if session else None
         computer = source_computer or LOCAL_COMPUTER
@@ -211,9 +208,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             occurrence_key=occurrence_key,
         )
         fallback_delivered = False
-        fallback_eligible = notification_kind is not NotificationKind.NATIVE_NOTIFICATION and (
-            notification_kind is not NotificationKind.BLOCKED or blocked_claimed
-        )
+        fallback_eligible = notification_kind is not NotificationKind.BLOCKED or blocked_claimed
         if fallback_eligible and not reached and not remote_reached:
             fallback_delivered = await notify_distress_human_fallback(
                 target_session_id, computer, notification_kind, self.client, title
@@ -224,11 +219,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         no_fallback_reason = None
         if not reached and not remote_reached and not fallback_eligible:
             outcome = _DISTRESS_OUTCOME_NO_FALLBACK
-            no_fallback_reason = (
-                _DISTRESS_NO_FALLBACK_NEUTRAL_NOTIFICATION
-                if notification_kind is NotificationKind.NATIVE_NOTIFICATION
-                else _DISTRESS_NO_FALLBACK_BLOCKED_ALREADY_OBSERVED
-            )
+            no_fallback_reason = _DISTRESS_NO_FALLBACK_BLOCKED_ALREADY_OBSERVED
         logger.info(
             "distress_audience_resolved",
             target_session_id=target_session_id,

@@ -125,7 +125,6 @@ _HANDLED_EVENTS: frozenset[AgentHookEventType] = RECEIVER_HANDLED_HOOK_EVENTS
 _ATTENTION_EVENTS: frozenset[AgentHookEventType] = frozenset(
     {
         AgentHookEvents.AGENT_BLOCKED,
-        AgentHookEvents.AGENT_NOTIFICATION,
         AgentHookEvents.AGENT_TURN_FAILED,
     }
 )
