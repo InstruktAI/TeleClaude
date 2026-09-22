@@ -345,6 +345,7 @@ And a sealed commit that lands while carrying the path ends the declaration
 And a sealed commit that lands carrying an explicit subset ends only the declarations in that subset
 And a declaration the landed commit did not carry stays live
 And an invocation that produces no commit ends no declaration
+And a declaration outlives every restart, handoff and revival of its session, and ends when that session closes
 ```
 <!-- /planned-change:declarations-are-a-durable-record -->
 
