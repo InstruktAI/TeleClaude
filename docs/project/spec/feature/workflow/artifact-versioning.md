@@ -137,7 +137,9 @@ or liveness fallback. Every accepted write follows the ordinary version-append,
 leaving `active_runner` unchanged.
 
 The write path resolves the caller's identity, with parity to the stamp and
-artifact-remove boundaries, and records the resolved principal as `updated_by`.
+artifact-remove boundaries, and records the writing session's id as `updated_by`.
+A caller that is no session authors under no session and records nothing there;
+an unidentified caller may not write at all.
 
 Independently of which session is driving the slug, a prepare artifact is writable
 only by a prepare-phase writer: a session carrying one of the prepare-authoring job
@@ -195,12 +197,13 @@ And records the resolved caller principal as updated_by
 And the slug acquires no live active-runner
 ```
 
-#### UC-WAV12: Artifact write records the resolved principal
+#### UC-WAV12: Artifact write records the writing session
 
 ```gherkin
 Given a permitted prepare-artifact write
 When the workflow service persists the new version
-Then updated_by is the resolved caller principal, not a constant placeholder
+Then updated_by is the writing session's id
+And a write from a caller that is no session records no updated_by
 ```
 
 #### UC-WAV15: A work-orchestrator write to a prepare artifact is refused by role

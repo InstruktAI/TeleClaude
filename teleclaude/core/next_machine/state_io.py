@@ -299,7 +299,6 @@ async def ensure_quality_checklist(todos_db: TodosDb, slug: str) -> None:
         slug,
         ARTIFACT_QUALITY_CHECKLIST,
         _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug),
-        updated_by="work.prepared_entry",
     )
 
 

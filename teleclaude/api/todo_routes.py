@@ -651,7 +651,7 @@ async def todo_content_create(
                         slug,
                         written_artifact_name,
                         plan_content,
-                        updated_by="api.todo.create.task-plan" if is_task_plan else "api.todo.create.plan",
+                        updated_by=identity.session_id,
                         session=session,
                     )
                 else:
@@ -662,7 +662,7 @@ async def todo_content_create(
                         slug,
                         ARTIFACT_INPUT,
                         input_content,
-                        updated_by="api.todo.create",
+                        updated_by=identity.session_id,
                         session=session,
                     )
 

@@ -29,6 +29,4 @@ def read_artifact_content(project_root: Path, slug: str, artifact_name: str) -> 
 def write_artifact_content(project_root: Path, slug: str, artifact_name: str, content: str) -> None:
     """Write a todo artifact through the TodosDb sync API and append version history."""
     _require_todos_db(project_root)
-    get_todos_db_sync(project_root).write_artifact_sync(
-        slug, artifact_name, content, updated_by="teleclaude.cli.editor"
-    )
+    get_todos_db_sync(project_root).write_artifact_sync(slug, artifact_name, content)

@@ -23,21 +23,18 @@ if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
 
-def resolved_write_principal(identity: CallerIdentity) -> str:
-    """Resolve the caller principal recorded as an artifact's ``updated_by``.
+def resolved_write_principal(identity: CallerIdentity) -> str | None:
+    """Resolve the session id recorded as an artifact's ``updated_by``.
 
-    Mirrors ``todo_stamp``: an agent session is recorded under its session id, a
-    human-driven terminal under its verified human principal. Caller-supplied
-    audit identity is never honored.
+    A session write is recorded under that session's id. An identified caller
+    that is no session authors under no session and records nothing; the todo's
+    own creation record carries who it ran under. Caller-supplied audit identity
+    is never honored, and an unidentified caller may not write at all.
     """
     if identity.session_id:
         return identity.session_id
-    if identity.principal and identity.principal.startswith("human:"):
-        return identity.principal
-    if identity.email:
-        return f"human:{identity.email}"
-    if identity.human_role:
-        return "human:terminal"
+    if identity.principal or identity.email or identity.human_role:
+        return None
     raise HTTPException(status_code=403, detail="caller identity required to write artifact")
 
 

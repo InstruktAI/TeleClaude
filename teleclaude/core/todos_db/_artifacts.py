@@ -23,6 +23,7 @@ from teleclaude.core.todos_db._models import (
     TodoArtifactVersion,
 )
 from teleclaude.core.todos_db._rows import ArtifactMetadataRow, ArtifactRemovalResult, ArtifactVersionRow
+from teleclaude.utils.transcript_discovery import as_session_id
 
 logger = get_logger(__name__)
 
@@ -139,6 +140,7 @@ class TodosDbArtifactsMixin:
         """Upsert artifact content and append to version history."""
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
+        updated_by = as_session_id(updated_by)
         try:
             now = datetime.now(UTC).isoformat()
             digest = _sha256(content)
@@ -199,6 +201,7 @@ class TodosDbArtifactsMixin:
         updated_by: str | None = None,
     ) -> None:
         """Upsert artifact content synchronously and append to version history."""
+        updated_by = as_session_id(updated_by)
         with self._sync_session() as session:  # type: ignore[attr-defined]
             result = session.exec(
                 select(Todo)
@@ -316,7 +319,7 @@ class TodosDbArtifactsMixin:
                 ArtifactMetadataRow(
                     name=artifact.name,
                     digest=artifact.digest,
-                    updated_by=artifact.updated_by or "",
+                    updated_by=as_session_id(artifact.updated_by) or "",
                     updated_at=artifact.updated_at or "",
                 )
                 for artifact in result.all()
@@ -339,7 +342,7 @@ class TodosDbArtifactsMixin:
                 ArtifactVersionRow(
                     content=version.content,
                     digest=version.digest,
-                    updated_by=version.updated_by or "",
+                    updated_by=as_session_id(version.updated_by) or "",
                     created_at=version.created_at,
                 )
                 for version in result.all()

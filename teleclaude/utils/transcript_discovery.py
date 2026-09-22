@@ -71,6 +71,21 @@ class SessionId(str):
         return str.__new__(cls, canonical)
 
 
+def as_session_id(value: str | None) -> SessionId | None:
+    """Return ``value`` as a ``SessionId``, or ``None`` when it is not one.
+
+    The non-raising counterpart to ``SessionId`` for boundaries that persist an
+    optional author: a stored value that does not parse as a canonical session
+    id carries no session, so it reads as absent rather than as opaque text.
+    """
+    if value is None:
+        return None
+    try:
+        return SessionId(value)
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True)
 class TranscriptCandidate:
     """Discovered transcript file with metadata."""

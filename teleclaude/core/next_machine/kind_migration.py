@@ -97,7 +97,6 @@ async def migrate_todo_kind(
                     slug,
                     ARTIFACT_INPUT,
                     folded_input,
-                    updated_by="todo.kind_migration",
                     session=session,
                 )
                 folded_artifact = ARTIFACT_IMPLEMENTATION_PLAN
