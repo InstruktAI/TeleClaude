@@ -59,7 +59,11 @@ from teleclaude.constants import (
     TodoStatus,
 )
 from teleclaude.core.db import db as runtime_db
-from teleclaude.core.human_involvement import human_involvement_refusal_detail, validate_human_involvement
+from teleclaude.core.human_involvement import (
+    HumanInvolvementReasonInvalid,
+    HumanInvolvementSurface,
+    resolve_human_involvement,
+)
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.kind_migration import (
     KindMigrationRequiresForce,
@@ -128,14 +132,19 @@ async def _resolve_human_involved(request: TodoDumpRequest, identity: CallerIden
     declaration_requested = request.human_involved or request.human_involvement_reason is not None
     if not declaration_requested:
         return False
-    validation = await validate_human_involvement(
-        session_id=identity.session_id,
-        reason=request.human_involvement_reason,
-        session_store=runtime_db,
-    )
-    if not validation.admitted:
-        raise HTTPException(status_code=400, detail=human_involvement_refusal_detail(validation))
-    return True
+    try:
+        resolution = await resolve_human_involvement(
+            session_id=identity.session_id,
+            reason=request.human_involvement_reason,
+            session_store=runtime_db,
+            surface=HumanInvolvementSurface.TODO_CREATION,
+        )
+    except HumanInvolvementReasonInvalid as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{exc}; rerun without --human-involved if the filing is not human-involved.",
+        ) from exc
+    return resolution.involved
 
 
 class _TodoUpdateResponse(BaseModel):

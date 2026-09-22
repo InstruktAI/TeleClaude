@@ -31,7 +31,6 @@ from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commi
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_COMMIT
-from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
 from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
 from teleclaude.core.db import get_db
@@ -398,7 +397,7 @@ def handle_code_commit(args: list[str]) -> None:
         )
         raise SystemExit(2)
 
-    human_involved = _validate_human_involvement_declaration(human_involved_reason)
+    human_involved = _resolve_human_involvement_declaration(human_involved_reason)
 
     with main_branch_lock():
         _commit_under_lock(
@@ -414,24 +413,41 @@ def handle_code_commit(args: list[str]) -> None:
         )
 
 
-def _validate_human_involvement_declaration(reason: str | None) -> bool:
-    """Resolve one commit-local declaration through the authenticated runtime owner."""
+def _resolve_human_involvement_declaration(reason: str | None) -> bool:
+    """Resolve one commit-local declaration in-process; never fail the commit over it."""
     if reason is None:
         return False
+    session_id = get_session_id()
+    if not session_id:
+        return False
     try:
-        response = tool_api_request(
-            "POST",
-            "/sessions/self/human-involvement",
-            json_body={"reason": reason},
-            timeout=10.0,
+        return asyncio.run(_resolve_human_involvement_async(session_id, reason))
+    except (OperationalError, OSError, RuntimeError):
+        # The record must never make committing depend on the daemon's session
+        # store being reachable; an unreadable store resolves to no involvement.
+        return False
+
+
+async def _resolve_human_involvement_async(session_id: str, reason: str) -> bool:
+    """Await the runtime database and resolve through the core involvement seam."""
+    from teleclaude.core.human_involvement import (  # noqa: PLC0415
+        HumanInvolvementReasonInvalid,
+        HumanInvolvementSurface,
+        resolve_human_involvement,
+    )
+
+    runtime_db = await get_db()
+    try:
+        resolution = await resolve_human_involvement(
+            session_id=session_id,
+            reason=reason,
+            session_store=runtime_db,
+            surface=HumanInvolvementSurface.COMMIT,
         )
-    except ToolAPIError as exc:
-        print(f"Error: {exc.message}", file=sys.stderr)
-        raise SystemExit(1) from None
-    if isinstance(response, dict) and response.get("human_involved") is True:
-        return True
-    print("Error: human involvement validation returned an invalid response", file=sys.stderr)
-    raise SystemExit(1)
+    except HumanInvolvementReasonInvalid as exc:
+        print(f"Error: {exc}; rerun without --human-involved if the act is not human-involved.", file=sys.stderr)
+        raise SystemExit(2) from None
+    return resolution.involved
 
 
 def _commit_under_lock(
