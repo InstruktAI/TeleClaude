@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
+from teleclaude.session_identity import get_human_role
 
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
@@ -179,6 +180,23 @@ def read_current_session_email() -> str | None:
     if get_identity_resolver().is_multi_user:
         return None
     return _read_auth_file(_global_auth_path())
+
+
+def effective_caller_role() -> str | None:
+    """Return the effective human role of the current CLI caller.
+
+    The session-recorded role when the session identity file carries one,
+    otherwise the identity resolver's role for the resolved terminal login.
+    """
+    human_role = get_human_role()
+    if human_role:
+        return human_role
+
+    from teleclaude.core.identity import (  # noqa: PLC0415 - deferred: api_client deliberately defers importing this module at load time; a module-scope import of the config-loading identity resolver would pull that cost into every CLI start
+        get_identity_resolver,
+    )
+
+    return get_identity_resolver().effective_terminal_role(read_current_session_email())
 
 
 def _write_auth_file(path: Path, payload: dict[str, str | float]) -> None:
