@@ -93,7 +93,7 @@ The claim gate is the claiming-group predicate governing artifact writes (`featu
 
 The gate holds at the point of mutation, not only at request admission: a claim acquired after admission still refuses the mutation. A slug rename executes as a deferred durable operation, and an agent-originated rename revalidates the claim immediately before the physical rename, reporting a late conflict through the operation record.
 
-`worker` is excluded at the verb band before any claim lookup runs — the claim-independent capability stand-in that keeps a dispatched build worker inside its brief. A direct human-identity caller — a login-resolved human principal carrying no agent session id — is not a session, is not gated by the claim, and is evaluated against the verb's human band as before. The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this gate.
+`worker` is excluded at the verb band before any claim lookup runs — the claim-independent capability stand-in that keeps a dispatched build worker inside its brief. A direct human-identity caller — a login-resolved human principal carrying no agent session id — is not a session, is not gated by the claim, and is evaluated against the verb's human band as before; the claim is an integrity boundary between sessions, and this is the same caller class the artifact-write claim gate exempts (ADR-0096; `feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this gate.
 
 #### UC-CSU1: A claim holder updates its todo
 
