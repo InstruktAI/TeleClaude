@@ -7,6 +7,7 @@ from teleclaude.core.command_input import (
 )
 from teleclaude.core.models import SessionEntryPoint, SessionLaunchIntent
 from teleclaude.core.models._adapter import TerminalOriginMetadata
+from teleclaude.core.session_startup_message import AmbiguousCommandError, resolve_command_document
 
 _COMMAND_PREFIX = "/"
 
@@ -30,10 +31,21 @@ def infer_working_slug(command: str, args: str) -> str | None:
 
 
 def infer_command_from_message(message: str | None) -> str | None:
-    """Return the leading command token when a launch message carries one."""
+    """Return the canonical command name when a launch message carries a leading command.
+
+    A bare token is resolved against the global corpus first, so a
+    human-typed unqualified lifecycle command still names its qualified
+    value; an ambiguous bare token names no command here rather than
+    guessing one.
+    """
     if not message or not message.startswith(_COMMAND_PREFIX):
         return None
-    return message.split()[0].removeprefix(_COMMAND_PREFIX)
+    bare = message.split()[0].removeprefix(_COMMAND_PREFIX)
+    try:
+        resolved = resolve_command_document(bare)
+    except AmbiguousCommandError:
+        return None
+    return resolved.canonical_name if resolved is not None else bare
 
 
 def infer_role_and_slug_from_message(message: str | None) -> tuple[str | None, str | None, str | None]:

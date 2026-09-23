@@ -43,6 +43,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from teleclaude import agent_artifacts
 from teleclaude.artifact_ownership import reconcile_deployed_files, retract_retired_native_artifacts
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.config.declaration import schema_filename
@@ -82,11 +83,9 @@ _DOCS_ENABLED_FLAG = "--docs-enabled"
 _AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing during deployment."
 _DOCS_ENABLED_HELP = "Enable or disable documentation deployment."
 _PROJECT_MASTER_FILENAME = "AGENTS.master.md"
-_COMMANDS_KEY = "commands"
 _CODEX_AGENT_NAME = "codex"
 _GEMINI_AGENT_NAME = "gemini"
 _COMMANDS_STAGING_DIRECTORY = "commands"
-_MARKDOWN_EXTENSION = ".md"
 _UTF8 = "utf-8"
 _NEWLINE = "\n"
 _SNIPPET_ID_BLOCK = "id: {snippet_id}\n\n{body}"
@@ -1196,10 +1195,21 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
         ".venv",
         "venv",
     }
+    # Skill package directories can carry arbitrary, deep third-party file
+    # trees, including a coincidentally named AGENTS.master.md that is not a
+    # project-directory master. Every root this repository's own skill tree
+    # can occupy — tiered, transitional flat, and project-local — is skipped
+    # rather than walked; global_skill_source_root only resolves when
+    # project_root is Mother, and is a no-op path otherwise.
+    skill_tree_roots = {
+        global_skill_source_root(project_root),
+        project_root / "agents" / "skills",
+        project_root / "agents" / "project" / "skills",
+    }
     matches: list[Path] = []
     for root, dirs, files in os.walk(project_root):
         root_path = Path(root)
-        if root_path == global_skill_source_root(project_root):
+        if root_path in skill_tree_roots:
             dirs.clear()
             continue
         dirs[:] = [d for d in dirs if d not in skip_dirs]
@@ -1314,6 +1324,46 @@ def _resolve_pipeline_capabilities(
     return effective_agents, effective_docs
 
 
+def _collect_global_command_files(project_root_path: Path) -> dict[str, Path]:
+    """Map corpus-relative output path to source file for every in-reach global command.
+
+    Both the domain-partitioned tree (``<domain>/<name>.md``) and the
+    transitional flat mother root (``<name>.md``) are included — the
+    expand-then-contract migration keeps both live until the flat root is
+    deleted on ``main`` after this delivery folds. Reach is re-checked here
+    as defense in depth; the sealed commit already refused an out-of-reach
+    source before it could ever reach this pass.
+    """
+    command_files: dict[str, Path] = {}
+    for source in agent_artifacts.all_sources(project_root_path):
+        if source.kind is not ArtifactKind.COMMAND or source.tier is not agent_artifacts.ArtifactTier.GLOBAL:
+            continue
+        if agent_artifacts.reach_violation(project_root_path, source) is not None:
+            continue
+        relative = f"{source.domain}/{source.entrypoint.name}" if source.domain else source.entrypoint.name
+        command_files[relative] = source.entrypoint
+    return command_files
+
+
+def _global_command_reach_findings(project_root_path: Path) -> list[str]:
+    """Report every out-of-reach global command source, naming file and reach.
+
+    A finding here is defense in depth: the sealed commit already refused an
+    out-of-reach source before it could be committed. Distribution still
+    names it explicitly rather than silently excluding it from the staged
+    corpus, so a run against an already-dirty tree never skips a source
+    without a word.
+    """
+    findings: list[str] = []
+    for source in agent_artifacts.all_sources(project_root_path):
+        if source.kind is not ArtifactKind.COMMAND or source.tier is not agent_artifacts.ArtifactTier.GLOBAL:
+            continue
+        violation = agent_artifacts.reach_violation(project_root_path, source)
+        if violation is not None:
+            findings.append(violation)
+    return findings
+
+
 def main() -> None:  # noqa: C901
     """Transpile and optionally deploy agent artifacts for supported CLIs."""
     parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
@@ -1354,7 +1404,7 @@ def main() -> None:  # noqa: C901
         project_root=project_root_path,
     )
     agents_root = os.path.join(teleclaude_root, "agents")
-    dot_agents_root = os.path.join(project_root, ".agents")
+    project_agents_root = os.path.join(project_root, "agents", "project")
     os.chdir(project_root)
     canonical_root = git_common_root(project_root_path)
     master_docs_dir = os.path.join(project_root, "docs", "global")
@@ -1391,9 +1441,7 @@ def main() -> None:  # noqa: C901
     dist_dir = "dist"
 
     master_agents_file = os.path.join(agents_root, "AGENTS.global.md")
-    master_commands_dir = os.path.join(agents_root, "commands")
-    dot_master_commands_dir = os.path.join(dot_agents_root, "commands")
-    dot_master_skills_dir = os.path.join(dot_agents_root, "skills")
+    project_skills_dir = str(agent_artifacts.project_skills_root(project_root_path))
     agents_config: dict[str, AgentConfig] = {
         "claude": {
             "home_root": os.path.expanduser("~/.claude"),
@@ -1454,55 +1502,60 @@ def main() -> None:  # noqa: C901
             {
                 "label": "agents",
                 "master": master_agents_file,
-                _COMMANDS_KEY: master_commands_dir,
             }
         ]
     local_sources = [
         {
-            "label": ".agents",
-            "master": os.path.join(project_root, ".agents", "__none__"),
-            _COMMANDS_KEY: dot_master_commands_dir,
-            "skills": dot_master_skills_dir,
+            "label": "agents/project",
+            "master": os.path.join(project_root, "agents", "project", "__none__"),
+            "skills": project_skills_dir,
         },
     ]
 
     def _existing_sources(source_list: list[dict[str, str]]) -> list[dict[str, str]]:
         existing: list[dict[str, str]] = []
         for source in source_list:
-            if source["label"] in {"agents", ".agents"}:
+            if source["label"] in {"agents", "agents/project"}:
                 existing.append(source)
                 continue
-            if os.path.isfile(source["master"]) or os.path.isdir(source["commands"]) or os.path.isdir(source["skills"]):
+            if os.path.isfile(source.get("master", "")) or os.path.isdir(source.get("skills", "")):
                 existing.append(source)
         return existing
 
     global_sources = _existing_sources(global_sources)
     local_sources = _existing_sources(local_sources)
+    global_command_files = _collect_global_command_files(project_root_path) if agents_enabled else {}
 
-    def _validate_command_sources(sources: list[dict[str, str]]) -> list[str]:
+    def _validate_global_command_files(command_files: dict[str, Path]) -> list[str]:
         errors: list[str] = []
-        command_items: list[str] = []
-        for source in sources:
-            command_dir = source.get(_COMMANDS_KEY)
-            if isinstance(command_dir, str) and os.path.isdir(command_dir):
-                command_items.extend(
-                    filename for filename in os.listdir(command_dir) if filename.endswith(_MARKDOWN_EXTENSION)
+        for item_path in sorted(command_files.values()):
+            try:
+                with item_path.open(encoding=_UTF8) as file_obj:
+                    post = frontmatter.load(file_obj)
+                validate_artifact(post, str(item_path), kind=ArtifactKind.COMMAND, project_root=Path(project_root))
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                errors.append(str(exc))
+        return errors
+
+    def _validate_project_command_sources(project_root_path: Path) -> list[str]:
+        """Validate every registry-classified project-tier command source.
+
+        Selection comes from the registry (``all_sources``), never a local
+        directory listing — the registry is the one place that decides what
+        counts as a project command source.
+        """
+        errors: list[str] = []
+        for source in agent_artifacts.all_sources(project_root_path):
+            if source.kind is not ArtifactKind.COMMAND or source.tier is not agent_artifacts.ArtifactTier.PROJECT:
+                continue
+            try:
+                with source.entrypoint.open(encoding=_UTF8) as file_obj:
+                    post = frontmatter.load(file_obj)
+                validate_artifact(
+                    post, str(source.entrypoint), kind=ArtifactKind.COMMAND, project_root=project_root_path
                 )
-        for item in sorted(set(command_items)):
-            for source in sources:
-                command_dir = source.get(_COMMANDS_KEY)
-                if not isinstance(command_dir, str):
-                    continue
-                item_path = os.path.join(command_dir, item)
-                if not os.path.exists(item_path):
-                    continue
-                try:
-                    with open(item_path, encoding=_UTF8) as file_obj:
-                        post = frontmatter.load(file_obj)
-                    validate_artifact(post, item_path, kind=ArtifactKind.COMMAND, project_root=Path(project_root))
-                except (OSError, ValueError, yaml.YAMLError) as exc:
-                    errors.append(str(exc))
-                break
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                errors.append(str(exc))
         return errors
 
     def _validate_sources(sources: list[dict[str, str]]) -> list[str]:
@@ -1547,13 +1600,15 @@ def main() -> None:  # noqa: C901
                         resolve_skill_name(post, item)
                 except Exception as e:
                     errors.append(str(e))
-        errors.extend(_validate_command_sources(sources))
         return errors
 
     errors: list[str] = []
     if agents_enabled:
         errors.extend(_validate_sources(global_sources))
         errors.extend(_validate_sources(local_sources))
+        errors.extend(_global_command_reach_findings(project_root_path))
+        errors.extend(_validate_global_command_files(global_command_files))
+        errors.extend(_validate_project_command_sources(project_root_path))
     if errors:
         for error in errors:
             print(error)
@@ -1584,6 +1639,7 @@ def main() -> None:  # noqa: C901
         deploy_enabled: bool,
         is_global_phase: bool,
         scope_key: str,
+        command_files: dict[str, Path],
     ) -> None:
         if os.path.exists(dist_dir):
             shutil.rmtree(dist_dir)
@@ -1592,9 +1648,8 @@ def main() -> None:  # noqa: C901
         agent_master_contents: list[str] = []
         markdown_outputs: list[str] = []
         artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
-        command_items: list[str] = []
         for source in sources:
-            if os.path.isfile(source["master"]) and source["label"] != ".agents":
+            if os.path.isfile(source["master"]) and source["label"] != "agents/project":
                 with open(source["master"], encoding="utf-8") as f:
                     agent_master_contents.append(f.read())
             for spec in artifact_specs:
@@ -1607,41 +1662,31 @@ def main() -> None:  # noqa: C901
                     artifact_items[spec.name].extend(
                         [name for name in os.listdir(source_dir) if os.path.isdir(os.path.join(source_dir, name))]
                     )
-            command_dir = source.get(_COMMANDS_KEY)
-            if isinstance(command_dir, str) and os.path.isdir(command_dir):
-                command_items.extend(
-                    filename for filename in os.listdir(command_dir) if filename.endswith(_MARKDOWN_EXTENSION)
-                )
         for spec in artifact_specs:
             artifact_items[spec.name] = sorted(set(artifact_items[spec.name]))
 
         commands_dist_dir = Path(dist_dir) / _COMMANDS_STAGING_DIRECTORY
         commands_dist_dir.mkdir(parents=True, exist_ok=True)
         commands_config = agents_config[_CODEX_AGENT_NAME]
-        for item in sorted(set(command_items)):
-            for source in sources:
-                command_dir = source.get(_COMMANDS_KEY)
-                if not isinstance(command_dir, str):
-                    continue
-                item_path = os.path.join(command_dir, item)
-                if not os.path.exists(item_path):
-                    continue
-                with open(item_path, encoding=_UTF8) as file_obj:
-                    post = frontmatter.load(file_obj)
-                validate_artifact(post, item_path, kind=ArtifactKind.COMMAND, project_root=Path(project_root))
-                content = process_file(post.content, commands_config["prefix"], _CODEX_AGENT_NAME)
-                content = expand_inline_refs(
-                    content,
-                    project_root=Path(project_root),
-                    current_path=Path(item_path),
-                    warn_only=args.warn_only,
-                    observation=observation,
-                )
-                prepared = Post(content, **_filter_frontmatter(post.metadata, _CODEX_AGENT_NAME))
-                command_output_path = commands_dist_dir / f"{Path(item).stem}{commands_config['ext']}"
-                command_output_path.write_text(dump_frontmatter(prepared).rstrip(_NEWLINE) + _NEWLINE, encoding=_UTF8)
-                markdown_outputs.append(str(command_output_path))
-                break
+        for relative_path, command_source_path in sorted(command_files.items()):
+            with command_source_path.open(encoding=_UTF8) as file_obj:
+                post = frontmatter.load(file_obj)
+            validate_artifact(
+                post, str(command_source_path), kind=ArtifactKind.COMMAND, project_root=Path(project_root)
+            )
+            content = process_file(post.content, commands_config["prefix"], _CODEX_AGENT_NAME)
+            content = expand_inline_refs(
+                content,
+                project_root=Path(project_root),
+                current_path=command_source_path,
+                warn_only=args.warn_only,
+                observation=observation,
+            )
+            prepared = Post(content, **_filter_frontmatter(post.metadata, _CODEX_AGENT_NAME))
+            command_output_path = commands_dist_dir / Path(relative_path).with_suffix(commands_config["ext"])
+            command_output_path.parent.mkdir(parents=True, exist_ok=True)
+            command_output_path.write_text(dump_frontmatter(prepared).rstrip(_NEWLINE) + _NEWLINE, encoding=_UTF8)
+            markdown_outputs.append(str(command_output_path))
 
         built_agents: list[str] = []
         for agent_name, config in agents_config.items():
@@ -1858,11 +1903,11 @@ def main() -> None:  # noqa: C901
                 deploy_enabled=deploy_enabled,
                 is_global_phase=is_global_phase,
                 scope_key=scope_key,
+                command_files=global_command_files if is_global_phase else {},
             )
 
     if args.deploy:
         compose_global_skill_catalog(
-            project_root_path,
             Path(teleclaude_root),
             partial(
                 _render_global_skill_catalog,
@@ -1873,7 +1918,7 @@ def main() -> None:  # noqa: C901
         )
         if agents_enabled:
             with tempfile.TemporaryDirectory(prefix="teleclaude-dist-global-") as global_dist:
-                if global_sources:
+                if global_sources or global_command_files:
                     _run_phase(
                         sources=global_sources,
                         prefix_root=agents_root,
@@ -1882,13 +1927,13 @@ def main() -> None:  # noqa: C901
                         emit_repo_codex=False,
                         deploy_enabled=True,
                         is_global_phase=True,
-                        scope_key="global",
+                        scope_key=str(canonical_root.resolve()),
                     )
             with tempfile.TemporaryDirectory(prefix="teleclaude-dist-local-") as local_dist:
                 if local_sources:
                     _run_phase(
                         sources=local_sources,
-                        prefix_root=dot_agents_root,
+                        prefix_root=project_agents_root,
                         dist_dir=local_dist,
                         deploy_root=project_root,
                         emit_repo_codex=True,
@@ -1902,7 +1947,7 @@ def main() -> None:  # noqa: C901
                 process_correlation_id=observation.process_correlation_id,
             )
     else:
-        if global_sources:
+        if global_sources or global_command_files:
             _run_phase(
                 sources=global_sources,
                 prefix_root=agents_root,
@@ -1911,13 +1956,13 @@ def main() -> None:  # noqa: C901
                 emit_repo_codex=False,
                 deploy_enabled=False,
                 is_global_phase=True,
-                scope_key="global",
+                scope_key=str(canonical_root.resolve()),
             )
 
         if local_sources:
             _run_phase(
                 sources=local_sources,
-                prefix_root=dot_agents_root,
+                prefix_root=project_agents_root,
                 dist_dir=os.path.join(project_root, "dist", "local"),
                 deploy_root=project_root,
                 emit_repo_codex=True,

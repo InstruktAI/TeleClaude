@@ -1,4 +1,4 @@
-"""Compose human-curated global skill folders from registered projects."""
+"""Compose Mother's human-curated global skill folders into the shared catalog."""
 
 from __future__ import annotations
 
@@ -9,11 +9,10 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.paths import GLOBAL_SKILLS_DIR, SKILL_STORE_DIR
-from teleclaude.project_manifest import load_roots
 
 _AGENTS_DIRNAME = "agents"
+_GLOBAL_DIRNAME = "global"
 _SKILLS_DIRNAME = "skills"
 _CATALOG_MASTER_FILENAME = "AGENTS.master.md"
 _CATALOG_OUTPUT_FILENAME = "AGENTS.md"
@@ -29,7 +28,6 @@ _HASH_SYMLINK_MARKER = b"symlink\0"
 _HASH_SEPARATOR = b"\0"
 _DIGEST_LENGTH = 64
 _COPY_TEMP_SUFFIX = ".next"
-_COLLISION_MESSAGE = "global skill name collision: {name} published by {first} and {second}"
 _MISSING_CATALOG_MESSAGE = "global skill catalog master not found: {path}"
 _COMPOSED_MESSAGE = "  Composed global skills: {target} ({count} skill(s))"
 
@@ -38,20 +36,26 @@ CatalogRenderer = Callable[[Path], str]
 
 @dataclass(frozen=True)
 class GlobalSkillContribution:
-    """One named skill folder contributed by a registered project."""
+    """One named skill folder Mother carries in its tiered global-skill source."""
 
     name: str
     source: Path
     publisher_root: Path
 
 
-def global_skill_source_root(project_root: Path) -> Path:
-    """Return a project's structurally declared global-skill source root."""
-    return project_root / _AGENTS_DIRNAME / _SKILLS_DIRNAME
+def global_skill_source_root(mother_root: Path) -> Path:
+    """Return Mother's tiered global-skill source root.
+
+    The catalog is composed from Mother alone — no other registered project
+    is ever a publisher here. A side-project skill folder under this same
+    relative path in its own checkout is refused at validation
+    (`teleclaude.agent_artifacts`), never merged.
+    """
+    return mother_root / _AGENTS_DIRNAME / _GLOBAL_DIRNAME / _SKILLS_DIRNAME
 
 
-def _direct_skill_dirs(project_root: Path) -> Iterator[Path]:
-    source_root = global_skill_source_root(project_root)
+def _direct_skill_dirs(mother_root: Path) -> Iterator[Path]:
+    source_root = global_skill_source_root(mother_root)
     if not source_root.is_dir():
         return
     for entry in sorted(source_root.iterdir(), key=lambda path: path.name):
@@ -59,53 +63,11 @@ def _direct_skill_dirs(project_root: Path) -> Iterator[Path]:
             yield entry
 
 
-def _owning_checkout(root: Path) -> Path:
-    """Resolve a linked worktree back to the checkout that owns it.
-
-    A worktree carries the same `agents/skills/` folders as its owner, so
-    admitting both as publishers makes every skill name collide with itself.
-    Deduplication downstream keys on the resolved path, which cannot see that
-    `trees/<slug>` and the repo root are one repository. `REPO_ROOT` reaches
-    here as the mother root and is derived from the importing module's own
-    location, so any run from inside a worktree names that worktree as mother;
-    resolving both arguments is what keeps the registry's own entry from
-    colliding with it. A root that is not a TeleClaude checkout passes through
-    unchanged, preserving the registry tolerance the caller already relies on.
+def collect_global_skills(mother_root: Path) -> list[GlobalSkillContribution]:
+    """Collect Mother's own direct skill folders. A filesystem directory can never
+    yield the same entry name twice, so no cross-publisher collision is possible here.
     """
-    try:
-        return resolve_project_state_root(root)
-    except FileNotFoundError:
-        return root
-
-
-def _publisher_roots(current_project_root: Path, mother_root: Path) -> list[Path]:
-    roots: list[Path] = []
-    seen: set[Path] = set()
-    for root in (_owning_checkout(current_project_root), _owning_checkout(mother_root), *load_roots()):
-        resolved = root.expanduser().resolve()
-        if resolved in seen or not resolved.is_dir():
-            continue
-        seen.add(resolved)
-        roots.append(resolved)
-    return roots
-
-
-def collect_global_skills(current_project_root: Path, mother_root: Path) -> list[GlobalSkillContribution]:
-    """Collect uniquely named direct skill folders from every registered project."""
-    contributions: dict[str, GlobalSkillContribution] = {}
-    for publisher_root in _publisher_roots(current_project_root, mother_root):
-        for source in _direct_skill_dirs(publisher_root):
-            existing = contributions.get(source.name)
-            if existing is not None:
-                raise ValueError(
-                    _COLLISION_MESSAGE.format(
-                        name=source.name,
-                        first=existing.publisher_root,
-                        second=publisher_root,
-                    )
-                )
-            contributions[source.name] = GlobalSkillContribution(source.name, source, publisher_root)
-    return [contributions[name] for name in sorted(contributions)]
+    return [GlobalSkillContribution(source.name, source, mother_root) for source in _direct_skill_dirs(mother_root)]
 
 
 def _digest_directory(source: Path) -> str:
@@ -161,7 +123,6 @@ def _stage_catalog(contributions: list[GlobalSkillContribution]) -> Path:
 
 
 def compose_global_skill_catalog(
-    current_project_root: Path,
     mother_root: Path,
     render_catalog: CatalogRenderer,
 ) -> None:
@@ -170,7 +131,7 @@ def compose_global_skill_catalog(
     if not catalog_master.is_file():
         raise FileNotFoundError(_MISSING_CATALOG_MESSAGE.format(path=catalog_master))
 
-    contributions = collect_global_skills(current_project_root, mother_root)
+    contributions = collect_global_skills(mother_root)
     staging = _stage_catalog(contributions)
     previous = GLOBAL_SKILLS_DIR.parent / _PREVIOUS_CATALOG_DIRNAME
     _remove_path(previous)

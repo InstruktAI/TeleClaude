@@ -302,33 +302,38 @@ class SystemCommand(str, Enum):
 
 
 class SlashCommand(str, Enum):
-    """Canonical slash commands dispatched to agent sessions."""
+    """Canonical slash commands dispatched to agent sessions.
 
-    ANALYZE_TODO_INPUT = "analyze-todo-input"
-    NEXT_BUILD = "next-build"
-    NEXT_REVIEW_BUILD = "next-review-build"
-    NEXT_REVIEW_PRD = "next-review-prd"
-    NEXT_REVIEW_PLAN = "next-review-plan"
-    NEXT_REVIEW_ARCHITECTURE = "next-review-architecture"
-    NEXT_REVIEW_COMMITS = "next-review-commits"
-    NEXT_FINALIZE = "next-finalize"
-    NEXT_PREPARE_INTAKE = "next-prepare-intake"
-    NEXT_PREPARE_ARCHITECTURE = "next-prepare-architecture"
-    NEXT_PREPARE_DIAGNOSE = "next-prepare-diagnose"
-    NEXT_PREPARE_PLAN = "next-prepare-plan"
-    NEXT_PREPARE_TASK = "next-prepare-task"
-    NEXT_DRIFT_ANALYZE = "next-drift-analyze"
-    NEXT_PREPARE = "next-prepare"
-    NEXT_WORK = "next-work"
-    NEXT_RUN_TASK = "next-run-task"
-    NEXT_INTEGRATE = "next-integrate"
-    NEXT_COORDINATE = "next-coordinate"
-    NEXT_CREATE = "next-create"
-    NEXT_CREATE_ART = "next-create-art"
-    NEXT_CREATE_HTML = "next-create-html"
-    NEXT_DEFER = "next-defer"
-    NEXT_ASSIST = "next-assist"
-    NEXT_RUN_JOB = "next-run-job"
+    Values are domain-qualified (``<domain>/<name>``), matching the
+    partitioned global corpus each names — see
+    ``teleclaude.agent_artifacts`` and ``project/design/architecture/agent-artifact-distribution#corpus-layout-and-names``.
+    """
+
+    ANALYZE_TODO_INPUT = "software-development/analyze-todo-input"
+    NEXT_BUILD = "software-development/next-build"
+    NEXT_REVIEW_BUILD = "software-development/next-review-build"
+    NEXT_REVIEW_PRD = "software-development/next-review-prd"
+    NEXT_REVIEW_PLAN = "software-development/next-review-plan"
+    NEXT_REVIEW_ARCHITECTURE = "software-development/next-review-architecture"
+    NEXT_REVIEW_COMMITS = "software-development/next-review-commits"
+    NEXT_FINALIZE = "software-development/next-finalize"
+    NEXT_PREPARE_INTAKE = "software-development/next-prepare-intake"
+    NEXT_PREPARE_ARCHITECTURE = "software-development/next-prepare-architecture"
+    NEXT_PREPARE_DIAGNOSE = "software-development/next-prepare-diagnose"
+    NEXT_PREPARE_PLAN = "software-development/next-prepare-plan"
+    NEXT_PREPARE_TASK = "software-development/next-prepare-task"
+    NEXT_DRIFT_ANALYZE = "software-development/next-drift-analyze"
+    NEXT_PREPARE = "software-development/next-prepare"
+    NEXT_WORK = "software-development/next-work"
+    NEXT_RUN_TASK = "software-development/next-run-task"
+    NEXT_INTEGRATE = "software-development/next-integrate"
+    NEXT_COORDINATE = "software-development/next-coordinate"
+    NEXT_CREATE = "creative/next-create"
+    NEXT_CREATE_ART = "creative/next-create-art"
+    NEXT_CREATE_HTML = "creative/next-create-html"
+    NEXT_DEFER = "software-development/next-defer"
+    NEXT_ASSIST = "software-development/next-assist"
+    NEXT_RUN_JOB = "general/next-run-job"
 
 
 # Canonical `/next-*` commands that may run without a todo slug: the prepare
@@ -592,9 +597,9 @@ class CheckpointModel:
 CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
 # A post-commit review is satisfied once the commit(s) are dispatched to a
 # reviewer — either a fresh run of next-review-commits (with an optional leading
-# slash) or a remediation sent to an already-open reviewer ("review commits <sha>"
-# via telec sessions send).
-CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = ["next-review-commits", "review commits"]
+# slash, qualified or bare) or a remediation sent to an already-open reviewer
+# ("review commits <sha>" via telec sessions send).
+CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = [SlashCommand.NEXT_REVIEW_COMMITS.value, "review commits"]
 
 # Universal base judgment actions (the verbs). TeleClaude owns this registry; every
 # onboarded project inherits it and references these ids in its own bindings or
@@ -624,12 +629,24 @@ CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
     "sync": MaintenanceAction(id="sync", command=("telec", "sync", "--skip-deploy"), main_only=True, precedence=55),
 }
 
+# The only two locations an agent-artifact source ever lives: a project's own
+# root master, and its `agents/` tree (root masters/addenda, the tiered
+# global/project commands and skills, and the transitional flat mother
+# roots). `.agents/` is deliberately excluded — it is the delivery location
+# the local phase writes to, never a source. Owned here (rather than in
+# `teleclaude.agent_artifacts`, the registry that classifies paths against
+# this same set) because `constants` sits below `project_root`/`domains` in
+# the import graph and importing the registry here would cycle back through
+# it; `teleclaude.project_root` and `teleclaude.agent_artifacts` both import
+# this tuple as their single source of truth for "where sources live".
+AGENT_ARTIFACT_SOURCE_GLOBS: tuple[str, ...] = ("AGENTS.master.md", "agents/**")
+
 # Universal base bindings preserve their scopes for project overlays. Docs and
 # agent-artifact scopes trigger sync, while the toolchain scope triggers install;
 # project-declared code scopes attach test and log-check separately.
 CHECKPOINT_BASE_DOCS_BINDING = CheckpointBinding(scope=CheckpointScope(include=("docs/**",)), actions=("sync",))
 CHECKPOINT_BASE_AGENTS_BINDING = CheckpointBinding(
-    scope=CheckpointScope(include=("agents/**", ".agents/**", "**/AGENTS.master.md")),
+    scope=CheckpointScope(include=AGENT_ARTIFACT_SOURCE_GLOBS),
     actions=("sync",),
 )
 CHECKPOINT_BASE_CODE_BINDING = CheckpointBinding(

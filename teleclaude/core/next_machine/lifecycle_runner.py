@@ -91,14 +91,14 @@ def default_session_runner() -> SessionRunner:
 
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:
     if lane is RunnerLane.ANALYZE:
-        return "/analyze-todo-input", ""
+        return f"/{SlashCommand.ANALYZE_TODO_INPUT.value}", ""
     if lane is RunnerLane.TASK_PREPARE:
-        return "/next-prepare-task", ""
+        return f"/{SlashCommand.NEXT_PREPARE_TASK.value}", ""
     if lane is RunnerLane.TASK_RUN:
-        return "/next-run-task", ""
+        return f"/{SlashCommand.NEXT_RUN_TASK.value}", ""
     if lane is RunnerLane.WORK:
-        return "/next-work", ""
-    return "/next-prepare", ""
+        return f"/{SlashCommand.NEXT_WORK.value}", ""
+    return f"/{SlashCommand.NEXT_PREPARE.value}", ""
 
 
 def _role_for_lane(lane: RunnerLane) -> tuple[str, JobRole]:

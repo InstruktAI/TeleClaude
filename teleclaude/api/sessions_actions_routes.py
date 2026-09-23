@@ -102,6 +102,11 @@ from teleclaude.core.session_message_projection import (
     SessionMessageProjectionOptions,
     build_session_messages_dto,
 )
+from teleclaude.core.session_startup_message import (
+    AmbiguousCommandError,
+    resolve_command_document,
+    resolve_slash_command,
+)
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.core.todos_db._exceptions import ClaimConflict, ReviewerConflict, ReviewerIdentityUnresolved
 from teleclaude.types.commands import (
@@ -138,7 +143,7 @@ _JOB_COMMAND_GENERIC_CREATE_DETAIL = "next-run-job must be dispatched through /s
 SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
     command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
 }
-SLUG_INFERABLE_LIFECYCLE_COMMANDS.add("analyze-todo-input")
+SLUG_INFERABLE_LIFECYCLE_COMMANDS.add(SlashCommand.ANALYZE_TODO_INPUT.value)
 
 SLUG_REQUIRED_LIFECYCLE_COMMANDS = SLUG_INFERABLE_LIFECYCLE_COMMANDS - {
     command.value for command in NON_SLUG_BOUND_COMMANDS
@@ -277,13 +282,10 @@ def _normalize_command(command: str | None) -> SlashCommand | None:
     the same way :func:`classify_driver_launch` parses a string command — gives
     the guard a single value to key both the title-prefix lookup and the
     reuse-command text from, so the two consumers can never disagree on shape.
+    Delegates to the shared canonicalizing seam so a bare token still matches
+    its qualified `SlashCommand` member.
     """
-    if command is None:
-        return None
-    try:
-        return SlashCommand(command.lstrip("/"))
-    except ValueError:
-        return None
+    return resolve_slash_command(command)
 
 
 async def enforce_driver_start_guard(
@@ -342,6 +344,13 @@ async def guard_generic_create_session(
         )
     working_slug = resolve_working_slug_from_subdir(request.subdir) or cmd.working_slug
     command_name = leading_command.removeprefix("/") if leading_command else None
+    if command_name is not None:
+        try:
+            resolved_command_name = resolve_command_document(command_name)
+        except AmbiguousCommandError:
+            resolved_command_name = None
+        if resolved_command_name is not None:
+            command_name = resolved_command_name.canonical_name
     if command_name in SLUG_REQUIRED_LIFECYCLE_COMMANDS and not working_slug:
         raise _refuse_missing_argument(command_name)
     if command_name in REQUIRED_ARGUMENT_NON_LIFECYCLE_COMMANDS and not leading_command_args(request.message):
@@ -362,6 +371,16 @@ def _prepare_run_session(
 ) -> RunSessionPlan:
     """Normalize run-session inputs into a create-session plan."""
     normalized_cmd = normalize_run_session_command(request.command)
+    try:
+        resolved_command = resolve_command_document(normalized_cmd)
+    except AmbiguousCommandError as exc:
+        raise RunSessionRefusal(
+            status_code=400,
+            detail=str(exc),
+            reason=AgentDispatchReason.COMMAND_INVALID,
+        ) from exc
+    if resolved_command is not None:
+        normalized_cmd = resolved_command.canonical_name
     normalized_args = request.args.strip()
     try:
         slash_cmd = SlashCommand(normalized_cmd)
@@ -735,9 +754,9 @@ async def _run_session(
 ) -> CreateSessionResponseDTO:
     """Run a slash command on a new agent session."""
     request_id = str(uuid.uuid4())
-    normalized_command = request.command.lstrip("/") or None
-    command_kind = "prepare" if normalized_command == SlashCommand.NEXT_PREPARE.value else normalized_command
     requested_command = _normalize_command(request.command)
+    normalized_command = requested_command.value if requested_command else (request.command.lstrip("/") or None)
+    command_kind = "prepare" if requested_command is SlashCommand.NEXT_PREPARE else normalized_command
     request_entry_point = SessionEntryPoint.CRON if requested_command is SlashCommand.NEXT_RUN_JOB else entry_point
     role_info = COMMAND_ROLE_MAP.get(requested_command) if requested_command else None
     agent_supplied = "agent" in request.model_fields_set

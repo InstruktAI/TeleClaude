@@ -56,6 +56,7 @@ from teleclaude.core.integration.discord_admin_state import (
 from teleclaude.core.models import SessionLaunchIntent, ThinkingMode
 from teleclaude.core.session_launcher import create_session
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
+from teleclaude.core.session_startup_message import resolve_slash_command
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -117,10 +118,10 @@ def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchCl
     legitimately spawn against a shared ``working_slug``.
     """
     if isinstance(command, str):
-        try:
-            command = SlashCommand(command.lstrip("/"))
-        except ValueError:
+        resolved = resolve_slash_command(command)
+        if resolved is None:
             return DriverLaunchClass.WORKER_CHILD
+        command = resolved
     if command is None:
         return DriverLaunchClass.WORKER_CHILD
     if command is SlashCommand.NEXT_RUN_TASK:

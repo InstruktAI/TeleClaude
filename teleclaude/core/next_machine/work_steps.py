@@ -710,7 +710,7 @@ async def _work_step_review_approved(
     if await todos_db.has_pending_deferrals(slug):
         return False, format_tool_call(
             ToolCallRequest(
-                command="next-defer",
+                command=SlashCommand.NEXT_DEFER,
                 args=slug,
                 project=_derive_project_root(cwd, slug),
                 subfolder=f"{WORKTREE_DIR}/{slug}",

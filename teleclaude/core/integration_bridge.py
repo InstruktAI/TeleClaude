@@ -338,11 +338,11 @@ async def spawn_integrator_session(
         project_path=project_path,
         origin=InputOrigin.TERMINAL.value,
         command=SlashCommand.NEXT_INTEGRATE.value,
-        initial_input="/next-integrate",
+        initial_input=f"/{SlashCommand.NEXT_INTEGRATE.value}",
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
             thinking_mode="slow",
-            message="/next-integrate",
+            message=f"/{SlashCommand.NEXT_INTEGRATE.value}",
             dispatch_mode=AgentDispatchMode.AUTOMATIC,
         ),
         system_role=ROLE_INTEGRATOR,

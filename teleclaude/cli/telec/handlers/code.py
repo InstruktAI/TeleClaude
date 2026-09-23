@@ -17,6 +17,11 @@ from sqlalchemy.exc import OperationalError
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.handlers._code_commit_guidance import (
+    _NON_CODE_DOCUMENTATION_PATTERNS,
+    _commit_stage_paths,
+    _print_commit_review_guidance,
+)
 from teleclaude.cli.telec.handlers._code_git_state import (
     dirty_paths,
     get_unmerged_files,
@@ -32,15 +37,12 @@ from teleclaude.cli.telec.handlers.quality import handle_format, handle_install,
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_COMMIT
 from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
-from teleclaude.constants import CHECKPOINT_BASE_AGENTS_BINDING, SlashCommand
 from teleclaude.core.db import get_db
 from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
-from teleclaude.core.next_machine.runtime.sessions import list_live_commit_reviewers_for_initiator
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
 from teleclaude.project_root import (
-    DOC_LAYER_PATTERN,
     forbidden_slug_worktree_agent_artifact_paths,
     forbidden_slug_worktree_doc_paths,
 )
@@ -57,8 +59,6 @@ from teleclaude.session_scoping import declare as declare_session_paths
 
 logger = get_logger(__name__)
 _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+")
-_STANDALONE_PROSE_PATTERNS = ("*.md", "*.txt", "*.rst")
-_NON_CODE_DOCUMENTATION_PATTERNS = (DOC_LAYER_PATTERN, *_STANDALONE_PROSE_PATTERNS)
 # The doc layer is authored at prepare on `main` and folded at integration; a slug
 # worktree commit must never touch it. Deliberately narrower than
 # `_NON_CODE_DOCUMENTATION_PATTERNS` so the guard only refuses the doc layer
@@ -82,13 +82,6 @@ _AGENT_ARTIFACT_WORKTREE_GUIDANCE = (
     "remove these paths from the worktree commit and route the artifact change to that session."
 )
 _WORKTREE_REFUSAL_PATH_TEMPLATE = "  {path}"
-_SCOPE_DIFFSTAT_HEADER = "Scope as resolved now — read this before you write the message:"
-_SCOPE_DIFFSTAT_EMPTY = "Scope as resolved now: nothing. A commit would carry no change."
-_SCOPE_DIFFSTAT_UNAVAILABLE = "Scope as resolved now: unavailable. Read the diff yourself before committing."
-_GIT_DIFF_HEAD_REF = "HEAD"
-_GIT_STAT_FLAG = "--stat"
-_GIT_PATHSPEC_SEPARATOR = "--"
-_SCOPE_DIFFSTAT_LINE_SEPARATOR = "\n"
 
 
 class CodeSubcommand(StrEnum):
@@ -795,134 +788,6 @@ def _record_commit_checkpoint_markers(project_root: Path, committed_files: list[
         record_authored_main_commit(session_id)
 
 
-async def _commit_reviewers_async(project_root: Path, initiator_session_id: str) -> tuple[tuple[str, str], ...]:
-    """Resolve every live commit-review session open for this project and driver."""
-    runtime_db = await get_db()
-    return await list_live_commit_reviewers_for_initiator(
-        runtime_db, project_root, initiator_session_id, SlashCommand.NEXT_REVIEW_COMMITS.value
-    )
-
-
-def _resolve_open_commit_reviewers(project_root: Path) -> tuple[tuple[str, str], ...]:
-    """Resolve the open commit reviewers for this driver as (session id, mode) pairs.
-
-    Advisory only — this backs a printed hint, never a gate. Any resolution
-    failure (no session identity, no runtime, an unreachable database) yields
-    an empty result so the caller falls back to the start-only form; resolving
-    this hint can never become a new way for ``telec code commit`` to fail.
-
-    Every open reviewer is reported with its mode rather than one arbitrary
-    holder: mode is part of the review subject, so a bare session id could
-    address the doc-hygiene lane while the series needs the code lane.
-    """
-    initiator_session_id = get_session_id()
-    if not initiator_session_id:
-        return ()
-    try:
-        return asyncio.run(_commit_reviewers_async(project_root, initiator_session_id))
-    except (OperationalError, OSError, RuntimeError):
-        return ()
-
-
-def _resolved_scope_diffstat(project_root: Path, context_root: Path | None) -> str:
-    """Render the diffstat of what a commit would carry from the resolved scope.
-
-    The card is read by the author composing its commit message, so the stat is
-    the change itself rather than a claim about it: a message written from the
-    author's own edits diverges visibly here from what the pathspec will take.
-    """
-    try:
-        scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=context_root)
-        paths = _commit_stage_paths(scope_resolution)
-        if not paths:
-            return _SCOPE_DIFFSTAT_EMPTY
-        stat = Repo(str(project_root)).git.diff(_GIT_DIFF_HEAD_REF, _GIT_STAT_FLAG, _GIT_PATHSPEC_SEPARATOR, *paths)
-    except (GitCommandError, RuntimeError, OSError):
-        # The card's own content is the commit-first and review-routing
-        # instruction the agent must act on; the stat is an aid beside it. A
-        # scope that will not resolve must not take the instruction down with
-        # it, so the stat degrades to naming its own absence and the agent is
-        # told to read the diff itself.
-        return _SCOPE_DIFFSTAT_UNAVAILABLE
-    if not stat.strip():
-        return _SCOPE_DIFFSTAT_EMPTY
-    return f"{_SCOPE_DIFFSTAT_HEADER}{_SCOPE_DIFFSTAT_LINE_SEPARATOR}{stat}"
-
-
-def _print_commit_review_guidance(project_root: Path, context_root: Path | None) -> None:
-    """Print the active commit-gate continuation instructions for shared main.
-
-    The sealed contract makes ``--approved`` the single gate for any commit on
-    main; the bare ``telec code commit`` invocation enters the commit gate. The
-    caller owns the exit code, but the printed surface is a continuation
-    instruction: commit or reach a concrete blocker before reporting done.
-    """
-    open_reviewers = _resolve_open_commit_reviewers(project_root)
-    documentation_patterns = ", ".join(_NON_CODE_DOCUMENTATION_PATTERNS)
-    standalone_prose_patterns = ", ".join(_STANDALONE_PROSE_PATTERNS)
-    agent_artifact_patterns = ", ".join(CHECKPOINT_BASE_AGENTS_BINDING.scope.include)
-    if open_reviewers:
-        already_open = "".join(
-            f"     already open at {mode or 'unknown'}: telec sessions send {session_id} "
-            "'review commits <sha1,sha2,...>'\n"
-            for session_id, mode in open_reviewers
-        )
-        review_dispatch = (
-            "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
-            "   gets its own reviewer (--mode fast for doc-hygiene, --mode med for code review):\n"
-            "     telec sessions run --command next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
-            + already_open
-        )
-    else:
-        review_dispatch = (
-            "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode med for code review):\n"
-            "     telec sessions run --command next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
-        )
-    scope_diffstat = _resolved_scope_diffstat(project_root, context_root)
-    print(
-        "COMMIT GATE ACTIVE — CONTINUE NOW\n"
-        "\n"
-        "This output is not informational. Follow it until one terminal state:\n"
-        "- a commit is created and required review routing is completed or started as instructed; or\n"
-        "- a concrete blocker is reached.\n"
-        "\n"
-        f"{scope_diffstat}\n"
-        "\n"
-        "Required next steps:\n"
-        "1. Declare what you are working on, if you have not already:\n"
-        "  telec code add <path> [<path> ...]\n"
-        "   The declared set is your authoritative commit scope. Late declaration is fine —\n"
-        "   declare the moment you notice a path isn't declared yet.\n"
-        "\n"
-        "2. Commit the declared work yourself. Never ask the human before committing.\n"
-        "   If your declared set contains multiple separable intents, split with --only:\n"
-        "  telec code commit --approved '<msg>' --only <path> [<path> ...]\n"
-        "   A tracked file you wrote from a shell command also needs `telec code add`:\n"
-        "   only declared paths are committed, so an undeclared shell write is outside\n"
-        "   scope and will not be committed.\n"
-        "\n"
-        "   Foreign staged files are excluded by pathspec. Do not unstage them.\n"
-        "\n"
-        "3. After committing, route the review by what the diff touched:\n"
-        "   Remediation only — the diff just applies an open review's findings and adds no\n"
-        "       new reviewable surface -> send it back to that same reviewer to confirm; do\n"
-        "       not offer a fresh review. Its APPROVE is terminal.\n"
-        f"   Any path matched by neither documentation ({documentation_patterns}) nor agent artifacts\n"
-        f"       ({agent_artifact_patterns}) ->\n"
-        "       dispatch independent code review automatically.\n"
-        f"   Documentation snippets ({DOC_LAYER_PATTERN}) or agent artifacts ({agent_artifact_patterns}) -> required:\n"
-        "       dispatch an independent doc-hygiene review (you may not review your own).\n"
-        f"   Standalone descriptive prose ({standalone_prose_patterns}) outside {DOC_LAYER_PATTERN} -> no\n"
-        "       independent review; directive text follows the functional-code review path.\n"
-        "\n"
-        f"{review_dispatch}"
-        "   Wait for REVIEW COMPLETE before reporting done. REQUEST CHANGES remains with\n"
-        "   you for evidence-based rejection or in-scope remediation and re-review; carry\n"
-        "   only a genuine human-owned decision, unresolved contract deadlock, or safety gate.\n",
-        file=sys.stderr,
-    )
-
-
 def _refuse_frozen_paths_in_slug_worktree(
     scope_resolution: WorkspaceScopeResolution,
     project_root: Path,
@@ -950,10 +815,6 @@ def _refuse_frozen_paths_in_slug_worktree(
             print(_WORKTREE_REFUSAL_PATH_TEMPLATE.format(path=path), file=sys.stderr)
         print(_AGENT_ARTIFACT_WORKTREE_GUIDANCE, file=sys.stderr)
     raise SystemExit(1)
-
-
-def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
-    return list(scope_resolution.repository_scoped_dirty_paths)
 
 
 def _stage_files(files: list[str], project_root: Path) -> None:

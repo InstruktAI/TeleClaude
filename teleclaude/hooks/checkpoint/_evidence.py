@@ -8,6 +8,7 @@ from teleclaude.constants import (
     CHECKPOINT_COMMIT_EVIDENCE,
     CHECKPOINT_REVIEW_DISPATCH_EVIDENCE,
     CheckpointScope,
+    SlashCommand,
 )
 from teleclaude.hooks.checkpoint._git import (
     _canonical_tool_name,
@@ -265,13 +266,18 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return matches_command_prefix(segment, ("telec", "reload"))
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
-    if evidence == "next-review-commits":
+    if evidence == SlashCommand.NEXT_REVIEW_COMMITS.value:
         # Only a real dispatch: `telec sessions run --command next-review-commits`,
         # with the command name as the value of --command (not merely mentioned).
+        # A bare, unqualified token still resolves to this same command until the
+        # documentation sweep lands, so both forms count as evidence here.
         if head != "telec" or "sessions" not in rest or "run" not in rest or "--command" not in tokens:
             return False
         command_idx = tokens.index("--command")
-        return command_idx + 1 < len(tokens) and tokens[command_idx + 1] in {evidence, f"/{evidence}"}
+        if command_idx + 1 >= len(tokens):
+            return False
+        bare_evidence = evidence.rsplit("/", 1)[-1]
+        return tokens[command_idx + 1] in {evidence, f"/{evidence}", bare_evidence, f"/{bare_evidence}"}
     if evidence == "review commits":
         # Only a remediation dispatch: `telec sessions send <reviewer> "review commits ..."`,
         # with the review request as the message payload (a token starting with it).

@@ -42,6 +42,7 @@ from teleclaude.config import config as global_config
 from teleclaude.config.jobs import EffectiveJob, load_effective_jobs
 from teleclaude.config.loader import load_person_config, load_project_config
 from teleclaude.config.schema import JobScheduleConfig, JobSubscription, is_agent_job, job_identity
+from teleclaude.constants import SlashCommand
 from teleclaude.core.models import HumanActionIntent
 from teleclaude.cron.state import CronState, JobRunStatus, PendingEmission
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
@@ -53,7 +54,7 @@ from teleclaude.services.project_catalog import ProjectCatalogService, ProjectNo
 
 logger = get_logger(__name__)
 
-_NEXT_RUN_JOB_COMMAND = "/next-run-job"
+_NEXT_RUN_JOB_COMMAND = f"/{SlashCommand.NEXT_RUN_JOB.value}"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DYNAMIC_JOB_PACKAGE_PREFIX = "_teleclaude_job"
 _LEGACY_AGGREGATE_JOB_KEYS = frozenset({"log-bug-hunter", "software-development/procedure/maintenance/log-bug-hunter"})
