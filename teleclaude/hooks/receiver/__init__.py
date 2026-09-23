@@ -23,8 +23,9 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
 from teleclaude import paths as tc_paths
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.config.loader import load_company_config, load_declared_project_config, load_global_config
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HookSourceKind
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HeadlessBootstrapField, HookSourceKind
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
@@ -148,7 +149,6 @@ _COMPANY_RESOLUTION_FAILED = "company_resolution_failed"
 _HOOK_NORMALIZATION_FAILED = "Hook event normalization failed"
 _PROMPT_FIELD = "prompt"
 _SOURCE_KIND_FIELD = "source_kind"
-_HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
 _EXECUTION_KIND_FIELD = "execution_kind"
 _INVOCATION_NUM_FIELD = "invocationNum"
 _FULLY_IDLE_FIELD = "fullyIdle"
@@ -157,6 +157,25 @@ _STEP_IDX_FIELD = "stepIdx"
 _HUMAN_PROFILE_ROOT = "human"
 _EMPTY_LOG_VALUE = ""
 _MODEL_DUMP_MODE = "json"
+
+
+def _enrich_headless_bootstrap(
+    data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+    event_type: AgentHookEventType,
+    source_kind: HookSourceKind,
+) -> None:
+    """Attach terminal identity only to receiver-authorized headless starts."""
+    if event_type is AgentHookEvents.AGENT_SESSION_START and source_kind is HookSourceKind.HEADLESS:
+        data[HeadlessBootstrapField.AUTHORIZATION] = True
+        caller_email = read_current_session_email()
+        if caller_email:
+            data[HeadlessBootstrapField.CALLER_EMAIL] = caller_email
+        else:
+            data.pop(HeadlessBootstrapField.CALLER_EMAIL, None)
+        return
+
+    data.pop(HeadlessBootstrapField.AUTHORIZATION, None)
+    data.pop(HeadlessBootstrapField.CALLER_EMAIL, None)
 
 
 class HookNormalizationOutcome(StrEnum):
@@ -1530,10 +1549,7 @@ def main() -> None:
         data["native_log_file"] = raw_native_log_file
     data[_SOURCE_KIND_FIELD] = source_kind
     data[_EXECUTION_KIND_FIELD] = execution_kind
-    if event_type == AgentHookEvents.AGENT_SESSION_START and source_kind is HookSourceKind.HEADLESS:
-        data[_HEADLESS_BOOTSTRAP_FIELD] = True
-    else:
-        data.pop(_HEADLESS_BOOTSTRAP_FIELD, None)
+    _enrich_headless_bootstrap(data, event_type, source_kind)
 
     if (raw_native_session_id or raw_native_log_file) and source_kind is not HookSourceKind.MANAGED_DESCENDANT:
         try:
