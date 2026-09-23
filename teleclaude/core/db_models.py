@@ -160,6 +160,88 @@ class DiscordReflectionRow(SQLModel, table=True):
     verified_at: datetime | None = None
 
 
+class DiscordSharedThreadContenderRow(SQLModel, table=True):
+    """One computer's observational claim for a shared Discord child."""
+
+    __tablename__ = "discord_shared_thread_contenders"
+    __table_args__ = {"extend_existing": True}
+
+    thread_id: int = Field(primary_key=True)
+    computer: str = Field(primary_key=True)
+    parent_id: int
+    child_kind: str
+    local_identity: str
+    lifecycle: str
+    protocol_generation: int
+
+
+class DiscordSharedThreadOwnerRow(SQLModel, table=True):
+    """The single winning owner for a shared Discord child after activation."""
+
+    __tablename__ = "discord_shared_thread_owners"
+    __table_args__ = {"extend_existing": True}
+
+    thread_id: int = Field(primary_key=True)
+    parent_id: int
+    child_kind: str
+    owner_computer: str
+    local_identity: str
+    lifecycle: str
+    protocol_generation: int
+
+
+class DiscordThreadClaimMemberRow(SQLModel, table=True):
+    """A retained fleet member and its current claim-protocol adoption proof."""
+
+    __tablename__ = "discord_thread_claim_members"
+    __table_args__ = {"extend_existing": True}
+
+    computer: str = Field(primary_key=True)
+    protocol_generation: int
+    adoption_state: str
+    inventory_completed_epoch: int | None = None
+
+
+class DiscordThreadReconciliationEpochRow(SQLModel, table=True):
+    """The single durable epoch allocator for one claim protocol generation."""
+
+    __tablename__ = "discord_thread_reconciliation_epochs"
+    __table_args__ = {"extend_existing": True}
+
+    protocol_generation: int = Field(primary_key=True)
+    current_epoch: int
+    phase: str
+
+
+class DiscordThreadClaimInventoryItemRow(SQLModel, table=True):
+    """One member's complete shared-child inventory entry for one durable epoch."""
+
+    __tablename__ = "discord_thread_claim_inventory_items"
+    __table_args__ = {"extend_existing": True}
+
+    computer: str = Field(primary_key=True)
+    protocol_generation: int = Field(primary_key=True)
+    inventory_epoch: int = Field(primary_key=True)
+    thread_id: int = Field(primary_key=True)
+    parent_id: int
+    child_kind: str
+    local_identity: str
+    lifecycle: str
+
+
+class DiscordThreadOrphanCandidateRow(SQLModel, table=True):
+    """Durable evidence that a shared provider child remained unclaimed across epochs."""
+
+    __tablename__ = "discord_thread_orphan_candidates"
+    __table_args__ = {"extend_existing": True}
+
+    thread_id: int = Field(primary_key=True)
+    parent_id: int
+    first_qualifying_epoch: int
+    last_qualifying_epoch: int
+    consecutive_complete_epochs: int
+
+
 class AgentAvailability(SQLModel, table=True):
     """agent_availability table."""
 

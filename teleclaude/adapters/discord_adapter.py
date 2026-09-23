@@ -42,7 +42,13 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import DiscordAdapterMetadata, DiscordMetadataField, MessageMetadata
-from teleclaude.types.commands import SetVoiceFocusCommand
+from teleclaude.types.commands import (
+    DiscordThreadClaimAction,
+    DiscordThreadClaimCommand,
+    DiscordThreadClaimKind,
+    DiscordThreadClaimLifecycle,
+    SetVoiceFocusCommand,
+)
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
     _gfm_closers,
@@ -133,6 +139,151 @@ class DiscordAdapter(
     def _convert_markdown_for_platform(self, text: str) -> str:
         """Convert generic markdown into Discord-friendly markdown/text."""
         return discordify_markdown(text)
+
+    async def _resolve_discord_claim_master(self) -> str | None:
+        """Resolve the only computer authorized to persist shared Discord child claims."""
+        if config.computer.is_master:
+            return config.computer.name
+        for peer in await self.client.discover_peers():
+            name = peer.get("name")
+            if peer.get("is_master") is True and isinstance(name, str):
+                return name
+        return None
+
+    async def _discord_claim_fleet_members(self) -> tuple[frozenset[str], frozenset[str]]:
+        """Return discovered live members and those advertising the shared-claim capability."""
+        peers = await self.client.discover_peers()
+        live = {config.computer.name}
+        capable = {config.computer.name}
+        for peer in peers:
+            name = peer.get("name")
+            capabilities = peer.get("capability_set")
+            if isinstance(name, str):
+                live.add(name)
+                if (
+                    isinstance(capabilities, list)
+                    and "project/spec/feature/integration/discord-admin-reflection-state" in capabilities
+                ):
+                    capable.add(name)
+        return frozenset(live), frozenset(capable)
+
+    async def _observe_discord_shared_thread(
+        self,
+        *,
+        thread_id: int,
+        parent_id: int,
+        kind: DiscordThreadClaimKind,
+        local_identity: str,
+        lifecycle: DiscordThreadClaimLifecycle,
+    ) -> None:
+        """Publish a non-enforcing shared-child observation to the master claim ledger."""
+        master = await self._resolve_discord_claim_master()
+        if master is None:
+            logger.info("discord.shared_thread_claim.held", reason="master_unavailable", thread_id=thread_id)
+            return
+        command = DiscordThreadClaimCommand(
+            action=DiscordThreadClaimAction.OBSERVE,
+            thread_id=thread_id,
+            parent_id=parent_id,
+            kind=kind,
+            local_identity=local_identity,
+            lifecycle=lifecycle,
+            protocol_generation=1,
+        )
+        command.computer = master
+        await dispatch_command(self.client, command)
+
+    async def _claim_discord_shared_thread(
+        self,
+        *,
+        thread_id: int,
+        parent_id: int,
+        kind: DiscordThreadClaimKind,
+        local_identity: str,
+        lifecycle: DiscordThreadClaimLifecycle,
+    ) -> bool:
+        """Acquire the master-held owner row before an activated shared-child binding advances."""
+        master = await self._resolve_discord_claim_master()
+        if master is None:
+            return False
+        command = DiscordThreadClaimCommand(
+            action=DiscordThreadClaimAction.CLAIM,
+            thread_id=thread_id,
+            parent_id=parent_id,
+            kind=kind,
+            local_identity=local_identity,
+            lifecycle=lifecycle,
+            protocol_generation=1,
+        )
+        command.computer = master
+        result = await dispatch_command(self.client, command)
+        return isinstance(result, dict) and result.get("outcome") == "claimed"
+
+    async def _complete_discord_shared_thread_inventory(self, *, epoch: int) -> bool:
+        """Publish this member's completed shared-child inventory to the authenticated master boundary."""
+        master = await self._resolve_discord_claim_master()
+        if master is None:
+            return False
+        inventory_items = []
+        for session in await db.list_sessions(computer_name=config.computer.name, include_closed=True):
+            metadata = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
+            if metadata.thread_id is None or metadata.channel_id not in {
+                self._help_desk_channel_id,
+                self._escalation_channel_id,
+            }:
+                continue
+            kind = (
+                DiscordThreadClaimKind.ESCALATION_RELAY
+                if metadata.channel_id == self._escalation_channel_id
+                else DiscordThreadClaimKind.HELP_DESK_SESSION
+            )
+            lifecycle = (
+                DiscordThreadClaimLifecycle.ACTIVE
+                if session.closed_at is None
+                else DiscordThreadClaimLifecycle.TERMINAL
+            )
+            inventory_items.append(
+                {
+                    "thread_id": metadata.thread_id,
+                    "parent_id": metadata.channel_id,
+                    "kind": kind.value,
+                    "local_identity": session.session_id,
+                    "lifecycle": lifecycle.value,
+                }
+            )
+        command = DiscordThreadClaimCommand(
+            action=DiscordThreadClaimAction.COMPLETE_INVENTORY,
+            thread_id=0,
+            parent_id=0,
+            kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
+            local_identity="",
+            lifecycle=DiscordThreadClaimLifecycle.PENDING,
+            protocol_generation=1,
+            inventory_epoch=epoch,
+            inventory_items=inventory_items,
+        )
+        command.computer = master
+        result = await dispatch_command(self.client, command)
+        return isinstance(result, dict) and result.get("outcome") == "completed"
+
+    async def _open_discord_shared_thread_epoch(self) -> int | None:
+        """Request the durable current inventory epoch from the authenticated master."""
+        master = await self._resolve_discord_claim_master()
+        if master is None:
+            return None
+        command = DiscordThreadClaimCommand(
+            action=DiscordThreadClaimAction.OPEN_EPOCH,
+            thread_id=0,
+            parent_id=0,
+            kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
+            local_identity="",
+            lifecycle=DiscordThreadClaimLifecycle.PENDING,
+            protocol_generation=1,
+        )
+        command.computer = master
+        result = await dispatch_command(self.client, command)
+        value = result.get("owner_computer") if isinstance(result, dict) else None
+        return int(value) if isinstance(value, str) and value.isdigit() else None
 
     # -------------------------------------------------------------------------
 

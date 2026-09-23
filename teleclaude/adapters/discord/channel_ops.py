@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from types import ModuleType
 from typing import TYPE_CHECKING, cast
@@ -19,26 +18,21 @@ from teleclaude import config as teleclaude_config
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.db import db
+from teleclaude.core.integration.discord_admin_state import session_launcher_key
 from teleclaude.core.models import ChannelMetadata, DiscordAdapterMetadata, DiscordMetadataField, Session
+from teleclaude.core.reconciliation.feature_ids import DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID
 from teleclaude.core.session_utils import get_short_project_name
+from teleclaude.types.commands import DiscordThreadClaimKind, DiscordThreadClaimLifecycle
 
 if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
 
-DISCORD_CLIENT_USER_ATTRIBUTE = "user"
-DISCORD_SNOWFLAKE_TIME_ATTRIBUTE = "snowflake_time"
-DISCORD_THREAD_ARCHIVED_ATTRIBUTE = "archived"
-DISCORD_THREAD_ARCHIVE_TIMESTAMP_ATTRIBUTE = "archive_timestamp"
-DISCORD_THREAD_AUTHOR_ATTRIBUTE = "author"
-DISCORD_THREAD_CONTENT_ATTRIBUTE = "content"
 DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE = "fetch_message"
 DISCORD_THREAD_ID_ATTRIBUTE = "id"
-DISCORD_UTILS_ATTRIBUTE = "utils"
-ORPHAN_THREAD_AGE_FLOOR = timedelta(days=30)
+ORPHAN_CANDIDATE_DELETION_EPOCH_THRESHOLD = 2
 THREAD_CLEANUP_PACING_SECONDS = 0.5
-THREAD_SESSION_IDENTITY_PREFIX = "tc: "
 THREAD_STARTER_FETCH_LABEL = "Discord thread fetch_message"
 
 
@@ -126,6 +120,7 @@ class ChannelOperationsMixin:
     """
 
     _help_desk_channel_id: int | None
+    _escalation_channel_id: int | None
     _all_sessions_channel_id: int | None
     _project_forum_map: dict[str, int]
     _team_channel_map: dict[int, str]
@@ -144,6 +139,22 @@ class ChannelOperationsMixin:
         def display_title(self, session: Session) -> str: ...
 
         def _get_managed_forum_ids(self) -> set[int]: ...
+
+        async def _observe_discord_shared_thread(
+            self,
+            *,
+            thread_id: int,
+            parent_id: int,
+            kind: DiscordThreadClaimKind,
+            local_identity: str,
+            lifecycle: DiscordThreadClaimLifecycle,
+        ) -> None: ...
+
+        async def _open_discord_shared_thread_epoch(self) -> int | None: ...
+
+        async def _complete_discord_shared_thread_inventory(self, *, epoch: int) -> bool: ...
+
+        async def _discord_claim_fleet_members(self) -> tuple[frozenset[str], frozenset[str]]: ...
 
     # =========================================================================
     # ensure_channel
@@ -319,6 +330,14 @@ class ChannelOperationsMixin:
                 title=title,
                 content=topper,
             )
+            if target_forum_id == self._help_desk_channel_id:
+                await self._observe_discord_shared_thread(
+                    thread_id=thread_id,
+                    parent_id=target_forum_id,
+                    kind=DiscordThreadClaimKind.HELP_DESK_SESSION,
+                    local_identity=session.session_id,
+                    lifecycle=DiscordThreadClaimLifecycle.PENDING,
+                )
             await db.update_origin_metadata(
                 session.session_id,
                 "discord",
@@ -397,7 +416,7 @@ class ChannelOperationsMixin:
         cleaned = 0
         for forum_id, match_field in [
             *[(forum_id, ThreadMatchField.THREAD_ID) for forum_id in self._get_managed_forum_ids()],
-            (self._escalation_channel_id, ThreadMatchField.RELAY),  # type: ignore[attr-defined]
+            (self._escalation_channel_id, ThreadMatchField.RELAY),
         ]:
             if forum_id is None:
                 continue
@@ -415,7 +434,45 @@ class ChannelOperationsMixin:
         if forum is None or not self._is_forum_channel(forum):
             return 0
 
-        all_threads, _ = await gather_forum_threads(forum, self._discord, forum_id=forum_id)
+        all_threads, conclusive = await gather_forum_threads(forum, self._discord, forum_id=forum_id)
+        if not conclusive:
+            logger.warning("Skipping Discord thread cleanup for forum %s because discovery is incomplete", forum_id)
+            return 0
+
+        is_shared_forum = forum_id in {self._help_desk_channel_id, self._escalation_channel_id}
+        if is_shared_forum and not teleclaude_config.config.computer.is_master:
+            return 0
+        completed_epoch: int | None = None
+        if is_shared_forum:
+            open_epoch = await self._open_discord_shared_thread_epoch()
+            if open_epoch is None or not await self._complete_discord_shared_thread_inventory(epoch=open_epoch):
+                logger.info(
+                    "discord.shared_thread_cleanup.epoch_unavailable",
+                    forum_id=forum_id,
+                    feature_id=DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID,
+                )
+                return 0
+            live_members, capable_members = await self._discord_claim_fleet_members()
+            activation = await db.discord_thread_claim_activation(
+                protocol_generation=1,
+                live_members=live_members,
+                capability_members=capable_members,
+            )
+            if not activation.active:
+                logger.info("discord.shared_thread_cleanup.held", feature_id=DISCORD_SHARED_THREAD_CLAIMS_FEATURE_ID)
+                return 0
+            completed_epoch = await db.completed_discord_thread_claim_epoch(protocol_generation=1)
+            if completed_epoch is not None:
+                await db.complete_discord_thread_reconciliation_epoch(protocol_generation=1, epoch=completed_epoch)
+        launcher_thread_id: int | None = None
+        if not is_shared_forum and match_type == ThreadMatchField.THREAD_ID:
+            launcher = await db.get_discord_reflection(session_launcher_key(forum_id))
+            launcher_thread_id = launcher.provider_id if launcher is not None else None
+        if not is_shared_forum and match_type == ThreadMatchField.THREAD_ID and launcher_thread_id is None:
+            logger.warning(
+                "Skipping Discord session cleanup for forum %s because launcher identity is unresolved", forum_id
+            )
+            return 0
 
         cleaned = 0
         for thread in all_threads:
@@ -423,18 +480,17 @@ class ChannelOperationsMixin:
             if thread_id is None:
                 continue
 
-            ownership = await self._thread_ownership(thread_id, match_type)
-            is_orphaned_session_thread = False
-            fetched_starter_message = False
-            if ownership == ThreadOwnership.UNKNOWN and match_type == ThreadMatchField.THREAD_ID:
-                is_orphaned_session_thread, fetched_starter_message = await self._is_orphaned_session_thread(
-                    thread, thread_id
-                )
+            if thread_id == launcher_thread_id:
+                continue
 
-            if ownership != ThreadOwnership.CLOSED and not is_orphaned_session_thread:
-                # "active" threads stay; row-less threads require proven session identity before deletion.
-                if fetched_starter_message:
-                    await asyncio.sleep(THREAD_CLEANUP_PACING_SECONDS)
+            if is_shared_forum:
+                should_delete = await self._shared_thread_cleanup_decision(
+                    thread_id, forum_id, match_type, completed_epoch=completed_epoch
+                )
+            else:
+                ownership = await self._thread_ownership(thread_id, match_type)
+                should_delete = ownership != ThreadOwnership.ACTIVE
+            if not should_delete:
                 continue
 
             recoverable_errors = recoverable_operation_errors(self._discord)
@@ -454,58 +510,65 @@ class ChannelOperationsMixin:
 
         return cleaned
 
-    async def _is_orphaned_session_thread(self, thread: object, thread_id: int) -> tuple[bool, bool]:
-        """Return whether a row-less thread is eligible for orphan cleanup and whether it was fetched."""
-        if not self._is_archived_thread_old_enough(thread, thread_id):
-            return False, False
+    async def _shared_thread_cleanup_decision(
+        self,
+        thread_id: int,
+        forum_id: int,
+        match_type: ThreadMatchField,
+        *,
+        completed_epoch: int | None,
+    ) -> bool:
+        """Decide whether one activated shared-forum thread may be deleted this pass.
 
-        starter_fetchable = callable(getattr(thread, DISCORD_THREAD_FETCH_MESSAGE_ATTRIBUTE, None))
-        conclusive, starter_message = await fetch_thread_starter_message(
-            thread,
-            self._discord,
-            self._require_async_callable,
-        )
-        if not conclusive or starter_message is None:
-            return False, starter_fetchable
-        return self._is_bot_authored_session_starter(starter_message), starter_fetchable
-
-    def _is_archived_thread_old_enough(self, thread: object, thread_id: int) -> bool:
-        """Return whether an archived thread exceeds the orphan-cleanup age floor."""
-        if not getattr(thread, DISCORD_THREAD_ARCHIVED_ATTRIBUTE, False):
-            return False
-
-        last_activity = getattr(thread, DISCORD_THREAD_ARCHIVE_TIMESTAMP_ATTRIBUTE, None)
-        if not isinstance(last_activity, datetime):
-            discord_utils = getattr(self._discord, DISCORD_UTILS_ATTRIBUTE, None)
-            snowflake_time = getattr(discord_utils, DISCORD_SNOWFLAKE_TIME_ATTRIBUTE, None)
-            if not callable(snowflake_time):
+        A claimed child is deleted only by its recorded durable owner once local
+        state is terminal; a foreign owner's claim is preserved outright. An
+        unclaimed child is deleted only after its durable orphan-candidate proof
+        spans two consecutive complete fleet inventories — never from local
+        absence alone.
+        """
+        owner = await db.get_discord_shared_thread_owner(thread_id)
+        if owner is not None:
+            await db.reset_discord_thread_orphan_candidate(thread_id=thread_id)
+            if owner.computer != teleclaude_config.config.computer.name:
+                logger.info(
+                    "discord.shared_thread_cleanup.retained_foreign_owner",
+                    thread_id=thread_id,
+                    parent_id=forum_id,
+                    owner_computer=owner.computer,
+                )
                 return False
-            try:
-                last_activity = snowflake_time(thread_id)
-            except (TypeError, ValueError):
-                return False
+            ownership = await self._thread_ownership(thread_id, match_type)
+            delete = ownership == ThreadOwnership.CLOSED
+            logger.info(
+                "discord.shared_thread_cleanup.owner_decision",
+                thread_id=thread_id,
+                parent_id=forum_id,
+                owner_computer=owner.computer,
+                outcome="delete" if delete else "retain",
+            )
+            return delete
 
-        if not isinstance(last_activity, datetime):
+        if completed_epoch is None:
+            logger.info(
+                "discord.shared_thread_cleanup.candidate_held",
+                thread_id=thread_id,
+                parent_id=forum_id,
+                reason="incomplete_epoch",
+            )
             return False
-        if last_activity.tzinfo is None:
-            last_activity = last_activity.replace(tzinfo=UTC)
-        return datetime.now(UTC) - last_activity >= ORPHAN_THREAD_AGE_FLOOR
-
-    def _is_bot_authored_session_starter(self, starter_message: object) -> bool:
-        """Return whether a starter message proves it belongs to a TeleClaude session thread."""
-        author_id = self._parse_optional_int(
-            getattr(getattr(starter_message, DISCORD_THREAD_AUTHOR_ATTRIBUTE, None), DISCORD_THREAD_ID_ATTRIBUTE, None)
+        candidate = await db.advance_discord_thread_orphan_candidate(
+            thread_id=thread_id, parent_id=forum_id, epoch=completed_epoch
         )
-        client_user_id = self._parse_optional_int(
-            getattr(getattr(self._client, DISCORD_CLIENT_USER_ATTRIBUTE, None), DISCORD_THREAD_ID_ATTRIBUTE, None)
+        delete = candidate.consecutive_complete_epochs >= ORPHAN_CANDIDATE_DELETION_EPOCH_THRESHOLD
+        logger.info(
+            "discord.shared_thread_cleanup.candidate_advanced",
+            thread_id=thread_id,
+            parent_id=forum_id,
+            reconciliation_epoch=completed_epoch,
+            consecutive_complete_epochs=candidate.consecutive_complete_epochs,
+            outcome="delete" if delete else "held",
         )
-        content = getattr(starter_message, DISCORD_THREAD_CONTENT_ATTRIBUTE, None)
-        if client_user_id is None or author_id != client_user_id or not isinstance(content, str):
-            return False
-        return any(
-            line.startswith(THREAD_SESSION_IDENTITY_PREFIX) and len(line) > len(THREAD_SESSION_IDENTITY_PREFIX)
-            for line in content.splitlines()
-        )
+        return delete
 
     async def _thread_ownership(self, thread_id: int, match_type: ThreadMatchField) -> ThreadOwnership:
         """Classify a Discord thread's ownership.
