@@ -86,7 +86,7 @@ class SessionRunner(Protocol):
 
 
 def default_session_runner() -> SessionRunner:
-    return TelecAPIClient()
+    return TelecAPIClient(daemon_credential=True)
 
 
 def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:

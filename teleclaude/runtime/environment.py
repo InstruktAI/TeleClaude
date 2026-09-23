@@ -53,6 +53,7 @@ _TUI_ENV_EXTRA_ALLOWLIST = frozenset(
         "REAL_TERM_PROGRAM",
         "TELEC_INVOCATION_CWD",
         "TELEC_RELOAD",
+        "TELEC_TUI_IDENTITY",
         "TELEC_TUI_SESSION",
         "TELECLAUDE_HOME",
         "TEMP",

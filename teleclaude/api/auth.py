@@ -25,6 +25,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from teleclaude.cli.telec import is_command_allowed
 from teleclaude.config import config
 from teleclaude.constants import (
+    LOGIN_REQUIRED_DETAIL,
     ROLE_INTEGRATOR,
     ROLE_JOB_RUNNER,
     ROLE_ORCHESTRATOR,
@@ -34,6 +35,7 @@ from teleclaude.constants import (
 )
 from teleclaude.core import db_models
 from teleclaude.core.conversation_messages import resolve_session_event_author
+from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential
 from teleclaude.core.db import SessionIdentityError, db, resolve_session_principal
 from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.session_status import is_session_terminal
@@ -273,7 +275,20 @@ def _build_terminal_identity(
             email=normalized_email,
             entry_point=entry_point,
         )
-    raise HTTPException(status_code=401, detail="login required in multi-user mode")
+    raise HTTPException(status_code=401, detail=LOGIN_REQUIRED_DETAIL)
+
+
+def _build_daemon_identity() -> CallerIdentity:
+    """Resolve caller identity for the daemon's own process-local credential."""
+    return CallerIdentity(
+        session_id="",
+        system_role=ROLE_SYSTEM,
+        human_role=None,
+        tmux_session_name=None,
+        email=None,
+        principal="system:daemon",
+        entry_point=EntryPoint.AGENT,
+    )
 
 
 def _resolve_human_role(session: Session, x_telec_email: str | None) -> str | None:
@@ -324,6 +339,7 @@ async def verify_caller(
     x_caller_session_id: Annotated[str | None, Header()] = None,
     x_telec_email: Annotated[str | None, Header()] = None,
     x_tmux_session: Annotated[str | None, Header()] = None,
+    x_teleclaude_daemon_token: Annotated[str | None, Header()] = None,
 ) -> CallerIdentity:
     """FastAPI dependency: verify caller identity via dual-factor check.
 
@@ -339,6 +355,12 @@ async def verify_caller(
         HTTPException(401): Missing or unknown session_id.
         HTTPException(403): Tmux cross-check mismatch (session_id forgery attempt).
     """
+    # Daemon path: the daemon's own outbound calls carry its process-local
+    # credential. A value that fails the check falls through — a stale or
+    # forged header never turns a legitimate session call into a 401.
+    if x_teleclaude_daemon_token and is_daemon_credential(x_teleclaude_daemon_token):
+        return _build_daemon_identity()
+
     # Token path: agent sessions present the session token via X-Session-Token header.
     # This takes priority over the legacy dual-factor path so daemon-spawned agents
     # can authenticate even when human_role is absent.
@@ -363,6 +385,7 @@ async def optional_caller_identity(
     x_caller_session_id: Annotated[str | None, Header()] = None,
     x_telec_email: Annotated[str | None, Header()] = None,
     x_tmux_session: Annotated[str | None, Header()] = None,
+    x_teleclaude_daemon_token: Annotated[str | None, Header()] = None,
 ) -> CallerIdentity | None:
     """Resolve caller identity for an OPEN route without ever gating it.
 
@@ -379,6 +402,7 @@ async def optional_caller_identity(
             x_caller_session_id=x_caller_session_id,
             x_telec_email=x_telec_email,
             x_tmux_session=x_tmux_session,
+            x_teleclaude_daemon_token=x_teleclaude_daemon_token,
         )
     except HTTPException:
         return None

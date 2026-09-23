@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core import polling_coordinator
@@ -37,7 +36,6 @@ from teleclaude.core.hook_outbox_handlers import (
 )
 from teleclaude.core.hook_outbox_queue import HookOutboxQueueItem, HookOutboxSessionQueue
 from teleclaude.core.models import AgentDispatchMode, Session, SessionEntryPoint, SessionLaunchIntent, SessionLaunchKind
-from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.events.envelope import EventVisibility
@@ -389,7 +387,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             agent=agent_str,
             project_path=project_path or "",
         )
-        caller_email = read_current_session_email()
         cmd = CreateSessionCommand(
             session_id=session_id,
             headless=True,
@@ -398,8 +395,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             project_path=project_path or "",
             subdir=subdir,
             origin=InputOrigin.TERMINAL.value,
-            origin_metadata=TerminalOriginMetadata(email=caller_email) if caller_email else None,
-            human_role=None if caller_email else HUMAN_ROLE_CUSTOMER,
+            origin_metadata=None,
+            human_role=HUMAN_ROLE_CUSTOMER,
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
                 agent=agent_str,

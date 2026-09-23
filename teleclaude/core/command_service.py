@@ -17,6 +17,7 @@ from teleclaude.config import config
 from teleclaude.constants import (
     COMMAND_ROLE_MAP,
     ROLE_INTEGRATOR,
+    ROLE_JOB_RUNNER,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
     ROLE_TASKER,
@@ -133,12 +134,13 @@ def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchCl
 
 
 # Which target roles each caller system_role may dispatch via sessions/run.
-# Callers without a system_role (terminal, TUI, daemon lifecycle_router)
-# are on the human_role axis — endpoint-level clearance governs their access.
+# Callers without a system_role (terminal, TUI) are on the human_role axis —
+# endpoint-level clearance governs their access. The daemon's own credential
+# carries ROLE_SYSTEM and dispatches the cron and lifecycle lanes below.
 DISPATCH_ALLOWED: dict[str, frozenset[str]] = {
     ROLE_ORCHESTRATOR: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR}),
     ROLE_INTEGRATOR: frozenset({ROLE_WORKER}),
-    ROLE_SYSTEM: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR}),
+    ROLE_SYSTEM: frozenset({ROLE_WORKER, ROLE_ORCHESTRATOR, ROLE_JOB_RUNNER, ROLE_TASKER}),
     ROLE_TASKER: frozenset({ROLE_WORKER}),
     ROLE_WORKER: frozenset(),
 }

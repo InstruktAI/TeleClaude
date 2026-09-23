@@ -254,7 +254,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig, project_root: Path)
     project_path = str(project_root)
 
     async def _trigger() -> tuple[str | None, str | None]:
-        client = TelecAPIClient()
+        client = TelecAPIClient(daemon_credential=True)
         await client.connect()
         try:
             response = await client.run_session(

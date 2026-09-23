@@ -41,6 +41,7 @@ from teleclaude.cli.models import SubscribeData, SubscribeRequest, UnsubscribeDa
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.command_input import CommandInputMode
+from teleclaude.core.daemon_lifecycle_identity import daemon_credential_headers
 from teleclaude.core.operation_caller_identity import get_caller_session_id
 from teleclaude.history.service import HistorySearchPayload
 from teleclaude.session_identity import get_session_id, get_session_token
@@ -149,13 +150,17 @@ class APIError(Exception):
 class _TelecConnectionClient:
     """Async HTTP client for telec with WebSocket push support."""
 
-    def __init__(self, socket_path: str = API_SOCKET_PATH):
+    def __init__(self, socket_path: str = API_SOCKET_PATH, *, daemon_credential: bool = False):
         """Initialize client.
 
         Args:
             socket_path: Path to Unix socket
+            daemon_credential: When True, identity headers carry the daemon's
+                own process-local credential — the mode the daemon uses for
+                the calls it makes into its own request surface.
         """
         self.socket_path = socket_path
+        self._daemon_credential = daemon_credential
         self._http_state = _HTTPState()
         self._ws_state = _WebSocketState()
 
@@ -478,6 +483,10 @@ class _TelecConnectionClient:
     def _build_identity_headers(self) -> dict[str, str]:
         """Build caller identity headers for daemon-side auth checks."""
         headers: dict[str, str] = {}
+
+        if self._daemon_credential:
+            headers.update(daemon_credential_headers())
+            return headers
 
         # Identity-context-spawned tasks (daemon-hosted lifecycle operations) carry the
         # caller's session id via a contextvar override but run with no tmux pane. The

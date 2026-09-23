@@ -5,8 +5,9 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+from teleclaude.cli.session_auth import TUI_SESSION_ENV_KEY as TUI_ENV_KEY
+
 TMUX_ENV_KEY = "TMUX"
-TUI_ENV_KEY = "TELEC_TUI_SESSION"
 TUI_SESSION_NAME = "tc_tui"
 
 
@@ -27,3 +28,5 @@ class _ConfigProxy:
 
 
 config = _ConfigProxy()
+
+__all__ = ["TMUX_ENV_KEY", "TUI_ENV_KEY", "TUI_SESSION_NAME", "_ConfigProxy", "config"]

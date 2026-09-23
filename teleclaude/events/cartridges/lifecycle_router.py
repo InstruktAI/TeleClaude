@@ -6,7 +6,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config
-from teleclaude.core.next_machine.lifecycle_runner import project_path_from_event_payload, run_lifecycle_runner
+from teleclaude.core.next_machine.lifecycle_runner import (
+    default_session_runner,
+    project_path_from_event_payload,
+    run_lifecycle_runner,
+)
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.project_root import is_project_checkout
@@ -51,7 +55,7 @@ class LifecycleRouterCartridge:
                 return event
         if event.event == "scheduler.tick.minute":
             _ = context
-            client = TelecAPIClient()
+            client = TelecAPIClient(daemon_credential=True)
             await client.connect()
             try:
                 projects = await client.list_projects()
@@ -68,7 +72,7 @@ class LifecycleRouterCartridge:
                 await run_lifecycle_runner(
                     project.path,
                     trigger=event.event,
-                    client_factory=TelecAPIClient,
+                    client_factory=default_session_runner,
                 )
             return event
         project_path = project_path_from_event_payload(event.payload)
@@ -79,6 +83,6 @@ class LifecycleRouterCartridge:
         await run_lifecycle_runner(
             project_path,
             trigger=event.event,
-            client_factory=TelecAPIClient,
+            client_factory=default_session_runner,
         )
         return event

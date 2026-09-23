@@ -117,6 +117,12 @@ HUMAN_ROLE_NEWCOMER = "newcomer"
 HUMAN_ROLE_CUSTOMER = "customer"
 HUMAN_ROLES = (HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, HUMAN_ROLE_CONTRIBUTOR, HUMAN_ROLE_NEWCOMER, HUMAN_ROLE_CUSTOMER)
 
+# The 401 detail verify_caller raises when a terminal has no resolvable
+# identity and more than one person is registered. Named so the CLI-facing
+# error surface can recognize it and name the fix, without string-matching
+# arbitrary server text.
+LOGIN_REQUIRED_DETAIL = "login required in multi-user mode"
+
 SNIPPET_VISIBILITY_PUBLIC = "public"
 SNIPPET_VISIBILITY_INTERNAL = "internal"
 SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTERNAL)

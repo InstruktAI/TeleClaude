@@ -20,7 +20,7 @@ from pathlib import Path
 import httpx
 
 from teleclaude.cli.session_auth import read_current_session_email
-from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.constants import API_SOCKET_PATH, LOGIN_REQUIRED_DETAIL
 from teleclaude.session_identity import get_session_id, get_session_token
 
 _TUI_SESSION_NAME = "tc_tui"
@@ -137,6 +137,8 @@ def tool_api_request(
 
     if resp.status_code == 401:
         detail = _extract_detail(resp)
+        if detail == LOGIN_REQUIRED_DETAIL:
+            raise ToolAPIError(f"{detail}. Run: telec auth login <email>", status_code=401)
         raise ToolAPIError(f"authentication required — {detail}", status_code=401)
     if resp.status_code == 403:
         detail = _extract_detail(resp)

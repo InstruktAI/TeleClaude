@@ -12,6 +12,8 @@ from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
 
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
+TUI_CARRIED_IDENTITY_ENV_KEY = "TELEC_TUI_IDENTITY"
+_NO_TTY_LABEL = "(no tty)"
 
 
 @dataclass(frozen=True)
@@ -29,11 +31,6 @@ class TerminalAuthState:
 
     email: str
     context: TerminalSessionContext
-
-
-def in_tmux_context() -> bool:
-    """Return True when running inside tmux."""
-    return bool((os.environ.get("TMUX") or "").strip())  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
 
 
 def _detect_tty() -> str | None:
@@ -67,15 +64,33 @@ def get_current_session_context() -> TerminalSessionContext | None:
     if tty:
         key = _tty_key(tty)
         return TerminalSessionContext(tty=tty, key=key, auth_path=SESSION_AUTH_DIR / f"{key}.json")
-    return TerminalSessionContext(tty="(no tty)", key="global", auth_path=_global_auth_path())
+    return TerminalSessionContext(tty=_NO_TTY_LABEL, key="global", auth_path=_global_auth_path())
+
+
+def _detect_device_ctime(tty: str) -> float | None:
+    """Return the terminal device's current allocation time, or None if unreadable."""
+    try:
+        return os.stat(tty).st_ctime
+    except OSError:
+        return None
 
 
 def _normalize_email(value: str) -> str:
     return value.strip().lower()
 
 
-def _read_auth_file(path: Path) -> str | None:
-    """Read and parse an auth file, returning the normalized email or None."""
+type _AuthDocument = dict[
+    str, object
+]  # guard: loose-dict - parsed auth-file JSON shape varies (legacy vs. structured, with/without device_ctime)
+
+
+def _read_document(path: Path) -> _AuthDocument | str | None:
+    """Read and parse an auth document.
+
+    Returns the parsed object for a structured document, the normalized
+    email string for a legacy pre-structured (bare email) document, or None
+    when the file is missing, empty, or not a JSON object.
+    """
     try:
         payload = path.read_text(encoding="utf-8").strip()
     except OSError:
@@ -88,7 +103,45 @@ def _read_auth_file(path: Path) -> str | None:
         return _normalize_email(payload) or None
     if not isinstance(data, dict):
         return None
-    raw_email = data.get("email")
+    return data
+
+
+def _read_auth_file(path: Path) -> str | None:
+    """Read and parse an auth file, returning the normalized email or None."""
+    document = _read_document(path)
+    if document is None:
+        return None
+    if isinstance(document, str):
+        return document
+    raw_email = document.get("email")
+    if not isinstance(raw_email, str):
+        return None
+    return _normalize_email(raw_email) or None
+
+
+def _read_live_document(path: Path, tty: str) -> str | None:
+    """Read a per-TTY auth document, honouring it only while it is live.
+
+    A structured document is live only while its recorded device allocation
+    time still matches the device's current one — a document with no
+    recorded allocation time (written before this condition existed, or
+    whose device was recycled) cannot satisfy it and is treated as no
+    document at all. A legacy pre-structured document (a bare email string)
+    carries no device binding at all and is read unconditionally, for
+    backward compatibility.
+    """
+    document = _read_document(path)
+    if document is None:
+        return None
+    if isinstance(document, str):
+        return document
+    recorded_ctime = document.get("device_ctime")
+    if not isinstance(recorded_ctime, int | float):
+        return None
+    current_ctime = _detect_device_ctime(tty)
+    if current_ctime is None or recorded_ctime != current_ctime:
+        return None
+    raw_email = document.get("email")
     if not isinstance(raw_email, str):
         return None
     return _normalize_email(raw_email) or None
@@ -98,20 +151,37 @@ def read_current_session_email() -> str | None:
     """Read login email.
 
     Resolution order:
-    1. Per-TTY auth file (when TTY detectable)
-    2. Global identity file (fallback)
-    """
-    tty = _detect_tty()
-    if tty:
-        key = _tty_key(tty)
-        email = _read_auth_file(SESSION_AUTH_DIR / f"{key}.json")
-        if email:
-            return email
+    1. The identity carried into a trusted TUI session (only where the TUI
+       runtime marker is present — never honoured outside it)
+    2. A live per-TTY auth document (device node present, allocation time matching)
+    3. Global identity file — only while at most one person is registered
 
+    A process with no controlling TTY presents no identity: nothing is
+    consulted past that point.
+    """
+    if os.environ.get(TUI_SESSION_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+        carried = os.environ.get(TUI_CARRIED_IDENTITY_ENV_KEY)  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+        if carried:
+            return _normalize_email(carried) or None
+
+    context = get_current_session_context()
+    if context is None or context.tty == _NO_TTY_LABEL:
+        return None
+
+    email = _read_live_document(context.auth_path, context.tty)
+    if email:
+        return email
+
+    from teleclaude.core.identity import (  # noqa: PLC0415 - deferred: api_client deliberately defers importing this module at load time; a module-scope import of the config-loading identity resolver would pull that cost into every CLI start
+        get_identity_resolver,
+    )
+
+    if get_identity_resolver().is_multi_user:
+        return None
     return _read_auth_file(_global_auth_path())
 
 
-def _write_auth_file(path: Path, payload: dict[str, str]) -> None:
+def _write_auth_file(path: Path, payload: dict[str, str | float]) -> None:
     """Atomically write a JSON auth payload to *path*."""
     tmp_path = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
     with open(tmp_path, "w", encoding="utf-8") as tmp:
@@ -130,20 +200,46 @@ def _write_auth_file(path: Path, payload: dict[str, str]) -> None:
         pass
 
 
+def _sweep_stale_documents() -> None:
+    """Remove every per-TTY document whose device node no longer exists.
+
+    A document whose device is still present is left untouched, including
+    one belonging to another person — release is keyed on the device, not
+    on who logged in last. The global fallback document is never swept.
+    """
+    try:
+        entries = list(SESSION_AUTH_DIR.iterdir())
+    except OSError:
+        return
+    global_path = _global_auth_path()
+    for entry in entries:
+        if entry == global_path or entry.suffix != ".json":
+            continue
+        try:
+            data = json.loads(entry.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        tty = data.get("tty")
+        if not isinstance(tty, str) or tty == _NO_TTY_LABEL:
+            continue
+        if not Path(tty).exists():
+            try:
+                entry.unlink()
+            except OSError:
+                pass
+
+
 def write_current_session_email(email: str) -> TerminalAuthState:
     """Write login email to the per-TTY identity file and global identity."""
     normalized_email = _normalize_email(email)
     if not normalized_email or "@" not in normalized_email:
         raise ValueError("A valid email address is required.")
 
-    tty = _detect_tty()
-    if tty:
-        key = _tty_key(tty)
-        auth_path = SESSION_AUTH_DIR / f"{key}.json"
-    else:
-        key = "global"
-        tty = "(no tty)"
-        auth_path = _global_auth_path()
+    context = get_current_session_context()
+    if context is None:
+        context = TerminalSessionContext(tty=_NO_TTY_LABEL, key="global", auth_path=_global_auth_path())
 
     SESSION_AUTH_DIR.mkdir(parents=True, exist_ok=True)
     try:
@@ -152,29 +248,31 @@ def write_current_session_email(email: str) -> TerminalAuthState:
         pass
 
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    payload = {"email": normalized_email, "tty": tty, "updated_at": now}
+    payload: dict[str, str | float] = {"email": normalized_email, "tty": context.tty, "updated_at": now}
+    if context.tty != _NO_TTY_LABEL:
+        device_ctime = _detect_device_ctime(context.tty)
+        if device_ctime is not None:
+            payload["device_ctime"] = device_ctime
 
-    _write_auth_file(auth_path, payload)
+    _write_auth_file(context.auth_path, payload)
 
     # Last login always wins globally — update global identity regardless of TTY.
     global_path = _global_auth_path()
-    if auth_path != global_path:
+    if context.auth_path != global_path:
         _write_auth_file(global_path, payload)
 
-    context = TerminalSessionContext(tty=tty, key=key, auth_path=auth_path)
+    _sweep_stale_documents()
+
     return TerminalAuthState(email=normalized_email, context=context)
 
 
 def clear_current_session_email() -> bool:
     """Delete the auth file for the current TTY (or global)."""
-    tty = _detect_tty()
-    if tty:
-        key = _tty_key(tty)
-        auth_path = SESSION_AUTH_DIR / f"{key}.json"
-    else:
-        auth_path = _global_auth_path()
+    context = get_current_session_context()
+    if context is None:
+        return False
     try:
-        auth_path.unlink()
+        context.auth_path.unlink()
         return True
     except FileNotFoundError:
         return False
