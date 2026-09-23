@@ -12,6 +12,7 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 History queries are filtered by the caller's role so non-admins cannot
 enumerate every stored conversation on the host. The session_mirrors
 service applies a filter derived from `caller_email` and `caller_role` to
@@ -28,6 +29,38 @@ The three role bands are:
   marked shared on the upstream session.
 - **Anything else** (a known non-admin, non-member role): the filter is
   "human_email = caller_email".
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+History queries are filtered by the caller's role so non-admins cannot
+enumerate every stored conversation on the host. A caller that carries an
+identity requests role scoping explicitly, supplying `caller_email`,
+`caller_role`, and the `system_role` its authorization was granted under;
+the session_mirrors service derives the filter from those three values for
+the search and detail lookups. The CLI resolves them once per command from
+the terminal's authenticated session, the session identity file, and the
+global people configuration.
+
+Requesting scoping is what distinguishes an identity-bearing caller from an
+in-process one. A caller that requests no scoping supplies none of the three
+and is not role-filtered; that case is UC-RSHA-5 and is unchanged here.
+
+The role bands, for a caller that requests scoping, are:
+
+- **System-authorized** (`system_role` is set): no role filter is applied.
+  Authorization was granted through the system channel, which does not
+  consult a human role, so no human-role band applies.
+- **Admin**: no role filter is applied. The caller sees every mirror on the
+  host.
+- **Member**: the filter is "(human_email = caller_email OR visibility =
+  'shared')". The caller sees their own mirrors plus those explicitly
+  marked shared on the upstream session.
+- **Anything else** (a known non-admin, non-member role): the filter is
+  "human_email = caller_email".
+- **Unresolved** (no `system_role`, and `caller_role` did not resolve): the
+  narrowest band applies — "human_email = caller_email". A caller whose role
+  could not be determined receives no wider view than a caller whose role
+  resolved to the most restricted value, and one carrying no email matches no
+  row.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 A filtered miss and an absent mirror are the same outcome to the caller,
 and neither reaches past the store: the on-disk transcript discovery is
@@ -47,6 +80,7 @@ Then no clause is added and no parameters are bound for the role filter
 And the query returns every mirror that matches the other filters
 ```
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 #### UC-RSHA-2: Unresolved role behaves like admin
 
 ```
@@ -56,6 +90,19 @@ Then caller_role is treated as unset
 And no clause is added for the role filter
 And the query returns every mirror that matches the other filters
 ```
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+#### UC-RSHA-2: Unresolved role is scoped to the narrowest band
+
+```
+Given a caller requests role scoping
+And no system_role is set
+And no terminal identity is set OR the email is not in the people configuration
+When the role filter is applied
+Then a clause "human_email = caller_email" is added
+And the query returns only mirrors whose human_email matches the caller
+And a caller carrying no email matches no mirror
+```
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 #### UC-RSHA-3: Member sees own + shared
 
@@ -98,13 +145,34 @@ And the caller receives the same not-found outcome as for a session that does no
 And the filtered mirror's transcript is not rendered
 ```
 
+<!-- planned:fix-history-role-filter-fails-open-on-unresolved-role -->
+#### UC-RSHA-7: A system-authorized caller is not human-role banded
+
+```
+Given a caller requests role scoping
+And system_role is set on that caller
+When the role filter is applied
+Then no clause is added and no parameters are bound for the role filter
+And the query returns every mirror that matches the other filters
+And the caller's human role is not consulted
+```
+<!-- /planned:fix-history-role-filter-fails-open-on-unresolved-role -->
+
 ## Known caveats
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - An unauthenticated CLI caller (no `caller_email`) with no role
   configured is treated as admin — the role filter only runs when
   `caller_role` is set to a non-admin value. Hosts that rely on CLI role
   enforcement must ensure the people configuration returns a non-admin
   role for the relevant identities.
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+- An unauthenticated CLI caller (no `caller_email`) with no role configured
+  and no `system_role` falls in the unresolved band, whose narrowest filter
+  matches no mirror when the email is absent. Hosts do not depend on the
+  people configuration returning a non-admin role to obtain enforcement; an
+  identity that fails to resolve is scoped, not exempted.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - The service capabilities do not apply role filtering at all. Any caller
   that can reach a capability endpoint sees every mirror.
 - `visibility = 'shared'` is honored by the role filter but is never set
