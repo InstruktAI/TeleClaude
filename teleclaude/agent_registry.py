@@ -346,7 +346,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                 "session_pattern": "**/*.jsonl",
                 "profiles": {
                     "default": "--dangerously-bypass-approvals-and-sandbox --search",
-                    "restricted": f"--full-auto --search {codex_mount}",
+                    "restricted": f"--search {codex_mount}",
                 },
                 "mode_chains": {
                     "fast": [
