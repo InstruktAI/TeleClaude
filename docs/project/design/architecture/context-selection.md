@@ -10,8 +10,9 @@ visibility: 'public'
 - Select relevant documentation docs for a given request.
 
 - Selected IDs must exist in the snippet index.
-- Required reads are named in the response, never pulled into it; loading one is
-  the caller's own explicit act.
+- Required reads are named in the default response for an explicit follow-up.
+  An activatable-procedure fetch may request the eligible transitive closure in
+  one pass; that explicit activation form includes the dependency bodies.
 
 - Build snippet metadata from docs and global docs.
 - Return a filtered index (frontmatter only) when no IDs are provided.
@@ -53,8 +54,9 @@ flowchart TB
 **Outputs:**
 
 - **Phase 1**: Index listing (ID, description, type, scope) - frontmatter only
-- **Phase 2**: Full snippet content, plus the IDs of the required reads its bodies
-  reference and did not load
+- **Phase 2**: Full snippet content. The default form also reports required-read
+  IDs not loaded; the explicit activation form includes the eligible transitive
+  dependency bodies and names them as included.
 <!-- planned-change:docs-tier-layering -->
 - Ordered by scope priority: global → domain → project
 <!-- change:docs-tier-layering -->
@@ -65,9 +67,9 @@ flowchart TB
 
 - **Discovery precedes content**: the index listing is queried first, then content
   is fetched for the IDs chosen from it.
-- **Required reads are named, not loaded**: a response lists the dependency IDs its
-  bodies reference and never fetches them on the caller's behalf. What reaches the
-  caller's context is the caller's decision.
+- **Required-read expansion is explicit**: the default response names dependency
+  IDs for a follow-up; only the activation form explicitly requesting closure
+  includes eligible transitive dependency bodies in the same response.
 <!-- planned-change:docs-tier-layering -->
 - **Scope Ordering**: Global snippets before domain before project; stable deterministic order.
 <!-- change:docs-tier-layering -->
@@ -107,7 +109,12 @@ sequenceDiagram
         FS->>Selector: Return content
     end
     Selector->>Selector: Collect the required reads the bodies reference
-    Selector->>AI: Return full snippet texts and the unloaded required-read IDs
+    alt activation fetch requests closure
+        Selector->>FS: Read eligible transitive dependency bodies
+        Selector->>AI: Return root and included dependency texts
+    else default fetch
+        Selector->>AI: Return root texts and unloaded required-read IDs
+    end
 ```
 
 #### Baseline Filtering (Optional)
@@ -119,10 +126,11 @@ authoring/editing baseline content.
 
 ### 3. Required Reads
 
-The required reads a returned body references are collected and reported as IDs
-alongside the content. IDs returned in the same response are omitted from that
-report. Nothing is fetched on the caller's behalf: the report is a pointer, and
-following it is another content request.
+By default, required reads referenced by a returned body are reported as IDs
+alongside the content; following them is another content request. An explicit
+activatable-procedure closure fetch instead resolves the eligible transitive
+dependency set and returns those bodies in the same response under the included
+header. In both forms, the caller chooses whether closure expansion occurs.
 
 ### 4. Scope Priority Ordering
 
@@ -213,20 +221,11 @@ resolution every unselected read goes through.
 
 ### 6. Tier-Qualified Identity
 
-A snippet's identity carries its tier as the first segment. For the person and
-company tiers the identity also carries which person or which company it belongs
-to. More than one tier of the same kind can be present in one assembled
-index at the same time — a caller belonging to several companies always
-assembles several, and an administrator naming another person's tier assembles
-theirs alongside their own. The qualification is what keeps two such tiers from naming the same thing.
-
-A foreign project's identity is formed differently: its tier marker is exchanged
-for the project's slug. That form depends on exactly one project tier being the
-caller's own and on project slugs being registered in a single manifest. Neither
-holds for the company tier: no company is the caller's own, and a bare slug
-segment places company identities in the same namespace as project identities,
-where a company and a project sharing a name collide. The tier marker stays in
-front and the identity behind it.
+A snippet's identity carries its tier as the first segment. Person and company
+identities carry the owning slug as the second segment:
+`person/<slug>/<taxonomy>/<rest>` and
+`company/<slug>/<taxonomy>/<rest>`. Project identities retain their existing
+project-qualified form.
 
 ### 7. Tier Catalog Construction
 

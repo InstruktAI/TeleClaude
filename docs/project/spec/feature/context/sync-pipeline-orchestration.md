@@ -323,13 +323,13 @@ Scenario: UC-SPO4 A slug-worktree commit publishes nothing
 
 ```
 Given a company or person tier whose declaration records participation in the documentation surface
-When a deployment runs, from whichever of its callers invoked it
+When committed-state publication activates the platform home's recorded source
 Then that tier's documentation is composed into the published snapshot exactly as a registered project's is
 And no global agent-artifact publication path opens from the tier's home
 ```
 <!-- /planned:docs-tier-layering -->
 
-<!-- planned:docs-tier-layering -->
+<!-- planned:home-tier-commit-maintenance -->
 #### UC-SPO21: A commit under a participating tier's home republishes the snapshot
 
 ```
@@ -340,7 +340,7 @@ Then the commit-boundary maintenance republishes the deployed documentation snap
 And the tier's committed material is in that snapshot, exactly as a registered project's would be
 And a saved but uncommitted change under the home deploys nothing
 ```
-<!-- /planned:docs-tier-layering -->
+<!-- /planned:home-tier-commit-maintenance -->
 
 <!-- planned-change:retire-docs-watcher -->
 #### UC-SPO12: Concurrent syncs observe a complete documentation deployment

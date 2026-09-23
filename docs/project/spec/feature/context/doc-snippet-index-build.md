@@ -174,11 +174,12 @@ And an agent session permitted to read that tier finds the Source in it under an
 #### UC-DIB5: Catalog building follows the tier's own declaration
 
 ```
-Given a tier that is not a project
-When the index build decides whether to build a catalog for it
-Then the decision reads that tier's declared participation in the documentation surface
-And a tier whose material does not participate gets no catalog
-And the decision is never inferred from the tier's location on disk
+Given the platform home contains a declared person or company tier
+And an undeclared sibling folder has the same documentation layout
+When committed-source index construction enumerates tier catalogs
+Then the declared tier receives a catalog
+And the undeclared sibling receives none
+And tier identity is never inferred from location on disk
 ```
 
 #### UC-DIB14: A participating tier with no snippets keeps an empty catalog
@@ -197,10 +198,11 @@ And its existence answers participation while its entries answer content
 ```
 Given a company or person tier whose declaration records participation in the documentation surface
 And a snippet source under that tier's documentation home
+And an undeclared sibling folder in the same layout also holds a snippet source
 When source validation runs, scoped to that file or over the whole tree
 Then the tier's documentation home is among the roots validation walks
 And the source is validated under the same structural and classification rules as a project's or the global tree's
-And a source under a tier that does not participate is not walked
+And the source beneath the undeclared sibling is not walked
 ```
 <!-- /planned:docs-tier-layering -->
 

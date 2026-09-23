@@ -534,7 +534,7 @@ Scenario: UC-ARD32 Every artifact source path is classified by one registry boun
 ```
 Given a company or person tier whose declaration records participation in the documentation surface
 And that tier's home holds authored documentation sources
-When a deploy-mode sync publishes the documentation snapshot
+When committed-state publication activates the platform home's recorded source
 Then that tier's sources are copied into the staged generation under companies/<slug>/ or people/<slug>/
 And the merged index carries every entry of that tier's catalog under its tier-qualified identity
 And the tier's own catalog is deployed beside its material, whether or not it has entries
@@ -542,12 +542,15 @@ And the staged generation replaces the deployed root atomically, tier material i
 And discovery is served from the deployed corpus, never from the tier's authoring home
 ```
 
-#### UC-ARD36: A tier that does not participate publishes nothing
+#### UC-ARD36: An undeclared tier-shaped folder publishes nothing
 
 ```
-Given a company or person tier whose declaration records no participation in the documentation surface
-When a deploy-mode sync publishes the documentation snapshot
-Then nothing from that tier's home enters the staged generation or the merged index
+Given the platform home's recorded source contains one declared company or person tier
+And an undeclared sibling folder has the same documentation layout
+And both hold authored documentation sources
+When committed-state publication activates that recorded source
+Then the declared tier's material enters the staged generation and merged index
+And nothing from the undeclared sibling enters either output
 ```
 <!-- /planned:docs-tier-layering -->
 
