@@ -280,7 +280,6 @@ Scenario: UC-ARD13 A generated domain bundle resolves as an explicit Required Re
   And a generation or resolution failure aborts before previously deployed agent artifacts are replaced
 ```
 
-<!-- planned:generated-artifacts-used-as-required-read-inputs -->
 #### UC-ARD39: A generated bundle reference resolves to the generation, not to a publisher source
 
 ```
@@ -292,7 +291,6 @@ Scenario: UC-ARD39 A generated bundle reference resolves to the generation
   And the consuming artifact carries the bundle content this run generated
   And a same-named file left behind in a publisher source tree is never read in its place
 ```
-<!-- /planned:generated-artifacts-used-as-required-read-inputs -->
 
 ```
 Scenario: UC-ARD6 A procedure carries its generated domain bundle explicitly

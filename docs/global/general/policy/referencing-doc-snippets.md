@@ -19,11 +19,9 @@ visibility: 'public'
   `@<HOME>/.teleclaude/docs/<domain>/domain-baseline-bundle.md`. This exact generated-artifact
   shape is the sole exception to the taxonomy-segment requirement. Validation accepts it only
   for a published domain, and deploy mode generates it before agent-artifact transpilation.
-<!-- planned:generated-artifacts-used-as-required-read-inputs -->
 - A generated global documentation artifact resolves to the published generation, never to a
   publisher source tree. The merged index and every published domain's baseline bundle are the
   artifacts this covers; every authored global snippet resolves to the project that owns it.
-<!-- /planned:generated-artifacts-used-as-required-read-inputs -->
 - Project doc references must use `@docs/...` (repo‑relative to the project root).
 - Third-party sources must appear under **See also** only (soft references).
   They must not appear in Required reads.
@@ -37,14 +35,12 @@ visibility: 'public'
   remain machine-local but consistent within one operator's environment.
 - Repo‑relative `@docs/...` keeps project docs portable and consistent.
 - Soft references prevent third-party docs from being auto-included in agent context.
-<!-- planned:generated-artifacts-used-as-required-read-inputs -->
 - An authored global snippet resolves to its publisher source because that source is readable
   before a host has published anything. A generated artifact has no such source, so the same
   mapping substitutes a file nothing regenerates for the one the reference names. The substitute
   keeps resolving, so the reference looks healthy while its content stops tracking the sources it
   was generated from, and every artifact compiled from it inherits the stale copy with no check
   failing.
-<!-- /planned:generated-artifacts-used-as-required-read-inputs -->
 
 ## Scope
 
