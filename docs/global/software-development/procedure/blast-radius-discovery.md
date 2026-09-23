@@ -43,11 +43,15 @@ exploration that a symbol or file has no dependents.
    migrate source metadata.
 <!-- /planned:code-uc-blueprint-traceability -->
 
-2. Check the reported freshness. If the baseline is missing or stale (recorded
-   baseline commit ≠ current `origin/main`), state the gap explicitly and fall
-   back to manual exploration — never silently skip this step, and never
-   generate or refresh the Blueprint yourself (generation is integrate-time
-   automation only).
+2. Check the reported freshness. A stale answer is headed by a line naming the
+   Blueprint's baseline commit and the current `origin/main` commit; the
+   dependents beneath it still come from the graph on disk. If a file you are
+   changing may have changed within that range, run
+   `git diff --name-only <baseline>..<origin/main>` and read those files
+   directly. If the command reports the graph unavailable, state the gap
+   explicitly and fall back to manual exploration — never silently skip this
+   step, and never generate or refresh the Blueprint yourself (generation is
+   integrate-time automation only).
 3. Treat the returned dependents as candidates, not an oracle. Verify each
    against the source and decide relevance; bias to over-inclusion — a missed
    dependent is a build-time surprise, an extra candidate is a discarded read.
@@ -64,12 +68,12 @@ query "<terms>"`, `graphify explain "<symbol>"`, or `graphify path "<A>"
 
 ## Outputs
 
-- A verified dependent set, or an explicit stated gap when the baseline is
-  stale, missing, or unsupported for the area — grounding the change surface.
+- A verified dependent set, or an explicit stated gap when the graph is
+  unavailable or unsupported for the area — grounding the change surface.
 
 ## Recovery
 
-- If the CLI reports the baseline stale or missing, do not attempt to
+- If the CLI reports the graph unavailable, do not attempt to
   regenerate it. State the gap and fall back to manual `grep`/exploration,
   noting the fallback explicitly rather than silently proceeding as if no
   dependents exist.

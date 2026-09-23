@@ -70,10 +70,10 @@ disjoint triggers:
   integration worktree, which holds the delivered commit, when that pull diverged.
 - The **command surface dispatches a detached refresh when it observes a stale
   baseline from the canonical checkout** and answers the current call from the
-  fallback. Regeneration runs in a separate process group so the command returns
+  existing graph. Regeneration runs in a separate process group so the command returns
   immediately, and a non-blocking lock makes it single-flight: an observation
   made while a refresh is already running dispatches nothing. An observation made
-  from a todo worktree answers the fallback and dispatches nothing, so a slug
+  from a todo worktree answers from the existing graph and dispatches nothing, so a slug
   checkout never drives the shared cache. This trigger covers every path by which
   `origin/main` advances without a merge or a delivery — most commonly a commit
   authored on main at the repo root and pushed, for which git offers no hook —
@@ -130,20 +130,26 @@ that no implementation exists.
 
 ### Fallback
 
-If the manifest reports stale/missing, the area is unsupported, or a Blind spot
-applies, the agent states the gap and falls back to manual exploration —
-blast-radius is never silently skipped.
+A stale baseline still answers from the graph on disk. The answer is headed by
+a line naming the Blueprint's baseline commit and the current `origin/main`
+commit, so a caller whose changed files may fall inside that range can diff it
+and read those files directly.
+
+If the graph cannot be read, the area is unsupported, or a Blind spot applies,
+the agent states the gap and falls back to manual exploration — blast-radius is
+never silently skipped.
 
 ### Use cases
 
-#### UC-BP1: A stale baseline dispatches its own refresh
+#### UC-BP1: A stale baseline answers from the existing graph and dispatches its own refresh
 
 ```gherkin
 Given the Blueprint manifest records a baseline commit that is not the current origin/main
 When an agent asks the command surface for the blast radius of a changed file from the canonical checkout
-Then the command answers with the manual-exploration fallback naming the stale baseline
+Then the command answers with the dependents from the existing graph
+And the answer is headed by a line naming the stale baseline commit and the current origin/main commit
 And it dispatches a detached regeneration for the current origin/main baseline
-But an agent asking the same question from a todo worktree receives the fallback with no regeneration dispatched
+But an agent asking the same question from a todo worktree receives the same headed answer with no regeneration dispatched
 ```
 
 #### UC-BP2: A slug-worktree merge preserves the shared baseline

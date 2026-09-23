@@ -283,8 +283,9 @@ If the work passes the scope/size gate, continue to plan drafting.
 Follow `software-development/procedure/blast-radius-discovery` for every file
 this plan intends to change. Ground the plan's change surface and test
 adjacency in the verified candidate set it produces — if the procedure reports
-the baseline missing or stale, state the gap in the plan and fall back to
-manual exploration; never silently skip the step.
+the graph unavailable, state the gap in the plan and fall back to manual
+exploration; a stale answer is still used, with its named range checked as that
+procedure describes; never silently skip the step.
 
 For a bug whose diagnosis identifies a shared-contract root, seed discovery from
 the contract owner and every producer, entry path, and consumer in the diagnosis's
