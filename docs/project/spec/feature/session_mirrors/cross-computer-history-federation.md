@@ -177,11 +177,9 @@ And no relay command is required for those paths
 <!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - Role-scoped access propagates for search: the caller's verified identity
   travels with the relay command, and each peer applies its own history scope
-  before returning rows. The command also carries the caller's email and
-  role, which a peer running a release that does not read the relayed
-  principal uses as it did before; a peer that reads the principal decides a
-  person's role from its own registry. Remote detail and raw retrieval still
-  call the
+  before returning rows. A peer decides a person's role from its own people
+  registry; a role carried in the command is never an authorization input.
+  Remote detail and raw retrieval still call the
   remote service directly and are evaluated under that service's own access
   rules.
 <!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
