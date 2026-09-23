@@ -87,15 +87,15 @@ And the gate rejects the caller — the human band is never consulted for agent 
 
 ### Claim-scoped todo update
 
-`telec todo update` replaces role privilege with object state. The verb's band admits every agent session except `worker`, and every admitted caller that carries an agent session id — dispatch-capable roles and roleless sessions included — is then gated on the todo's claim at the point of mutation. No role holds unrestricted access to this verb (ADR-0067).
+`telec todo update` replaces role privilege with object state. The verb's band admits every agent session except `worker`, and every admitted caller that carries an agent session id — dispatch-capable roles and roleless sessions included — is then gated on the todo's claim. No role holds unrestricted access to this verb.
 
-The claim gate is the claiming-group predicate governing artifact writes (`feature/workflow/artifact-versioning`, Write authority; ADR-0096). A todo whose `active_runner` names a live session is claimed; its claiming group is the holding session plus every session it dispatched, transitively through `initiator_session_id`. The gate admits a caller inside the claiming group, and admits any caller on an unclaimed todo — no `active_runner`, or one naming a session that is no longer live. It refuses a caller outside a live claim's group with the claim-conflict shape naming the holding session: the caller's door is that session, never a role it should have had. The todo state is unchanged by a refused update.
+The claim gate is the claiming-group predicate governing artifact writes (`feature/workflow/artifact-versioning`, Write authority). A todo whose `active_runner` names a live session is claimed; its claiming group is the holding session plus every session it dispatched, transitively through `initiator_session_id`. The gate admits a caller inside the claiming group, and admits any caller on an unclaimed todo — no `active_runner`, or one naming a session that is no longer live. It refuses a caller outside a live claim's group with the claim-conflict shape naming the holding session: the caller's door is that session. The todo state is unchanged by a refused update.
 
-The gate is evaluated at the mutation point — after request admission and validation, immediately before the update's first state write — so a claim acquired after admission and before that point refuses the update. A slug rename executes as a deferred durable operation; an agent-originated rename evaluates the gate again immediately before the physical rename and reports a conflict through the operation record. Claim acquisition is not serialized against the gate: a claim written between the evaluation and the write it guards is not seen.
+Claim acquisition and the gate share one per-todo serialization. The gate is evaluated after request admission and validation, and the gate together with every state write the update performs runs as one serialized span, so a claim is recorded either before the gate evaluates — and refuses the update — or after the update's writes complete. A slug rename executes as a deferred durable operation; an agent-originated rename evaluates the gate again under the same serialization and holds it through the physical rename, reporting a conflict through the operation record. Claim release is not serialized against the gate; a release during an update only relaxes it.
 
-`worker` is excluded at the verb band before any claim lookup runs — the claim-independent capability stand-in that keeps a dispatched build worker inside its brief. A direct human-identity caller — a login-resolved human principal carrying no agent session id — is not a session, is not gated by the claim, and is evaluated against the verb's human band as before; the claim is an integrity boundary between sessions, and this is the same caller class the artifact-write claim gate exempts (ADR-0096; `feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this gate.
+`worker` is excluded at the verb band before any claim lookup runs. A direct human-identity caller — a login-resolved human principal carrying no agent session id — is not a session, is not gated by the claim, and is evaluated against the verb's human band as before; it is the caller class the artifact-write claim gate exempts (`feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this gate.
 
-#### UC-CSU1: A claim holder updates its todo
+#### UC-CSU1: Tasker updates the todo it holds the claim on
 
 ```
 Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
@@ -105,17 +105,27 @@ Then the claim gate accepts (the caller holds the live claim)
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU2: A session dispatched by the claim holder updates the todo
+#### UC-CSU2: Tasker updates an unclaimed todo
 
 ```
-Given a live session `t-1` holding the claim on a todo
-And a non-worker agent session `c-1` whose initiator_session_id chain reaches `t-1`
-When `c-1` calls `telec todo update` on that todo
-Then the claim gate accepts (the caller is inside the claiming group)
+Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
+And a todo whose active_runner is absent
+When the session calls `telec todo update` on that todo
+Then the claim gate accepts (the todo is unclaimed)
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU3: Any non-worker agent session updates an unclaimed todo
+#### UC-CSU3: Tasker outside the claiming group is refused
+
+```
+Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
+And a todo whose active_runner names a different live session whose claiming group does not include `t-1`
+When the session calls `telec todo update` on that todo
+Then the claim gate refuses with a claim conflict naming the holding session
+And the todo state is unchanged
+```
+
+#### UC-CSU4: Job runner updates an unclaimed todo
 
 ```
 Given a job-runner agent session with system_role=`job_runner` and session_id=`j-1`
@@ -125,27 +135,7 @@ Then the claim gate accepts (the todo is unclaimed)
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU4: A dead holder's claim counts as unclaimed
-
-```
-Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
-And a todo whose active_runner names a session that is no longer live
-When the session calls `telec todo update` on that todo
-Then the claim gate accepts (no live claim exists)
-And the requested mutation is applied to the todo state
-```
-
-#### UC-CSU5: A caller outside the claiming group is refused whatever its role
-
-```
-Given an agent session with system_role=`orchestrator` (or `system`, `integrator`, `tasker`, or none)
-And a todo whose active_runner names a different live session outside the caller's claiming group
-When the session calls `telec todo update` on that todo
-Then the claim gate refuses with a claim conflict naming the holding session
-And the todo state is unchanged
-```
-
-#### UC-CSU6: Worker is refused regardless of claim state
+#### UC-CSU5: Worker is refused regardless of claim state
 
 ```
 Given a worker agent session with system_role=`worker` and session_id=`w-1`
@@ -153,6 +143,16 @@ And a todo whose active_runner is absent, and separately a todo whose active_run
 When the session calls `telec todo update` on either todo
 Then the verb band rejects the caller before any claim lookup runs
 And the response is a not-permitted authorization failure for `telec todo update`
+```
+
+#### UC-CSU6: Orchestrator outside the claiming group is refused
+
+```
+Given an orchestrator agent session with system_role=`orchestrator`
+And a todo whose active_runner names a different live session whose claiming group does not include the caller
+When the session calls `telec todo update` on that todo
+Then the claim gate refuses with a claim conflict naming the holding session
+And the todo state is unchanged
 ```
 
 #### UC-CSU7: A direct human-identity caller is not claim-gated
@@ -166,24 +166,44 @@ And no claim gate applies
 And the requested mutation is applied to the todo state
 ```
 
-#### UC-CSU8: A claim acquired after admission refuses the update at the mutation point
+#### UC-CSU8: A dead holder's claim counts as unclaimed
+
+```
+Given a tasker agent session with system_role=`tasker` and session_id=`t-1`
+And a todo whose active_runner names a session that is no longer live
+When the session calls `telec todo update` on that todo
+Then the claim gate accepts (no live claim exists)
+And the requested mutation is applied to the todo state
+```
+
+#### UC-CSU9: A claim acquired after admission refuses the update
 
 ```
 Given an agent session's `telec todo update` request admitted for an unclaimed todo
-And a different live session outside the caller's claiming group acquires the todo's claim after admission and before the update reaches its mutation point
-When the mutation point is reached
+And a different live session outside the caller's claiming group records the todo's claim after admission and before the update's serialized span begins
+When the gate evaluates
 Then the claim gate refuses with a claim conflict naming the holding session
 And the todo state is unchanged
 ```
 
-#### UC-CSU9: A claim acquired before a deferred rename executes refuses the rename
+#### UC-CSU10: A claim acquired before a deferred rename executes refuses the rename
 
 ```
 Given an agent session's `telec todo update --slug <new>` request admitted and queued while the todo is unclaimed
-And a different live session outside the caller's claiming group acquires the todo's claim before the deferred execution reaches its mutation point
-When the rename operation reaches its mutation point
+And a different live session outside the caller's claiming group records the todo's claim before the deferred execution begins
+When the rename operation evaluates the gate
 Then the operation completes as a claim conflict naming the holding session
 And the todo keeps its original slug with every todo surface unchanged
+```
+
+#### UC-CSU11: A session dispatched by the claim holder updates the todo
+
+```
+Given a live session `t-1` holding the claim on a todo
+And a non-worker agent session `c-1` whose initiator_session_id chain reaches `t-1`
+When `c-1` calls `telec todo update` on that todo
+Then the claim gate accepts (the caller is inside the claiming group)
+And the requested mutation is applied to the todo state
 ```
 
 <!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
@@ -247,3 +267,12 @@ Then the gate rejects the caller with a not-permitted authorization failure nami
 - The `principal_role` fallback fires only when `human_role is None and identity.principal is not None`. A token-auth caller carrying both a `human_role` and a `principal_role` uses the human one; the two should agree (both are stamped from the same session at issuance) but the code does not enforce equality.
 - Unknown verb paths return False. A typo in a binding's verb argument silently locks out every caller — there is no startup-time check that every verb identifier resolves to a real entry in the CLI surface.
 - The verb resolver normalizes `"telec sessions start"`, `"sessions.start"`, and `"sessions start"` to the same path. Mixed forms across operation bindings do not cause divergence, but the dot form is undocumented.
+
+<!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
+
+## See Also
+
+- docs/project/adr/0067-authorization-reads-the-object-not-the-caller-role.md — why `telec todo update` authorizes on the todo's claim rather than the caller's role.
+- docs/project/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group.md — the claiming-group boundary and the direct human-identity exemption this gate shares.
+
+<!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
