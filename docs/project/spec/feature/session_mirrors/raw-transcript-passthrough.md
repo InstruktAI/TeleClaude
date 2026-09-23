@@ -63,7 +63,7 @@ When an operator runs `telec history show S --raw`
 Then the CLI prints "No transcript found for session '<S>'" and exits non-zero
 ```
 
-#### Raw-transcript capability wire format
+#### UC-RTP-1: Raw-transcript capability wire format
 
 ```
 Given a mirror exists for session_id S with metadata.transcript_path = P that exists on disk
