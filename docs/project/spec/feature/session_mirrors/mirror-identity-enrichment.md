@@ -142,7 +142,13 @@ And the final metadata is serialized deterministically (stable field ordering)
 - The discord adapter user_id is passed through as a raw string; the
   discord channel_id is coerced to string. The mixed treatment is a
   preserved quirk of the historical extractor.
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - `visibility` arrives as a free-form string from the session record but
   the mirror store defaults to `private` and the role filter only honors
   `shared` as a special value. Other strings are stored but have no effect
   on role filtering.
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+- `visibility` arrives as a free-form string from the session record and
+  the mirror store defaults it to `private`. The value is stored but grants
+  nothing: history scoping does not read it.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->

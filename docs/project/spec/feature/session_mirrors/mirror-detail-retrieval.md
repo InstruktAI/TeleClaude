@@ -68,6 +68,7 @@ And the body is right-stripped before printing
 
 #### Detail capability wire format
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 ```
 Given a caller invokes the detail capability for a session_id
 When a mirror matches the lookup
@@ -80,6 +81,22 @@ And no role-based access filtering is applied at this capability
 Given no mirror matches the lookup
 Then the capability reports "Mirror not found"
 ```
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+```
+Given a caller invokes the detail capability for a session_id
+When a mirror matches the lookup within the caller's history scope
+Then the response carries
+  session_id, computer, agent, project, title, conversation_text,
+  message_count, timestamp_start, timestamp_end, coverage_state,
+  shrink_refused_at
+
+Given no mirror matches the lookup, or the only match lies outside the caller's scope
+Then the capability reports "Mirror not found"
+
+Given a caller the capability cannot identify
+Then the capability refuses the request before any mirror is read
+```
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 #### Missing-store tolerance
 
@@ -139,9 +156,15 @@ And content beyond that coverage is not represented as absent from the session
 
 ## Known caveats
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - The detail capability does not apply role filtering. Callers that need
   visibility scoping must reach mirrors through the CLI or apply policy at
   the service boundary themselves.
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+- The detail capability applies the same history scope as every other
+  mirror surface (see `feature/session_mirrors/role-scoped-history-access`),
+  so no caller reaches a wider view by addressing the service directly.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - A shortened identifier is refused rather than resolved, so a lookup never
   returns a session the caller did not name.
 - The CLI render drops `timestamp_end` and `message_count` from the

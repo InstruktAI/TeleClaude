@@ -1,5 +1,5 @@
 ---
-description: 'Role-based filtering of mirror search and detail lookup. A caller that carries an identity is scoped by its role: admins see all mirrors, members see their own and shared ones, and every other role — including one that did not resolve — sees only their own. Applied at the store boundary before rows reach the renderer, and the on-disk transcript fallback is governed by the same outcome.'
+description: 'Scoping of mirror search and detail lookup by the identity the caller carries. An admin person and a system principal see every mirror, every other person sees only their own, and a caller that cannot be identified is refused. Every surface that serves mirrors to a caller identifies it first; in-process reads that serve no caller are unscoped.'
 visibility: 'public'
 ---
 
@@ -12,45 +12,37 @@ visibility: 'public'
 
 ## What it is
 
-History queries are filtered by the caller's role so non-admins cannot
-enumerate every stored conversation on the host. A caller that carries an
-identity supplies `caller_email` and `caller_role`, and the session_mirrors
-service derives the filter from those two values for the search and detail
-lookups. The CLI resolves them once per command from the terminal's
-authenticated session and the global people configuration.
+History queries are scoped to the caller, so no one reads another person's
+conversations without the authority to. The scope derives from the identity the
+caller carries — the principal of its session, or the person resolved for it at a
+terminal — never from a terminal signal inside a session and never from a stored
+role copy. A person's role is read from the people registry when the scope is
+decided. A caller's system role is not an input: it governs which operations the
+caller may run, not whose conversations it may read.
 
-A caller's `system_role` is not an input to this filter. It records the
-channel a caller's command authorization came through, and carries no
-entitlement to another owner's conversations; the role band is derived from
-the human role alone.
+The scopes are:
 
-Carrying an identity is what distinguishes a scoped caller from an in-process
-one. A caller that carries no identity is not role-filtered; that case is
-UC-RSHA-5 and is unchanged here.
+- **Admin person or system principal**: every mirror on the host. A system
+  principal is the platform acting on work that was already accepted; it has no
+  person to scope by. A mirror recorded against no person — a system-rooted
+  session's — is visible only in this scope.
+- **Any other person**: only the mirrors recorded against their own email,
+  whatever their role, including a role that does not resolve.
+- **A caller that cannot be identified**: refused. Nothing is read and nothing is
+  returned; an unidentified caller never receives a wider view than an
+  identified one.
 
-The role bands, for a caller that carries an identity, are:
+Every surface that serves mirrors to a caller identifies that caller first: the
+CLI detail path, history search, the search command a peer receives over the
+relay, and the session_mirrors service's search, detail, and raw-transcript
+capabilities. Reads that serve no caller — mirror generation's check for an
+existing record, and memory extraction's transcript read — consider every mirror,
+because their result reaches no one.
 
-- **Admin**: no role filter is applied. The caller sees every mirror on the
-  host.
-- **Member**: the filter is "(human_email = caller_email OR visibility =
-  'shared')". The caller sees their own mirrors plus those explicitly
-  marked shared on the upstream session.
-- **Anything else** (a known non-admin, non-member role): the filter is
-  "human_email = caller_email".
-- **Unresolved** (the caller's role did not resolve): the narrowest band
-  applies. A caller whose role could not be determined receives no wider view
-  than a caller whose role resolved to the most restricted value, and a caller
-  carrying no email reaches no mirror at all.
-
-The band governs the detail path's transcript fallback as well as the store
-query: a caller the band excludes cannot obtain through the on-disk file what
-the store withheld. That outcome is UC-RSHA-6, which states it for every
-filtered miss; the unresolved band is one such miss and adds no separate rule.
-
-A filtered miss and an absent mirror are the same outcome to the caller,
-and neither reaches past the store: the on-disk transcript discovery is
-not consulted for a session the band excluded, so a denied caller cannot
-obtain through the file what the store withheld.
+A filtered miss and an absent mirror are the same outcome to the caller, and
+neither reaches past the store. The on-disk transcript discovery is consulted only
+for a caller who sees every mirror: a transcript file carries no owner to scope
+by, so a scoped caller cannot obtain through the file what the store withheld.
 
 ## Canonical fields
 
@@ -65,46 +57,42 @@ Then no clause is added and no parameters are bound for the role filter
 And the query returns every mirror that matches the other filters
 ```
 
-#### UC-RSHA-2: A caller whose role does not resolve is held to the narrowest view
+#### UC-RSHA-2: A caller that cannot be identified is refused
 
 ```
-Given a caller carries an identity whose role cannot be determined
-And that caller is a human at a terminal or an agent in a dispatched session
-When that caller searches history or requests a session's transcript
-Then they see only conversations recorded as their own
-And they see no conversation recorded against anyone else
-And a caller whose identity names no one reaches no conversation at all
+Given a human at a terminal or an agent in a session whose identity resolves to no person and no system principal
+When that caller searches history, requests a session's conversation, or requests its raw transcript
+Then the request is refused
+And no conversation is returned and no on-disk transcript is consulted
+And a person whose role does not resolve is identified, and sees only the conversations recorded as their own
 ```
 
-#### UC-RSHA-3: Member sees own + shared
+#### UC-RSHA-3: A member sees only their own
 
 ```
-Given the caller's resolved role is member
-And caller_email is set
-When the role filter is applied
-Then a clause "(human_email = caller_email OR visibility = 'shared')" is added
-And caller_email is bound for the clause
-And the query returns mirrors whose human_email matches OR whose visibility is 'shared'
+Given the caller is a person whose role is member
+When the caller searches history or requests a session's conversation
+Then only conversations recorded against the caller's email are returned
+And no conversation recorded against another person is returned, whatever else its record carries
 ```
 
-#### UC-RSHA-4: Non-admin, non-member sees only own
+#### UC-RSHA-4: Any other person sees only their own
 
 ```
-Given the caller has any other resolved role (e.g., a custom role string)
-And caller_email is set
-When the role filter is applied
-Then a clause "human_email = caller_email" is added
-And the query returns only mirrors whose human_email matches the caller
+Given the caller is a person whose role is neither admin nor member, or does not resolve
+When the caller searches history or requests a session's conversation
+Then only conversations recorded against the caller's email are returned
 ```
 
-#### UC-RSHA-5: Service capabilities bypass role filtering
+#### UC-RSHA-5: The service capabilities scope their caller
 
 ```
-Given a caller invokes the search or detail capability of the session_mirrors service directly
-When the capability executes the query
-Then no caller_email or caller_role is threaded into the store call
-And the store query executes without any role clause
-And the response includes every mirror that matches the non-role filters
+Given a caller invokes the search, detail, or raw-transcript capability of the session_mirrors service
+When the capability runs
+Then it identifies the caller as every authenticated operation does
+And it answers within that caller's scope
+And a mirror outside that scope is reported exactly as an absent one
+And a caller it cannot identify is refused before any mirror is read
 ```
 
 #### UC-RSHA-6: A filtered miss does not fall through to the transcript
@@ -117,19 +105,34 @@ And the caller receives the same not-found outcome as for a session that does no
 And the filtered mirror's transcript is not rendered
 ```
 
+#### UC-RSHA-7: A system principal sees every mirror
+
+```
+Given an agent in a session whose lineage roots at the platform's principal — a standing role, or a session one started
+When it searches history or requests a session's conversation
+Then every mirror on the host is eligible, including mirrors recorded against no person
+```
+
+#### UC-RSHA-8: Reads that serve no caller are unscoped
+
+```
+Given the mirror generator checks for an existing mirror of a transcript it is processing
+Or memory extraction reads a session's transcript through that session's mirror
+When the lookup runs
+Then it considers every mirror, whoever it is recorded against
+And its result reaches no caller
+```
+
 ## Known caveats
 
-- A caller whose identity resolves no role and names no one reaches no
-  conversation, whether that caller is a human at a terminal or an agent in a
-  dispatched session. Hosts do not depend on the people configuration returning
-  a non-admin role to obtain enforcement; an identity that fails to resolve is
-  scoped, not exempted.
-- The service capabilities do not apply role filtering at all. Any caller
-  that can reach a capability endpoint sees every mirror.
-- `visibility = 'shared'` is honored by the role filter but is never set
-  by the session_mirrors service itself; the field defaults to
-  `'private'`. Shared visibility arrives from upstream session metadata
-  copied through identity enrichment at mirror creation time.
-- The role filter operates on the mirror record's `human_email` field.
-  Mirrors created before identity enrichment landed have NULL
-  `human_email` and are invisible to member / non-admin callers.
+- The scope is decided from the identity the caller carries. A process inside a
+  session never presents a terminal login, so a login made on a session's pane
+  cannot widen or narrow what that session's processes read (see
+  `feature/identity/terminal-email-login`).
+- A mirror recorded against no person — a system-rooted session's, or one created
+  before identity enrichment populated `human_email` — is visible only to admins
+  and system principals.
+- The mirror record's `visibility` value is stored but grants nothing: no scope
+  reads it.
+- A peer applies this same scope to the identity relayed with a remote search (see
+  `feature/session_mirrors/cross-computer-history-federation`).

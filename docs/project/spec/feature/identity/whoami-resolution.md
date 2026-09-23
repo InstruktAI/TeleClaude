@@ -56,6 +56,7 @@ And the capability returns `{"principal": "system:c3f1d8a2-7b94-4e6c-9f0e-2a8d7b
 And the CLI prints two lines: `Principal: system:c3f1d8a2-7b94-4e6c-9f0e-2a8d7b6c4e5f` and `Role: worker`
 ```
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 ```
 Given a terminal session with no session token and a TTY auth document holding `maurice@instrukt.ai`
 And `people` config maps that email to the `admin` Role
@@ -76,6 +77,48 @@ Given an environment with no detectable TTY and no session token
 When the operator runs `telec auth whoami`
 Then the CLI prints `Error: no terminal session detected (TTY unavailable).` and exits with a failure status
 ```
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+```
+Given a terminal outside any session — no session identity document — with a TTY auth document holding `maurice@instrukt.ai`
+And `people` config maps that email to the `admin` Role
+When the operator runs `telec auth whoami`
+Then the CLI skips the session branch and reads the email via the session-auth reader
+And the role lookup returns `admin`
+And the CLI prints `Email: maurice@instrukt.ai`, `Role: admin`, `TTY: <pts/N>`, `Session auth file: <path>`
+```
+
+```
+Given a terminal outside any session with no TTY login document
+When the operator runs `telec auth whoami`
+Then the CLI prints `No login set for current TTY (<tty>).` and exits with success
+```
+
+```
+Given an environment outside any session with no detectable TTY
+When the operator runs `telec auth whoami`
+Then the CLI prints `Error: no terminal session detected (TTY unavailable).` and exits with a failure status
+```
+
+#### UC-WHO-SESSION-CARRIED: Inside a session, whoami reports the identity the session carries
+
+```
+Given a process inside a session whose identity document holds no session token — a session whose lineage roots at a person
+And the pane it runs on carries a live login document for someone else
+When the operator runs `telec auth whoami`
+Then the CLI invokes the identity context's whoami capability over the local transport
+And it prints the Principal and Role the session resolves to
+And the terminal's login is not printed
+```
+
+#### UC-WHO-SESSION-UNUSABLE: A session identity document that identifies nothing is reported, not replaced
+
+```
+Given a process whose session identity document is present but malformed, or carries no session id
+When the operator runs `telec auth whoami`
+Then the CLI reports that the session carries no usable identity and exits with a failure status
+And no terminal login is consulted or printed
+```
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 ```
 Given any caller resolved by caller verification whose CallerIdentity has principal=`system:8f3c1a7d-2b94-4e6c-9f0e-2a8d7b6c4e5f` and principal_role=`orchestrator`

@@ -12,6 +12,7 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 `telec` is a multi-computer tool: a developer can dispatch agents to remote
 boxes. History federation lets an operator search or show sessions across
 those boxes without leaving the local terminal. Both `telec history search`
@@ -22,6 +23,19 @@ peer carrying the caller's verified email and role, and each peer applies
 its own role band before returning rows. A remote detail or raw request
 still resolves the computer name to a remote endpoint and calls that
 session_mirrors service directly.
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+`telec` is a multi-computer tool: a developer can dispatch agents to remote
+boxes. History federation lets an operator search or show sessions across
+those boxes without leaving the local terminal. Both `telec history search`
+and `telec history show` accept `--computer <name>` (repeatable for search,
+single-valued for show). A remote search travels the daemon relay: the CLI
+reaches its local daemon, which dispatches a search command to each named
+peer carrying the caller's verified identity — its email and role, and the
+platform's principal when that is who the caller is — and each peer applies
+its own history scope to that identity before returning rows. A remote detail or raw request
+still resolves the computer name to a remote endpoint and calls that
+session_mirrors service directly.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 For search, all remote calls run in parallel, errors are surfaced per-host,
 and the merged result list is re-sorted by `sort_timestamp` descending
@@ -35,6 +49,7 @@ raw-transcript capability depending on `--raw`.
 
 #### Search fan-out across multiple computers
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 ```
 Given an operator runs `telec history search <terms> --computer A --computer B`
 When the search is dispatched
@@ -44,6 +59,17 @@ And the caller's verified email and role travel with each command, so each peer 
 And local mirrors are NOT included in the merged result
 And the merged rows are sorted by sort_timestamp DESC and rendered with a "computer" column
 ```
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+```
+Given an operator runs `telec history search <terms> --computer A --computer B`
+When the search is dispatched
+Then the CLI issues one authenticated request to its local daemon
+And the local daemon dispatches a search command to A and to B over the daemon relay, in parallel
+And the caller's verified identity travels with each command, so each peer applies its own history scope
+And local mirrors are NOT included in the merged result
+And the merged rows are sorted by sort_timestamp DESC and rendered with a "computer" column
+```
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 #### Per-host error reporting
 
@@ -96,6 +122,7 @@ And on transport failure "Failed to fetch session 'S' from A: <reason>" is print
 
 #### UC-CCHF-5: Cross-computer search travels the daemon relay
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 ```
 Given a caller searches history on a remote computer
 When the search is dispatched
@@ -109,6 +136,22 @@ Given the remote peer does not carry the search command
 Then it answers the unsupported-command error
 And the caller is told which computer could not serve the request
 ```
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+```
+Given a caller searches history on a remote computer
+When the search is dispatched
+Then the caller's request reaches the local daemon through the authenticated client
+And the local daemon dispatches a search command to the remote peer over the daemon relay
+And the caller's verified identity travels with that command: its email and role, and the platform's principal when that is who the caller is
+And the remote peer applies its history scope to that identity before returning rows
+And a peer that receives a command carrying no identity refuses it rather than answering unscoped
+And the CLI opens no direct connection to the remote host
+
+Given the remote peer does not carry the search command
+Then it answers the unsupported-command error
+And the caller is told which computer could not serve the request
+```
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 #### UC-CCHF-6: Remote detail and raw retrieval stay on their current path
 
@@ -124,11 +167,21 @@ And no relay command is required for those paths
   intentionally NOT mixed into the result. There is no "include local"
   toggle; an operator wanting the local results too must run the command
   twice (once with `--computer`, once without).
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - Role-scoped access propagates for search: the caller's verified email and
   role travel with the relay command, and each peer applies its own band
   before returning rows. It does not propagate for remote detail or raw
   retrieval, which still call the remote service directly and are evaluated
   under that service's own access rules.
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+- Role-scoped access propagates for search: the caller's verified identity
+  travels with the relay command, and each peer applies its own history scope
+  before returning rows. A peer running a release that does not read the
+  relayed principal applies its own band to the email and role alone, as it
+  did before. Remote detail and raw retrieval still call the
+  remote service directly and are evaluated under that service's own access
+  rules.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - The remote request timeout is fixed at five seconds per call. Slow or
   paused remotes produce a transport error without retry.
 - The remote search payload omits some local-only columns

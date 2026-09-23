@@ -76,11 +76,24 @@ When caller verification runs
 Then the terminal-identity branch rejects the call as login-required-in-multi-user-mode
 ```
 
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 ```
 Given the same unresolved-email call, but the configured `people` list has zero or one registered person (single-user mode)
 When caller verification runs
 Then the terminal-identity branch returns a CallerIdentity with human_role=`admin` (Anonymous-admin fallback)
 ```
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+#### UC-CV-TERMINAL-NO-PERSON: A call that names no person is refused on every host
+
+```
+Given a call with no session-token and no session id
+And it carries no terminal-email signal, or one that matches no registered person
+When caller verification runs
+Then the terminal-identity branch rejects the call as login-required
+And this holds whatever the number of registered people, including zero or one
+And no role is granted to a call that names no person
+```
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 <!-- planned:external-session-identity -->
 #### UC-CV-ATTESTED-RESOLVES: An attested local caller resolves to the session that owns its process tree
@@ -172,6 +185,20 @@ Then the returned CallerIdentity carries principal=None and retains the session'
 And a gate that requires a human principal refuses the caller
 ```
 
+<!-- planned:fix-history-role-filter-fails-open-on-unresolved-role -->
+#### UC-CV-SESSION-OUTRANKS-TERMINAL: A session's own identity outranks a terminal-email signal
+
+```
+Given a call with no session-token signal and a caller-session-id whose session record carries an identity — a principal, or a person's email
+And the call also carries a terminal-email signal
+When caller verification runs
+Then the returned CallerIdentity takes its email from the session record, never from the signal
+And a human role the session record does not store is resolved for the session's own person
+And a session carrying the platform's principal gains no email from the signal
+And the terminal-email signal is consulted only for a session record that carries no identity at all
+```
+<!-- /planned:fix-history-role-filter-fails-open-on-unresolved-role -->
+
 ### Cross-context references
 
 - Consumed by every protected operation in the identity context, either directly or transitively through the command-clearance capability.
@@ -189,6 +216,10 @@ And a gate that requires a human principal refuses the caller
   not caller identity, and is omitted.
 
 - The session and token resolution layers maintain short-lived caches. A freshly closed session can resolve briefly through the cache; cache invalidation is called on session close to mitigate, but a race window exists.
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - The terminal-email fallback in single-user mode stamps `admin` even when no email is present. This is the v1 single-user convenience — it is explicitly NOT how v2 will behave (v2 returns Anonymous and lets the caller decide).
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+- No host shape turns a call that names no person into an admin. The single-person convenience lives in the terminal reader, which answers a fresh terminal with the sole registered person's email (`feature/identity/terminal-email-login` UC-TEL5); a caller with no terminal sends no email and is refused here.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - System-role derivation falls back to the heuristic "if `working_slug` is set, treat as worker" when `system_role` is unset. A session record with a stale `working_slug` would mis-band as worker. The column-first ordering protects current deployments.
 - The CLI deliberately suppresses token/session-id signals when the tmux session name is `tc_tui` (the trusted TUI). TUI callers ALWAYS go the terminal-email path even though they live in tmux.
