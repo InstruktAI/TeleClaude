@@ -67,8 +67,12 @@ for supported CLIs.
 ## Outputs
 
 - Updated artifact files under the selected tier and reach.
+<!-- planned-change:retire-docs-watcher -->
 - Commands recomposed into the global command corpus and skills into the catalog or the
   project's delivery location, by `telec sync`.
+<!-- change:retire-docs-watcher -->
+- Commands and skills are published from the recorded commit by maintenance when their source paths change.
+<!-- /planned-change:retire-docs-watcher -->
 
 ## Recovery
 

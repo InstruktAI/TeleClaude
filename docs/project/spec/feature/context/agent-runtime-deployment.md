@@ -12,9 +12,16 @@ visibility: 'public'
 ## What it is
 
 
+<!-- planned-change:retire-docs-watcher -->
 The phase of Sync that writes Deployed outputs each agent CLI reads at
 runtime. When invoked via publication, the distribution step always runs
 in deploy mode — no other mode exists. The deploy path runs two phases:
+<!-- change:retire-docs-watcher -->
+The distribution phase writes the outputs each agent CLI reads at runtime.
+Recorded-commit publication invokes its internal deployment entry after
+validating the committed source. Direct invocation builds for inspection only.
+Deployment runs two phases:
+<!-- /planned-change:retire-docs-watcher -->
 
 
 
@@ -75,6 +82,7 @@ provisioned. Content in any runtime home that this pipeline did not produce is
 left untouched.
 
 
+<!-- planned-change:retire-docs-watcher -->
 After both phases, the global documentation tree is exposed at
 `~/.teleclaude/docs/` as a complete materialized snapshot. Each published domain
 and the cross-cutting `general` content are copied from their owning publisher
@@ -82,14 +90,31 @@ sources into a staged generation, then the staged generation atomically replaces
 the deployed root. The valid domains are exactly the union of every registered
 project's `business.publishes`; TeleClaude holds no central allow-list of valid
 domains, and adding a domain needs only a project that declares and serves it.
+<!-- change:retire-docs-watcher -->
+The global documentation tree at `~/.teleclaude/docs/` is a complete materialized
+snapshot. Publication stages the deployed generation, replaces only the
+triggering repository's owned contribution from its recorded commit, rebuilds
+the merged index and bundles, and atomically replaces the deployed root. Other
+repositories' contributions remain at their previously deployed revisions.
+The valid domains are the union of registered projects' `business.publishes`;
+TeleClaude holds no central domain allow-list.
+<!-- /planned-change:retire-docs-watcher -->
 
 
+<!-- planned-change:retire-docs-watcher -->
 The registered-publisher set is maintained automatically: a deploy-mode
 `telec sync` from a project declaring `business.publishes` registers that
 project's durable root. Split detection (below) evaluates every registered
 domain publisher, so a self-registered publisher participates in the
 one-owner-per-domain hard block like any other, for documentation and for
 domain-partitioned global commands alike.
+<!-- change:retire-docs-watcher -->
+The registered-publisher set is maintained automatically: committed-state
+publication from a project declaring `business.publishes` registers that
+project's durable root. Split detection evaluates every registered domain
+publisher, so a newly registered publisher participates in the one-owner-per-domain
+hard block for documentation and domain-partitioned global commands.
+<!-- /planned-change:retire-docs-watcher -->
 
 Sync-time split detection runs before composition: if more than one registered
 project declares the same domain in `business.publishes`, the deploy
@@ -618,23 +643,28 @@ And the agent reads the committed content from the deployed tree
   machine-wide contributes it to the mother repository; the catalog is a
   curation surface, not a merge of every registered root.
 
+<!-- planned-change:retire-docs-watcher -->
 - Documentation is authored only on `main`. A deploy-mode sync is refused from a
   slug worktree, so a worktree branch's docs are never deployed; the deploy
   sources the Mother's canonical checkout. The main checkout and the integration
   worktree are the only contexts that deploy the doc layer.
+<!-- change:retire-docs-watcher -->
+- Documentation is authored only on `main`. Publication reads the recorded
+  canonical commit, so a slug worktree's uncommitted or branch-only documentation
+  never enters the deployed generation.
+<!-- /planned-change:retire-docs-watcher -->
 
 <!-- planned-change:retire-docs-watcher -->
 - The distribution step is always fatal: a non-zero distribution exit propagates
-  and fails publication (there is no suppress-on-warn mode). A split domain
+  and fails the sync (there is no suppress-on-warn mode). A split domain
   ownership declaration and a bundle-inflation failure both abort the deploy this
   way. The docs watcher, which must not block, catches that failure at its own
   subprocess boundary instead.
 <!-- change:retire-docs-watcher -->
-- The distribution step is always fatal: a non-zero distribution exit propagates
-  and fails the sync (there is no suppress-on-warn mode). A split domain
-  ownership declaration and a bundle-inflation failure both abort the deploy this
-  way. The post-commit hook, which must not fail a commit that already passed the
-  gate, reports that failure instead of propagating it.
+- A non-zero distribution exit fails the publication action. A split domain
+  ownership declaration or bundle-inflation failure aborts deployment, and
+  maintenance records the failure against the original committed range for replay.
+  The commit that passed validation remains recorded.
 <!-- /planned-change:retire-docs-watcher -->
 - The deployed `index.yaml` is the union of every owner's source per-domain
   `index.yaml`; each source index already carries `~/.teleclaude` paths, so the
