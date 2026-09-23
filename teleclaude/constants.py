@@ -168,6 +168,13 @@ class HookSourceKind(StrEnum):
     HEADLESS = "headless"
 
 
+class HeadlessBootstrapField(StrEnum):
+    """Receiver-owned fields carried between hook ingress and the outbox."""
+
+    AUTHORIZATION = "headless_bootstrap"
+    CALLER_EMAIL = "headless_bootstrap_caller_email"
+
+
 class MarkerState(StrEnum):
     """Represent whether the inherited session-identity marker is usable."""
 

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HeadlessBootstrapField
 from teleclaude.core import polling_coordinator
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
@@ -35,7 +35,9 @@ from teleclaude.core.hook_outbox_handlers import (
     optional_payload_str_value,
 )
 from teleclaude.core.hook_outbox_queue import HookOutboxQueueItem, HookOutboxSessionQueue
+from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.models import AgentDispatchMode, Session, SessionEntryPoint, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.events.envelope import EventVisibility
@@ -47,7 +49,6 @@ if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
-_HEADLESS_BOOTSTRAP_FIELD = "headless_bootstrap"
 _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap without receiver authorization"
 # Headless hook events carry no mode; the launch intent requires one, and "med"
 # is the canonical default across the platform (domain_config.mode default).
@@ -370,6 +371,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         self,
         session_id: str,
         data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
+        caller_email: str | None,
     ) -> Session:
         """Create a headless session row for standalone hook events."""
         native_log_file = optional_payload_str_value(data, "native_log_file") or optional_payload_str_value(
@@ -387,6 +389,10 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             agent=agent_str,
             project_path=project_path or "",
         )
+        origin_metadata = TerminalOriginMetadata(email=caller_email) if caller_email else None
+        identity = (
+            get_identity_resolver().resolve(InputOrigin.TERMINAL.value, origin_metadata) if origin_metadata else None
+        )
         cmd = CreateSessionCommand(
             session_id=session_id,
             headless=True,
@@ -395,8 +401,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
             project_path=project_path or "",
             subdir=subdir,
             origin=InputOrigin.TERMINAL.value,
-            origin_metadata=None,
-            human_role=HUMAN_ROLE_CUSTOMER,
+            origin_metadata=origin_metadata,
+            human_role=None if identity and identity.person_role else HUMAN_ROLE_CUSTOMER,
             launch_intent=SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT,
                 agent=agent_str,
@@ -453,6 +459,8 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     ) -> None:
         """Dispatch a hook event directly global Event Bus."""
+        raw_caller_email = data.pop(HeadlessBootstrapField.CALLER_EMAIL, None)
+        caller_email = raw_caller_email if isinstance(raw_caller_email, str) else None
         session = await db.get_session(session_id)
         if not session:
             if event_type != AgentHookEvents.AGENT_SESSION_START:
@@ -462,14 +470,14 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                     event_type=event_type,
                 )
                 return
-            if data.get(_HEADLESS_BOOTSTRAP_FIELD) is not True:
+            if data.get(HeadlessBootstrapField.AUTHORIZATION) is not True:
                 logger.debug(
                     _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT,
                     session_id=session_id,
                     event_type=event_type,
                 )
                 return
-            session = await self._ensure_headless_session(session_id, data)
+            session = await self._ensure_headless_session(session_id, data, caller_email)
         # Native metadata arrives through the outbox and can legitimately lag
         # behind session close. Persist those row mutations before the generic
         # closed-session guard so revive retains the last known native binding.
