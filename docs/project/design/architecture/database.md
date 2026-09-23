@@ -179,7 +179,6 @@ conclusive provider not-found clears or replaces a record, and an inconclusive
 lookup leaves the record untouched. The contract the table serves is
 `project/spec/feature/integration/discord-admin-reflection-state`.
 
-<!-- planned:discord-reflection-contract-no-protected-unidentified -->
 ### Shared Discord child ownership
 
 ```mermaid
@@ -281,7 +280,6 @@ inventory, capability disagreement, or repository failure resets or freezes the
 candidate without provider mutation. The master may delete the child only after
 the same candidate survives two consecutive complete epochs; restart and
 concurrent passes therefore cannot erase or fabricate the proof.
-<!-- /planned:discord-reflection-contract-no-protected-unidentified -->
 
 
 The daemon owns `voice_transcriptions`; it is the single source of truth for

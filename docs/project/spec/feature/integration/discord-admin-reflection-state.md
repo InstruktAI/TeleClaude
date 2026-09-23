@@ -190,20 +190,6 @@ And any existing launcher in that forum is not treated as a valid project launch
 And a button click without a launch target returns user-safe feedback without creating a session
 ```
 
-<!-- planned-change:discord-reflection-contract-no-protected-unidentified -->
-#### UC-DARS-11: Shared artifacts obey master ownership without config writes
-
-```gherkin
-Given a Discord artifact is shared across the fleet, such as Operations,
-Help Desk, Customer Sessions, Escalations, announcements, general, or operator-chat
-When a master computer reconciles that shared artifact
-Then it may create or adopt the artifact and store the provider_id in database reflection state
-When a non-master computer reconciles that shared artifact
-Then it may verify and use existing reflection state
-And it does not create the shared artifact when no usable record exists
-And neither computer writes the shared provider ID to config.yml
-```
-<!-- change:discord-reflection-contract-no-protected-unidentified -->
 #### UC-DARS-11: Shared containers and their children retain distinct owners
 
 ```gherkin
@@ -221,7 +207,6 @@ And foreign computers do not mutate the claimed child
 And the master treats the child as ownerless only after every retained computer has completed ownership adoption and the same child survives two complete reconciliation epochs without a claim
 And incomplete or mixed-version ownership evidence causes no provider deletion
 ```
-<!-- /planned-change:discord-reflection-contract-no-protected-unidentified -->
 
 #### UC-DARS-12: Explicit reset is a database operation
 
