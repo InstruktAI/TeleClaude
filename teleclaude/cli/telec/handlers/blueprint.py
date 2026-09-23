@@ -21,7 +21,8 @@ __all__ = ["handle_code_blueprint"]
 
 _BLUEPRINT_USAGE = "Usage: telec code blueprint affected <changed-files>"
 _AFFECTED_USAGE = "Usage: telec code blueprint affected <changed-files>"
-_FALLBACK_PREFIX = "blueprint stale/missing — fall back to manual exploration"
+_FALLBACK_PREFIX = "blueprint unavailable — fall back to manual exploration"
+_STALE_HEADER = "blueprint stale — answering from the existing graph: {reason}"
 
 
 def handle_code_blueprint(args: list[str]) -> None:
@@ -81,14 +82,14 @@ def _handle_blueprint_affected(args: list[str]) -> None:
     main_sha = _resolve_main_sha(str(state_root))
     freshness = evaluate_freshness(manifest, current_main_sha=main_sha)
     if not freshness.is_fresh:
-        # An unresolved origin/main (None) flows through evaluate_freshness as
-        # not-fresh: surface the manual-exploration fallback so the agent
-        # workflow continues rather than crashing on a missing remote-tracking ref.
-        # A resolvable-but-stale baseline dispatches its own detached refresh so
-        # the next invocation converges — see project/spec/codebase-blueprint#UC-BP1.
+        # A stale Blueprint still answers from the graph on disk, headed by the
+        # reason, which names the baseline and main commits so the caller can diff
+        # the range. An unresolved origin/main (None) flows through
+        # evaluate_freshness as not-fresh and is headed the same way. A
+        # resolvable-but-stale baseline also dispatches its own detached refresh —
+        # see software-development/spec/codebase-blueprint#UC-BP1.
         dispatch_refresh(state_root, main_sha=main_sha)
-        print(f"{_FALLBACK_PREFIX}: {freshness.reason}")
-        return
+        print(_STALE_HEADER.format(reason=freshness.reason))
 
     graph = load_graph(graph_path(state_root))
     if graph is None:
