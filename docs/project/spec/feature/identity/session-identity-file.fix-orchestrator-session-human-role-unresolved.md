@@ -118,12 +118,21 @@ And what it may do is what its system role permits, with no person's role applyi
 And no terminal login is consulted
 ```
 
-#### UC-SIF3: A process that carries no identity is resolved at the edge
+#### UC-SIF3: A process outside any session is resolved at the edge
 
 ```
-Given a process whose session identity file carries no principal, or that runs outside any session
+Given a process with no session identity document present — it runs outside any session
 When it resolves the caller it acts as
 Then the terminal login is the only source consulted, as for any caller arriving from outside
+```
+
+#### UC-SIF4: A session identity document that carries no usable principal fails closed
+
+```
+Given a process whose session identity document is present but malformed, or valid but carrying no principal
+When it resolves the caller it acts as
+Then it acts as a caller with no identity
+And no terminal login is consulted, because the document's presence places it inside a session
 ```
 
 ### Cross-context references
