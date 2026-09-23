@@ -9,6 +9,7 @@ activation_trigger: The prepare state machine routes a feature from PRD drafting
 
 ## Required reads
 
+@~/.teleclaude/docs/software-development/procedure/lifecycle/review.md
 @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 @~/.teleclaude/docs/software-development/policy/definition-of-ready.md
 
@@ -68,7 +69,10 @@ not review architecture, implementation mechanism, or concrete proof.
    cites the preparation contract it violates and states what the intake pass
    must reconsider.
 6. Write the complete `prd-review-findings` report for this pass, including all
-   review sections and the verdict even when no findings remain. Then stamp
+   review sections and the verdict even when no findings remain. Classify and
+   cite every finding under the severity schema and citation requirement the
+   shared review procedure defines, and derive the verdict arithmetically from
+   the unresolved findings in those tiers. Then stamp
    `needs_work` or `approve` for `prd_review`. The stamp binds the current PRD
    digest and the current report digest. The state machine returns `needs_work`
    to intake and routes a current approved PRD to human approval.
@@ -87,6 +91,13 @@ cap, and evidence for one concern does not ratify an entire agent-authored
 contract. Review the semantic outcome, not whether a ritual was performed.
 Re-run the questions to find supported omissions, but never convert the
 reviewer's own recommendations into authority over product intent.
+
+- Every finding cites the specific policy, Definition of Done line, principle,
+  or spec it violates. An observation that cannot carry that citation is an
+  investigation lead, not a finding, and does not block.
+- The severity schema has no fourth tier: no "Suggestion", "nit", "polish",
+  "non-blocking", or "follow-up" category, and no severity-softening to reach
+  `approve`.
 
 ## Recovery
 
