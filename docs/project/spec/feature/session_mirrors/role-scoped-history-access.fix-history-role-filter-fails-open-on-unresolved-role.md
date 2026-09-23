@@ -40,8 +40,9 @@ The role bands, for a caller that carries an identity, are:
   carrying no email reaches no mirror at all.
 
 The band governs the detail path's transcript fallback as well as the store
-query, so a caller the band excludes cannot obtain through the on-disk file
-what the store withheld.
+query: a caller the band excludes cannot obtain through the on-disk file what
+the store withheld. That outcome is UC-RSHA-6, which states it for every
+filtered miss; the unresolved band is one such miss and adds no separate rule.
 
 A filtered miss and an absent mirror are the same outcome to the caller,
 and neither reaches past the store: the on-disk transcript discovery is
@@ -64,11 +65,12 @@ And the query returns every mirror that matches the other filters
 #### UC-RSHA-2: A caller whose role does not resolve is held to the narrowest view
 
 ```
-Given an operator carries an identity whose role cannot be determined
-When that operator searches history or requests a session's transcript
+Given a caller carries an identity whose role cannot be determined
+And that caller is a human at a terminal or an agent in a dispatched session
+When that caller searches history or requests a session's transcript
 Then they see only conversations recorded as their own
-And they see no other operator's conversation
-And an operator whose identity names no one reaches no conversation at all
+And they see no conversation recorded against anyone else
+And a caller whose identity names no one reaches no conversation at all
 ```
 
 #### UC-RSHA-3: Member sees own + shared
@@ -112,21 +114,12 @@ And the caller receives the same not-found outcome as for a session that does no
 And the filtered mirror's transcript is not rendered
 ```
 
-#### UC-RSHA-7: The transcript fallback honours the same view as the search
-
-```
-Given an operator whose role does not resolve requests a session's transcript
-And that session was recorded against a different operator
-When the request is served
-Then the operator receives the same not-found outcome as for a session that does not exist
-And the stored transcript for that session is not rendered to them
-```
-
 ## Known caveats
 
-- An operator whose identity resolves no role and names no one reaches no
-  conversation. Hosts do not depend on the people configuration returning a
-  non-admin role to obtain enforcement; an identity that fails to resolve is
+- A caller whose identity resolves no role and names no one reaches no
+  conversation, whether that caller is a human at a terminal or an agent in a
+  dispatched session. Hosts do not depend on the people configuration returning
+  a non-admin role to obtain enforcement; an identity that fails to resolve is
   scoped, not exempted.
 - The service capabilities do not apply role filtering at all. Any caller
   that can reach a capability endpoint sees every mirror.
