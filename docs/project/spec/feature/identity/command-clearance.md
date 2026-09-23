@@ -163,7 +163,7 @@ And the todo state is unchanged
 Given a login-resolved human caller with human_role=`member` and no agent session id
 And a todo whose active_runner names a live agent session
 When the caller invokes `telec todo update` on that todo
-Then the human band accepts the caller as before
+Then the human band accepts the caller
 And no claim gate applies
 And the requested mutation is applied to the todo state
 ```
