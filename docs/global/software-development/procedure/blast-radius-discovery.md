@@ -48,7 +48,7 @@ exploration that a symbol or file has no dependents.
    dependents beneath it still come from the graph on disk. If a file you are
    changing may have changed within that range, run
    `git diff --name-only <baseline>..<origin/main>` and read those files
-   directly. If the command reports the graph unavailable, state the gap
+   directly. If the command reports the Blueprint unavailable, state the gap
    explicitly and fall back to manual exploration — never silently skip this
    step, and never generate or refresh the Blueprint yourself (generation is
    integrate-time automation only).
@@ -68,12 +68,12 @@ query "<terms>"`, `graphify explain "<symbol>"`, or `graphify path "<A>"
 
 ## Outputs
 
-- A verified dependent set, or an explicit stated gap when the graph is
+- A verified dependent set, or an explicit stated gap when the Blueprint is
   unavailable or unsupported for the area — grounding the change surface.
 
 ## Recovery
 
-- If the CLI reports the graph unavailable, do not attempt to
+- If the CLI reports the Blueprint unavailable, do not attempt to
   regenerate it. State the gap and fall back to manual `grep`/exploration,
   noting the fallback explicitly rather than silently proceeding as if no
   dependents exist.

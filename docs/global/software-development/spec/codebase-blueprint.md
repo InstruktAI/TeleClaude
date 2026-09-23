@@ -130,14 +130,18 @@ that no implementation exists.
 
 ### Fallback
 
-A stale baseline still answers from the graph on disk. The answer is headed by
-a line naming the Blueprint's baseline commit and the current `origin/main`
+A stale baseline — a graph generated successfully from a known commit that is
+not the current `origin/main` — still answers from the graph on disk. The answer
+is headed by a line naming that baseline commit and the current `origin/main`
 commit, so a caller whose changed files may fall inside that range can diff it
 and read those files directly.
 
-If the graph cannot be read, the area is unsupported, or a Blind spot applies,
-the agent states the gap and falls back to manual exploration — blast-radius is
-never silently skipped.
+The command reports the Blueprint unavailable when no such range can be named —
+no manifest, a failed generation (whose manifest records the attempted baseline
+rather than the graph's), or an `origin/main` that cannot be resolved — or when
+the graph cannot be read. Then, and whenever the area is unsupported or a Blind
+spot applies, the agent states the gap and falls back to manual exploration —
+blast-radius is never silently skipped.
 
 ### Use cases
 
