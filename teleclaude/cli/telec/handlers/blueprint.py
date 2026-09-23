@@ -5,6 +5,7 @@ from __future__ import annotations
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import CODE_BLUEPRINT_AFFECTED
 from teleclaude.core.blueprint import (
+    FreshnessState,
     compute_affected,
     dispatch_refresh,
     evaluate_freshness,
@@ -23,6 +24,7 @@ _BLUEPRINT_USAGE = "Usage: telec code blueprint affected <changed-files>"
 _AFFECTED_USAGE = "Usage: telec code blueprint affected <changed-files>"
 _FALLBACK_PREFIX = "blueprint unavailable — fall back to manual exploration"
 _STALE_HEADER = "blueprint stale — answering from the existing graph: {reason}"
+_FALLBACK_WITH_REASON = _FALLBACK_PREFIX + ": {reason}"
 
 
 def handle_code_blueprint(args: list[str]) -> None:
@@ -81,14 +83,19 @@ def _handle_blueprint_affected(args: list[str]) -> None:
     manifest = read_manifest(manifest_path(state_root))
     main_sha = _resolve_main_sha(str(state_root))
     freshness = evaluate_freshness(manifest, current_main_sha=main_sha)
-    if not freshness.is_fresh:
-        # A stale Blueprint still answers from the graph on disk, headed by the
-        # reason, which names the baseline and main commits so the caller can diff
-        # the range. An unresolved origin/main (None) flows through
-        # evaluate_freshness as not-fresh and is headed the same way. A
-        # resolvable-but-stale baseline also dispatches its own detached refresh —
-        # see software-development/spec/codebase-blueprint#UC-BP1.
+    if freshness.state is not FreshnessState.FRESH:
+        # A resolvable-but-stale baseline dispatches its own detached refresh —
+        # see software-development/spec/codebase-blueprint#UC-BP1. An unresolved
+        # origin/main carries no main commit, so the dispatch declines it.
         dispatch_refresh(state_root, main_sha=main_sha)
+    if freshness.state is FreshnessState.UNESTABLISHED:
+        # No nameable commit range separates the graph from main, so its
+        # dependents cannot be bounded: surface the manual-exploration fallback.
+        print(_FALLBACK_WITH_REASON.format(reason=freshness.reason))
+        return
+    if freshness.state is FreshnessState.BEHIND:
+        # A stale graph still answers, headed by the baseline and main commits so
+        # the caller can diff the range when its own files may fall inside it.
         print(_STALE_HEADER.format(reason=freshness.reason))
 
     graph = load_graph(graph_path(state_root))

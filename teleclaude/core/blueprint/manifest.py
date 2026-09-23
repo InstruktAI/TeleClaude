@@ -21,6 +21,28 @@ class BlueprintStatus(StrEnum):
     ERROR = "error"
 
 
+class FreshnessState(StrEnum):
+    """How the Blueprint on disk relates to the current main commit.
+
+    ``BEHIND`` means the graph was generated successfully from a known baseline
+    that is not the current main, so the gap between the two is a nameable
+    commit range. ``UNESTABLISHED`` means that range cannot be named: no
+    manifest, a failed generation (whose manifest records the attempted
+    baseline, not the graph's), or a main commit that cannot be resolved.
+    """
+
+    FRESH = "fresh"
+    BEHIND = "behind"
+    UNESTABLISHED = "unestablished"
+
+
+_REASON_MANIFEST_MISSING = "blueprint manifest missing — generate it via a successful integrate"
+_REASON_GENERATION_STATUS = "blueprint generation status is '{status}'"
+_REASON_MAIN_UNRESOLVED = "current main commit could not be resolved"
+_REASON_BEHIND = "blueprint baseline {baseline} is behind main {main}"
+_SHORT_SHA_LENGTH = 12
+
+
 @dataclass(frozen=True)
 class BlueprintManifest:
     """Freshness metadata for a generated Blueprint graph."""
@@ -39,9 +61,9 @@ class BlueprintManifest:
 
 @dataclass(frozen=True)
 class Freshness:
-    """Whether the Blueprint is usable, and the fallback reason when it is not."""
+    """How the Blueprint relates to main, and the reason when it is not fresh."""
 
-    is_fresh: bool
+    state: FreshnessState
     reason: str
 
 
@@ -74,14 +96,20 @@ def read_manifest(path: Path) -> BlueprintManifest | None:
 def evaluate_freshness(manifest: BlueprintManifest | None, *, current_main_sha: str | None) -> Freshness:
     """Decide whether the Blueprint is fresh against the current main baseline."""
     if manifest is None:
-        return Freshness(False, "blueprint manifest missing — generate it via a successful integrate")
+        return Freshness(FreshnessState.UNESTABLISHED, _REASON_MANIFEST_MISSING)
     if manifest.status is not BlueprintStatus.OK:
-        return Freshness(False, f"blueprint generation status is '{manifest.status.value}'")
+        return Freshness(
+            FreshnessState.UNESTABLISHED,
+            _REASON_GENERATION_STATUS.format(status=manifest.status.value),
+        )
     if current_main_sha is None:
-        return Freshness(False, "current main commit could not be resolved")
+        return Freshness(FreshnessState.UNESTABLISHED, _REASON_MAIN_UNRESOLVED)
     if manifest.baseline_sha != current_main_sha:
         return Freshness(
-            False,
-            f"blueprint baseline {manifest.baseline_sha[:12]} is behind main {current_main_sha[:12]}",
+            FreshnessState.BEHIND,
+            _REASON_BEHIND.format(
+                baseline=manifest.baseline_sha[:_SHORT_SHA_LENGTH],
+                main=current_main_sha[:_SHORT_SHA_LENGTH],
+            ),
         )
-    return Freshness(True, "")
+    return Freshness(FreshnessState.FRESH, "")
