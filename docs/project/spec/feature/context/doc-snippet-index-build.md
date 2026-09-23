@@ -16,11 +16,11 @@ a scope.
 
 
 <!-- planned-change:docs-tier-layering -->
-Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
+Index construction derives `id`/`type`/`scope`/`domain` from
 each Source's path, renders portable paths, and writes per-scope `index.yaml`
 files — one for the project, one for global baseline, one for third-party.
 <!-- change:docs-tier-layering -->
-Sync walks the working tree, derives `id`/`type`/`scope`/`domain` from
+Index construction derives `id`/`type`/`scope`/`domain` from
 each Source's path, renders portable paths, and writes one `index.yaml` per
 catalog: the project, the global baseline, third-party, and one for every person
 and company tier whose declaration says its material participates in
@@ -58,7 +58,8 @@ And docs/third-party/index.yaml is written when third-party sources exist
 <!-- change:retire-docs-watcher -->
 ```
 Given a project with valid snippet sources under docs/
-When commit-boundary publication runs for that project's recorded commit
+And the recorded commit is the latest canonical commit for that project
+When commit-boundary publication runs for that recorded commit
 Then the index-build phase runs
 And the project's canonical checkout receives docs/project/index.yaml with one entry per valid committed Source and paths rooted at that checkout
 And its canonical checkout receives docs/third-party/index.yaml when committed third-party sources exist
@@ -206,6 +207,18 @@ And the source is validated under the same structural and classification rules a
 And the source beneath the undeclared sibling is not walked
 ```
 <!-- /planned:docs-tier-layering -->
+
+<!-- planned:retire-docs-watcher -->
+#### UC-DIB16: An older publication replay preserves the checkout catalog
+
+```gherkin
+Given an agent can retrieve documentation introduced by a project's latest canonical commit
+And an older failed publication range exists for that project
+When maintenance replays the older range
+Then the agent's local documentation retrieval still includes the newer committed documentation
+And the checkout's catalog remains aligned with its latest canonical commit
+```
+<!-- /planned:retire-docs-watcher -->
 
 ### Cross-context references
 

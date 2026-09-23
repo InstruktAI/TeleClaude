@@ -43,9 +43,10 @@ The publication pipeline is:
 1. **Resolve activated source** — materialize the recorded tip for the
    triggering project and retain every other publisher at its previously
    activated revision.
-2. **Build indexes** — derive indexes from the triggering project's committed
-   snapshot for publication, and write equivalent portable derived indexes to
-   that project's canonical checkout for local `telec docs` retrieval.
+2. **Build indexes** — derive indexes from the triggering project's recorded
+   snapshot for publication. Write portable derived indexes to its canonical
+   checkout only while that checkout's latest commit is the recorded tip;
+   replay of an older range leaves its local indexes untouched.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
    outputs from those snapshots.
 <!-- /planned-change:retire-docs-watcher -->
@@ -441,10 +442,12 @@ And its absence before first deployment is not a finding
   authored `docs/**/*.md` snippets.
 <!-- change:retire-docs-watcher -->
 - Publication is idempotent at the authored-source layer: it builds indexes
-  from the committed snapshot, writes the triggering project's gitignored
-  `index.yaml` files to its canonical checkout with paths rooted there, and
-  places published domain bundles inside the deployed generation. It never
-  mutates authored source snippets or publishes a checkout's uncommitted files.
+  from the recorded snapshot and places published domain bundles inside the
+  deployed generation. It writes gitignored `index.yaml` files with canonical
+  checkout paths only when the recorded tip still matches that checkout's
+  latest commit. Replaying an older range never replaces a newer local index;
+  it still publishes runtime output from the original recorded range.
+  Publication never mutates authored source snippets or uses uncommitted files.
 <!-- /planned-change:retire-docs-watcher -->
 
 
