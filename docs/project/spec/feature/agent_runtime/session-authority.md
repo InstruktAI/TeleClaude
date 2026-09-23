@@ -56,6 +56,7 @@ the session itself is not among them.
 
 #### UC-SA1: A standing session has no session above it, whatever door opened it
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 ```gherkin
 Given a session takes a standing role — the integrator, the project coordinator, or a scheduled job runner
 And the role arrives through any door: an automatic spawn, an agent's directed start, a human's directed start, or adoption by a session already running
@@ -65,6 +66,18 @@ And the session that started it is not woken by its completed turns
 And no human identity is recorded on the session, its work having arrived from a queue, a schedule, or the fleet rather than from a person
 And the session resolves to its own system principal
 ```
+<!-- change:fix-orchestrator-session-human-role-unresolved -->
+```gherkin
+Given a session takes a standing role — the integrator, the project coordinator, or a scheduled job runner
+And the role arrives through any door: an automatic spawn, an agent's directed start, a human's directed start, or adoption by a session already running
+When that session carries the role
+Then no session is recorded above it
+And the session that started it is not woken by its completed turns
+And no human identity is recorded on the session, its work having arrived from a queue, a schedule, or the fleet rather than from a person
+And the session resolves to the platform's principal, `system:daemon`, shared by every session with no human origin
+And a session adopted into the role while running stops carrying the human identity it held, from the moment of adoption
+```
+<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 #### UC-SA2: A standing session survives the cleanup of the session that started it
 
