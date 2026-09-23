@@ -12,11 +12,11 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:external-session-identity -->
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 `telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI handler has two paths that mirror v1's two authentication shapes: an agent session (one with a session token in its TMPDIR identity file) queries the identity context's whoami capability and prints the token-stamped Principal and Role; a terminal session (no token) reads its per-TTY auth document and resolves the Role through the human-identity resolver against the `people` config. The whoami capability is itself gated by caller verification, so invoking it inside an agent session also exercises the full token-Resolution path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
-<!-- change:external-session-identity -->
-`telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI handler asks the identity context first and reads the TTY only when that yields no session. An agent session holding a session token queries the whoami capability and prints the token-stamped Principal and Role. A caller with no token still queries it over the local transport, where the attested branch may resolve a session from the caller's process ancestry; when it does, the answer names that session. Only a caller for whom no session resolves falls through to the per-TTY auth document, whose Role comes from the human-identity resolver against the `people` config — and that answer names a human without naming a session, so it is never presented as a session identity. The whoami capability is itself gated by caller verification, so invoking it inside an agent session also exercises the full token-Resolution path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
-<!-- /planned-change:external-session-identity -->
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+`telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI handler has two paths. A process inside a session — one whose TMPDIR holds a session identity document — queries the identity context's whoami capability and prints the Principal and Role its session resolves to, whether it presents a session token or its session id; it never reads the terminal login. A process outside any session reads its per-TTY auth document and resolves the Role through the human-identity resolver against the `people` config. The whoami capability is itself gated by caller verification, so invoking it inside an agent session also exercises the full caller-verification path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 <!-- planned:external-session-identity -->
 ### Attested self-identification

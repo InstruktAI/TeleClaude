@@ -30,9 +30,9 @@ those boxes without leaving the local terminal. Both `telec history search`
 and `telec history show` accept `--computer <name>` (repeatable for search,
 single-valued for show). A remote search travels the daemon relay: the CLI
 reaches its local daemon, which dispatches a search command to each named
-peer carrying the caller's verified identity — its email and role, and the
-platform's principal when that is who the caller is — and each peer applies
-its own history scope to that identity before returning rows. A remote detail or raw request
+peer carrying the caller's verified identity as its principal, and each
+peer resolves that principal against its own people registry and applies its
+own history scope before returning rows. A remote detail or raw request
 still resolves the computer name to a remote endpoint and calls that
 session_mirrors service directly.
 <!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
@@ -142,7 +142,8 @@ Given a caller searches history on a remote computer
 When the search is dispatched
 Then the caller's request reaches the local daemon through the authenticated client
 And the local daemon dispatches a search command to the remote peer over the daemon relay
-And the caller's verified identity travels with that command: its email and role, and the platform's principal when that is who the caller is
+And the caller's verified identity travels with that command as its principal
+And the remote peer resolves a person's role from its own people registry, never from a role the command carries
 And the remote peer applies its history scope to that identity before returning rows
 And a peer that receives a command carrying no identity refuses it rather than answering unscoped
 And the CLI opens no direct connection to the remote host
@@ -176,9 +177,11 @@ And no relay command is required for those paths
 <!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
 - Role-scoped access propagates for search: the caller's verified identity
   travels with the relay command, and each peer applies its own history scope
-  before returning rows. A peer running a release that does not read the
-  relayed principal applies its own band to the email and role alone, as it
-  did before. Remote detail and raw retrieval still call the
+  before returning rows. The command also carries the caller's email and
+  role, which a peer running a release that does not read the relayed
+  principal uses as it did before; a peer that reads the principal decides a
+  person's role from its own registry. Remote detail and raw retrieval still
+  call the
   remote service directly and are evaluated under that service's own access
   rules.
 <!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->

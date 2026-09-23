@@ -12,17 +12,11 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:external-session-identity -->
+<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 Caller verification is the identity context's single resolution capability: it turns the four caller-identity signals carried on every authenticated inbound call into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`). Every authorized operation begins with the same precedence — a session-token check, then a dual-factor session-id + tmux cross-check, then a terminal-email lookup, with a final fallback that either returns an admin-role Anonymous (single-user mode) or rejects the caller as unauthenticated (multi-user mode). The capability answers "who is this caller and what bands do they carry?" before any business logic runs.
-<!-- change:external-session-identity -->
-Caller verification is the identity context's single resolution capability: it turns the caller-identity signals carried on every authenticated inbound call into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`). Every authorized operation begins with the same precedence — a session-token check, then a dual-factor session-id + tmux cross-check, then the attested-caller branch for a local connection whose peer the kernel identifies, then a terminal-email lookup, with a final fallback that either returns an admin-role Anonymous (single-user mode) or rejects the caller as unauthenticated (multi-user mode). The capability answers "who is this caller and what bands do they carry?" before any business logic runs.
-
-The attested branch consumes integration's attested-caller signal and
-agent_runtime's root-membership answer; it interprets them and never gathers the
-evidence itself. It runs only where no earlier branch resolved, and a
-session-scoped call it cannot prove is refused rather than passed to the
-terminal-email branch — that branch names a human without naming a session.
-<!-- /planned-change:external-session-identity -->
+<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
+Caller verification is the identity context's single resolution capability: it turns the four caller-identity signals carried on every authenticated inbound call into a typed `CallerIdentity` value (the v1 ancestor of v2's `Principal`). Every authorized operation begins with the same precedence — a session-token check, then a dual-factor session-id + tmux cross-check, then a terminal-email lookup. A call that none of them resolves to a session or a registered person is rejected as unauthenticated, whatever the number of registered people. On a call that names a session, the session's own identity outranks the terminal-email signal. The capability answers "who is this caller and what bands do they carry?" before any business logic runs.
+<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 ## Canonical fields
 
