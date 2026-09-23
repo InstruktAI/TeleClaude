@@ -114,7 +114,7 @@ And a lineage root that matches no registered person yields a caller with no rol
 Given an agent working inside a session whose lineage roots at a system principal — a standing role, or a session one started
 When a process inside that session resolves the caller it acts as
 Then it acts as that system principal
-And no role band restricts it
+And what it may do is what its system role permits, with no person's role applying
 And no terminal login is consulted
 ```
 

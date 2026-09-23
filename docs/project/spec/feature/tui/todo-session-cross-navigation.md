@@ -79,6 +79,7 @@ Then the chip shows the uppercase initials "AS"
 And the chip colors resolve from alice's PersonConfig.color
 ```
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 #### UC-XNAV-3: Session human chip resolves from human_email
 
 ```
@@ -87,6 +88,17 @@ When the session row title line is rendered
 Then a chip shows alice's initials after the agent/mode segment
 And the chip colors resolve from alice's PersonConfig.color
 ```
+<!-- change:fix-orchestrator-session-human-role-unresolved -->
+#### UC-XNAV-3: Session human chip resolves from the session's lineage root
+
+```
+Given a session whose principal is human:alice@example.com
+And alice is a registered person
+When the session row title line is rendered
+Then a chip shows alice's initials after the agent/mode segment
+And the chip colors resolve from alice's PersonConfig.color
+```
+<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 #### UC-XNAV-4: Unresolvable human renders no chip
 

@@ -32,12 +32,21 @@ Then principal is "human:<email>" using the session's human_email
 And role is the session's human_role when present, else HUMAN_ROLE_CUSTOMER
 ```
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 ```
 Given a session with system_role set (no human_email, no inherited principal)
 When principal resolution runs over the session
 Then principal is "system:<session_id>"
 And role is the session's system_role (e.g. "worker", "orchestrator", "integrator", "system")
 ```
+<!-- change:fix-orchestrator-session-human-role-unresolved -->
+```
+Given a session with system_role set (no human_email, no inherited principal)
+When principal resolution runs over the session
+Then principal is "system:daemon" — the platform's own principal, the origin of all work with no human origin
+And role is the session's system_role (e.g. "worker", "orchestrator", "integrator", "system")
+```
+<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 ```
 Given a session with no principal, no human_email, and no system_role
@@ -46,12 +55,21 @@ Then a session-identity error is raised with a diagnostic naming the session_id
 And the identity context surfaces this as an authentication-required failure
 ```
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 ```
 Given an inherited principal of "system:<parent-session-id>" on a child session
 When principal resolution runs over the session
 Then the child returns the parent's "system:<parent-session-id>" principal verbatim
 And the agent chain shares one stable identity across orchestrator → worker → integrator
 ```
+<!-- change:fix-orchestrator-session-human-role-unresolved -->
+```
+Given a child session started by a session whose principal is "system:daemon"
+When principal resolution runs over the child
+Then the child's principal is "system:daemon"
+And every session with no human origin shares that one principal, distinguished by its own session id
+```
+<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 ### Cross-context references
 

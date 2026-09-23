@@ -48,9 +48,9 @@ And on completion the started flag is set and total elapsed is logged
 And total elapsed >=30s triggers a slow-startup warning
 ```
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 #### Post-adapter completion tasks
 
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 ```
 Given adapters have started and the event platform is up
 When the post-adapter completion stage runs
@@ -64,6 +64,8 @@ And outstanding final-output reconciliation is NOT done here — it is scheduled
 And the request surface starts AFTER these tasks have completed
 ```
 <!-- change:fix-orchestrator-session-human-role-unresolved -->
+#### UC-DL6: Post-adapter completion tasks
+
 ```
 Given adapters have started and the event platform is up
 When the post-adapter completion stage runs
