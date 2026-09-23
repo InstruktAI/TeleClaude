@@ -1,8 +1,9 @@
 ---
-description: How authored agent artifacts flow from tiered sources through reach-gated validation into a domain-partitioned global corpus and project delivery locations, which path boundaries the source registry declares and what each consumer derives from it, and how the mother's flat sources migrate by expansion before contraction.
+description: How authored agent artifacts flow from tiered sources through reach-gated
+  validation into a domain-partitioned global corpus and project delivery locations,
+  which path boundaries the source registry declares and what each consumer derives
+  from it, and how the mother's flat sources migrate by expansion before contraction.
 visibility: internal
-delivered_by:
-  - agent-artifact-source-layout
 ---
 
 # Agent Artifact Distribution — Design

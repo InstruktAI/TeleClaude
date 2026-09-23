@@ -74,7 +74,6 @@ contracts and never creates shared ownership.
   membership — which of the repository's paths are retained; `agent_runtime`
   asks, and neither decides membership nor substitutes an answer where none is
   published.
-<!-- planned:agent-artifact-source-layout -->
 - A command's name belongs to the context that owns the command, and that
   context emits it domain-qualified; the shared name table holds the values
   without owning them. Semantic owner and corpus domain are independent:
@@ -89,7 +88,6 @@ contracts and never creates shared ownership.
   `workflow` consume. None restates another's rule: a caller never inspects the
   corpus or matches sessions itself, `context` never composes a dispatch, and
   `agent_runtime` never decides reach or command vocabulary.
-<!-- /planned:agent-artifact-source-layout -->
 
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI and the CLI are

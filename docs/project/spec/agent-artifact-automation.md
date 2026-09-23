@@ -25,11 +25,7 @@ between a save and its commit.
 - **Service label**: `ai.instrukt.teleclaude.artifacts`
 <!-- change:retire-docs-watcher -->
 <!-- /planned-change:retire-docs-watcher -->
-<!-- planned-change:agent-artifact-source-layout -->
-- **Trigger**: launchd WatchPaths on `.agents/`, `docs/`, and `teleclaude.yml`
-<!-- change:agent-artifact-source-layout -->
 - **Trigger**: launchd WatchPaths on `agents/`, `docs/`, and `teleclaude.yml`; `.agents/` is delivery output and is never watched as a source
-<!-- /planned-change:agent-artifact-source-layout -->
 <!-- planned-change:retire-docs-watcher -->
 - **Command**: the docs watcher (`teleclaude.cli.watch`), which deploys on change via the hidden, watcher-only `telec sync --skip-validation` — live reload never blocks; the commit gate is the real validation contract.
 <!-- change:retire-docs-watcher -->

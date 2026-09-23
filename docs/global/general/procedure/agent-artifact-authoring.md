@@ -37,13 +37,6 @@ for supported CLIs.
    Until the gate opens, keep forming work in conversation or a
    non-authoritative scratchpad and stop before editing Git-tracked artifacts on
    shared `main`.
-<!-- planned-change:agent-artifact-source-layout -->
-1. Choose the artifact type (agent, skill, command, or AGENTS.md). Third-party skill
-   packages are incorporated rather than authored; follow
-   `general/procedure/skill-management` for those.
-2. Follow the corresponding schema and taxonomy requirements.
-3. Ensure frontmatter fields are complete and consistent (except AGENTS.md, which has none).
-<!-- change:agent-artifact-source-layout -->
 1. Choose the artifact kind — command or skill — and its tier and reach: a project
    artifact lives under `agents/project/{commands,skills}`; a global command lives under
    `agents/global/commands/<domain>/` in the repository that publishes `<domain>`, or
@@ -54,7 +47,6 @@ for supported CLIs.
    `general/procedure/skill-management` for those.
 2. Follow the corresponding schema and taxonomy requirements.
 3. Ensure frontmatter fields are complete and consistent (a master has none).
-<!-- /planned-change:agent-artifact-source-layout -->
 4. If the command takes multiple arguments, declare `parameters` in frontmatter
    as an ordered list with `name` and optional `required`/`default` per entry.
    List order defines position. Use `$name` references in the body. See the
@@ -74,14 +66,9 @@ for supported CLIs.
 
 ## Outputs
 
-<!-- planned-change:agent-artifact-source-layout -->
-- Updated artifact files in the selected scope.
-- Updated generated artifacts in tool-specific output folders.
-<!-- change:agent-artifact-source-layout -->
 - Updated artifact files under the selected tier and reach.
 - Commands recomposed into the global command corpus and skills into the catalog or the
   project's delivery location, by `telec sync`.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ## Recovery
 

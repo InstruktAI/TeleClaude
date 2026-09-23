@@ -1,5 +1,5 @@
 ---
-description: 'Only the Mother project may publish global agent items from agents/; non-mother projects must use .agents/.'
+description: "Global agent artifacts publish only within a repository's declared reach: general commands and global skills are the mother's alone, domain commands belong to the domain's one publisher, and a source outside that reach is refused at sync."
 visibility: 'public'
 ---
 
@@ -11,98 +11,72 @@ visibility: 'public'
 
 ## What it is
 
-A two-point silent skip that restricts global agent item publishing
-(skills, commands, agents under the TeleClaude repo's `agents/` tree) to a
-single canonical project known as the **Mother project** — the TeleClaude
-repository itself. Every other project that participates in the Context
-bounded context may carry project-local items under `.agents/`. Non-mother
-projects are NOT rejected for having files under their own `agents/`
-directory — the pipeline simply does not look there. The Mother repo's
-`agents/` tree is the only `agents/` content the pipeline ever traverses
-for global publishing.
+A reach gate on global agent-artifact publishing. Every repository carries the
+same authored layout, `agents/{global,project}/{commands,skills}`, and
+the gate decides which of a repository's `agents/global/` sources it may
+publish:
 
-The Mother project is identified by filesystem path equality between the
-resolved project root and the resolved canonical TeleClaude repo root. The
-check is binary: either the project is the Mother or it is not. There is
-no graduated trust or per-project ACL.
+- General commands and global skills publish from the mother repository
+  alone.
+- Domain-partitioned commands (`agents/global/commands/<domain>/`) publish from
+  the single repository that declares that domain in `business.publishes` —
+  the same one-owner-per-domain rule that governs documentation domains.
+- `agents/project/` is every repository's own and is never subject to the gate.
 
-Defense in depth: the gate fires in two places — the distribution
-pipeline's global-source collection, and the resource validation pass that
-runs before any deploy. Both paths build their global agent-source list
-only when the project is the Mother; otherwise the list stays empty and
-the rest of the pipeline proceeds normally over `.agents/` only.
+Reach follows declaration and ownership, never location or the identity of
+the invoking checkout. The mother is identified as it is for documentation:
+the resolved canonical TeleClaude repository root.
+
+The gate refuses rather than skips. A source outside the repository's reach is
+a validation finding that names the file and the reach it exceeds, and it
+blocks the sync like any other validation finding. The gate fires in both the
+pre-deploy validation pass and the distribution pipeline's source collection,
+so an out-of-reach source can neither pass validation nor be built.
 
 ## Canonical fields
 
+Side-project reach and the refusal of out-of-reach sources are bound by
+`UC-ARD23` in `project/spec/feature/context/agent-runtime-deployment` and
+`UC-AAV2` in `project/spec/feature/context/agent-artifact-validation`; this
+spec references those scenarios rather than restating them.
+
 ### Use cases
 
-```
-Scenario: Mother project publishes global agent items
-  Given the project root equals the canonical TeleClaude repo root
-  And the Mother project has files under agents/
-  When the distribution pipeline computes the Mother-project gate
-  Then the project is recognized as the Mother
-  And global agent sources are populated from agents/
-  And the items deploy to ~/.claude/, ~/.gemini/, and ~/.codex/
+#### UC-MPG1: The mother publishes every global artifact class
+
+```gherkin
+Scenario: The mother publishes general commands and global skills
+  Given the project root equals the canonical TeleClaude repository root
+  And it carries general commands, global skills, and domain commands for domains it publishes under agents/global/
+  When sync runs in deploy mode
+  Then every one of those sources is validated and published to its global consumer
 ```
 
-```
-Scenario: Non-mother project's local agents/ is silently ignored
-  Given the project root is not equal to the canonical TeleClaude repo root
-  And the project contains files under its own agents/ directory
-  When sync runs
-  Then the project is not recognized as the Mother
-  And the global agent-source list stays empty in both the distribution pipeline and the validator
-  And the project's own agents/ tree is NOT traversed for global publishing
-  And no error is raised about the local agents/ contents
-  And only .agents/ is processed for project-local artifacts
-```
+#### UC-MPG2: The mother with empty global directories publishes nothing and fails nothing
 
-```
-Scenario: Non-mother project publishes project-local items
-  Given the project root is not equal to the canonical TeleClaude repo root
-  And the project contains files under its .agents/ directory
-  When sync runs
-  Then validation accepts the .agents/ contents
-  And local items deploy to the project root (and ~/.teleclaude/commands for Codex)
-  And no global publishing occurs
-```
-
-```
+```gherkin
 Scenario: Mother project with empty global artifact directories
-  Given the project root equals the canonical TeleClaude repo root
-  And the global agents/, commands/, and skills source directories are missing or empty
+  Given the project root equals the canonical TeleClaude repository root
+  And the global commands and skills source directories are missing or empty
   When the distribution pipeline collects global sources
-  Then the Mother source entry is preserved in the global-source list
-  And later validation and build loops skip any missing source directory
-  And no global artifact items are discovered from those missing directories
+  Then no global artifact items are discovered from those directories
   And the pipeline proceeds without error
 ```
 
 ### Cross-context references
 
-- **config** — supplies the project identity and the canonical TeleClaude
-  repo root used for the path-equality check. Worktree checkouts resolve
-  their canonical root via the canonical-root resolver.
+- **config** — supplies the project identity, the canonical TeleClaude
+  repository root used for the mother check, and each repository's
+  `business.publishes` declaration that bounds its domain reach.
 
 ## Known caveats
 
-- Path equality is sensitive to checkout shape: symlinked copies or
-  worktrees of the Mother project may or may not register as mother
-  depending on how the path is resolved. Worktrees specifically read
-  their canonical root via the canonical-root resolver so the gate
-  recognises them correctly.
-- The gate is binary. There is no concept of "trusted contributor
-  projects" with partial global write rights. Either you are the Mother
-  or you are not.
-- The gate is silent skip, not reject. A non-mother project that
-  accidentally creates an `agents/` directory will see those files
-  ignored — sync emits no warning, validation reports no error.
-  Operators relying on the gate to flag the mistake will not see it.
+- Path equality is sensitive to checkout shape: worktrees of the mother
+  resolve their canonical root through the canonical-root resolver so the gate
+  recognises them.
+- Reach is declared, not graduated. There is no trusted-contributor tier with
+  partial global rights beyond a repository's own published domains.
 - Filesystem-isolation-dependent. A local actor with write access to the
-  canonical Mother path is not prevented from impersonating the Mother
-  project. The gate is a safety net against accident, not an attacker
-  control.
-- Missing global artifact directories on the Mother project are tolerated:
-  the Mother source entry remains in the global-source list, but the
-  missing subdirectories produce no artifact items rather than an error.
+  canonical mother path is not prevented from impersonating the mother, and a
+  repository can declare any domain nobody else publishes. The gate is a
+  safety net against accident, not an attacker control.

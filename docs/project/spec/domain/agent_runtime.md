@@ -86,14 +86,12 @@ TeleClaudeNext repository.
   reaches both only through these contracts, never by reading hook internals,
   the native-session map, or session storage directly.
 <!-- /planned-change:external-session-identity -->
-<!-- planned:agent-artifact-source-layout -->
 - **Also owns:** resolving a canonical command name to one corpus document
   at dispatch — a domain-qualified name directly, a bare token to its single
   global match, ambiguity refused by name — and the session record, title, and
   live-session attribution query that carry and match the value as dispatched.
   It reads the corpus `context` publishes and the canonical value the command's
   semantic owner emits, and decides neither reach, layout, nor vocabulary.
-<!-- /planned:agent-artifact-source-layout -->
 
 ## See Also
 

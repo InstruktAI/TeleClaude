@@ -49,7 +49,6 @@ hold none to is read at whatever its snippets declare about themselves. The
 scope is a property of the caller, never of the invocation's directory.
 <!-- /planned:docs-tier-layering -->
 
-<!-- planned:agent-artifact-source-layout -->
 - **Also owns:** the artifact-source registry — which exact files, uniform
   directory trees, and immediate package directories of a registered root are
   artifact-source boundaries, of which kind, at which tier, with which reach
@@ -69,7 +68,6 @@ scope is a property of the caller, never of the invocation's directory.
   authored global-skill catalog master from incorporated package directories.
   It also publishes the composed corpus laid out as `<domain>/<name>` and reach,
   collision, or unclassifiable-source findings that name the offending files.
-<!-- /planned:agent-artifact-source-layout -->
 
 ## See Also
 

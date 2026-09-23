@@ -313,7 +313,6 @@ And the context appears after the loader, never inside the marker line and never
 And this holds whether the request supplies command arguments or none
 ```
 
-<!-- planned:agent-artifact-source-layout -->
 
 #### UC-CLR12: An agent dispatches a global command by domain, or by a bare name that names exactly one
 
@@ -338,7 +337,6 @@ Then it is given that session
 And the session's recorded command and title carry the command exactly as dispatched
 ```
 
-<!-- /planned:agent-artifact-source-layout -->
 
 
 #### Dispatch privilege enforcement

@@ -16,13 +16,6 @@ It enforces the normalized shape of commands, plus a skill identity
 contract. Every `SKILL.md` must declare `name` and `description`, with `name`
 equal to its folder. Skill bodies are never graded against TeleClaude's taxonomy.
 
-<!-- planned-change:agent-artifact-source-layout -->
-
-Validated commands and agents share a common shell — frontmatter, H1 title,
-optional Required reads, section order, and a role activation line. Third-party
-skill bodies and supporting package Markdown retain their human-authored structure.
-
-<!-- change:agent-artifact-source-layout -->
 
 Validated commands share a common shell — frontmatter, H1 title, optional
 Required reads, section order, and a role activation line. Subagent definitions
@@ -31,7 +24,6 @@ directory other than commands/ or skills/ is refused as outside the artifact
 model. Third-party skill bodies and supporting package Markdown retain their
 human-authored structure.
 
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ## Canonical fields
 
@@ -46,11 +38,7 @@ Scenario: Command artifact missing H1
 
 ```
 Scenario: Every skill entrypoint has identity metadata
-<!-- planned-change:agent-artifact-source-layout -->
-  Given SKILL.md exists below agents/skills/<name>/ or .agents/skills/<name>/
-<!-- change:agent-artifact-source-layout -->
   Given SKILL.md exists in a skill source folder of any tier
-<!-- /planned-change:agent-artifact-source-layout -->
   And its name or description frontmatter is missing, empty, or its name differs from <name>
   When artifact validation runs
   Then the entrypoint is rejected
@@ -110,18 +98,6 @@ Scenario: Required reads orders refs incorrectly
   Then the ordering error is reported (commands → skills)
 ```
 
-<!-- planned-change:agent-artifact-source-layout -->
-```
-Scenario: Non-mother project's local agents/ is not walked
-  Given a project that is not the Mother project
-  And the project contains files under its own agents/ directory
-  When the artifact validator walks the configured sources
-  Then the global agent-source list is empty
-  And the project's commands, agents, masters, and addenda under agents/ are NOT walked or validated
-  And named folders under agents/skills are reserved for the separate global skill publication path
-  And only the project's .agents/ tree is processed
-```
-<!-- change:agent-artifact-source-layout -->
 #### UC-AAV2: A repository's artifact sources are validated within its declared reach
 
 ```gherkin
@@ -134,19 +110,7 @@ Scenario: An agent validates a repository whose sources exceed its declared reac
   And a general command, a global skill, or a command under a domain the repository does not publish is refused with a finding naming the file and the reach it exceeds
   And nothing under .agents/ is read as an authored source
 ```
-<!-- /planned-change:agent-artifact-source-layout -->
 
-<!-- planned-change:agent-artifact-source-layout -->
-```
-Scenario: Published or project-local supporting Markdown keeps its upstream structure
-  Given a skill package exists at agents/skills/<name>/ or .agents/skills/<name>/
-  And the folder contains SKILL.md and optional supporting Markdown resources
-  When telec sync processes the global skill publication surface
-  Then supporting Markdown is not checked for TeleClaude headings, section order, role lines, or taxonomy shape
-  And SKILL.md receives identity validation
-  And the package is rendered through the artifact output pipeline without rewriting its authored structure
-```
-<!-- change:agent-artifact-source-layout -->
 ```
 Scenario: Published or project-local supporting Markdown keeps its upstream structure
   Given a skill package exists in a skill source folder of any tier
@@ -156,7 +120,6 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
   And SKILL.md receives identity validation
   And the package is rendered through the artifact output pipeline without rewriting its authored structure
 ```
-<!-- /planned-change:agent-artifact-source-layout -->
 
 
 #### UC-AAV3: Scoped validation grades the artifacts in its path set
@@ -179,17 +142,6 @@ Scenario: The commit gate validates the artifacts in its pathspec
   And a validation finding refuses the commit
 ```
 
-<!-- planned-change:agent-artifact-source-layout -->
-#### UC-AAV5: The cross-publisher skill-name collision check runs on a full validation run
-
-```
-Scenario: The cross-publisher skill-name collision check runs on a full validation run
-  Given two registered projects each contribute a global skill folder of the same name
-  When a full artifact validation run executes
-  Then the collision is reported naming both publisher roots
-```
-<!-- change:agent-artifact-source-layout -->
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ### Cross-context references
 
@@ -207,15 +159,9 @@ Scenario: The cross-publisher skill-name collision check runs on a full validati
 - Skill discovery requires the `SKILL.md` filename specifically. Its identity
   metadata is always validated, and its body is never graded against TeleClaude's
   taxonomy. Supporting Markdown remains opaque package content in either skill scope.
-<!-- planned-change:agent-artifact-source-layout -->
-- The mother-project gate remains a silent skip for global commands, agents,
-  addenda, and masters. Registered projects' `agents/skills/<name>/` folders are
-  collected separately and do not make the rest of their `agents/` tree global.
-<!-- change:agent-artifact-source-layout -->
 - The reach gate refuses rather than skips: a global source outside a repository's
   declared reach is a validation finding naming the file. Registered projects
   publish no global skills; only the mother's `agents/global/skills/<name>/`
   folders reach the catalog.
-<!-- /planned-change:agent-artifact-source-layout -->
 - `parameters` entries that are not dicts, or dicts missing the `name` string,
   are rejected before the duplicate-name check runs.

@@ -26,19 +26,11 @@ realignment command; the pointer is never authored by hand. Legacy phase strings
 on older Todos auto-upcycle on read; the canonical pointer is the single source of
 truth for "where is this Todo, right now."
 
-<!-- planned-change:agent-artifact-source-layout -->
-The canonical enum includes `task_plan_drafting` and `task_running` — task-lane phases owned by the task lane, not by the SDLC prepare or work state machines. `task_plan_drafting` holds a kind=`task` Todo from kind assignment or task creation until `/next-prepare-task` writes a `task-plan`; the phase then advances to `prepared` (awaiting human authorization). `task_running` is the non-SDLC live execution marker while `/next-run-task` is dispatched by the lifecycle runner; it is not a build/review/finalize phase and does not satisfy SDLC work gates.
-<!-- change:agent-artifact-source-layout -->
 The canonical enum includes `task_plan_drafting` and `task_running` — task-lane phases owned by the task lane, not by the SDLC prepare or work state machines. `task_plan_drafting` holds a kind=`task` Todo from kind assignment or task creation until `/software-development/next-prepare-task` writes a `task-plan`; the phase then advances to `prepared` (awaiting human authorization). `task_running` is the non-SDLC live execution marker while `/software-development/next-run-task` is dispatched by the lifecycle runner; it is not a build/review/finalize phase and does not satisfy SDLC work gates.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 Drift between an upstream artifact and the downstream artifacts grounded against
 it is detected objectively (`derive_lifecycle_drift`) and assessed for
-<!-- planned-change:agent-artifact-source-layout -->
-**materiality** only by intelligence — the `/next-drift-analyze` worker stamps
-<!-- change:agent-artifact-source-layout -->
 **materiality** only by intelligence — the `/software-development/next-drift-analyze` worker stamps
-<!-- /planned-change:agent-artifact-source-layout -->
 `drift_reviewed` as `substantive` or `cosmetic`, and only a `substantive` verdict
 cascades to clear the affected downstream review verdicts. No code path clears a
 human's approval as a mechanical side effect of editing an artifact.
@@ -65,11 +57,7 @@ And never advances past the evidence on disk
 Given a Todo with plan_approved stamped and an implementation-plan artifact present
 When an operator edits and saves the implementation-plan artifact
 Then the plan_approved stamp is NOT cleared by the write
-<!-- planned-change:agent-artifact-source-layout -->
-And whether the change is material is left to the /next-drift-analyze judgment
-<!-- change:agent-artifact-source-layout -->
 And whether the change is material is left to the /software-development/next-drift-analyze judgment
-<!-- /planned-change:agent-artifact-source-layout -->
 And only a substantive drift-review verdict clears the affected downstream review
 ```
 
@@ -139,11 +127,7 @@ And no blocker reports the remediation write as absent
 ### Cross-context references
 
 - `agent_runtime` — worker dispatch decisions read the canonical phase to decide
-<!-- planned-change:agent-artifact-source-layout -->
-  which Worker command (`next-prepare`, `next-build`, `next-finalize`, etc.) to
-<!-- change:agent-artifact-source-layout -->
   which Worker command (`software-development/next-prepare`, `software-development/next-build`, `software-development/next-finalize`, etc.) to
-<!-- /planned-change:agent-artifact-source-layout -->
   run for a given Todo. Workers never re-derive the phase; they trust the pointer.
 
 ## Known caveats
@@ -158,11 +142,7 @@ And no blocker reports the remediation write as absent
 - The canonical lifecycle is **strictly forward** under normal progression: draft
   → prepare-lane phases → prepared → work-lane phases → finalize_ready →
   delivered. A substantive artifact edit that drifts already-approved downstream
-<!-- planned-change:agent-artifact-source-layout -->
-  work is rewound through the `/next-drift-analyze` judgment that invalidates the
-<!-- change:agent-artifact-source-layout -->
   work is rewound through the `/software-development/next-drift-analyze` judgment that invalidates the
-<!-- /planned-change:agent-artifact-source-layout -->
   affected approvals — not by a code path that clears them unconditionally.
 - Legacy persisted entries with `lifecycle_phase="handed_off"` or
   `finalize.status="handed_off"` normalize on read to

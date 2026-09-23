@@ -35,7 +35,6 @@ feature specs remain the current contract.
   which is why the answer is published from here rather than from the context
   that owns the project's configuration file. Consumers read it through this
   contract and never interpret git metadata themselves.
-<!-- planned:agent-artifact-source-layout -->
 - **Also owns:** the names of the todo-lifecycle commands — one
   domain-qualified value each — and its own emissions of them: dispatch
   requests, machine scripts, and procedure loads. A command whose meaning
@@ -45,7 +44,6 @@ feature specs remain the current contract.
   document, the session record and title that carry it, and the live-session
   attribution query that matches it belong to `agent_runtime`, which this
   context consumes.
-<!-- /planned:agent-artifact-source-layout -->
 
 ### Preparation completion provenance
 

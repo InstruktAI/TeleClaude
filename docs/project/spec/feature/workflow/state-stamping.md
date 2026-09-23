@@ -23,11 +23,7 @@ When the analyzer runs "telec todo stamp my-slug --kind-assign task"
 Then the kind-assignment handler validates the todo is still kind-less and the assigned kind is canonical
 And it fixes kind="task" exactly once and writes no task-plan artifact
 And it sets lifecycle_phase=KIND_ENTRY_PHASE["task"] ("task_plan_drafting")
-<!-- planned-change:agent-artifact-source-layout -->
-And `/next-prepare-task` owns converting the input into a task-plan
-<!-- change:agent-artifact-source-layout -->
 And `/software-development/next-prepare-task` owns converting the input into a task-plan
-<!-- /planned-change:agent-artifact-source-layout -->
 And the state-write boundary re-validates the full state and persists atomically
 ```
 
@@ -153,21 +149,13 @@ And no runner wake-up is emitted
 ```gherkin
 Given a task has a `task_approved` stamp whose `approved_digest` was recorded against an earlier `task-plan`
 When the `task-plan` is edited so its current digest no longer equals the stamped `approved_digest`
-<!-- planned-change:agent-artifact-source-layout -->
-Then the lifecycle runner treats the task as unauthorized and does not dispatch `/next-run-task`
-<!-- change:agent-artifact-source-layout -->
 Then the lifecycle runner treats the task as unauthorized and does not dispatch `/software-development/next-run-task`
-<!-- /planned-change:agent-artifact-source-layout -->
 And the task stays unauthorized until a fresh `task_approved` stamp re-binds `approved_digest` to the current `task-plan`
 ```
 
 ```
 Given an approved prepare artifact whose per-class drift derivation collapses to "pending" on any class enumerated in @spec/feature/workflow/drift-detection
-<!-- planned-change:agent-artifact-source-layout -->
-When the next-drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed prd cosmetic 'rename-only refactor, intent preserved'"
-<!-- change:agent-artifact-source-layout -->
 When the software-development/next-drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed prd cosmetic 'rename-only refactor, intent preserved'"
-<!-- /planned-change:agent-artifact-source-layout -->
 Then the drift-reviewed handler parses the (artifact, verdict, reason) triple
 And the approvals manager validates verdict is one of {substantive, cosmetic}
 And persists the drift-reviewed stamp under approvals.drift_reviewed[artifact] including the evidence anchor at stamp time (head_sha_at_review, upstream_digests_at_review, snippet_digests_at_review)
@@ -177,11 +165,7 @@ And when later evidence moves past the anchor (HEAD advances with new referenced
 
 ```
 Given the same artifact at "pending" drift status
-<!-- planned-change:agent-artifact-source-layout -->
-When the next-drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed architecture substantive 'upstream PRD rewrote success criteria; design must re-derive'"
-<!-- change:agent-artifact-source-layout -->
 When the software-development/next-drift-analyze worker runs "telec todo stamp my-slug --drift-reviewed architecture substantive 'upstream PRD rewrote success criteria; design must re-derive'"
-<!-- /planned-change:agent-artifact-source-layout -->
 Then the substantive drift-reviewed stamp is persisted with the same evidence-anchor fields recorded for audit
 And the approvals manager clears the architecture review verdict and every downstream review verdict (plan in this case) as part of the same commit
 And the prepare state machine routes back to architecture_drafting on next dispatch
@@ -239,11 +223,7 @@ Given a Todo has kind="task", a one-shot schedule (no cron recurrence), and a li
 When the run session runs "telec todo stamp my-slug --task-outcome success"
 Then the stamp confirms the todo is kind="task" and resolves the schedule as one-shot
 And the todo is delivered through the existing delivery path, satisfying its dependents
-<!-- planned-change:agent-artifact-source-layout -->
-And the lifecycle runner skips the delivered todo and does not re-dispatch /next-run-task after the run session closes
-<!-- change:agent-artifact-source-layout -->
 And the lifecycle runner skips the delivered todo and does not re-dispatch /software-development/next-run-task after the run session closes
-<!-- /planned-change:agent-artifact-source-layout -->
 ```
 
 #### UC-WSS13: Recurring task success outcome clears an error-hold and stays live
@@ -295,21 +275,13 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
 
 - `identity` — every stamp records the `caller_session_id`; downstream principal resolution turns that into the human or agent principal that authored the stamp, so audit trails name a responsible party.
 - `agent_runtime` — worker sessions and work-orchestrator sessions invoke `telec todo stamp` at phase boundaries (`--build-complete`, `--finalize-ready`, `--verdict … --phase build_review`); the build-complete ownership check reads the caller's `working_slug` and `system_role` from the agent_runtime sessions table to accept either the owning worker or the work orchestrator.
-<!-- planned-change:agent-artifact-source-layout -->
-- `workflow` — `/analyze-todo-input` assigns a kind-less Todo's kind autonomously through `--kind-assign`; there is no separate human approval stamp.
-<!-- change:agent-artifact-source-layout -->
 - `workflow` — `/software-development/analyze-todo-input` assigns a kind-less Todo's kind autonomously through `--kind-assign`; there is no separate human approval stamp.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 ## Known caveats
 
 - The stamp is the **natural worker-completion authority** for build and finalize phases. The state machine does not advance into review or integration until the stamp lands; conversely, the stamp does not run the gates itself — it records the claim and lets the state machine run gates on its next dispatch. This split prevents long-running stamp calls and the zombie processes a synchronous gate run would create.
 - Kind assignment is **autonomous and one-shot**. `--kind-assign <kind>` fixes `kind` exactly once and moves the todo straight to that kind's `KIND_ENTRY_PHASE`; there is no proposal phase and no human approval stamp between classification and the lane. A Todo whose kind is already fixed refuses the stamp.
-<!-- planned-change:agent-artifact-source-layout -->
-- No kind-assignment stamp writes a plan artifact. `--kind-assign task` records kind + entry phase only (routing to `task_plan_drafting`); `/next-prepare-task` authors the `task-plan`. SDLC assignments likewise record kind + entry phase only and let their normal lane author PRD/implementation artifacts.
-<!-- change:agent-artifact-source-layout -->
 - No kind-assignment stamp writes a plan artifact. `--kind-assign task` records kind + entry phase only (routing to `task_plan_drafting`); `/software-development/next-prepare-task` authors the `task-plan`. SDLC assignments likewise record kind + entry phase only and let their normal lane author PRD/implementation artifacts.
-<!-- /planned-change:agent-artifact-source-layout -->
 - `--build-complete` is **worker- or orchestrator-owned and locked**: the caller must be either the owning worker (`working_slug == <slug>`) or a work orchestrator (`system_role == orchestrator`). Operators still cannot stamp build-complete from a plain shell; the stamp refuses with a permission error when the session id is missing or the caller is neither accepted shape.
 - `--build-started` is **machine-owned**: the stamp rejects this flag explicitly and instructs the caller to run `telec todo work <slug>` so the work state machine owns the transition.
 
@@ -319,11 +291,7 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
 - Drift-reviewed verdicts are constrained to `{substantive, cosmetic}`. Any other verdict value is refused; the payload itself must carry well-formed `artifact`, `verdict`, and `reason` fields. The CLI signature `--drift-reviewed <artifact> <verdict> <reason>` is unchanged — the analyzer supplies the evidence anchor implicitly from current state at stamp time, not as a flag.
 - Cosmetic drift-reviewed stamps are **anchor-scoped, not permanent**. The verdict expires lazily per drift class when current evidence has moved past the recorded anchor on any anchored dimension (HEAD/referenced-paths overlap, upstream digest, owned snippet digest, referenced snippet digest, dep-set). The class re-pends automatically on the next prepare or work-entry derivation; no manual stamp clearing is required. See `@spec/feature/workflow/drift-detection#stamp-scoping-the-evidence-anchor`.
 - Rewriting a drift-tracked artifact (via `telec todo artifacts write`) clears all of its drift-reviewed stamps so the next derivation establishes a fresh anchor against newly captured provenance. Substantive verdicts never need explicit expiry — re-derivation is the path back to a fresh stamp.
-<!-- planned-change:agent-artifact-source-layout -->
-- Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/next-build`) is responsible for issuing it as the last act of the build flow.
-<!-- change:agent-artifact-source-layout -->
 - Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/software-development/next-build`) is responsible for issuing it as the last act of the build flow.
-<!-- /planned-change:agent-artifact-source-layout -->
 - `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a work-orchestrator session whose claim binds the slug may stamp it; a worker session, a plain operator shell, or an orchestrator bound to a different slug is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo), invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`, clears any outstanding build-complete gate claim, and resets a ready finalize handoff to pending. Nothing is torn down: the worktree, local and remote branch, workspace directory, and live sessions are all preserved. On the orchestrator's next `telec todo work` re-entry the work machine emits the in-session prepare handoff — the same non-terminal bounce a substantive work-entry drift produces — and after the plan is re-derived and re-approved, the work machine re-enters the preserved build and hands the builder machine-derived reconcile instructions naming the old and new implementation-plan digests.
 
 - `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a

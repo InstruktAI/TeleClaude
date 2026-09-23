@@ -29,7 +29,6 @@ read.
 **Output — the tier set for an invocation**, the documentation sources it
 implies, and the portion of those sources the caller may see.
 
-<!-- planned:agent-artifact-source-layout -->
 
 **Input — agent artifacts carry the same shape at every tier.** Each tier root
 carries `agents/` beside `docs/`. In a repository, scope is in the path, exactly
@@ -44,7 +43,6 @@ commands and global skills are the mother's alone. A
 repository that carries global artifacts outside its declared reach fails
 validation loudly. The open `.agents/` convention is never read as input.
 
-<!-- /planned:agent-artifact-source-layout -->
 
 <!-- planned:tier-command-corpus -->
 
@@ -222,12 +220,10 @@ named tier in full.
   consumer looks like a working feature and is not. Presence in the schema is
   not presence in behaviour.
 
-<!-- planned:agent-artifact-source-layout -->
 
 - **Reading authored input from a location the platform writes.** Treating the
   open `.agents/` directory, or any delivery location, as a source root makes a
   file's provenance unreadable from its path and lets a regenerating deploy
   overwrite authored work. Sources and outputs never share a location.
 
-<!-- /planned:agent-artifact-source-layout -->
 

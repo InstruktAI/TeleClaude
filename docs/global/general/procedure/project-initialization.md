@@ -33,12 +33,8 @@ Source: `teleclaude/project_setup/git_repo.py:ensure_git_repo()`
 Establishes the project config marker, then infers any capability block the manifest
 does not already declare from durable repository structure: a `Makefile` or a
 recognized language tree implies `code`, authored snippet frontmatter under `docs/`
-<!-- planned-change:agent-artifact-source-layout -->
-implies `docs`, and files under `agents/` or `.agents/` imply `agents`. Only missing
-<!-- change:agent-artifact-source-layout -->
 implies `docs`, and authored files under `agents/` imply `agents` — `.agents/` is a
 delivery location and never an inference source. Only missing
-<!-- /planned-change:agent-artifact-source-layout -->
 blocks are materialized — an explicit declaration is preserved, never overwritten.
 The resolved subscriptions are then projected as markers under the repository's
 common git directory, where the installed shell plumbing reads them by existence

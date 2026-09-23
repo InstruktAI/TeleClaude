@@ -7,13 +7,9 @@ visibility: 'public'
 
 ## Rules
 
-<!-- planned-change:agent-artifact-source-layout -->
-- Project-local agent artifacts live under `.agents/`. Artifact types are treated equally: `agents/`, `commands/`, and `skills/` are all published and distributed.
-<!-- change:agent-artifact-source-layout -->
 - Agent artifacts carry the same tier shape documentation has. In a repository they live under `agents/{global,project}/{commands,skills}`; in a company or person home they live flat under `agents/{commands,skills}` beside `docs/`. Commands and skills are the artifact kinds and are treated equally; subagent definitions are not an artifact class. Global commands are partitioned by the domains the repository publishes, under the same one-owner declaration that governs documentation domains; general commands and global skills are the mother's alone, and global content outside a repository's declared reach fails validation.
 - Authored sources and generated output never share a location. `.agents/` is a delivery location — the open project-local convention agent runtimes read — and is never an authored source root. A directory that is written by the platform is not also read as input.
 - A machine-generated artifact reaches no further than the tier that produced it; promotion to a wider tier is a human act.
-<!-- /planned-change:agent-artifact-source-layout -->
 
 
 - **Agent artifacts are authored in-context on `main`, never routed through a todo.** Agent artifacts — commands and skills — are standalone agent-infrastructure plumbing with no coupling to code. What they should say is the human's decision; writing them is the agent's work, executed directly on `main` in the live session where that decision converged — never routed through a todo or the build lifecycle, never authored by a dispatched builder in a slug worktree. Human presence supplies context, not permission to edit: an original explicit authoring request, or agreement by every active participant followed by the human's release, opens the tracked write. Having no code to gate against, artifacts carry no pending markers and no `delivered_by`; after the complete artifact is stable, artifact distribution deploys it and the commits policy governs its commit.
@@ -51,11 +47,9 @@ visibility: 'public'
 - Limiting `hooks` to Claude matches current agent capabilities and avoids invalid configs.
 - Quality configuration is the wall agent work is measured against; under goal pressure, any checker its own subject can edit gets edited toward green, one defensible commit message at a time. Governing the wall's definition places it outside the constrained author's unilateral reach.
 
-<!-- planned:agent-artifact-source-layout -->
 
 - Reading authored input from a directory the platform also writes makes a file's provenance unreadable from its location: an author cannot tell their own work from generated output, and a regenerating deploy is free to overwrite something a human wrote. Keeping the source root out of every delivery location is what makes that class of loss unrepresentable rather than merely avoided by convention.
 
-<!-- /planned:agent-artifact-source-layout -->
 
 ## Scope
 
