@@ -1,4 +1,4 @@
-"""Terminal auth state for telec login — per-TTY file with global fallback."""
+"""Terminal auth state for telec login — one document per terminal, no machine-global record."""
 
 from __future__ import annotations
 
@@ -9,13 +9,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import psutil
+
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
 from teleclaude.session_identity import get_human_role
 
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
 TUI_CARRIED_IDENTITY_ENV_KEY = "TELEC_TUI_IDENTITY"
-_NO_TTY_LABEL = "(no tty)"
+_NO_TERMINAL_ERROR = "No terminal detected: telec auth login must run from an interactive terminal."
 _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
 _INODE_ALLOCATION_PREFIX = "ino:"
@@ -39,14 +41,35 @@ class TerminalAuthState:
     context: TerminalSessionContext
 
 
+def _detect_ancestor_tty() -> str | None:
+    """Return the terminal of the nearest ancestor process that has one.
+
+    An agent CLI started from a terminal runs its tool shells detached from that
+    terminal, yet they act for the person who launched it. Processes rooted in
+    the service manager (the daemon and everything it spawns) have no ancestor
+    with a terminal and so still resolve to none.
+    """
+    try:
+        for ancestor in psutil.Process().parents():
+            terminal: str | None = ancestor.terminal()
+            if terminal:
+                return terminal
+    except psutil.Error:
+        return None
+    return None
+
+
 def _detect_tty() -> str | None:
-    """Detect the controlling TTY for the current process."""
+    """Detect the controlling TTY for the current process, else its nearest terminal-bearing ancestor's."""
     for fd in (0, 1, 2):
         try:
             return os.ttyname(fd)
         except OSError:
             continue
-    return os.environ.get("SSH_TTY") or None  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+    ssh_tty = os.environ.get("SSH_TTY")  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
+    if ssh_tty:
+        return ssh_tty
+    return _detect_ancestor_tty()
 
 
 def _tty_key(tty: str) -> str:
@@ -57,20 +80,13 @@ def _tty_key(tty: str) -> str:
     return tty.rsplit("/", 1)[-1]
 
 
-def _global_auth_path() -> Path:
-    return SESSION_AUTH_DIR / "global_identity.json"
-
-
 def get_current_session_context() -> TerminalSessionContext | None:
-    """Return a context for the current terminal.
-
-    Per-TTY when a TTY is detectable, global fallback otherwise.
-    """
+    """Return the auth context for the current terminal, or None when no terminal is detectable."""
     tty = _detect_tty()
-    if tty:
-        key = _tty_key(tty)
-        return TerminalSessionContext(tty=tty, key=key, auth_path=SESSION_AUTH_DIR / f"{key}.json")
-    return TerminalSessionContext(tty=_NO_TTY_LABEL, key="global", auth_path=_global_auth_path())
+    if not tty:
+        return None
+    key = _tty_key(tty)
+    return TerminalSessionContext(tty=tty, key=key, auth_path=SESSION_AUTH_DIR / f"{key}.json")
 
 
 def _detect_device_allocation(tty: str) -> str | None:
@@ -121,19 +137,6 @@ def _read_document(path: Path) -> _AuthDocument | str | None:
     return data
 
 
-def _read_auth_file(path: Path) -> str | None:
-    """Read and parse an auth file, returning the normalized email or None."""
-    document = _read_document(path)
-    if document is None:
-        return None
-    if isinstance(document, str):
-        return document
-    raw_email = document.get("email")
-    if not isinstance(raw_email, str):
-        return None
-    return _normalize_email(raw_email) or None
-
-
 def _read_live_document(path: Path, tty: str) -> str | None:
     """Read a per-TTY auth document, honouring it only while it is live.
 
@@ -168,11 +171,13 @@ def read_current_session_email() -> str | None:
     Resolution order:
     1. The identity carried into a trusted TUI session (only where the TUI
        runtime marker is present — never honoured outside it)
-    2. A live per-TTY auth document (device node present, allocation token matching)
-    3. Global identity file — only while at most one person is registered
+    2. A live auth document for the process's terminal — its own, else its
+       nearest terminal-bearing ancestor's (device node present, allocation
+       token matching)
+    3. The sole registered person — only while exactly one person is registered
 
-    A process with no controlling TTY presents no identity: nothing is
-    consulted past that point.
+    A process with no terminal of its own or in its ancestry presents no
+    identity: nothing is consulted past that point.
     """
     if os.environ.get(TUI_SESSION_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         carried = os.environ.get(TUI_CARRIED_IDENTITY_ENV_KEY)  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
@@ -180,7 +185,7 @@ def read_current_session_email() -> str | None:
             return _normalize_email(carried) or None
 
     context = get_current_session_context()
-    if context is None or context.tty == _NO_TTY_LABEL:
+    if context is None:
         return None
 
     email = _read_live_document(context.auth_path, context.tty)
@@ -191,9 +196,7 @@ def read_current_session_email() -> str | None:
         get_identity_resolver,
     )
 
-    if get_identity_resolver().is_multi_user:
-        return None
-    return _read_auth_file(_global_auth_path())
+    return get_identity_resolver().sole_person_email
 
 
 def effective_caller_role() -> str | None:
@@ -237,15 +240,14 @@ def _sweep_stale_documents() -> None:
 
     A document whose device is still present is left untouched, including
     one belonging to another person — release is keyed on the device, not
-    on who logged in last. The global fallback document is never swept.
+    on who logged in last.
     """
     try:
         entries = list(SESSION_AUTH_DIR.iterdir())
     except OSError:
         return
-    global_path = _global_auth_path()
     for entry in entries:
-        if entry == global_path or entry.suffix != ".json":
+        if entry.suffix != ".json":
             continue
         try:
             data = json.loads(entry.read_text(encoding="utf-8"))
@@ -254,7 +256,7 @@ def _sweep_stale_documents() -> None:
         if not isinstance(data, dict):
             continue
         tty = data.get("tty")
-        if not isinstance(tty, str) or tty == _NO_TTY_LABEL:
+        if not isinstance(tty, str):
             continue
         if not Path(tty).exists():
             try:
@@ -264,14 +266,14 @@ def _sweep_stale_documents() -> None:
 
 
 def write_current_session_email(email: str) -> TerminalAuthState:
-    """Write login email to the per-TTY identity file and global identity."""
+    """Write login email to the current terminal's identity document."""
     normalized_email = _normalize_email(email)
     if not normalized_email or "@" not in normalized_email:
         raise ValueError("A valid email address is required.")
 
     context = get_current_session_context()
     if context is None:
-        context = TerminalSessionContext(tty=_NO_TTY_LABEL, key="global", auth_path=_global_auth_path())
+        raise ValueError(_NO_TERMINAL_ERROR)
 
     SESSION_AUTH_DIR.mkdir(parents=True, exist_ok=True)
     try:
@@ -281,17 +283,11 @@ def write_current_session_email(email: str) -> TerminalAuthState:
 
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     payload: dict[str, str | float] = {"email": normalized_email, "tty": context.tty, "updated_at": now}
-    if context.tty != _NO_TTY_LABEL:
-        device_allocation = _detect_device_allocation(context.tty)
-        if device_allocation is not None:
-            payload[_DEVICE_ALLOCATION_KEY] = device_allocation
+    device_allocation = _detect_device_allocation(context.tty)
+    if device_allocation is not None:
+        payload[_DEVICE_ALLOCATION_KEY] = device_allocation
 
     _write_auth_file(context.auth_path, payload)
-
-    # Last login always wins globally — update global identity regardless of TTY.
-    global_path = _global_auth_path()
-    if context.auth_path != global_path:
-        _write_auth_file(global_path, payload)
 
     _sweep_stale_documents()
 
@@ -299,7 +295,7 @@ def write_current_session_email(email: str) -> TerminalAuthState:
 
 
 def clear_current_session_email() -> bool:
-    """Delete the auth file for the current TTY (or global)."""
+    """Delete the auth file for the current terminal."""
     context = get_current_session_context()
     if context is None:
         return False

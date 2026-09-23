@@ -175,11 +175,10 @@ And provider-supplied data cannot opt into headless bootstrap
   cannot reattach to a manually started agent CLI after the fact.
 - Codex sub-agent transcripts are filtered earlier (the receiver drops
   subagent events pre-resolution); they never reach this bootstrap.
-- Caller-email resolution order is: (1) per-TTY auth state if a TTY is
-  detectable, then (2) global identity state as a fallback. Running the
-  agent CLI in a subshell that loses TTY context falls through to the
-  global identity state; only when both are absent does email
-  resolution return nothing, in which case the bootstrap builds the
+- Caller email resolves from the live per-TTY login of the process's own
+  terminal, else of its nearest terminal-bearing ancestor, else — while
+  exactly one person is registered — from that person. When none of these
+  answers, email resolution returns nothing and the bootstrap builds the
   command with the customer human role.
 - The headless project-context resolver returns (none, none) for any
   cwd not under a configured trusted directory; the session is still

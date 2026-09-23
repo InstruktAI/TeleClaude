@@ -167,9 +167,9 @@ session close.
     identity-bearing command succeeds,
   - TUI launch requires prior `telec auth login`,
   - daemon rejects tmux callers that have no `x-caller-session-id` and no resolvable `x-telec-email`.
-- If `people` has zero/one person, the global login record answers a terminal that
-  has no document of its own, and the legacy fallback role is still allowed for
-  tmux callers without session identity.
+- If `people` has zero/one person, the legacy fallback role is still allowed for
+  tmux callers without session identity, and with exactly one person that person
+  answers a terminal that has no document of its own.
 - Whichever mode is in force, a login already bound to a live terminal keeps
   answering for that terminal. One person authenticating never unbinds another
   person's open terminals; only the terminal's own disappearance does.

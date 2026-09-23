@@ -172,6 +172,7 @@ class IdentityResolver:
         self._by_whatsapp_phone: dict[str, PersonEntry] = {}
         self._color_by_email: dict[str, PersonChipColor] = {}
         self._registered_people_count: int = 0
+        self._sole_person_email: str | None = None
         self._registry_load_error: Exception | None = None
         self._config_mtime_ns: int | None = None
         self._people_mtime_ns: int | None = None
@@ -255,6 +256,7 @@ class IdentityResolver:
         self._by_whatsapp_phone.clear()
         self._color_by_email.clear()
         self._registered_people_count = 0
+        self._sole_person_email = None
         self._registry_load_error = None
 
         try:
@@ -265,6 +267,8 @@ class IdentityResolver:
             return
 
         self._registered_people_count = len(global_config.people)
+        if self._registered_people_count == 1:
+            self._sole_person_email = global_config.people[0].email.strip().lower() or None
         people_by_key: dict[str, PersonEntry] = {}
         for person in global_config.people:
             normalized_email = person.email.lower()
@@ -374,6 +378,12 @@ class IdentityResolver:
         """Number of registered people in global config."""
         self._reload_if_stale()
         return self._registered_people_count
+
+    @property
+    def sole_person_email(self) -> str | None:
+        """The registered email when exactly one person is registered, else None."""
+        self._reload_if_stale()
+        return self._sole_person_email
 
     @property
     def is_multi_user(self) -> bool:
