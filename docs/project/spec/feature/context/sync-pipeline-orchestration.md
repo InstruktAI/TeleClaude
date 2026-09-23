@@ -43,8 +43,9 @@ The publication pipeline is:
 1. **Resolve activated source** — materialize the recorded tip for the
    triggering project and retain every other publisher at its previously
    activated revision.
-2. **Build indexes** — write fresh derived doc indexes inside those committed
-   source snapshots.
+2. **Build indexes** — derive indexes from the triggering project's committed
+   snapshot for publication, and write equivalent portable derived indexes to
+   that project's canonical checkout for local `telec docs` retrieval.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
    outputs from those snapshots.
 <!-- /planned-change:retire-docs-watcher -->
@@ -439,11 +440,11 @@ And its absence before first deployment is not a finding
   `~/.teleclaude/docs/<domain>/` (not the source tree), but it must not mutate
   authored `docs/**/*.md` snippets.
 <!-- change:retire-docs-watcher -->
-- Publication is idempotent at the authored-source layer: it writes derived,
-  gitignored `index.yaml` files only inside committed source snapshots and each
-  published domain's `domain-baseline-bundle.md` into the deployed root
-  `~/.teleclaude/docs/<domain>/`. It never mutates authored source snippets or
-  publishes a checkout's uncommitted files.
+- Publication is idempotent at the authored-source layer: it builds indexes
+  from the committed snapshot, writes the triggering project's gitignored
+  `index.yaml` files to its canonical checkout with paths rooted there, and
+  places published domain bundles inside the deployed generation. It never
+  mutates authored source snippets or publishes a checkout's uncommitted files.
 <!-- /planned-change:retire-docs-watcher -->
 
 

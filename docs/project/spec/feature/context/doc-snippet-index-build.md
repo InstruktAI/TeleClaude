@@ -60,8 +60,9 @@ And docs/third-party/index.yaml is written when third-party sources exist
 Given a project with valid snippet sources under docs/
 When commit-boundary publication runs for that project's recorded commit
 Then the index-build phase runs
-And docs/project/index.yaml is written with one entry per valid Source
-And docs/third-party/index.yaml is written when third-party sources exist
+And the project's canonical checkout receives docs/project/index.yaml with one entry per valid committed Source and paths rooted at that checkout
+And its canonical checkout receives docs/third-party/index.yaml when committed third-party sources exist
+And local telec docs retrieval reads those canonical-checkout indexes
 ```
 <!-- /planned-change:retire-docs-watcher -->
 
