@@ -28,7 +28,7 @@ And the document is written with stable key ordering and a trailing newline
 ```
 
 ```
-Given a session whose resolved principal is "system:<session_id>"
+Given a session whose resolved principal is "system:daemon"
 When the bootstrap writer runs
 Then session-token issuance produces a fresh UUID4 (see `feature/identity/session-token-issuance`)
 And the identity file carries that UUID4 in the session_token field

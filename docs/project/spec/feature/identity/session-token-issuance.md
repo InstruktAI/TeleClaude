@@ -18,6 +18,7 @@ The v1 rule for minting a session token at the start of a session's life. A sess
 
 ### Use cases
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 ```
 Given a session whose resolved principal is "system:<session_id>"
 When the session is bootstrapped
@@ -25,6 +26,15 @@ Then session-token issuance generates a UUID4
 And a ledger entry binding (token, session_id, principal, role) is recorded
 And the plaintext token is written into the session's TMPDIR identity file
 ```
+<!-- change:fix-orchestrator-session-human-role-unresolved -->
+```
+Given a session whose resolved principal is "system:daemon"
+When the session is bootstrapped
+Then session-token issuance generates a UUID4
+And a ledger entry binding (token, session_id, principal, role) is recorded
+And the plaintext token is written into the session's TMPDIR identity file
+```
+<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 ```
 Given a session whose resolved principal is "human:<email>"
@@ -34,6 +44,7 @@ And the identity file is written with session_token=None
 And the session must authenticate via the terminal-email and caller-session-id signals
 ```
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 ```
 Given a child worker session inheriting "system:<parent-session-id>" as its principal
 When the child is bootstrapped
@@ -41,6 +52,15 @@ Then a NEW ledger entry is issued for the child's session_id
 And the entry's principal is the inherited "system:<parent-session-id>" value
 And the entry's role carries the role returned by principal resolution
 ```
+<!-- change:fix-orchestrator-session-human-role-unresolved -->
+```
+Given a child worker session inheriting "system:daemon" as its principal
+When the child is bootstrapped
+Then a NEW ledger entry is issued for the child's session_id
+And the entry's principal is the inherited "system:daemon" value
+And the entry's role carries the role returned by principal resolution
+```
+<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 ```
 Given a freshly issued session token
