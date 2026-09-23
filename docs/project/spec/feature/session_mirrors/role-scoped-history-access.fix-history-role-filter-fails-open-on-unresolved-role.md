@@ -14,12 +14,15 @@ visibility: 'public'
 
 History queries are filtered by the caller's role so non-admins cannot
 enumerate every stored conversation on the host. A caller that carries an
-identity requests role scoping explicitly, supplying `caller_email`,
-`caller_role`, and the `system_role` its authorization was granted under;
-the session_mirrors service derives the filter from those three values for
-the search and detail lookups. The CLI resolves them once per command from
-the terminal's authenticated session, the session identity file, and the
-global people configuration.
+identity supplies `caller_email` and `caller_role`, and the session_mirrors
+service derives the filter from those two values for the search and detail
+lookups. The CLI resolves them once per command from the terminal's
+authenticated session and the global people configuration.
+
+A caller's `system_role` is not an input to this filter. It records the
+channel a caller's command authorization came through, and carries no
+entitlement to another owner's conversations; the role band is derived from
+the human role alone.
 
 Carrying an identity is what distinguishes a scoped caller from an in-process
 one. A caller that carries no identity is not role-filtered; that case is
