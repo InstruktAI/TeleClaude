@@ -1867,8 +1867,12 @@ def main() -> None:  # noqa: C901
                     target_root=target_root,
                 )
 
-            shutil.copytree(commands_dist_dir, COMMANDS_DIR, dirs_exist_ok=True)
-            reconcile_deployed_files(scope_key=scope_key, staged_commands_dir=commands_dist_dir)
+            # Only the global phase stages commands. Its scope key is the publishing checkout's
+            # canonical root, which the project-local phase of that same checkout shares, so a
+            # local-phase reconcile would retract the corpus the global phase just deployed.
+            if is_global_phase:
+                shutil.copytree(commands_dist_dir, COMMANDS_DIR, dirs_exist_ok=True)
+                reconcile_deployed_files(scope_key=scope_key, staged_commands_dir=commands_dist_dir)
             retract_retired_native_artifacts(
                 scope_key=scope_key,
                 scope_root=Path(deploy_root),
