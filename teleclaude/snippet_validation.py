@@ -502,6 +502,20 @@ def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
     return None
 
 
+def is_generated_global_doc_artifact(relative_path: Path) -> bool:
+    """Whether a deployed-global-docs-root-relative path names a generated artifact.
+
+    Covers the two artifacts the documentation pipeline writes and that no
+    publisher source tree owns: the merged index, matched by filename at any
+    depth, and a domain's baseline bundle, matched as a two-segment
+    ``<domain>/domain-baseline-bundle.md`` path. Structural only — it does not
+    re-check domain publication, which the caller's own registry lookup settles.
+    """
+    if relative_path.name == "index.yaml":
+        return True
+    return len(relative_path.parts) == 2 and relative_path.parts[1] == _GENERATED_DOMAIN_BUNDLE_FILENAME
+
+
 def generated_domain_bundle_domain(ref: str, *, domains: Iterable[str]) -> str | None:
     """Return the published domain for one canonical generated-bundle ref."""
     for prefix in _global_ref_prefixes():

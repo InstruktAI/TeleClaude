@@ -15,6 +15,7 @@ from teleclaude.domains import publishes_for_root
 from teleclaude.paths import GLOBAL_DOCS_DIR, REPO_ROOT, ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.slug import normalize_slug
+from teleclaude.snippet_validation import is_generated_global_doc_artifact
 
 _DOMAIN_AGNOSTIC_DIR = "general"
 _SNIPPETS_DIR = "snippets"
@@ -152,15 +153,16 @@ def publisher_resolution(
 def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     """Map a deployed global-doc path to its registered publisher source.
 
-    The merged index has no single source file and remains deployed. Domain and
-    Mother-owned support paths resolve directly to their publisher trees even
-    before a host has published its first documentation generation.
+    A generated documentation artifact — the merged index or a domain's
+    baseline bundle — has no single source file and remains deployed. Domain
+    and Mother-owned support paths resolve directly to their publisher trees
+    even before a host has published its first documentation generation.
     """
     try:
         relative_path = candidate.expanduser().relative_to(GLOBAL_DOCS_DIR)
     except ValueError:
         return candidate
-    if not relative_path.parts or relative_path.name == "index.yaml":
+    if not relative_path.parts or is_generated_global_doc_artifact(relative_path):
         return candidate
     registry = _PUBLISHER_REGISTRY.get()
     if registry is None:

@@ -55,8 +55,9 @@ def sync(
         return True
 
     if skip_deploy:
-        # Validation resolves every reference from publisher sources and never reads
-        # the deployed tree, so it holds no lease and never waits behind a deploy.
+        # Validation resolves authored references from publisher sources; a generated
+        # artifact's absence is tolerated rather than awaited, so it holds no lease
+        # and never waits behind a deploy.
         return skip_validation or not _collect_source_findings(project_root, capabilities)
     try:
         with docs_lease(DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
