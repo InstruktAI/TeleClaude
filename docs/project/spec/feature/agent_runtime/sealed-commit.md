@@ -497,6 +497,16 @@ Then SystemExit(1) and no commit occurs
 And on any other branch SystemExit(2)
 ```
 
+#### UC-CGIP-45 — The gate card carries the diffstat of the scope it would commit
+
+```
+Given a non-integrator agent on main invokes telec code commit without --approved
+When the commit-first gate is surfaced
+Then the card carries a per-file diffstat of the resolved commit scope against HEAD
+And a resolved scope holding no change says so instead of printing an empty stat
+And a scope that cannot be resolved says so and directs the agent to read the diff itself
+```
+
 
 #### UC-CGIP-10 — Merge commit degrades to a full-index commit with no pathspec in a single-owner tree
 

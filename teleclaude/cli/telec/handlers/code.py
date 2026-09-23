@@ -82,6 +82,12 @@ _AGENT_ARTIFACT_WORKTREE_GUIDANCE = (
     "remove these paths from the worktree commit and route the artifact change to that session."
 )
 _WORKTREE_REFUSAL_PATH_TEMPLATE = "  {path}"
+_SCOPE_DIFFSTAT_HEADER = "Scope as resolved now — read this before you write the message:"
+_SCOPE_DIFFSTAT_EMPTY = "Scope as resolved now: nothing. A commit would carry no change."
+_SCOPE_DIFFSTAT_UNAVAILABLE = "Scope as resolved now: unavailable. Read the diff yourself before committing."
+_GIT_DIFF_HEAD_REF = "HEAD"
+_GIT_STAT_FLAG = "--stat"
+_GIT_PATHSPEC_SEPARATOR = "--"
 
 
 class CodeSubcommand(StrEnum):
@@ -384,7 +390,7 @@ def handle_code_commit(args: list[str]) -> None:
         forgot_gate = message is not None
         current_branch = resolve_current_branch(project_root)
         if current_branch == "main" and system_role != "integrator":
-            _print_commit_review_guidance(project_root)
+            _print_commit_review_guidance(project_root, state.context_root)
             raise SystemExit(1 if forgot_gate else 0)
         print(
             "telec code commit is the sealed canonical commit interface.\n"
@@ -817,7 +823,27 @@ def _resolve_open_commit_reviewers(project_root: Path) -> tuple[tuple[str, str],
         return ()
 
 
-def _print_commit_review_guidance(project_root: Path) -> None:
+def _resolved_scope_diffstat(project_root: Path, context_root: Path | None) -> str:
+    """Render the diffstat of what a commit would carry from the resolved scope.
+
+    The card is read by the author composing its commit message, so the stat is
+    the change itself rather than a claim about it: a message written from the
+    author's own edits diverges visibly here from what the pathspec will take.
+    """
+    try:
+        scope_resolution = resolve_workspace_scope_resolution(project_root, context_root=context_root)
+        paths = _commit_stage_paths(scope_resolution)
+        if not paths:
+            return _SCOPE_DIFFSTAT_EMPTY
+        stat = Repo(str(project_root)).git.diff(_GIT_DIFF_HEAD_REF, _GIT_STAT_FLAG, _GIT_PATHSPEC_SEPARATOR, *paths)
+    except (GitCommandError, RuntimeError, OSError):
+        return _SCOPE_DIFFSTAT_UNAVAILABLE
+    if not stat.strip():
+        return _SCOPE_DIFFSTAT_EMPTY
+    return f"{_SCOPE_DIFFSTAT_HEADER}\n{stat}"
+
+
+def _print_commit_review_guidance(project_root: Path, context_root: Path | None) -> None:
     """Print the active commit-gate continuation instructions for shared main.
 
     The sealed contract makes ``--approved`` the single gate for any commit on
@@ -846,12 +872,15 @@ def _print_commit_review_guidance(project_root: Path) -> None:
             "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode med for code review):\n"
             "     telec sessions run --command next-review-commits --args '<sha1,sha2,...>' --mode <fast|med>\n"
         )
+    scope_diffstat = _resolved_scope_diffstat(project_root, context_root)
     print(
         "COMMIT GATE ACTIVE — CONTINUE NOW\n"
         "\n"
         "This output is not informational. Follow it until one terminal state:\n"
         "- a commit is created and required review routing is completed or started as instructed; or\n"
         "- a concrete blocker is reached.\n"
+        "\n"
+        f"{scope_diffstat}\n"
         "\n"
         "Required next steps:\n"
         "1. Declare what you are working on, if you have not already:\n"
