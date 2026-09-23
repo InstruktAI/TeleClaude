@@ -32,7 +32,7 @@ from teleclaude.cli.config_handlers import (
     set_invite_token,
     validate_all,
 )
-from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.session_auth import effective_caller_role, read_current_session_email
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.auth import is_command_allowed
 from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
@@ -65,7 +65,7 @@ from teleclaude.invite import (
     send_invite_email,
 )
 from teleclaude.paths import PEOPLE_DIR, PROJECT_ENV_PATH
-from teleclaude.session_identity import get_human_role, get_system_role
+from teleclaude.session_identity import get_system_role
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 logger = get_logger(__name__)
@@ -125,9 +125,7 @@ def _require_roster_admin(command_path: str) -> None:
     if system_role is not None:
         allowed = is_command_allowed(command_path, system_role, None)
     else:
-        human_role = get_human_role()
-        effective_role = human_role or get_identity_resolver().effective_terminal_role(read_current_session_email())
-        allowed = effective_role == HUMAN_ROLE_ADMIN
+        allowed = effective_caller_role() == HUMAN_ROLE_ADMIN
     if not allowed:
         print(_ROSTER_ADMIN_ERROR)
         raise SystemExit(1)

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.session_auth import effective_caller_role
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
@@ -19,7 +19,6 @@ from teleclaude.config.context_root import resolve_context_root
 from teleclaude.config.loader import load_app_config
 from teleclaude.config.schema import ConfigKind
 from teleclaude.context_selector import ActivationClosureError, build_context_output
-from teleclaude.core.identity import get_identity_resolver
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.domains import valid_domains
 from teleclaude.project_root import (
@@ -108,13 +107,6 @@ def _resolve_docs_context() -> DocsContext:
     if context.kind is ConfigKind.PROJECT:
         return DocsContext(project_root=resolve_project_state_root(context.path), include_registered_projects=False)
     return DocsContext(project_root=context.path, include_registered_projects=False)
-
-
-def _current_terminal_role() -> str | None:
-    email = read_current_session_email()
-    if not email:
-        return None
-    return get_identity_resolver().resolve_by_email(email).person_role
 
 
 def _parse_scope(value: str, subcommand: str) -> SnippetScope:
@@ -232,7 +224,7 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
         third_party_requested=third_party,
     )
     docs_context = _resolve_docs_context()
-    effective_role = _current_terminal_role()
+    effective_role = effective_caller_role()
     config = load_app_config(docs_context.project_root)
     output = build_context_output(
         areas=areas,
@@ -288,7 +280,7 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
         third_party_requested=False,
     )
     docs_context = _resolve_docs_context()
-    effective_role = _current_terminal_role()
+    effective_role = effective_caller_role()
     config = load_app_config(docs_context.project_root)
     try:
         output = build_context_output(
