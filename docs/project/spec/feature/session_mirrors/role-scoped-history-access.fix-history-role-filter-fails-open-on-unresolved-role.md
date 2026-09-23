@@ -1,5 +1,5 @@
 ---
-description: 'Role-based filtering of mirror search and detail lookup. A caller that carries an identity requests scoping; system-authorized callers and admins see all mirrors, members see their own and shared ones, and every other role — including one that did not resolve — sees only their own. Applied at the store boundary before rows reach the renderer, and not bypassable through the on-disk transcript fallback.'
+description: 'Role-based filtering of mirror search and detail lookup. A caller that carries an identity is scoped by its role: admins see all mirrors, members see their own and shared ones, and every other role — including one that did not resolve — sees only their own. Applied at the store boundary before rows reach the renderer, and the on-disk transcript fallback is governed by the same outcome.'
 visibility: 'public'
 ---
 
@@ -21,15 +21,12 @@ the search and detail lookups. The CLI resolves them once per command from
 the terminal's authenticated session, the session identity file, and the
 global people configuration.
 
-Requesting scoping is what distinguishes an identity-bearing caller from an
-in-process one. A caller that requests no scoping supplies none of the three
-and is not role-filtered; that case is UC-RSHA-5 and is unchanged here.
+Carrying an identity is what distinguishes a scoped caller from an in-process
+one. A caller that carries no identity is not role-filtered; that case is
+UC-RSHA-5 and is unchanged here.
 
-The role bands, for a caller that requests scoping, are:
+The role bands, for a caller that carries an identity, are:
 
-- **System-authorized** (`system_role` is set): no role filter is applied.
-  Authorization was granted through the system channel, which does not
-  consult a human role, so no human-role band applies.
 - **Admin**: no role filter is applied. The caller sees every mirror on the
   host.
 - **Member**: the filter is "(human_email = caller_email OR visibility =
@@ -37,11 +34,14 @@ The role bands, for a caller that requests scoping, are:
   marked shared on the upstream session.
 - **Anything else** (a known non-admin, non-member role): the filter is
   "human_email = caller_email".
-- **Unresolved** (no `system_role`, and `caller_role` did not resolve): the
-  narrowest band applies — "human_email = caller_email". A caller whose role
-  could not be determined receives no wider view than a caller whose role
-  resolved to the most restricted value, and one carrying no email matches no
-  row.
+- **Unresolved** (the caller's role did not resolve): the narrowest band
+  applies. A caller whose role could not be determined receives no wider view
+  than a caller whose role resolved to the most restricted value, and a caller
+  carrying no email reaches no mirror at all.
+
+The band governs the detail path's transcript fallback as well as the store
+query, so a caller the band excludes cannot obtain through the on-disk file
+what the store withheld.
 
 A filtered miss and an absent mirror are the same outcome to the caller,
 and neither reaches past the store: the on-disk transcript discovery is
@@ -61,16 +61,14 @@ Then no clause is added and no parameters are bound for the role filter
 And the query returns every mirror that matches the other filters
 ```
 
-#### UC-RSHA-2: Unresolved role is scoped to the narrowest band
+#### UC-RSHA-2: A caller whose role does not resolve is held to the narrowest view
 
 ```
-Given a caller requests role scoping
-And no system_role is set
-And no terminal identity is set OR the email is not in the people configuration
-When the role filter is applied
-Then a clause "human_email = caller_email" is added
-And the query returns only mirrors whose human_email matches the caller
-And a caller carrying no email matches no mirror
+Given an operator carries an identity whose role cannot be determined
+When that operator searches history or requests a session's transcript
+Then they see only conversations recorded as their own
+And they see no other operator's conversation
+And an operator whose identity names no one reaches no conversation at all
 ```
 
 #### UC-RSHA-3: Member sees own + shared
@@ -114,24 +112,22 @@ And the caller receives the same not-found outcome as for a session that does no
 And the filtered mirror's transcript is not rendered
 ```
 
-#### UC-RSHA-7: A system-authorized caller is not human-role banded
+#### UC-RSHA-7: The transcript fallback honours the same view as the search
 
 ```
-Given a caller requests role scoping
-And system_role is set on that caller
-When the role filter is applied
-Then no clause is added and no parameters are bound for the role filter
-And the query returns every mirror that matches the other filters
-And the caller's human role is not consulted
+Given an operator whose role does not resolve requests a session's transcript
+And that session was recorded against a different operator
+When the request is served
+Then the operator receives the same not-found outcome as for a session that does not exist
+And the stored transcript for that session is not rendered to them
 ```
 
 ## Known caveats
 
-- An unauthenticated CLI caller (no `caller_email`) with no role configured
-  and no `system_role` falls in the unresolved band, whose narrowest filter
-  matches no mirror when the email is absent. Hosts do not depend on the
-  people configuration returning a non-admin role to obtain enforcement; an
-  identity that fails to resolve is scoped, not exempted.
+- An operator whose identity resolves no role and names no one reaches no
+  conversation. Hosts do not depend on the people configuration returning a
+  non-admin role to obtain enforcement; an identity that fails to resolve is
+  scoped, not exempted.
 - The service capabilities do not apply role filtering at all. Any caller
   that can reach a capability endpoint sees every mirror.
 - `visibility = 'shared'` is honored by the role filter but is never set
