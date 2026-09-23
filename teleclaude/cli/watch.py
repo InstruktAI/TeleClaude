@@ -15,6 +15,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.api import ObservedWatch
 
+from teleclaude import agent_artifacts
 from teleclaude.core.models import HumanActionIntent, JsonDict
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event, loop_local_producer
@@ -55,7 +56,10 @@ class SmartWatcher(FileSystemEventHandler):
     """Watch one project root for artifact-relevant changes."""
 
     _SYNC_EVENT_TYPES = {"created", "modified", "moved", "deleted"}
-    _SYNC_TOP_LEVELS = {"docs", "agents", ".agents"}
+    # `.agents/` is deliberately excluded: it is the local phase's delivery
+    # location, never an authored source, so a change under it must never
+    # trigger a resync. See `teleclaude.agent_artifacts`.
+    _SYNC_TOP_LEVELS = {"docs", agent_artifacts.AGENT_ARTIFACT_ROOT_DIRNAME}
     _SYNC_FILENAMES = {"AGENTS.master.md", "AGENTS.global.md"}
     _GENERATED_SYNC_OUTPUT_GLOBS = ("docs/**/index.yaml", "docs/**/domain-baseline-bundle.md")
     _GIT_COOLDOWN_S = 10.0

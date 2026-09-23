@@ -17,7 +17,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.config._models import AgentConfig
-from teleclaude.constants import COMMAND_ROLE_MAP, HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS, SlashCommand
+from teleclaude.constants import COMMAND_ROLE_MAP, HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_availability import launch_ownership
 from teleclaude.core.agent_dispatch import (
@@ -59,7 +59,7 @@ from teleclaude.core.session_runtime_gate import (
     acquire_session_runtime_lease,
     session_runtime_owner,
 )
-from teleclaude.core.session_startup_message import compose_command_loader
+from teleclaude.core.session_startup_message import compose_command_loader, resolve_slash_command
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.tmux_bridge._session import safe_session_tmp_component
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
@@ -590,10 +590,8 @@ async def select_handoff_successor(
     command = f"{_HANDOFF_COMMAND_PREFIX}{session.command}" if session.command else None
     role_info = None
     if session.command:
-        try:
-            role_info = COMMAND_ROLE_MAP.get(SlashCommand(session.command))
-        except ValueError:
-            role_info = None
+        resolved_command = resolve_slash_command(session.command)
+        role_info = COMMAND_ROLE_MAP.get(resolved_command) if resolved_command else None
     role = role_info[0] if role_info else None
     dispatch_mode, preferred_agent = classify_fresh_agent_preference(
         agent_name,

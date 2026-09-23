@@ -20,6 +20,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 from teleclaude.constants import DB_IN_MEMORY
 from teleclaude.core.migrations.runner import baseline_migrations, run_pending_migrations
 from teleclaude.paths import EVENTS_DB_PATH
+from teleclaude.project_root import is_slug_worktree, resolve_git_root, resolve_invocation_cwd
 
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
@@ -37,6 +38,65 @@ _USER_TABLE_COUNT_SQL = "SELECT count(*) FROM sqlite_master WHERE type = 'table'
 
 RUNTIME_COMPACTION_MIN_FREELIST_RATIO = 0.20
 RUNTIME_COMPACTION_MIN_FREE_BYTES = 16 * 1024 * 1024
+
+_MIGRATION_WORKTREE_SKIP_MESSAGE = (
+    "Skipping pending-migration application for %s: invoked from a todo worktree "
+    "against an already-existing database. A worktree's own migration files are "
+    "not yet part of the deployed daemon and must never execute against shared, "
+    "already-populated data ahead of it; the canonical checkout (or the daemon "
+    "itself) applies them once merged."
+)
+
+_WORKTREE_BOOTSTRAP_REFUSAL_TEMPLATE = (
+    "%s does not exist yet, and this process is invoked from a todo worktree. "
+    "Creating the shared session database for the first time is a canonical-"
+    "checkout or daemon-owned act: baselining it here would permanently record "
+    "this worktree's own undelivered migrations as applied without ever running "
+    "their data transformations. Start the daemon (`make start`) or run this "
+    "from the canonical checkout instead."
+)
+
+
+class WorktreeDatabaseBootstrapRefused(RuntimeError):
+    """A todo-worktree process attempted to create the shared session database from empty.
+
+    Distinct from the pending-migration skip below: that case protects an
+    already-existing database from having an undelivered migration's SQL
+    executed against it. This case is the one no branch of that guard can
+    reconcile — baselining a brand-new database always records the *complete*
+    current migration set as applied, including any migration whose real job
+    is a data transformation (not just a schema change). Recording such a
+    migration as applied without ever running it makes that transformation
+    permanently disappear for every row created before the canonical merge.
+    The only door that closes for every migration shape, schema or data
+    alike, is refusing to be the one who creates this database at all: a
+    worktree is never the owner of the shared session database's genesis.
+    """
+
+
+def _invoked_from_slug_worktree() -> bool:
+    """Return whether the current process's invocation root is a todo worktree.
+
+    Two migration operations are gated by this check, for related but
+    distinct reasons. ``run_pending_migrations`` executes each unapplied
+    migration's SQL against whatever rows are already on disk, so running it
+    from a worktree would apply an undelivered migration to shared,
+    already-populated production data ahead of the code that owns it. Creating
+    the database from empty (and therefore calling ``baseline_migrations``) is
+    gated for a different reason: baselining does not execute anything, but it
+    does permanently record every current migration — including ones whose
+    real effect is a data transformation, not a schema change — as already
+    applied. A worktree's migration set is not yet canonical, so a worktree
+    must never be the one to create this database in the first place; that is
+    a canonical-checkout or daemon-owned act. Detection failure (no resolvable
+    git root — an isolated test fixture, for instance) is not itself worktree
+    evidence, so it falls through to the pre-existing, unguarded behavior
+    rather than blocking it.
+    """
+    try:
+        return is_slug_worktree(resolve_git_root(resolve_invocation_cwd()))
+    except (OSError, FileNotFoundError, RuntimeError):
+        return False
 
 
 @dataclass(frozen=True)
@@ -191,6 +251,16 @@ class DbBase:
         # its migration history is recorded rather than replayed over it.
         created_from_current_schema = not await self._has_user_tables()
 
+        if created_from_current_schema and self.db_path != DB_IN_MEMORY and _invoked_from_slug_worktree():
+            # Refuse before writing any schema: creating this database's first
+            # generation is a canonical-checkout or daemon-owned act. Baselining
+            # it here would bake this worktree's own undelivered migrations into
+            # the ledger as applied, which is only safe for a schema-shaped
+            # migration and silently destroys a data-shaped one.
+            await self.conn.close()
+            self.conn = None
+            raise WorktreeDatabaseBootstrapRefused(_WORKTREE_BOOTSTRAP_REFUSAL_TEMPLATE % self.db_path)
+
         schema_path = Path(__file__).parent.parent / "schema.sql"
         schema_sql = schema_path.read_text(encoding="utf-8")
 
@@ -198,7 +268,13 @@ class DbBase:
         await self.conn.commit()
 
         if created_from_current_schema:
+            # Reached only for a genuine bootstrap not invoked from a worktree
+            # (canonical checkout or daemon) — recording the current migration
+            # set as applied is correct because this call owns the schema it
+            # just wrote.
             await baseline_migrations(self.conn)
+        elif self.db_path != DB_IN_MEMORY and _invoked_from_slug_worktree():
+            logger.debug(_MIGRATION_WORKTREE_SKIP_MESSAGE, self.db_path)
         else:
             await run_pending_migrations(self.conn)
 

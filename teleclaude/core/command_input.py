@@ -17,11 +17,16 @@ _INTERACTIVE_SHORTHAND_INPUT_MODE = "interactive_shorthand"
 _INVALID_COMMAND_TEMPLATE = "invalid command: {command}"
 _NORMALIZED_COMMAND_TEMPLATE = "/{command}"
 _NORMALIZED_COMMAND_WITH_ARGS_TEMPLATE = "/{command} {args}"
-_ANALYZE_TODO_INPUT_COMMAND = "analyze-todo-input"
+_ANALYZE_TODO_INPUT_COMMAND = SlashCommand.ANALYZE_TODO_INPUT.value
 _NEXT_PREPARE_COMMAND = SlashCommand.NEXT_PREPARE.value
 _NEXT_DEFER_COMMAND = SlashCommand.NEXT_DEFER.value
 _NEXT_PREPARE_INVESTIGATE_COMMAND = "next-prepare-investigate"
-_NEXT_RESEARCH_COMMAND = "next-research"
+# Not a SlashCommand member (never composed by platform state machines), but a
+# real installed document at agents/global/commands/software-development/ —
+# every caller that reaches this set canonicalizes a bare token first (see
+# `resolve_command_input` and `_prepare_run_session`), so this must carry the
+# same qualified value or the required-argument guard silently stops matching.
+_NEXT_RESEARCH_COMMAND = "software-development/next-research"
 _NEXT_RUN_JOB_COMMAND = SlashCommand.NEXT_RUN_JOB.value
 _SESSIONS_RUN_COMMAND = "telec sessions run"
 _COMMAND_INPUT_CLEARANCE_DETAIL = "caller is not permitted to invoke command input"

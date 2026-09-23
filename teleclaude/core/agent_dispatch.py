@@ -23,6 +23,7 @@ from teleclaude.core.agent_availability import (
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.models._session import AgentDispatchMode
+from teleclaude.core.session_startup_message import resolve_slash_command
 
 if TYPE_CHECKING:
     from teleclaude.core.models import SessionEntryPoint
@@ -239,11 +240,12 @@ def _order_for(
     slash_command = None
     if command is not None and command.startswith(_COMMAND_PREFIX):
         # A leading slash marks a genuine command attempt; anything else is
-        # generic fresh work and is never parsed here.
+        # generic fresh work and is never parsed here. A bare token is
+        # resolved against the global corpus first, so an unqualified
+        # lifecycle command still matches its `SlashCommand` member.
         token = command.lstrip(_COMMAND_PREFIX).split(maxsplit=1)[0]
-        try:
-            slash_command = SlashCommand(token)
-        except ValueError:
+        slash_command = resolve_slash_command(token)
+        if slash_command is None:
             logger.error("agent_dispatch_command_unmapped")
     if slash_command is None:
         return _GLOBAL_ORDER, AgentDispatchReason.GLOBAL_UNMAPPED_ROLE, AgentDispatchOrderBranch.GLOBAL

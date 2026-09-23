@@ -37,7 +37,10 @@ logger = get_logger(__name__)
 # Valid release channels.
 _RELEASE_CHANNELS = ("alpha", "beta", "stable")
 _DOCS_DIRECTORY = "docs"
-_AGENT_DIRECTORIES = ("agents", ".agents")
+# `.agents/` is deliberately excluded: it is the local phase's delivery
+# location, never an authored source, so its presence must never turn the
+# `agents` capability on. See `teleclaude.agent_artifacts`.
+_AGENT_DIRECTORIES = ("agents",)
 _MAKEFILE_NAME = "Makefile"
 _MARKDOWN_SUFFIX = ".md"
 _FRONTMATTER_DELIMITER = "---"

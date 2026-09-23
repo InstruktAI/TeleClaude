@@ -7,9 +7,8 @@ from pathlib import Path
 
 import frontmatter
 
+from teleclaude import agent_artifacts
 from teleclaude.constants import ArtifactKind
-from teleclaude.global_skills import collect_global_skills, global_skill_source_root
-from teleclaude.project_manifest import load_roots
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     _as_str_list,
@@ -18,15 +17,9 @@ from teleclaude.resource_validation._models import (
 )
 from teleclaude.resource_validation._snippet import INCLUDE_DIRECTIVE_RE, resolve_ref_path
 
-_SKILLS_DIRNAME = "skills"
-_SKILL_ENTRYPOINT_FILENAME = "SKILL.md"
 _NAME_FIELD = "name"
 _UTF8 = "utf-8"
 _SKILL_NAME_MISMATCH = "Skill name '{name}' must match folder '{dirname}'"
-_AGENTS_DIRNAME = "agents"
-_COMMANDS_DIRNAME = "commands"
-_DOT_AGENTS_DIRNAME = ".agents"
-_MARKDOWN_SUFFIX = ".md"
 
 __all__ = [
     "_ARTIFACT_REF_ORDER",
@@ -282,87 +275,62 @@ def validate_artifact(post: frontmatter.Post, path: str, *, kind: ArtifactKind, 
         validate_artifact_refs_exist(include_refs, path, project_root=project_root)
 
 
-def _source_roots(project_root: Path) -> list[tuple[Path, ArtifactKind]]:
-    root = project_root.resolve()
-    sources = [
-        (root / _DOT_AGENTS_DIRNAME / _COMMANDS_DIRNAME, ArtifactKind.COMMAND),
-        (root / _DOT_AGENTS_DIRNAME / _SKILLS_DIRNAME, ArtifactKind.SKILL),
-    ]
-    if root == Path(__file__).parents[2].resolve():
-        sources.extend(
-            [
-                (root / _AGENTS_DIRNAME / _COMMANDS_DIRNAME, ArtifactKind.COMMAND),
-            ]
-        )
-    return sources
+def _selected_artifacts(
+    project_root: Path, paths: Sequence[Path | str]
+) -> tuple[list[tuple[Path, ArtifactKind, Path]], list[str]]:
+    """Classify each requested path, returning validatable artifacts and findings.
 
-
-def _artifact_entrypoint(path: Path, source_root: Path, kind: ArtifactKind) -> Path | None:
-    try:
-        relative = path.resolve(strict=False).relative_to(source_root.resolve())
-    except ValueError:
-        return None
-    if kind == ArtifactKind.SKILL:
-        if not relative.parts:
-            return None
-        return source_root / relative.parts[0] / _SKILL_ENTRYPOINT_FILENAME
-    if len(relative.parts) != 1 or path.suffix != _MARKDOWN_SUFFIX:
-        return None
-    return source_root / relative
-
-
-def _scoped_global_skill_roots(project_root: Path) -> list[Path]:
-    """Return publisher skill roots without enforcing cross-publisher uniqueness."""
-    roots = [project_root, Path(__file__).parents[2], *load_roots()]
-    return list(dict.fromkeys(global_skill_source_root(root) for root in roots))
-
-
-def _selected_artifacts(project_root: Path, paths: Sequence[Path | str]) -> list[tuple[Path, ArtifactKind, Path]]:
+    A path with no registry boundary at all (``UnclassifiedSourceError``) and a
+    classified path outside its declared reach both become findings rather
+    than being skipped — UC-ARD32 requires refusal, never a silent fallback.
+    """
     selected: dict[Path, tuple[ArtifactKind, Path]] = {}
+    findings: list[str] = []
     for raw_path in paths:
         path = Path(raw_path)
         if not path.is_absolute():
             path = project_root / path
-        for source_root, kind in _source_roots(project_root):
-            entrypoint = _artifact_entrypoint(path, source_root, kind)
-            if entrypoint is not None:
-                selected[entrypoint.resolve(strict=False)] = (kind, project_root)
-        for source_root in _scoped_global_skill_roots(project_root):
-            entrypoint = _artifact_entrypoint(path, source_root, ArtifactKind.SKILL)
-            if entrypoint is not None:
-                selected[entrypoint.resolve(strict=False)] = (ArtifactKind.SKILL, source_root.parents[1])
-    return [(path, kind, owner) for path, (kind, owner) in selected.items()]
-
-
-def _all_artifacts(project_root: Path) -> list[tuple[Path, ArtifactKind, Path]]:
-    artifacts: list[tuple[Path, ArtifactKind, Path]] = []
-    for source_root, kind in _source_roots(project_root):
-        if not source_root.is_dir():
+        try:
+            source = agent_artifacts.classify_candidate(project_root, path)
+        except agent_artifacts.UnclassifiedSourceError as exc:
+            findings.append(str(exc))
             continue
-        if kind == ArtifactKind.SKILL:
-            artifacts.extend(
-                (entry / _SKILL_ENTRYPOINT_FILENAME, kind, project_root)
-                for entry in source_root.iterdir()
-                if entry.is_dir()
-            )
-        else:
-            artifacts.extend(
-                (entry, kind, project_root) for entry in source_root.iterdir() if entry.suffix == _MARKDOWN_SUFFIX
-            )
-    for contribution in collect_global_skills(project_root, Path(__file__).parents[2]):
-        artifacts.append(
-            (contribution.source / _SKILL_ENTRYPOINT_FILENAME, ArtifactKind.SKILL, contribution.publisher_root)
-        )
-    return artifacts
+        if source is None:
+            continue
+        violation = agent_artifacts.reach_violation(project_root, source)
+        if violation is not None:
+            findings.append(violation)
+            continue
+        if source.kind is not None:
+            selected[source.entrypoint.resolve(strict=False)] = (source.kind, project_root)
+    return [(path, kind, owner) for path, (kind, owner) in selected.items()], findings
+
+
+def _all_artifacts(project_root: Path) -> tuple[list[tuple[Path, ArtifactKind, Path]], list[str]]:
+    """Enumerate every registry-classified artifact plus every boundary/reach finding.
+
+    ``boundary_violations`` covers what a repo-wide scan would otherwise never
+    see: an unrecognized kind directory is not enumerated as a source by
+    anything, so nothing here would ever probe it directly.
+    """
+    artifacts: dict[Path, tuple[ArtifactKind, Path]] = {}
+    findings: list[str] = list(agent_artifacts.boundary_violations(project_root))
+    for source in agent_artifacts.all_sources(project_root):
+        violation = agent_artifacts.reach_violation(project_root, source)
+        if violation is not None:
+            findings.append(violation)
+            continue
+        if source.kind is not None:
+            artifacts[source.entrypoint.resolve(strict=False)] = (source.kind, project_root)
+    return [(path, kind, owner) for path, (kind, owner) in artifacts.items()], findings
 
 
 def validate_all_artifacts(project_root: Path, *, paths: Sequence[Path | str] | None = None) -> list[str]:
     """Validate all artifacts, or only artifacts selected by ``paths``."""
     try:
-        artifacts = _all_artifacts(project_root) if paths is None else _selected_artifacts(project_root, paths)
+        artifacts, errors = _all_artifacts(project_root) if paths is None else _selected_artifacts(project_root, paths)
     except ValueError as exc:
         return [str(exc)]
-    errors: list[str] = []
     for entrypoint, kind, owner_root in artifacts:
         if not entrypoint.is_file():
             continue

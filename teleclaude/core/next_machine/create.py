@@ -209,7 +209,9 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
     if phase == CreativePhase.ART_PENDING_APPROVAL:
         return _art_pending_approval(slug, cwd)
     if phase == CreativePhase.ART_ITERATION_REQUIRED:
-        artist_id = await find_live_session_for_slug(db, slug, "/next-create-art", subdir_override=creative_subdir)
+        artist_id = await find_live_session_for_slug(
+            db, slug, f"/{SlashCommand.NEXT_CREATE_ART.value}", subdir_override=creative_subdir
+        )
         return dispatch_or_reuse(
             artist_id,
             request=ToolCallRequest(
@@ -248,7 +250,9 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
     if phase == CreativePhase.VISUALS_PENDING_APPROVAL:
         return _visuals_pending_approval(slug, cwd)
     if phase == CreativePhase.VISUAL_ITERATION_REQUIRED:
-        frontender_id = await find_live_session_for_slug(db, slug, "/next-create-html", subdir_override=creative_subdir)
+        frontender_id = await find_live_session_for_slug(
+            db, slug, f"/{SlashCommand.NEXT_CREATE_HTML.value}", subdir_override=creative_subdir
+        )
         return dispatch_or_reuse(
             frontender_id,
             request=ToolCallRequest(
