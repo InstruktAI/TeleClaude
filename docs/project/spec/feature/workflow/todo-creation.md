@@ -388,6 +388,7 @@ And `context` records the parent todo's slug
 And `lineage` records the chain of the acting planner session under its human root
 ```
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 #### UC-WTC26: A standing session's filing is the legitimate no-human lineage
 
 ```gherkin
@@ -397,6 +398,17 @@ Then `lineage` records that session's own system root
 And `human_involved` is `false`
 And any other session filing without a resolvable human root is rejected per UC-WTC23
 ```
+<!-- change:fix-orchestrator-session-human-role-unresolved -->
+#### UC-WTC26: A system-rooted session's filing is the legitimate no-human lineage
+
+```gherkin
+Given a session acting as a system principal — a standing role (the integrator, the project coordinator, or a scheduled job runner), or a session one started — files a todo or a bug with no human at its chain root
+When the workflow service writes the roadmap row
+Then `lineage` records that system principal as its root and the filing session as its acting session
+And `human_involved` is `false`
+And any other session filing without a resolvable root is rejected per UC-WTC23
+```
+<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 #### UC-WTC24: Group create succeeds against a prepare-lane parent carrying prepared artifacts
 
