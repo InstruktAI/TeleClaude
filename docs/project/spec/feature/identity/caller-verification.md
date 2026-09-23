@@ -117,7 +117,6 @@ And the enclosing session's identity is not returned for that caller
 
 <!-- /planned:external-session-identity -->
 
-<!-- planned:identity-is-established-at-the-boundary-and-carried-inside -->
 #### UC-CV-DAEMON-SELF: The daemon's own calls resolve to its system principal, never to a person
 
 ```
@@ -136,7 +135,6 @@ When caller verification runs
 Then the credential resolves no identity
 And verification continues with the caller's remaining signals, rejecting the call when none of them resolve
 ```
-<!-- /planned:identity-is-established-at-the-boundary-and-carried-inside -->
 #### UC-CV-SESSION-PRINCIPAL-HUMAN: A human-rooted session resolves to a human principal and clears the human gate
 
 ```

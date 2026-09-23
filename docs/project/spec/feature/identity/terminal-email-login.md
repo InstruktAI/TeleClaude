@@ -18,16 +18,6 @@ The v1 surface that lets a human authenticate to TeleClaude from an interactive 
 
 ### Use cases
 
-<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
-```
-Given an interactive terminal with a detectable controlling TTY (e.g. /dev/ttys003)
-And the operator runs `telec auth login alice@example.com`
-When the login writer normalizes and validates the address
-Then a structured payload {email, tty, updated_at} is atomically written to the per-TTY auth location with private file mode
-And the same payload is also written to a global-identity fallback location (last-login-wins)
-And the CLI prints "Logged in as alice@example.com[ (<role>)]." plus the TTY and file path
-```
-<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 #### UC-TEL1: Login records the terminal device's allocation identity alongside the email
 
 ```
@@ -49,7 +39,6 @@ Then every per-TTY document whose device node no longer exists is removed
 And every per-TTY document whose device node still exists is left untouched, including documents belonging to another person
 And the global-identity document is unaffected by the release
 ```
-<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ```
 Given a person whose email is listed under `people` in the global config
@@ -66,22 +55,6 @@ And the CLI prints the error and exits with a failure status
 And no file is written
 ```
 
-<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
-```
-Given a subsequent telec invocation from the same TTY as the prior login
-When the CLI builds outbound identity signals
-Then the session-auth reader returns the per-TTY email first
-And the outbound call carries the terminal-email signal
-And the identity context resolves the principal via the terminal-email auth path
-```
-
-```
-Given a process with no detectable TTY (no ttyname on fd 0/1/2 and no SSH_TTY)
-When the same flow runs
-Then login writes only the global-identity fallback document
-And the session-auth reader falls back to that global record
-```
-<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 #### UC-TEL3: A live per-TTY document answers for its own terminal
 
 ```
@@ -131,7 +104,6 @@ Then the session-auth reader returns no email
 And the outbound call carries no terminal-email signal
 And this holds for the daemon and every process it spawns
 ```
-<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ```
 Given a legacy auth document containing a bare email string (pre-structured format)
@@ -153,30 +125,18 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 - Consumes `config.people` (transitively, via the role lookup) to display the matched role at login time. Identity resolution itself happens inside the identity context from the terminal-email signal — see `feature/identity/principal-resolution` and `feature/identity/caller-verification`.
 - Writes operator-local filesystem state under the session-auth directory. No identity-context state is touched by login itself.
 - Coordinates with the TUI launcher: a successful login is the precondition for `feature/identity/tui-multi-user-login-gate` when more than one person is configured.
-<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
-- The TUI launcher marks the `tc_tui` tmux session with a TUI runtime marker. The marker is carried into that session and into no other: it is absent from the environment filters that build agent sessions.
-<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 - The TUI launcher carries the identity it resolved in the outer terminal into the `tc_tui` tmux session alongside the TUI runtime marker, and the reader honours that carried identity only where the marker is present. The marker reaches that session and no other: it is absent from the environment filters that build agent sessions.
-<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - No v1 domain event is emitted by login. In v2 the equivalent action remains a local terminal binding and does not produce an identity event; only `identity.principal.created` is emitted (when a new person is added through config, not at login time).
 
 ## Known caveats
 
-<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
-- The global-identity fallback is "last-login-wins" by design: a fresh login from any TTY (or from a no-TTY context) overwrites the global record. Operators sharing a host should not rely on the global file to remember a previous identity; it reflects only the most recent login on the machine.
-<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 - The global-identity fallback is "last-login-wins" by design: a fresh login from any TTY (or from a no-TTY context) overwrites the global record. It answers a terminal that has no document of its own only while at most one person is registered, so on a shared host it spares nobody a login and stands in for nobody.
 - A terminal's login survives another person logging in, because release is keyed on the device rather than on who logged in last. It does not survive the terminal closing: the device node goes with it, and a later terminal that reuses the same name carries a different allocation time and is treated as unauthenticated.
 - Terminal-device allocation time is the recycling discriminator, and anything that touches the device node's metadata — `mesg y`, for instance — moves it. The cost is one re-login on a terminal that is still open; the alternative discriminators require holding the device open, which the release sweep cannot do for terminals it does not own.
 - A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore no identity. It is not a supported way to run an identity-bearing command.
 - A document that records no device allocation time cannot satisfy the liveness condition and is treated as no document at all. Recording the device's present allocation time instead would bless a terminal that may already have been recycled, so the document is rejected rather than migrated, and every terminal authenticated before that condition existed authenticates once more.
-<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - `telec auth logout` deliberately does NOT remove the global fallback. After logout from a specific TTY, other TTYs without their own per-TTY document will continue to read the prior global identity. Operators who want a clean wipe must remove the global-identity document manually.
 - Login validation is shallow — empty input and missing `@` are rejected but no RFC-level email validation is performed. A typo'd address is accepted at write time and only surfaces as an unresolved principal when the identity context tries to match it against `people`.
-<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
-- A tmux pane is a terminal like any other: login writes a document for it and the reader honours that document. Trust is not contingent on the trusted-TUI marker, which today gates nothing.
-<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 - A tmux pane is a terminal like any other: login writes a document for it and the reader honours that document on the same device terms as any other terminal. The trusted-TUI marker gates one thing only — whether an identity carried in the environment is honoured — and never what a terminal's own document answers.
-<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 - The terminal-email signal is intended as a development/local convenience and is honored only when the identity context is bound to a local-socket transport; v2 hardens this with an explicit config-gated production toggle (see the Known caveats in `docs/project/spec/domain/identity.md`).
 - Legacy plaintext auth documents (a bare email string instead of structured form) are still readable for backward compatibility. There is no automatic rewrite — the document is upgraded only on the next successful login.

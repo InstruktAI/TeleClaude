@@ -30,18 +30,6 @@ And the process exits with a failure status
 And no tmux session is created
 ```
 
-<!-- planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
-```
-Given the same multi-user configuration
-And `telec auth login alice@example.com` has been completed on the current TTY
-When the operator runs `telec`
-Then the session-auth reader returns the bound email
-And the launcher kills any existing tc_tui tmux session
-And spawns a fresh tmux session named "tc_tui" with the TUI runtime marker
-And only the platform-owned TUI environment allowlist is forwarded into the tmux session; the TUI runtime marker is set explicitly by the launcher
-And `telec` is exec'd inside that tmux session
-```
-<!-- change:identity-is-established-at-the-boundary-and-carried-inside -->
 #### UC-TUIG1: A gated launch carries the resolved identity into the TUI session
 
 ```
@@ -83,7 +71,6 @@ When any agent session is created
 Then that session's environment carries no TUI runtime marker
 And no identity value of the launcher's shape is honoured inside it
 ```
-<!-- /planned-change:identity-is-established-at-the-boundary-and-carried-inside -->
 
 ```
 Given a global config with zero or one person registered
