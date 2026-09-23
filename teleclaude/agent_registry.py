@@ -289,7 +289,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                     "slow": [
                         # disabled as too expensive and reserved for manual invocation:
                         # {"model": "fable", "flags": "--model 'claude-fable-5-1[1m]' --effort high"},
-                        {"model": "opus", "flags": "--model 'claude-opus-5[1m]' --effort high"},
+                        {"model": "opus", "flags": "--model 'claude-opus-5-5[1m]' --effort high"},
                     ],
                     "default": [],
                 },
@@ -353,7 +353,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                         {
                             "model": "luna",
                             "flags": (
-                                "-m gpt-5.6-luna -c model_reasoning_effort='medium'"
+                                "-m gpt-6-luna -c model_reasoning_effort='medium'"
                                 " -c model_auto_compact_token_limit=900000 -c model_context_window=1000000"
                             ),
                         }
@@ -362,7 +362,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                         {
                             "model": "terra",
                             "flags": (
-                                "-m gpt-5.6-terra -c model_reasoning_effort='high'"
+                                "-m gpt-6-luna -c model_reasoning_effort='high'"
                                 " -c model_auto_compact_token_limit=900000 -c model_context_window=1000000"
                             ),
                         }
@@ -379,7 +379,7 @@ def _build_definitions(restricted_mount_dirs: tuple[str, ...]) -> dict[AgentName
                         {
                             "model": "sol",
                             "flags": (
-                                "-m gpt-5.6-sol -c model_reasoning_effort='high'"
+                                "-m gpt-6-sol -c model_reasoning_effort='high'"
                                 " -c model_auto_compact_token_limit=900000 -c model_context_window=1000000"
                             ),
                         },

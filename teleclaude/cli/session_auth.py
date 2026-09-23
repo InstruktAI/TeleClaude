@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +16,10 @@ SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
 TUI_CARRIED_IDENTITY_ENV_KEY = "TELEC_TUI_IDENTITY"
 _NO_TTY_LABEL = "(no tty)"
+_DEVICE_ALLOCATION_KEY = "device_allocation"
+_DARWIN_PLATFORM = "darwin"
+_INODE_ALLOCATION_PREFIX = "ino:"
+_CTIME_ALLOCATION_PREFIX = "ctime:"
 
 
 @dataclass(frozen=True)
@@ -68,12 +73,21 @@ def get_current_session_context() -> TerminalSessionContext | None:
     return TerminalSessionContext(tty=_NO_TTY_LABEL, key="global", auth_path=_global_auth_path())
 
 
-def _detect_device_ctime(tty: str) -> float | None:
-    """Return the terminal device's current allocation time, or None if unreadable."""
+def _detect_device_allocation(tty: str) -> str | None:
+    """Return a token identifying the terminal device's current allocation, or None if unreadable.
+
+    macOS devfs moves a pty's ctime on every write but issues a fresh inode each
+    time the pty is allocated, so the inode is the allocation discriminator there.
+    Linux devpts derives the inode from the pty index (stable across reuse) and
+    leaves ctime untouched by terminal I/O, so ctime is the discriminator there.
+    """
     try:
-        return os.stat(tty).st_ctime
+        stat = os.stat(tty)
     except OSError:
         return None
+    if sys.platform == _DARWIN_PLATFORM:
+        return f"{_INODE_ALLOCATION_PREFIX}{stat.st_ino}"
+    return f"{_CTIME_ALLOCATION_PREFIX}{stat.st_ctime}"
 
 
 def _normalize_email(value: str) -> str:
@@ -82,7 +96,7 @@ def _normalize_email(value: str) -> str:
 
 type _AuthDocument = dict[
     str, object
-]  # guard: loose-dict - parsed auth-file JSON shape varies (legacy vs. structured, with/without device_ctime)
+]  # guard: loose-dict - parsed auth-file JSON shape varies (legacy vs. structured, with/without device_allocation)
 
 
 def _read_document(path: Path) -> _AuthDocument | str | None:
@@ -125,7 +139,7 @@ def _read_live_document(path: Path, tty: str) -> str | None:
 
     A structured document is live only while its recorded device allocation
     time still matches the device's current one — a document with no
-    recorded allocation time (written before this condition existed, or
+    recorded allocation token (written before this condition existed, or
     whose device was recycled) cannot satisfy it and is treated as no
     document at all. A legacy pre-structured document (a bare email string)
     carries no device binding at all and is read unconditionally, for
@@ -136,11 +150,11 @@ def _read_live_document(path: Path, tty: str) -> str | None:
         return None
     if isinstance(document, str):
         return document
-    recorded_ctime = document.get("device_ctime")
-    if not isinstance(recorded_ctime, int | float):
+    recorded_allocation = document.get(_DEVICE_ALLOCATION_KEY)
+    if not isinstance(recorded_allocation, str):
         return None
-    current_ctime = _detect_device_ctime(tty)
-    if current_ctime is None or recorded_ctime != current_ctime:
+    current_allocation = _detect_device_allocation(tty)
+    if current_allocation is None or recorded_allocation != current_allocation:
         return None
     raw_email = document.get("email")
     if not isinstance(raw_email, str):
@@ -154,7 +168,7 @@ def read_current_session_email() -> str | None:
     Resolution order:
     1. The identity carried into a trusted TUI session (only where the TUI
        runtime marker is present — never honoured outside it)
-    2. A live per-TTY auth document (device node present, allocation time matching)
+    2. A live per-TTY auth document (device node present, allocation token matching)
     3. Global identity file — only while at most one person is registered
 
     A process with no controlling TTY presents no identity: nothing is
@@ -268,9 +282,9 @@ def write_current_session_email(email: str) -> TerminalAuthState:
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     payload: dict[str, str | float] = {"email": normalized_email, "tty": context.tty, "updated_at": now}
     if context.tty != _NO_TTY_LABEL:
-        device_ctime = _detect_device_ctime(context.tty)
-        if device_ctime is not None:
-            payload["device_ctime"] = device_ctime
+        device_allocation = _detect_device_allocation(context.tty)
+        if device_allocation is not None:
+            payload[_DEVICE_ALLOCATION_KEY] = device_allocation
 
     _write_auth_file(context.auth_path, payload)
 

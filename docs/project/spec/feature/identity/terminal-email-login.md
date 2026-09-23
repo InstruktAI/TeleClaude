@@ -24,7 +24,7 @@ The v1 surface that lets a human authenticate to TeleClaude from an interactive 
 Given an interactive terminal with a detectable controlling TTY (e.g. /dev/ttys003)
 And the operator runs `telec auth login alice@example.com`
 When the login writer normalizes and validates the address
-Then a structured payload carrying the email, the terminal device, the write time, and the device's current allocation time is atomically written to the per-TTY auth location with private file mode
+Then a structured payload carrying the email, the terminal device, the write time, and the device's current allocation token is atomically written to the per-TTY auth location with private file mode
 And the same payload is also written to a global-identity fallback location (last-login-wins)
 And the CLI prints "Logged in as alice@example.com[ (<role>)]." plus the TTY and file path
 ```
@@ -58,7 +58,7 @@ And no file is written
 #### UC-TEL3: A live per-TTY document answers for its own terminal
 
 ```
-Given a telec invocation from a TTY whose per-TTY login document records the device's current allocation time
+Given a telec invocation from a TTY whose per-TTY login document records the device's current allocation token
 When the CLI builds outbound identity signals
 Then the session-auth reader returns that document's email
 And the outbound call carries the terminal-email signal
@@ -68,7 +68,7 @@ And the identity context resolves the principal via the terminal-email auth path
 #### UC-TEL4: A per-TTY document outlives neither its device nor its allocation
 
 ```
-Given a per-TTY login document whose terminal device no longer exists, or exists with a different allocation time than the one recorded at login
+Given a per-TTY login document whose terminal device no longer exists, or exists with a different allocation token than the one recorded at login
 When the CLI builds outbound identity signals from that TTY
 Then the session-auth reader does not return that document's email
 And the terminal is treated as carrying no login document of its own
@@ -131,10 +131,10 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 ## Known caveats
 
 - The global-identity fallback is "last-login-wins" by design: a fresh login from any TTY (or from a no-TTY context) overwrites the global record. It answers a terminal that has no document of its own only while at most one person is registered, so on a shared host it spares nobody a login and stands in for nobody.
-- A terminal's login survives another person logging in, because release is keyed on the device rather than on who logged in last. It does not survive the terminal closing: the device node goes with it, and a later terminal that reuses the same name carries a different allocation time and is treated as unauthenticated.
-- Terminal-device allocation time is the recycling discriminator, and anything that touches the device node's metadata — `mesg y`, for instance — moves it. The cost is one re-login on a terminal that is still open; the alternative discriminators require holding the device open, which the release sweep cannot do for terminals it does not own.
+- A terminal's login survives another person logging in, because release is keyed on the device rather than on who logged in last. It does not survive the terminal closing: the device node goes with it, and a later terminal that reuses the same name carries a different allocation token and is treated as unauthenticated.
+- The terminal-device allocation token is the recycling discriminator, and it is platform-specific because each platform keeps a different attribute stable for exactly one allocation. On macOS it is the device node's inode: devfs issues a fresh inode each time a pty is allocated, while the node's ctime moves on every write to the terminal and so cannot identify an allocation. On Linux it is the device node's ctime: devpts derives the inode from the pty index, so a reused terminal keeps it, while terminal I/O leaves ctime untouched. On Linux, anything that touches the device node's metadata — `mesg y`, for instance — moves ctime; the cost is one re-login on a terminal that is still open. The alternative discriminators require holding the device open, which the release sweep cannot do for terminals it does not own.
 - A non-interactive remote invocation (`ssh <host> '<command>'`) has no terminal and therefore no identity. It is not a supported way to run an identity-bearing command.
-- A document that records no device allocation time cannot satisfy the liveness condition and is treated as no document at all. Recording the device's present allocation time instead would bless a terminal that may already have been recycled, so the document is rejected rather than migrated, and every terminal authenticated before that condition existed authenticates once more.
+- A document that records no device allocation token cannot satisfy the liveness condition and is treated as no document at all. Recording the device's present allocation token instead would bless a terminal that may already have been recycled, so the document is rejected rather than migrated, and every terminal authenticated before that condition existed authenticates once more.
 - `telec auth logout` deliberately does NOT remove the global fallback. After logout from a specific TTY, other TTYs without their own per-TTY document will continue to read the prior global identity. Operators who want a clean wipe must remove the global-identity document manually.
 - Login validation is shallow — empty input and missing `@` are rejected but no RFC-level email validation is performed. A typo'd address is accepted at write time and only surfaces as an unresolved principal when the identity context tries to match it against `people`.
 - A tmux pane is a terminal like any other: login writes a document for it and the reader honours that document on the same device terms as any other terminal. The trusted-TUI marker gates one thing only — whether an identity carried in the environment is honoured — and never what a terminal's own document answers.

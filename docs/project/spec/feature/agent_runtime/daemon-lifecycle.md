@@ -50,6 +50,7 @@ And total elapsed >=30s triggers a slow-startup warning
 
 #### Post-adapter completion tasks
 
+<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
 ```
 Given adapters have started and the event platform is up
 When the post-adapter completion stage runs
@@ -62,6 +63,21 @@ And conversation-delivery reconciliation re-sends bounded peer bundles for any c
 And outstanding final-output reconciliation is NOT done here — it is scheduled as a background pass after the request surface starts
 And the request surface starts AFTER these tasks have completed
 ```
+<!-- change:fix-orchestrator-session-human-role-unresolved -->
+```
+Given adapters have started and the event platform is up
+When the post-adapter completion stage runs
+Then the service's in-memory cache is wired into the transport adapter when present
+And the voice handler is initialized
+And voice-transcription recovery resumes any transcription left in flight by a prior process: rows persisted in pending|in_progress|interrupted (see `database#voice-transcription-durability-and-recovery`) are resubmitted idempotently within a bounded retry cap when their audio still exists — editing the original placeholder when a notice identifier was persisted — or transitioned to a terminal failed state with an audio-lost notice when it does not (orphaned temp-audio sweeping is NOT done here — it is owned by the periodic cleanup loop, consistent with this spec's rule that lifecycle startup performs no orphan sweeps)
+And operations normalized to their stale outcome by the operations stage have their outcomes delivered here (see `durable-operation-outcomes#uc-do3-staleness-is-an-outcome-and-reaches-the-caller` for the delivery contract)
+And the inbound queue manager is brought up
+And conversation-delivery reconciliation re-sends bounded peer bundles for any conversation link with an orphaned pending-through cursor
+And session-identity reconciliation rewrites every live local session's identity document from its durable record, adding fields the document predates while leaving the session's existing token and host pane untouched
+And outstanding final-output reconciliation is NOT done here — it is scheduled as a background pass after the request surface starts
+And the request surface starts AFTER these tasks have completed
+```
+<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 #### Cache warm honesty
 
