@@ -88,6 +88,7 @@ _SCOPE_DIFFSTAT_UNAVAILABLE = "Scope as resolved now: unavailable. Read the diff
 _GIT_DIFF_HEAD_REF = "HEAD"
 _GIT_STAT_FLAG = "--stat"
 _GIT_PATHSPEC_SEPARATOR = "--"
+_SCOPE_DIFFSTAT_LINE_SEPARATOR = "\n"
 
 
 class CodeSubcommand(StrEnum):
@@ -837,10 +838,15 @@ def _resolved_scope_diffstat(project_root: Path, context_root: Path | None) -> s
             return _SCOPE_DIFFSTAT_EMPTY
         stat = Repo(str(project_root)).git.diff(_GIT_DIFF_HEAD_REF, _GIT_STAT_FLAG, _GIT_PATHSPEC_SEPARATOR, *paths)
     except (GitCommandError, RuntimeError, OSError):
+        # The card's own content is the commit-first and review-routing
+        # instruction the agent must act on; the stat is an aid beside it. A
+        # scope that will not resolve must not take the instruction down with
+        # it, so the stat degrades to naming its own absence and the agent is
+        # told to read the diff itself.
         return _SCOPE_DIFFSTAT_UNAVAILABLE
     if not stat.strip():
         return _SCOPE_DIFFSTAT_EMPTY
-    return f"{_SCOPE_DIFFSTAT_HEADER}\n{stat}"
+    return f"{_SCOPE_DIFFSTAT_HEADER}{_SCOPE_DIFFSTAT_LINE_SEPARATOR}{stat}"
 
 
 def _print_commit_review_guidance(project_root: Path, context_root: Path | None) -> None:
