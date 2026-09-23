@@ -91,7 +91,7 @@ And the gate rejects the caller — the human band is never consulted for agent 
 
 The claim gate is the claiming-group predicate governing artifact writes (`feature/workflow/artifact-versioning`, Write authority; ADR-0096). A todo whose `active_runner` names a live session is claimed; its claiming group is the holding session plus every session it dispatched, transitively through `initiator_session_id`. The gate admits a caller inside the claiming group, and admits any caller on an unclaimed todo — no `active_runner`, or one naming a session that is no longer live. It refuses a caller outside a live claim's group with the claim-conflict shape naming the holding session: the caller's door is that session, never a role it should have had. The todo state is unchanged by a refused update.
 
-The gate holds at the point of mutation, not only at request admission: a claim acquired after admission still refuses the mutation. A slug rename executes as a deferred durable operation, and an agent-originated rename revalidates the claim immediately before the physical rename, reporting a late conflict through the operation record.
+The gate is evaluated at the mutation point — after request admission and validation, immediately before the update's first state write — so a claim acquired after admission and before that point refuses the update. A slug rename executes as a deferred durable operation; an agent-originated rename evaluates the gate again immediately before the physical rename and reports a conflict through the operation record. Claim acquisition is not serialized against the gate: a claim written between the evaluation and the write it guards is not seen.
 
 `worker` is excluded at the verb band before any claim lookup runs — the claim-independent capability stand-in that keeps a dispatched build worker inside its brief. A direct human-identity caller — a login-resolved human principal carrying no agent session id — is not a session, is not gated by the claim, and is evaluated against the verb's human band as before; the claim is an integrity boundary between sessions, and this is the same caller class the artifact-write claim gate exempts (ADR-0096; `feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). The build-started freeze on slug/kind mutation is a phase invariant owned by the todo-management contract, orthogonal to this gate.
 
@@ -170,7 +170,7 @@ And the requested mutation is applied to the todo state
 
 ```
 Given an agent session's `telec todo update` request admitted for an unclaimed todo
-And a different live session outside the caller's claiming group acquires the todo's claim after admission and before the mutation applies
+And a different live session outside the caller's claiming group acquires the todo's claim after admission and before the update reaches its mutation point
 When the mutation point is reached
 Then the claim gate refuses with a claim conflict naming the holding session
 And the todo state is unchanged
