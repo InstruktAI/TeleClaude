@@ -64,7 +64,6 @@ Given a human at a terminal or an agent in a session whose identity resolves to 
 When that caller searches history, requests a session's conversation, or requests its raw transcript
 Then the request is refused
 And no conversation is returned and no on-disk transcript is consulted
-And a person whose role does not resolve is identified, and sees only the conversations recorded as their own
 ```
 
 #### UC-RSHA-3: A member sees only their own
