@@ -46,7 +46,9 @@ The publication pipeline is:
 2. **Build indexes** — derive indexes from the triggering project's recorded
    snapshot for publication. Write portable derived indexes to its canonical
    checkout only while that checkout's latest commit is the recorded tip;
-   replay of an older range leaves its local indexes untouched.
+   recheck the tip after installation and retain the prior local catalog if
+   the ref advanced during the write. Replay of an older range leaves its
+   local indexes untouched.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
    outputs from those snapshots.
 <!-- /planned-change:retire-docs-watcher -->
@@ -445,8 +447,13 @@ And its absence before first deployment is not a finding
   from the recorded snapshot and places published domain bundles inside the
   deployed generation. It writes gitignored `index.yaml` files with canonical
   checkout paths only when the recorded tip still matches that checkout's
-  latest commit. Replaying an older range never replaces a newer local index;
-  it still publishes runtime output from the original recorded range.
+  latest commit. The host documentation lease covers the checkout write and
+  every publication action, including maintenance from a person's direct Git
+  commit or merge. Git may advance its ref while a publication holds that
+  lease, so the writer rechecks the tip and retains the prior local catalog
+  if it changed; the later commit's maintenance writes its own catalog when
+  that action succeeds. Replaying an older range never replaces a newer local
+  index; it still publishes runtime output from the original recorded range.
   Publication never mutates authored source snippets or uses uncommitted files.
 <!-- /planned-change:retire-docs-watcher -->
 
