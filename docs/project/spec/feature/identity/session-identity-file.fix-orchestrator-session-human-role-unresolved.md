@@ -130,9 +130,9 @@ Then the terminal login is the only source consulted, as for any caller arriving
 
 ```
 Given a process whose session identity document is present but malformed, or valid but carrying no principal
-When it resolves the caller it acts as
+When the caller resolver decides the caller it acts as
 Then it acts as a caller with no identity
-And no terminal login is consulted, because the document's presence places it inside a session
+And the resolver consults no terminal login, because the document's presence places the process inside a session
 ```
 
 ### Cross-context references
