@@ -26,9 +26,29 @@ valid. This is the machine-level inventory layer; it is distinct from the
 `teleclaude.yml` layered-overlay system that resolves per-workspace
 global/project/person settings.
 
+<!-- planned:align-config-cli-ownership -->
+The machine configuration declares `kind: computer`. That declaration makes
+the file addressable through the same kind-based operator surface as the
+overlays. It does not make the machine file an overlay tier or a context root.
+Existing machine files are advanced to the declaration before strict loading;
+other operator values are preserved.
+<!-- /planned:align-config-cli-ownership -->
+
 ## Canonical fields
 
 ### Use cases
+
+<!-- planned:align-config-cli-ownership -->
+#### UC-CFG-LOAD-15: Existing machine configuration gains its declared kind
+
+```gherkin
+Given a machine configuration authored before computer-kind declarations
+When the configuration is advanced and loaded
+Then it declares the computer kind
+And its existing operator values are preserved
+And the runtime resolves the same machine configuration source
+```
+<!-- /planned:align-config-cli-ownership -->
 
 #### UC-CFG-LOAD-1: Default config.yml path is the machine home
 
