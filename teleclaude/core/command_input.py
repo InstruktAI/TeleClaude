@@ -95,12 +95,15 @@ class CommandInputMetadata:
 
 
 def normalize_command_input_token(command: str) -> str:
-    """Validate one command token while accepting its optional leading slash."""
-    has_leading_slash = command.startswith(_COMMAND_SEPARATOR)
+    """Validate one command token while accepting its optional leading slash.
+
+    The slash is command punctuation, never a filesystem root: ``/etc/x`` is the
+    qualified name ``etc/x``, and resolution reads only inside the command corpus.
+    """
     candidate = command.removeprefix(_COMMAND_SEPARATOR)
     segments = candidate.split(_COMMAND_SEPARATOR)
     valid_segments = all(_COMMAND_SEGMENT_PATTERN.fullmatch(segment) for segment in segments)
-    accepts_shape = len(segments) == 1 or (len(segments) == 2 and not has_leading_slash)
+    accepts_shape = len(segments) in (1, 2)
     if not accepts_shape or not valid_segments:
         raise CommandInputError(_INVALID_COMMAND_TEMPLATE.format(command=command))
     return candidate

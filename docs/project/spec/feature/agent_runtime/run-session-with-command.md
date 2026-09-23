@@ -148,9 +148,9 @@ And the command is parsed against the known command set for role inference
 ```
 
 ```
-Given a request whose command carries a leading slash ("/next-build")
+Given a request whose command carries a leading slash ("/next-build" or "/software-development/next-build")
 When the request is validated
-Then it is accepted and normalized to the bare command name
+Then it is accepted and normalized to the command name without the slash
 And no request is rejected for lacking a leading slash
 ```
 
@@ -194,7 +194,7 @@ And the loader is composed for the corpus document that name resolves to
 #### UC-CLR5: Unsafe names compose no loader and read no file
 
 ```
-Given a run-session request whose command contains traversal ("../x"), an absolute path ("/etc/x"), or more than one segment ("a/b/c")
+Given a run-session request whose command contains traversal ("../x") or more than one domain segment ("a/b/c", "/a/b/c")
 When loader composition validates the name before any corpus read
 Then no loader is composed and no file is read
 And the request is rejected naming the offending token
