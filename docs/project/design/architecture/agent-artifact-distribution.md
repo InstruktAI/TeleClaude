@@ -91,7 +91,8 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   (`teleclaude/cli/watch.py`), the checkpoint sync scope
   (`teleclaude/constants.py`), and onboarding inference
 <!-- change:retire-docs-watcher -->
-  (`scripts/distribute.py`), the checkpoint sync scope
+  (`scripts/distribute.py`), recorded-commit publication
+  (`teleclaude/sync.py`), the checkpoint publication scope
   (`teleclaude/constants.py`), and onboarding inference
 <!-- /planned-change:retire-docs-watcher -->
   (`teleclaude/project_setup/init_flow.py`), and the commit gate's review
@@ -99,6 +100,15 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   from the registry and restates nothing. Three of those consumers previously
   carried their own directory and kind vocabulary; one registry replaces all
   three.
+<!-- planned:retire-docs-watcher -->
+- **Publication is bound to one recorded repository contribution.** Context
+  materializes the triggering repository at the immutable recorded commit and
+  repeats the registry-backed reach and kind validation on that snapshot before
+  composition. A finding refuses the publication action. Distribution
+  reconciles commands under that repository's canonical-root ownership key and
+  preserves every other repository's manifest entries and deployed commands;
+  it never reads another checkout to advance another owner's contribution.
+<!-- /planned:retire-docs-watcher -->
 - **Reach is a registry attribute, resolved against `config`'s declaration.** A
   global command record's reach is the set of domains the repository publishes;
   the mother's reach additionally includes `general`. A global skill record's
@@ -169,14 +179,28 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 
 ### Corpus layout and names
 
+<!-- planned-change:retire-docs-watcher -->
 - The shared corpus holds global commands only, partitioned by domain; two
   domains may carry the same bare file name. A project command never enters the
   shared corpus. Project scope keys leave the shared manifest on their project's
   first sync after migration, because that sync stages nothing at the shared
   root for them.
+<!-- change:retire-docs-watcher -->
+- The shared corpus holds global commands only, partitioned by domain; two
+  domains may carry the same bare file name. A project command never enters the
+  shared corpus. A project's next recorded publication stages no project
+  command at the shared root, so reconciliation clears only that project's
+  obsolete shared-corpus keys.
+<!-- /planned-change:retire-docs-watcher -->
+<!-- planned-change:retire-docs-watcher -->
 - The deployed-commands manifest keys by relative corpus path — `<name>.md` at
   the root or `<domain>/<name>.md`, never deeper — so partitioning and
   migration are ordinary add-and-retract deltas within one sync run.
+<!-- change:retire-docs-watcher -->
+- The deployed-commands manifest keys by relative corpus path — `<name>.md` at
+  the root or `<domain>/<name>.md`, never deeper — so partitioning and
+  migration are ordinary add-and-retract deltas within one recorded publication.
+<!-- /planned-change:retire-docs-watcher -->
 - **Ownership is per publishing repository, never per phase.** The corpus is a
   destination several repositories write into, and retraction removes what a
   source owned and no longer stages. The owner recorded for a deploy is
