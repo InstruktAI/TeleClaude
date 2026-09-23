@@ -380,7 +380,7 @@ And no default, sentinel, or silent human/system fallback is recorded
 ```
 <!-- change:fix-orchestrator-session-human-role-unresolved -->
 ```gherkin
-Given a create call whose caller identity carries neither a human principal nor the platform's principal
+Given a create call whose caller identity resolves to no lineage root — neither a human (a human principal, or a verified human email) nor the platform's principal
 When the workflow service validates the request
 Then the create is rejected loudly before any roadmap row, state, `input` artifact, or event is written
 And the diagnostic names the unresolvable creation lineage as a contract violation
