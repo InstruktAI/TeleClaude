@@ -216,6 +216,19 @@ Role clearance is daemon-side only (`verify_caller` + `require_clearance`):
 - no client-side role claim is trusted,
 - unknown/missing identity returns 401,
 - insufficient role returns 403.
+<!-- planned:cli-authorization-via-daemon -->
+- A command that serves governed or person-scoped data, or whose outcome depends on
+  who is calling, is served by the daemon. The CLI reads no such data directly and
+  resolves no role, person, or author itself; it sends its identity signals and
+  renders the daemon's answer. This covers documentation retrieval, configuration
+  and people reads, transcript search, todo and bug reads, and the author a commit,
+  bug report, or content dump is attributed to.
+- The session identity document and a terminal login are signals the CLI sends,
+  never inputs it authorizes against.
+- Commands whose output depends on no caller — the version, the event schema
+  catalog, the MCP server catalog, and signal pipeline status — run locally with no
+  identity logic.
+<!-- /planned:cli-authorization-via-daemon -->
 
 ### 7) Session lineage invariant (child sessions)
 

@@ -22,6 +22,12 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
 4. Admins are the escalation target and must not be able to escalate themselves.
 5. Per-role exclusion sets must be distinct: member, contributor, and newcomer have meaningfully different access levels.
 6. Tasker (task-preparer/task-runner sessions) may dispatch worker-lane sessions via `sessions run`, unlike Worker, but — like Worker — cannot drive the todo state machine (`todo prepare`/`todo work`) or dispatch an orchestrator/integrator session.
+<!-- planned:cli-authorization-via-daemon -->
+7. The daemon enforces this matrix for every command. A command reaches the data or
+   effect it governs only through the daemon API, which resolves the caller from the
+   identity it carries; the CLI makes no allow/deny decision and resolves no role. A
+   caller the daemon cannot identify receives the unauthorized allow-list.
+<!-- /planned:cli-authorization-via-daemon -->
 
 ## Primary flows
 
@@ -106,6 +112,10 @@ This table's system-role columns predate Integrator and System (see the code's `
 | `telec todo stamp`            | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Stamping verdicts and finalize-ready is state machine management.                                                                                                                                            |
 | `telec todo set-deps`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Setting dependencies is work planning. Same as prepare/work.                                                                                                                                                 |
 | `telec todo verify-artifacts` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Mechanical verification is a read/check operation. Workers can verify their own artifacts.                                                                                                                   |
+<!-- planned:cli-authorization-via-daemon -->
+| `telec todo show`             | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading one todo's state is a read operation. Workers read the todo they are working on. Customers should not see internal planning.                                                                         |
+| `telec todo artifacts read`   | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers read their todo's artifacts to do the work. Customers should not see internal planning.                                                                                                              |
+<!-- /planned:cli-authorization-via-daemon -->
 
 ### Todo List Management
 
