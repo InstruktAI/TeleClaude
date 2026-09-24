@@ -83,6 +83,7 @@ judgment; the runtime reads only the written declaration.
 
 
 
+<!-- planned-change:align-config-cli-ownership -->
 After writing the toggles, run `telec projects init`: its reconciliation path sets the docs
 filter driver present iff `docs` is subscribed and refreshes the
 TeleClaude-owned git hooks whenever the declaration resolves an executable
@@ -91,6 +92,16 @@ installed plumbing reads the declaration on its next invocation, and no
 capability state is written anywhere else. Never edit a project-tracked file to
 reflect a toggle beyond the declaration that carries it: the `.gitattributes`
 docs line is written once at onboard and left alone thereafter.
+<!-- change:align-config-cli-ownership -->
+After writing the toggles, run `telec config project init`: its reconciliation path sets the docs
+filter driver present iff `docs` is subscribed and refreshes the
+TeleClaude-owned git hooks whenever the declaration resolves an executable
+binding. Publication is not part of this convergence. The toggle write is the whole of the capability change: the
+installed plumbing reads the declaration on its next invocation, and no
+capability state is written anywhere else. Never edit a project-tracked file to
+reflect a toggle beyond the declaration that carries it: the `.gitattributes`
+docs line is written once at onboard and left alone thereafter.
+<!-- /planned-change:align-config-cli-ownership -->
 
 
 ### 2. Makefile contract gate (ordered prerequisite)

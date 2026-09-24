@@ -74,12 +74,21 @@ remote setup never gates project setup.
 
 ### 1b. Project initialization installs plumbing but does not publish
 
+<!-- planned-change:align-config-cli-ownership -->
 `telec projects init` materializes the declaration and converges the project's
 filters and hooks. It does not publish documentation or agent artifacts from
 the setup working tree. The first validated canonical commit activates those
 sources through commit maintenance; an initial activation before that boundary
 must identify and validate a clean recorded `HEAD` rather than deploying the
 current working tree.
+<!-- change:align-config-cli-ownership -->
+`telec config project init` materializes the declaration and converges the project's
+filters and hooks. It does not publish documentation or agent artifacts from
+the setup working tree. The first validated canonical commit activates those
+sources through commit maintenance; an initial activation before that boundary
+must identify and validate a clean recorded `HEAD` rather than deploying the
+current working tree.
+<!-- /planned-change:align-config-cli-ownership -->
 
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 
