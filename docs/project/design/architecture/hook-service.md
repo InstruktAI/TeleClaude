@@ -372,7 +372,13 @@ hooks:
 **Config schema classes:**
 
 - `HooksConfig`: top-level container with `inbound` and `subscriptions`
+<!-- planned-change:procedure-event-activation -->
 - `InboundSourceConfig`: `path`, `verify_token`, `secret`, `normalizer`
+<!-- change:procedure-event-activation -->
+- `InboundSourceConfig`: `path`, `verify_token`, `secret`, `normalizer`, and
+  `company` — the registered company the source's events belong to, validated
+  against registered companies and stamped onto each normalized event
+<!-- /planned-change:procedure-event-activation -->
 - `SubscriptionConfig`: `id`, `contract` (dict), `target` (dict)
 
 ### REST API

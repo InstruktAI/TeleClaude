@@ -81,8 +81,11 @@ rule it relies on is stated by its owner:
   company profile. Location never supplies a company or a profile.
 - **No contract without its handler.** Procedure-subscription contracts are
   derived state: held in memory only, never persisted or restored at startup,
-  and rebuilt from the publication index when the activation handler registers
-  and whenever the index changes.
+  derived when the activation handler registers, and keyed to the digest of the
+  publication index they came from. Before matching an event the router
+  compares that digest with the currently published index and re-derives on a
+  difference, so additions, edits, and removals take effect at the next event
+  with no restart and no separate trigger.
 - **Attention, not effect.** An activation directs the agent's attention.
   Duplicate, late, and superseded events reach it and are reconciled by its
   procedure against its domain's durable work record. No acknowledgement,
@@ -179,6 +182,10 @@ owned without being offered it.
   operator points each at its own instance; the platform does not intervene.
 - **A procedure declares both activation modes** — publication fails
   validation, so no contract is derived from it.
+- **A subscription is added, edited, or removed while the daemon runs** — the
+  next event finds the published index's digest changed and the router
+  re-derives before matching; the edit changes event membership, never which
+  agent continues the procedure and company.
 - **A daemon restarts with procedure subscriptions published** — derived
   contracts are not restored from storage; they are rebuilt from the
   publication index when the activation handler registers, so none can match

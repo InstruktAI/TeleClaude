@@ -153,11 +153,19 @@ carries no toggle: a project holding a `teleclaude.yml` subscribes it by that fa
 alone. The full contract is
 `project/spec/feature/config/project-capability-manifest`.
 
+<!-- planned-change:procedure-event-activation -->
 `ProjectConfig` additionally carries an optional `company` key — `company: string`
 — an at-most-one, kebab-case, validated company slug. It is the project's company
 membership and the single determinant of its company context (doc-snippet
 surfacing and session-start injection). Ownership/validation is authoritative in
 `project/spec/domain/config`.
+<!-- change:procedure-event-activation -->
+`ProjectConfig` additionally carries an optional `company` key — `company: string`
+— an at-most-one, kebab-case, validated company slug. It is the project's company
+membership and determines which company's documentation the project surfaces.
+It never gives a session a company or injects a company profile.
+Ownership/validation is authoritative in `project/spec/domain/config`.
+<!-- /planned-change:procedure-event-activation -->
 
 `PersonConfig` carries a `slug` key — `slug: string` — the declared identity
 claim naming the registered person the workspace belongs to, kebab-case and
@@ -220,16 +228,32 @@ tree) and composed into the effective config alongside `project`. A
 company-level `.env` in the same folder holds service credentials, read through
 the `load_company_credentials(slug)` seam.
 
+<!-- planned-change:procedure-event-activation -->
 `ProjectConfig` gains an optional `company` key — a kebab-case, validated,
 at-most-one company slug — the single determinant of the project's company
 context (doc-snippet surfacing and session-start injection). Ownership, location,
 and validation are authoritative in `project/spec/domain/config`.
+<!-- change:procedure-event-activation -->
+`ProjectConfig` gains an optional `company` key — a kebab-case, validated,
+at-most-one company slug — which determines the company documentation the
+project surfaces and never a session's company. Ownership, location, and
+validation are authoritative in `project/spec/domain/config`.
+<!-- /planned-change:procedure-event-activation -->
 
+<!-- planned-change:procedure-event-activation -->
 The hook receiver injects a **company header** into agent session-start context —
 the company-scoped twin of the human-profile header — rendered **before** the
 person header. The company is resolved from the **active project's `company:`
 field** (a project belongs to exactly one company); when the session has no
 project company, or no project context, no company header is injected.
+<!-- change:procedure-event-activation -->
+The hook receiver injects a **company header** into agent session-start context —
+the company-scoped twin of the human-profile header — rendered **before** the
+person header, only when the session has a company: one it was created with
+through `--company`, or one it carries from the session that started it. A
+project's `company:` field supplies no header; a session without a company gets
+none, wherever it stands.
+<!-- /planned-change:procedure-event-activation -->
 
 Global `env_allow_list` is the normal place to authorize env vars needed by
 global agent skills or CLI integrations. Project `env_allow_list` is additive

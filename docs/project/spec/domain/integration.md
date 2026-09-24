@@ -73,10 +73,15 @@ implementation remain the current appliance contract.
   consumer; each computer decides for itself and nothing coordinates them.
   Procedure-subscription contracts are derived state: held only in the
   registry's memory, never persisted or restored from storage, and rebuilt from
-  the publication index `context` publishes when the activation handler
-  registers and whenever that index changes. A procedure contract therefore
-  never exists without the handler that serves it, and a newly published
-  subscription becomes routable without a restart.
+  the publication index `context` publishes. They are derived when the
+  activation handler registers, keyed to the digest of the index they came
+  from; before matching an event, the router compares that digest with the
+  currently published index and re-derives when they differ. A procedure
+  contract therefore never exists without the handler that serves it, and an
+  added, edited, or removed subscription takes effect at the next event without
+  a restart or a separate trigger. Editing a procedure's subscriptions changes
+  its event membership and never the procedure-and-company identity of its
+  agent.
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.
