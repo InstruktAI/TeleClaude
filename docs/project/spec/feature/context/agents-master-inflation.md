@@ -139,6 +139,19 @@ Scenario: Idempotent re-inflation produces byte-identical output
   And no spurious diff appears in the working tree
 ```
 
+<!-- planned:procedure-event-activation -->
+#### UC-AMI8: A subscription-activated procedure is a configured responsibility, not self-service work
+
+```
+Scenario: The catalogue offers only what an agent may start itself
+  Given a procedure declares the events that activate it
+  When the inflater renders that scope's agent baseline
+  Then the procedure contributes no entry to the section an agent selects discretionary work from
+  And the baseline still presents the procedure as a responsibility that is already owned
+  And that presentation names the events the procedure answers to
+```
+<!-- /planned:procedure-event-activation -->
+
 ### Cross-context references
 
 - **config** — Provides the project root list and the Mother project identity

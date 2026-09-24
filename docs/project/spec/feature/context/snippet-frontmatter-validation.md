@@ -204,6 +204,26 @@ Scenario: Per-type required sections missing
   Then a missing-section error is reported listing the required H2
 ```
 
+<!-- planned:procedure-event-activation -->
+#### UC-SFV3: A procedure declares one activation mode, never two
+
+```
+Given a procedure snippet declares both the events that activate it and a self-selection activation trigger
+When snippet validation runs
+Then an activation-mode conflict finding is reported for that file
+And the sync exits with a non-zero status
+Given a procedure snippet declares only the events that activate it
+When snippet validation runs
+Then no activation-mode finding is reported
+Given a procedure snippet declares only a self-selection activation trigger
+When snippet validation runs
+Then no activation-mode finding is reported
+Given a procedure snippet declares neither activation mode
+When snippet validation runs
+Then no activation-mode finding is reported
+```
+<!-- /planned:procedure-event-activation -->
+
 ### Cross-context references
 
 - workflow and integration own lifecycle state transitions and delivery-time
