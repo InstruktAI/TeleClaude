@@ -103,7 +103,6 @@ Then the subscribing session is notified that the turn finished
 And a subscription registered for a single reply is spent by that notification, whether or not it arrived
 ```
 
-<!-- planned:noop-turn-end-notifies-listeners -->
 #### UC-SS19: A turn that ends with `NOOP` is reported as such, with nothing to inspect
 
 ```gherkin
@@ -120,7 +119,6 @@ When that target finishes a turn with any other authored output, or one not yet 
 Then the subscribing session is notified when the turn stops
 And the notification carries the instruction to inspect the target
 ```
-<!-- /planned:noop-turn-end-notifies-listeners -->
 
 #### UC-SS12: Distress reaches the agent sessions persistently watching a target, and only counts one that receives it
 
