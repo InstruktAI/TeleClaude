@@ -62,13 +62,16 @@ runtime-specific timers.
 #### Reminder: goal-drive
 
 - **Owner:** this policy.
-- **Parameters:** optional `--intent`; the default is `Reassess whether the current work remains aligned with the goal. If aligned, continue; otherwise correct course or stop.`
+- **Parameters:** optional `--intent`.
 - **Activation anchor / arm condition:** before the first substantive autonomous
   action of sustained work. Not after a procedure has delegated execution and
   prescribed its own watcher; a terminal or human-gated procedure state makes it
   inapplicable and requires immediate cancellation.
 - **Duration / recurrence:** recurring, five minutes of session inactivity. The
   schedule slides to the last activity, so it never fires while the agent works.
+- **Intent:** defaults to `Reassess whether the current work remains aligned with
+the goal. If aligned, continue; otherwise correct course or stop.`; `--intent`
+  overrides with agent-authored text.
 - **Firing behavior:** check for later input, then reassess only the active goal.
   Not a debrief or housekeeping trigger.
 - **Cancellation:** the moment the next move stops being this agent's — goal
