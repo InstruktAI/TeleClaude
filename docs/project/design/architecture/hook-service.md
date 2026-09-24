@@ -75,6 +75,11 @@ properties, payload)` before entering the dispatch pipeline.
 - **Dual delivery semantics.** Internal handlers are called synchronously
   (in-process, fire-and-forget per handler). External URLs use durable outbox
   delivery with retry. A contract targets exactly one: `handler` XOR `url`.
+<!-- planned:procedure-event-activation -->
+- **Handlers see their contract.** An internal handler receives the matched
+  contract alongside the event, so a handler shared by several contracts knows
+  which one matched.
+<!-- /planned:procedure-event-activation -->
 - **At-least-once external delivery.** External webhooks are enqueued in
   `webhook_outbox` and delivered with exponential backoff. Dead-lettering after
   max attempts prevents infinite retry.

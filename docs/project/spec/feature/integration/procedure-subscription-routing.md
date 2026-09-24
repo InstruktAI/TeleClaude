@@ -17,8 +17,11 @@ company, and hands it to the runtime contract that owns standing agents.
 Routing decides nothing about whether an agent already stands, and never starts
 or addresses a session itself.
 
-The company comes from the event source's own association. It is never derived
-from the procedure's name or from any checkout location.
+The company, and the one computer that acts on the event, come from the event
+source's own declaration and travel with the event from the ingress. Neither is
+derived from the procedure's name or from any checkout location. Every computer
+receives the event; only the named computer matches it, so one event produces
+activations on exactly one computer.
 
 A published subscription is live for the company it is published to.
 Publication is the registration: nothing stands between an author declaring the
@@ -74,6 +77,16 @@ Given a verified event arrives from a source associated with a company
 When a match produces an activation for a published procedure
 Then an agent inspecting the activation sees the platform's system principal named as its origin
 And sees no human principal presented as having initiated it
+```
+
+#### UC-PSR6: An event activates only on the computer its source names
+
+```gherkin
+Given a configured source's declaration names its company and the computer that runs its activations
+And several computers publish a procedure declaring an event type that source emits
+When a verified event of that type from that source reaches every computer
+Then an agent inspecting the activation record sees an activation only on the named computer
+And sees none on any other computer
 ```
 
 ### Cross-context references

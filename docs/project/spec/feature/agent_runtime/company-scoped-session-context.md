@@ -162,5 +162,5 @@ And it does not observe a company value
 
 ## See Also
 
-- docs/project/spec/feature/agent_runtime/procedure-standing-agent.md — the company is one of the three facts identifying a procedure's continuing agent.
+- docs/project/spec/feature/agent_runtime/procedure-standing-agent.md — the company is one of the two facts identifying a procedure's continuing agent.
 - docs/project/spec/feature/identity/session-identity-file.md — the incumbent per-session document read by CLI subprocesses.

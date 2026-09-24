@@ -92,7 +92,8 @@ contracts and never creates shared ownership.
 <!-- planned:procedure-event-activation -->
 - `context` publishes each procedure's declared event subscriptions and
   publication tier; `integration` turns them into routing contracts and
-  consumes `config`'s source-to-company association to scope each match.
+  consumes `config`'s source declaration — company and activation computer —
+  to stamp each event and scope each match to one computer.
   `integration` hands each resulting activation to `agent_runtime` as a
   computer-addressed command and never starts, addresses, or inspects a
   session. `agent_runtime` owns the standing agent and each session's company

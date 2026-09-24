@@ -60,18 +60,24 @@ implementation remain the current appliance contract.
 <!-- /planned-change:external-session-identity -->
 
 <!-- planned:procedure-event-activation -->
-- **Owns (procedure subscription routing):** turning each published procedure
-  subscription into a contract in the existing contract-routing model, matching
-  verified events against those contracts for the company the event's
-  configured source is associated with, and producing one activation per match:
-  the procedure, that company, the event's context, and the platform's system
-  principal as its origin. The contract's target is an internal activation
-  handler, so a match and its activation run on the computer that received the
-  event.
+- **Owns (procedure subscription routing):** stamping a verified event, at the
+  ingress and before it is relayed, with the company and the activation
+  computer that `config` declares for its source; turning each published
+  procedure subscription into a contract in the existing contract-routing model
+  that carries the procedure's canonical ID; and, on the computer the event
+  names, matching it against those contracts and producing one activation per
+  match: the procedure, the company, the event's context, and the platform's
+  system principal as its origin. A computer the event does not name produces
+  no activation for it, so one event activates on exactly one computer.
+- **Also owns (internal handler boundary):** an internal handler receives the
+  matched contract alongside the event, so a handler serving several contracts
+  knows which one matched when subscriptions overlap.
 - **Does not own (procedure activation):** whether a standing agent exists,
-  starting or waking it, or the identity it runs under. The activation handler
-  hands each activation to `agent_runtime` as a computer-addressed command
-  through the command-dispatch contract and takes no further decision.
+  starting or waking it, or the identity it runs under. The activation
+  handler's first act submits the activation to `agent_runtime` as a
+  computer-addressed command with a durable operation receipt, so the operation
+  exists before any fallible step; a submission that itself fails is emitted as
+  a platform error event. It takes no further decision.
 <!-- /planned:procedure-event-activation -->
 
 ## See Also

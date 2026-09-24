@@ -63,7 +63,9 @@ TeleClaudeNext.
 - **Also owns:** the session identity document's company fields — the session's
   established company, its origin (human-directed work with its human
   principal, or system-principal company work), and whether the company is
-  resolved, absent, or ambiguous — written as `agent_runtime` establishes them.
+  resolved, absent, or ambiguous — reconstructed from the session record
+  `agent_runtime` owns, so they survive a restart like every other field the
+  document carries.
   Identity writes and publishes them for readers inside the session and
   interprets nothing further; readers consume the published answer and never
   re-validate it.

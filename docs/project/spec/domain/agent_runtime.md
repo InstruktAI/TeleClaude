@@ -95,7 +95,7 @@ TeleClaudeNext repository.
 
 <!-- planned:procedure-event-activation -->
 - **Owns (procedure standing agents):** one standing agent per procedure per
-  company on the computer that runs it. An activation command resolves the
+  company, on the computer its event source names. An activation command resolves the
   standing agent through the inbound resolve-or-create seam, serialized per
   procedure and company so concurrent activations cannot create two. It starts
   the agent through the canonical command-session dispatch under the system
@@ -113,9 +113,10 @@ TeleClaudeNext repository.
   company. Where company context is required and absent or ambiguous, the
   request is answered with the eligible companies and how to select one; a
   selection outside the requester's memberships is refused. The context is
-  established once, at session creation, carried into delegated sessions, and
-  published through the session identity document for tools running inside the
-  session. A session's startup context carries the requester's memberships and
+  established once, at session creation, and recorded on the session record —
+  the company, its origin, and whether it is resolved, absent, or ambiguous —
+  so it survives a restart. It is carried into delegated sessions and published
+  through the session identity document for tools running inside the session. A session's startup context carries the requester's memberships and
   the established company. A project's declared owning company is a fact about
   the project and is never presented as the session's operating company.
 - **Consumes (company context):** `identity`'s organizational membership
