@@ -1,5 +1,5 @@
 ---
-description: A record the platform writes on a caller's behalf names the principal caller verification resolved for that caller, never an identity the invoking process read for itself.
+description: A record the platform writes on a caller's behalf takes who made it from caller verification, never from an identity the invoking process read for itself.
 delivered_by:
   - cli-authorization-reads-via-daemon
 ---
@@ -12,14 +12,16 @@ delivered_by:
 
 ## What it is
 
-When a command records who made something — a content inbox entry's author, a
-known-issue suppression's creation provenance, a sealed commit's author — the
-name it records is the principal caller verification resolved for the invoking
-caller: `human:<email>` for a registered person, whether a session carries that
-principal or a terminal login names them, and the carried system principal for
-work with no human origin. The invoking process sends its identity signals and
-records the answer; it never reads a terminal login or a session identity
-document to decide the name itself.
+When a command records who made something, it takes the answer from caller
+verification, never from a terminal login or session identity document the
+invoking process reads for itself. A content inbox entry's author and a
+known-issue suppression's creation provenance name the principal caller
+verification resolved: `human:<email>` for a registered person, whether a session
+carries that principal or a terminal login names them, and the carried system
+principal for work with no human origin. A sealed commit's author follows the
+commit policy — the agent of the session caller verification resolved, or the
+person's own ambient git identity when the caller is a person at a terminal — as
+`project/spec/feature/agent_runtime/sealed-commit` states.
 
 A caller that caller verification cannot identify has nothing recorded under a
 borrowed name: a command that would have to attribute a record to it refuses
