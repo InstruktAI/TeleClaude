@@ -3,7 +3,7 @@
 Handles index generation and global collision checking.
 Does NOT validate — that's resource_validation.py.
 
-Called by ``telec sync``.
+Used by recorded-commit publication to build indexes from its source snapshot.
 """
 
 from __future__ import annotations

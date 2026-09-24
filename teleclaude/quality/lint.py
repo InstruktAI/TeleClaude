@@ -160,28 +160,6 @@ class _HomePathsStep:
         _run_tool(cmd, self._project_root, self.name)
 
 
-@dataclass
-class _ResourceValidationStep:
-    """Resource validation step (telec sync --skip-deploy)."""
-
-    name: str = "resource_validation"
-    _project_root: Path = field(default_factory=Path)
-    _run_all: bool = False
-
-    def run(self, targets: list[str]) -> None:
-        """Execute resource validation on full runs only.
-
-        Repo-wide cross-ref validation is inherently global — skip on
-        file-scoped runs to avoid blocking an agent's commit on foreign
-        in-flight docs.
-        """
-        _ = targets  # resource validation is repo-wide (full runs only)
-        if not self._run_all:
-            return
-        cmd = [_bundled_python(), "-m", "teleclaude.cli.telec", "sync", "--skip-deploy"]
-        _run_tool(cmd, self._project_root, self.name)
-
-
 _RAW_SQL_INPUTS = frozenset(
     {
         "teleclaude/core/db/_base.py",
@@ -318,7 +296,6 @@ class GuardrailsLane:
             GuardrailsStep(_project_root=root),
             _MarkdownStep(_project_root=root, _run_all=run_all),
             _HomePathsStep(_project_root=root, _run_all=run_all),
-            _ResourceValidationStep(_project_root=root, _run_all=run_all),
             _RawSqlStep(_project_root=root, _run_all=run_all),
             _SourceValidationStep(_project_root=root, _run_all=run_all),
             _SnapshotTestingStep(_project_root=root, _run_all=run_all),

@@ -5,10 +5,12 @@ from __future__ import annotations
 import sys
 
 from teleclaude.core.blueprint.post_merge import resolve_post_merge_root, run_post_merge_regeneration
-from teleclaude.core.integration.post_commit_maintenance import run_post_commit_maintenance
+from teleclaude.core.integration.post_commit_maintenance import (
+    resolve_post_merge_activation_range,
+    run_post_commit_maintenance,
+)
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd, resolve_project_root
 
-_GIT_PRE_MERGE_TO_HEAD_RANGE = "ORIG_HEAD..HEAD"
 _POST_MERGE_USAGE = "Usage: telec code post-merge"
 
 
@@ -20,6 +22,7 @@ def handle_code_post_merge(args: list[str]) -> None:
     checkout_root = resolve_git_root(resolve_invocation_cwd())
     effective_root = resolve_post_merge_root(checkout_root)
     canonical_root = resolve_project_root(effective_root)
+    activation_range = resolve_post_merge_activation_range(effective_root)
     run_post_merge_regeneration(effective_root)
     maintenance_root = effective_root if effective_root != canonical_root else canonical_root
-    run_post_commit_maintenance(maintenance_root, _GIT_PRE_MERGE_TO_HEAD_RANGE)
+    run_post_commit_maintenance(maintenance_root, activation_range)

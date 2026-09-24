@@ -2,8 +2,8 @@
 
 The fold/reader machinery (``teleclaude.doc_body``) resolves a strict grammar —
 whole-line, non-nested, balanced, kebab-slug markers. These validators make the
-authoring gate reject exactly what that machinery cannot resolve, so a marker that
-validates at ``telec sync`` is always one the delivery fold can fold cleanly.
+authoring gate reject exactly what that machinery cannot resolve, so each accepted
+marker is one the delivery fold can fold cleanly.
 """
 
 from __future__ import annotations

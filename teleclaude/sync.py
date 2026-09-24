@@ -1,21 +1,19 @@
-"""Orchestrate validation, index building, and artifact distribution.
-
-Entry point for ``telec sync``. Replaces the old sync_resources.py + distribute.py
-two-step pipeline with a single idempotent operation.
-"""
+"""Publish a recorded commit through the internal documentation pipeline."""
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
+from scripts.distribute import distribute_committed
 from teleclaude.capabilities import Capabilities, resolve_capabilities
 from teleclaude.docs_index import build_all_indexes
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
-from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
-from teleclaude.paths import REPO_ROOT
+from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root, publisher_resolution
 from teleclaude.resource_validation import (
     _error,
     clear_errors,
@@ -25,123 +23,132 @@ from teleclaude.resource_validation import (
     validate_jobs_config,
 )
 
-_DISTRIBUTE_AGENTS_ENABLED_FLAG = "--agents-enabled"
-_DISTRIBUTE_AGENTS_DISABLED_FLAG = "--no-agents-enabled"
-_DISTRIBUTE_DOCS_ENABLED_FLAG = "--docs-enabled"
-_DISTRIBUTE_DOCS_DISABLED_FLAG = "--no-docs-enabled"
+_GIT_EXECUTABLE = "git"
+_GIT_VERIFY_ARGS = ("rev-parse", "--verify", "--quiet")
+_GIT_HEAD_ARGS = ("rev-parse", "HEAD")
+_GIT_COMMIT_VERIFY_SUFFIX = "^{commit}"
+_GIT_WORKTREE_ADD_ARGS = ("worktree", "add", "--detach")
+_GIT_WORKTREE_REMOVE_ARGS = ("worktree", "remove", "--force")
+_COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
+_SNAPSHOT_DIRECTORY_PREFIX = "teleclaude-publication-"
+_SNAPSHOT_SOURCE_DIRECTORY = "source"
+_INVALID_COMMIT_ID = "Publication rejected an invalid recorded commit id."
+_LOCAL_INDEX_SKIPPED = "Local index update skipped: recorded tip is not canonical HEAD."
+_LOCAL_INDEX_RESTORED = "Local indexes restored: canonical HEAD advanced during publication."
+_LOCAL_INDEX_WRITTEN = "Canonical local indexes updated from the recorded commit."
+_PUBLICATION_NEXT_SUFFIX = ".publication-next"
+_PUBLICATION_RESTORE_SUFFIX = ".publication-restore"
 
 
-def sync(
-    project_root: Path,
-    *,
-    skip_deploy: bool = False,
-    skip_validation: bool = False,
-) -> bool:
-    """Run the sync pipeline over its two phases: validate, then deploy.
-
-    Validation always blocks — any finding returns ``False`` and stops the pipeline.
-    The two flags each skip one phase:
-
-    - ``skip_deploy``: validate only, do not build/distribute. The read-only gate for
-      pre-commit / CI / lint — it must not mutate the host's agent-runtime dirs.
-    - ``skip_validation``: skip the validate phase and deploy without blocking. The
-      docs watcher's live-reload path, and the deploy leg of :func:`sync_bootstrap`
-      (which validates non-blocking first). NOT an agent-facing bypass.
-
-    Returns ``True`` on success, ``False`` if validation found errors.
-    """
-    capabilities = resolve_capabilities(project_root)
-    if not capabilities.is_target:
-        return True
-
-    if skip_deploy:
-        # Validation resolves authored references from publisher sources; a generated
-        # artifact's absence is tolerated rather than awaited, so it holds no lease
-        # and never waits behind a deploy.
-        return skip_validation or not _collect_source_findings(project_root, capabilities)
+def publish_recorded_commit(project_root: Path, after_sha: str) -> bool:
+    """Publish one validated recorded commit through an isolated source worktree."""
+    if _COMMIT_ID_PATTERN.fullmatch(after_sha) is None:
+        print(_INVALID_COMMIT_ID, file=sys.stderr)
+        return False
+    canonical_root = git_common_root(project_root)
     try:
-        with docs_lease(DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
-            return _sync_locked(
-                project_root,
-                capabilities,
-                skip_validation=skip_validation,
-                lock_descriptor=lock_descriptor,
-            )
-    except DocsLeaseTimeoutError as exc:
+        resolved = subprocess.run(
+            [_GIT_EXECUTABLE, *_GIT_VERIFY_ARGS, after_sha + _GIT_COMMIT_VERIFY_SUFFIX],
+            cwd=canonical_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return False
+    if resolved.returncode != 0 or resolved.stdout.strip() != after_sha:
+        print(_INVALID_COMMIT_ID, file=sys.stderr)
+        return False
+    try:
+        with docs_lease(DocsLockOperation.SYNCHRONIZATION):
+            with tempfile.TemporaryDirectory(prefix=_SNAPSHOT_DIRECTORY_PREFIX) as temp_dir:
+                snapshot_root = Path(temp_dir) / _SNAPSHOT_SOURCE_DIRECTORY
+                subprocess.run(
+                    [_GIT_EXECUTABLE, *_GIT_WORKTREE_ADD_ARGS, str(snapshot_root), after_sha],
+                    cwd=canonical_root,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                try:
+                    capabilities = resolve_capabilities(snapshot_root)
+                    if not capabilities.is_target:
+                        return True
+                    findings = _collect_source_findings(snapshot_root, capabilities)
+                    if findings:
+                        return False
+                    written = build_all_indexes(snapshot_root) if capabilities.docs else []
+                    _install_canonical_indexes(snapshot_root, canonical_root, written, after_sha)
+                    distribute_committed(
+                        snapshot_root,
+                        canonical_root,
+                        agents_enabled=capabilities.agents,
+                        docs_enabled=capabilities.docs,
+                    )
+                    return True
+                finally:
+                    subprocess.run(
+                        [_GIT_EXECUTABLE, *_GIT_WORKTREE_REMOVE_ARGS, str(snapshot_root)],
+                        cwd=canonical_root,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+    except (DocsLeaseTimeoutError, subprocess.CalledProcessError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return False
 
 
-def _sync_locked(
-    project_root: Path,
-    capabilities: Capabilities,
-    *,
-    skip_validation: bool,
-    lock_descriptor: int,
-) -> bool:
-    """Run one deploying synchronization pipeline while its documentation lease is held."""
-
-    # Phase 1: Validate. The telec sync command always blocks on findings; only the
-    # watcher's live-reload passes skip_validation to omit the phase entirely.
-    if not skip_validation and _collect_source_findings(project_root, capabilities):
-        return False
-
-    # Phase 2: Build indexes
-    if capabilities.docs:
-        written = build_all_indexes(project_root)
-        for path in written:
-            if path.exists():
-                print(f"Index: {path}")
-
-    # Phase 3: Build and deploy artifacts
-    _run_distribute(project_root, capabilities, lock_descriptor=lock_descriptor)
-
-    return True
+def _canonical_head(canonical_root: Path) -> str | None:
+    """Read canonical HEAD as a full object id."""
+    result = subprocess.run(
+        [_GIT_EXECUTABLE, *_GIT_HEAD_ARGS],
+        cwd=canonical_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
-def sync_bootstrap(project_root: Path) -> None:
-    """Validate-and-report (non-blocking), then deploy. The project-bootstrap path.
-
-    Project bootstrap — ``telec projects init`` / ``onboard`` — is a human-run, one-time
-    setup, not an agent-facing recurring gate. It surfaces validation findings for the
-    human watching, then completes setup regardless, so onboarding a project that already
-    carries findings is never blocked. The commit gate enforces validation once real work
-    begins.
-    """
-    capabilities = resolve_capabilities(project_root)
-    if not capabilities.is_target:
+def _install_canonical_indexes(snapshot_root: Path, canonical_root: Path, written: list[Path], after_sha: str) -> None:
+    """Atomically refresh checkout-local derived indexes only for its current tip."""
+    if _canonical_head(canonical_root) != after_sha:
+        print(_LOCAL_INDEX_SKIPPED)
         return
-    try:
-        with docs_lease(DocsLockOperation.SYNCHRONIZATION) as lock_descriptor:
-            _collect_source_findings(project_root, capabilities)
-            _sync_locked(
-                project_root,
-                capabilities,
-                skip_validation=True,
-                lock_descriptor=lock_descriptor,
-            )
-    except DocsLeaseTimeoutError as exc:
-        print(str(exc), file=sys.stderr)
-
-
-def _run_distribute(project_root: Path, capabilities: Capabilities, *, lock_descriptor: int) -> None:
-    """Run distribute.py to transpile and deploy artifacts."""
-    script_path = REPO_ROOT / "scripts" / "distribute.py"
-    if not script_path.exists():
+    previous: dict[Path, bytes | None] = {}
+    staged: list[tuple[Path, Path | None]] = []
+    for source in written:
+        destination = canonical_root / source.relative_to(snapshot_root)
+        previous_payload = destination.read_bytes() if destination.is_file() else None
+        previous[destination] = previous_payload
+        if source.is_file():
+            payload = source.read_bytes()
+            if payload == previous_payload:
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_name(destination.name + _PUBLICATION_NEXT_SUFFIX)
+            temporary.write_bytes(payload)
+            staged.append((destination, temporary))
+        elif previous_payload is not None:
+            staged.append((destination, None))
+    for destination, temporary in staged:
+        if temporary is None:
+            destination.unlink(missing_ok=True)
+        else:
+            os.replace(temporary, destination)
+    if _canonical_head(canonical_root) == after_sha:
+        print(_LOCAL_INDEX_WRITTEN)
         return
-
-    cmd = [
-        sys.executable,
-        str(script_path),
-        "--project-root",
-        str(project_root),
-        "--deploy",
-        _DISTRIBUTE_AGENTS_ENABLED_FLAG if capabilities.agents else _DISTRIBUTE_AGENTS_DISABLED_FLAG,
-        _DISTRIBUTE_DOCS_ENABLED_FLAG if capabilities.docs else _DISTRIBUTE_DOCS_DISABLED_FLAG,
-    ]
-
-    env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
-    subprocess.run(cmd, cwd=project_root, check=True, env=env, pass_fds=(lock_descriptor,))
+    for destination, payload in previous.items():
+        if payload is None:
+            destination.unlink(missing_ok=True)
+            continue
+        temporary = destination.with_name(destination.name + _PUBLICATION_RESTORE_SUFFIX)
+        temporary.write_bytes(payload)
+        os.replace(temporary, destination)
+    print(_LOCAL_INDEX_RESTORED)
 
 
 def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[str]]]:
@@ -158,12 +165,7 @@ def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[
 
 
 def _collect_source_findings(project_root: Path, capabilities: Capabilities) -> list[str]:
-    """Run the snippet, artifact, and jobs-config validators; print findings; return them.
-
-    Single owner of the source-validation sequence. Callers decide whether findings
-    block: :func:`sync` aborts on a non-empty result, :func:`sync_bootstrap` reports
-    and continues.
-    """
+    """Run the snippet, artifact, and jobs-config validators; print and return findings."""
     clear_errors()
     errors: list[str] = []
     try:

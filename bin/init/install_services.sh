@@ -47,6 +47,9 @@ if [ -z "${PLATFORM:-}" ]; then
 fi
 
 # Service identity.
+_DOCS_WATCH_SYSTEMD_SERVICE="teleclaude-docs-watch"
+_DOCS_WATCH_SYSTEMD_UNIT="${_DOCS_WATCH_SYSTEMD_SERVICE}.service"
+_DOCS_WATCH_SYSTEMD_PATH="/etc/systemd/system/${_DOCS_WATCH_SYSTEMD_UNIT}"
 if [ "$PLATFORM" = "macos" ]; then
     V1_DAEMON_LABEL="ai.instrukt.teleclaude.daemon"
     DOCS_WATCH_LABEL="ai.instrukt.teleclaude.docs-watch"
@@ -60,7 +63,6 @@ fi
 
 managed_launchd_labels() {
     printf '%s\n' "$V1_DAEMON_LABEL"
-    printf '%s\n' "$DOCS_WATCH_LABEL"
     printf '%s\n' "$CRON_LABEL"
 }
 
@@ -87,6 +89,48 @@ launchd_plist_path() {
 is_launchd_unit_loaded() {
     local label="$1"
     launchctl print "$(launchd_domain)/$label" >/dev/null 2>&1
+}
+
+launchd_docs_watch_state() {
+    local domain="$1"
+    if ! launchctl print "$domain" >/dev/null 2>&1; then
+        log_error "docs-watch: cannot query the launchd GUI domain $domain; restore manager access and rerun make install."
+        return 1
+    fi
+    if launchctl print "$domain/$DOCS_WATCH_LABEL" >/dev/null 2>&1; then
+        printf 'loaded\n'
+    else
+        printf 'not-loaded\n'
+    fi
+}
+
+systemd_docs_watch_state() {
+    local load_state
+    if ! load_state="$(sudo systemctl show --system --property=LoadState --value "$_DOCS_WATCH_SYSTEMD_UNIT" 2>&1)"; then
+        log_error "docs-watch: cannot query $_DOCS_WATCH_SYSTEMD_UNIT in the system manager: $load_state; resolve the query failure and rerun make install."
+        return 1
+    fi
+    case "$load_state" in
+        loaded)
+            printf 'loaded\n'
+            ;;
+        not-found)
+            printf 'not-found\n'
+            ;;
+        *)
+            log_error "docs-watch: unresolved system manager state for $_DOCS_WATCH_SYSTEMD_UNIT: $load_state; resolve the state and rerun make install."
+            return 1
+            ;;
+    esac
+}
+
+docs_watch_definition_type_is_safe() {
+    local definition_path="$1"
+    local unit_name="$2"
+    if [ -L "$definition_path" ] || { [ -e "$definition_path" ] && [ ! -f "$definition_path" ]; }; then
+        log_error "docs-watch: unexpected definition type for $unit_name at $definition_path; move the conflicting object and rerun make install."
+        return 1
+    fi
 }
 
 # deploy_service_definition <rendered_file> <target_path> [--sudo]
@@ -255,42 +299,6 @@ EOF
     fi
 }
 
-install_systemd_docs_watch_service() {
-    local service_name="teleclaude-docs-watch"
-    local service_file="/etc/systemd/system/${service_name}.service"
-    local template_file="$PROJECT_ROOT/templates/teleclaude-docs-watch.service"
-    local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
-    local service_path="$PROJECT_ROOT/.venv/bin:$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
-
-    if [ ! -f "$template_file" ]; then
-        log_error "Template file not found: $template_file"
-        exit 1
-    fi
-
-    local rendered_file
-    rendered_file="$(mktemp)"
-    sed \
-        -e "s|{{COMMAND}}|$command|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{USER}}|$USER|g" \
-        -e "s|{{PATH}}|$service_path|g" \
-        "$template_file" > "$rendered_file"
-
-    if ! deploy_or_die "$rendered_file" "$service_file" --sudo; then
-        rm -f "$rendered_file"
-        return 0
-    fi
-    rm -f "$rendered_file"
-
-    log_info "Deployed docs watcher systemd service"
-    sudo systemctl daemon-reload
-    if sudo systemctl is-active --quiet "$service_name"; then
-        sudo systemctl restart "$service_name"
-    else
-        sudo systemctl enable "$service_name"
-    fi
-}
-
 install_systemd_cron_service() {
     local service_name="teleclaude-cron"
     local service_file="/etc/systemd/system/${service_name}.service"
@@ -391,51 +399,6 @@ install_launchd_service() {
     fi
 }
 
-install_launchd_docs_watch_service() {
-    local service_name="$DOCS_WATCH_LABEL"
-    local plist_file
-    plist_file="$(launchd_plist_path "$service_name")"
-    local template_file="$PROJECT_ROOT/templates/ai.instrukt.teleclaude.docs-watch.plist"
-
-    mkdir -p "$HOME/Library/LaunchAgents"
-
-    if [ ! -f "$template_file" ]; then
-        log_error "Template file not found: $template_file"
-        exit 1
-    fi
-
-    local launchd_path
-    launchd_path="$(launchd_path_env)"
-    local command="uv run --quiet --project $PROJECT_ROOT -m teleclaude.cli.watch"
-
-    local rendered_file
-    rendered_file="$(mktemp)"
-    sed -e "s|{{LABEL}}|$service_name|g" \
-        -e "s|{{COMMAND}}|$command|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        "$template_file" > "$rendered_file"
-
-    if ! deploy_or_die "$rendered_file" "$plist_file"; then
-        rm -f "$rendered_file"
-        return 0
-    fi
-    rm -f "$rendered_file"
-
-    log_info "Deployed docs watcher plist: $plist_file"
-
-    local domain
-    domain="$(launchd_domain)"
-    if is_launchd_unit_loaded "$service_name"; then
-        launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
-        if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
-            launchctl load "$plist_file"
-        fi
-    else
-        log_info "$service_name: not loaded; definition written for the next 'make start'"
-    fi
-}
-
 install_launchd_cron_service() {
     local service_name="$CRON_LABEL"
     local plist_file
@@ -484,16 +447,133 @@ install_launchd_cron_service() {
     fi
 }
 
+withdraw_docs_watch_launchd() {
+    local domain
+    domain="$(launchd_domain)"
+    local plist_file
+    plist_file="$(launchd_plist_path "$DOCS_WATCH_LABEL")"
+    local state_before
+    local state_after
+    local definition_present=false
+
+    if ! docs_watch_definition_type_is_safe "$plist_file" "$DOCS_WATCH_LABEL"; then
+        return 1
+    fi
+    if [ -f "$plist_file" ]; then
+        definition_present=true
+    fi
+    if ! state_before="$(launchd_docs_watch_state "$domain")"; then
+        return 1
+    fi
+    log_info "docs-watch launchd manager answer before installation reconciliation: $state_before ($domain/$DOCS_WATCH_LABEL)"
+
+    if [ "$state_before" = "loaded" ]; then
+        if ! launchctl bootout "$domain/$DOCS_WATCH_LABEL"; then
+            log_error "docs-watch: launchd refused to unload $DOCS_WATCH_LABEL in $domain; resolve the manager refusal and rerun make install."
+            return 1
+        fi
+    fi
+    if [ "$definition_present" = true ] && ! rm -f "$plist_file"; then
+        log_error "docs-watch: could not remove the launchd definition for $DOCS_WATCH_LABEL; resolve the file error and rerun make install."
+        return 1
+    fi
+    if [ -e "$plist_file" ] || [ -L "$plist_file" ]; then
+        log_error "docs-watch: the launchd definition for $DOCS_WATCH_LABEL is still present; remove the remaining definition and rerun make install."
+        return 1
+    fi
+    if ! state_after="$(launchd_docs_watch_state "$domain")"; then
+        return 1
+    fi
+    log_info "docs-watch launchd manager answer after installation reconciliation: $state_after ($domain/$DOCS_WATCH_LABEL)"
+    if [ "$state_after" != "not-loaded" ]; then
+        log_error "docs-watch: $DOCS_WATCH_LABEL remains loaded after installation reconciliation; resolve the launchd state and rerun make install."
+        return 1
+    fi
+    if [ "$definition_present" = false ] && [ "$state_before" = "$state_after" ]; then
+        log_info "No docs-watch launchd unit to withdraw; manager state is unchanged."
+    elif [ "$state_before" = "loaded" ]; then
+        log_info "Withdrew the docs-watch launchd unit $DOCS_WATCH_LABEL."
+    else
+        log_info "Removed the stale docs-watch launchd definition for $DOCS_WATCH_LABEL."
+    fi
+}
+
+withdraw_docs_watch_systemd() {
+    local state_before
+    local state_after
+    local definition_present=false
+
+    if ! docs_watch_definition_type_is_safe "$_DOCS_WATCH_SYSTEMD_PATH" "$_DOCS_WATCH_SYSTEMD_UNIT"; then
+        return 1
+    fi
+    if [ -f "$_DOCS_WATCH_SYSTEMD_PATH" ]; then
+        definition_present=true
+    fi
+    if ! state_before="$(systemd_docs_watch_state)"; then
+        return 1
+    fi
+    log_info "docs-watch system manager answer before installation reconciliation: $state_before ($_DOCS_WATCH_SYSTEMD_UNIT)"
+
+    if [ "$state_before" = "loaded" ]; then
+        if ! sudo systemctl --system disable --now "$_DOCS_WATCH_SYSTEMD_UNIT"; then
+            log_error "docs-watch: systemd refused to stop and disable $_DOCS_WATCH_SYSTEMD_UNIT; resolve the manager refusal and rerun make install."
+            return 1
+        fi
+    fi
+    if [ "$definition_present" = true ] && ! sudo rm -f "$_DOCS_WATCH_SYSTEMD_PATH"; then
+        log_error "docs-watch: could not remove the systemd definition for $_DOCS_WATCH_SYSTEMD_UNIT; resolve the file error and rerun make install."
+        return 1
+    fi
+    if [ -e "$_DOCS_WATCH_SYSTEMD_PATH" ] || [ -L "$_DOCS_WATCH_SYSTEMD_PATH" ]; then
+        log_error "docs-watch: the systemd definition $_DOCS_WATCH_SYSTEMD_UNIT is still present; remove the remaining definition and rerun make install."
+        return 1
+    fi
+    if [ "$definition_present" = true ] || [ "$state_before" = "loaded" ]; then
+        if ! sudo systemctl --system daemon-reload; then
+            log_error "docs-watch: systemd daemon-reload failed after removing $_DOCS_WATCH_SYSTEMD_UNIT; resolve the manager error and rerun make install."
+            return 1
+        fi
+    fi
+    if ! state_after="$(systemd_docs_watch_state)"; then
+        return 1
+    fi
+    log_info "docs-watch system manager answer after installation reconciliation: $state_after ($_DOCS_WATCH_SYSTEMD_UNIT)"
+    if [ "$state_after" != "not-found" ]; then
+        log_error "docs-watch: $_DOCS_WATCH_SYSTEMD_UNIT remains loaded after installation reconciliation; resolve the systemd state and rerun make install."
+        return 1
+    fi
+    if [ "$definition_present" = false ] && [ "$state_before" = "$state_after" ]; then
+        log_info "No docs-watch systemd unit to withdraw; manager state is unchanged."
+    elif [ "$state_before" = "loaded" ]; then
+        log_info "Withdrew the docs-watch systemd unit $_DOCS_WATCH_SYSTEMD_UNIT."
+    else
+        log_info "Removed the stale docs-watch systemd definition $_DOCS_WATCH_SYSTEMD_UNIT."
+    fi
+}
+
+withdraw_docs_watch_service() {
+    case "$PLATFORM" in
+        macos)
+            withdraw_docs_watch_launchd
+            ;;
+        linux)
+            withdraw_docs_watch_systemd
+            ;;
+        *)
+            log_error "docs-watch: unsupported service manager platform $PLATFORM"
+            return 1
+            ;;
+    esac
+}
+
 install_service() {
     case "$PLATFORM" in
         linux)
             install_systemd_service
-            install_systemd_docs_watch_service
             install_systemd_cron_service
             ;;
         macos)
             install_launchd_service
-            install_launchd_docs_watch_service
             install_launchd_cron_service
             ;;
     esac

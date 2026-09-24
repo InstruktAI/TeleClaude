@@ -1,4 +1,4 @@
-"""Miscellaneous handlers: version, sync, revive, computers, projects, tmux helpers."""
+"""Miscellaneous handlers: version, revive, computers, projects, tmux helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import asyncio
 import importlib
 import os
 import subprocess
-from pathlib import Path
 
 from teleclaude.api_models import CreateSessionResponseDTO
 from teleclaude.cli.api_client import APIError, TelecAPIClient
@@ -14,15 +13,12 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.telec.surface import SESSIONS_REVIVE, SYNC
+from teleclaude.cli.telec.surface import SESSIONS_REVIVE
 from teleclaude.cli.tui.processes import signal_tui_reload
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import (
-    is_slug_worktree,
     resolve_invocation_cwd,
-    resolve_invocation_project_root,
-    resolve_workspace_root,
 )
 from teleclaude.project_setup import init_project
 from teleclaude.project_setup.onboard_flow import run_analyze, run_assess, run_onboard
@@ -43,7 +39,6 @@ __all__ = [
     "_handle_projects",
     "_handle_reload",
     "_handle_revive",
-    "_handle_sync",
     "_handle_version",
     "_maybe_kill_tui_session",
     "_revive_session",
@@ -54,15 +49,6 @@ __all__ = [
 
 def _teleclaude_version() -> str:
     result: str = importlib.import_module("teleclaude").__version__
-    return result
-
-
-def _run_sync(project_root: Path, *, skip_deploy: bool, skip_validation: bool) -> bool:
-    result: bool = importlib.import_module("teleclaude.sync").sync(
-        project_root,
-        skip_deploy=skip_deploy,
-        skip_validation=skip_validation,
-    )
     return result
 
 
@@ -102,34 +88,6 @@ def _handle_reload(_args: list[str]) -> None:
         print(_NO_TUI_RUNNING)
         return
     print(_RELOADED_TUIS % (len(reached), _PID_SEPARATOR.join(str(pid) for pid in reached)))
-
-
-def _handle_sync(args: list[str]) -> None:
-    """Handle telec sync command."""
-    parsed = parse_command_args(SYNC, args)
-    skip_deploy = parsed.has(F.FLAG_SKIP_DEPLOY)
-    workspace_root = resolve_workspace_root(resolve_invocation_cwd())
-    project_root = workspace_root if skip_deploy else resolve_invocation_project_root()
-    skip_validation = False
-    if parsed.has(F.FLAG_SKIP_VALIDATION):
-        # Hidden, watcher-only: the live-reload watcher must never block. Reject
-        # for any other caller — agents must not bypass the validation gate.
-        if os.environ.get("TELEC_DOCS_WATCHER") != "1":  # fmt: skip  # guard: direct-env-read - allowed: bootstrap or internal process signal
-            raise SystemExit("--skip-validation is reserved for the docs watcher")
-        skip_validation = True
-
-    if not skip_deploy:
-        if is_slug_worktree(workspace_root):
-            raise SystemExit(
-                f"telec sync cannot deploy docs from a slug worktree ({workspace_root}). "
-                "The doc layer is authored and deployed from main (or folded at "
-                "integration); run this from the main checkout, or pass "
-                "--skip-deploy to validate only."
-            )
-
-    ok = _run_sync(project_root, skip_deploy=skip_deploy, skip_validation=skip_validation)
-    if not ok:
-        raise SystemExit(1)
 
 
 def _handle_revive(args: list[str]) -> None:

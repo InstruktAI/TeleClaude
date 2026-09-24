@@ -8,6 +8,7 @@ merged declaration only; no consumer recreates path or capability policy.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -34,11 +35,17 @@ logger = get_logger(__name__)
 _DEFAULT_PROJECT_PATH = "."
 _DEFAULT_PROJECT_SLUG = "project"
 _PROJECT_SLUG_PLACEHOLDER = "{slug}"
+_ACTIVATION_BEFORE_PLACEHOLDER = "{before_sha}"
+_ACTIVATION_AFTER_PLACEHOLDER = "{after_sha}"
+_ACTIVATION_BEFORE_FLAG = "--before-sha"
+_EMPTY_COMMAND_ARGUMENT = ""
 _MAINTENANCE_ACTIONS_RESOLVED_EVENT = "checkpoint_maintenance_actions_resolved"
 
 __all__ = [
+    "ActivationRange",
     "base_checkpoint_model",
     "checkpoint_model_from_project_config",
+    "fill_activation_range",
     "load_checkpoint_model",
     "main_only_judgment_action_ids_for_files",
     "main_only_maintenance_action_ids_for_files",
@@ -47,6 +54,34 @@ __all__ = [
     "scopes_for_action",
     "triggered_action_ids",
 ]
+
+
+@dataclass(frozen=True)
+class ActivationRange:
+    """Immutable Git object ids selected at a commit or merge ingress."""
+
+    before_sha: str | None
+    after_sha: str
+
+
+def fill_activation_range(command: tuple[str, ...], activation_range: ActivationRange) -> tuple[str, ...]:
+    """Substitute recorded ids, omitting the before flag for a root commit."""
+    resolved: list[str] = []
+    index = 0
+    while index < len(command):
+        argument = command[index]
+        next_argument = command[index + 1] if index + 1 < len(command) else _EMPTY_COMMAND_ARGUMENT
+        if argument == _ACTIVATION_BEFORE_FLAG and next_argument == _ACTIVATION_BEFORE_PLACEHOLDER:
+            if activation_range.before_sha is not None:
+                resolved.extend((_ACTIVATION_BEFORE_FLAG, activation_range.before_sha))
+            index += 2
+            continue
+        if argument == _ACTIVATION_AFTER_PLACEHOLDER:
+            resolved.append(activation_range.after_sha)
+        else:
+            resolved.append(argument)
+        index += 1
+    return tuple(resolved)
 
 
 def _glob_matches(path: str, pattern: str) -> bool:

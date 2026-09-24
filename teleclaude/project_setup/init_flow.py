@@ -27,7 +27,6 @@ from teleclaude.project_setup.domain_seeds import seed_event_domains
 from teleclaude.project_setup.git_repo import ensure_git_repo
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.skeleton import deploy_skeleton
-from teleclaude.project_setup.sync import sync_project_artifacts
 from teleclaude.quality.scope import get_project_languages
 from teleclaude.slug import normalize_slug, validate_slug
 from teleclaude.utils import resolve_project_config_path
@@ -214,16 +213,15 @@ def _ensure_project_slug(project_root: Path) -> None:
     absent, we derive one from ``project_name`` (or the directory name) and
     persist it via an in-place rewrite that preserves surrounding keys.
 
-    This step runs **after** ``sync_project_artifacts`` so it can rely on
-    ``ensure_project_config`` having already materialized a bare
-    ``teleclaude.yml`` for fresh projects. Missing files and undecodable
-    YAML raise :class:`RuntimeError` — ``project_slug`` is a hard init
-    invariant, not an optional enhancement.
+    ``ensure_project_config`` materializes a bare ``teleclaude.yml`` before
+    initialization proceeds. Missing files and undecodable YAML raise
+    :class:`RuntimeError` — ``project_slug`` is a hard init invariant, not an
+    optional enhancement.
     """
     config_path = resolve_project_config_path(project_root)
     if not config_path.exists():
         raise RuntimeError(
-            f"cannot write project_slug: {config_path} does not exist after sync",
+            f"cannot write project_slug: {config_path} does not exist after configuration setup",
         )
 
     yaml_rt = YAML()
@@ -276,9 +274,7 @@ def init_project(project_root: Path) -> None:
     is_mother = _is_teleclaude_project(project_root)
 
     ensure_git_repo(project_root)
-    # Bootstrap sync requires a resolvable checkout, so establish the marker
-    # before entering the pipeline. ``_ensure_project_slug`` still runs after
-    # sync, before the project is registered with the catalog.
+    # Establish the project configuration before the remaining setup steps.
     ensure_project_config(project_root)
     capabilities = _declare_inferred_capabilities(project_root)
     if capabilities.docs:
@@ -286,7 +282,6 @@ def init_project(project_root: Path) -> None:
     from teleclaude.project_setup.plumbing import converge_plumbing  # noqa: PLC0415 - avoids entrypoint preload.
 
     converge_plumbing(project_root)
-    sync_project_artifacts(project_root)
     if not is_mother and capabilities.code:
         deploy_skeleton(project_root)
     _ensure_project_slug(project_root)

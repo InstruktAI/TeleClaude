@@ -127,23 +127,6 @@ def register_system(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
-            event_type="system.docs_watcher.sync_failed",
-            description="Docs watcher sync failed or entered a repeated trigger loop",
-            default_level=EventLevel.WORKFLOW,
-            domain="system",
-            default_visibility=EventVisibility.LOCAL,
-            lifecycle=NotificationLifecycle(
-                creates=True,
-                updates=True,
-                group_key="entity",
-                family=LifecycleFamily.DOCS_WATCHER_SYNC,
-                meaningful_fields=["reason", "returncode", "trigger_count"],
-            ),
-            actionable=True,
-        )
-    )
-    catalog.register(
-        EventSchema(
             event_type="system.burst.detected",
             description=(
                 "A burst of events of the same type was detected within a short window. "

@@ -1402,6 +1402,7 @@ main() {
         install_macos_launchers
         install_macos_tmux_server
         install_service
+        withdraw_docs_watch_service
     fi
 
     setup_mcp_config

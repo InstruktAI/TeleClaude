@@ -135,18 +135,6 @@ FLAG_AGENT_STATUS_CLEAR = Flag("--clear", desc="Reset to available immediately",
 FLAG_CHANNEL_DATA = Flag("--data", desc="JSON payload to publish", arity=VALUE)
 
 # =============================================================================
-# sync
-# =============================================================================
-
-FLAG_SKIP_DEPLOY = Flag("--skip-deploy", desc="Validate only; do not build or deploy (read-only gate)", arity=SWITCH)
-FLAG_SKIP_VALIDATION = Flag(
-    "--skip-validation",
-    desc="Docs watcher live-reload gate; env-gated, rejected for any other caller",
-    hidden=True,
-    arity=SWITCH,
-)
-
-# =============================================================================
 # message
 # =============================================================================
 
@@ -542,6 +530,8 @@ FLAG_CODE_UPDATE_SNAPSHOTS = Flag(
     arity=SWITCH,
 )
 FLAG_CODE_ALL_FORMAT = Flag("--all", desc="Format all configured sources, skip workspace scoping", arity=SWITCH)
+FLAG_PUBLISH_BEFORE_SHA = Flag("--before-sha", desc="Literal range start commit id", hidden=True, arity=VALUE)
+FLAG_PUBLISH_AFTER_SHA = Flag("--after-sha", desc="Literal publication commit id", hidden=True, arity=VALUE)
 FLAG_COMMIT_APPROVED = Flag(
     "--approved",
     desc=(

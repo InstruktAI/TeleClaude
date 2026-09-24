@@ -24,7 +24,6 @@ class LifecycleFamily(StrEnum):
     DEPENDENCY_UPDATE = "dependency_update"
     PREPARE_PIPELINE = "prepare_pipeline"
     BRANCH_PUSHED = "branch_pushed"
-    DOCS_WATCHER_SYNC = "docs_watcher_sync"
     ENTITY_DEGRADATION = "entity_degradation"
     AGENT_SESSION_LIFECYCLE = "agent_session_lifecycle"
     AGENT_RESTART = "agent_restart"

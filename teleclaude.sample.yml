@@ -6,7 +6,7 @@
 # business:
 #   # Domains this project owns and publishes global docs for, served from
 #   # docs/global/<domain>/. Each domain has exactly one owner across all
-#   # registered projects; a split is blocked at `telec sync`. Each entry
+#   # registered projects; a split is refused before publication. Each entry
 #   # requires a nonblank, single-line, bounded-length trigger — a domain
 #   # without one fails config load.
 #   publishes:

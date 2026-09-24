@@ -26,8 +26,7 @@ def setup_logging(level: str | None = None, *, source: str | None = None) -> Non
         level: Optional explicit application log level.
         source: Logical identity of the producing process within the teleclaude
             app. Default writes to `teleclaude.log` (the daemon). Sibling
-            processes pass their own bare stem (e.g. `source="docs-watch"`,
-            `source="cron"`) so each writes to its own `<source>.log` file
+            processes pass their own bare stem (e.g. `source="cron"`) so each writes to its own `<source>.log` file
             under `~/.local/state/instrukt-ai/teleclaude/` (or
             `$XDG_STATE_HOME`). The `instrukt-ai-logs` CLI merges across all
             files.

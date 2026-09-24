@@ -38,8 +38,8 @@ from tools.lint.spec_coverage import _DEF_LINE, _UC_IN_HEADER, collect_scenarios
 def _owning_slug(text: str, position: int) -> str | None:
     """Return the slug whose pending marker encloses ``position``, or None if unclaimed.
 
-    Markers never nest (validated at ``telec sync``), so at most one marker of either
-    kind can contain a given position.
+    Markers never nest (validated by source validation), so at most one marker of
+    either kind can contain a given position.
     """
     for regex in (PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE):
         for match in regex.finditer(text):

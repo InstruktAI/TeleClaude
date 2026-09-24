@@ -137,6 +137,13 @@ CREATE TABLE IF NOT EXISTS correlation_windows (
 );
 """
 
+_RETIRED_DOCS_WATCHER_EVENT_TYPE = "system.docs_watcher.sync_failed"
+_RESOLVED_AGENT_STATUS = "resolved"
+_RECONCILE_RETIRED_DOCS_WATCHER_NOTIFICATIONS = (
+    "UPDATE notifications SET agent_status = ?, resolved_at = ?, updated_at = ? "
+    "WHERE event_type = ? AND (agent_status <> ? OR resolved_at IS NULL)"
+)
+
 _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_event_type ON notifications (event_type);",
     "CREATE INDEX IF NOT EXISTS idx_notifications_level ON notifications (level);",
@@ -195,6 +202,18 @@ class EventDB:
             if column_name not in existing_columns:
                 await self._conn.execute(f"ALTER TABLE notifications ADD COLUMN {column_name} TEXT")
         await self._conn.execute("UPDATE notifications SET occurred_at = created_at WHERE occurred_at IS NULL")
+        # Preserve retired event rows as history while closing their notification projections.
+        resolved_at = _now_iso()
+        await self._conn.execute(
+            _RECONCILE_RETIRED_DOCS_WATCHER_NOTIFICATIONS,
+            (
+                _RESOLVED_AGENT_STATUS,
+                resolved_at,
+                resolved_at,
+                _RETIRED_DOCS_WATCHER_EVENT_TYPE,
+                _RESOLVED_AGENT_STATUS,
+            ),
+        )
         family_by_event = {
             schema.event_type: schema.lifecycle.family.value
             for schema in build_default_catalog().list_all()

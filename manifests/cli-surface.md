@@ -15,7 +15,11 @@ List sessions (default: spawned by current, --all for all)
 - `--all`: Show all sessions
 - `--closed`: Include closed sessions
 - `--job`: Filter by job value
-- `--computer`: Filter to a specific computer
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
+### `telec sessions coordinate`
+
+Adopt this session as the project's single coordinator (human-directed only; refuses if one is live)
 
 ### `telec sessions start`
 
@@ -27,7 +31,7 @@ Start a new agent session
 
 - `--computer` (`-c`): Target computer (optional; defaults to local)
 - `--path`: Path to the project directory (optional; defaults to cwd)
-- `--agent`: Agent: claude, gemini, codex
+- `--agent`: Agent: claude, codex, gemini, deepseek
 - `--mode`: Thinking mode: fast, med, slow
 - `--message`: Initial message to send
 - `--direct`: Conversation mode: create direct link with caller and bypass listeners
@@ -48,6 +52,7 @@ Send a message to a running session
 - `--computer` (`-c`): Target computer (optional; defaults to local)
 - `--direct`: Conversation mode: create shared direct link
 - `--close-link`: Close direct link with target session (alias: --close_link)
+- `--session` (`-s`): Session ID
 
 **Notes:**
 
@@ -61,7 +66,7 @@ Send a message to a running session
 
 Get recent messages from a session's transcript
 
-**Usage:** `telec sessions tail <session_id> [--since <ts>] [--tools] [--thinking] [--full]`
+**Usage:** `telec sessions tail <session_id> [--since <ts>] [--tools] [--thinking] [--full] [--pane]`
 
 **Flags:**
 
@@ -70,19 +75,21 @@ Get recent messages from a session's transcript
 - `--tools`: Include tool use entries
 - `--thinking`: Include thinking blocks
 - `--full`: Show all projected messages instead of the latest user turn
+- `--pane`: Show the current terminal pane instead of transcript messages
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec sessions run`
 
-Run a slash command on a new agent session
+Run a canonical command on a new agent session
 
 **Usage:** `telec sessions run [--command <cmd>] [--path <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--additional-context <ctx>]`
 
 **Flags:**
 
-- `--command`: Slash command (e.g. /next-build)
+- `--command`: Bare canonical command (e.g. next-build)
 - `--path`: Path to the project directory (optional; defaults to cwd)
 - `--args`: Command arguments
-- `--agent`: Agent: claude, gemini, codex
+- `--agent`: Agent: claude, codex, gemini, deepseek
 - `--mode`: Thinking mode: fast, med, slow
 - `--computer` (`-c`): Target computer (optional; defaults to local)
 - `--subfolder`: Subdirectory within the project
@@ -90,8 +97,8 @@ Run a slash command on a new agent session
 
 **Notes:**
 
-- Creates a fresh session and runs the slash command as the first agent message.
-- Worker lifecycle commands: /next-build, /next-review-build, /next-finalize.
+- Creates a fresh session and runs the bare canonical command as the first agent message.
+- Worker lifecycle commands: next-build, next-review-build, next-finalize.
 - --detach: do not use unless explicitly instructed. Sanctioned only for a personal-assistant dispatching an orchestrator to a project. --detach disables notifications — you will not learn when the child finishes, so omit it whenever your next step depends on the result.
 
 ### `telec sessions revive`
@@ -104,7 +111,7 @@ Revive session by TeleClaude session ID
 
 - `--agent`: Treat session_id as native agent session ID for the given agent
 - `--attach`: Attach to tmux session after revive
-- `--computer`: Target computer
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 **Notes:**
 
@@ -114,14 +121,19 @@ Revive session by TeleClaude session ID
 
 ### `telec sessions end`
 
-End (terminate) a session ('self' to end own session)
+End a session, or every direct child of the calling session when targetless
 
-**Usage:** `telec sessions end <session_id> [--computer <host>]`
+**Usage:** `telec sessions end [<session_id>] [--computer <host>]`
 
 **Flags:**
 
 - `--session` (`-s`): Session ID
 - `--computer` (`-c`): Target computer (optional; defaults to local)
+
+**Notes:**
+
+- With no target, closes every live direct child of the calling session across computers.
+- Targetless cleanup is idempotent and rejects --computer so caller scope cannot be narrowed.
 
 ### `telec sessions unsubscribe`
 
@@ -129,11 +141,20 @@ Stop receiving notifications from a session
 
 **Usage:** `telec sessions unsubscribe <session_id>`
 
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+
 ### `telec sessions restart`
 
 Restart an agent session ('self' to restart own session)
 
-**Usage:** `telec sessions restart <session_id>`
+**Usage:** `telec sessions restart <session_id> [--handoff [<agent>]]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
+- `--handoff`: Continue with automatic or named successor agent
 
 ### `telec sessions result`
 
@@ -169,6 +190,38 @@ Escalate to an admin via Discord
 - `--reason`: Reason for escalation
 - `--summary`: Context summary for the admin
 
+## `telec reminders`
+
+Manage durable reminders for the calling session
+
+### `telec reminders set`
+
+Arm or atomically replace a session-local reminder
+
+**Usage:** `telec reminders set <slug> [--after <duration> | --at <RFC3339>] [--intent <text>] [--repeat] [--slug <target>]`
+
+**Flags:**
+
+- `--after`: Relative duration such as 30s, 5m, 2h, or 1d
+- `--at`: Absolute RFC3339 instant
+- `--intent`: Agent-authored generic reminder intent
+- `--repeat`: Repeat a relative generic reminder
+- `--slug`: Target work slug for orchestration-watch
+
+### `telec reminders list`
+
+List every live reminder owned by the calling session
+
+### `telec reminders cancel`
+
+Idempotently cancel one or all caller-owned reminders
+
+**Usage:** `telec reminders cancel [<slug>] [--all]`
+
+**Flags:**
+
+- `--all`: Cancel all reminders owned by the calling session
+
 ## `telec computers`
 
 Manage computer inventory
@@ -189,7 +242,7 @@ List projects on local and remote computers
 
 **Flags:**
 
-- `--computer` (`-c`): Filter to a specific computer
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec projects init`
 
@@ -199,6 +252,14 @@ Initialize project plumbing and sync artifacts
 
 - Sets up git hooks, syncs artifacts, and registers the project root.
 - AI-driven analysis lives in `telec projects {onboard,analyze,assess}`.
+
+### `telec projects converge`
+
+Converge plumbing for every registered root on this machine
+
+**Notes:**
+
+- Writes no tracked files.
 
 ### `telec projects onboard`
 
@@ -249,12 +310,13 @@ Get current availability for all agents
 
 Set dispatch status for a specific agent
 
-**Usage:** `telec agents status <agent> [--status <val>] [--reason <text>] [--until <ts>] [--clear]`
+**Usage:** `telec agents status <agent> [--status <val>] [--reason <text>] [--model <model>] [--until <ts>] [--clear]`
 
 **Flags:**
 
 - `--status`: Status: available, unavailable, degraded
 - `--reason`: Reason for status change
+- `--model`: Scope the status to one declared model
 - `--until`: ISO8601 UTC expiry for unavailable or degraded
 - `--clear`: Reset to available immediately
 
@@ -290,26 +352,25 @@ Inspect durable long-running operations
 
 Fetch durable operation status by operation_id
 
-**Usage:** `telec operations get <operation_id>`
+**Usage:** `telec operations get <operation_id> [-c/--computer <computer>]`
+
+**Flags:**
+
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ## `telec version`
 
 Print version, channel, and commit
 
-## `telec sync`
+## `telec reload`
 
-Validate doc/snippet/artifact sources (blocks on findings) and apply your edits
-
-**Usage:** `telec sync [--skip-deploy]`
-
-**Flags:**
-
-- `--skip-deploy`: Validate only; do not build or deploy (read-only gate)
+Reload every running telec TUI so it picks up changed TUI code
 
 **Notes:**
 
-- Validation always blocks — there is no warn-and-pass mode.
-- --skip-deploy is the read-only gate (pre-commit / CI / lint); it never mutates the host.
+- Each running TUI records itself on start; this addresses those records.
+- A TUI restarts in place, keeping its pid, its tmux panes, and its view state.
+- Reports the pids reached, so a silent no-op is visible rather than assumed.
 
 ## `telec message`
 
@@ -381,25 +442,26 @@ Manage work items
 
 Create a todo with substantive content
 
-**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved]`
+**Usage:** `telec todo create <slug> <content> --kind <feature|change|bug|task> [--approved] [--after <deps>] [--schedule <value>] [--icebox] [--project-root <path>] [--group <parent-slug>] [--plan] [--human-involved <reason>]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
 - `--schedule`: Task-only schedule: ISO-8601 instant or cron:<minute hour day month weekday> (0/7=Sunday)
 - `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only. --kind task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task) — code work is change/feature/bug.
+- `--approved`: Declares the pre-creation decisions were faced. Without it a complete creation request creates nothing and points to software-development/policy/todo-creation-discipline.
 - `--icebox`: Create future todo parked in the icebox; does not auto-spawn
 - `--project-root` (`-p`): Target an explicit project root instead of the invocation cwd
-- `--group`: Attach the new todo as a child of <parent-slug>, making the parent a holder
+- `--group`: Attach the new todo as a child of <parent-slug>, making the parent a holder. Grouping moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent is rewritten to that child and committed as part of the same transition.
 - `--plan`: For --kind change, content seeds implementation-plan as a draft basis; for --kind task, content is the pre-authorized task-plan.
-- `--human-involved`: Declares a human was in the conversation that produced this filing — saw it, asked for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives this automatically and ignores the flag. Omitting it for an agent filing records false — a forgotten flag lands the todo in the started-without-me audit bucket, never a hidden autonomous filing.
+- `--human-involved`: Report a human's presence at this act, measured from their last input. The non-empty reason stays ephemeral; an observation outside the recency window records false without failing the act; omission records false and never inherits from another action.
 
 **Notes:**
 
 - Creates the todo entry, canonical state, and stores content as the input artifact.
-- Include the observed trigger — what happened, what was asked, or what shaped this filing — verbatim in <content> whenever a human conversation produced it, and pass --human-involved. The gap this closes is the reporting invitation, not the schema: a filing whose trigger context lives nowhere is unauditable later.
+- --human-involved requires a non-empty reason and resolves the record from observed recency: a stale declaration records false and the todo is still created. The reason is never stored; omission records false and does not affect later actions.
 - Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
-- Use --icebox to place unfleshed future ideas directly into the icebox, while --hold is the human requested create-time parking flag for todos needing fleshing out progressively. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded.
+- Use --icebox for valid future work. Hidden --hold is an exceptional brake for valid work awaiting an external gate; neither surface makes unfinished intent valid. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded. Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent is rewritten to that child and committed as part of the same transition.
 - ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
 - --plan is valid with --kind change or --kind task.
 - Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
@@ -441,7 +503,11 @@ Run the creative state machine
 
 Soft-remove a todo: the durable record (todo entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
 
-**Usage:** `telec todo remove <slug>`
+**Usage:** `telec todo remove <slug> [--force]`
+
+**Flags:**
+
+- `--force`: Override live-work removal refusal
 
 ### `telec todo freeze`
 
@@ -463,13 +529,13 @@ Move todo to delivered
 
 **Flags:**
 
-- `--commit`: The commit that delivered the slug. The integrator always supplies its own pushed commit and withholds delivery until that commit is confirmed on origin/main. Never inferred from HEAD, which is routinely an unrelated commit; omitting it therefore records a delivery with no provenance.
+- `--commit`: The commit that delivered the slug. The integrator always supplies its own pushed commit and withholds delivery until that commit is confirmed on origin/main. Never inferred from HEAD, which is routinely an unrelated commit. It is required for feature, change, and bug deliveries; task deliveries may omit it.
 
 ### `telec todo update`
 
 Update a todo slug, dependencies, or kind
 
-**Usage:** `telec todo update <slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold] [--release] [--unclaim] [--force]`
+**Usage:** `telec todo update <slug> [--slug <new>] [--after <dep>]... [--schedule <value>] [--kind <feature|change|bug|task>] [--hold --reason <text>] [--release] [--unclaim] [--force]`
 
 **Flags:**
 
@@ -478,6 +544,7 @@ Update a todo slug, dependencies, or kind
 - `--schedule`: Task-only schedule; pass an empty value to clear (cron weekday 0/7=Sunday)
 - `--kind`: New todo kind: feature|change|bug|task
 - `--hold`: Set the per-todo automatic dispatch brake
+- `--reason`: State why a --hold waits, or the gate or owner it awaits; required with --hold
 - `--release`: Release the per-todo automatic dispatch brake
 - `--unclaim`: Release the caller-owned runner claim without ending the session
 - `--force`: Allow permanent orphan-artifact handling for kind migrations
@@ -486,7 +553,7 @@ Update a todo slug, dependencies, or kind
 
 - Mutates slug, deps, kind, or hold; --after replaces the full dependency set.
 - Kind and slug changes are refused after build starts; --after remains allowed.
-- --hold and --release are mutually exclusive and compose with dependency updates.
+- --hold requires --reason; --reason is refused without --hold, and --hold and --release are mutually exclusive.
 - --unclaim clears the caller-owned runner claim; --release only clears the dispatch brake.
 - --force only applies to kind orphan handling.
 - Combining --slug with other legs is staged, not a single atomic patch.
@@ -507,7 +574,11 @@ Run the Phase B (work) state machine
 
 Run the Phase C (integrate) state machine
 
-**Usage:** `telec todo integrate [<slug>]`
+**Usage:** `telec todo integrate [<slug>] [--abandon]`
+
+**Flags:**
+
+- `--abandon`: Park the current CONTENT_GATE_BLOCKED candidate as an ungroundable content-gate concern. The state machine resets the integration worktree to the frozen pre-merge SHA and parks — refused when the checkpoint is not at that phase.
 
 ### `telec todo artifacts`
 
@@ -572,11 +643,16 @@ Show diagnostic state payload for a todo; artifact bodies are omitted by default
 
 Restore a soft-removed todo
 
-**Usage:** `telec todo reactivate <slug>`
+**Usage:** `telec todo reactivate <slug> | --id <row-id>`
+
+**Flags:**
+
+- `--id`: Restore a specific retained row by durable id
 
 **Notes:**
 
 - Resolves the slug against soft-removed rows and restores the uniquely matching entry.
+- Use --id after a removed-slug response identifies multiple retained rows.
 - On success: status reverts to prev_status and outgoing dependencies are replayed.
 
 ### `telec todo stamp`
@@ -610,14 +686,14 @@ Bug reporting and tracking
 
 Interrogate the pre-filing decisions before scaffolding a bug; a completed filing enters the bug lane and the lifecycle router dispatches /next-prepare
 
-**Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved]`
+**Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved <reason>]`
 
 **Flags:**
 
 - `--slug`: Custom slug (default: auto-generated)
 - `--body`: Detailed description body for bug.md
 - `--project`: Project that owns the defective code (from trusted_dirs). Defaults to the invoking cwd — where the symptom was OBSERVED, which is often not where the code lives. Set it whenever the two differ.
-- `--human-involved`: Declares a human was in the conversation that produced this filing — saw it, asked for it, or shaped it. Agent-caller only; a human door (TUI/CLI login/web) derives this automatically and ignores the flag. Omitting it for an agent filing records false — a forgotten flag lands the todo in the started-without-me audit bucket, never a hidden autonomous filing.
+- `--human-involved`: Report a human's presence at this act, measured from their last input. The non-empty reason stays ephemeral; an observation outside the recency window records false without failing the act; omission records false and never inherits from another action.
 
 **Notes:**
 
@@ -704,7 +780,7 @@ Recurring job commands
 
 Write a structured recurring job result record
 
-**Usage:** `telec jobs report <job_name> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]`
+**Usage:** `telec jobs report <job_id> --success <true|false> --message <text> [--items-processed <n>] [--error <text> ...]`
 
 **Flags:**
 
@@ -715,7 +791,7 @@ Write a structured recurring job result record
 
 **Notes:**
 
-- Validates job_name against configured jobs and writes JSON under ~/.teleclaude/jobs/{job}/runs/.
+- job_id is the job's identity: an agent job's procedure snippet ID, or a script job's declared name. Validated against configured jobs; writes JSON under ~/.teleclaude/jobs/{job_id}/runs/.
 - This command writes locally and does not call the daemon.
 
 ## `telec events`
@@ -802,29 +878,35 @@ Clear terminal login identity for this TTY
 
 Manage configuration
 
-### `telec config wizard`
-
-Open the interactive configuration wizard
-
 ### `telec config get`
 
 Get config values
 
-**Usage:** `telec config get [paths...]`
+**Usage:** `telec config get [paths...] [--format <fmt>]`
+
+**Flags:**
+
+- `--format` (`-f`): Output format: yaml or json
 
 ### `telec config patch`
 
 Patch config values
 
-**Usage:** `telec config patch [--yaml '...']`
+**Usage:** `telec config patch [--yaml '...'] [--from-file <path>] [--format <fmt>]`
 
 **Flags:**
 
 - `--yaml` (`-y`): Inline YAML patch
+- `--from-file`: Read patch YAML from this file path
+- `--format` (`-f`): Output format: yaml or json
 
 ### `telec config validate`
 
 Full validation
+
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
 
 ### `telec config people`
 
@@ -839,23 +921,69 @@ Manage people
 
 List people
 
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
+
+#### `telec config people show`
+
+Show a person's organizational memberships
+
+**Usage:** `telec config people show <name> [--json]`
+
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
+
 #### `telec config people add`
 
 Add a person
 
-**Usage:** `telec config people add <name> --email <email> --role <role> [--expertise '<json>'] [--telegram-user <user>] [--telegram-id <id>]`
+**Usage:** `telec config people add <name> --email <email> --role <role> [--expertise '<json>'] [--telegram-user <user>] [--telegram-id <id>] [--no-invite] [--json]`
+
+**Flags:**
+
+- `--email`: Person's email address
+- `--role`: Person's role
+- `--username`: Person's username
+- `--expertise`: JSON expertise map: {"<domain>": "<level>", "<domain>": {"<sub-area>": "<level>"}}
+- `--telegram-user`: Telegram username
+- `--telegram-id`: Telegram numeric user id
+- `--no-invite`: Skip automatic invite generation
+- `--json`: Emit machine-readable JSON output
 
 #### `telec config people edit`
 
 Edit a person
 
-**Usage:** `telec config people edit <name> [--email <email>] [--role <role>] [--expertise '<json>'] [--telegram-user <user>] [--telegram-id <id>]`
+**Usage:** `telec config people edit <name> [--email <email>] [--role <role>] [--company <slug>] [--company-role <admin|member>] [--remove-company <slug>] [--assign <project-slug>]... [--unassign <project-slug>]... [--expertise '<json>'] [--telegram-user <user>] [--telegram-id <id>] [--discord-voice-bot] [--json]`
+
+**Flags:**
+
+- `--email`: Person's email address
+- `--role`: Person's role
+- `--company`: Company membership to set
+- `--company-role`: Role held in the named company
+- `--remove-company`: Company membership to withdraw
+- `--assign`: Project assignment to add
+- `--unassign`: Project assignment to remove
+- `--username`: Person's username
+- `--expertise`: JSON expertise map: {"<domain>": "<level>", "<domain>": {"<sub-area>": "<level>"}}
+- `--telegram-user`: Telegram username
+- `--telegram-id`: Telegram numeric user id
+- `--discord-voice-bot`: Bind the active Discord bot credential to this person's voice configuration
+- `--json`: Emit machine-readable JSON output
 
 #### `telec config people remove`
 
 Remove a person
 
-**Usage:** `telec config people remove <name>`
+**Usage:** `telec config people remove <name> [--delete-dir] [--json]`
+
+**Flags:**
+
+- `--delete-dir`: Also delete the person's directory under ~/.teleclaude/people
+- `--json`: Emit machine-readable JSON output
 
 #### `telec config people invite`
 
@@ -875,13 +1003,27 @@ Manage environment variables
 
 List environment variables
 
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
+
 #### `telec config env set`
 
 Set environment variables
 
+**Usage:** `telec config env set <KEY=VALUE> ... [--json]`
+
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
+
 ### `telec config notify`
 
 Toggle notification settings
+
+**Flags:**
+
+- `--json`: Emit machine-readable JSON output
 
 ### `telec config tts`
 
@@ -907,23 +1049,11 @@ Disable TTS and remove the TTS-exclusive optional dependencies
 
 Search and view agent session history
 
-### `telec history list`
-
-List session summaries from mirrors
-
-**Usage:** `telec history list [--identity <email>] [--project <name>] [--limit <n>]`
-
-**Flags:**
-
-- `--identity`: Filter by human identity (email or key)
-- `--project`: Filter by project name
-- `--limit`: Max results (default: 20)
-
 ### `telec history search`
 
 Search agent session transcripts
 
-**Usage:** `telec history search [terms...] [--agent <name>] [--computer <host>] [--limit <n>] [--include-workers]`
+**Usage:** `telec history search [terms...] [--agent <name>] [--computer <host>] [--identity <value>] [--project <path>] [--limit <n>] [--include-workers] [--json]`
 
 **Flags:**
 
@@ -931,20 +1061,23 @@ Search agent session transcripts
 - `--computer` (`-c`): Query one or more remote computers via daemon API
 - `--limit` (`-l`): Max results to show (default: 20)
 - `--include-workers`: Also search dispatched-worker sessions (reviewers, builders)
+- `--identity`: Filter by human identity or transcript source identity
+- `--project`: Filter by project name
+- `--json`: Emit machine-readable JSON
 
 ### `telec history show`
 
 Show full transcript for a session
 
-**Usage:** `telec history show <session-id> [--agent <name>] [--computer <host>] [--thinking] [--raw] [--tail <n>]`
+**Usage:** `telec history show <session-id> [--agent <name>] [--computer <host>] [--thinking] [--raw] [--json]`
 
 **Flags:**
 
 - `--agent` (`-a`): Agent name or 'all' (default: all)
-- `--computer` (`-c`): Fetch from a remote computer
+- `--computer` (`-c`): Query one or more remote computers via daemon API
 - `--thinking`: Include thinking blocks
 - `--raw`: Show raw transcript instead of mirror text
-- `--tail`: Limit output to last N chars (0=unlimited)
+- `--json`: Emit machine-readable JSON
 
 ## `telec memories`
 
@@ -998,8 +1131,8 @@ Code quality and commit tools
 
 **Notes:**
 
-- lint, test, format, install, and blueprint require the code capability.
-- changed, add, and commit remain available when either code or docs is subscribed.
+- lint, test, format, install, blueprint, and owners require the code capability.
+- add and commit remain available when either code or docs is subscribed.
 
 ### `telec code blueprint`
 
@@ -1045,6 +1178,17 @@ Run native make format
 
 Run native make install
 
+### `telec code owners`
+
+Resolve live-session ownership for supplied dirty paths
+
+**Usage:** `telec code owners <path> [<path> ...]`
+
+**Notes:**
+
+- Accepts the complete already-aged dirty blocking set; the command performs no age logic.
+- Prints one path-keyed JSON object; each value is the list of every live session that declared that path (no tiebreak), or null when no live session declared it.
+
 ### `telec code add`
 
 Declare files for the next commit (stages NEW, unmerged, or partial-staged tracked)
@@ -1066,18 +1210,18 @@ Declare files for the next commit (stages NEW, unmerged, or partial-staged track
 
 Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)
 
-**Usage:** `telec code commit "<message>" [--approved] [--human-involved] [--include <path> ...] [--only <path> ...]`
+**Usage:** `telec code commit "<message>" [--approved] [--human-involved <reason>] [--include <path> ...] [--only <path> ...]`
 
 **Flags:**
 
 - `--approved`: Agent-owned sealed commit gate. Required to commit; bare main invocation prints commit-first and review-routing guidance.
 - `--include`: Declare files outside workspace scope to add to this commit (space-separated paths).
 - `--only`: Commit exactly these paths instead of the resolved workspace scope; intended for splitting a dirty scope into multiple commits.
-- `--human-involved`: Declare that a human was genuinely present in this session. Carried as Human-Involved: true in the commit footer; absent when not passed (defaults to false). Never derived from the todo record.
+- `--human-involved`: Report a human's presence at this act, measured from their last input. The non-empty reason stays ephemeral; an observation outside the recency window records false without failing the act; omission records false and never inherits from another action.
 
 **Notes:**
 
-- Accepts only: one quoted message, --approved, --human-involved, --include <path> ..., and --only <path> ... .
+- Accepts only: one quoted message, --approved, --human-involved <reason>, --include <path> ..., and --only <path> ... .
 - Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.
 - NEW (untracked) files in scope are NOT auto-committed by default; declare them via `telec code add`, `--include`, or `--only` (safety net against incidental temp/scratch artifacts).
 - --only commits exactly the declared paths and is mutually exclusive with --include.

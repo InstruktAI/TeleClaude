@@ -453,20 +453,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
         ],
         auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
     ),
-    "sync": CommandDef(
-        desc="Validate doc/snippet/artifact sources (blocks on findings) and apply your edits",
-        args="[--skip-deploy]",
-        flags=[
-            F.FLAG_HELP,
-            F.FLAG_SKIP_DEPLOY,
-            F.FLAG_SKIP_VALIDATION,
-        ],
-        notes=[
-            "Validation always blocks — there is no warn-and-pass mode.",
-            "--skip-deploy is the read-only gate (pre-commit / CI / lint); it never mutates the host.",
-        ],
-        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-    ),
     "message": CommandDef(
         desc="Send a message to a person by slug",
         args="<slug> <text> [--file <path>] [--subject <text>] [--channel <name>]",
@@ -1458,6 +1444,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 hidden=True,
             ),
+            "publish": CommandDef(
+                desc="Publish documentation for an eligible recorded commit range",
+                flags=[F.FLAG_HELP, F.FLAG_PUBLISH_BEFORE_SHA, F.FLAG_PUBLISH_AFTER_SHA],
+                hidden=True,
+            ),
         },
     ),
 }
@@ -1515,7 +1506,6 @@ BUGS_SUPPRESS = CLI_SURFACE["bugs"].subcommands["suppress"]
 BUGS_SUPPRESSIONS = CLI_SURFACE["bugs"].subcommands["suppressions"]
 BUGS_UNSUPPRESS = CLI_SURFACE["bugs"].subcommands["unsuppress"]
 
-SYNC = CLI_SURFACE["sync"]
 
 DOCS_INDEX = CLI_SURFACE["docs"].subcommands["index"]
 DOCS_GET = CLI_SURFACE["docs"].subcommands["get"]
@@ -1546,6 +1536,7 @@ CODE_INSTALL = CLI_SURFACE["code"].subcommands["install"]
 CODE_OWNERS = CLI_SURFACE["code"].subcommands["owners"]
 CODE_ADD = CLI_SURFACE["code"].subcommands["add"]
 CODE_COMMIT = CLI_SURFACE["code"].subcommands["commit"]
+CODE_PUBLISH = CLI_SURFACE["code"].subcommands["publish"]
 
 CONFIG_TTS_DEPROVISION = CLI_SURFACE["config"].subcommands["tts"].subcommands["deprovision"]
 CONFIG_GET = CLI_SURFACE["config"].subcommands["get"]

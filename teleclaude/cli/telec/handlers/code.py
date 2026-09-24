@@ -33,6 +33,7 @@ from teleclaude.cli.telec.handlers._code_invocation import resolve_invocation_st
 from teleclaude.cli.telec.handlers._code_post_commit import handle_code_post_commit
 from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merge
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
+from teleclaude.cli.telec.handlers._code_publish import handle_code_publish
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_COMMIT
@@ -106,6 +107,7 @@ class CodeSubcommand(StrEnum):
     POST_COMMIT = "post-commit"
     POST_MERGE = "post-merge"
     PRE_COMMIT = "pre-commit"
+    PUBLISH = "publish"
 
 
 _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
@@ -140,6 +142,9 @@ def handle_code(args: list[str]) -> None:
         return
     if sub is CodeSubcommand.PRE_COMMIT:
         handle_code_pre_commit(rest)
+        return
+    if sub is CodeSubcommand.PUBLISH:
+        handle_code_publish(rest)
         return
     _require_code_capability(sub)
     if sub is CodeSubcommand.LINT:

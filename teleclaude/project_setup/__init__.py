@@ -2,10 +2,8 @@
 
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.init_flow import init_project
-from teleclaude.project_setup.sync import sync_project_artifacts
 
 __all__ = [
     "init_project",
-    "sync_project_artifacts",
     "update_gitattributes",
 ]

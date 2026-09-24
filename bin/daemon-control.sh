@@ -70,9 +70,6 @@ unit_name() {
         "$V1_DAEMON_LABEL")
             printf 'v1 daemon'
             ;;
-        "$DOCS_WATCH_LABEL")
-            printf 'docs-watch'
-            ;;
         "$CRON_LABEL")
             printf 'cron'
             ;;
@@ -555,7 +552,6 @@ start_daemon() {
             log_info "Service already loaded, kickstarting..."
             launchctl kickstart -k "$domain/$SERVICE_LABEL" 2>/dev/null || true
         fi
-        start_launchd_unit "$DOCS_WATCH_LABEL"
         # Load-only (not kickstart): a periodic StartInterval unit must be
         # loaded without forcing an off-schedule run on every start.
         start_launchd_unit "$CRON_LABEL"
@@ -696,7 +692,6 @@ status_daemon() {
 
     if [ "$PLATFORM" = "macos" ]; then
         check_managed_launchd_units_complete || overall_ok=1
-        status_launchd_unit "$DOCS_WATCH_LABEL" || overall_ok=1
         # cron is a periodic StartInterval unit: loaded but idle between runs.
         status_launchd_periodic_unit "$CRON_LABEL" || overall_ok=1
     fi
@@ -804,7 +799,6 @@ restart_daemon() {
             log_error "launchctl kickstart failed: $KICKSTART_OUT"
             return 1
         }
-        restart_launchd_unit "$DOCS_WATCH_LABEL"
         # Load-only: keep the periodic unit loaded without forcing an
         # off-schedule run (do not kickstart it).
         start_launchd_unit "$CRON_LABEL"

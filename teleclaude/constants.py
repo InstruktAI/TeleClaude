@@ -634,7 +634,20 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
 
 CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
     "install": MaintenanceAction(id="install", command=("make", "install"), main_only=True, precedence=10),
-    "sync": MaintenanceAction(id="sync", command=("telec", "sync", "--skip-deploy"), main_only=True, precedence=55),
+    "sync": MaintenanceAction(
+        id="sync",
+        command=(
+            "telec",
+            "code",
+            "publish",
+            "--after-sha",
+            "{after_sha}",
+            "--before-sha",
+            "{before_sha}",
+        ),
+        main_only=True,
+        precedence=55,
+    ),
 }
 
 # The only two locations an agent-artifact source ever lives: a project's own

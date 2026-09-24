@@ -148,9 +148,8 @@ def is_integration_worktree(root: Path) -> bool:
     `is_worktree` (and the `WorkspaceScopeKind.WORKTREE` it drives in
     `code.py`) is true for both a slug worktree and `trees/_integration` — the
     integrator's own fold worktree, which legitimately commits `docs/**` when
-    landing the doc layer and legitimately deploys via `telec sync`. Shared
-    home for the slug-vs-integration boundary so `code.py` and `misc.py` guards
-    cannot drift apart.
+    landing the doc layer. Shared home for the slug-vs-integration boundary so
+    code-path checks cannot drift apart.
     """
     return root.parent.name == WORKTREE_DIR and root.name == "_integration"
 

@@ -80,8 +80,8 @@ MCP_INDEX_DIRECTIVE_RE = re.compile(r"<!--\s*@mcp-index\s*-->")
 LOCK_SENTINEL_RE = re.compile(r"^[ \t]*<!--\s*/?LOCKED_FILE\b.*?-->[ \t]*\n?", re.MULTILINE | re.DOTALL)
 _AGENTS_ENABLED_FLAG = "--agents-enabled"
 _DOCS_ENABLED_FLAG = "--docs-enabled"
-_AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing during deployment."
-_DOCS_ENABLED_HELP = "Enable or disable documentation deployment."
+_AGENTS_ENABLED_HELP = "Enable or disable agent artifact processing."
+_DOCS_ENABLED_HELP = "Enable or disable documentation processing."
 _PROJECT_MASTER_FILENAME = "AGENTS.master.md"
 _CODEX_AGENT_NAME = "codex"
 _GEMINI_AGENT_NAME = "gemini"
@@ -104,6 +104,22 @@ _CONFIG_SCHEMA_DIRECTORY = "schemas"
 _MCP_INDEX_HEADER = "## Available MCP Servers\n\n"
 _MCP_INDEX_ENTRY_TEMPLATE = "- `{slug}` — {trigger}"
 _MCP_INDEX_ENTRY_WITHOUT_TRIGGER_TEMPLATE = "- `{slug}`"
+_SOURCE_PROJECT_KEY = "source_project"
+_SNIPPETS_TREE_NAME = "snippets"
+_SNIPPETS_TREE_PATH = Path(_SNIPPETS_TREE_NAME)
+_INDEX_FILE_NAME = "index.yaml"
+_INDEX_SNIPPETS_KEY = "snippets"
+_INDEX_ID_KEY = "id"
+_INDEX_DOMAIN_KEY = "domain"
+_INDEX_PROJECT_ROOT_KEY = "project_root"
+_INDEX_SNIPPETS_ROOT_KEY = "snippets_root"
+_INDEX_SCOPE_ROOT = "~/.teleclaude"
+_INDEX_DEPLOY_ROOT = "~/.teleclaude/docs"
+_COMMITTED_OWNER_COLLISION = "committed publication conflicts with an already deployed snippet id: {snippet_id}"
+_DEPLOYED_INDEX_DOMAIN_FIELD = "domain"
+_DEPLOYED_INDEX_TRIGGER_FIELD = "activation_trigger"
+_DEPLOYED_INDEX_SNIPPETS_FIELD = "snippets"
+_EMPTY_STRING = ""
 
 logger = get_logger(__name__)
 
@@ -113,6 +129,42 @@ class DistributionObservation:
     """Structured event context shared across one deploy-mode distribution."""
 
     process_correlation_id: str
+
+
+@dataclass(frozen=True)
+class DistributionRequest:
+    """Inputs for the internal committed-source distribution operation."""
+
+    project_root: Path
+    deploy_root: Path
+    deploy: bool
+    validate_only: bool = False
+    warn_only: bool = False
+    agents_enabled: bool | None = None
+    docs_enabled: bool | None = None
+
+
+def distribute_committed(
+    project_root: Path,
+    canonical_root: Path,
+    *,
+    agents_enabled: bool,
+    docs_enabled: bool,
+) -> None:
+    """Build and deploy artifacts from a caller-materialized committed snapshot."""
+    original_directory = Path.cwd()
+    try:
+        main(
+            DistributionRequest(
+                project_root=project_root,
+                deploy_root=canonical_root,
+                deploy=True,
+                agents_enabled=agents_enabled,
+                docs_enabled=docs_enabled,
+            )
+        )
+    finally:
+        os.chdir(original_directory)
 
 
 _APPENDED_SECTION_TEMPLATE = "{content}\n\n---\n\n{sections}\n"
@@ -1051,6 +1103,14 @@ def materialize_global_snippets(mother: Publisher | None, staged_root: Path) -> 
         shutil.copytree(source, staged_root / "snippets", symlinks=False)
 
 
+def _index_entry_sort_key(entry: object) -> str:
+    """Return a stable identifier key for either a decoded row or opaque entry."""
+    if not isinstance(entry, Mapping):
+        return _EMPTY_STRING
+    snippet_id = entry.get(_INDEX_ID_KEY)
+    return snippet_id if isinstance(snippet_id, str) else _EMPTY_STRING
+
+
 def _resolve_domain_triggers(project_root: Path) -> dict[str, str]:
     """Merge every registered publisher's domain → activation-trigger declarations.
 
@@ -1068,6 +1128,28 @@ def _resolve_domain_triggers(project_root: Path) -> dict[str, str]:
             continue
         seen.add(resolved)
         triggers.update(triggers_for_root(root))
+    return triggers
+
+
+def _resolve_deployed_domain_triggers() -> dict[str, str]:
+    """Read publication triggers from the activated index, never from live roots."""
+    index_path = GLOBAL_DOCS_DIR / _INDEX_FILE_NAME
+    if not index_path.is_file():
+        return {}
+    payload = yaml.safe_load(index_path.read_text(encoding=_UTF8))
+    if not isinstance(payload, dict):
+        return {}
+    entries = payload.get(_DEPLOYED_INDEX_SNIPPETS_FIELD)
+    if not isinstance(entries, list):
+        return {}
+    triggers: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        domain = entry.get(_DEPLOYED_INDEX_DOMAIN_FIELD)
+        trigger = entry.get(_DEPLOYED_INDEX_TRIGGER_FIELD)
+        if isinstance(domain, str) and isinstance(trigger, str) and trigger.strip():
+            triggers[domain] = trigger
     return triggers
 
 
@@ -1121,6 +1203,7 @@ def deploy_documentation(
     *,
     deploy_docs_root: Path | None = None,
     observation: DistributionObservation | None = None,
+    committed_owner: bool = False,
 ) -> None:
     """The documentation deployment step: publish one complete docs generation.
 
@@ -1143,10 +1226,26 @@ def deploy_documentation(
             target.parent.mkdir(parents=True, exist_ok=True)
             staged_root = Path(tempfile.mkdtemp(prefix=".docs.next-", dir=target.parent))
             try:
-                materialize_docs_root(owner_by_domain, staged_root)
-                materialize_global_snippets(mother, staged_root)
-                write_merged_index(publishers, staged_root)
-                generate_domain_baselines(owner_by_domain, staged_root, project_root, observation)
+                if committed_owner:
+                    current = next(
+                        publisher
+                        for publisher in publishers
+                        if publisher.docs_global.resolve() == docs_source_dir.resolve()
+                    )
+                    _materialize_committed_owner(
+                        current,
+                        owner_by_domain,
+                        staged_root,
+                        target,
+                        project_root,
+                        observation,
+                        mother=mother,
+                    )
+                else:
+                    materialize_docs_root(owner_by_domain, staged_root)
+                    materialize_global_snippets(mother, staged_root)
+                    write_merged_index(publishers, staged_root)
+                    generate_domain_baselines(owner_by_domain, staged_root, project_root, observation)
                 previous_root = publish_generation(staged_root, target)
             except Exception:
                 shutil.rmtree(staged_root, ignore_errors=True)
@@ -1158,6 +1257,89 @@ def deploy_documentation(
             previous_root.unlink()
         else:
             shutil.rmtree(previous_root)
+
+
+def _materialize_committed_owner(
+    current: Publisher,
+    owner_by_domain: dict[str, Publisher],
+    staged_root: Path,
+    deployed_root: Path,
+    project_root: Path,
+    observation: DistributionObservation | None,
+    *,
+    mother: Publisher | None,
+) -> None:
+    """Replace one publisher's deployed contributions inside a copied generation."""
+    if deployed_root.is_dir():
+        shutil.copytree(deployed_root, staged_root, dirs_exist_ok=True, symlinks=False)
+    deployed_index = deployed_root / _INDEX_FILE_NAME
+    existing_payload = yaml.safe_load(deployed_index.read_text(encoding=_UTF8)) if deployed_index.is_file() else {}
+    existing_entries = existing_payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(existing_payload, dict) else []
+    if not isinstance(existing_entries, list):
+        existing_entries = []
+    retained: list[object] = [
+        entry
+        for entry in existing_entries
+        if not isinstance(entry, dict) or entry.get(_SOURCE_PROJECT_KEY) != current.slug
+    ]
+    owned_domains = {
+        entry.get(_INDEX_DOMAIN_KEY)
+        for entry in existing_entries
+        if isinstance(entry, dict)
+        and entry.get(_SOURCE_PROJECT_KEY) == current.slug
+        and isinstance(entry.get(_INDEX_DOMAIN_KEY), str)
+    }
+    owned_domains.update(current.publishes)
+    for domain in sorted(owned_domains):
+        staged_domain = staged_root / domain
+        if staged_domain.is_dir():
+            shutil.rmtree(staged_domain)
+        source_domain = current.docs_global / domain
+        if domain in owner_by_domain and owner_by_domain[domain].slug == current.slug and source_domain.is_dir():
+            shutil.copytree(source_domain, staged_domain, symlinks=False)
+    if mother is not None and mother.slug == current.slug:
+        staged_snippets = staged_root / _SNIPPETS_TREE_PATH
+        if staged_snippets.is_dir():
+            shutil.rmtree(staged_snippets)
+        source_snippets = current.docs_global / _SNIPPETS_TREE_PATH
+        if source_snippets.is_dir():
+            shutil.copytree(source_snippets, staged_snippets, symlinks=False)
+    source_index = current.docs_global / _INDEX_FILE_NAME
+    source_payload = yaml.safe_load(source_index.read_text(encoding=_UTF8)) if source_index.is_file() else {}
+    source_entries = source_payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(source_payload, dict) else []
+    if not isinstance(source_entries, list):
+        source_entries = []
+    retained_ids = {
+        entry.get(_INDEX_ID_KEY)
+        for entry in retained
+        if isinstance(entry, dict) and isinstance(entry.get(_INDEX_ID_KEY), str)
+    }
+    incoming: list[SnippetIndexEntry] = [
+        cast(SnippetIndexEntry, entry) for entry in source_entries if isinstance(entry, dict)
+    ]
+    for entry in incoming:
+        snippet_id = entry.get(_INDEX_ID_KEY)
+        if isinstance(snippet_id, str) and snippet_id in retained_ids:
+            raise DocsPublisherResolutionError(_COMMITTED_OWNER_COLLISION.format(snippet_id=snippet_id))
+    merged_entries: list[object] = [*retained, *incoming]
+    merged_entries.sort(key=_index_entry_sort_key)
+    (staged_root / _INDEX_FILE_NAME).write_text(
+        yaml.safe_dump(
+            {
+                _INDEX_PROJECT_ROOT_KEY: _INDEX_SCOPE_ROOT,
+                _INDEX_SNIPPETS_ROOT_KEY: _INDEX_DEPLOY_ROOT,
+                _INDEX_SNIPPETS_KEY: merged_entries,
+            },
+            sort_keys=False,
+            width=1000,
+            allow_unicode=True,
+        ),
+        encoding=_UTF8,
+    )
+    current_domains = {
+        domain: publisher for domain, publisher in owner_by_domain.items() if publisher.slug == current.slug
+    }
+    generate_domain_baselines(current_domains, staged_root, project_root, observation)
 
 
 def _strip_specific_h1(content: str, title: str) -> str:
@@ -1254,7 +1436,7 @@ def _write_project_agents(
             )
             if sections:
                 inflated = _APPENDED_SECTION_TEMPLATE.format(content=inflated.rstrip(), sections=sections)
-            canonical_project_root = project_mcp_root(git_common_root(project_root))
+            canonical_project_root = project_mcp_root(project_root)
             if canonical_project_root is not None:
                 project_index = _render_mcp_index(load_project_declarations(canonical_project_root))
                 if project_index:
@@ -1361,71 +1543,88 @@ def _global_command_reach_findings(project_root_path: Path) -> list[str]:
     return findings
 
 
-def main() -> None:  # noqa: C901
-    """Transpile and optionally deploy agent artifacts for supported CLIs."""
-    parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
-    parser.add_argument("--deploy", action="store_true", help="Sync generated files to their locations.")
-    parser.add_argument(
-        "--project-root",
-        required=True,
-        help="Project root to read agents/.agents from (default: script parent).",
-    )
-    parser.add_argument(
-        "--validate-only",
-        action="store_true",
-        help="Validate artifact schema without generating outputs.",
-    )
-    parser.add_argument(
-        "--warn-only",
-        action="store_true",
-        help="Emit validation warnings but exit successfully.",
-    )
-    parser.add_argument(
-        _AGENTS_ENABLED_FLAG, action=argparse.BooleanOptionalAction, default=None, help=_AGENTS_ENABLED_HELP
-    )
-    parser.add_argument(
-        _DOCS_ENABLED_FLAG, action=argparse.BooleanOptionalAction, default=None, help=_DOCS_ENABLED_HELP
-    )
-    args = parser.parse_args()
+def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
+    """Build agent artifacts for supported CLIs; deployment requires an internal request."""
+    if request is None:
+        parser = argparse.ArgumentParser(description="Validate and build agent outputs into dist/.")
+        parser.add_argument(
+            "--project-root",
+            required=True,
+            help="Project root to read agents/.agents from (default: script parent).",
+        )
+        parser.add_argument(
+            "--validate-only",
+            action="store_true",
+            help="Validate artifact schema without generating outputs.",
+        )
+        parser.add_argument(
+            "--warn-only",
+            action="store_true",
+            help="Emit validation warnings but exit successfully.",
+        )
+        parser.add_argument(
+            _AGENTS_ENABLED_FLAG, action=argparse.BooleanOptionalAction, default=None, help=_AGENTS_ENABLED_HELP
+        )
+        parser.add_argument(
+            _DOCS_ENABLED_FLAG, action=argparse.BooleanOptionalAction, default=None, help=_DOCS_ENABLED_HELP
+        )
+        args = parser.parse_args()
+    else:
+        args = argparse.Namespace(
+            project_root=str(request.project_root),
+            deploy_root=str(request.deploy_root),
+            validate_only=request.validate_only,
+            warn_only=request.warn_only,
+            agents_enabled=request.agents_enabled,
+            docs_enabled=request.docs_enabled,
+        )
+    deploy = request is not None and request.deploy
 
     # Get the project root and main TeleClaude repo root.
     script_dir = os.path.dirname(os.path.realpath(__file__))
     teleclaude_root = os.path.dirname(script_dir)
     project_root = os.path.abspath(os.path.expanduser(args.project_root))
-    is_mother_project = Path(project_root).resolve() == Path(teleclaude_root).resolve()
+    deploy_root = os.path.abspath(os.path.expanduser(args.deploy_root)) if request is not None else project_root
+    is_mother_project = git_common_root(Path(project_root)).resolve() == Path(teleclaude_root).resolve()
     project_root_path = Path(project_root)
     agents_enabled, docs_enabled = _resolve_pipeline_capabilities(
-        deploy=args.deploy,
+        deploy=deploy,
         agents_enabled=args.agents_enabled,
         docs_enabled=args.docs_enabled,
         project_root=project_root_path,
     )
-    agents_root = os.path.join(teleclaude_root, "agents")
+    agents_root = os.path.join(project_root if is_mother_project and request is not None else teleclaude_root, "agents")
     project_agents_root = os.path.join(project_root, "agents", "project")
     os.chdir(project_root)
     canonical_root = git_common_root(project_root_path)
     master_docs_dir = os.path.join(project_root, "docs", "global")
     canonical_docs_dir = os.path.join(canonical_root, "docs", "global")
-    docs_source_dir = master_docs_dir if os.path.isdir(master_docs_dir) else canonical_docs_dir
-    observation = DistributionObservation(str(uuid4())) if args.deploy else None
+    docs_source_dir = master_docs_dir if os.path.isdir(master_docs_dir) or request is not None else canonical_docs_dir
+    observation = DistributionObservation(str(uuid4())) if deploy else None
 
     if observation is not None:
         logger.info(
             _ARTIFACT_DISTRIBUTION_STARTED,
             process_correlation_id=observation.process_correlation_id,
         )
-    if args.deploy and docs_enabled:
+    if deploy and docs_enabled:
         deploy_documentation(
             project_root_path,
             Path(docs_source_dir),
             observation=observation,
+            committed_owner=request is not None,
         )
 
     # Agent rendering consumes publisher declarations to build domain awareness,
     # so resolve and validate them only when the agents pipeline is enabled.
-    domain_triggers = _resolve_domain_triggers(project_root_path) if agents_enabled else {}
+    if not agents_enabled:
+        domain_triggers = {}
+    elif request is not None:
+        domain_triggers = _resolve_deployed_domain_triggers()
+    else:
+        domain_triggers = _resolve_domain_triggers(project_root_path)
 
-    if agents_enabled:
+    if agents_enabled and deploy:
         for master_path in _iter_project_agent_masters(project_root_path):
             _write_project_agents(
                 master_path,
@@ -1616,7 +1815,7 @@ def main() -> None:  # noqa: C901
 
     source_schema_dir = Path(teleclaude_root) / _CONFIG_SCHEMA_DIRECTORY
     _write_config_schemas(source_schema_dir)
-    if args.deploy:
+    if deploy:
         _write_config_schemas(TELECLAUDE_HOME / _CONFIG_SCHEMA_DIRECTORY)
         _deploy_project_config_schema(project_root_path, source_schema_dir)
 
@@ -1848,7 +2047,7 @@ def main() -> None:  # noqa: C901
 
         print("\nTranspilation complete.")
 
-        if args.deploy and deploy_enabled:
+        if deploy and deploy_enabled:
             print("Deploying files...")
             for agent_name in built_agents:
                 config = agents_config[agent_name]
@@ -1907,12 +2106,12 @@ def main() -> None:  # noqa: C901
                 command_files=global_command_files if is_global_phase else {},
             )
 
-    if args.deploy:
+    if deploy and is_mother_project:
         compose_global_skill_catalog(
-            Path(teleclaude_root),
+            project_root_path,
             partial(
                 _render_global_skill_catalog,
-                mother_root=Path(teleclaude_root),
+                mother_root=project_root_path,
                 warn_only=args.warn_only,
                 observation=observation,
             ),
@@ -1936,11 +2135,11 @@ def main() -> None:  # noqa: C901
                         sources=local_sources,
                         prefix_root=project_agents_root,
                         dist_dir=local_dist,
-                        deploy_root=project_root,
+                        deploy_root=deploy_root,
                         emit_repo_codex=True,
                         deploy_enabled=True,
                         is_global_phase=False,
-                        scope_key=project_root,
+                        scope_key=str(canonical_root.resolve()),
                     )
         if observation is not None:
             logger.info(
@@ -1966,7 +2165,7 @@ def main() -> None:  # noqa: C901
                 prefix_root=project_agents_root,
                 dist_dir=os.path.join(project_root, "dist", "local"),
                 deploy_root=project_root,
-                emit_repo_codex=True,
+                emit_repo_codex=deploy,
                 deploy_enabled=False,
                 is_global_phase=False,
                 scope_key=project_root,
