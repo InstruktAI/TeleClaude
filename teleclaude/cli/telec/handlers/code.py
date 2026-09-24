@@ -36,7 +36,12 @@ from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commi
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_install, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import CODE_COMMIT
-from teleclaude.commit_identity import CommitIdentityUnresolvable, compose_commit_footer, resolve_commit_identity
+from teleclaude.cli.tool_client import ToolAPIError, get_resolved_caller
+from teleclaude.commit_identity import (
+    CommitIdentityUnresolvable,
+    compose_commit_footer,
+    resolve_commit_identity_from_caller,
+)
 from teleclaude.core.db import get_db
 from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.git import GitCommandError, Repo
@@ -66,6 +71,9 @@ _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|r
 _CODE_NAMESPACE = "code"
 _CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capability"
 _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
+_COMMIT_DAEMON_UNAVAILABLE_DETAIL = (
+    "{message}. Check daemon status with `make status` and recover it with `make restart`."
+)
 _OWNERS_USAGE = "Usage: telec code owners <path> [<path> ...]"
 _OWNERS_UNKNOWN_FLAG = "ERROR: unknown flag: {flag}"
 _OWNERS_ERROR = "ERROR: {error}"
@@ -741,7 +749,12 @@ def _commit_repo_with_message(
     misattributing it.
     """
     try:
-        git_identity, session_id = resolve_commit_identity()
+        caller = get_resolved_caller()
+        git_identity, session_id = resolve_commit_identity_from_caller(caller)
+    except ToolAPIError as exc:
+        message = _COMMIT_DAEMON_UNAVAILABLE_DETAIL.format(message=exc.message) if exc.is_unavailable else exc.message
+        print(message, file=sys.stderr)
+        raise SystemExit(1) from exc
     except CommitIdentityUnresolvable as exc:
         raise SystemExit(str(exc)) from exc
 

@@ -9,8 +9,10 @@ from typing import TypedDict
 
 import yaml
 
-from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.tool_client import get_resolved_caller
 from teleclaude.slug import ensure_unique_slug, normalize_slug
+
+_CALLER_PRINCIPAL_REQUIRED_DETAIL = "The daemon did not resolve a caller principal."
 
 
 def _derive_slug(text: str) -> str:
@@ -23,12 +25,11 @@ def _derive_slug(text: str) -> str:
 
 
 def _resolve_author() -> str:
-    """Resolve the current terminal auth identity, or 'unknown'."""
-    try:
-        email = read_current_session_email()
-        return email or "unknown"
-    except Exception:
-        return "unknown"
+    """Resolve the author from the daemon's verified caller answer."""
+    caller = get_resolved_caller()
+    if not caller.principal:
+        raise ValueError(_CALLER_PRINCIPAL_REQUIRED_DETAIL)
+    return caller.principal
 
 
 class _MetaPayload(TypedDict):

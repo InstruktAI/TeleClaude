@@ -444,7 +444,7 @@ FLAG_SUPPRESS_EXPIRES = Flag(
 
 FLAG_CONTENT_SLUG = Flag("--slug", desc="Custom slug (default: auto-generated from text)", arity=VALUE)
 FLAG_CONTENT_TAGS = Flag("--tags", desc="Comma-separated tags", arity=VALUE)
-FLAG_CONTENT_AUTHOR = Flag("--author", desc="Author identity (default: terminal auth)", arity=VALUE)
+FLAG_CONTENT_AUTHOR = Flag("--author", desc="Author identity (default: daemon-resolved principal)", arity=VALUE)
 
 # =============================================================================
 # jobs report

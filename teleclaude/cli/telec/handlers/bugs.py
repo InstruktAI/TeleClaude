@@ -2,27 +2,22 @@
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 
-from teleclaude.api_models import TodoDumpRequest
-from teleclaude.cli.session_auth import read_current_session_email
+from pydantic import TypeAdapter
+
+from teleclaude.api_models import BugListEntryDTO, TodoDumpRequest
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._creation_gate import CREATION_VALIDITY_GATE_ITEM
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import BUGS_LIST, BUGS_REPORT, BUGS_SUPPRESS, BUGS_SUPPRESSIONS, BUGS_UNSUPPRESS
-from teleclaude.cli.tool_client import tool_api_request
+from teleclaude.cli.tool_client import ToolAPIError, get_resolved_caller, tool_api_request
 from teleclaude.config import config
-from teleclaude.constants import TodoStatus
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
-from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
@@ -37,7 +32,6 @@ from teleclaude.services.log_bug_hunter_suppressions import (
 )
 from teleclaude.services.project_catalog.loaders import load_project_node
 from teleclaude.slug import normalize_slug
-from teleclaude.types.state_value import StateValue
 from teleclaude.types.todo_kind import TODO_KIND_BUG
 
 __all__ = [
@@ -56,12 +50,9 @@ __all__ = [
 # output, usage line, or generated docs. The literal appears exactly once,
 # here; every other reference in this module reads this constant.
 _FILING_ACK_FLAG = "--approved"
-_ACTIVE_TODO_STATES_QUERY = (
-    "SELECT r.slug, s.state FROM todo r "  # guard: raw-sql
-    "JOIN todo_state s ON r.id = s.id "
-    "WHERE r.status = ? "
-    "ORDER BY r.updated_at DESC"
-)
+_GET_METHOD = "GET"
+_BUGS_LIST_PATH = "/todos/bugs"
+_CWD_PARAMETER = "cwd"
 
 _BUG_FILING_GATE = (
     "Nothing was filed. Face these before this bug enters the pipeline (bug-kind\n"
@@ -87,6 +78,7 @@ _BUG_FILING_GATE = (
     f"  telec bugs report {_FILING_ACK_FLAG} '<description>' [--slug <slug>] "
     "[--body <text>] [--project <name>] [--human-involved]\n"
 )
+_CALLER_PRINCIPAL_REQUIRED_DETAIL = "The daemon did not resolve a caller principal."
 
 
 def _resolve_project_by_name(name: str) -> Path:
@@ -219,7 +211,7 @@ def _handle_bugs_report(args: list[str]) -> None:
 
 
 def _handle_bugs_list(args: list[str]) -> None:
-    """Handle telec bugs list — queries todos.db for bug-kind todos."""
+    """Handle telec bugs list."""
     project_root = resolve_invocation_cwd()
 
     parsed = parse_command_args(BUGS_LIST, args)
@@ -228,51 +220,26 @@ def _handle_bugs_list(args: list[str]) -> None:
         print(_usage("bugs", "list"))
         raise SystemExit(1)
 
-    db = get_todos_db_sync(str(project_root))
-    conn = db._sync_conn()
     try:
-        rows = conn.execute(
-            _ACTIVE_TODO_STATES_QUERY,
-            (TodoStatus.ACTIVE.value,),
-        ).fetchall()
-    finally:
-        conn.close()
+        result = tool_api_request(
+            _GET_METHOD,
+            _BUGS_LIST_PATH,
+            params={_CWD_PARAMETER: str(project_root)},
+        )
+        bugs = TypeAdapter(list[BugListEntryDTO]).validate_python(result)
+    except ToolAPIError as exc:
+        print(f"Error: {exc.message}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
-    if not rows:
+    if not bugs:
         print("No bugs found")
         return
-
-    bugs: list[tuple[str, str]] = []
-    for slug, state_json in rows:
-        raw_state = cast(dict[str, StateValue], json.loads(state_json)) if state_json else {}
-        state = upcycle_state_dict(raw_state)
-        if state.get("kind") != TODO_KIND_BUG:
-            continue
-        lifecycle_phase = coerce_lifecycle_phase(state.get("lifecycle_phase"))
-        build_review = state.get("build_review", {})
-        finalize = state.get("finalize", {})
-
-        verdict = str(build_review.get("verdict", "")) if isinstance(build_review, dict) else ""
-        finalize_status = str(finalize.get("status", "")) if isinstance(finalize, dict) else ""
-
-        if verdict == "approve" or finalize_status not in ("", "pending"):
-            status = "approved"
-        elif verdict == "changes_requested":
-            status = "fixing"
-        elif lifecycle_phase is LifecyclePhase.BUILD_COMPLETE:
-            status = "reviewing"
-        elif lifecycle_phase is LifecyclePhase.BUILD_STARTED:
-            status = "building"
-        else:
-            status = "pending"
-
-        bugs.append((slug, status))
 
     print(f"Bug fixes ({len(bugs)}):\n")
     print(f"{'Slug':<40} {'Status':<15}")
     print("-" * 60)
-    for slug, status in bugs:
-        print(f"{slug:<40} {status:<15}")
+    for bug in bugs:
+        print(f"{bug.slug:<40} {bug.status:<15}")
 
 
 def _parse_expires(raw: str) -> datetime:
@@ -331,6 +298,15 @@ def _handle_bugs_suppress(args: list[str]) -> None:
 
     expires_at = _parse_expires(expires_raw) if expires_raw else None
     slug = _resolve_project_slug(project_name)
+    try:
+        principal = get_resolved_caller().principal
+    except ToolAPIError as exc:
+        print(exc.message)
+        raise SystemExit(1) from exc
+    if not principal:
+        print(_CALLER_PRINCIPAL_REQUIRED_DETAIL)
+        raise SystemExit(1)
+
     entry = Suppression(
         id=uuid.uuid4().hex[:12],
         pattern=pattern,
@@ -338,7 +314,7 @@ def _handle_bugs_suppress(args: list[str]) -> None:
         disposition=disposition,
         reason=reason,
         source_bug=source_bug,
-        created_by=read_current_session_email() or "unknown",
+        created_by=principal,
         created_at=datetime.now(UTC),
         expires_at=expires_at,
     )
