@@ -1,34 +1,20 @@
 """Codex transcript discovery helpers.
 
-Load-bearing defense for Codex's asymmetric subagent model.
+Codex writes each thread — including every spawned subagent thread — to its OWN
+``rollout-*-<thread_id>.jsonl`` file under ``~/.codex/sessions/YYYY/MM/DD/``. The
+parent linkage lives only inside the file's first line
+(``session_meta.payload.source.subagent.thread_spawn.parent_thread_id``).
 
-Codex writes each subagent thread to its OWN ``rollout-*-<thread_id>.jsonl``
-file under ``~/.codex/sessions/YYYY/MM/DD/``. The parent linkage lives only
-inside the file's first line (``session_meta.payload.source.subagent.thread_spawn.parent_thread_id``).
-The hook payload tells us nothing about parent/child relationships, and the
-TeleClaude session row only carries the parent's ``native_session_id`` —
-because the receiver deliberately drops subagent ``SessionStart`` events to
-preserve parent identity.
+This module owns:
 
-That makes this module the ONLY source of truth for:
+- ``thread_id → transcript_path``, resolved from the rollout filename (used by
+  ``todo_scaffold`` inside a Codex shell via ``$CODEX_THREAD_ID``, and wherever a
+  session row lacks its transcript path).
+- ``session_meta`` header parsing, which is how the receiver recognizes and drops
+  subagent hook events.
 
-- ``thread_id → transcript_path`` (used by ``todo_scaffold`` when running
-  inside a subagent shell, via ``$CODEX_THREAD_ID``).
-- ``parent_thread_id → descendants`` (used by the session-view tool-call
-  timeline in ``utils/transcript/_tool_calls.py`` to merge subagent activity
-  into the parent view — a hard requirement for session-touched-files to
-  include children).
-
-Claude and Gemini do not have this problem: subagent activity folds into the
-parent transcript (Claude via ``file-history-snapshot`` entries, Gemini via a
-single flat ``messages`` document). The machinery here is Codex-specific.
-
-Do not delete this index in favor of "session row carries the path" or
-"the hook payload always provides it." It does not, for the subagent case.
-The recent ``cd5dee2d4`` / ``bf7eba39b`` incident (Codex stopped firing
-``SessionStart`` on cold launch despite documenting otherwise) is a standing
-reminder that Codex's documented contracts are not reliable. This module is
-intentional defensive infrastructure, not technical debt.
+Subagent transcripts are never read as evidence of the parent session's work; only
+the session's own transcript is.
 """
 
 from __future__ import annotations
@@ -36,8 +22,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-from collections import deque
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -49,6 +33,8 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 _RECENT_DISCOVERY_DAYS = 7
+_ROLLOUT_FILENAME_PATTERN = "rollout-*-{thread_id}.jsonl"
+_SESSION_DATE_DIR_FORMAT = "%Y/%m/%d"
 
 
 class CodexInvocationMode(StrEnum):
@@ -90,197 +76,41 @@ class CodexTranscriptMeta:
 
 
 class _CodexTranscriptIndex:
-    """Process-local transcript index for fast family/path resolution."""
+    """Process-local cache of Codex thread id to transcript path."""
 
     def __init__(self, sessions_dir: Path) -> None:
         self._sessions_dir = sessions_dir
         self._lock = threading.RLock()
-        self._bootstrapped = False
-        self._by_path: dict[str, CodexTranscriptMeta] = {}
-        self._by_thread_id: dict[str, CodexTranscriptMeta] = {}
-        self._children_by_parent: dict[str, list[CodexTranscriptMeta]] = {}
-        self._known_paths: set[str] = set()
-        self._dir_known_files: dict[str, set[str]] = {}
+        self._by_thread_id: dict[str, str] = {}
 
     def discover_path(self, native_session_id: str) -> str | None:
-        """Resolve transcript path from indexed metadata."""
+        """Resolve a thread's transcript path from its rollout filename."""
         if not native_session_id:
             return None
-        self._ensure_bootstrapped()
-        self._refresh_recent()
         with self._lock:
-            meta = self._by_thread_id.get(native_session_id)
-            if meta is not None:
-                return meta.transcript_path
-        return self._scan_specific_thread(native_session_id)
-
-    def discover_family_meta(
-        self,
-        *,
-        root_transcript_path: str | None = None,
-        root_thread_id: str | None = None,
-    ) -> list[CodexTranscriptMeta]:
-        """Resolve parent and descendants from indexed transcript metadata."""
-        self._ensure_bootstrapped()
-        if root_transcript_path:
-            self._index_path(Path(root_transcript_path).expanduser())
-        self._refresh_recent()
-
-        family_meta: list[CodexTranscriptMeta] = []
-        seen_paths: set[str] = set()
-
-        def append_meta(meta: CodexTranscriptMeta | None) -> None:
-            if meta is None or meta.transcript_path in seen_paths:
-                return
-            family_meta.append(meta)
-            seen_paths.add(meta.transcript_path)
-
-        fallback_root_meta = None
-        root_meta_from_path = read_codex_transcript_meta(root_transcript_path)
-        if root_meta_from_path is None and root_transcript_path:
-            fallback_root_meta = CodexTranscriptMeta(
-                transcript_path=str(Path(root_transcript_path).expanduser()),
-                thread_id=None,
-                parent_thread_id=None,
-                session_started_at=None,
-                cwd=None,
-                invocation_mode=CodexInvocationMode.UNKNOWN,
-            )
-        elif root_meta_from_path is not None:
-            fallback_root_meta = root_meta_from_path
-
-        resolved_root_thread_id = root_thread_id or (
-            root_meta_from_path.thread_id if root_meta_from_path and root_meta_from_path.thread_id else None
-        )
-        if not resolved_root_thread_id:
-            append_meta(fallback_root_meta)
-            return family_meta
-
-        root_path = self.discover_path(resolved_root_thread_id)
-        append_meta(read_codex_transcript_meta(root_path))
-        append_meta(fallback_root_meta)
-
-        with self._lock:
-            seen_threads: set[str] = set()
-            pending: deque[str] = deque([resolved_root_thread_id])
-
-            while pending:
-                parent_thread_id = pending.popleft()
-                if parent_thread_id in seen_threads:
-                    continue
-                seen_threads.add(parent_thread_id)
-
-                for child_meta in self._children_by_parent.get(parent_thread_id, []):
-                    append_meta(child_meta)
-                    if child_meta.thread_id and child_meta.thread_id not in seen_threads:
-                        pending.append(child_meta.thread_id)
-
-        return family_meta
-
-    def _ensure_bootstrapped(self) -> None:
-        with self._lock:
-            if self._bootstrapped:
-                return
-        self._scan_all()
-        with self._lock:
-            self._bootstrapped = True
-
-    def _scan_all(self) -> None:
-        sessions_dir = self._sessions_dir
-        if not sessions_dir.exists():
-            return
-        for transcript_file in _iter_codex_transcript_paths(sessions_dir):
-            self._index_path(transcript_file)
-
-    def _refresh_recent(self) -> None:
-        sessions_dir = self._sessions_dir
-        if not sessions_dir.exists():
-            return
-
-        today = datetime.now()
-        for days_back in range(_RECENT_DISCOVERY_DAYS):
-            try:
-                check_date = today - timedelta(days=days_back)
-                date_dir = sessions_dir / f"{check_date.year}" / f"{check_date.month:02d}" / f"{check_date.day:02d}"
-            except ValueError:
-                continue
-            self._refresh_directory(date_dir)
-
-    def _refresh_directory(self, date_dir: Path) -> None:
-        if not date_dir.exists():
-            return
-        try:
-            current_files = {str(path) for path in date_dir.glob("rollout-*.jsonl") if path.is_file()}
-        except OSError:
-            return
-
-        dir_key = str(date_dir)
-        with self._lock:
-            known_files = self._dir_known_files.get(dir_key, set())
-            new_files = current_files - known_files
-            self._dir_known_files[dir_key] = current_files
-
-        for file_path in sorted(new_files):
-            self._index_path(Path(file_path))
+            cached = self._by_thread_id.get(native_session_id)
+        if cached is not None:
+            return cached
+        path = self._scan_specific_thread(native_session_id)
+        if path is not None:
+            with self._lock:
+                self._by_thread_id[native_session_id] = path
+        return path
 
     def _scan_specific_thread(self, native_session_id: str) -> str | None:
-        sessions_dir = self._sessions_dir
-        if not sessions_dir.exists():
-            return None
-
+        """Glob recent date directories first, then the whole tree, for the thread's rollout file."""
+        pattern = _ROLLOUT_FILENAME_PATTERN.format(thread_id=native_session_id)
         today = datetime.now()
         for days_back in range(_RECENT_DISCOVERY_DAYS):
+            date_dir = self._sessions_dir / (today - timedelta(days=days_back)).strftime(_SESSION_DATE_DIR_FORMAT)
             try:
-                check_date = today - timedelta(days=days_back)
-                date_dir = sessions_dir / f"{check_date.year}" / f"{check_date.month:02d}" / f"{check_date.day:02d}"
-                if not date_dir.exists():
-                    continue
-                for transcript_file in date_dir.glob(f"rollout-*-{native_session_id}.jsonl"):
-                    self._index_path(transcript_file)
-                    with self._lock:
-                        meta = self._by_thread_id.get(native_session_id)
-                        if meta is not None:
-                            return meta.transcript_path
+                for transcript_file in date_dir.glob(pattern):
                     return str(transcript_file)
-            except (ValueError, OSError):
+            except OSError:
                 continue
-
-        for transcript_file in sessions_dir.rglob(f"rollout-*-{native_session_id}.jsonl"):
-            self._index_path(transcript_file)
-            with self._lock:
-                meta = self._by_thread_id.get(native_session_id)
-                if meta is not None:
-                    return meta.transcript_path
+        for transcript_file in self._sessions_dir.rglob(pattern):
             return str(transcript_file)
         return None
-
-    def _index_path(self, transcript_path: Path) -> None:
-        path_str = str(transcript_path)
-        with self._lock:
-            if path_str in self._known_paths:
-                return
-
-        meta = read_codex_transcript_meta(transcript_path)
-        if meta is None:
-            return
-
-        with self._lock:
-            if path_str in self._known_paths:
-                return
-            self._known_paths.add(path_str)
-            self._by_path[path_str] = meta
-            if meta.thread_id:
-                self._by_thread_id[meta.thread_id] = meta
-            if meta.parent_thread_id:
-                children = self._children_by_parent.setdefault(meta.parent_thread_id, [])
-                children.append(meta)
-                children.sort(
-                    key=lambda item: (
-                        item.session_started_at is None,
-                        item.session_started_at.isoformat() if item.session_started_at else "",
-                        item.transcript_path,
-                    )
-                )
 
 
 def _codex_sessions_dir() -> Path:
@@ -298,13 +128,6 @@ def _get_transcript_index() -> _CodexTranscriptIndex:
     """Return the process-local transcript index for the current sessions root."""
     sessions_dir = _codex_sessions_dir()
     return _build_transcript_index(str(sessions_dir))
-
-
-def _iter_codex_transcript_paths(sessions_dir: Path) -> Iterator[Path]:
-    """Yield every Codex transcript path under the sessions directory."""
-    if not sessions_dir.exists():
-        return
-    yield from sessions_dir.rglob("rollout-*.jsonl")
 
 
 def _parse_codex_meta_timestamp(raw_timestamp: object) -> datetime | None:
@@ -383,18 +206,6 @@ def read_codex_transcript_meta(transcript_path: str | Path | None) -> CodexTrans
     )
 
 
-def discover_codex_transcript_family_meta(
-    *,
-    root_transcript_path: str | None = None,
-    root_thread_id: str | None = None,
-) -> list[CodexTranscriptMeta]:
-    """Resolve parent and descendant Codex transcript metadata recursively."""
-    return _get_transcript_index().discover_family_meta(
-        root_transcript_path=root_transcript_path,
-        root_thread_id=root_thread_id,
-    )
-
-
 def discover_codex_transcript_path(native_session_id: str) -> str | None:
     """Resolve Codex transcript path for a native session id.
 
@@ -431,21 +242,6 @@ def discover_current_codex_transcript_path() -> str | None:
     if not current_thread_id:
         return None
     return discover_codex_transcript_path(current_thread_id)
-
-
-def discover_codex_transcript_family(
-    *,
-    root_transcript_path: str | None = None,
-    root_thread_id: str | None = None,
-) -> list[str]:
-    """Resolve the parent transcript plus every descendant Codex subagent transcript."""
-    return [
-        meta.transcript_path
-        for meta in discover_codex_transcript_family_meta(
-            root_transcript_path=root_transcript_path,
-            root_thread_id=root_thread_id,
-        )
-    ]
 
 
 def is_codex_subagent_meta(meta: CodexTranscriptMeta | None) -> bool:

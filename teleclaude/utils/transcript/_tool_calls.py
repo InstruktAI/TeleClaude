@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal, cast
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import CHECKPOINT_RESULT_SNIPPET_MAX_CHARS
 from teleclaude.core.agents import AgentName
-from teleclaude.core.codex_transcript import CodexTranscriptMeta, discover_codex_transcript_family_meta
+from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.models import JsonDict
 
 from ._checkpoint_anchors import find_checkpoint_scope_start_idx as _find_checkpoint_scope_start_idx
@@ -524,61 +524,6 @@ def _extract_tool_calls_for_scope(
         return TurnTimeline(tool_calls=[], has_data=False)
 
 
-def _record_sort_key(
-    effective_timestamp: datetime | None,
-    source_index: int,
-    record_index: int,
-) -> tuple[int, float, int, int]:
-    """Provide deterministic ordering for merged tool-call timelines."""
-    if effective_timestamp is None:
-        return (1, 0.0, source_index, record_index)
-
-    normalized = effective_timestamp if effective_timestamp.tzinfo else effective_timestamp.replace(tzinfo=UTC)
-    return (0, normalized.astimezone(UTC).timestamp(), source_index, record_index)
-
-
-def _merge_timelines(
-    timeline_sources: list[tuple[CodexTranscriptMeta | None, TurnTimeline]],
-    *,
-    turn_start_at: datetime | None = None,
-) -> TurnTimeline:
-    """Merge multiple transcript timelines into one deterministic ordered view."""
-    merged_records: list[tuple[tuple[int, float, int, int], ToolCallRecord]] = []
-    has_data = False
-
-    for source_index, (meta, timeline) in enumerate(timeline_sources):
-        has_data = has_data or timeline.has_data
-        fallback_timestamp = meta.session_started_at if meta is not None else None
-        for record_index, record in enumerate(timeline.tool_calls):
-            effective_timestamp = record.timestamp or fallback_timestamp
-            merged_records.append((_record_sort_key(effective_timestamp, source_index, record_index), record))
-
-    merged_records.sort(key=lambda item: item[0])
-    return TurnTimeline(
-        tool_calls=[record for _key, record in merged_records],
-        has_data=has_data,
-        turn_start_at=turn_start_at,
-    )
-
-
-def _filter_timeline_since(
-    timeline: TurnTimeline,
-    *,
-    since: datetime,
-    fallback_timestamp: datetime | None,
-) -> TurnTimeline:
-    """Keep only records that belong to the active parent boundary."""
-    records: list[ToolCallRecord] = []
-    for record in timeline.tool_calls:
-        effective_timestamp = record.timestamp or fallback_timestamp
-        if effective_timestamp is None:
-            continue
-        normalized = effective_timestamp if effective_timestamp.tzinfo else effective_timestamp.replace(tzinfo=UTC)
-        if normalized.astimezone(UTC) >= since.astimezone(UTC):
-            records.append(record)
-    return TurnTimeline(tool_calls=records, has_data=timeline.has_data, turn_start_at=timeline.turn_start_at)
-
-
 def extract_effective_tool_calls(
     transcript_path: str | None,
     agent_name: AgentName,
@@ -586,69 +531,18 @@ def extract_effective_tool_calls(
     native_session_id: str | None = None,
     scope: Literal["turn", "session", "checkpoint"] = "turn",
 ) -> TurnTimeline:
-    """Extract the effective tool timeline for a session, flattening Codex descendants."""
-    full_session = scope == "session"
-    boundary: Literal["real_user", "checkpoint"] = "checkpoint" if scope == "checkpoint" else "real_user"
-    if not transcript_path:
-        if agent_name != AgentName.CODEX or not native_session_id:
-            return TurnTimeline(tool_calls=[], has_data=False)
-        family_meta = discover_codex_transcript_family_meta(root_thread_id=native_session_id)
-        if not family_meta:
-            return TurnTimeline(tool_calls=[], has_data=False)
-    elif agent_name == AgentName.CODEX:
-        family_meta = discover_codex_transcript_family_meta(
-            root_transcript_path=transcript_path,
-            root_thread_id=native_session_id,
-        )
-    else:
-        family_meta = []
-
-    if agent_name != AgentName.CODEX:
-        return _extract_tool_calls_for_scope(
-            transcript_path,
-            agent_name,
-            full_session=full_session,
-            boundary=boundary,
-        )
-
-    if not family_meta:
-        return _extract_tool_calls_for_scope(
-            transcript_path,
-            agent_name,
-            full_session=full_session,
-            boundary=boundary,
-        )
-
-    parent_meta = family_meta[0]
-    parent_timeline = _extract_tool_calls_for_scope(
-        parent_meta.transcript_path,
+    """Extract the tool timeline from the session's own transcript; subagent transcripts are never read."""
+    resolved_path = transcript_path
+    if not resolved_path and agent_name == AgentName.CODEX and native_session_id:
+        resolved_path = discover_codex_transcript_path(native_session_id)
+    if not resolved_path:
+        return TurnTimeline(tool_calls=[], has_data=False)
+    return _extract_tool_calls_for_scope(
+        resolved_path,
         agent_name,
-        full_session=full_session,
-        boundary=boundary,
+        full_session=scope == "session",
+        boundary="checkpoint" if scope == "checkpoint" else "real_user",
     )
-    timeline_sources: list[tuple[CodexTranscriptMeta | None, TurnTimeline]] = [(parent_meta, parent_timeline)]
-
-    boundary_scoped = scope in {"turn", "checkpoint"}
-    if boundary_scoped and parent_timeline.turn_start_at is None:
-        return parent_timeline
-
-    for child_meta in family_meta[1:]:
-        child_timeline = _extract_tool_calls_for_scope(child_meta.transcript_path, agent_name, full_session=True)
-        if boundary_scoped:
-            assert parent_timeline.turn_start_at is not None
-            child_timeline = _filter_timeline_since(
-                child_timeline,
-                since=parent_timeline.turn_start_at,
-                fallback_timestamp=child_meta.session_started_at,
-            )
-            if not child_timeline.tool_calls:
-                continue
-        timeline_sources.append((child_meta, child_timeline))
-
-    if len(timeline_sources) == 1:
-        return parent_timeline
-
-    return _merge_timelines(timeline_sources, turn_start_at=parent_timeline.turn_start_at)
 
 
 def extract_tool_calls_current_turn(
