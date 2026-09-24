@@ -62,14 +62,6 @@ identity from ambient state deep inside the platform attributes work to whoever
 last authenticated on the host rather than to whoever it belongs to, and in a
 multi-person installation that is one identity standing in for all of them.
 
-<!-- planned:external-session-identity -->
-A local connection additionally carries an attested-caller fact that is not a
-header: the kernel-held identity of the peer process on the other end of the
-socket, captured at connection-accept and held as typed request state. It is
-structurally separate from the headers above because no client can write it, and
-it is absent on every non-local transport. See
-`docs/project/design/architecture/local-caller-attestation.md`.
-<!-- /planned:external-session-identity -->
 
 ### 3) Agent session token auth
 

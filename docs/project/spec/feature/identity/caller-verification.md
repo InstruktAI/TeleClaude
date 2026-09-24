@@ -77,40 +77,6 @@ And this holds whatever the number of registered people, including zero or one
 And no role is granted to a call that names no person
 ```
 
-<!-- planned:external-session-identity -->
-#### UC-CV-ATTESTED-RESOLVES: An attested local caller resolves to the session that owns its process tree
-
-```gherkin
-Given a call over the local socket carrying no session-token and no caller-session-id
-And the kernel identifies the connected peer process instance
-And exactly one open session's root process instance occurs in that peer's verified ancestry
-When caller verification runs
-Then the attested branch resolves that session
-And the returned CallerIdentity carries the session's existing principal and role
-And the terminal-email branch is not taken
-```
-
-#### UC-CV-ATTESTED-UNPROVEN: An attested caller owning no session is refused, never degraded
-
-```gherkin
-Given a call over the local socket carrying no session-token and no caller-session-id
-And no open session's root process instance occurs in the peer's verified ancestry
-When caller verification runs on a session-scoped operation
-Then the call is rejected as unauthenticated
-And no machine-global last-login identity is returned in place of a session identity
-```
-
-#### UC-CV-ATTESTED-NESTED: A caller inside nested enrolled sessions resolves to the narrowest one
-
-```gherkin
-Given a call over the local socket whose peer ancestry contains the enrolled roots of two open sessions
-And one of those roots is a descendant of the other
-When caller verification runs
-Then the attested branch resolves the session whose root is nearest the caller
-And the enclosing session's identity is not returned for that caller
-```
-
-<!-- /planned:external-session-identity -->
 
 #### UC-CV-DAEMON-SELF: The daemon's own calls resolve to its system principal, never to a person
 

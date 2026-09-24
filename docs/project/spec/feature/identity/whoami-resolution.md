@@ -14,30 +14,6 @@ visibility: 'public'
 
 `telec auth whoami` is the operator-facing question "who does the system think I am?". Inside a session and at a terminal alike, the CLI queries the identity context's whoami capability and prints what caller verification resolved for the identity signals it sends. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role its session resolves to, whether it presents a session token or its session id, and never reads the terminal login; a document that is present but unusable is reported and nothing is asked. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path; the CLI resolves no Role itself. The whoami capability is gated by caller verification, so every invocation exercises the full caller-verification path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
 
-<!-- planned:external-session-identity -->
-### Attested self-identification
-
-#### UC-WHO-ATTESTED: A tokenless caller in an externally hosted session is told which session it is
-
-```gherkin
-Given a process inside an agent session the daemon did not launch, holding no session token
-And that session's root process instance occurs in the caller's verified ancestry
-When the operator runs `telec auth whoami`
-Then the CLI queries the identity context over the local transport rather than reading the TTY
-And the answer names the session the attested branch resolved, with its Principal and Role
-And the per-TTY login identity is not printed as that session's identity
-```
-
-#### UC-WHO-UNATTESTED: A caller whose session cannot be proven gets the terminal answer, not a session
-
-```gherkin
-Given a tokenless caller for whom the attested branch resolves no session
-When the operator runs `telec auth whoami`
-Then the CLI falls through to the per-TTY auth document
-And the answer identifies a human and claims no session
-```
-
-<!-- /planned:external-session-identity -->
 
 ## Canonical fields
 

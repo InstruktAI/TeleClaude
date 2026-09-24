@@ -20,28 +20,13 @@ TeleClaudeNext.
   `teleclaude/session_identity.py`, `teleclaude/api/auth.py`, and
   `teleclaude/cli/telec/auth.py`.
 
-<!-- planned:external-session-identity -->
-- **Cross-cutting design:** `docs/project/design/architecture/local-caller-attestation.md`
-  carries the transport-boundary and establishment design for callers without a
-  TeleClaude pane.
-<!-- /planned:external-session-identity -->
 - **Maintenance stance:** see `project/spec/domain/glossary`. New tenancy, RBAC, and secrets
   architecture belongs to TeleClaudeNext.
 
 ### Ownership boundary
 
-<!-- planned-change:external-session-identity -->
 - **Owns:** principal resolution, authentication evidence, and the identity
   facts authorization decisions consume.
-<!-- change:external-session-identity -->
-- **Owns:** principal resolution, authentication evidence, the interpretation
-  of the attested-caller signal that authenticates a caller with no pane on
-  TeleClaude's own tmux server, the resolution precedence that signal joins, the
-  refusal semantics when no session is proven, and the identity facts
-  authorization decisions consume. Capturing the kernel evidence belongs to
-  integration and associating it with a session belongs to agent_runtime;
-  identity consumes both through their published contracts.
-<!-- /planned-change:external-session-identity -->
 - **Also owns:** organizational relationship resolution — what a person's
   company membership, company role, and project assignment mean, and what
   resolving them reports. The declarations themselves are config's; identity

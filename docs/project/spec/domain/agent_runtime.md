@@ -31,16 +31,8 @@ TeleClaudeNext repository.
 
 ### Ownership boundary
 
-<!-- planned-change:external-session-identity -->
 - **Owns:** live-session acceptance and input execution, supervised agent
   processes, runtime status, and session lifecycle transitions.
-<!-- change:external-session-identity -->
-- **Owns:** live-session acceptance and input execution, supervised agent
-  processes, runtime status, session lifecycle transitions, and the root
-  process binding held for a session whose agent process this runtime did not
-  launch — the immutable process instance that defines which process tree the
-  session owns.
-<!-- /planned-change:external-session-identity -->
 - **Does not own:** provider transport or presentation, caller-identity policy,
   todo workflow, or durable historical projections.
 - **Owns (voice focus):** the association between one identified human and the
@@ -72,20 +64,8 @@ TeleClaudeNext repository.
   snapshot carries the generated summary and an output digest, neither of which
   is the spoken contract, so this is the contract a remote listener reads. It is
   additive: existing queries and payloads are unchanged.
-<!-- planned-change:external-session-identity -->
 - **Published contracts:** session commands, queries, and lifecycle signals
   exposed to integration, workflow, identity, and session mirrors.
-<!-- change:external-session-identity -->
-- **Published contracts:** session commands, queries, and lifecycle signals
-  exposed to integration, workflow, identity, and session mirrors. Two serve
-  caller attestation: a command binding a session's root to the process instance
-  the daemon attested as the enrolling peer, and a query returning the open
-  sessions whose root occurs in a supplied verified ancestry, each with the depth
-  at which it was found. The query reports what it found and chooses nothing;
-  which of them authorizes the caller is the identity context's rule. The identity context
-  reaches both only through these contracts, never by reading hook internals,
-  the native-session map, or session storage directly.
-<!-- /planned-change:external-session-identity -->
 - **Also owns:** resolving a canonical command name to one corpus document
   at dispatch — a domain-qualified name directly, a bare token to its single
   global match, ambiguity refused by name — and the session record, title, and

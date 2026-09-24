@@ -5,19 +5,6 @@ visibility: 'public'
 
 # Agent CLI Hook Reception — Spec
 
-<!-- planned:external-session-identity -->
-A hook never establishes a session's root process binding. On the headless route
-the receiver may reach the daemon over the local socket, and the daemon then
-attests the receiver's process instance and resolves the session by membership in
-an enrolled tree. That resolution authenticates the delivery; it creates,
-selects, widens and replaces nothing. A receiver whose ancestry contains no
-enrolled root is not refused as a hook — it falls through to the durable outbox
-write, and its session remains observable and unauthenticable.
-
-Reception behavior is otherwise unchanged: the receiver resolves the TeleClaude
-session id as it does today on the fallback path, and managed and
-managed-descendant routes are unaffected.
-<!-- /planned:external-session-identity -->
 
 ## What it is
 
@@ -76,11 +63,7 @@ And the project has memory snippets and a configured human-in-the-loop person
 When Claude starts a new session and invokes the receiver for SessionStart
 Then the Claude adapter parses the hook payload
 And the receiver maps the event to the canonical agent-session-start hook event
-<!-- planned-change:external-session-identity -->
 And the receiver resolves the TeleClaude session id, minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
-<!-- change:external-session-identity -->
-And the TeleClaude session id is resolved by the daemon when the delivery is attested to an enrolled root, and by the receiver otherwise — minting one only when the invocation has neither a managed identity marker nor attachment to a pane on TeleClaude's own tmux server
-<!-- /planned-change:external-session-identity -->
 And the receiver fetches memory context and the person header for the project
 And emits adapter-formatted additional context (plain text for Claude)
 And persists the native session id and native log file as a native-metadata-update outbox entry

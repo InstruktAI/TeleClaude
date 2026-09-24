@@ -48,40 +48,6 @@ And a session-started event is published with cluster visibility
 And the dispatcher continues normal dispatch for the now-existing session
 ```
 
-<!-- planned:external-session-identity -->
-#### UC-HB9: A hook from an enrolled tree is attributed by membership, not by claim
-
-```gherkin
-Given an agent CLI whose launch enrolled a root process instance for its session
-And a hook receiver running as a descendant of that root reaches the daemon over the local socket
-When the daemon attests the receiver and verifies its ancestry
-Then the hook is attributed to the session that root is bound to
-And the native session id in the payload selects nothing
-And the hook establishes, widens and replaces no root binding
-```
-
-#### UC-HB10: A hook from an unenrolled tree still makes the session observable
-
-```gherkin
-Given an agent CLI invoked without passing any enrollment point
-When its agent-session-start hook is bootstrapped
-Then the session record is created exactly as it is today
-And it carries no root process binding
-And it is fully observable through the existing hook route
-And every session-scoped call from that process tree is refused
-And no machine-global login identity is presented as that session's identity
-```
-
-#### UC-HB11: A hook never repairs a missing binding
-
-```gherkin
-Given a headless session that carries no root process binding
-When any number of further hooks arrive for that session over attested connections
-Then no root binding is established from them
-And the session stays observable and unauthenticable until an enrollment binds a root
-```
-
-<!-- /planned:external-session-identity -->
 #### UC-HB2: Non-session-start event for unknown session is dropped
 
 ```gherkin

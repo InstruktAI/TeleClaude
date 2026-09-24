@@ -5,14 +5,6 @@ visibility: 'public'
 
 # Hook Event Outbox — Spec
 
-<!-- planned:external-session-identity -->
-A hook event the daemon accepted over an attested connection is attributed to
-the session whose enrolled root occurs in the connecting process's ancestry, and
-is enqueued under that session. The attribution never mints a session and never
-establishes, widens, or replaces a root. Durability, coalescing, retry, and
-ordering for every entry are unchanged: attestation decides which session an
-entry is written under, never whether the entry survives.
-<!-- /planned:external-session-identity -->
 
 ## What it is
 

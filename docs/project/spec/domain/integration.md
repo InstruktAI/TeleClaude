@@ -46,18 +46,8 @@ implementation remain the current appliance contract.
   session's spoken reply says, how audio is rendered, or whether a
   transcription becomes agent input. Integration hands a closed utterance to
   the established voice-input contract and plays what it is given.
-<!-- planned-change:external-session-identity -->
 - **Published contracts:** normalized inbound commands and events, outbound
   delivery requests and results, and provider-neutral transport types.
-<!-- change:external-session-identity -->
-- **Published contracts:** normalized inbound commands and events, outbound
-  delivery requests and results, provider-neutral transport types, and the
-  attested-caller signal — the kernel-held peer identity of the process on the
-  other end of a local connection, normalized at connection-accept and supplied
-  to identity. Integration carries that evidence and never interprets it: which
-  session owns the process is agent_runtime's answer, and what the caller is
-  authorized to do is identity's.
-<!-- /planned-change:external-session-identity -->
 
 <!-- planned:procedure-event-activation -->
 - **Owns (procedure subscription routing):** stamping a verified event, at the
