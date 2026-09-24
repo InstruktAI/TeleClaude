@@ -653,7 +653,7 @@ telec bugs report "The session list doesn't refresh after killing a session"
 
 **What to say:**
 
-> "You describe a bug in plain language. The system scaffolds it, dispatches a fixer agent, and tracks it to resolution. It's like filing a ticket that fixes itself."
+> "You describe a bug in plain language. The system scaffolds it, diagnoses it, and carries the fix through the same build, review, and integrate lanes as any other work — tracked to resolution without anyone driving it. It's like filing a ticket that fixes itself."
 
 **Demo interaction:**
 
