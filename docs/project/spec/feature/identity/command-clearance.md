@@ -243,6 +243,70 @@ When the clearance gate runs
 Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
 ```
 
+<!-- planned:cli-authorization-config-via-daemon -->
+### Configuration operations the CLI executes locally
+
+Environment listing and setting, configuration validation, and the notification
+toggle run in the CLI's own process. Before touching configuration, the CLI asks the
+daemon for the verb's clearance; the daemon verifies the caller and answers with the
+same band evaluation the gate applies, and records the decision. A refusal ends the
+operation before it reads or writes anything. An unidentified caller is refused with
+the login door. Validation alone proceeds when no daemon is listening, because it
+diagnoses the configuration that keeps a daemon from starting
+(`project/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7); it records
+that no authority was available. The other operations fail while no daemon is
+listening.
+
+#### UC-CLO1: A caller inside the band runs the operation
+
+```
+Given an agent session whose system role is in the band of `telec config env list`
+When the session lists the environment
+Then the daemon answers that the caller is cleared and records the allowed decision
+And the CLI produces the environment listing
+```
+
+#### UC-CLO2: A caller outside the band is refused before any read
+
+```
+Given a worker agent session
+And the band of `telec config env list` does not contain `worker`
+When the session lists the environment
+Then the daemon refuses the caller naming the role and verb and records the refusal
+And the command exits non-zero without listing any variable
+```
+
+#### UC-CLO3: An unidentified caller changes nothing
+
+```
+Given more than one person is registered
+And a process presents no identity signal the daemon can resolve
+When it sets an environment value
+Then the daemon refuses the caller with the login door and records the refusal
+And the environment file is unchanged
+```
+
+#### UC-CLO4: Validation stays available without a daemon
+
+```
+Given no daemon is listening
+When a caller invokes configuration validation
+Then validation runs and reports every configured subject
+And the CLI records that no authority was available to decide it
+When a daemon is running and refuses the same caller
+Then validation stops without reporting
+```
+
+#### UC-CLO5: Environment operations need a running daemon
+
+```
+Given no daemon is listening
+When a caller lists or sets the environment
+Then the command exits non-zero naming the daemon as unavailable
+And no variable is listed or written
+```
+<!-- /planned:cli-authorization-config-via-daemon -->
+
 ## Known caveats
 
 - The authorization-failure message echoes the caller's role back to the wire: `"role '<role>' is not permitted to call <tool>"`. This is helpful for diagnostics but exposes the role taxonomy to any unauthenticated probe.
@@ -251,6 +315,9 @@ Then the gate rejects the caller with a not-permitted authorization failure nami
 - The `principal_role` fallback fires only when `human_role is None and identity.principal is not None`. A token-auth caller carrying both a `human_role` and a `principal_role` uses the human one; the two should agree (both are stamped from the same session at issuance) but the code does not enforce equality.
 - Unknown verb paths return False. A typo in a binding's verb argument silently locks out every caller — there is no startup-time check that every verb identifier resolves to a real entry in the CLI surface.
 - The verb resolver normalizes `"telec sessions start"`, `"sessions.start"`, and `"sessions start"` to the same path. Mixed forms across operation bindings do not cause divergence, but the dot form is undocumented.
+<!-- planned:cli-authorization-config-via-daemon -->
+- Validation performed while no daemon is listening is authorized by the operating-system account that runs it, the account that can start the daemon. The installer validates the machine configuration it is about to start the daemon with through the config context directly, outside the command surface, so installation and the maintenance that reruns it depend on no caller identity.
+<!-- /planned:cli-authorization-config-via-daemon -->
 
 <!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 

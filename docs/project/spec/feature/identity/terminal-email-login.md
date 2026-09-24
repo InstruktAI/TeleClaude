@@ -49,12 +49,21 @@ Then every per-TTY document whose device node no longer exists is removed
 And every per-TTY document whose device node still exists is left untouched, including documents belonging to another person
 ```
 
+<!-- planned-change:cli-authorization-config-via-daemon -->
 ```
 Given a person whose email is listed under `people` in the global config
 When `telec auth login` resolves their role
 Then the login banner appends the matched role in parentheses
 And a missing or unmatched email still completes login but prints no role suffix
 ```
+<!-- change:cli-authorization-config-via-daemon -->
+```
+Given a person whose email is listed under `people` in the global config
+When `telec auth login` completes for that email
+Then the login banner appends, in parentheses, the role the daemon resolves for the new login
+And an unmatched email, a refused caller, or an unreachable daemon still completes login but prints no role suffix
+```
+<!-- /planned-change:cli-authorization-config-via-daemon -->
 
 ```
 Given an input lacking an "@" sign or containing only whitespace
@@ -168,7 +177,11 @@ And the CLI prints "Cleared login for TTY <tty>." (or a "not found" notice)
 
 ### Cross-context references
 
+<!-- planned-change:cli-authorization-config-via-daemon -->
 - Consumes `config.people` (transitively, via the role lookup) to display the matched role at login time. Identity resolution itself happens inside the identity context from the terminal-email signal — see `feature/identity/principal-resolution` and `feature/identity/caller-verification`.
+<!-- change:cli-authorization-config-via-daemon -->
+- Displays the role the identity context's caller answer (`feature/identity/whoami-resolution`) returns for the new login; login itself reads no people configuration. Identity resolution happens inside the identity context from the terminal-email signal — see `feature/identity/principal-resolution` and `feature/identity/caller-verification`.
+<!-- /planned-change:cli-authorization-config-via-daemon -->
 - Writes operator-local filesystem state under the session-auth directory. No identity-context state is touched by login itself.
 - Coordinates with the TUI launcher: a successful login is the precondition for `feature/identity/tui-multi-user-login-gate` when more than one person is configured.
 - The TUI launcher carries the identity it resolved in the outer terminal into the `tc_tui` tmux session alongside the TUI runtime marker, and the reader honours that carried identity only where the marker is present. The marker reaches that session and no other: it is absent from the environment filters that build agent sessions.

@@ -23,10 +23,15 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
 5. Per-role exclusion sets must be distinct: member, contributor, and newcomer have meaningfully different access levels.
 6. Tasker (task-preparer/task-runner sessions) may dispatch worker-lane sessions via `sessions run`, unlike Worker, but — like Worker — cannot drive the todo state machine (`todo prepare`/`todo work`) or dispatch an orchestrator/integrator session.
 <!-- planned:cli-authorization-config-via-daemon -->
-7. The daemon enforces this matrix for every command. A command reaches the data or
-   effect it governs only through the daemon API, which resolves the caller from the
-   identity it carries; the CLI makes no allow/deny decision and resolves no role. A
-   caller the daemon cannot identify receives the unauthorized allow-list.
+7. The daemon decides this matrix for the commands the CLI serves
+   (`project/spec/identity-and-auth` §6). A command reaches the data or effect it
+   governs through the daemon API, which resolves the caller from the identity it
+   carries, or, for a configuration operation the CLI executes in its own process,
+   only on the daemon's allow (`project/spec/feature/identity/command-clearance`).
+   The CLI makes no allow/deny decision and resolves no role. A caller the daemon
+   cannot identify receives the unauthorized allow-list. `telec config wizard` opens
+   the TUI's configuration editor, which runs in the operator's own process and is
+   listed under Still Open 3.
 <!-- /planned:cli-authorization-config-via-daemon -->
 
 ## Primary flows
@@ -282,13 +287,19 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec config patch`          | Members, contributors, newcomers, customers |
 <!-- change:align-config-cli-ownership -->
 <!-- /planned-change:align-config-cli-ownership -->
+<!-- planned-change:cli-authorization-config-via-daemon -->
 | `telec config validate`       | Customers                                   |
+<!-- change:cli-authorization-config-via-daemon -->
+<!-- /planned-change:cli-authorization-config-via-daemon -->
 <!-- planned-change:align-config-cli-ownership -->
 | `telec config people *`       | Members, contributors, newcomers, customers |
 <!-- change:align-config-cli-ownership -->
 <!-- /planned-change:align-config-cli-ownership -->
+<!-- planned-change:cli-authorization-config-via-daemon -->
 | `telec config env *`          | Members, contributors, newcomers, customers |
 | `telec config notify`         | Contributors, newcomers, customers          |
+<!-- change:cli-authorization-config-via-daemon -->
+<!-- /planned-change:cli-authorization-config-via-daemon -->
 
 ### 4. `MEMBER_EXCLUDED_TOOLS` applied too broadly
 

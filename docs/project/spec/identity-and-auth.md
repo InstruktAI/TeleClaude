@@ -222,11 +222,19 @@ Role clearance is daemon-side only (`verify_caller` + `require_clearance`):
 - insufficient role returns 403.
 <!-- planned:cli-authorization-config-via-daemon -->
 - A command that serves governed or person-scoped data, or whose outcome depends on
-  who is calling, is served by the daemon. The CLI reads no such data directly and
-  resolves no role, person, or author itself; it sends its identity signals and
-  renders the daemon's answer. This covers documentation retrieval, configuration
-  and people reads, transcript search, todo and bug reads, and the author a commit,
-  bug report, or content dump is attributed to.
+  who is calling, is decided by the daemon for the caller it verifies. The daemon
+  serves the data itself, or, for a configuration operation the CLI executes in its
+  own process, answers whether the verified caller may run it, and the CLI acts only
+  on an allow (`project/spec/feature/identity/command-clearance`,
+  `project/spec/feature/identity/configuration-target-clearance`). Such an operation
+  proceeds without an answer only where its own contract keeps it repairable while
+  no daemon can run, and it records that no authority was available.
+- The CLI resolves no role, person, or author itself. It composes the identity
+  signals it sends — the session identity document, and a terminal login under §4
+  and §5 — and renders the daemon's answer. This covers documentation retrieval,
+  configuration and people reads, transcript search, todo and bug reads, the role a
+  login reports, and the author a commit, bug report, or content dump is attributed
+  to.
 - The session identity document and a terminal login are signals the CLI sends,
   never inputs it authorizes against.
 - Commands whose output depends on no caller — the version, the event schema
@@ -264,3 +272,9 @@ The protected edge translates `CallerIdentity` into a typed service invocation c
 
 - Headless/native hook identity follows `session-identity-truth`; it is distinct from terminal login.
 - TUI login bridge is read-only runtime context, not a replacement for `telec auth login`.
+<!-- planned:cli-authorization-config-via-daemon -->
+- The TUI's configuration editor, which `telec config wizard` also opens, reads and
+  writes configuration in the TUI's own process. It is the setup surface that runs
+  before any daemon exists, and it acts for the operator whose terminal launched the
+  TUI (§4); the daemon makes no decision about it.
+<!-- /planned:cli-authorization-config-via-daemon -->
