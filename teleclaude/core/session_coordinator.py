@@ -11,11 +11,13 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ROLE_ORCHESTRATOR, JobRole, SlashCommand
 from teleclaude.core.db import Db, get_db
+from teleclaude.core.session_bootstrap import reconcile_session_identity_document
 from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_title import compose_command_session_title
 
 _COORDINATOR_COMMAND = SlashCommand.NEXT_COORDINATE.value
+_IDENTITY_RECONCILIATION_ERROR = "Adopted coordinator identity document could not be reconciled"
 ADOPTION_REASON_NO_LIVE_HOLDER = "no_live_holder"
 ADOPTION_REASON_CALLER_ALREADY_HOLDER = "caller_already_holder"
 ADOPTION_REASON_LIVE_HOLDER = "live_holder"
@@ -119,12 +121,17 @@ async def adopt_coordinator(
 
         reason = ADOPTION_REASON_CALLER_ALREADY_HOLDER if holder is not None else ADOPTION_REASON_NO_LIVE_HOLDER
 
-        # Adoption is a door too: a standing role carries no commanding
-        # session no matter which door created it, so the former spawner's
-        # link and its listener are cleared together, before the link is lost.
+        # Snapshot the current contract so a failed identity-file reconciliation
+        # can restore the durable session before the listener is retired.
         former_spawner = caller.initiator_session_id
-        if former_spawner:
-            await unregister_listener(caller.session_id, former_spawner)
+        previous_title = caller.title
+        previous_command = caller.command
+        previous_system_role = caller.system_role
+        previous_job = caller.job
+        previous_initiator_computer = caller.initiator_computer
+        previous_human_email = caller.human_email
+        previous_human_role = caller.human_role
+        previous_principal = caller.principal
         await runtime_db.update_session(
             caller.session_id,
             title=compose_command_session_title(_COORDINATOR_COMMAND, ""),
@@ -133,7 +140,33 @@ async def adopt_coordinator(
             job=JobRole.COORDINATOR.value,
             initiator_session_id=None,
             initiator_computer=None,
+            human_email=None,
+            human_role=None,
+            principal=None,
         )
+        identity_reconciled = False
+        try:
+            if not await reconcile_session_identity_document(caller.session_id):
+                raise RuntimeError(_IDENTITY_RECONCILIATION_ERROR)
+            identity_reconciled = True
+            if former_spawner:
+                await unregister_listener(caller.session_id, former_spawner)
+        except Exception as exc:
+            await runtime_db.update_session(
+                caller.session_id,
+                title=previous_title,
+                command=previous_command,
+                system_role=previous_system_role,
+                job=previous_job,
+                initiator_session_id=former_spawner,
+                initiator_computer=previous_initiator_computer,
+                human_email=previous_human_email,
+                human_role=previous_human_role,
+                principal=previous_principal,
+            )
+            if identity_reconciled and not await reconcile_session_identity_document(caller.session_id):
+                raise RuntimeError(_IDENTITY_RECONCILIATION_ERROR) from exc
+            raise
         logger.info(
             "coordinator_adopted",
             outcome=CoordinatorAdoptionStatus.ADOPTED.value,

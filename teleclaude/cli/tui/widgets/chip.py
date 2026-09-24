@@ -15,8 +15,12 @@ from rich.style import Style
 from teleclaude.cli.tui.theme import get_neutral_color, get_selection_fg_hex, is_dark_mode
 from teleclaude.config.schema import PersonChipColor
 from teleclaude.core.identity import derive_initials, get_identity_resolver
+from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX
 
 _HUMAN_PRINCIPAL_PREFIX = "human:"
+_SYSTEM_CHIP_INITIALS = "S"
+_BLACK_HEX = "#000000"
+_WHITE_HEX = "#ffffff"
 
 
 def principal_to_email(principal: str | None) -> str | None:
@@ -52,10 +56,30 @@ class PersonChip:
         """
         if selected or inverted:
             text = get_selection_fg_hex()
-            neutral_bg = "#000000" if text == "#ffffff" else "#ffffff"
+            neutral_bg = _BLACK_HEX if text == _WHITE_HEX else _WHITE_HEX
             background = self.background if self.custom_background else neutral_bg
             return Style(color=text, bgcolor=background, bold=selected)
         return Style(color=self.text, bgcolor=self.background)
+
+
+@dataclass(frozen=True)
+class SystemChip:
+    """The system-root owner chip, which does not select a human filter."""
+
+    initials: str = _SYSTEM_CHIP_INITIALS
+    person_email: None = None
+
+    def style(self, *, selected: bool = False, inverted: bool = False) -> Style:
+        """Use neutral owner colors while preserving row selection contrast."""
+        background, text, _custom_background = _chip_colors(None)
+        if selected or inverted:
+            text = get_selection_fg_hex()
+            background = _BLACK_HEX if text == _WHITE_HEX else _WHITE_HEX
+            return Style(color=text, bgcolor=background, bold=selected)
+        return Style(color=text, bgcolor=background)
+
+
+type OwnerChip = PersonChip | SystemChip
 
 
 def _color_cell(color: PersonChipColor | None, attr: str, *, dark: bool) -> str | None:
@@ -121,3 +145,14 @@ def resolve_person_chip(principal: str | None) -> PersonChip | None:
         text=text,
         custom_background=custom_background,
     )
+
+
+def resolve_owner_chip(lineage_root: str | None) -> OwnerChip | None:
+    """Resolve a lineage root to its person or system owner chip."""
+    if not lineage_root or not ownership_surface_enabled():
+        return None
+    if lineage_root.startswith(SYSTEM_ROOT_PREFIX):
+        return SystemChip()
+    if lineage_root.startswith(HUMAN_ROOT_PREFIX):
+        return resolve_person_chip(lineage_root)
+    return None

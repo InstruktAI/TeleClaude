@@ -10,7 +10,11 @@ from teleclaude.core.session_lifecycle import readiness_projection
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.core.shell_identity import optional_shell_safe_identifier
 from teleclaude.helpers.agent_types import ThinkingMode
-from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnapshotTimestampFields
+from teleclaude.session_fields import (
+    SESSION_PRINCIPAL_FIELD,
+    SessionSnapshotIdentityFields,
+    SessionSnapshotTimestampFields,
+)
 from teleclaude.types import SystemStats
 
 # re-export for spec test access (tests import MessageMetadata from _snapshot)
@@ -137,6 +141,7 @@ class SessionSnapshot(
             "computer": self.computer,
             "human_email": self.human_email,
             "human_role": self.human_role,
+            SESSION_PRINCIPAL_FIELD: self.principal,
             "visibility": self.visibility,
             "system_role": self.system_role,
             "job": self.job,
@@ -173,6 +178,15 @@ class SessionSnapshot(
             last_agent_idle_at=session.last_agent_idle_at,
             now=now,
         )
+        from teleclaude.core.db import (  # noqa: PLC0415 - core.db imports core.models, so resolve only after model initialization
+            SessionIdentityError,
+            resolve_session_principal,
+        )
+
+        try:
+            principal, _role = resolve_session_principal(session)
+        except SessionIdentityError:
+            principal = None
         return cls(
             session_id=session.session_id,
             last_input_origin=session.last_input_origin,
@@ -206,6 +220,7 @@ class SessionSnapshot(
             computer=computer,
             human_email=session.human_email,
             human_role=session.human_role,
+            principal=principal,
             visibility=getattr(session, "visibility", None) or "private",
             system_role=session.system_role,
             job=session.job,
@@ -266,6 +281,7 @@ class SessionSnapshot(
             computer=str(data.get("computer")) if data.get("computer") else None,
             human_email=str(data.get("human_email")) if data.get("human_email") else None,
             human_role=str(data.get("human_role")) if data.get("human_role") else None,
+            principal=(str(data.get(SESSION_PRINCIPAL_FIELD)) if data.get(SESSION_PRINCIPAL_FIELD) else None),
             visibility=str(data.get("visibility")) if data.get("visibility") else "private",
             system_role=str(data.get("system_role")) if data.get("system_role") else None,
             job=str(data.get("job")) if data.get("job") else None,

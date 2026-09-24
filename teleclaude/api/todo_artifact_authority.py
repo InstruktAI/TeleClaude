@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 
 from teleclaude.api.auth import CallerIdentity
-from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES, is_standing_role
+from teleclaude.constants import PREPARE_AUTHOR_JOB_ROLES
 from teleclaude.core.db import db as runtime_db
 from teleclaude.core.next_machine.runtime.sessions import is_live_session_id
 from teleclaude.core.session_utils import session_in_claiming_group
-from teleclaude.types.creation_record import Lineage
+from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX, Lineage
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -41,28 +41,24 @@ def resolved_write_principal(identity: CallerIdentity) -> str | None:
 def resolve_creation_lineage(identity: CallerIdentity | None) -> Lineage:
     """Resolve the create-time Creation Record lineage chain, or fail loudly.
 
-    The chain-root authority is a human principal or email whenever one
-    resolves; the acting agent session, when present alongside a human root,
-    rides additively in the same value. A root with no human is legitimate
-    only for a standing-role session — every other unresolvable identity is a
-    contract violation, refused before any roadmap row, state, artifact, or
-    event is written (see project/spec/domain/workflow, UC-WTC23).
+    A carried human or system principal is the chain root for every caller;
+    its acting session, when present, rides additively in the same value. Only
+    a caller without a principal may derive a human root from its email. Every
+    other unresolvable identity is refused before any roadmap row, state,
+    artifact, or event is written (see project/spec/domain/workflow, UC-WTC23).
     """
     if identity is not None:
-        human_root: str | None = None
-        if identity.principal and identity.principal.startswith("human:"):
-            human_root = identity.principal
+        if identity.principal:
+            if identity.principal.startswith((HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREFIX)):
+                return Lineage.create(
+                    root=identity.principal,
+                    acting_session=identity.session_id or None,
+                )
         elif identity.email:
-            human_root = f"human:{identity.email}"
-        if human_root is not None:
-            return Lineage.create(root=human_root, acting_session=identity.session_id or None)
-
-        if (
-            identity.principal
-            and identity.principal.startswith("system:")
-            and is_standing_role(identity.system_role, identity.job)
-        ):
-            return Lineage.create(root=identity.principal)
+            return Lineage.create(
+                root=f"{HUMAN_ROOT_PREFIX}{identity.email}",
+                acting_session=identity.session_id or None,
+            )
 
     raise HTTPException(
         status_code=403,

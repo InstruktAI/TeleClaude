@@ -100,7 +100,7 @@ async def _read_todo_owner_principal(project_path: str, slug: str) -> str | None
     ``None`` only when a successful read proves the todo has no recorded
     lineage. Read failures are NOT swallowed: lineage is a required invariant
     for a slug-bound runner session, so a failed lookup must surface and stop
-    session creation rather than silently degrade to ``system:<session_id>``.
+    session creation rather than silently degrade to the daemon identity.
     The caller establishes the human root only from a proven owner; an
     unreadable owner is an error, never a license to fall back.
     """
@@ -357,7 +357,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     cmd_system_role = cmd.system_role
     cmd_job = cmd.job
     # A standing role carries no commanding session, whatever door created it,
-    # and no human identity — it resolves to system:<session_id> and bootstrap
+    # and no human identity — it resolves to the daemon principal and bootstrap
     # mints its own credential.
     if is_standing_role(cmd_system_role, cmd_job):
         if initiator_session_id:
@@ -446,7 +446,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     # Runner-dispatched lifecycle sessions have no human caller and may inherit
     # the daemon's system principal. Establish the chain-root human from the
     # todo's persisted owner so the resolved principal is the owning human, not
-    # system:<session>. Audit-only: system_role (the authorization band) is left
+    # the daemon principal. Audit-only: system_role (the authorization band) is left
     # untouched, and a manual start (human_email already set) is never overridden.
     if not human_email and working_slug:
         owner_principal = await _read_todo_owner_principal(project_path, working_slug)

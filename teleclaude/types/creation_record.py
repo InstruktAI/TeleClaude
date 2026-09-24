@@ -12,8 +12,8 @@ from typing import NamedTuple
 
 _LINEAGE_SEPARATOR = ">"
 _LINEAGE_SESSION_PREFIX = "session:"
-_HUMAN_ROOT_PREFIX = "human:"
-_SYSTEM_ROOT_PREFIX = "system:"
+HUMAN_ROOT_PREFIX = "human:"
+SYSTEM_ROOT_PREFIX = "system:"
 
 
 class EntryPoint(StrEnum):
@@ -29,8 +29,8 @@ class Lineage(NamedTuple):
     """The creation chain: a chain-root authority plus an optional acting agent session.
 
     Encodes to ``<root>`` or ``<root>>session:<session_id>``. ``root`` is
-    ``human:<email>`` for every human-rooted chain, or ``system:<session_id>``
-    for a job-runner filing — the sole legitimate no-human root.
+    ``human:<email>`` for every human-rooted chain, or the platform principal
+    for a no-human filing.
     """
 
     root: str
@@ -71,6 +71,6 @@ class Lineage(NamedTuple):
         empty root or one missing the ``human:``/``system:`` prefix, so a
         malformed chain can never be freshly persisted.
         """
-        if not root or not (root.startswith(_HUMAN_ROOT_PREFIX) or root.startswith(_SYSTEM_ROOT_PREFIX)):
+        if not root or not (root.startswith(HUMAN_ROOT_PREFIX) or root.startswith(SYSTEM_ROOT_PREFIX)):
             raise ValueError(f"lineage root must be 'human:<email>' or 'system:<id>', got {root!r}")
         return cls(root=root, acting_session=acting_session or None)
