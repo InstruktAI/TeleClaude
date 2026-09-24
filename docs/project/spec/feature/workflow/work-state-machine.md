@@ -361,6 +361,7 @@ And because of that merge the machine dispatches no reviewer, sends a live revie
 And a worktree holding uncommitted edits stays exactly as it is: work entry defers the merge instead of committing those edits on the builder's behalf
 And once a finalize-ready claim is recorded, work entry merges nothing further into the worktree, so the stamped SHA and the published branch remain the integration candidate
 And a merge that fails with conflicts is the only merge outcome the machine reports to the orchestrator, which routes recovery to the builder
+And when the machine cannot determine whether the todo's own change is unchanged, it reports that to the orchestrator and neither consumes nor revokes any verdict, claim, or commit
 ```
 <!-- /planned:successful-merge-preserves-worktree-work -->
 
