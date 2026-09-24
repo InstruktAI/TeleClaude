@@ -81,7 +81,6 @@ def scaffold_company(name: str, slug: str | None = None, *, companies_root: Path
             config_path,
             ConfigKind.COMPANY,
             config.model_dump(mode="json", exclude_defaults=True),
-            schema_root=companies_root.parent,
         )
 
     if not _meta_path(company_dir).exists():

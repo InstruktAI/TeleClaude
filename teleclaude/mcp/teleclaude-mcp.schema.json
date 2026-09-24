@@ -8,7 +8,7 @@
   "properties": {
     "$schema": {
       "type": "string",
-      "description": "Portable relative reference to schemas/teleclaude-mcp.schema.json."
+      "description": "Portable relative reference to the published MCP registry schema."
     },
     "servers": {
       "type": "object",

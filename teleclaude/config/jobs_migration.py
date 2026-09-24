@@ -21,13 +21,13 @@ _LEGACY_FIELDS: Final = frozenset(
 _UTF8: Final = "utf-8"
 
 
-def migrate_jobs_config(path: Path, kind: ConfigKind, *, schema_root: Path) -> None:
+def migrate_jobs_config(path: Path, kind: ConfigKind) -> None:
     """Convert name-keyed jobs and scalar candidates before strict validation."""
     with file_transaction(path) as transaction:
         document = _load_document(transaction.read_text(encoding=_UTF8))
         if document is None or not _migrate_document(document):
             return
-        rendered = render_declared_config(path, kind, document, schema_root=schema_root)
+        rendered = render_declared_config(kind, document)
         transaction.replace_text(rendered, encoding=_UTF8)
 
 

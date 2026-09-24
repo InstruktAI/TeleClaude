@@ -12,6 +12,12 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import resolve_capabilities
 from teleclaude.checkpoint_model import load_checkpoint_model
+from teleclaude.core.reconciliation.config_schemas import (
+    SchemaCopyDisposition,
+    SchemaLinkDisposition,
+    converge_project_schema_link,
+    remove_stray_schema_copy,
+)
 from teleclaude.git import GitCommandError
 from teleclaude.project_manifest import load_registered_roots
 from teleclaude.project_setup.git_filters import GitFilterDisposition, ensure_git_filters
@@ -27,7 +33,7 @@ _ROOT_OPERATIONAL_FAILURE_EVENT = "plumbing_convergence_root_operational_failure
 _ROOT_ARGUMENT_REQUIRED = "A project root is required."
 _HOOK_RESULT = "{hook_name}: {outcome}"
 _FILTER_RESULT = "filter-driver: {disposition}"
-_ROOT_RESULT = "{project_root}: {outcome}"
+_ROOT_RESULT = "{project_root}: {outcome} (schema-link: {schema_link}, schema-copy: {schema_copy})"
 
 
 class PlumbingConvergenceOutcome(StrEnum):
@@ -61,6 +67,8 @@ class PlumbingConvergenceResult:
     outcome: PlumbingConvergenceOutcome
     hook_results: dict[str, HookConvergenceOutcome]
     filter_disposition: GitFilterDisposition | None
+    schema_link: SchemaLinkDisposition | None = None
+    schema_copy: SchemaCopyDisposition | None = None
 
 
 @dataclass(frozen=True)
@@ -101,6 +109,8 @@ def _record_root_result(
         outcome=result.outcome,
         hook_results=result.hook_results,
         filter_disposition=result.filter_disposition,
+        schema_link=result.schema_link,
+        schema_copy=result.schema_copy,
     )
     return result
 
@@ -134,13 +144,19 @@ def converge_plumbing(project_root: Path, *, run_id: str | None = None) -> Plumb
     try:
         filter_disposition = ensure_git_filters(project_root, enabled=capabilities.docs)
         hook_results = install_code_hooks(project_root) if _has_executable_maintenance(project_root) else {}
+        schema_link = converge_project_schema_link(project_root)
+        schema_copy = remove_stray_schema_copy(project_root)
     except (GitCommandError, OSError) as exc:
         raise PlumbingOperationalFailure from exc
     outcome = (
         PlumbingConvergenceOutcome.TEMPLATE_MISSING
         if HookConvergenceOutcome.TEMPLATE_MISSING in hook_results.values()
         else PlumbingConvergenceOutcome.CONVERGED
-        if HookConvergenceOutcome.WRITTEN in hook_results.values()
+        if (
+            HookConvergenceOutcome.WRITTEN in hook_results.values()
+            or schema_link.disposition in (SchemaLinkDisposition.CREATED, SchemaLinkDisposition.REPOINTED)
+            or schema_copy is SchemaCopyDisposition.REMOVED
+        )
         else PlumbingConvergenceOutcome.UNCHANGED
     )
     return _record_root_result(
@@ -149,6 +165,8 @@ def converge_plumbing(project_root: Path, *, run_id: str | None = None) -> Plumb
             outcome=outcome,
             hook_results=hook_results,
             filter_disposition=filter_disposition,
+            schema_link=schema_link.disposition,
+            schema_copy=schema_copy,
         ),
         run_id=run_id,
     )
@@ -206,6 +224,14 @@ def _record_run_result(result: PlumbingConvergenceRunResult) -> PlumbingConverge
         unavailable_roots=unavailable_roots,
         not_adopted_roots=not_adopted_roots,
         failed_roots=failed_roots,
+        retained_schema_copy_roots=[
+            str(item.project_root)
+            for item in result.results
+            if item.schema_copy in (SchemaCopyDisposition.RETAINED_TRACKED, SchemaCopyDisposition.RETAINED_FOREIGN)
+        ],
+        occupied_schema_link_roots=[
+            str(item.project_root) for item in result.results if item.schema_link is SchemaLinkDisposition.OCCUPIED
+        ],
     )
     return result
 
@@ -263,7 +289,14 @@ def main() -> None:
         print(_HOOK_RESULT.format(hook_name=hook_name, outcome=outcome))
     if result.filter_disposition is not None:
         print(_FILTER_RESULT.format(disposition=result.filter_disposition))
-    print(_ROOT_RESULT.format(project_root=result.project_root, outcome=result.outcome))
+    print(
+        _ROOT_RESULT.format(
+            project_root=result.project_root,
+            outcome=result.outcome,
+            schema_link=result.schema_link,
+            schema_copy=result.schema_copy,
+        ),
+    )
     if result.outcome in _FAILED_ROOT_OUTCOMES:
         raise SystemExit(1)
 

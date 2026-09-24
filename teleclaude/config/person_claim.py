@@ -133,9 +133,7 @@ def _complete_target(path: Path, slug: str) -> bool:
             if _PERSON_SLUG_FIELD in document:
                 return True
             updated_document = {**document, _PERSON_SLUG_FIELD: slug}
-            transaction.replace_text(
-                render_declared_config(path, ConfigKind.PERSON, updated_document, schema_root=path.parent.parent.parent)
-            )
+            transaction.replace_text(render_declared_config(ConfigKind.PERSON, updated_document))
             return True
     except OSError:
         return False

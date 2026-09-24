@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import shutil
@@ -46,9 +45,6 @@ if str(_REPO_ROOT) not in sys.path:
 from teleclaude import agent_artifacts
 from teleclaude.artifact_ownership import reconcile_deployed_files, retract_retired_native_artifacts
 from teleclaude.capabilities import resolve_capabilities
-from teleclaude.config.declaration import schema_filename
-from teleclaude.config.schema import ConfigKind
-from teleclaude.config.schema_export import export_tier_schemas
 from teleclaude.constants import ArtifactKind
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
 from teleclaude.docs_publication import publish_generation
@@ -65,7 +61,6 @@ from teleclaude.mcp.registry import McpRegistry, load_effective_registry, load_p
 from teleclaude.paths import (
     COMMANDS_DIR,
     GLOBAL_DOCS_DIR,
-    TELECLAUDE_HOME,
 )
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
@@ -100,7 +95,6 @@ _DOMAIN_BASELINE_BUNDLE_GENERATED = "domain_baseline_bundle_generated"
 _GENERATED_REQUIRED_READ_EXPANDED = "generated_required_read_expanded"
 _INLINE_REF_PREFIX = "@"
 _PROJECT_DOCS_RELATIVE_PATH = Path("docs") / "project"
-_CONFIG_SCHEMA_DIRECTORY = "schemas"
 _MCP_INDEX_HEADER = "## Available MCP Servers\n\n"
 _MCP_INDEX_ENTRY_TEMPLATE = "- `{slug}` — {trigger}"
 _MCP_INDEX_ENTRY_WITHOUT_TRIGGER_TEMPLATE = "- `{slug}`"
@@ -1447,32 +1441,6 @@ def _write_project_agents(
     claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
 
 
-def _write_config_schemas(schema_dir: Path) -> None:
-    """Write the generated JSON Schema documents into one schema directory."""
-    schema_dir.mkdir(parents=True, exist_ok=True)
-    for kind, schema in export_tier_schemas().items():
-        output_path = schema_dir / schema_filename(kind)
-        if output_path.exists():
-            try:
-                if json.loads(output_path.read_text(encoding=_UTF8)) == schema:
-                    continue
-            except json.JSONDecodeError:
-                pass
-        output_path.write_text(json.dumps(schema, indent=2) + _NEWLINE, encoding=_UTF8)
-
-
-def _deploy_project_config_schema(project_root: Path, source_schema_dir: Path) -> None:
-    """Copy the project schema beside the project's configuration file."""
-    target_schema_dir = project_root / _CONFIG_SCHEMA_DIRECTORY
-    target_schema_dir.mkdir(parents=True, exist_ok=True)
-    project_schema = schema_filename(ConfigKind.PROJECT)
-    source_schema = source_schema_dir / project_schema
-    target_schema = target_schema_dir / project_schema
-    if source_schema.resolve() == target_schema.resolve():
-        return
-    shutil.copy2(source_schema, target_schema)
-
-
 def _render_global_skill_catalog(
     catalog_master: Path,
     *,
@@ -1812,12 +1780,6 @@ def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
             raise SystemExit(1)
     if validate_only:
         return
-
-    source_schema_dir = Path(teleclaude_root) / _CONFIG_SCHEMA_DIRECTORY
-    _write_config_schemas(source_schema_dir)
-    if deploy:
-        _write_config_schemas(TELECLAUDE_HOME / _CONFIG_SCHEMA_DIRECTORY)
-        _deploy_project_config_schema(project_root_path, source_schema_dir)
 
     dist_dir = "dist"
     if agents_enabled:

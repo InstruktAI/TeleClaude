@@ -74,10 +74,8 @@ def configure_person_discord_voice_bot(
         PersonConfig.model_validate(expanded)
         transaction.replace_text(
             render_declared_config(
-                overlay_path,
                 ConfigKind.PERSON,
                 candidate,
-                schema_root=person_dir.parent.parent,
             )
         )
 

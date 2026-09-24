@@ -898,6 +898,10 @@ converge_plumbing() {
     PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.project_setup.plumbing "$INSTALL_DIR"
 }
 
+publish_config_schemas() {
+    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" -m teleclaude.core.reconciliation.config_schemas
+}
+
 install_voice_bridge() {
     VOICE_BRIDGE_DIR="$INSTALL_DIR/teleclaude/adapters/discord/voice_bridge"
     if [ -d "$VOICE_BRIDGE_DIR" ]; then
@@ -1409,6 +1413,7 @@ main() {
     if [ "$CI_MODE" = false ]; then
         configure_agent_cli
         activate_home_repository
+        publish_config_schemas
     fi
     converge_plumbing
     if [ "$CI_MODE" = false ]; then

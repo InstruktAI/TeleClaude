@@ -144,7 +144,6 @@ def scaffold_personal_workspace(person_slug: str, display_name: str | None = Non
             workspace_config,
             ConfigKind.PERSON,
             {_PERSON_SLUG_FIELD: person_slug},
-            schema_root=_TELECLAUDE_DIR,
         )
         logger.info("Created teleclaude.yml for %s workspace", person_slug)
 
