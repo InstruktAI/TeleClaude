@@ -19,11 +19,14 @@ from pydantic import BaseModel, ConfigDict, Field
 import teleclaude.core.todo_dependency_warnings as dependency_warnings
 from teleclaude.api.auth import (
     CallerIdentity,
+    clearance_bugs_list,
     clearance_todos_create,
     clearance_todos_integrate,
+    clearance_todos_list,
     clearance_todos_prepare,
     clearance_todos_reactivate,
     clearance_todos_remove,
+    clearance_todos_show,
     clearance_todos_update,
     clearance_todos_work,
     optional_caller_identity,
@@ -47,7 +50,7 @@ from teleclaude.api.todo_update_support import (
     validate_kind_for_update,
     validate_update_request,
 )
-from teleclaude.api_models import TodoDumpRequest
+from teleclaude.api_models import BugListEntryDTO, TodoDTO, TodoDumpRequest
 from teleclaude.api_models_operations import OperationStatusDTO
 from teleclaude.config import config
 from teleclaude.constants import (
@@ -87,6 +90,7 @@ from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
+from teleclaude.services.work import get_work_service
 from teleclaude.slug import validate_slug
 from teleclaude.snippet_validation import snippet_body_digest_for
 from teleclaude.types.creation_record import EntryPoint
@@ -804,6 +808,7 @@ async def todo_show(
     cwd: str | None = None,
     include_removed: bool = False,
     include_artifact_content: bool = False,
+    _identity: CallerIdentity = Depends(clearance_todos_show),
 ) -> ShowPayload:
     """Return full show payload for a slug."""
     effective_cwd = cwd or _default_cwd()
@@ -814,6 +819,38 @@ async def todo_show(
     if payload is None:
         raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     return payload
+
+
+@router.get("/list")
+async def todo_list(
+    cwd: str,
+    since: str | None = None,
+    _identity: CallerIdentity = Depends(clearance_todos_list),
+) -> list[TodoDTO]:
+    """Return all todo rows for the invoking checkout."""
+    try:
+        project_root = resolve_project_root(cwd)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return get_work_service(str(project_root)).todo.entries(
+        include_icebox=True,
+        include_delivered=True,
+        include_removed=True,
+        delivered_since=since,
+    )
+
+
+@router.get("/bugs")
+async def todo_bugs(
+    cwd: str,
+    _identity: CallerIdentity = Depends(clearance_bugs_list),
+) -> list[BugListEntryDTO]:
+    """Return the active bug list for the invoking checkout."""
+    try:
+        project_root = resolve_project_root(cwd)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return get_work_service(str(project_root)).todo.bug_entries()
 
 
 @router.post("/{slug}/reactivate")

@@ -337,6 +337,15 @@ class TodoDTO(BaseModel):
     context: str | None = None
 
 
+class BugListEntryDTO(BaseModel):
+    """One active bug and its lifecycle progress label."""
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    status: str
+
+
 class ProjectWithTodosDTO(ProjectDTO):
     """DTO for project with its todos."""
 

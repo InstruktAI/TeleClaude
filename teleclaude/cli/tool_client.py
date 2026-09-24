@@ -19,6 +19,7 @@ from pathlib import Path
 
 import httpx
 
+from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.constants import API_SOCKET_PATH, LOGIN_REQUIRED_DETAIL
 from teleclaude.session_identity import get_session_id, get_session_token
@@ -27,6 +28,8 @@ _TUI_SESSION_NAME = "tc_tui"
 _API_SOCKET_ENV = "TELECLAUDE_API_SOCKET_PATH"
 _TMUX_ENV = "TMUX"
 _PROJECT_ROOT_HEADER = "x-teleclaude-project-root"
+_AUTH_WHOAMI_PATH = "/auth/whoami"
+_GET_METHOD = "GET"
 type QueryParamValue = str | int | float | bool | None
 type ToolQueryParams = (
     Mapping[str, QueryParamValue | Sequence[QueryParamValue]]
@@ -38,11 +41,19 @@ type ToolQueryParams = (
 class ToolAPIError(Exception):
     """Structured transport/API error for long-running wrapper workflows."""
 
-    def __init__(self, message: str, *, status_code: int | None = None, is_timeout: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        is_timeout: bool = False,
+        is_unavailable: bool = False,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.is_timeout = is_timeout
+        self.is_unavailable = is_unavailable
 
 
 def _read_tmux_session_name() -> str | None:
@@ -129,7 +140,10 @@ def tool_api_request(
                 headers=headers,
             )
     except httpx.ConnectError:
-        raise ToolAPIError(f"daemon is not running (socket not found: {resolved_socket_path})")
+        raise ToolAPIError(
+            f"daemon is not running (socket not found: {resolved_socket_path})",
+            is_unavailable=True,
+        )
     except httpx.TimeoutException:
         raise ToolAPIError("request timed out", is_timeout=True)
     except Exception as exc:
@@ -176,6 +190,11 @@ def tool_api_call(
     except ToolAPIError as exc:
         print(f"Error: {exc.message}", file=sys.stderr)
         raise SystemExit(1) from exc
+
+
+def get_resolved_caller() -> WhoAmIDTO:
+    """Return the caller identity resolved by the daemon."""
+    return WhoAmIDTO.model_validate(tool_api_request(_GET_METHOD, _AUTH_WHOAMI_PATH))
 
 
 def _extract_detail(resp: httpx.Response) -> str:

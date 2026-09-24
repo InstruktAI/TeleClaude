@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
+from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.core.agents import AgentName
 from teleclaude.session_identity import get_session_id
@@ -28,6 +29,8 @@ _ERR_ACTIVE_AGENT_UNRESOLVED = "agent session {session_id!r} exists but its acti
 _ERR_UNKNOWN_AGENT = "agent session {session_id!r} resolved to unknown agent {active_agent!r}"
 _ERR_NO_GIT_IDENTITY = "agent session {session_id!r} resolved to agent {active_agent!r} with no configured git identity"
 _ERR_NO_ATTRIBUTABLE_PARTY = "no agent session and no terminal login identity"
+_ERR_NO_CALLER_PRINCIPAL = "no verified caller principal"
+_HUMAN_PRINCIPAL_PREFIX = "human:"
 
 
 class CommitIdentityUnresolvable(RuntimeError):
@@ -59,26 +62,38 @@ def resolve_commit_identity() -> tuple[str | None, str | None]:
     """
     session_id = get_session_id()
     if session_id:
-        active_agent = get_session_active_agent(session_id)
-        if active_agent is None:
-            raise CommitIdentityUnresolvable(_ERR_ACTIVE_AGENT_UNRESOLVED.format(session_id=session_id))
-        try:
-            agent_name = AgentName.from_str(active_agent)
-        except ValueError as exc:
-            raise CommitIdentityUnresolvable(
-                _ERR_UNKNOWN_AGENT.format(session_id=session_id, active_agent=active_agent)
-            ) from exc
-        git_identity = agent_name.git_identity
-        if git_identity is None:
-            raise CommitIdentityUnresolvable(
-                _ERR_NO_GIT_IDENTITY.format(session_id=session_id, active_agent=active_agent)
-            )
-        return git_identity, session_id
+        return _resolve_agent_session_commit_identity(session_id)
 
     if read_current_session_email():
         return None, None
 
     raise CommitIdentityUnresolvable(_ERR_NO_ATTRIBUTABLE_PARTY)
+
+
+def _resolve_agent_session_commit_identity(session_id: str) -> tuple[str, str]:
+    """Resolve an agent session to its bot author identity."""
+    active_agent = get_session_active_agent(session_id)
+    if active_agent is None:
+        raise CommitIdentityUnresolvable(_ERR_ACTIVE_AGENT_UNRESOLVED.format(session_id=session_id))
+    try:
+        agent_name = AgentName.from_str(active_agent)
+    except ValueError as exc:
+        raise CommitIdentityUnresolvable(
+            _ERR_UNKNOWN_AGENT.format(session_id=session_id, active_agent=active_agent)
+        ) from exc
+    git_identity = agent_name.git_identity
+    if git_identity is None:
+        raise CommitIdentityUnresolvable(_ERR_NO_GIT_IDENTITY.format(session_id=session_id, active_agent=active_agent))
+    return git_identity, session_id
+
+
+def resolve_commit_identity_from_caller(answer: WhoAmIDTO) -> tuple[str | None, str | None]:
+    """Map the daemon-verified caller answer to the sealed commit author."""
+    if answer.session_id:
+        return _resolve_agent_session_commit_identity(answer.session_id)
+    if answer.principal and answer.principal.startswith(_HUMAN_PRINCIPAL_PREFIX):
+        return None, None
+    raise CommitIdentityUnresolvable(_ERR_NO_CALLER_PRINCIPAL)
 
 
 def compose_commit_footer(message: str, *, session_id: str | None, human_involved: bool) -> str:

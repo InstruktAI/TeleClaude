@@ -621,7 +621,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo list --delivered-only --since 2026-05-01",
                     "telec todo list --include-removed",
                 ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "design": CommandDef(
                 desc="Run the creative state machine",
@@ -726,7 +726,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         args="<slug> <name: input|prd|requirements|architecture|diagnosis|investigation|implementation-plan|task-plan|bug|quality-checklist|design-spec|deferrals|log|requirements-review-findings|prd-review-findings|architecture-review-findings|plan-review-findings|review-findings>",
                         flags=[F.FLAG_HELP],
                         examples=["telec todo artifacts read my-slug requirements"],
-                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                        auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
@@ -887,7 +887,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List in-flight bug fixes with status",
                 flags=[F.FLAG_HELP],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "suppress": CommandDef(
                 desc="Register a known-issue suppression so the log bug hunter stops re-filing a triaged signal",
@@ -936,7 +936,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates publications/inbox/YYYYMMDD-<slug>/ with content.md and meta.yaml.",
-                    "Author defaults to terminal auth identity (telec auth whoami) or 'unknown'.",
+                    "Author defaults to the principal the daemon resolves for the caller.",
                     "Emits a content.dumped notification event if the notification service is available.",
                     "Slug collision is handled automatically by appending a counter suffix.",
                 ],

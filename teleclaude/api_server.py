@@ -42,7 +42,12 @@ from teleclaude.api import (
     settings_routes,
     tui_routes,
 )
-from teleclaude.api.auth import CallerIdentity, verify_caller
+from teleclaude.api.auth import (
+    CallerIdentity,
+    caller_from_verified_identity,
+    principal_for_verified_caller,
+    verify_caller,
+)
 from teleclaude.api.data_routes import router as data_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.operations_routes import configure as configure_operations_routes
@@ -59,6 +64,7 @@ from teleclaude.api_models import (
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
+from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.config import config
@@ -79,6 +85,7 @@ from teleclaude.core.events import (
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
+from teleclaude.core.identity import PersonCliCaller
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.operations.service import all_outcome_events
 from teleclaude.core.origins import InputOrigin
@@ -477,18 +484,17 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         @self.app.get("/auth/whoami")
         async def auth_whoami(  # pyright: ignore
             identity: CallerIdentity = Depends(verify_caller),
-        ) -> dict[str, str | None]:
-            """Return the resolved principal for the calling session.
-
-            Agent sessions (X-Session-Token) return the principal resolved from
-            the session record and its current role.
-            Terminal/TUI sessions return their email-based identity.
-            """
-            if identity.principal:
-                return {"principal": identity.principal, "role": identity.principal_role}
-            if identity.human_role:
-                return {"principal": None, "role": identity.human_role}
-            return {"principal": None, "role": None}
+        ) -> WhoAmIDTO:
+            """Return the resolved identity, role, email, and session of the caller."""
+            caller = caller_from_verified_identity(identity)
+            role = caller.human_role if isinstance(caller, PersonCliCaller) else identity.principal_role
+            email = caller.email if isinstance(caller, PersonCliCaller) else None
+            return WhoAmIDTO(
+                principal=principal_for_verified_caller(identity),
+                role=role,
+                email=email,
+                session_id=identity.session_id or None,
+            )
 
         @self.app.get("/todos")
         async def list_todos(  # pyright: ignore

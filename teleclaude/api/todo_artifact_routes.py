@@ -18,6 +18,8 @@ from pydantic import BaseModel, ConfigDict
 from teleclaude.api.auth import (
     CallerIdentity,
     clearance_todos_artifacts_diff,
+    clearance_todos_artifacts_list,
+    clearance_todos_artifacts_read,
     clearance_todos_artifacts_remove,
     clearance_todos_artifacts_write,
 )
@@ -143,6 +145,7 @@ async def read_artifact(
     slug: str,
     name: str,
     cwd: str | None = None,
+    _identity: CallerIdentity = Depends(clearance_todos_artifacts_read),
 ) -> _ArtifactReadResponse:
     """Read a todo artifact by slug and name."""
     effective_cwd = cwd or _default_cwd()
@@ -261,6 +264,7 @@ async def remove_artifact(
 async def list_artifacts(
     slug: str,
     cwd: str | None = None,
+    _identity: CallerIdentity = Depends(clearance_todos_artifacts_list),
 ) -> _ArtifactListResponse:
     """List artifact names for a slug, with each artifact's distinct writers."""
     effective_cwd = cwd or _default_cwd()

@@ -2,20 +2,56 @@
 
 from __future__ import annotations
 
+import json
+from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api_models import TodoDTO
+from teleclaude.api_models import BugListEntryDTO, TodoDTO
+from teleclaude.constants import TodoStatus
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
+from teleclaude.core.next_machine.review_evidence import BuildReviewVerdict
 from teleclaude.core.todo import assemble_todo_from_db
+from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.core.todos_db._upcycle import upcycle_state_dict
+from teleclaude.types.state_value import StateValue
+from teleclaude.types.todo_kind import TODO_KIND_BUG
 
 if TYPE_CHECKING:
     from teleclaude.services.work._base import WorkServiceBase
 
 
 logger = get_logger(__name__)
+
+
+class _TodoStateField(StrEnum):
+    KIND = "kind"
+    LIFECYCLE_PHASE = "lifecycle_phase"
+    BUILD_REVIEW = "build_review"
+    FINALIZE = "finalize"
+    VERDICT = "verdict"
+    STATUS = "status"
+
+
+class BugFixStatus(StrEnum):
+    APPROVED = "approved"
+    FIXING = "fixing"
+    REVIEWING = "reviewing"
+    BUILDING = "building"
+    PENDING = "pending"
+
+
+_EMPTY_TEXT = ""
+_PENDING_FINALIZE_STATUSES = frozenset({_EMPTY_TEXT, TodoStatus.PENDING.value})
+_ACTIVE_TODO_STATES_QUERY = (
+    "SELECT r.slug, s.state FROM todo r "  # guard: raw-sql
+    "JOIN todo_state s ON r.id = s.id "
+    "WHERE r.status = ? "
+    "ORDER BY r.updated_at DESC"
+)
 
 
 class TodoOps:
@@ -51,6 +87,48 @@ class TodoOps:
             include_removed=include_removed,
             removed_only=removed_only,
         )
+
+    def bug_entries(self) -> list[BugListEntryDTO]:
+        """Return active bug todos with their workflow progress labels."""
+        db = get_todos_db_sync(self._base.project_root)
+        conn = db._sync_conn()
+        try:
+            rows = conn.execute(_ACTIVE_TODO_STATES_QUERY, (TodoStatus.ACTIVE.value,)).fetchall()
+        finally:
+            conn.close()
+
+        bugs: list[BugListEntryDTO] = []
+        for slug, state_json in rows:
+            raw_state = cast(dict[str, StateValue], json.loads(state_json)) if state_json else {}
+            state = upcycle_state_dict(raw_state)
+            if state.get(_TodoStateField.KIND) != TODO_KIND_BUG:
+                continue
+            lifecycle_phase = coerce_lifecycle_phase(state.get(_TodoStateField.LIFECYCLE_PHASE))
+            build_review = state.get(_TodoStateField.BUILD_REVIEW, {})
+            finalize = state.get(_TodoStateField.FINALIZE, {})
+
+            verdict = (
+                str(build_review.get(_TodoStateField.VERDICT, _EMPTY_TEXT))
+                if isinstance(build_review, dict)
+                else _EMPTY_TEXT
+            )
+            finalize_status = (
+                str(finalize.get(_TodoStateField.STATUS, _EMPTY_TEXT)) if isinstance(finalize, dict) else _EMPTY_TEXT
+            )
+
+            if verdict == BuildReviewVerdict.APPROVE or finalize_status not in _PENDING_FINALIZE_STATUSES:
+                status = BugFixStatus.APPROVED
+            elif verdict == BuildReviewVerdict.CHANGES_REQUESTED:
+                status = BugFixStatus.FIXING
+            elif lifecycle_phase is LifecyclePhase.BUILD_COMPLETE:
+                status = BugFixStatus.REVIEWING
+            elif lifecycle_phase is LifecyclePhase.BUILD_STARTED:
+                status = BugFixStatus.BUILDING
+            else:
+                status = BugFixStatus.PENDING
+
+            bugs.append(BugListEntryDTO(slug=slug, status=status.value))
+        return bugs
 
     def get_entry(self, slug: str, *, include_icebox: bool = True, include_delivered: bool = True) -> TodoDTO | None:
         """Return a single todo entry as a TodoDTO, or None if not found.

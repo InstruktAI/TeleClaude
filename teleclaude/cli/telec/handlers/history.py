@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from teleclaude.cli.history_detail import show_transcript
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import HISTORY_SEARCH, HISTORY_SHOW
-from teleclaude.history.search import display_combined_history, parse_agents, show_transcript
+from teleclaude.history.search import display_combined_history, parse_agents
 from teleclaude.utils.transcript_discovery import SessionId
 
 __all__ = [

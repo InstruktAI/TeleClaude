@@ -2,21 +2,58 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
 from typing import TypedDict
 from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
-from teleclaude.core.db._sync import get_session_ids_by_native_sync
-from teleclaude.mirrors.store import MirrorAccess, MirrorSearchResult, search_mirrors
+from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
+from teleclaude.core.db._sync import get_session_field_sync, get_session_ids_by_native_sync
+from teleclaude.mirrors.store import (
+    AllMirrorAccess,
+    MirrorAccess,
+    MirrorCoverageState,
+    MirrorRecord,
+    MirrorSearchResult,
+    get_mirror,
+    search_mirrors,
+)
 from teleclaude.paths import MAIN_DB_PATH
+from teleclaude.utils.transcript import parse_session_transcript
+from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id
 
 logger = get_logger(__name__)
 
+__all__ = [
+    "_format_display_timestamp",
+    "_remote_coverage_state",
+    "_remote_shrink_refused_at",
+    "build_history_detail_payload",
+    "parse_history_agents",
+]
+
 HISTORY_SEARCH_ACCEPTED = "history.search.accepted"
 HISTORY_SEARCH_COMPLETED = "history.search.completed"
+_NATIVE_SESSION_ID_FIELD = "native_session_id"
+_LIFECYCLE_STATUS_FIELD = "lifecycle_status"
+_RUNNING_SESSION_STATES = frozenset({"active", "headless", "initializing"})
+_UNKNOWN_VALUE = "unknown"
+_YES_VALUE = "yes"
+_NO_VALUE = "no"
+_TRANSCRIPT_ID_READ_FAILED_EVENT = "history.transcript_id_read_failed"
+_COVERAGE_STATE_FIELD = "coverage_state"
+_SHRINK_REFUSED_AT_FIELD = "shrink_refused_at"
+_COVERAGE_LINE_TEMPLATE = "Coverage: through {timestamp_end}; state: {coverage_state}"
+_RETAINED_COVERAGE_LINE_TEMPLATE = (
+    "Coverage: through {timestamp_end}; state: {coverage_state}; shrink refusal observed: {shrink_refused_at}"
+)
+_MALFORMED_COVERAGE_STATE_MESSAGE = "Invalid mirror coverage state"
+_MALFORMED_SHRINK_REFUSED_AT_MESSAGE = "Invalid mirror shrink-refusal timestamp"
 
 
 class HistorySearchRow(TypedDict):
@@ -38,6 +75,213 @@ class HistorySearchPayload(TypedDict):
     computer: str
     rows: list[HistorySearchRow]
     excluded_workers: int
+
+
+class IdNamespace(StrEnum):
+    """Identifier namespace supplied to history detail lookup."""
+
+    TELECLAUDE = "tc_id"
+    NATIVE = "native_id"
+
+
+class DetailSource(StrEnum):
+    """Source used to render a history detail response."""
+
+    MIRROR = "mirror"
+    TRANSCRIPT = "on-disk transcript"
+
+
+@dataclass(frozen=True)
+class MirrorResolution:
+    """Resolved identity and source context for a detail lookup."""
+
+    mirror: MirrorRecord | None
+    requested_id: str
+    requested_namespace: IdNamespace
+    tc_id: str | None
+    native_id: str | None
+    source: DetailSource
+
+
+class HistoryDetailPayload(TypedDict):
+    """Machine-readable history detail result."""
+
+    requested_id: str
+    requested_namespace: str
+    source: str
+    tc_id: str | None
+    native_id: str | None
+    title: str | None
+    project: str | None
+    computer: str | None
+    timestamp_start: str | None
+    timestamp_end: str | None
+    message_count: int | None
+    coverage_state: str
+    shrink_refused_at: str | None
+    running: str
+    raw: bool
+    conversation_text: str
+
+
+def _format_display_timestamp(value: str) -> str:
+    parsed = parse_iso_datetime(value)
+    return format_utc_datetime(parsed) if parsed is not None else value
+
+
+def find_transcript(agents: Sequence[AgentName], session_id: str) -> tuple[Path, AgentName] | None:
+    """Find a transcript file by its exact extracted session ID."""
+    for candidate in discover_transcripts(agents):
+        try:
+            extracted = extract_session_id(candidate.path, candidate.agent)
+        except (OSError, TypeError, ValueError) as exc:
+            logger.warning(
+                _TRANSCRIPT_ID_READ_FAILED_EVENT,
+                transcript_path=str(candidate.path),
+                agent=candidate.agent.value,
+                error=str(exc),
+            )
+            continue
+        if extracted == session_id:
+            return candidate.path, candidate.agent
+    return None
+
+
+def _running_state(tc_id: str | None) -> str:
+    if tc_id is None:
+        return _UNKNOWN_VALUE
+    lifecycle_status = get_session_field_sync(str(MAIN_DB_PATH), tc_id, _LIFECYCLE_STATUS_FIELD)
+    if not isinstance(lifecycle_status, str):
+        return _UNKNOWN_VALUE
+    return _YES_VALUE if lifecycle_status in _RUNNING_SESSION_STATES else _NO_VALUE
+
+
+def _detail_json_payload(
+    resolution: MirrorResolution,
+    *,
+    body: str,
+    raw: bool,
+) -> HistoryDetailPayload:
+    mirror = resolution.mirror
+    return {
+        "requested_id": resolution.requested_id,
+        "requested_namespace": resolution.requested_namespace.value,
+        "source": resolution.source.value,
+        "tc_id": resolution.tc_id,
+        "native_id": resolution.native_id,
+        "title": mirror.title if mirror is not None else None,
+        "project": mirror.project if mirror is not None else None,
+        "computer": mirror.computer if mirror is not None else None,
+        "timestamp_start": mirror.timestamp_start if mirror is not None else None,
+        "timestamp_end": mirror.timestamp_end if mirror is not None else None,
+        "message_count": mirror.message_count if mirror is not None else None,
+        "coverage_state": mirror.coverage_state.value if mirror is not None else MirrorCoverageState.UNKNOWN.value,
+        "shrink_refused_at": mirror.shrink_refused_at if mirror is not None else None,
+        "running": _running_state(resolution.tc_id),
+        "raw": raw,
+        "conversation_text": body,
+    }
+
+
+def _remote_coverage_state(payload: Mapping[str, object]) -> MirrorCoverageState:
+    """Decode an additive remote coverage field, preserving older-peer unknowns."""
+    value = payload.get(_COVERAGE_STATE_FIELD)
+    if value is None:
+        return MirrorCoverageState.UNKNOWN
+    if not isinstance(value, str):
+        raise ValueError(_MALFORMED_COVERAGE_STATE_MESSAGE)
+    return MirrorCoverageState(value)
+
+
+def _remote_shrink_refused_at(payload: Mapping[str, object]) -> str | None:
+    """Decode the optional remote shrink-refusal observation timestamp."""
+    value = payload.get(_SHRINK_REFUSED_AT_FIELD)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(_MALFORMED_SHRINK_REFUSED_AT_MESSAGE)
+    return value
+
+
+def _resolve_local_mirror(
+    session_id: str,
+    *,
+    access: MirrorAccess,
+) -> MirrorResolution:
+    mirror = get_mirror(session_id, access=access)
+    if mirror is not None:
+        native_id = mirror.session_id
+        tc_ids = get_session_ids_by_native_sync(
+            str(MAIN_DB_PATH),
+            [native_id] if native_id is not None else [],
+        )
+        return MirrorResolution(
+            mirror=mirror,
+            requested_id=session_id,
+            requested_namespace=IdNamespace.NATIVE,
+            tc_id=tc_ids.get(native_id) if native_id is not None else None,
+            native_id=native_id,
+            source=DetailSource.MIRROR,
+        )
+
+    resolved_native_id = get_session_field_sync(str(MAIN_DB_PATH), session_id, _NATIVE_SESSION_ID_FIELD)
+    if isinstance(resolved_native_id, str) and resolved_native_id:
+        translated_mirror = get_mirror(resolved_native_id, access=access)
+        return MirrorResolution(
+            mirror=translated_mirror,
+            requested_id=session_id,
+            requested_namespace=IdNamespace.TELECLAUDE,
+            tc_id=session_id,
+            native_id=resolved_native_id,
+            source=DetailSource.MIRROR,
+        )
+
+    return MirrorResolution(
+        mirror=None,
+        requested_id=session_id,
+        requested_namespace=IdNamespace.NATIVE,
+        tc_id=None,
+        native_id=session_id,
+        source=DetailSource.TRANSCRIPT,
+    )
+
+
+def build_history_detail_payload(
+    session_id: str,
+    *,
+    access: MirrorAccess,
+    agents: Sequence[AgentName],
+    include_thinking: bool,
+    raw: bool,
+) -> HistoryDetailPayload | None:
+    """Resolve one history detail within the caller's mirror access scope."""
+    transcript_fallback_allowed = isinstance(access, AllMirrorAccess)
+    resolution = _resolve_local_mirror(session_id, access=access)
+    mirror = resolution.mirror
+    if mirror and not raw:
+        return _detail_json_payload(resolution, body=mirror.conversation_text.rstrip(), raw=False)
+    if mirror and raw:
+        transcript_path = mirror.metadata.get("transcript_path")
+        if isinstance(transcript_path, str) and transcript_path:
+            path = Path(transcript_path).expanduser()
+            if path.exists():
+                return _detail_json_payload(resolution, body=path.read_text(encoding="utf-8"), raw=True)
+
+    if not transcript_fallback_allowed:
+        return None
+    match = find_transcript(agents, session_id)
+    if not match:
+        return None
+    path, agent = match
+    rendered = parse_session_transcript(
+        str(path),
+        f"{agent.value} session - {path.stem}",
+        agent_name=agent,
+        tail_chars=0,
+        include_thinking=include_thinking,
+        include_tools=False,
+    )
+    return _detail_json_payload(resolution, body=rendered, raw=False)
 
 
 def parse_history_agents(agent_filter: str) -> list[AgentName]:

@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib
 from typing import Any
 
-from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.session_auth import (
     clear_current_session_email,
     get_current_session_context,
-    read_current_session_email,
     write_current_session_email,
 )
 from teleclaude.cli.telec.help import _usage
+from teleclaude.cli.tool_client import ToolAPIError, get_resolved_caller
 from teleclaude.constants import MarkerState
 from teleclaude.session_identity import inspect_session_identity_marker
 
 _UNUSABLE_SESSION_IDENTITY_MESSAGE = "The current session carries no usable identity."
+_NO_IDENTITY_FOR_TTY_MESSAGE = "No identity for current TTY ({tty}): {detail}"
+_UNRESOLVED_ROLE = "unresolved"
 
 __all__ = [
     "_handle_auth",
@@ -119,41 +119,33 @@ def _handle_whoami(args: list[str]) -> None:
             print(_UNUSABLE_SESSION_IDENTITY_MESSAGE)
             raise SystemExit(1)
 
-        async def _resolve_principal() -> None:
-            api = TelecAPIClient()
-            await api.connect()
-            try:
-                data = await api.get_auth_whoami()
-            finally:
-                await api.close()
-            principal = data.get("principal")
-            role = data.get("role")
-            if principal:
-                print(f"Principal: {principal}")
-            if role:
-                print(f"Role: {role}")
-
         try:
-            asyncio.run(_resolve_principal())
-        except APIError as exc:
+            caller = get_resolved_caller()
+            if caller.principal:
+                print(f"Principal: {caller.principal}")
+            if caller.role:
+                print(f"Role: {caller.role}")
+        except ToolAPIError as exc:
             print(f"Error resolving principal: {exc}")
             raise SystemExit(1) from exc
         return
 
-    # Terminal/TUI path: read email from TTY auth file.
     context = get_current_session_context()
     if context is None:
         print("Error: no terminal session detected (TTY unavailable).")
         raise SystemExit(1)
 
-    email = read_current_session_email()
-    if not email:
-        print(f"No login set for current TTY ({context.tty}).")
-        return
+    try:
+        caller = get_resolved_caller()
+    except ToolAPIError as exc:
+        if exc.status_code == 401:
+            print(_NO_IDENTITY_FOR_TTY_MESSAGE.format(tty=context.tty, detail=exc.message))
+            return
+        print(f"Error resolving identity: {exc.message}")
+        raise SystemExit(1) from exc
 
-    role = _role_for_email(email) or "unresolved"
-    print(f"Email: {email}")
-    print(f"Role: {role}")
+    print(f"Email: {caller.email}")
+    print(f"Role: {caller.role or _UNRESOLVED_ROLE}")
     print(f"TTY: {context.tty}")
     print(f"Session auth file: {context.auth_path}")
 

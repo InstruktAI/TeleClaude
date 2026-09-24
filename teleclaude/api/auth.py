@@ -42,6 +42,7 @@ from teleclaude.core.identity import (
     PersonCliCaller,
     caller_from_principal,
     get_identity_resolver,
+    human_principal_for_email,
 )
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.types.commands import CallerProvenance
@@ -188,6 +189,16 @@ def caller_from_verified_identity(identity: CallerIdentity) -> CliCaller:
         person_slug=person.person_slug,
         human_role=person.person_role,
     )
+
+
+def principal_for_verified_caller(identity: CallerIdentity) -> str | None:
+    """Return the canonical principal for a verified API caller, when identified."""
+    if identity.principal:
+        return identity.principal
+    caller = caller_from_verified_identity(identity)
+    if isinstance(caller, PersonCliCaller) and caller.email:
+        return human_principal_for_email(caller.email)
+    return None
 
 
 def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenance | None:
@@ -450,7 +461,7 @@ def _is_tool_denied(tool_name: str, identity: CallerIdentity) -> bool:
     return not is_command_allowed(tool_name, identity.system_role, human_role)
 
 
-def require_clearance(tool_name: str):  # type: ignore[no-untyped-def]
+def require_clearance(tool_name: str, *, require_identified_caller: bool = False):  # type: ignore[no-untyped-def]
     """FastAPI dependency factory: check role clearance for a specific tool.
 
     Maps CLI endpoint names to command-surface names and checks role clearance.
@@ -464,6 +475,8 @@ def require_clearance(tool_name: str):  # type: ignore[no-untyped-def]
     """
 
     async def _check(identity: CallerIdentity = Depends(verify_caller)) -> CallerIdentity:
+        if require_identified_caller and isinstance(caller_from_verified_identity(identity), NoIdentityCliCaller):
+            raise HTTPException(status_code=401, detail=LOGIN_REQUIRED_DETAIL)
         if _is_tool_denied(tool_name, identity):
             role_desc = identity.system_role or identity.human_role or "unauthorized"
             raise HTTPException(
@@ -557,7 +570,15 @@ clearance_todos_remove = require_clearance("telec todo remove")
 clearance_todos_reactivate = require_clearance("telec todo reactivate")
 clearance_todos_update = require_clearance("telec todo update")
 clearance_todos_stamp = require_clearance("telec todo stamp")
-clearance_todos_artifacts_diff = require_clearance("telec todo artifacts diff")
+clearance_todos_show = require_clearance("telec todo show", require_identified_caller=True)
+clearance_todos_list = require_clearance("telec todo list", require_identified_caller=True)
+clearance_bugs_list = require_clearance("telec bugs list", require_identified_caller=True)
+clearance_todos_artifacts_read = require_clearance("telec todo artifacts read", require_identified_caller=True)
+clearance_todos_artifacts_list = require_clearance("telec todo artifacts list", require_identified_caller=True)
+clearance_todos_artifacts_diff = require_clearance(
+    "telec todo artifacts diff",
+    require_identified_caller=True,
+)
 clearance_todos_artifacts_remove = require_clearance("telec todo artifacts remove")
 clearance_todos_artifacts_write = require_clearance("telec todo artifacts write")
 clearance_operations_get = require_clearance("telec operations get")
@@ -573,6 +594,7 @@ __all__ = [
     "CallerIdentity",
     "clearance_agents_availability",
     "clearance_agents_status",
+    "clearance_bugs_list",
     "clearance_channels_list",
     "clearance_channels_publish",
     "clearance_computers_list",
@@ -597,13 +619,17 @@ __all__ = [
     "clearance_sessions_unsubscribe",
     "clearance_sessions_voice",
     "clearance_todos_artifacts_diff",
+    "clearance_todos_artifacts_list",
+    "clearance_todos_artifacts_read",
     "clearance_todos_artifacts_remove",
     "clearance_todos_artifacts_write",
     "clearance_todos_create",
     "clearance_todos_integrate",
+    "clearance_todos_list",
     "clearance_todos_prepare",
     "clearance_todos_reactivate",
     "clearance_todos_remove",
+    "clearance_todos_show",
     "clearance_todos_stamp",
     "clearance_todos_update",
     "clearance_todos_work",
