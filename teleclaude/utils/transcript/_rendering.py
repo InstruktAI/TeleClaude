@@ -29,6 +29,7 @@ from ._iterators import (
     _iter_gemini_entries,
     _start_index_after_timestamp_or_rotation,
 )
+from ._noop_turns import without_noop_output
 from ._user_turns import find_turn_start_idx
 from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _format_thinking, _parse_timestamp
 
@@ -330,7 +331,7 @@ def render_clean_agent_output(
     if start_idx is None:
         return None, None
 
-    assistant_entries = entries[start_idx:]
+    assistant_entries = without_noop_output(entries[start_idx:])
     if not assistant_entries:
         return None, None
 
@@ -458,7 +459,7 @@ def render_agent_output(
         logger.debug("[STD_RENDER] No cursor. Starting after last user message at index %d", start_idx)
 
     # Collect assistant activity from start_idx
-    assistant_entries = entries[start_idx:]
+    assistant_entries = without_noop_output(entries[start_idx:])
     logger.trace(
         "Rendering incremental output",
         {
