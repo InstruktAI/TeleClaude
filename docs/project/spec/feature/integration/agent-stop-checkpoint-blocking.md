@@ -45,11 +45,22 @@ rather than being consumed; it surfaces once on a turn with no pending commit
 and is consumed then, or is consumed when the review is dispatched. A
 force-fire that has nothing left to surface — no changed files, no required
 actions, no observations, and no commit action — produces no checkpoint.
+<!-- planned-change:nonblocking-commit-maintenance -->
 An **integrator-maintenance marker** carries canonical-root ranges whose
 deterministic maintenance has completed and whose live-runtime log judgment
 remains. It is keyed to the canonical checkout rather than to a session, so a
 successor integrator inherits unfinished judgment without repeating mechanical
 work. Log-check evidence discharges the marker.
+<!-- change:nonblocking-commit-maintenance -->
+An **integrator-maintenance marker** carries canonical-main activations whose
+deterministic maintenance was recorded and whose live-runtime log judgment
+remains. It is keyed to the canonical checkout rather than to a session, so a
+successor integrator inherits unfinished judgment without repeating mechanical
+work. The commit boundary records it for direct main commits and integration
+advancements alike. The integrator inspects terminal maintenance outcomes and changed
+runtime before its log-check evidence discharges the marker. A regular
+committing session receives no maintenance log-check action from this project.
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and is
@@ -141,7 +152,11 @@ And that action instructs the authoring session to dispatch the commit(s) to ind
 And waits for REVIEW COMPLETE before reporting completion
 And routes a REQUEST CHANGES verdict through the author-owned remediation contract in `software-development/policy/commits`
 And the authored-main-commit marker is consumed
+<!-- planned-change:nonblocking-commit-maintenance -->
 (The authored-main-commit marker triggers only the review gate; the maintenance a commit's paths owe is performed at the commit boundary — see `project/spec/feature/integration/post-commit-maintenance`.)
+<!-- change:nonblocking-commit-maintenance -->
+(The authored-main-commit marker triggers only the review gate; owed maintenance is recorded and started at the commit boundary — see `project/spec/feature/integration/post-commit-maintenance`.)
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 Given the current branch is main
 And this session authored a main commit through the sealed `telec code commit` path

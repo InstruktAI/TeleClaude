@@ -92,13 +92,15 @@ contract governs only what happens when maintenance runs.
   activations in Git ancestry order and actions by declared precedence, then
   exit when no pending work remains. Lock-file presence never means ownership.
 - **Observation.** Every attempt and terminal outcome retains the immutable
-  activation and action identity in structured records. Operational anomaly
-  detection observes failed or stale actions. The existing post-commit
-  checkpoint directs the committing or integrating agent to defer its one log
-  read until two minutes after the advancement. That read closes the agent's
-  log judgment without waiting for restart completion. Maintenance completion
-  sends no notification to the committer; anomalies after the read belong to
-  the log bug hunter.
+  activation and action identity in structured records. The commit boundary
+  records a checkout-scoped integrator judgment for every qualifying code
+  activation, including a direct main commit with no todo candidate. Operational
+  anomaly detection observes failed or stale actions. A regular committer has no
+  post-commit maintenance log judgment. The standing integrator inspects
+  outstanding and terminal maintenance through its recurring watch, judges
+  the relevant runtime evidence after owed actions complete, and owns bounded
+  recovery. The log bug hunter remains a later anomaly backstop. Maintenance
+  completion sends no notification to the committer.
 <!-- /planned:nonblocking-commit-maintenance -->
 
 ### Use cases
@@ -266,15 +268,26 @@ And operational anomaly detection can report it
 But the drain does not retry that terminal failure indefinitely
 ```
 
-#### UC-PCM15: The post-commit log judgment is delayed once
+#### UC-PCM15: The standing integrator owns maintenance observation
 
 ```gherkin
-Given a canonical-main change owes both daemon restart and live-runtime log judgment
-When Git returns before the restart finishes
-Then the committing or integrating agent defers its checkpoint log read for two minutes
-And that read closes the agent's log judgment without waiting for restart success
+Given a canonical-main change owes daemon restart or publication maintenance
+When Git returns before that maintenance finishes
+Then the regular committer has no maintenance log-check obligation
+And the standing integrator observes the owed action and judges its result after completion
 And later anomalies remain discoverable by the log bug hunter
-But maintenance completion sends no further prompt to the agent
+But maintenance completion sends no prompt to the committer
+```
+
+#### UC-PCM16: Direct main commits enter the integrator watch
+
+```gherkin
+Given a canonical-main commit was made without a todo candidate
+And its changed paths owe maintenance
+When the standing integrator's recurring watch runs
+Then it discovers the retained judgment for that commit even if maintenance has already completed
+And judges the changed runtime after the owed actions reach terminal success
+But the original committer receives no maintenance log-check obligation
 ```
 <!-- /planned:nonblocking-commit-maintenance -->
 

@@ -83,7 +83,7 @@ by the rebase-and-re-push instruction above.
 Given integration advances repository-root main through a fast-forward or finalization commit
 When that canonical-root advancement completes
 Then deterministic maintenance executes once from the canonical checkout for the advanced range
-And the state machine records a checkout-scoped marker only when the range owes a live-runtime log check
+And the canonical-main commit boundary records a checkout-scoped marker only when the range owes a live-runtime log check
 And the marker carries the advanced range but no mechanical action id
 And the agent-stop checkpoint consumes it to surface only the log-check judgment
 ```
@@ -97,8 +97,8 @@ Then the owed deterministic maintenance is recorded from the canonical checkout 
 And integration does not wait for every maintenance action to finish
 And the state machine records a checkout-scoped marker only when the range owes a live-runtime log check
 And the marker carries the advanced range but no mechanical action id
-And the agent-stop checkpoint directs the agent to read logs two minutes after the latest advancement represented by the marker
-And that one read discharges the marker without waiting for mechanical maintenance to finish
+And the standing integrator retains the marker until the owed maintenance has terminal outcomes
+And its runtime log judgment discharges the marker after the changed daemon is running
 ```
 <!-- /planned-change:nonblocking-commit-maintenance -->
 
