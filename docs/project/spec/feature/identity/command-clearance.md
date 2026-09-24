@@ -74,16 +74,13 @@ And the gate rejects the caller — the human band is never consulted for agent 
 - The self-agent-restart carve-out adds a self-restart bypass on top of the standard rule — see `feature/identity/self-restart-authorization-bypass`.
 - The self-end carve-out adds a self-end bypass on top of the standard rule, allowing a parentless session (`initiator_session_id is None`) to end itself — see `feature/identity/self-end-authorization-bypass`.
 
-<!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
 - The `telec todo update` gate replaces role privilege with object state for every agent caller uniformly — see the Claim-scoped todo update section below.
 
-<!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
 - The token-path `principal_role` substitution interlocks with token issuance — see `feature/identity/principal-resolution` (which stamps the role onto the token at issuance time).
 - In v2 this responsibility moves out of identity: each bounded context defines its own authorization rules against the resolved `Principal`'s Role. Identity returns the Principal; the bounded context decides which operations require which roles.
 
-<!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
 ### Claim-scoped todo update
 
@@ -190,19 +187,12 @@ Then the claim gate accepts (the caller is inside the claiming group)
 And the requested mutation is applied to the todo state
 ```
 
-<!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
 ### Session-family and todo-list clearance
 
-<!-- planned-change:grant-claim-scoped-todo-update-to-non-worker-roles -->
-
-`sessions start`, `sessions revive`, and `sessions end` carry `tasker` in their system band alongside the orchestrator class; `sessions end` additionally carries the integrator. `telec todo list` carries the full agent system band — `worker`, `system`, `orchestrator`, `integrator`, and `tasker`. The todo state-machine-driving verbs (`todo prepare`, `todo work`, and the other todo-mutation verbs) do not carry `tasker`.
-
-<!-- change:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
 `sessions start`, `sessions revive`, and `sessions end` carry `tasker` in their system band alongside the orchestrator class; `sessions end` additionally carries the integrator. `telec todo list` carries the full agent system band — `worker`, `system`, `orchestrator`, `integrator`, and `tasker`. The todo state-machine-driving verbs (`todo prepare`, `todo work`) and the other todo-mutation verbs do not carry `tasker`; `todo update` is governed by the claim-scoped rule instead.
 
-<!-- /planned-change:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
 #### UC-CCB1: Tasker starts a session
 
@@ -317,17 +307,13 @@ And no variable is listed or written
 - Validation performed while no daemon is listening is authorized by the operating-system account that runs it, the account that can start the daemon. The installer validates the machine configuration it is about to start the daemon with through the config context directly, outside the command surface, so installation and the maintenance that reruns it depend on no caller identity.
 <!-- /planned:cli-authorization-config-via-daemon -->
 
-<!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
 - The `telec todo update` claim check reads the todo's claim once, when the request is handled. A claim recorded while a request is in flight — including before a deferred slug rename executes — is not seen by that request.
 
-<!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
-<!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
 ## See Also
 
 - docs/project/adr/0067-authorization-reads-the-object-not-the-caller-role.md — why `telec todo update` authorizes on the todo's claim rather than the caller's role.
 - docs/project/adr/0096-claimed-todo-artifacts-are-writable-only-by-the-claiming-group.md — the claiming-group boundary and the direct human-identity exemption this gate shares.
 
-<!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
