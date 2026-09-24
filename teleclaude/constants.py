@@ -309,7 +309,7 @@ class SystemCommand(str, Enum):
     EXIT = "exit"
 
 
-class SlashCommand(str, Enum):
+class SlashCommand(StrEnum):
     """Canonical slash commands dispatched to agent sessions.
 
     Values are domain-qualified (``<domain>/<name>``), matching the
