@@ -251,11 +251,10 @@ toggle run in the CLI's own process. Before touching configuration, the CLI asks
 daemon for the verb's clearance; the daemon verifies the caller and answers with the
 same band evaluation the gate applies, and records the decision. A refusal ends the
 operation before it reads or writes anything. An unidentified caller is refused with
-the login door. Validation alone proceeds when no daemon is listening, because it
-diagnoses the configuration that keeps a daemon from starting
-(`project/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7); it records
-that no authority was available. The other operations fail while no daemon is
-listening.
+the login door. Validation alone proceeds when no daemon is listening, as
+`project/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7 requires, and
+records that no authority was available. The other operations fail while no daemon
+is listening.
 
 #### UC-CLO1: A caller inside the band runs the operation
 

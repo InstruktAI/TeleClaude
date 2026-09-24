@@ -27,8 +27,10 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
    (`project/spec/identity-and-auth` §6). A command reaches the data or effect it
    governs through the daemon API, which resolves the caller from the identity it
    carries, or, for a configuration operation the CLI executes in its own process,
-   only on the daemon's allow (`project/spec/feature/identity/command-clearance`).
-   The CLI makes no allow/deny decision and resolves no role. A caller the daemon
+   only on the daemon's allow. Validation alone also proceeds while no daemon is
+   listening and records that no authority was available
+   (`project/spec/feature/identity/command-clearance`). The CLI makes no allow/deny
+   decision and resolves no role. A caller the daemon
    cannot identify receives the unauthorized allow-list. `telec config wizard` opens
    the TUI's configuration editor, which runs in the operator's own process and is
    listed under Still Open 3.
