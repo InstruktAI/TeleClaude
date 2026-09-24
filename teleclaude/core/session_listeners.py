@@ -42,9 +42,12 @@ _ENDPOINT_LOCKS_GUARD = asyncio.Lock()
 # Actor name stamped on daemon-injected runner notifications.
 NOTIFY_ACTOR_NAME = "system"
 
-# Turn-completion notification copy. The session UUID appears only in the
-# actionable command, never duplicated in the prose sentence.
+# Turn-completion notification copy. Inspect notices name the session in the
+# command; NOOP notices name it in the sentence because they have no command.
 _STOP_NOTIFICATION_TEMPLATE = "Session{location_part}{title_part} finished its turn. Use telec sessions tail {target_session_id}{computer_selector} to inspect."
+_STOP_NOTIFICATION_NOOP_TEMPLATE = (
+    "Session{location_part}{title_part} (id {target_session_id}) ended its turn with NOOP."
+)
 _STOP_NOTIFICATION_TITLE_TEMPLATE = ' "{title}"'
 _STOP_NOTIFICATION_LOCATION_TEMPLATE = " on {computer}"
 _STOP_NOTIFICATION_COMPUTER_SELECTOR_TEMPLATE = " --computer {computer}"
@@ -95,6 +98,13 @@ class NotificationKind(StrEnum):
     TURN_END = "turn_end"
     BLOCKED = "blocked"
     TURN_FAILED = "turn_failed"
+
+
+class StopNotificationVariant(StrEnum):
+    """Caller-facing stop notice variants."""
+
+    INSPECT = "inspect"
+    NOOP = "noop"
 
 
 @dataclass
@@ -484,10 +494,18 @@ def _notification_locality(computer: str) -> NotificationLocality:
     )
 
 
-def _stop_notification_message(target_session_id: str, computer: str, title: str | None) -> str:
+def _stop_notification_message(
+    target_session_id: str,
+    computer: str,
+    title: str | None,
+    variant: StopNotificationVariant,
+) -> str:
     title_part = _STOP_NOTIFICATION_TITLE_TEMPLATE.format(title=title) if title else _STOP_NOTIFICATION_NO_PART
     locality = _notification_locality(computer)
-    body = _STOP_NOTIFICATION_TEMPLATE.format(
+    template = (
+        _STOP_NOTIFICATION_NOOP_TEMPLATE if variant is StopNotificationVariant.NOOP else _STOP_NOTIFICATION_TEMPLATE
+    )
+    body = template.format(
         location_part=locality.location_part,
         title_part=title_part,
         target_session_id=target_session_id,
@@ -560,6 +578,8 @@ async def notify_stop(
     target_session_id: str,
     computer: str,
     title: str | None = None,
+    *,
+    variant: StopNotificationVariant,
 ) -> set[str]:
     """Notify listeners that a session finished its turn.
 
@@ -571,7 +591,7 @@ async def notify_stop(
     Returns:
         Number of listeners successfully notified
     """
-    message = _stop_notification_message(target_session_id, computer, title)
+    message = _stop_notification_message(target_session_id, computer, title, variant)
     return await _notify_listeners(
         target_session_id, message, occurrence_key=uuid4().hex, notification_kind=NotificationKind.TURN_END
     )
@@ -626,6 +646,8 @@ async def deliver_remote_stop_notification(
     computer: str,
     title: str | None = None,
     occurrence_key: str | None = None,
+    *,
+    variant: StopNotificationVariant,
 ) -> bool:
     """Deliver a forwarded stop notification directly to its initiator.
 
@@ -642,7 +664,7 @@ async def deliver_remote_stop_notification(
             target_session_id=target_session_id,
         )
         return False
-    message = _stop_notification_message(target_session_id, computer, title)
+    message = _stop_notification_message(target_session_id, computer, title, variant)
     try:
         source_occurrence_key = occurrence_key or uuid4().hex
         await handoff_control_payload(
