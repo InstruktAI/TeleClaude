@@ -144,7 +144,7 @@ header. Pick your behavior from the reason:
     behavior's established domain owner. Apply the targeted fix.
   - **Reject** — the finding does not establish that its cited clause applies
     here, including when a more specific contract on the same subject decides
-    the case otherwise (`sdlc/procedure/lifecycle/review` §4, condition 2), or
+    the case otherwise (`sdlc/procedure/lifecycle/review`), or
     its closure enlarges the horizon: new functionality, instrumentation,
     verification tooling, subsystems, or scope beyond the frozen denominator. A valid
     omission finding — a missing reflection, verification, or gate the policies
@@ -425,10 +425,11 @@ snippet this same prepare pass authored does not create scope; the `diagnosis`
 and the `input` symptom are the only scope authorities for a bug
 (`sdlc/procedure/debugging`, step 5).
 
-The plan's observation map is held to the same trace. Every entry and predicate
-traces to the reported symptom or the diagnosed cause and binds evidence the
-changed surface already produces (`sdlc/spec/observation-map`); proving a
-guarantee the fix leaves unchanged is outside the plan.
+The plan's observation map is held to the same trace. Every `delivers` entry
+traces to the reported symptom or the diagnosed cause, and every
+`regression_guard` entry to an unchanged use case the fix's blast radius places
+at risk (`sdlc/spec/observation-map`). A guarantee the fix neither delivers nor
+places at risk is outside the plan.
 
 State the operation's observable outcome and relevant effects after the fix
 under the diagnosed triggering conditions. Derive verification of the

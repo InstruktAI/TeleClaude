@@ -66,8 +66,11 @@ none of them and need nothing.
   To the producer: settle it before the next pass.
 - The target or its remediation outgrowing the concern it was meant to resolve:
   scope, mechanism, or risk keeps expanding while the observable outcome stays
-  narrow. Its signature is a remediation chain: each fix answers the last
-  finding and becomes the subject of the next. Before another pass, ask which
+  narrow. A remediation chain, where each fix answers the last finding and
+  becomes the subject of the next, is the place to look for it. The chain alone
+  is not the shape; a loop working through remediation-induced findings is
+  still working. The shape is present when the mechanism the chain adds keeps
+  growing while the outcome it serves does not. Before acting on it, ask which
   contract governs the disputed demand; a more specific one may already decide
   it, and then the party misreading it is the one to correct. Otherwise, to the
   orchestrator: stop the review loop and return the target to its owning phase
@@ -144,6 +147,7 @@ watching. Nothing obliges you to end a loop you do not judge ended.
 Neither party can see the shape of its own loop and you can. That advantage
 survives only while you stay outside: derive from the sources yourself, never
 from either party's account of the other, and say nothing on the wakes where
-nothing has changed. Re-running a party's check to find the next defect is the
-reviewer's work, not yours. An assist that speaks every wake, or verifies the
+nothing has changed. Inspect the target as far as judging the loop's shape
+requires; running a review pass over it to find the next defect is the
+reviewer's work, not yours. An assist that speaks every wake, or reviews the
 target itself, is a third voice in the tunnel it was called to see from outside.
