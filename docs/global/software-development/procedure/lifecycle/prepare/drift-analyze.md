@@ -133,18 +133,21 @@ review verdict for the artifact and every downstream artifact's review
 verdict per the spec's re-derivation contract. Only when EVERY pending
 class is cosmetic does the artifact get a `cosmetic` stamp.
 
+<!-- planned-change:dependency-artifact-drift -->
 The state-stamping boundary captures the **evidence anchor** at stamp
 
-<!-- planned-change:dependency-artifact-drift -->
 time automatically (`head_sha_at_review`, `upstream_digests_at_review`,
 `snippet_digests_at_review`). The analyzer does not
-<!-- change:dependency-artifact-drift -->
-time automatically (`head_sha_at_review`, `upstream_digests_at_review`,
-`snippet_digests_at_review`, `dependency_digests_at_review`). The analyzer does not
-<!-- /planned-change:dependency-artifact-drift -->
 pass these as flags; they are read from current state by
 
 `_apply_drift_reviewed_stamp` and persisted on the `DriftReviewedStamp`.
+<!-- change:dependency-artifact-drift -->
+The state-stamping boundary captures the **evidence anchor** at stamp time
+automatically (`head_sha_at_review`, `upstream_digests_at_review`,
+`snippet_digests_at_review`, `dependency_digests_at_review`). The analyzer does
+not pass these as flags; they are read from current state by
+`_apply_drift_reviewed_stamp` and persisted on the `DriftReviewedStamp`.
+<!-- /planned-change:dependency-artifact-drift -->
 A cosmetic verdict at this anchor expires lazily on a future derivation
 if evidence has moved past the anchor on any anchored dimension; the
 analyzer is re-dispatched at that point. A substantive verdict does not
