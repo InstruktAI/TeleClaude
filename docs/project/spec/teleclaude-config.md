@@ -63,30 +63,20 @@ only: loading reads `kind` alone, and a file with no modeline resolves
 identically.
 <!-- change:config-schema-home-resolution -->
 One JSON Schema per tier is generated from the same models the runtime
-validates against, and published with the MCP registry schema into
-`~/.teleclaude/schemas/` as
-`teleclaude-{global,project,person,company}.schema.json` and
-`teleclaude-mcp.schema.json`. That directory is the only copy on a machine: no
-repository, TeleClaude's own included, carries a schema file. Publication is
-specified in `project/spec/feature/reconciliation/config-schema-publication`.
-Every adopted project root carries `.teleclaude/schemas`, a machine-local link
-to that directory maintained by project plumbing convergence.
+validates against and published, with the MCP registry schema, into the
+TeleClaude home. No repository carries a schema file; publication is specified
+in `project/spec/feature/reconciliation/config-schema-publication`.
 
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
-modeline whose target is fixed by its tier and written on every write of the
-file:
-
-| Tier    | File                                          | Modeline target                                   |
-| ------- | --------------------------------------------- | ------------------------------------------------- |
-| global  | `~/.teleclaude/teleclaude.yml`                | `schemas/teleclaude-global.schema.json`           |
-| person  | `~/.teleclaude/people/{slug}/teleclaude.yml`  | `../../schemas/teleclaude-person.schema.json`     |
-| company | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `../../schemas/teleclaude-company.schema.json`  |
-| project | `<project-root>/teleclaude.yml`               | `.teleclaude/schemas/teleclaude-project.schema.json` |
-
-Every reference is relative, so the same committed content resolves on every
-machine that has published its schemas, with no network fetch and no
-machine-local path. The modeline serves the editor only: loading reads `kind`
-alone, and a file whose modeline does not resolve loads identically.
+modeline. The reference is relative and fixed by the file's tier alone, derived
+in one place by the configuration writer (`teleclaude/config/declaration.py`),
+and written on every write of the file. A home-tree file names the home's
+published schemas; a project file names them through its root's machine-local
+schema link (`project/spec/feature/reconciliation/project-plumbing-convergence`).
+The same document therefore produces the same bytes on every machine, with no
+network fetch and no machine-local path. The modeline serves the editor only:
+loading reads `kind` alone, and a file whose modeline does not resolve loads
+identically.
 <!-- /planned-change:config-schema-home-resolution -->
 
 `kind` names a file's tier. It is unrelated to the machine-config field
@@ -321,6 +311,7 @@ value is never rendered back.
 
 ### TeleClaude MCP registry
 
+<!-- planned-change:config-schema-home-resolution -->
 TeleClaude-owned MCP registries live at repo-root `teleclaude-mcp.jsonc` and
 optional repo-root `teleclaude-mcp.local.jsonc`. The shared file is committed;
 the local file is machine-specific and gitignored. Both files use JSONC with a
@@ -351,6 +342,17 @@ TeleClaude wrapper shape:
 metadata only: it does not create environment requirements or change a daemon
 lease fingerprint. `lazy` values shown above are defaults, not required
 boilerplate.
+<!-- change:config-schema-home-resolution -->
+TeleClaude-owned MCP registries live at repo-root `teleclaude-mcp.jsonc` and
+optional repo-root `teleclaude-mcp.local.jsonc`. The shared file is committed;
+the local file is machine-specific and gitignored. Both are JSONC documents
+whose shape — every property, its allowed values, and its default — is owned by
+the MCP registry schema authored in the MCP context's source (`teleclaude/mcp/`).
+
+`trigger` is the agent-facing activation text shown by `telec mcp list`. It is
+metadata only: it does not create environment requirements or change a daemon
+lease fingerprint.
+<!-- /planned-change:config-schema-home-resolution -->
 
 
 A TeleClaude project's own `teleclaude-mcp.jsonc` and optional
@@ -373,6 +375,7 @@ lookup, nor lease fingerprints.
 `credentialScope` selects the credential owner and accepts `global` or `person`; omission means `global`. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
 
 
+<!-- planned-change:config-schema-home-resolution -->
 Registry authors omit default-valued properties; the runtime model and JSON
 Schema provide the defaults. The schema file is committed at repo-root
 `schemas/teleclaude-mcp.schema.json`, so VS Code and other JSON Schema aware
@@ -380,6 +383,15 @@ editors can validate and autocomplete the JSONC files without network access.
 Committed registry files use the portable relative `$schema` reference.
 Machine-local generated examples may use an absolute `file://` schema reference
 to the installed schema under `~/.teleclaude/schemas/`.
+<!-- change:config-schema-home-resolution -->
+Registry authors omit default-valued properties; the runtime model and the
+registry schema provide the defaults. The registry schema is published with the
+configuration schemas
+(`project/spec/feature/reconciliation/config-schema-publication`), and a
+committed registry file references it relatively through its root's
+machine-local schema link, so JSON Schema aware editors validate and
+autocomplete it without network access and without a machine-local path.
+<!-- /planned-change:config-schema-home-resolution -->
 
 
 The effective TeleClaude MCP registry is resolved per invocation scope by one
@@ -741,7 +753,11 @@ projects:
 
 All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
 location, etc.) lives in each project's own `teleclaude.yml` and is loaded
+<!-- planned-change:align-config-cli-ownership -->
 through `ProjectCatalogService`. `telec projects init` is the sole writer of the
+<!-- change:align-config-cli-ownership -->
+through `ProjectCatalogService`. `telec config project init` is the sole writer of the
+<!-- /planned-change:align-config-cli-ownership -->
 <!-- planned-change:retire-docs-watcher -->
 registry; `telec sync` no longer registers projects. `project_slug` is the
 <!-- change:retire-docs-watcher -->

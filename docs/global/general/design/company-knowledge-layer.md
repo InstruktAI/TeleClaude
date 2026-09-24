@@ -67,6 +67,7 @@ them effectively "global within a company."
 
 ### First onboard
 
+<!-- planned-change:align-config-cli-ownership -->
 ```mermaid
 flowchart TD
     A[telec companies onboard acme] --> B[Create ~/.teleclaude/companies/acme/]
@@ -79,9 +80,24 @@ flowchart TD
     H --> I[Update meta.yaml bookkeeping]
     I --> J[User adds company: acme to project teleclaude.yml]
 ```
+<!-- change:align-config-cli-ownership -->
+```mermaid
+flowchart TD
+    A[telec config company init acme] --> B[Create ~/.teleclaude/companies/acme/]
+    B --> C[Initialize inbox/ as git repo]
+    C --> D[Create meta.yaml]
+    D --> E[User dumps material into inbox/]
+    E --> F[Dispatch /telec-company-analyze session]
+    F --> G[Analysis reads inbox files]
+    G --> H[Generate company/ snippets]
+    H --> I[Update meta.yaml bookkeeping]
+    I --> J[User adds company: acme to project teleclaude.yml]
+```
+<!-- /planned-change:align-config-cli-ownership -->
 
 ### Re-onboard
 
+<!-- planned-change:align-config-cli-ownership -->
 ```mermaid
 flowchart TD
     A[User adds/modifies inbox files] --> B[telec companies onboard acme]
@@ -92,6 +108,18 @@ flowchart TD
     F --> G[Merge new findings with existing snippets]
     G --> H[Update meta.yaml with new SHAs]
 ```
+<!-- change:align-config-cli-ownership -->
+```mermaid
+flowchart TD
+    A[User adds/modifies inbox files] --> B[telec sessions run --command /companies-analyze]
+    B --> C[git diff HEAD in inbox/]
+    C --> D[Identify new/changed files by SHA]
+    D --> E[Commit inbox changes]
+    E --> F[Dispatch analysis for changed files only]
+    F --> G[Merge new findings with existing snippets]
+    G --> H[Update meta.yaml with new SHAs]
+```
+<!-- /planned-change:align-config-cli-ownership -->
 
 ### Context selection with company tier
 

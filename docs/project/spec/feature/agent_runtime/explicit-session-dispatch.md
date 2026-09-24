@@ -14,10 +14,11 @@ without starting an agent. Analysis and assessment are activatable procedures;
 an agent or operator starts a session explicitly with the applicable procedure
 when that work is wanted.
 
-The same rule reaches existing project and company onboarding commands. No
-setup command dispatches analysis as a side effect, including when its source
-inbox has content. Removing implicit dispatch does not prevent an explicit
-session invocation from processing the same source afterward.
+Project and company onboarding follow the same rule: initialization prepares
+the subject, and the analysis or assessment it may need is a separate session
+started explicitly. No setup command dispatches analysis as a side effect,
+including when its source inbox has content. Because a setup command starts no
+session, it owns no deduplication guard for one.
 
 ## Canonical fields
 

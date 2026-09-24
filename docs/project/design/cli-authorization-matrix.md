@@ -85,7 +85,10 @@ This table's system-role columns predate Integrator and System (see the code's `
 
 | Command               | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                           |
 | --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+<!-- planned-change:align-config-cli-ownership -->
 | `telec projects init` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the workspace. Workers don't initialize. Only admins and members should initialize projects.        |
+<!-- change:align-config-cli-ownership -->
+<!-- /planned-change:align-config-cli-ownership -->
 | `telec version`       | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                                     |
 <!-- planned-change:retire-docs-watcher -->
 | `telec sync`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Validate artifact sources; the mutating mode builds and deploys artifacts. Workers don't sync. Only admins and members should sync. |
@@ -158,18 +161,49 @@ This table's system-role columns predate Integrator and System (see the code's `
 | Command                      | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                           |
 | ---------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
 | `telec config wizard`        | W    | ❌     | ❌   | ✅    | ❌     | ❌          | ❌       | ❌       | Human-only interactive config wizard; hidden from command discovery and reserved for direct invocation by an admin. |
+<!-- planned-change:align-config-cli-ownership -->
 | `telec config get`           | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading config values is a read operation. Workers may need config context. Customers should not see system config. |
 | `telec config patch`         | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Patching config is system modification. Admin only.                                                                 |
+<!-- change:align-config-cli-ownership -->
+| `telec config computer list` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Reading machine configuration is a read operation. Workers may need config context. Customers should not see system config. |
+| `telec config computer get` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Same as `config computer list`. |
+| `telec config computer init` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Machine configuration is system modification. Target clearance requires platform-administrator standing. |
+| `telec config computer patch` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Same as `config computer init`. |
+| `telec config global list` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | The global view excludes the people registry, which belongs to person subjects. |
+| `telec config global get` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Same as `config global list`. |
+| `telec config global init` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Global configuration is fleet-wide modification. Target clearance requires platform-administrator standing. |
+| `telec config global patch` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Same as `config global init`. |
+| `telec config person list` | R | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Listing people exposes identity info. Target clearance requires platform-administrator standing. |
+| `telec config person get` | R | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Registered people read their own configuration; target clearance limits a non-administrator to their own instance. |
+| `telec config person patch` | W | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Registered people change their own settings; identity fields, other instances, and removal require platform-administrator standing. |
+| `telec config person init` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Registering people is admin infrastructure. |
+| `telec config person invite` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Generating invite links is admin infrastructure. |
+| `telec config person discord-voice-bot` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Binding the machine Discord credential into a person's environment is admin infrastructure. |
+| `telec config company list` | R | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | A company's configuration carries its roster, which names people. Target clearance requires platform-administrator standing. |
+| `telec config company get` | R | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Same as `config company list`. |
+| `telec config company patch` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Company configuration and its roster are changed by a platform administrator. |
+| `telec config company init` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Company initialization scaffolds the company tree without touching a roster. |
+| `telec config project list` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Project configuration is read-only context committed in its repository. |
+| `telec config project get` | R | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Same as `config project list`. |
+| `telec config project init` | W | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | Project initialization modifies the caller's workspace. Workers don't initialize. Only admins and members should initialize projects. |
+| `telec config project patch` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Naming a project by slug reaches any registered checkout. Target clearance requires platform-administrator standing. |
+<!-- /planned-change:align-config-cli-ownership -->
 | `telec config validate`      | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Validation is a read/check operation. Same as config get.                                                           |
+<!-- planned-change:align-config-cli-ownership -->
 | `telec config people list`   | R    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | People management is admin infrastructure. Listing people exposes identity info.                                    |
 | `telec config people add`    | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Adding people is admin infrastructure.                                                                              |
 | `telec config people edit`   | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Editing people is admin infrastructure.                                                                             |
 | `telec config people remove` | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Removing people is admin infrastructure.                                                                            |
+<!-- change:align-config-cli-ownership -->
+<!-- /planned-change:align-config-cli-ownership -->
 | `telec config env list`      | R    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Environment variables may contain secrets. Admin only.                                                              |
 | `telec config env set`       | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Setting env vars is system modification. Admin only.                                                                |
 | `telec config notify`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Toggling notifications is personal config. Members can manage their own notifications.                              |
 
+<!-- planned-change:align-config-cli-ownership -->
 | `telec config people invite` | W | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Generating invite links is admin infrastructure. |
+<!-- change:align-config-cli-ownership -->
+<!-- /planned-change:align-config-cli-ownership -->
 
 ### Disagreements with Current `tool_access.py`
 
@@ -203,7 +237,10 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | ----------------------------- | ------------------------------------------- |
 | `telec sessions revive`       | Contributors, newcomers, customers          |
 | `telec sessions result`       | Newcomers, customers                        |
+<!-- planned-change:align-config-cli-ownership -->
 | `telec projects init`         | Contributors, newcomers, customers          |
+<!-- change:align-config-cli-ownership -->
+<!-- /planned-change:align-config-cli-ownership -->
 <!-- planned-change:retire-docs-watcher -->
 | `telec sync`                  | Contributors, newcomers, customers          |
 <!-- change:retire-docs-watcher -->
@@ -222,10 +259,16 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec content dump`          | Newcomers, customers                        |
 | `telec events list`           | Customers                                   |
 | `telec config wizard`         | Members, contributors, newcomers, customers |
+<!-- planned-change:align-config-cli-ownership -->
 | `telec config get`            | Customers                                   |
 | `telec config patch`          | Members, contributors, newcomers, customers |
+<!-- change:align-config-cli-ownership -->
+<!-- /planned-change:align-config-cli-ownership -->
 | `telec config validate`       | Customers                                   |
+<!-- planned-change:align-config-cli-ownership -->
 | `telec config people *`       | Members, contributors, newcomers, customers |
+<!-- change:align-config-cli-ownership -->
+<!-- /planned-change:align-config-cli-ownership -->
 | `telec config env *`          | Members, contributors, newcomers, customers |
 | `telec config notify`         | Contributors, newcomers, customers          |
 

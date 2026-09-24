@@ -78,7 +78,11 @@ The help desk is a standalone git repository, separate from the TeleClaude codeb
 └── outcomes/                             # gitignored — extracted actionable items
 ```
 
+<!-- planned-change:align-config-cli-ownership -->
 The `docs/global/organization/` directory follows the standard global-docs convention: `telec projects init` symlinks it to `~/.teleclaude/docs/organization/`, making org-level documentation visible across all projects on the machine (same mechanism TeleClaude uses for `general/` and `software-development/`).
+<!-- change:align-config-cli-ownership -->
+The `docs/global/organization/` directory follows the standard global-docs convention: `telec config project init` symlinks it to `~/.teleclaude/docs/organization/`, making org-level documentation visible across all projects on the machine (same mechanism TeleClaude uses for `general/` and `software-development/`).
+<!-- /planned-change:align-config-cli-ownership -->
 
 The `docs/project/` directory holds help-desk-specific documentation — escalation rules, support SLAs, procedures — scoped to this project only. The escalation tool spec, policy, and procedure live here and are referenced by the operator brain artifact via `## Required reads`.
 
@@ -101,13 +105,21 @@ A new `organization` domain sits alongside `general` and `software-development` 
 └── organization/           # NEW: org product docs, policies, FAQ — visible everywhere
 ```
 
+<!-- planned-change:align-config-cli-ownership -->
 The help desk project owns this domain via `docs/global/organization/`. When `telec projects init` runs inside the help desk project, it symlinks `docs/global/organization/` to `~/.teleclaude/docs/organization/`, making org knowledge available to every project on the machine.
+<!-- change:align-config-cli-ownership -->
+The help desk project owns this domain via `docs/global/organization/`. When `telec config project init` runs inside the help desk project, it symlinks `docs/global/organization/` to `~/.teleclaude/docs/organization/`, making org knowledge available to every project on the machine.
+<!-- /planned-change:align-config-cli-ownership -->
 
 Doc snippets in this domain follow the standard taxonomy (spec, policy, procedure, etc.) with standard frontmatter. The `audience` tag controls who sees what — org docs tagged `help-desk` are visible to the operator, those tagged `public` could be surfaced directly to customers in the future.
 
 ### Help Desk Bootstrap Routine
 
+<!-- planned-change:align-config-cli-ownership -->
 An idempotent routine scaffolds the help desk workspace when it does not exist. It runs as part of `telec projects init` in the TeleClaude project.
+<!-- change:align-config-cli-ownership -->
+An idempotent routine scaffolds the help desk workspace when it does not exist. It runs as part of `telec config project init` in the TeleClaude project.
+<!-- /planned-change:align-config-cli-ownership -->
 
 **Default location:** Sibling of the TeleClaude project. If TeleClaude lives at `/path/to/TeleClaude`, the default help desk path is `/path/to/help-desk`. Configurable via `help_desk_dir` in computer config.
 
@@ -117,7 +129,11 @@ An idempotent routine scaffolds the help desk workspace when it does not exist. 
 2. If the directory already exists — skip (idempotent).
 3. Create the directory structure from `templates/help-desk/` in the TeleClaude repo.
 4. Run `git init` inside the new directory.
+<!-- planned-change:align-config-cli-ownership -->
 5. Run `telec projects init` inside the new directory — installs git filters and pre-commit hooks, syncs artifacts, registers the project root, and creates `docs/index.yaml`.
+<!-- change:align-config-cli-ownership -->
+5. Run `telec config project init` inside the new directory — installs git filters and pre-commit hooks, syncs artifacts, registers the project root, and creates `docs/index.yaml`.
+<!-- /planned-change:align-config-cli-ownership -->
 6. Create an initial git commit with the skeleton.
 
 **Template contents** (`templates/help-desk/` in TeleClaude repo):
@@ -744,6 +760,7 @@ The operator brain defines the agent's persona, capabilities, and autonomous rou
 
 ### Dependency Graph
 
+<!-- planned-change:align-config-cli-ownership -->
 ```mermaid
 flowchart TD
     BOOT[Help desk bootstrap<br/>Scaffold + telec projects init] --> J[Operator workspace<br/>Standalone repo with docs]
@@ -783,6 +800,47 @@ flowchart TD
     K --> L
     RELAY --> L
 ```
+<!-- change:align-config-cli-ownership -->
+```mermaid
+flowchart TD
+    BOOT[Help desk bootstrap<br/>Scaffold + telec config project init] --> J[Operator workspace<br/>Standalone repo with docs]
+    BOOT --> ORG[Organization doc domain<br/>docs/global/organization/]
+
+    A[Identity-scoped memory<br/>Add identity_key to DB + API] --> E[Memory extraction job<br/>Incremental transcript processing]
+    A --> F[Context injection<br/>Identity-aware SessionStart]
+
+    B[Discord identity fix<br/>Person config lookup] --> G[Discord help desk flow<br/>End-to-end customer handling]
+    TG[Telegram user_id fix<br/>Persist in adapter metadata] --> E
+
+    C[Frontmatter audience tagging<br/>Role-filtered telec docs index/get] --> H[Operator brain<br/>AGENTS.master.md with telec docs index/get]
+    ORG --> H
+
+    ROLE[Customer role in tool access<br/>CUSTOMER_EXCLUDED_TOOLS tier] --> G
+    ESC[Escalation tool<br/>telec sessions escalate] --> RELAY
+    ROLE --> ESC
+
+    RELAY[Admin relay channel<br/>Discord thread + message bridge] --> G
+    RELAY --> NOTIF[Admin notification<br/>Via notification outbox]
+
+    CH[Internal channels<br/>Redis pub/sub + consumer worker] --> E
+    CH --> K[Intelligence job<br/>Pattern detection + digest]
+
+    IDLE[Idle compaction<br/>Extract → compact sequence] --> E
+
+    E --> I[Action routing via channels<br/>Subscriber-driven processing]
+    F --> G
+    H --> G
+    J --> H
+    J --> K
+
+    CMD[/author-knowledge command<br/>Global brain-dump facilitator] --> J
+
+    I --> L[Help desk fully operational]
+    G --> L
+    K --> L
+    RELAY --> L
+```
+<!-- /planned-change:align-config-cli-ownership -->
 
 ## Invariants
 
@@ -907,6 +965,7 @@ sequenceDiagram
 
 ### Help Desk Bootstrap
 
+<!-- planned-change:align-config-cli-ownership -->
 ```mermaid
 sequenceDiagram
     participant User
@@ -925,6 +984,26 @@ sequenceDiagram
         Init->>Git: Initial commit
     end
 ```
+<!-- change:align-config-cli-ownership -->
+```mermaid
+sequenceDiagram
+    participant User
+    participant Init as telec config project init
+    participant FS as Filesystem
+    participant Git as git
+
+    Init->>FS: Resolve help_desk_dir from config
+    Init->>FS: Check if directory exists
+    alt Already exists
+        Init->>Init: Skip (idempotent)
+    else Does not exist
+        Init->>FS: Copy templates/help-desk/ to help_desk_dir
+        Init->>Git: git init
+        Init->>Init: telec config project init (filters, sync, registration)
+        Init->>Git: Initial commit
+    end
+```
+<!-- /planned-change:align-config-cli-ownership -->
 
 ## Failure Modes
 

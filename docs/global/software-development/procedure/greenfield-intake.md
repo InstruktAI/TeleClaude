@@ -89,7 +89,11 @@ every production default ships silently from the applicable baseline.
 
    For sites,
    follow `software-development/procedure/setup-visual-regression` — and end
+<!-- planned-change:align-config-cli-ownership -->
    by running `telec projects init` for the TeleClaude plumbing.
+<!-- change:align-config-cli-ownership -->
+   by running `telec config project init` for the TeleClaude plumbing.
+<!-- /planned-change:align-config-cli-ownership -->
 
 ## Outputs
 

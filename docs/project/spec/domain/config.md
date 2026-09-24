@@ -41,9 +41,15 @@ TeleClaudeNext.
 - **Does not own:** provider-returned identifiers or other observed external
   state. The bounded context that observes such state persists it through its
   own state contract rather than through machine configuration.
+<!-- planned-change:align-config-cli-ownership -->
 - **Also owns:** the person tier's voice-bot declaration as a typed credential
   reference. The semantic `telec config people edit --discord-voice-bot`
   operation copies the currently resolved machine Discord credential into the
+<!-- change:align-config-cli-ownership -->
+- **Also owns:** the person tier's voice-bot declaration as a typed credential
+  reference. The semantic `telec config person discord-voice-bot`
+  operation copies the currently resolved machine Discord credential into the
+<!-- /planned-change:align-config-cli-ownership -->
   person's owner-only environment under the canonical `DISCORD_TOKEN` name and
   persists only `${DISCORD_TOKEN}` in the overlay. Missing references fail full
   configuration validation. The live private voice channel is provider-returned

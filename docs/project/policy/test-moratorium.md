@@ -47,7 +47,11 @@ This repository only. Satellite projects keep their own testing contract, declar
 ## Enforcement
 
 - The `code` overlay block is absent from this repository's `teleclaude.yml`; the equivalent scope is declared through a generic binding carrying `log-check` alone.
+<!-- planned-change:align-config-cli-ownership -->
 - **`telec projects assess` does not author a `code` block for this repository.** The checkpoint overlay is authored at assess-time — `software-development/procedure/code-config-assessment` writes it and feeds `agent_stop` with `test` + `log-check` — and `telec projects onboard` reaches the same path by dispatching assess. A re-authored `code` block silently re-binds `test` and voids this policy. Until a guardrails check enforces this, the absence of that block is a contract, not an oversight — an agent that finds it missing leaves it missing. `telec projects analyze` never touches the overlay and is not a door to this failure.
+<!-- change:align-config-cli-ownership -->
+- **The quality-configuration assessment does not author a `code` block for this repository.** The checkpoint overlay is authored at assess-time — `software-development/procedure/code-config-assessment` writes it and feeds `agent_stop` with `test` + `log-check` — and every session started with `/projects-assess-config` reaches that path. A re-authored `code` block silently re-binds `test` and voids this policy. Until a guardrails check enforces this, the absence of that block is a contract, not an oversight — an agent that finds it missing leaves it missing. The project-analysis procedure (`/projects-analyze`) never touches the overlay and is not a door to this failure.
+<!-- /planned-change:align-config-cli-ownership -->
 - **Runtime evidence binds the command, not the conclusion.** The checkpoint gate verifies that the log check ran, not that the logs were clean. That judgement stays with intelligence per `general/principle/intelligence-boundaries`, and the gate is correspondingly softer than a binary exit code. This is a known and accepted limit, not an oversight.
 - Reviewers treat a new test file, a reinstated runner, or a new test dependency as a blocking finding.
 

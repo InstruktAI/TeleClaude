@@ -22,8 +22,13 @@ Change TeleClaude machine configuration through the supported agent surface whil
 
 ## Steps
 
+<!-- planned-change:align-config-cli-ownership -->
 1. Inspect current values with `telec config get [paths...]` when the mutation requires current-state context. Do not inspect the backing file directly.
 2. Select the semantic `telec config` operation that owns the change. Use `telec config patch` for general field mutation and the narrower `people`, `env`, `notify`, `tts`, or `wizard` surface when that command owns the intent.
+<!-- change:align-config-cli-ownership -->
+1. Inspect current values with `telec config computer get [paths...]` when the mutation requires current-state context; the read also returns the revision the mutation carries. Do not inspect the backing file directly.
+2. Select the semantic `telec config` operation that owns the change. Use `telec config computer patch --revision <revision>` for general field mutation, with `null` for a field to remove, and the narrower `env`, `notify`, `tts`, or `wizard` surface when that command owns the intent. A stale revision is refused; read again and reapply the change.
+<!-- /planned-change:align-config-cli-ownership -->
 3. Invoke the operation once. The config context reads the latest committed document under its transaction, applies the operation, validates the complete candidate, and atomically replaces the file.
 4. Treat a successful result as the completed mutation. Do not run `telec config validate` as post-write confirmation.
 5. Use `telec config validate` only to diagnose existing configuration state or to investigate a failed mutation.

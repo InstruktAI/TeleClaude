@@ -27,10 +27,17 @@ leading/trailing hyphens and no consecutive hyphens. The stripped slug is
 returned; anything that fails the pattern raises a validation error and the
 schema layer surfaces the failure on the `project_slug` field.
 
+<!-- planned-change:align-config-cli-ownership -->
 The slug is _populated_ — not validated — by `telec projects init`, which is
 the sole writer of `~/.teleclaude/projects.yaml`. Existing project files whose
 `project_slug` is still missing or empty load successfully as `None`; init then
 fills the value during registration.
+<!-- change:align-config-cli-ownership -->
+The slug is _populated_ — not validated — by `telec config project init`, which is
+the sole writer of `~/.teleclaude/projects.yaml`. Existing project files whose
+`project_slug` is still missing or empty load successfully as `None`; init then
+fills the value during registration.
+<!-- /planned-change:align-config-cli-ownership -->
 
 ## Canonical fields
 
@@ -57,6 +64,7 @@ And the project overlay's project_slug remains None
 ```
 
 #### UC-CFG-SLUG-3: Empty string normalizes to None (legacy compatibility)
+<!-- planned-change:align-config-cli-ownership -->
 
 ```
 Given a legacy project config under load with project_slug = ""
@@ -66,6 +74,17 @@ And the validator returns None (not a validation error)
 And the project overlay's project_slug is None
 And the project is accepted so it can be registered by telec projects init
 ```
+<!-- change:align-config-cli-ownership -->
+
+```
+Given a legacy project config under load with project_slug = ""
+When the project overlay's slug validator runs
+Then trimming the value yields ""
+And the validator returns None (not a validation error)
+And the project overlay's project_slug is None
+And the project is accepted so it can be registered by telec config project init
+```
+<!-- /planned-change:align-config-cli-ownership -->
 
 #### UC-CFG-SLUG-4: Whitespace-only string normalizes to None
 
@@ -89,6 +108,7 @@ And the schema layer surfaces the validation failure on the project_slug field
 And the project overlay loader raises before the app config is returned
 ```
 
+<!-- planned-change:align-config-cli-ownership -->
 #### UC-CFG-SLUG-6: Telec projects init fills missing slug
 
 ```
@@ -100,6 +120,19 @@ And writes the slug into the project's teleclaude.yml
 And appends the absolute path to ~/.teleclaude/projects.yaml
 And subsequent loads return the project overlay's project_slug = "<computed-slug>"
 ```
+<!-- change:align-config-cli-ownership -->
+#### UC-CFG-SLUG-6: Project initialization fills missing slug
+
+```
+Given a project root /repos/my-project whose teleclaude.yml has no project_slug
+And the project overlay loader returns an overlay instance with project_slug = None
+When the operator runs `telec config project init` inside /repos/my-project
+Then init computes a slug from the project (typically via normalize_slug on the directory name)
+And writes the slug into the project's teleclaude.yml
+And appends the absolute path to ~/.teleclaude/projects.yaml
+And subsequent loads return the project overlay's project_slug = "<computed-slug>"
+```
+<!-- /planned-change:align-config-cli-ownership -->
 
 ### Cross-context references
 
@@ -110,13 +143,25 @@ And subsequent loads return the project overlay's project_slug = "<computed-slug
   the per-project log namespace.
 - **Consumed by the knowledge bounded context (docs indexing)** — the
   cross-project docs namespace is keyed on `project_slug`.
+<!-- planned-change:align-config-cli-ownership -->
 - **Written by `telec projects init`** — the sole writer of the project
   registry; also fills `project_slug` in the project's own
   `teleclaude.yml` when missing.
+<!-- change:align-config-cli-ownership -->
+- **Written by `telec config project init`** — the sole writer of the project
+  registry; also fills `project_slug` in the project's own
+  `teleclaude.yml` when missing.
+<!-- /planned-change:align-config-cli-ownership -->
 
+<!-- planned-change:align-config-cli-ownership -->
 - **Not validated by the publication pipeline** — publication does not register
   projects; the registry-write responsibility belongs entirely to
   `telec projects init`.
+<!-- change:align-config-cli-ownership -->
+- **Not validated by the publication pipeline** — publication does not register
+  projects; the registry-write responsibility belongs entirely to
+  `telec config project init`.
+<!-- /planned-change:align-config-cli-ownership -->
 
 ## Allowed values
 
@@ -131,11 +176,19 @@ And subsequent loads return the project overlay's project_slug = "<computed-slug
   string load as `project_slug = None`. Consumers cannot distinguish "never
   set" from "explicitly blank" — the validator deliberately erases that
   distinction so legacy configs load.
+<!-- planned-change:align-config-cli-ownership -->
 - **The validator does not assert uniqueness.** Format compliance is checked at
   load time; uniqueness across registered projects is the responsibility of
   `telec projects init` (which uses `ensure_unique_slug` against the registry).
   Two project files on disk with the same `project_slug` will each load
   successfully — the collision only matters at registration / lookup time.
+<!-- change:align-config-cli-ownership -->
+- **The validator does not assert uniqueness.** Format compliance is checked at
+  load time; uniqueness across registered projects is the responsibility of
+  `telec config project init` (which uses `ensure_unique_slug` against the registry).
+  Two project files on disk with the same `project_slug` will each load
+  successfully — the collision only matters at registration / lookup time.
+<!-- /planned-change:align-config-cli-ownership -->
 - **`validate_slug` is the single source of slug format.** Any caller that
   wants the same format rules (workflow slug, todo slug, person key, etc.)
   must call the shared slug validator rather than reimplementing the

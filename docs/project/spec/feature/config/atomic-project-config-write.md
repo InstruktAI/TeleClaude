@@ -105,10 +105,18 @@ And the responsibility for invariants (e.g., stable-channel pinning) lies with t
 
 ### Cross-context references
 
+<!-- planned-change:align-config-cli-ownership -->
 - Operator tooling that mutates project config (the TUI wizard,
   `telec config patch`, scripted setup) is expected to route project-level
   writes through this atomic helper. There is no equivalent atomic helper
   for global or per-person overlays today.
+<!-- change:align-config-cli-ownership -->
+- Operator tooling that mutates project config (the TUI wizard, scripted
+  setup) is expected to route project-level writes through this atomic
+  helper. `telec config project patch` writes through the config owner's
+  locked read, compare, validate, and replace transaction instead. There is no equivalent atomic helper
+  for global or per-person overlays today.
+<!-- /planned-change:align-config-cli-ownership -->
 - The atomic-replace contract is one of the inputs into the `config`
   domain's `config.effective.updated` event (see
   `project/spec/domain/config.md`): a filesystem watcher that observes an

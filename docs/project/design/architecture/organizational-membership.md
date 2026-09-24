@@ -42,12 +42,22 @@ about it.
   answer, never merged; a stale assignment is never counted as an assignment.
 - For an operator: acceptance or a refusal naming what could not be resolved.
 
+<!-- planned-change:align-config-cli-ownership -->
 **The agent-facing surface is a CLI query.** An agent asks for a named person's
 organizational membership through the configuration command namespace that
 already lists people, and receives the answer above in a machine-readable shape.
 This is the observable half of the product outcome: without a published command
 the resolution exists only in-process and no agent can reach it. The query is
 identity-owned and read-only; it resolves declarations and writes nothing.
+<!-- change:align-config-cli-ownership -->
+**The agent-facing surface is a CLI query.** An agent reads a named person's
+configuration with `telec config person get`, and the organizational membership
+arrives there as a read-only section in a machine-readable shape. This is the
+observable half of the product outcome: without a published command the
+resolution exists only in-process and no agent can reach it. The query is
+identity-owned and read-only; it resolves declarations and writes nothing, and a
+person patch that names that section is refused.
+<!-- /planned-change:align-config-cli-ownership -->
 
 ## Invariants
 
@@ -112,6 +122,7 @@ for project ownership, which the project tier already owns.
 lives here. Explicit assignment and derived coverage are reported as separate
 facts so a consumer may read one without the other.
 
+<!-- planned-change:align-config-cli-ownership -->
 **Roster writes are gated where they act, not where they are declared.** The
 maintenance surface declares an administrator-only human band, but the executed
 handler for that surface enforces only a customer exclusion, so every other human
@@ -120,6 +131,14 @@ closing the gap would let a non-administrator rewrite company roles and project
 assignments. The write path therefore carries its own point-of-action check
 enforcing the declared human band, while preserving the agent band the surface
 already admits. Reusing a surface is not inheriting the boundary it advertises.
+<!-- change:align-config-cli-ownership -->
+**Roster writes are gated by the target they change.** A roster changes only
+through a patch of its company's configuration resource, and configuration
+target clearance admits that patch only for a caller with platform-administrator
+standing, decided by the daemon for the verified caller before the config owner
+validates anything (`project/spec/feature/identity/configuration-target-clearance`).
+An agent's system role narrows that standing and never supplies it.
+<!-- /planned-change:align-config-cli-ownership -->
 
 **The two inert declarations are deleted, not migrated.** `PersonConfig.companies`
 and `CompanyConfig.owner` are removed from the schema outright. Nothing is
@@ -161,11 +180,18 @@ The person must already hold a membership entry in this company — a constraint
 that person's standing. Neither implies the other, and a refusal names which one
 failed.
 
+<!-- planned-change:align-config-cli-ownership -->
 **Declaration** is an operator act on the company tier, reached through the
 configuration surface an administrator already uses for people. The surface is
 person-shaped because that is how an administrator thinks about it; the storage
 is company-side because that is where the human placed it. Surface shape and
 storage shape need not match, and here they deliberately do not.
+<!-- change:align-config-cli-ownership -->
+**Declaration** is an operator act on the company tier, reached through that
+company's configuration resource (`telec config company patch`). The surface and
+the storage are both company-shaped, so the command an administrator uses names
+the record the fact lives in.
+<!-- /planned-change:align-config-cli-ownership -->
 
 **The wizard does not edit company configuration.** The configuration wizard
 has no Companies tab. Company configuration, the roster included, is written
