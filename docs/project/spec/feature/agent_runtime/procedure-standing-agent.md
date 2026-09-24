@@ -28,7 +28,8 @@ therefore the same for every standing agent and is not part of its identity.
 
 A standing agent is a session, so it lives on one computer, and each computer
 decides for itself. On a computer that hosts the company, the activation runner
-wakes an agent already running the procedure for that company when it finds one
+wakes a session already running the procedure for that company under the
+system principal when it finds one
 or more, and starts one only when it finds none. That is the runner's own
 behavior: nothing restricts starting such an agent by hand, and nothing
 coordinates computers.
@@ -52,11 +53,12 @@ runner, and acquires none of their powers by continuing.
 #### UC-PSA1: The first activation starts the procedure's standing agent
 
 ```gherkin
-Given no standing agent continues a procedure for a company
-When an activation for that procedure and company arrives
-Then a standing agent is started
-And the agent receives the procedure
-And the agent receives the arriving activation's event context
+Given no standing agent continues a procedure for a company on a computer that hosts the company
+When an activation for that procedure and company arrives there
+Then a standing agent is started in that company's home under the system principal
+And its complete instruction set is the procedure together with its required reads
+And it receives the triggering event as its first input, through the same delivery path later activations take
+And the event is not supplied as startup context
 ```
 
 #### UC-PSA2: A later activation reaches the agent already standing
@@ -150,12 +152,12 @@ And the record does not present the activation as completed
 And the procedure's responsibility is not transferred to another agent
 ```
 
-#### UC-PSA10: An agent already running the procedure for the company counts as standing
+#### UC-PSA10: A system-origin session already running the procedure for the company counts as standing
 
 ```gherkin
-Given an agent was started by hand to run a procedure for a company on a computer
+Given a session under the system principal was started by hand to run a procedure for a company on a computer
 When an activation for that procedure and company arrives on that computer
-Then the activation is delivered to an agent already running it
+Then the activation is delivered to that session
 And no further agent is started
 ```
 
@@ -166,6 +168,16 @@ Given a standing agent runs a procedure for a company on a computer
 When an operator or agent starts another session for that procedure and company by hand
 Then that session starts
 And the activation runner raises no objection to it
+```
+
+#### UC-PSA12: A human-lineage session running the procedure is not adopted
+
+```gherkin
+Given a session carrying human lineage runs a procedure for a company on a computer
+And no session under the system principal runs that procedure for that company there
+When an activation for that procedure and company arrives on that computer
+Then a standing agent is started under the system principal
+And the activation is not delivered to the human-lineage session
 ```
 
 ### Cross-context references

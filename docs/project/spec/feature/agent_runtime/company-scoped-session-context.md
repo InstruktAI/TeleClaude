@@ -50,8 +50,6 @@ standing and confers no credential privilege.
 
 ### Use cases
 
-#### UC-CSC1: A human-lineage session starts knowing its eligible companies
-
 #### UC-CSC2: A company is selected explicitly on creation and dispatch
 
 ```gherkin
@@ -61,8 +59,6 @@ Then the session operates under the selected company
 And the selection supplies business context only
 And it supplies no caller identity, role, or credential
 ```
-
-#### UC-CSC3: Sole membership needs no explicit selection
 
 #### UC-CSC4: An established company is carried forward
 

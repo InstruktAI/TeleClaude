@@ -98,8 +98,9 @@ TeleClaudeNext repository.
   per procedure per company, as the runner's own behavior. The runner resolves
   the agent through the inbound resolve-or-create seam, serialized per
   procedure and company so concurrent activations there cannot both start one.
-  When one or more sessions already run the procedure for the company, it wakes
-  one and starts none; when none does, it starts one by dispatching the generic
+  When one or more sessions under the system principal already run the
+  procedure for the company, it wakes one and starts none; a session carrying
+  human lineage is never adopted; when none does, it starts one by dispatching the generic
   procedure-activation command — carrying the procedure's identity and the
   company — in the company's home, under the system principal, with the
   session's company set. The triggering event reaches a new agent as its first

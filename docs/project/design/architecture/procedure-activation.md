@@ -65,7 +65,8 @@ rule it relies on is stated by its owner:
 - **The runner starts no second agent; nothing else is guarded.** On a computer
   that hosts the company, the runner's resolve-or-create is serialized per
   procedure and company. It wakes a session already running the procedure for
-  the company when it finds one or more, and starts one only when it finds none.
+  the company under the system principal when it finds one or more, and starts
+  one only when it finds none; a human-lineage session is never adopted.
   Starting such a session by hand is never refused.
 - **One thin command starts every activated agent.** The generic
   procedure-activation command carries the procedure's identity and the company,

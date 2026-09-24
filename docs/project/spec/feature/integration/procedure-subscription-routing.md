@@ -80,8 +80,6 @@ Then an agent inspecting the activation sees the platform's system principal nam
 And sees no human principal presented as having initiated it
 ```
 
-#### UC-PSR6: A company's events activate only on its activation computer
-
 #### UC-PSR7: A computer that does not host the event's company produces no activation
 
 ```gherkin
