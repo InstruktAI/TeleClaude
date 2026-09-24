@@ -1,5 +1,5 @@
 ---
-description: "Report the caller's identity via `telec auth whoami` — agent sessions resolve through the identity context, terminal sessions read the TTY login."
+description: "Report the caller's identity via `telec auth whoami`."
 visibility: 'public'
 ---
 
@@ -120,6 +120,7 @@ And no terminal login is consulted or printed
 ```
 <!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
+<!-- planned-change:cli-authorization-reads-via-daemon -->
 ```
 Given any caller resolved by caller verification whose CallerIdentity has principal=`system:8f3c1a7d-2b94-4e6c-9f0e-2a8d7b6c4e5f` and principal_role=`orchestrator`
 When the identity context's whoami capability runs
@@ -137,6 +138,32 @@ Given a CallerIdentity with no principal and no human_role (e.g. single-user mod
 When the identity context's whoami capability runs
 Then it returns `{"principal": null, "role": null}`
 ```
+<!-- change:cli-authorization-reads-via-daemon -->
+#### UC-WHO-CAPABILITY-SESSION: The capability answers a session caller with its principal and session
+
+```
+Given an agent in a session whose carried principal is `system:daemon` and whose system role is `orchestrator`
+When the identity context's whoami capability runs for that caller
+Then it returns the principal `system:daemon`, the role `orchestrator`, no email, and the id of the session it verified
+```
+
+#### UC-WHO-CAPABILITY-PERSON: The capability answers a person with a principal named for them
+
+```
+Given a caller the platform resolves as the registered person `ada@example.com`, whose registered role is `member` — at a terminal, or through a session whose lineage roots at them
+When the identity context's whoami capability runs for that caller
+Then it returns the principal `human:ada@example.com`, the role `member`, and the email `ada@example.com`
+And it returns a session id only when the caller is a session
+```
+
+#### UC-WHO-CAPABILITY-NOBODY: The capability attributes nothing it cannot attribute
+
+```
+Given a verified session caller that resolves to no person and carries no principal
+When the identity context's whoami capability runs for that caller
+Then it returns no principal, no role, and no email
+```
+<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 ```
 Given an operator types `telec auth who am i`
@@ -148,14 +175,22 @@ And the standard whoami flow runs
 ### Cross-context references
 
 - The token path reaches transitively into `agent_runtime.sessions` — caller verification loads the session record bound to the token and rejects the call if the session is closed/closing.
+<!-- planned-change:cli-authorization-reads-via-daemon -->
 - The terminal path reaches into `config.people` via the role lookup. It does not touch the identity context at all; whoami works against the local config even when the identity context is down.
+<!-- change:cli-authorization-reads-via-daemon -->
+- Every path reaches the identity context: the person and role printed at a terminal are the ones caller verification resolves, from the `people` registry, for the login the terminal presents. The CLI resolves no role itself.
+<!-- /planned-change:cli-authorization-reads-via-daemon -->
 - The whoami capability is itself gated by caller verification, so it is the simplest live exercise of token Resolution end-to-end.
 - In v2 this is the same capability spelled as a method on the identity service (`identity.who_am_i(principal)`) returning a typed `Principal` (or Anonymous).
 
 ## Known caveats
 
 - The conversational alias is strict: it matches exactly the three tokens `who`, `am`, `i` (the third with optional trailing `?`). Punctuation or different ordering misses and falls through to the unknown-subcommand branch.
+<!-- planned-change:cli-authorization-reads-via-daemon -->
 - The role lookup returns the string `"unresolved"` on a miss when rendering the terminal output — that is a CLI label, not a Role band. It never appears in a `CallerIdentity.human_role`.
 - The token path requires the identity context to be reachable. If it is down, an agent-session whoami fails with an API error — there is no local fallback.
+<!-- change:cli-authorization-reads-via-daemon -->
+- Every whoami requires the identity context to be reachable. If it is down, whoami fails with an API error — there is no local fallback, at a terminal or inside a session.
+<!-- /planned-change:cli-authorization-reads-via-daemon -->
 - A token whose session has been closed will fail at caller verification with "session no longer active" BEFORE the whoami capability runs. The CLI surfaces this as a generic error, not as a friendly "logged out" message.
 - The token path prints only `Principal` and `Role`. The terminal path prints `Email`, `Role`, `TTY`, and `Session auth file`. The two outputs are intentionally different shapes because they answer different questions about Resolution.

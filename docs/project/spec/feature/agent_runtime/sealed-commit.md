@@ -630,6 +630,7 @@ And no session identity is adopted from the machine-global login record
 ```
 
 <!-- /planned:external-session-identity -->
+<!-- planned-change:cli-authorization-reads-via-daemon -->
 #### UC-CGIP-17 — No agent session but a human terminal login degrades honestly to the human as author
 
 ```
@@ -649,6 +650,35 @@ When telec code commit is invoked
 Then the commit fails loudly with a diagnostic
 And no commit is produced attributing the change to whichever identity git's ambient config happens to name
 ```
+<!-- change:cli-authorization-reads-via-daemon -->
+#### UC-CGIP-17 — A person the platform resolves at a terminal degrades honestly to the human as author
+
+```
+Given a telec code commit invocation from outside any agent session
+And the platform resolves the invoking caller as a registered person from their terminal login
+When the commit lands
+Then git's own ambient identity resolves the author
+And the message carries no Session: trailer
+```
+
+#### UC-CGIP-18 — A caller the platform cannot identify fails the commit loudly
+
+```
+Given the platform resolves the invoking caller as neither an agent session nor a registered person
+When telec code commit is invoked
+Then the commit fails loudly with a diagnostic
+And no commit is produced attributing the change to whichever identity git's ambient config happens to name
+```
+
+#### UC-CGIP-46 — Commit attribution waits for the platform's answer
+
+```
+Given the platform's local service is not reachable from the invoking process
+When telec code commit is invoked
+Then the commit fails loudly, naming how to check and restore the service
+And no commit is produced from an identity the invoking process decided for itself
+```
+<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 #### UC-CGIP-16 — Human-Involved is a per-commit declaration, never derived from the todo record
 

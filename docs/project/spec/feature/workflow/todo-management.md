@@ -158,6 +158,28 @@ Then the CLI sends the invocation working directory to the workflow service
 And the service resolves the removed slug from that project rather than the daemon default directory
 ```
 
+<!-- planned:cli-authorization-reads-via-daemon -->
+#### UC-WM32: Listing reads the caller's project through the workflow service
+
+```
+Given an operator or agent is inside a project worktree
+When they run "telec todo list" or "telec bugs list"
+Then the CLI sends the invocation working directory to the workflow service
+And the service answers from that project's todo list for the caller it verifies
+And the CLI renders the service's answer without reading the todo store itself
+```
+
+#### UC-WM33: Todo and bug reads refuse a caller the platform cannot identify
+
+```
+Given a process that carries no identity the platform can verify — no terminal login, no usable session identity
+When it runs "telec todo list", "telec todo show", "telec todo artifacts list", "telec todo artifacts read", or "telec bugs list"
+Then the workflow service refuses the request before any todo is read
+And no todo, artifact, or bug content is printed
+And the refusal names how to establish an identity
+```
+
+<!-- /planned:cli-authorization-reads-via-daemon -->
 ```
 Given active todos [ready-a, prep-b]
 And ready-a has all after dependencies delivered and a ready lifecycle phase

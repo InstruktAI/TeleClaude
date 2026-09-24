@@ -11,6 +11,7 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:cli-authorization-reads-via-daemon -->
 Operators inspect a specific past session by addressing its mirror with a
 full session identifier. The lookup matches that identifier exactly; a
 shortened value is refused rather than resolved. Optional
@@ -20,6 +21,27 @@ timestamp, both identifiers and which source answered — followed by the
 conversation body in full. The detail capability of the session_mirrors service
 returns a structured payload with session_id, identity, title, timestamps,
 conversation_text, and message_count.
+<!-- change:cli-authorization-reads-via-daemon -->
+Operators inspect a specific past session by addressing its mirror with a
+full session identifier. The lookup matches that identifier exactly; a
+shortened value is refused rather than resolved. Optional
+computer scoping narrows the lookup when callers supply a host name.
+
+A local `telec history show` is answered by the session_mirrors service's
+history detail capability for the caller the platform verifies. That capability
+resolves the identifier — a TeleClaude id through the session registry, a native
+id directly — applies the caller's history scope, and returns the same structured
+answer `telec history show --json` prints: both identifiers and which of them was
+supplied, which source answered, title, project, computer, timestamps, message
+count, coverage, whether the session is running, and the conversation body. The
+CLI reads no mirror, session record, or transcript itself; it renders that answer
+as a human-readable header — title, project, computer, start timestamp, both
+identifiers and which source answered — followed by the conversation body in full.
+
+The detail capability of the session_mirrors service returns one stored mirror
+by exact identifier as a structured payload with session_id, identity, title,
+timestamps, conversation_text, and message_count.
+<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 ## Canonical fields
 
@@ -107,6 +129,7 @@ Then the missing-store condition is swallowed
 And the function reports "no mirror" without raising
 ```
 
+<!-- planned-change:cli-authorization-reads-via-daemon -->
 #### UC-MDR-1: CLI accepts a TeleClaude session id
 
 ```
@@ -126,6 +149,27 @@ And the CLI reports "No transcript found for session '<session-id>'" and exits n
 Given no session record carries the supplied id
 Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
 ```
+<!-- change:cli-authorization-reads-via-daemon -->
+#### UC-MDR-1: CLI accepts a TeleClaude session id
+
+```
+Given an operator runs `telec history show <session-id>` with a TeleClaude session id
+And no mirror matches that id directly
+And the session record for that id carries a native agent session id
+When the history detail capability resolves the lookup
+Then it repeats only the mirror lookup under the native agent session id
+And the on-disk transcript discovery is never repeated under a resolved id, because it applies no history scope
+And the session's mirror is rendered, whether the session is still running or already closed
+And `--raw` for a resolved id streams the transcript recorded on that mirror rather than a rediscovered file
+
+Given the caller's history scope excludes that session's mirror from the detail lookup
+Then the resolved native id opens neither the mirror nor the transcript
+And the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
+
+Given no session record carries the supplied id
+Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
+```
+<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 #### UC-MDR-2: An id lookup takes a full UUID
 
@@ -153,6 +197,19 @@ When the agent uses the retrieved conversation to ground a review
 Then the response states the latest conversation coverage it can establish
 And content beyond that coverage is not represented as absent from the session
 ```
+
+<!-- planned:cli-authorization-reads-via-daemon -->
+#### UC-MDR-6: The platform's verification, not the requesting process, decides a detail request
+
+```
+Given an agent process presents a session identity document naming a session the platform does not know
+And the pane it runs on carries an admin's terminal login
+When it runs `telec history show <session-id>` for a stored conversation
+Then the request is refused
+And no conversation, header, or transcript is printed
+```
+
+<!-- /planned:cli-authorization-reads-via-daemon -->
 
 ## Known caveats
 
