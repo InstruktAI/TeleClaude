@@ -92,7 +92,10 @@ A finding is valid only when all four hold:
 1. it cites the specific policy, Definition of Done line, principle, or spec it
    violates — a principle is a citeable clause;
 2. it establishes, from current authoritative sources and the reviewed
-   artifact, that the cited clause applies here;
+   artifact, that the cited clause applies here — including that no more
+   specific contract on the same subject decides the case otherwise, such as a
+   project policy that settles what a general spec leaves open
+   (`general/policy/conflict-resolution`);
 3. it explains the contradiction causally — what the target does and why that
    conflicts with the clause;
 4. it states the closure condition within the frozen scope, without

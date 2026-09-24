@@ -143,8 +143,10 @@ header. Pick your behavior from the reason:
     contradiction, and its closure stays inside the authorized outcome and the
     behavior's established domain owner. Apply the targeted fix.
   - **Reject** — the finding does not establish that its cited clause applies
-    here, or its closure enlarges the horizon: new functionality,
-    instrumentation, subsystems, or scope beyond the frozen denominator. A valid
+    here, including when a more specific contract on the same subject decides
+    the case otherwise (`sdlc/procedure/lifecycle/review` §4, condition 2), or
+    its closure enlarges the horizon: new functionality, instrumentation,
+    verification tooling, subsystems, or scope beyond the frozen denominator. A valid
     omission finding — a missing reflection, verification, or gate the policies
     require on the authorized work — adds material within scope and is not
     rejected on that ground (`sdlc/procedure/lifecycle/review`
@@ -422,6 +424,11 @@ written, regardless of how prudent it looks. Tracing a task to a scenario or
 snippet this same prepare pass authored does not create scope; the `diagnosis`
 and the `input` symptom are the only scope authorities for a bug
 (`sdlc/procedure/debugging`, step 5).
+
+The plan's observation map is held to the same trace. Every entry and predicate
+traces to the reported symptom or the diagnosed cause and binds evidence the
+changed surface already produces (`sdlc/spec/observation-map`); proving a
+guarantee the fix leaves unchanged is outside the plan.
 
 State the operation's observable outcome and relevant effects after the fix
 under the diagnosed triggering conditions. Derive verification of the

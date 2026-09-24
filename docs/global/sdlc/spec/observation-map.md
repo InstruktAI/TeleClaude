@@ -135,10 +135,14 @@ names the authority that reads it: human observation for human-facing behavior.
 
 A delivery is never required to author new instrumentation — emitters, record
 schemas, run-correlation identifiers, or any logging subsystem — to make its
-map armable. Where native evidence cannot express a structured predicate, the
-entry states the native observation it binds and the acceptance authority that
-reads it, and that entry is armable as stated. A review demand to build new
-instrumentation so a map can be armed prescribes work the approved intent does
+map armable. Nor does it author verification of its own — reference builds,
+comparison harnesses, or any check layered on top of the acceptance authority.
+Where the project's verification contract names its live obligations as
+sufficient, an entry names what that authority reads and nothing more. Where
+native evidence cannot express a structured predicate, the entry states the
+native observation it binds and the acceptance authority that reads it, and
+that entry is armable as stated. A review demand to build new instrumentation
+or verification so a map can be armed prescribes work the approved intent does
 not contain and is invalid under
 `sdlc/policy/preparation-artifact-quality` (a finding carries
 no authority to enlarge the horizon).
