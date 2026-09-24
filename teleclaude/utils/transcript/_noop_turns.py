@@ -15,6 +15,7 @@ _CONTENT_KEY = "content"
 _ROLE_KEY = "role"
 _TEXT_KEY = "text"
 _TYPE_KEY = "type"
+_TEXT_JOINER = "\n\n"
 
 
 class _MessageRole(StrEnum):
@@ -46,11 +47,12 @@ def _authored_text(entry: Mapping[str, object]) -> str | None:
     if not isinstance(content, list):
         return None
     texts = [
-        str(block.get(_TEXT_KEY, ""))
+        text
         for block in content
         if isinstance(block, Mapping) and block.get(_TYPE_KEY) in set(_AuthoredTextBlockType)
+        if isinstance(text := block.get(_TEXT_KEY), str)
     ]
-    joined = "\n\n".join(text for text in texts if text.strip())
+    joined = _TEXT_JOINER.join(text for text in texts if text.strip())
     return joined or None
 
 

@@ -27,6 +27,18 @@ _TRANSIENT_SNAPSHOT_LABELS: dict[type[Exception], str] = {
     tmux_bridge.TmuxSnapshotMalformedError: "tmux snapshot malformed",
 }
 _TRANSIENT_SNAPSHOT_ERRORS = tuple(_TRANSIENT_SNAPSHOT_LABELS)
+# Consecutive malformed snapshots after which the failure is persistent, not transient.
+_MALFORMED_SNAPSHOT_STREAK_LIMIT = 5
+
+
+def _next_malformed_streak(exc: Exception, streak: int) -> int:
+    """Count consecutive malformed snapshots; re-raise once the streak is persistent."""
+    if not isinstance(exc, tmux_bridge.TmuxSnapshotMalformedError):
+        return streak
+    streak += 1
+    if streak >= _MALFORMED_SNAPSHOT_STREAK_LIMIT:
+        raise exc
+    return streak
 
 
 @dataclass
@@ -294,6 +306,7 @@ class OutputPoller:
         suppressed_transient_ticks: dict[str, int] = {}
         last_transient_log_time: dict[str, float] = {}
         last_transient_error: dict[str, str] = {}
+        malformed_streak = 0
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -359,13 +372,16 @@ class OutputPoller:
                 except _TRANSIENT_SNAPSHOT_ERRORS as exc:
                     # Each class loses one tick only. A timeout kill-and-reaps before the raise
                     # (communicate_with_timeout), and a snapshot is stateless per tick, so the
-                    # next tick spawns a clean client and re-reads everything.
+                    # next tick spawns a clean client and re-reads everything. A malformed
+                    # snapshot that persists is re-raised to the coordinator's failure path.
+                    malformed_streak = _next_malformed_streak(exc, malformed_streak)
                     label = _TRANSIENT_SNAPSHOT_LABELS[type(exc)]
                     suppressed_transient_ticks[label] = suppressed_transient_ticks.get(label, 0) + 1
                     last_transient_error[label] = str(exc)
                     maybe_log_transient_skip(label)
                     await asyncio.sleep(poll_interval)
                     continue
+                malformed_streak = 0
                 session_exists_now, should_stop, missing_session_events = await self._check_session_presence(
                     session_id=session_id,
                     tmux_session_name=tmux_session_name,
