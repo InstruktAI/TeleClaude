@@ -65,6 +65,7 @@ class MessageMetadata:
     caller_origin_suffix_len: int | None = None
     human_email: str | None = None
     human_role: str | None = None
+    caller_principal: str | None = None
     origin_metadata: SessionOriginMetadata | None = None
     system_role: str | None = None
     job: str | None = None

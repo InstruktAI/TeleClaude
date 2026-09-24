@@ -6,12 +6,19 @@ import asyncio
 from pathlib import Path
 from typing import TypedDict
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 
+from teleclaude.api.auth import (
+    CallerIdentity,
+    caller_from_verified_identity,
+    clearance_history_search,
+    clearance_history_show,
+)
+from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.agents import AgentName
 
-from .store import get_mirror, search_mirrors
+from .store import get_mirror, history_access_for_caller, search_mirrors
 
 router = APIRouter(prefix="/api/mirrors", tags=["mirrors"])
 
@@ -62,19 +69,18 @@ async def search_mirror_routes(
     q: str,
     agent: str = Query(default="all"),
     limit: int = Query(default=20, ge=1, le=100),
+    caller: CallerIdentity = Depends(clearance_history_search),
 ) -> list[MirrorSearchResponseRow]:
-    """Search local mirrors via FTS5.
-
-    This route resolves no caller identity, so ``search_mirrors`` runs without a
-    role band. Worker mirrors stay unreachable here until federated calls carry a
-    verified caller; the worker opt-in is local-path only.
-    """
+    """Search local mirrors through the authenticated service capability."""
+    access = history_access_for_caller(caller_from_verified_identity(caller))
+    if access is None:
+        raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     try:
         agents = _parse_agent_filter(agent)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Unknown agent filter: {agent}") from exc
 
-    page = await asyncio.to_thread(search_mirrors, q, agents, limit=limit)
+    page = await asyncio.to_thread(search_mirrors, q, agents, access=access, limit=limit)
     return [
         {
             "session_id": result.session_id,
@@ -91,9 +97,15 @@ async def search_mirror_routes(
 
 
 @router.get("/{session_id}")
-async def get_mirror_route(session_id: str) -> MirrorDetailResponse:
+async def get_mirror_route(
+    session_id: str,
+    caller: CallerIdentity = Depends(clearance_history_show),
+) -> MirrorDetailResponse:
     """Fetch a single mirror by session id."""
-    mirror = await asyncio.to_thread(get_mirror, session_id)
+    access = history_access_for_caller(caller_from_verified_identity(caller))
+    if access is None:
+        raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
+    mirror = await asyncio.to_thread(get_mirror, session_id, access=access)
     if mirror is None or mirror.session_id is None:
         raise HTTPException(status_code=404, detail="Mirror not found")
     return {
@@ -112,9 +124,15 @@ async def get_mirror_route(session_id: str) -> MirrorDetailResponse:
 
 
 @router.get("/{session_id}/transcript")
-async def get_mirror_transcript_route(session_id: str) -> PlainTextResponse:
+async def get_mirror_transcript_route(
+    session_id: str,
+    caller: CallerIdentity = Depends(clearance_history_show),
+) -> PlainTextResponse:
     """Return the raw transcript file content for a mirror."""
-    mirror = await asyncio.to_thread(get_mirror, session_id)
+    access = history_access_for_caller(caller_from_verified_identity(caller))
+    if access is None:
+        raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
+    mirror = await asyncio.to_thread(get_mirror, session_id, access=access)
     if mirror is None:
         raise HTTPException(status_code=404, detail="Mirror not found")
     transcript_path = mirror.metadata.get("transcript_path")

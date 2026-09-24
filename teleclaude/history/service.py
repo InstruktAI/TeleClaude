@@ -10,7 +10,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db._sync import get_session_ids_by_native_sync
-from teleclaude.mirrors.store import MirrorSearchResult, search_mirrors
+from teleclaude.mirrors.store import MirrorAccess, MirrorSearchResult, search_mirrors
 from teleclaude.paths import MAIN_DB_PATH
 
 logger = get_logger(__name__)
@@ -72,8 +72,7 @@ def build_history_search_payload(
     query: str,
     agents: Sequence[AgentName],
     limit: int,
-    caller_email: str | None,
-    caller_role: str | None,
+    access: MirrorAccess,
     include_workers: bool,
     identity: str | None,
     project: str | None,
@@ -93,8 +92,7 @@ def build_history_search_payload(
         query,
         agents,
         limit=limit,
-        caller_email=caller_email,
-        caller_role=caller_role,
+        access=access,
         include_workers=include_workers,
         identity=identity,
         project=project,

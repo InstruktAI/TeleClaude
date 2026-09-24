@@ -17,14 +17,45 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import OperationalError as SqlAlchemyOperationalError
 
 from teleclaude import paths as tc_paths
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
+from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.core.identity import CliCaller, PersonCliCaller, SystemCliCaller
 from teleclaude.mirrors._migrations import migrate_add_mirror_columns
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
+
+
+@dataclass(frozen=True)
+class AllMirrorAccess:
+    """Access scope for a read that may consider every mirror."""
+
+
+@dataclass(frozen=True)
+class PersonMirrorAccess:
+    """Access scope limited to mirrors recorded against one person."""
+
+    email: str
+
+
+type MirrorAccess = AllMirrorAccess | PersonMirrorAccess
+
+ALL_MIRROR_ACCESS = AllMirrorAccess()
+
+
+def history_access_for_caller(caller: CliCaller) -> MirrorAccess | None:
+    """Resolve the mirror scope granted by a verified identity caller."""
+    if isinstance(caller, SystemCliCaller):
+        return ALL_MIRROR_ACCESS
+    if isinstance(caller, PersonCliCaller):
+        if caller.human_role == HUMAN_ROLE_ADMIN:
+            return ALL_MIRROR_ACCESS
+        if caller.email:
+            return PersonMirrorAccess(caller.email)
+    return None
+
 
 # Search shows only the sessions worth auditing; dispatched workers are the noise.
 _WORKER_EXCLUSION_CLAUSE = "mirrors.is_worker = 0"
@@ -51,6 +82,8 @@ _MIRROR_SHRINK_REFUSALS_TABLE = "mirror_shrink_refusals"
 _SHRINK_REFUSED_AT_FIELD = "shrink_refused_at"
 _IDENTITY_PARAM = "identity"
 _PROJECT_PARAM = "project"
+_CALLER_EMAIL_PARAM = "caller_email"
+_CALLER_EMAIL_SCOPE_CLAUSE = "mirrors.human_email = :caller_email"
 _SQL_AND_SEPARATOR = " AND "
 _SEARCH_SQL_TEMPLATE = """
     WITH ranked_candidates AS (
@@ -414,11 +447,10 @@ def search_mirrors(
     query: str,
     agents: Sequence[AgentName | str],
     *,
+    access: MirrorAccess,
     limit: int = 20,
     db: str | Path | None = None,
     computers: Sequence[str] | None = None,
-    caller_email: str | None = None,
-    caller_role: str | None = None,
     include_workers: bool = False,
     identity: str | None = None,
     project: str | None = None,
@@ -464,7 +496,7 @@ def search_mirrors(
     if project:
         candidate_clauses.append(_PROJECT_FILTER_CLAUSE)
         params[_PROJECT_PARAM] = project
-    _apply_role_filter(candidate_clauses, params, caller_email, caller_role)
+    _apply_access_filter(candidate_clauses, params, access)
     eligible_clauses = [*candidate_clauses]
     if match_query:
         eligible_clauses.append(_UNREPROJECTABLE_MATCH_CLAUSE)
@@ -541,11 +573,10 @@ def search_mirrors(
 def get_mirror(
     session_id: str | None = None,
     *,
+    access: MirrorAccess,
     db: str | Path | None = None,
     computer: str | None = None,
     source_identity: str | None = None,
-    caller_email: str | None = None,
-    caller_role: str | None = None,
 ) -> MirrorRecord | None:
     """Fetch a mirror by exact session id or source identity."""
     clauses: list[str]
@@ -562,7 +593,7 @@ def get_mirror(
     else:
         return None
 
-    _apply_role_filter(clauses, params, caller_email, caller_role)
+    _apply_access_filter(clauses, params, access)
 
     sql = _GET_MIRROR_SQL_TEMPLATE.format(where_clause=_SQL_AND_SEPARATOR.join(clauses))
 
@@ -720,21 +751,16 @@ def delete_mirror(
             conn.execute(text("DELETE FROM mirrors WHERE session_id = :session_id"), {"session_id": session_id})
 
 
-def _apply_role_filter(
+def _apply_access_filter(
     clauses: list[str],
     params: dict[str, object],  # guard: loose-dict - SQL bind params are mutated by caller filters.
-    caller_email: str | None,
-    caller_role: str | None,
+    access: MirrorAccess,
 ) -> None:
-    """Apply role-based WHERE clauses for history access control."""
-    if caller_role is None or caller_role == HUMAN_ROLE_ADMIN:
+    """Apply the already-resolved mirror access scope to a query."""
+    if isinstance(access, AllMirrorAccess):
         return
-    if caller_role == HUMAN_ROLE_MEMBER:
-        clauses.append("(mirrors.human_email = :caller_email OR mirrors.visibility = 'shared')")
-        params["caller_email"] = caller_email
-    else:
-        clauses.append("mirrors.human_email = :caller_email")
-        params["caller_email"] = caller_email
+    clauses.append(_CALLER_EMAIL_SCOPE_CLAUSE)
+    params[_CALLER_EMAIL_PARAM] = access.email
 
 
 @dataclass(frozen=True)

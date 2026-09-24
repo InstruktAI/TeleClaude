@@ -21,7 +21,15 @@ from teleclaude.output_projection.models import VisibilityPolicy
 from teleclaude.output_projection.serializers import to_structured_message
 
 from .derivation import DERIVATION_VERSION, derive_human_title, is_exact_loader_envelope
-from .store import JsonValue, MirrorRecord, delete_mirror, get_mirror, record_mirror_shrink_refusal, upsert_mirror
+from .store import (
+    ALL_MIRROR_ACCESS,
+    JsonValue,
+    MirrorRecord,
+    delete_mirror,
+    get_mirror,
+    record_mirror_shrink_refusal,
+    upsert_mirror,
+)
 
 _MIRROR_VISIBILITY_POLICY = VisibilityPolicy(
     include_tools=False,
@@ -144,7 +152,7 @@ def generate_mirror_sync(
     structured = [to_structured_message(block) for block in projected_blocks]
     is_worker = system_role == ROLE_WORKER
     conversation_messages = _drop_exact_loader_envelope(_normalize_conversation_messages(structured))
-    existing = get_mirror(source_identity=source_identity, db=db)
+    existing = get_mirror(source_identity=source_identity, access=ALL_MIRROR_ACCESS, db=db)
 
     if not conversation_messages:
         # A source that yields nothing is a degraded source, not an emptied conversation.

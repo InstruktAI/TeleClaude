@@ -72,6 +72,7 @@ class RedisInboundMessage:
     reply_stream: str | None = None
     human_email: str | None = None
     human_role: str | None = None
+    caller_principal: str | None = None
     system_role: str | None = None
     job: str | None = None
 

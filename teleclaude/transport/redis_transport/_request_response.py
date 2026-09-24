@@ -198,13 +198,13 @@ class _RequestResponseMixin:  # pyright: ignore[reportUnusedClass]
             data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
         if metadata.origin_metadata:
             data[b"origin_metadata"] = json.dumps(metadata.origin_metadata).encode("utf-8")
-        # Identity travels as command payload (not transport metadata) so a session
-        # created on a peer carries the initiating human's identity — the receiver's
-        # identity gate needs human_role or system_role.
+        # Relay the verified caller identity so the peer can resolve its own scope.
         if metadata.human_email:
             data[b"human_email"] = metadata.human_email.encode("utf-8")
         if metadata.human_role:
             data[b"human_role"] = metadata.human_role.encode("utf-8")
+        if metadata.caller_principal:
+            data[b"caller_principal"] = metadata.caller_principal.encode("utf-8")
         if metadata.system_role:
             data[b"system_role"] = metadata.system_role.encode("utf-8")
         if metadata.job:

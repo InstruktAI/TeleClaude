@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
 from teleclaude.config.schema import PersonChipColor, PersonEntry
-from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import MessageAuthorKind
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
+
+_HUMAN_PRINCIPAL_PREFIX = "human:"
+_SYSTEM_PRINCIPAL_PREFIX = "system:"
 
 
 class CliCallerKind(StrEnum):
@@ -428,13 +431,7 @@ class IdentityResolver:
 
     @property
     def is_multi_user(self) -> bool:
-        """True when more than one person is registered.
-
-        The single shared determination of multi-user mode: it gates the
-        terminal-login requirement (auto-granting a sole user admin) and the TUI
-        ownership surface (chips + per-human filter). One predicate, one
-        threshold, every consumer reads it.
-        """
+        """Return whether more than one person is registered."""
         return self.registered_people_count > 1
 
     def effective_terminal_role(self, email: str | None) -> str | None:
@@ -445,9 +442,7 @@ class IdentityResolver:
             person = self._by_email.get(normalized_email)
             if person:
                 return self._normalize_role(person.role)
-        if self.is_multi_user:
-            return None
-        return HUMAN_ROLE_ADMIN
+        return None
 
     def resolve(self, origin: str, origin_metadata: Mapping[str, object]) -> IdentityContext:
         """Resolve identity from origin and metadata.
@@ -572,6 +567,30 @@ def get_identity_resolver() -> IdentityResolver:
     if _resolver_instance is None:
         _resolver_instance = IdentityResolver()
     return _resolver_instance
+
+
+def caller_from_principal(principal: str | None) -> CliCaller:
+    """Resolve a carried principal into its current caller identity."""
+    if not principal:
+        return NoIdentityCliCaller()
+    if principal.startswith(_HUMAN_PRINCIPAL_PREFIX):
+        email = principal.removeprefix(_HUMAN_PRINCIPAL_PREFIX)
+        if not email:
+            return NoIdentityCliCaller()
+        identity = get_identity_resolver().resolve_by_email(email)
+        return PersonCliCaller(
+            email=email,
+            person_slug=identity.person_slug,
+            human_role=identity.person_role,
+        )
+    if principal.startswith(_SYSTEM_PRINCIPAL_PREFIX) and principal.removeprefix(_SYSTEM_PRINCIPAL_PREFIX):
+        return SystemCliCaller()
+    return NoIdentityCliCaller()
+
+
+def human_principal_for_email(email: str) -> str:
+    """Build the canonical principal for a verified person email."""
+    return f"{_HUMAN_PRINCIPAL_PREFIX}{email}"
 
 
 def resolve_discord_author_alias(

@@ -1,16 +1,14 @@
-"""Daemon-side role enforcement for telec API endpoints.
-Provides FastAPI dependencies for dual-factor caller identity verification
-and role-based clearance checks. Replaces legacy wrapper-side
-tool filtering with tamper-resistant server-side enforcement.
+"""Daemon-side caller verification and role clearance for telec API endpoints.
 
 Identity verification flow:
-1. X-Caller-Session-Id present → verify against DB (and tmux cross-check when present)
-2. Otherwise, X-Telec-Email (TTY-scoped telec login) maps to human role via global config
-3. Otherwise, fall back to default unidentified terminal role
-4. Insufficient clearance → 403
+1. Daemon credential resolves to the daemon's system principal.
+2. A caller session is verified against the database and its carried identity
+   takes precedence over any terminal-email header.
+3. A non-session caller is resolved from its registered terminal email.
+4. A caller with no resolvable identity is refused.
 
-The system_role is derived from daemon-owned session state in the database.
-The human_role comes from DB session record or terminal email mapping.
+The system role is derived from daemon-owned session state. Person roles for
+history scope are resolved from the current people registry.
 """
 
 from __future__ import annotations
@@ -38,7 +36,13 @@ from teleclaude.core import db_models
 from teleclaude.core.conversation_messages import resolve_session_event_author
 from teleclaude.core.daemon_lifecycle_identity import is_daemon_credential
 from teleclaude.core.db import SessionIdentityError, db, resolve_session_principal
-from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.identity import (
+    CliCaller,
+    NoIdentityCliCaller,
+    PersonCliCaller,
+    caller_from_principal,
+    get_identity_resolver,
+)
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.types.commands import CallerProvenance
 from teleclaude.types.creation_record import EntryPoint
@@ -165,11 +169,25 @@ class CallerIdentity:
     system_role: str | None  # e.g. "worker" or None (orchestrator/admin)
     human_role: str | None  # e.g. "admin", "member", etc.
     tmux_session_name: str | None  # for diagnostic use only
-    email: str | None = None  # authenticated email from terminal login
+    email: str | None = None  # authenticated email from the verified caller
     principal: str | None = None  # "human:<email>" or "system:<id>"
     principal_role: str | None = None  # role resolved from the current principal owner
     entry_point: EntryPoint | None = None  # the creation door, stamped from request shape
     job: str | None = None  # session.job, when resolved from a loaded session
+
+
+def caller_from_verified_identity(identity: CallerIdentity) -> CliCaller:
+    """Resolve a verified API identity into the shared history caller type."""
+    if identity.principal:
+        return caller_from_principal(identity.principal)
+    if not identity.email:
+        return NoIdentityCliCaller()
+    person = get_identity_resolver().resolve_by_email(identity.email)
+    return PersonCliCaller(
+        email=identity.email,
+        person_slug=person.person_slug,
+        human_role=person.person_role,
+    )
 
 
 def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenance | None:
@@ -296,14 +314,21 @@ def _build_daemon_identity() -> CallerIdentity:
     )
 
 
-def _resolve_human_role(session: Session, x_telec_email: str | None) -> str | None:
-    """Resolve human role with terminal-email fallback."""
+def _resolve_human_role(
+    session: Session,
+    x_telec_email: str | None,
+    principal: str | None,
+) -> str | None:
+    """Resolve a session's person role before considering the terminal signal."""
     if session.human_role:
         return session.human_role
-    fallback_email = x_telec_email or getattr(session, "human_email", None)
-    if not fallback_email:
-        return None
-    return _resolve_terminal_role(fallback_email)
+    if principal:
+        caller = caller_from_principal(principal)
+        return caller.human_role if isinstance(caller, PersonCliCaller) else None
+    session_email = _normalize_email(getattr(session, "human_email", None))
+    if session_email:
+        return _resolve_terminal_role(session_email)
+    return _resolve_terminal_role(x_telec_email)
 
 
 async def _verify_session_identity(
@@ -317,7 +342,6 @@ async def _verify_session_identity(
     if x_tmux_session and session.tmux_session_name and x_tmux_session != session.tmux_session_name:
         raise HTTPException(status_code=403, detail="session identity mismatch")
 
-    resolved_email = _normalize_email(x_telec_email) or getattr(session, "human_email", None)
     # Carry the resolved principal so a human-rooted session surfaces human:<email>
     # and a system session surfaces system:<id>. A session that carries only a
     # human_role (no principal, no human_email, no system_role) has no resolvable
@@ -326,10 +350,15 @@ async def _verify_session_identity(
         principal, principal_role = resolve_session_principal(session)
     except SessionIdentityError:
         principal, principal_role = None, None
+    if principal:
+        principal_caller = caller_from_principal(principal)
+        resolved_email = principal_caller.email if isinstance(principal_caller, PersonCliCaller) else None
+    else:
+        resolved_email = _normalize_email(getattr(session, "human_email", None)) or _normalize_email(x_telec_email)
     return CallerIdentity(
         session_id=caller_session_id,
         system_role=_derive_session_system_role(session),
-        human_role=_resolve_human_role(session, x_telec_email),
+        human_role=_resolve_human_role(session, x_telec_email, principal),
         tmux_session_name=session.tmux_session_name,
         email=resolved_email,
         principal=principal,
@@ -516,6 +545,7 @@ clearance_sessions_revive = require_clearance("telec sessions revive")
 clearance_sessions_tail = require_clearance("telec sessions tail")
 clearance_sessions_unsubscribe = require_clearance("telec sessions unsubscribe")
 clearance_history_search = require_clearance("telec history search")
+clearance_history_show = require_clearance("telec history show")
 clearance_sessions_result = require_clearance("telec sessions result")
 clearance_sessions_file = require_clearance("telec sessions file")
 clearance_sessions_escalate = require_clearance("telec sessions escalate")
@@ -547,6 +577,7 @@ __all__ = [
     "clearance_channels_publish",
     "clearance_computers_list",
     "clearance_history_search",
+    "clearance_history_show",
     "clearance_message_send",
     "clearance_operations_get",
     "clearance_projects_list",

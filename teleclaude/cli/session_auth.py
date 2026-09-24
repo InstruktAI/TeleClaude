@@ -27,8 +27,6 @@ _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
 _INODE_ALLOCATION_PREFIX = "ino:"
 _CTIME_ALLOCATION_PREFIX = "ctime:"
-_HUMAN_PRINCIPAL_PREFIX = "human:"
-_SYSTEM_PRINCIPAL_PREFIX = "system:"
 
 if TYPE_CHECKING:
     from teleclaude.core.identity import CliCaller
@@ -55,9 +53,10 @@ def _detect_ancestor_tty() -> str | None:
     """Return the terminal of the nearest ancestor process that has one.
 
     An agent CLI started from a terminal runs its tool shells detached from that
-    terminal, yet they act for the person who launched it. Processes rooted in
-    the service manager (the daemon and everything it spawns) have no ancestor
-    with a terminal and so still resolve to none.
+    terminal, yet they act for the person who launched it. Service-manager
+    processes outside terminal-bearing sessions have no terminal ancestor. A
+    daemon-spawned tmux session does have a pane terminal ancestor; the session
+    identity marker prevents that terminal login from becoming its identity.
     """
     try:
         for ancestor in psutil.Process().parents():
@@ -178,9 +177,11 @@ def _read_live_document(path: Path, tty: str) -> str | None:
 def read_current_session_email() -> str | None:
     """Read login email.
 
-    Resolution order:
-    1. The identity carried into a trusted TUI session (only where the TUI
-       runtime marker is present — never honoured outside it)
+    A present session identity document, valid or not, suppresses terminal
+    login before any other source is consulted. With no such document, resolve
+    in order:
+    1. Identity carried into a trusted TUI session (only where the TUI runtime
+       marker is present — never honoured outside it)
     2. A live auth document for the process's terminal — its own, else its
        nearest terminal-bearing ancestor's (device node present, allocation
        token matching)
@@ -189,6 +190,10 @@ def read_current_session_email() -> str | None:
     A process with no terminal of its own or in its ancestry presents no
     identity: nothing is consulted past that point.
     """
+    marker_state, _session_id = inspect_session_identity_marker()
+    if marker_state is not MarkerState.ABSENT:
+        return None
+
     if os.environ.get(TUI_SESSION_ENV_KEY):  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         carried = os.environ.get(TUI_CARRIED_IDENTITY_ENV_KEY)  # fmt: skip  # guard: direct-env-read - allowed: ambient host or terminal state
         if carried:
@@ -214,7 +219,7 @@ def resolve_cli_caller() -> CliCaller:
     from teleclaude.core.identity import (  # noqa: PLC0415 - keep config-loading identity code out of every CLI start
         NoIdentityCliCaller,
         PersonCliCaller,
-        SystemCliCaller,
+        caller_from_principal,
         get_identity_resolver,
     )
 
@@ -225,30 +230,17 @@ def resolve_cli_caller() -> CliCaller:
             return NoIdentityCliCaller()
         identity_resolver = get_identity_resolver()
         person = identity_resolver.resolve_by_email(email)
+        if not person.person_email:
+            return NoIdentityCliCaller()
         return PersonCliCaller(
-            email=email,
+            email=person.person_email,
             person_slug=person.person_slug,
-            human_role=identity_resolver.effective_terminal_role(email),
+            human_role=person.person_role,
         )
     if marker_state is MarkerState.INVALID:
         return NoIdentityCliCaller()
 
-    principal = get_principal()
-    if principal is None:
-        return NoIdentityCliCaller()
-    if principal.startswith(_HUMAN_PRINCIPAL_PREFIX):
-        email = principal.removeprefix(_HUMAN_PRINCIPAL_PREFIX)
-        if not email:
-            return NoIdentityCliCaller()
-        person = get_identity_resolver().resolve_by_email(email)
-        return PersonCliCaller(
-            email=email,
-            person_slug=person.person_slug,
-            human_role=person.person_role,
-        )
-    if principal.startswith(_SYSTEM_PRINCIPAL_PREFIX) and principal.removeprefix(_SYSTEM_PRINCIPAL_PREFIX):
-        return SystemCliCaller()
-    return NoIdentityCliCaller()
+    return caller_from_principal(get_principal())
 
 
 def effective_caller_role() -> str | None:

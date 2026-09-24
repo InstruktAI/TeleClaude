@@ -14,6 +14,8 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
+from teleclaude.api.auth import CallerIdentity, caller_from_verified_identity
+from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core import command_handlers
 from teleclaude.core.command_dispatch import execute_command_envelope
 from teleclaude.core.dates import parse_iso_datetime
@@ -42,6 +44,7 @@ from teleclaude.core.session_message_projection import (
 from teleclaude.core.session_pane import get_session_pane
 from teleclaude.events.envelope import EventVisibility
 from teleclaude.history.service import build_history_search_payload, parse_history_agents
+from teleclaude.mirrors.store import history_access_for_caller
 from teleclaude.types.commands import command_from_dict
 
 if TYPE_CHECKING:
@@ -343,14 +346,26 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                     limit = limit_value if isinstance(limit_value, int) else 20
                     include_workers_value = search_data.get("include_workers")
                     include_workers = include_workers_value if isinstance(include_workers_value, bool) else False
+                    caller = caller_from_verified_identity(
+                        CallerIdentity(
+                            session_id=parsed.session_id or "",
+                            system_role=parsed.system_role,
+                            human_role=parsed.human_role,
+                            tmux_session_name=None,
+                            email=parsed.human_email,
+                            principal=parsed.caller_principal,
+                        )
+                    )
+                    access = history_access_for_caller(caller)
+                    if access is None:
+                        raise PermissionError(LOGIN_REQUIRED_DETAIL)
                     payload = await asyncio.to_thread(
                         build_history_search_payload,
                         computer=self.computer_name,
                         query=str(search_data.get("q") or ""),
                         agents=agents,
                         limit=limit,
-                        caller_email=parsed.human_email,
-                        caller_role=parsed.human_role,
+                        access=access,
                         include_workers=include_workers,
                         identity=(str(search_data["identity"]) if search_data.get("identity") is not None else None),
                         project=(str(search_data["project"]) if search_data.get("project") is not None else None),
@@ -533,6 +548,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             launch_intent=launch_intent,
             human_email=_decode_redis_text(data, b"human_email"),
             human_role=_decode_redis_text(data, b"human_role"),
+            caller_principal=_decode_redis_text(data, b"caller_principal"),
             system_role=_decode_redis_text(data, b"system_role"),
             job=_decode_redis_text(data, b"job"),
         )

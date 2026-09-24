@@ -14,7 +14,10 @@ from teleclaude.cli.session_auth import (
     write_current_session_email,
 )
 from teleclaude.cli.telec.help import _usage
-from teleclaude.session_identity import get_session_token
+from teleclaude.constants import MarkerState
+from teleclaude.session_identity import inspect_session_identity_marker
+
+_UNUSABLE_SESSION_IDENTITY_MESSAGE = "The current session carries no usable identity."
 
 __all__ = [
     "_handle_auth",
@@ -110,9 +113,11 @@ def _handle_whoami(args: list[str]) -> None:
         print(_usage("auth", "whoami"))
         raise SystemExit(1)
 
-    # Agent session path: resolve principal from daemon via session token.
-    session_token = get_session_token()
-    if session_token:
+    marker_state, session_id = inspect_session_identity_marker()
+    if marker_state is not MarkerState.ABSENT:
+        if marker_state is not MarkerState.VALID or not session_id:
+            print(_UNUSABLE_SESSION_IDENTITY_MESSAGE)
+            raise SystemExit(1)
 
         async def _resolve_principal() -> None:
             api = TelecAPIClient()

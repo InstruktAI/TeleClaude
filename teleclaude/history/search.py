@@ -14,13 +14,20 @@ from typing import TypedDict
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.cli.session_auth import resolve_cli_caller
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.core.db._sync import get_session_field_sync, get_session_ids_by_native_sync
 from teleclaude.history.remote_detail import get_remote_detail, resolve_remote_detail_base
 from teleclaude.history.service import HistorySearchPayload, HistorySearchRow
-from teleclaude.mirrors.store import MirrorCoverageState, MirrorRecord, get_mirror
+from teleclaude.mirrors.store import (
+    AllMirrorAccess,
+    MirrorAccess,
+    MirrorCoverageState,
+    MirrorRecord,
+    get_mirror,
+    history_access_for_caller,
+)
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.utils.transcript import parse_session_transcript
 from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id
@@ -41,6 +48,10 @@ _RETAINED_COVERAGE_LINE_TEMPLATE = (
 )
 _MALFORMED_COVERAGE_STATE_MESSAGE = "Invalid mirror coverage state"
 _MALFORMED_SHRINK_REFUSED_AT_MESSAGE = "Invalid mirror shrink-refusal timestamp"
+_HISTORY_IDENTITY_REQUIRED_MESSAGE = (
+    "History detail requires a verified identity. Log in at a terminal with telec auth login <email>, "
+    "or run inside a session that carries a principal."
+)
 
 logger = get_logger(__name__)
 
@@ -260,10 +271,9 @@ def _remote_shrink_refused_at(payload: Mapping[str, object]) -> str | None:
 def _resolve_local_mirror(
     session_id: str,
     *,
-    caller_email: str | None,
-    caller_role: str | None,
+    access: MirrorAccess,
 ) -> MirrorResolution:
-    mirror = get_mirror(session_id, caller_email=caller_email, caller_role=caller_role)
+    mirror = get_mirror(session_id, access=access)
     if mirror is not None:
         native_id = mirror.session_id
         tc_ids = get_session_ids_by_native_sync(
@@ -283,8 +293,7 @@ def _resolve_local_mirror(
     if isinstance(resolved_native_id, str) and resolved_native_id:
         translated_mirror = get_mirror(
             resolved_native_id,
-            caller_email=caller_email,
-            caller_role=caller_role,
+            access=access,
         )
         return MirrorResolution(
             mirror=translated_mirror,
@@ -392,8 +401,6 @@ def show_transcript(
     include_thinking: bool = False,
     raw: bool = False,
     computers: Sequence[str] | None = None,
-    caller_email: str | None = None,
-    caller_role: str | None = None,
     json_output: bool = False,
 ) -> None:
     """Show a mirror or raw transcript for a local or remote session."""
@@ -469,11 +476,14 @@ def show_transcript(
             print(_mirror_to_display(resolution))
         return
 
-    transcript_fallback_allowed = caller_role is None or caller_role == HUMAN_ROLE_ADMIN
+    access = history_access_for_caller(resolve_cli_caller())
+    if access is None:
+        print(_HISTORY_IDENTITY_REQUIRED_MESSAGE)
+        sys.exit(1)
+    transcript_fallback_allowed = isinstance(access, AllMirrorAccess)
     resolution = _resolve_local_mirror(
         session_id,
-        caller_email=caller_email,
-        caller_role=caller_role,
+        access=access,
     )
     mirror = resolution.mirror
     if mirror and not raw:
