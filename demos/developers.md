@@ -70,11 +70,11 @@ telec
 
 **Where to find files:**
 
-- TUI app: [`teleclaude/cli/tui/app.py`](teleclaude/cli/tui/app.py)
-- Views: [`teleclaude/cli/tui/views/`](teleclaude/cli/tui/views/)
-- Pane management: [`teleclaude/cli/tui/pane_bridge.py`](teleclaude/cli/tui/pane_bridge.py)
+- TUI app: [`teleclaude/cli/tui/app.py`](../teleclaude/cli/tui/app.py)
+- Views: [`teleclaude/cli/tui/views/`](../teleclaude/cli/tui/views/)
+- Pane management: [`teleclaude/cli/tui/pane_bridge.py`](../teleclaude/cli/tui/pane_bridge.py)
 - State model: [`teleclaude/cli/tui/state.py`](teleclaude/cli/tui/state.py)
-- Design doc: [`docs/project/design/architecture/tui-state-layout.md`](docs/project/design/architecture/tui-state-layout.md)
+- Design doc: [`docs/project/design/architecture/tui-state-layout.md`](../docs/project/design/architecture/tui-state-layout.md)
 
 ---
 
@@ -115,8 +115,8 @@ telec sessions list --all
 
 **Where to find files:**
 
-- Session lifecycle: [`docs/project/design/architecture/session-lifecycle.md`](docs/project/design/architecture/session-lifecycle.md)
-- Tmux management: [`docs/project/design/architecture/tmux-management.md`](docs/project/design/architecture/tmux-management.md)
+- Session lifecycle: [`docs/project/design/architecture/session-lifecycle.md`](../docs/project/design/architecture/session-lifecycle.md)
+- Tmux management: [`docs/project/design/architecture/tmux-management.md`](../docs/project/design/architecture/tmux-management.md)
 - CLI surface: [`docs/project/spec/telec-cli-surface.md`](docs/project/spec/telec-cli-surface.md)
 
 ---
@@ -148,8 +148,8 @@ telec sessions list --all
 
 **Where to find files:**
 
-- Pane bridge: [`teleclaude/cli/tui/pane_bridge.py`](teleclaude/cli/tui/pane_bridge.py)
-- Preview/sticky design: [`docs/project/design/ux/session-preview-sticky.md`](docs/project/design/ux/session-preview-sticky.md)
+- Pane bridge: [`teleclaude/cli/tui/pane_bridge.py`](../teleclaude/cli/tui/pane_bridge.py)
+- Preview/sticky design: [`docs/project/design/ux/session-preview-sticky.md`](../docs/project/design/ux/session-preview-sticky.md)
 
 ---
 
@@ -187,8 +187,8 @@ telec sessions run --command /next-build --args my-feature --path .
 
 **Where to find files:**
 
-- Messaging spec: [`docs/project/spec/messaging.md`](docs/project/spec/messaging.md)
-- Session output routing: [`docs/project/spec/session-output-routing.md`](docs/project/spec/session-output-routing.md)
+- Messaging spec: [`docs/project/spec/messaging.md`](../docs/project/spec/messaging.md)
+- Session output routing: [`docs/project/spec/session-output-routing.md`](../docs/project/spec/session-output-routing.md)
 
 ---
 
@@ -239,12 +239,12 @@ telec docs index --third-party
 
 **Where to find files:**
 
-- Global snippets: [`docs/global/`](docs/global/)
-- Project snippets: [`docs/project/`](docs/project/)
-- Schema spec: [`docs/global/general/spec/snippet-authoring-schema.md`](docs/global/general/spec/snippet-authoring-schema.md)
-- Context selector: [`teleclaude/context_selector.py`](teleclaude/context_selector.py)
+- Global snippets: [`docs/global/`](../docs/global/)
+- Project snippets: [`docs/project/`](../docs/project/)
+- Schema spec: [`docs/global/general/spec/snippet-authoring-schema.md`](../docs/global/general/spec/snippet-authoring-schema.md)
+- Context selector: [`teleclaude/context_selector.py`](../teleclaude/context_selector.py)
 - Validator: [`teleclaude/resource_validation.py`](teleclaude/resource_validation.py)
-- Index (generated): [`docs/global/index.yaml`](docs/global/index.yaml)
+- Index (generated): [`docs/global/index.yaml`](../docs/global/index.yaml)
 
 ---
 
@@ -283,7 +283,7 @@ telec sync
 
 **Where to find files:**
 
-- Schema: [`docs/global/general/spec/snippet-authoring-schema.md`](docs/global/general/spec/snippet-authoring-schema.md)
+- Schema: [`docs/global/general/spec/snippet-authoring-schema.md`](../docs/global/general/spec/snippet-authoring-schema.md)
 - Validation code: [`teleclaude/resource_validation.py`](teleclaude/resource_validation.py)
 
 ---
@@ -331,11 +331,11 @@ ls ~/.claude/commands/   # Claude-specific compiled output
 
 **Where to find files:**
 
-- Skills source: [`agents/global/skills/`](agents/global/skills/)
-- Commands source: [`agents/global/commands/`](agents/global/commands/) (one folder per domain)
-- Master file: [`AGENTS.master.md`](AGENTS.master.md)
-- Governance policy: [`docs/project/policy/agent-artifact-governance.md`](docs/project/policy/agent-artifact-governance.md)
-- Distribution procedure: [`docs/project/procedure/agent-artifact-distribution.md`](docs/project/procedure/agent-artifact-distribution.md)
+- Skills source: [`agents/global/skills/`](../agents/global/skills/)
+- Commands source: [`agents/global/commands/`](../agents/global/commands/) (one folder per domain)
+- Master file: [`AGENTS.master.md`](../AGENTS.master.md)
+- Governance policy: [`docs/project/policy/agent-artifact-governance.md`](../docs/project/policy/agent-artifact-governance.md)
+- Distribution procedure: [`docs/project/procedure/agent-artifact-distribution.md`](../docs/project/procedure/agent-artifact-distribution.md)
 
 ---
 
@@ -456,10 +456,10 @@ not mean findings are outstanding, and its absence does not mean the phase has r
 
 **Where to find files:**
 
-- Prepare orchestrator: [`agents/global/commands/software-development/next-prepare.md`](agents/global/commands/software-development/next-prepare.md)
-- Intake command: [`agents/global/commands/software-development/next-prepare-intake.md`](agents/global/commands/software-development/next-prepare-intake.md)
-- Architecture command: [`agents/global/commands/software-development/next-prepare-architecture.md`](agents/global/commands/software-development/next-prepare-architecture.md)
-- Plan command: [`agents/global/commands/software-development/next-prepare-plan.md`](agents/global/commands/software-development/next-prepare-plan.md)
+- Prepare orchestrator: [`agents/global/commands/software-development/next-prepare.md`](../agents/global/commands/software-development/next-prepare.md)
+- Intake command: [`agents/global/commands/software-development/next-prepare-intake.md`](../agents/global/commands/software-development/next-prepare-intake.md)
+- Architecture command: [`agents/global/commands/software-development/next-prepare-architecture.md`](../agents/global/commands/software-development/next-prepare-architecture.md)
+- Plan command: [`agents/global/commands/software-development/next-prepare-plan.md`](../agents/global/commands/software-development/next-prepare-plan.md)
 
 ---
 
@@ -502,9 +502,9 @@ telec todo show my-feature
 
 **Where to find files:**
 
-- Work orchestrator: [`agents/global/commands/software-development/next-work.md`](agents/global/commands/software-development/next-work.md)
-- Build command: [`agents/global/commands/software-development/next-build.md`](agents/global/commands/software-development/next-build.md)
-- Integration orchestrator spec: [`docs/project/spec/integration-orchestrator.md`](docs/project/spec/integration-orchestrator.md)
+- Work orchestrator: [`agents/global/commands/software-development/next-work.md`](../agents/global/commands/software-development/next-work.md)
+- Build command: [`agents/global/commands/software-development/next-build.md`](../agents/global/commands/software-development/next-build.md)
+- Integration orchestrator spec: [`docs/project/spec/integration-orchestrator.md`](../docs/project/spec/integration-orchestrator.md)
 
 ---
 
@@ -550,7 +550,7 @@ telec sessions run --command /next-review-build --args my-feature --path .
 
 **Where to find files:**
 
-- Review command: [`agents/global/commands/software-development/next-review-build.md`](agents/global/commands/software-development/next-review-build.md)
+- Review command: [`agents/global/commands/software-development/next-review-build.md`](../agents/global/commands/software-development/next-review-build.md)
 
 ---
 
@@ -589,9 +589,9 @@ telec todo list --delivered-only
 
 **Where to find files:**
 
-- Integrate command: [`agents/global/commands/software-development/next-integrate.md`](agents/global/commands/software-development/next-integrate.md)
-- Finalize command: [`agents/global/commands/software-development/next-finalize.md`](agents/global/commands/software-development/next-finalize.md)
-- Integration orchestrator: [`docs/project/spec/integration-orchestrator.md`](docs/project/spec/integration-orchestrator.md)
+- Integrate command: [`agents/global/commands/software-development/next-integrate.md`](../agents/global/commands/software-development/next-integrate.md)
+- Finalize command: [`agents/global/commands/software-development/next-finalize.md`](../agents/global/commands/software-development/next-finalize.md)
+- Integration orchestrator: [`docs/project/spec/integration-orchestrator.md`](../docs/project/spec/integration-orchestrator.md)
 
 ---
 
@@ -677,7 +677,7 @@ telec bugs list
 
 **Where to find files:**
 
-- Bug diagnosis command: [`agents/global/commands/software-development/next-prepare-diagnose.md`](agents/global/commands/software-development/next-prepare-diagnose.md)
+- Bug diagnosis command: [`agents/global/commands/software-development/next-prepare-diagnose.md`](../agents/global/commands/software-development/next-prepare-diagnose.md)
 
 ---
 
@@ -735,10 +735,10 @@ telec
 
 **Where to find files:**
 
-- Project config: [`teleclaude.yml`](teleclaude.yml)
+- Project config: [`teleclaude.yml`](../teleclaude.yml)
 - Job procedures: `telec docs index --areas procedure`
-- Cron runner: [`teleclaude/cron/runner.py`](teleclaude/cron/runner.py)
-- Config schema: [`teleclaude/config/schema.py`](teleclaude/config/schema.py)
+- Cron runner: [`teleclaude/cron/runner.py`](../teleclaude/cron/runner.py)
+- Config schema: [`teleclaude/config/schema.py`](../teleclaude/config/schema.py)
 
 ---
 
@@ -789,8 +789,8 @@ telec sessions escalate --message "Need design decision on API shape"
 **Where to find files:**
 
 - AI-to-AI operations: [`docs/global/general/procedure/ai-to-ai-operations.md`](../docs/global/general/procedure/ai-to-ai-operations.md)
-- Work orchestrator: [`agents/global/commands/software-development/next-work.md`](agents/global/commands/software-development/next-work.md)
-- Prepare orchestrator: [`agents/global/commands/software-development/next-prepare.md`](agents/global/commands/software-development/next-prepare.md)
+- Work orchestrator: [`agents/global/commands/software-development/next-work.md`](../agents/global/commands/software-development/next-work.md)
+- Prepare orchestrator: [`agents/global/commands/software-development/next-prepare.md`](../agents/global/commands/software-development/next-prepare.md)
 
 ---
 
@@ -834,8 +834,8 @@ templates/help-desk/
 
 **Where to find files:**
 
-- Help desk template: [`templates/help-desk/`](templates/help-desk/)
-- Template config: [`templates/help-desk/teleclaude.yml`](templates/help-desk/teleclaude.yml)
+- Help desk template: [`templates/help-desk/`](../templates/help-desk/)
+- Template config: [`templates/help-desk/teleclaude.yml`](../templates/help-desk/teleclaude.yml)
 
 ---
 
@@ -886,10 +886,10 @@ telec config get business.domains
 
 **Where to find files:**
 
-- Config schema: [`teleclaude/config/schema.py`](teleclaude/config/schema.py)
-- Config loader: [`teleclaude/config/loader.py`](teleclaude/config/loader.py)
-- Config spec: [`docs/project/spec/teleclaude-config.md`](docs/project/spec/teleclaude-config.md)
-- Identity/auth: [`docs/project/spec/identity-and-auth.md`](docs/project/spec/identity-and-auth.md)
+- Config schema: [`teleclaude/config/schema.py`](../teleclaude/config/schema.py)
+- Config loader: [`teleclaude/config/loader.py`](../teleclaude/config/loader.py)
+- Config spec: [`docs/project/spec/teleclaude-config.md`](../docs/project/spec/teleclaude-config.md)
+- Identity/auth: [`docs/project/spec/identity-and-auth.md`](../docs/project/spec/identity-and-auth.md)
 
 ---
 
@@ -925,4 +925,4 @@ If the conversation goes deeper, these are the ideas that make TeleClaude differ
 - **Grounding** — Always re-check sources of truth before reasoning from memory. Memory is a cache, not a database.
 - **Heartbeat** — A periodic self-check during sustained work: "Am I still on track?" Prevents drift without adding overhead.
 
-These live as doc snippets in [`docs/global/general/principle/`](docs/global/general/principle/).
+These live as doc snippets in [`docs/global/general/principle/`](../docs/global/general/principle/).
