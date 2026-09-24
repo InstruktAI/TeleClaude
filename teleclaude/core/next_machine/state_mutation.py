@@ -236,6 +236,7 @@ class ApprovalsManager:
         head_sha_at_review: str = "",
         upstream_digests_at_review: dict[str, str] | None = None,
         snippet_digests_at_review: dict[str, str] | None = None,
+        dependency_digests_at_review: dict[str, dict[str, str]] | None = None,
     ) -> None:
         """Record drift review for one artifact."""
         if verdict not in ("substantive", "cosmetic"):
@@ -251,6 +252,7 @@ class ApprovalsManager:
             head_sha_at_review=head_sha_at_review,
             upstream_digests_at_review=upstream_digests_at_review or {},
             snippet_digests_at_review=snippet_digests_at_review or {},
+            dependency_digests_at_review=dependency_digests_at_review or {},
         )
         if typed_verdict == "substantive":
             self.cascade_substantive_drift(artifact)

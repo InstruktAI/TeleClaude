@@ -94,6 +94,7 @@ class DriftReviewedStamp(BaseModel):
     head_sha_at_review: str = ""
     upstream_digests_at_review: dict[str, str] = Field(default_factory=dict)
     snippet_digests_at_review: dict[str, str] = Field(default_factory=dict)
+    dependency_digests_at_review: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
 class ApprovalsState(BaseModel):
@@ -217,6 +218,7 @@ class ArtifactEntry(BaseModel):
     approved: bool = False
     confirmed: bool = False
     upstream_digests: dict[str, str] = Field(default_factory=dict)
+    dependency_artifact_digests: dict[str, dict[str, str]] = Field(default_factory=dict)
     codebase_sha_at_write: str = ""
     referenced_paths: list[str] = Field(default_factory=list)
     owned_snippet_digests: dict[str, str] = Field(default_factory=dict)

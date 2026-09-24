@@ -12,9 +12,10 @@ from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
 from teleclaude.core.session_startup_message import compose_command_loader
+from teleclaude.types.lifecycle import DriftClass
 
 if TYPE_CHECKING:
-    from teleclaude.core.next_machine.git_ops import ArtifactDriftStatus
+    from teleclaude.core.next_machine.lifecycle import DriftResult
 
 __all__ = [
     "MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE",
@@ -68,13 +69,6 @@ _DOCUMENTED_PROCEDURE_LOADER_TEMPLATE = (
 )
 _PROCEDURE_LOAD_TARGET_ERROR = "Exactly one procedure-load target is required"
 _TELEC_DOCS_GET_TEMPLATE = "telec docs get {procedure_id}"
-_DRIFT_CLASS_ORDER = {
-    "code": 0,
-    "upstream-artifact": 1,
-    "owned-snippet": 2,
-    "upstream-snippet": 3,
-    "age": 4,
-}
 
 
 class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
@@ -92,13 +86,13 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
     """
 
 
-def _drift_class_sort_key(name: str) -> tuple[int, str]:
+def _drift_class_sort_key(name: DriftClass) -> int:
     """Return stable taxonomy order for known drift classes."""
-    return (_DRIFT_CLASS_ORDER.get(name, len(_DRIFT_CLASS_ORDER)), name)
+    return tuple(DriftClass).index(name)
 
 
 def format_pending_classes_for_dispatch(
-    drift_result: dict[str, dict[str, ArtifactDriftStatus]],
+    drift_result: DriftResult,
 ) -> str:
     """Render pending drift classes for the drift analyzer dispatch context."""
     pending_parts: list[str] = []
@@ -112,7 +106,7 @@ def format_pending_classes_for_dispatch(
             key=_drift_class_sort_key,
         )
         if pending_classes:
-            pending_parts.append(f"{artifact_name}=[{','.join(pending_classes)}]")
+            pending_parts.append(f"{artifact_name}=[{','.join(class_name.value for class_name in pending_classes)}]")
     if not pending_parts:
         return ""
     return f"{PENDING_DRIFT_CONTEXT_PREFIX}: {'; '.join(pending_parts)}"

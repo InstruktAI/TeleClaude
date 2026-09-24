@@ -23,6 +23,7 @@ from teleclaude.core.next_machine.git_ops import (
 from teleclaude.core.next_machine.lifecycle import (
     _DRIFT_MATRIX_ARTIFACTS,
     _DRIFT_REROUTABLE_CLASSES_BY_ARTIFACT,
+    DriftResult,
     collapse_drift,
     derive_lifecycle_drift,
     prepare_blockers,
@@ -99,7 +100,7 @@ def _drift_reprepare_instruction(slug: str, drift: dict[str, ArtifactDriftStatus
 
 def _drift_anomaly_blockers(
     state: dict[str, StateValue],
-    drift_result: dict[str, dict[str, ArtifactDriftStatus]],
+    drift_result: DriftResult,
 ) -> list[str]:
     model = StateWriter(state).state
     blockers = [
@@ -133,7 +134,7 @@ async def _derive_and_commit_drift(
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
-) -> dict[str, dict[str, ArtifactDriftStatus]]:
+) -> DriftResult:
     writer = StateWriter(state)
     drift_result = await derive_lifecycle_drift(
         slug,

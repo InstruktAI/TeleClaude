@@ -12,7 +12,7 @@ imports these types from here and adds the behavior.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 LEGACY_LIFECYCLE_PHASE_NORMALIZATION: dict[str, str] = {
     "architecture_human_approval": "architecture_review",
@@ -49,6 +49,17 @@ class LifecyclePhase(str, Enum):
     FINALIZE_READY = "finalize_ready"
     DELIVERED = "delivered"
     TASK_RUNNING = "task_running"
+
+
+class DriftClass(StrEnum):
+    """Ordered drift classes derived by the prepare lifecycle."""
+
+    CODE = "code"
+    UPSTREAM_ARTIFACT = "upstream-artifact"
+    OWNED_SNIPPET = "owned-snippet"
+    UPSTREAM_SNIPPET = "upstream-snippet"
+    DEPENDENCY_ARTIFACT = "dependency-artifact"
+    AGE = "age"
 
 
 LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = [
@@ -123,5 +134,6 @@ __all__ = [
     "TASK_LIFECYCLE_PHASES",
     "TASK_LIFECYCLE_PHASE_ORDER",
     "WORK_LIFECYCLE_PHASES",
+    "DriftClass",
     "LifecyclePhase",
 ]
