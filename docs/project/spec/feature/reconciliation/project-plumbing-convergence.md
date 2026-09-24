@@ -70,9 +70,12 @@ remains outside every synchronization path.
   file's filter attribute, so it runs after the filter attributes are written.
 <!-- planned:config-schema-home-resolution -->
 - **Schema link.** Every adopted project carries the link, whatever it
-  subscribes. An absent link is created, a link pointing elsewhere is repointed,
-  and a correct link is left untouched. A directory or file already occupying
-  the link path is reported and left untouched.
+  subscribes. Before the link exists, the repository's local exclude list names
+  its path, so the link is never offered for commit whatever the project's own
+  ignore rules say; the exclude list is untracked repository state shared by the
+  checkout and its worktrees. An absent link is created, a link pointing
+  elsewhere is repointed, and a correct link is left untouched. A directory or
+  file already occupying the link path is reported and left untouched.
 - **Stray schema copies.** A per-project schema copy left at the project root is
   removed when the project does not track it and it holds nothing but
   TeleClaude's generated schema files. A tracked copy,
@@ -217,6 +220,7 @@ Given an adopted project whose root carries no configuration-schema link, or a l
 When an agent runs project initialization or fleet convergence for that project
 Then the project's configuration-schema link points at the TeleClaude home's published schema directory
 And the schema reference in the project's committed configuration resolves to the published project schema
+And the link does not appear among the project's untracked files
 And no project-tracked file is edited
 ```
 

@@ -108,6 +108,7 @@ Given a slug worktree of an adopted project, whether newly created or already pr
 When the work state machine asks the workflow service to ensure the worktree is ready
 Then the worktree carries its own configuration-schema link to the TeleClaude home's published schemas
 And that holds whether or not preparation ran
+And the link does not appear among the worktree's untracked files
 And no worktree-tracked file is edited
 ```
 <!-- /planned:config-schema-home-resolution -->

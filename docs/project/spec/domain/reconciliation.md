@@ -50,6 +50,9 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 <!-- planned:installable-template-trees -->
 - **template-installation** — `docs/project/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
 <!-- /planned:installable-template-trees -->
+<!-- planned:config-schema-home-resolution -->
+- **config-schema-publication** — `docs/project/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
+<!-- /planned:config-schema-home-resolution -->
 
 
 ## See Also
