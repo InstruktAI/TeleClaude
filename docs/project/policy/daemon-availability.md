@@ -8,7 +8,11 @@ visibility: 'public'
 ## Rules
 
 - The daemon is a 24/7 service; downtime is not acceptable outside controlled restarts.
+<!-- planned-change:nonblocking-commit-maintenance -->
 - After any change needing a restart, call `make restart` and observe success, or verify with `make status`.
+<!-- change:nonblocking-commit-maintenance -->
+- After a canonical-main change needing a restart, commit-boundary maintenance invokes `make restart` and records its health-checked terminal outcome; an agent does not repeat it. A separate agent-operated recovery invokes `make restart` and observes success, or verifies with `make status`.
+<!-- /planned-change:nonblocking-commit-maintenance -->
 - Daemon process-lifecycle observability is in-daemon: the janitor emits one `system.process.reaped` event per kill (queryable via `telec events`), and structured logs carry SIGTERM and shutdown attribution. Ad-hoc host probes (`dtrace`/`fs_usage`) installed outside `make` are not used.
 - Verify key services after restart (API socket, API health/read endpoints, adapters).
 - If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
@@ -36,3 +40,9 @@ visibility: 'public'
 ## Exceptions
 
 - None.
+
+<!-- planned:nonblocking-commit-maintenance -->
+## See Also
+
+- docs/project/adr/0100-commit-maintenance-drains-after-hook-return.md — why the maintenance runner owns restart verification after Git returns.
+<!-- /planned:nonblocking-commit-maintenance -->

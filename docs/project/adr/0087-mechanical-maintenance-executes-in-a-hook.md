@@ -36,3 +36,7 @@ The checkpoint registry retains only actions whose substance is a judgment an ag
 - Retain all seven actions as checkpoint obligations and strengthen evidence matching. Rejected: it invests further in inferring a fact that the performing mechanism can establish directly, and each strengthening of a free-text matcher is a step further into the layer that principle excludes.
 - Execute the mechanical work from a daemon or filesystem watcher on change. Rejected: ambient execution untethered from the commit boundary is what produced the accreted responsibilities this decision removes, and it mutates machine state between commits with no committed source to attribute the result to.
 - Keep the daemon restart at the stop boundary and move only the remaining four. Rejected: the ordering hazard that would justify the exception does not exist, because tmux-hosted sessions survive a daemon restart, so the split would preserve a special case with no remaining reason.
+
+## Status
+
+Superseded in part by ADR-0100: the hook remains the automatic trigger, while maintenance execution no longer holds the Git command open.

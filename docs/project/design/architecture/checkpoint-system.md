@@ -13,7 +13,11 @@ Checkpoint hook output uses the semantic-envelope registry's XML renderer at the
 
 Two signal axes feed a shared checkpoint builder (`checkpoint.py`):
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and judgment actions (for example, changed code may owe a live-runtime log check). After an integration-controlled canonical-root advancement, the checkout-scoped range marker carries only the outstanding log judgment when the advanced paths owe one. Deterministic maintenance is performed at the advancement boundary and never enters checkpoint evaluation. Git is the category oracle only — never the arbiter of what is in-scope or done.
+<!-- change:nonblocking-commit-maintenance -->
+1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and judgment actions (for example, changed code may owe a live-runtime log check). After an integration-controlled canonical-root advancement, the checkout-scoped range marker carries only the outstanding log judgment when the advanced paths owe one. Deterministic maintenance is recorded and started at the advancement boundary, then runs outside checkpoint evaluation. Git is the category oracle only — never the arbiter of what is in-scope or done.
+<!-- /planned-change:nonblocking-commit-maintenance -->
 1. **Transcript-based** — Tool call timeline from the current checkpoint cycle provides file attribution, suppression evidence (action already taken), error state detection, and edit hygiene observations.
 
 One delivery path exists:
@@ -52,7 +56,11 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 4. **Per-turn clearing**: `handle_user_prompt_submit` clears `last_checkpoint_at` and `last_tool_use_at` on real user input so each turn starts fresh.
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 5. **Atomic, time-anchored checkpoint-cycle scope**: Checkpoint action selection and evidence — what judgment remains and what was observed — are scoped from the latest TeleClaude checkpoint emitted by the `Stop` hook. Before any checkpoint exists in the work, the scope falls back to the latest real user input. Dirty files from the broader user turn are filtered through this checkpoint-cycle transcript slice, so old dirty files cannot trigger new checkpoint actions after a reset. A commit performs deterministic maintenance at its own boundary and creates no later checkpoint obligation. Git is consulted only as the category oracle, never as the arbiter of in-scope or done.
+<!-- change:nonblocking-commit-maintenance -->
+5. **Atomic, time-anchored checkpoint-cycle scope**: Checkpoint action selection and evidence — what judgment remains and what was observed — are scoped from the latest TeleClaude checkpoint emitted by the `Stop` hook. Before any checkpoint exists in the work, the scope falls back to the latest real user input. Dirty files from the broader user turn are filtered through this checkpoint-cycle transcript slice, so old dirty files cannot trigger new checkpoint actions after a reset. A commit records and starts deterministic maintenance at its own boundary and creates no later checkpoint maintenance obligation. Git is consulted only as the category oracle, never as the arbiter of in-scope or done.
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 6. **TTS dedup**: Agent output extracted at `agent_stop` is compared against `last_output_raw` in the session. If identical, summarization and TTS are skipped. This prevents double-speaking when a checkpoint-induced `agent_stop` re-extracts the same output.
 
@@ -80,9 +88,17 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 18. **Code-scoped post-commit review gate**: The session-scoped authored-main-commit latch is armed by `telec code commit` only when the committed pathspec includes code. The latch triggers only the post-commit review gate — never the action or evidence ledger; commit-action suppression derives from commit evidence in the timeline, not from the latch. Doc-only main commits commit but do not arm the review gate — under doc-first, documentation is reviewed in the lifecycle, not at the post-commit review gate.
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 19. **Integrator post-advance judgment**: Every integration-controlled advancement of repo-root `main` first executes the tailored deterministic maintenance resolved for the exact advanced range from the canonical checkout. A root commit enters through post-commit; a fast-forward that produces no root commit invokes the same executor directly. Once every selected action has a terminal record, the state machine records a checkout-scoped marker only when the range owes `log-check`. The marker accumulates qualifying ranges and carries no mechanical action id. The integrator checkpoint force-fires only that log judgment, and observed log-check evidence removes the marker. Checkout addressing lets a successor integrator inherit an unfinished judgment without repeating mechanical maintenance.
+<!-- change:nonblocking-commit-maintenance -->
+19. **Integrator post-advance judgment**: Every integration-controlled advancement of repo-root `main` records the tailored deterministic maintenance resolved for the immutable advanced range from the canonical checkout and starts its one-shot drain. A root commit enters through post-commit; a fast-forward enters through post-merge. The state machine records a checkout-scoped marker only when the range owes `log-check`, without waiting for mechanical actions to finish. The marker accumulates qualifying ranges and carries no mechanical action id. The integrator checkpoint force-fires only that log judgment, and observed log-check evidence removes the marker. The log judgment may precede a pending maintenance action; its evidence does not discharge or certify that action. Checkout addressing lets a successor integrator inherit an unfinished judgment without repeating mechanical maintenance.
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 20. **The commit boundary performs what a commit's paths owe**: A sealed `telec code commit` on the canonical checkout's main branch is followed, in the same act, by the maintenance its committed paths owe (`project/spec/feature/integration/post-commit-maintenance`). The engine records no maintenance obligation against that commit and surfaces none afterwards: the work is already done, and its record is a structured log entry rather than a substring match against a tool call. Tests and log-check are not maintenance and remain cycle-local advisories on the dirty tree, and the commit remains the attributing action for them, so files the agent committed but did not itself Edit or Write are categorized all the same. The post-commit review latch of Invariant 18 is unaffected — routing review is a judgment, not a command, and the latch that arms it is independent of any action ledger.
+<!-- change:nonblocking-commit-maintenance -->
+20. **The commit boundary records what a commit's paths owe**: A sealed `telec code commit` on the canonical checkout's main branch records and starts the maintenance its committed paths owe (`project/spec/feature/integration/post-commit-maintenance`) before returning. The checkpoint engine carries no mechanical maintenance obligation against that commit: action records and structured outcomes belong to the one-shot executor, not transcript substring matching. Tests and log-check are not maintenance and remain cycle-local advisories on the dirty tree, and the commit remains the attributing action for them, so files the agent committed but did not itself Edit or Write are categorized all the same. The post-commit review latch of Invariant 18 is unaffected — routing review is a judgment, not a command, and the latch that arms it is independent of maintenance completion.
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 21. **Companion-drift detection**: when a turn's changed files include a live parent doc snippet (`<stem>.md`) whose pending companion sibling (`<stem>.<slug>.md`) exists on disk but is absent from the changed set, the engine surfaces an action to mirror the parent edit into the companion — catching, at agent_stop, the edit that the companion would otherwise clobber when it replaces the parent at delivery. The check is a filename-derived presence test (reusing the companion-detection helpers the doc index uses); companion in the changed set suppresses it for free. It mechanizes only the question code may answer (presence); whether the companion is a correct mirror stays with the reviewer (intelligence-boundaries).
 
@@ -250,3 +266,6 @@ sequenceDiagram
 - docs/project/adr/0037-checkpoint-ledger-separates-commit-detection.md
 - docs/project/adr/0038-companion-drift-caught-at-checkpoint.md
 - docs/project/adr/0043-checkpoint-obligations-discharge-on-evidence.md
+<!-- planned:nonblocking-commit-maintenance -->
+- docs/project/adr/0100-commit-maintenance-drains-after-hook-return.md — why maintenance completion is separate from commit and checkpoint completion.
+<!-- /planned:nonblocking-commit-maintenance -->

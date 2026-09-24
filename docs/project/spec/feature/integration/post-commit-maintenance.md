@@ -76,6 +76,28 @@ contract governs only what happens when maintenance runs.
   declaration is already owned by project plumbing convergence, and a second
   detector would make this contract a second owner of that state.
 
+<!-- planned:nonblocking-commit-maintenance -->
+- **Quick-return activation.** After resolving an immutable activation and its
+  owed action set, the hook records each owed action durably, starts a one-shot
+  drain contender, and returns without waiting for action completion. A later
+  commit adds its own owed records while an earlier drain is running.
+- **Per-action state.** Each gitignored record is keyed by the activated tip
+  and action id and retains the pre-activation revision and queued time. A
+  confirmed success removes its record. A terminal failure remains marked
+  failed for structured-log and anomaly review, without an automatic retry loop.
+  An interrupted attempt remains eligible for retry; each action converges
+  safely when repeated after its effect preceded record removal.
+- **One-shot drain.** Every hook that records owed work starts a contender. One OS-owned file lock
+  admits a single active drain; contenders wait for that lock, process pending
+  activations in Git ancestry order and actions by declared precedence, then
+  exit when no pending work remains. Lock-file presence never means ownership.
+- **Observation.** Every attempt and terminal outcome retains the immutable
+  activation and action identity in structured records. Operational anomaly
+  detection observes failed or stale actions. Maintenance completion sends no
+  notification to the committer, and an earlier log judgment does not claim a
+  still-pending action succeeded.
+<!-- /planned:nonblocking-commit-maintenance -->
+
 ### Use cases
 
 #### UC-PCM1: A commit performs the maintenance its changed paths owe
@@ -129,6 +151,7 @@ And the documentation and artifact pipeline is not run from that worktree
 And an agent reading the structured records observes that maintenance was skipped, and the location that made it ineligible
 ```
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-PCM6: An integration merge or fast-forward performs maintenance
 
 ```gherkin
@@ -139,6 +162,19 @@ Then the actions execute from the canonical checkout without an agent instructio
 And the structured records contain a terminal outcome for every action
 But the integration worktree performs no maintenance action
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-PCM6: An integration merge or fast-forward performs maintenance
+
+```gherkin
+Given integration advances canonical main by merge or fast-forward
+And the advanced committed change owes deterministic maintenance
+When the canonical-root advancement completes
+Then its maintenance is recorded and starts without an agent instruction
+And the Git operation returns before long-running maintenance finishes
+And each action eventually has a structured terminal outcome
+But the integration worktree performs no maintenance action
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 <!-- planned:retire-docs-watcher -->
 #### UC-PCM7: Publication uses the recorded commit, not later working-tree state
@@ -187,8 +223,52 @@ But the same path shape in an ordinary project does not acquire a home-only main
 ```
 <!-- /planned:home-tier-commit-maintenance -->
 
+<!-- planned:nonblocking-commit-maintenance -->
+#### UC-PCM11: A commit returns while maintenance continues
+
+```gherkin
+Given a canonical-main commit owes an action that takes longer than the commit itself
+When the commit is recorded
+Then the Git command returns after handing off the owed action
+And the action runs to a separately observable terminal outcome
+And the committer receives no maintenance-completion notification
+```
+
+#### UC-PCM12: A commit arriving during a drain is not stranded
+
+```gherkin
+Given maintenance for one canonical-main advancement is still running
+When another advancement records its own owed actions
+Then the later actions are processed after the earlier activated state
+And neither advancement needs a resident worker or a later commit to trigger processing
+```
+
+#### UC-PCM13: An interrupted action is safe to retry
+
+```gherkin
+Given one owed action had its effect but was interrupted before success was recorded
+And another action for the same activated state already recorded success
+When a later maintenance invocation resumes outstanding work
+Then the interrupted action converges to its intended state
+And the confirmed successful action does not run again
+```
+
+#### UC-PCM14: Terminal failure remains visible without a retry loop
+
+```gherkin
+Given an owed maintenance action ends in failure
+When the drain continues with other owed actions
+Then the failed action remains identifiable by its activated state and action identity
+And operational anomaly detection can report it
+But the drain does not retry that terminal failure indefinitely
+```
+<!-- /planned:nonblocking-commit-maintenance -->
+
 ## See Also
 
 - docs/project/adr/0087-mechanical-maintenance-executes-in-a-hook.md — the decision this contract realizes.
+<!-- planned:nonblocking-commit-maintenance -->
+- docs/project/adr/0100-commit-maintenance-drains-after-hook-return.md — why maintenance execution no longer holds Git open.
+<!-- /planned:nonblocking-commit-maintenance -->
 - docs/project/design/architecture/checkpoint-system.md — the matcher and registry this surface consumes.
 - docs/project/spec/feature/reconciliation/project-plumbing-convergence.md — which hooks a project has installed, and when.
