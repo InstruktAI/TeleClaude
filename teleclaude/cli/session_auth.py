@@ -8,11 +8,16 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import psutil
 
+from teleclaude.constants import MarkerState
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
-from teleclaude.session_identity import get_human_role
+from teleclaude.session_identity import (
+    get_principal,
+    inspect_session_identity_marker,
+)
 
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
@@ -22,6 +27,11 @@ _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
 _INODE_ALLOCATION_PREFIX = "ino:"
 _CTIME_ALLOCATION_PREFIX = "ctime:"
+_HUMAN_PRINCIPAL_PREFIX = "human:"
+_SYSTEM_PRINCIPAL_PREFIX = "system:"
+
+if TYPE_CHECKING:
+    from teleclaude.core.identity import CliCaller
 
 
 @dataclass(frozen=True)
@@ -199,21 +209,51 @@ def read_current_session_email() -> str | None:
     return get_identity_resolver().sole_person_email
 
 
-def effective_caller_role() -> str | None:
-    """Return the effective human role of the current CLI caller.
-
-    The session-recorded role when the session identity file carries one,
-    otherwise the identity resolver's role for the resolved terminal login.
-    """
-    human_role = get_human_role()
-    if human_role:
-        return human_role
-
-    from teleclaude.core.identity import (  # noqa: PLC0415 - deferred: api_client deliberately defers importing this module at load time; a module-scope import of the config-loading identity resolver would pull that cost into every CLI start
+def resolve_cli_caller() -> CliCaller:
+    """Resolve the local caller from its carried principal or edge identity."""
+    from teleclaude.core.identity import (  # noqa: PLC0415 - keep config-loading identity code out of every CLI start
+        NoIdentityCliCaller,
+        PersonCliCaller,
+        SystemCliCaller,
         get_identity_resolver,
     )
 
-    return get_identity_resolver().effective_terminal_role(read_current_session_email())
+    marker_state, _session_id = inspect_session_identity_marker()
+    if marker_state is MarkerState.ABSENT:
+        email = read_current_session_email()
+        if not email:
+            return NoIdentityCliCaller()
+        identity_resolver = get_identity_resolver()
+        person = identity_resolver.resolve_by_email(email)
+        return PersonCliCaller(
+            email=email,
+            person_slug=person.person_slug,
+            human_role=identity_resolver.effective_terminal_role(email),
+        )
+    if marker_state is MarkerState.INVALID:
+        return NoIdentityCliCaller()
+
+    principal = get_principal()
+    if principal is None:
+        return NoIdentityCliCaller()
+    if principal.startswith(_HUMAN_PRINCIPAL_PREFIX):
+        email = principal.removeprefix(_HUMAN_PRINCIPAL_PREFIX)
+        if not email:
+            return NoIdentityCliCaller()
+        person = get_identity_resolver().resolve_by_email(email)
+        return PersonCliCaller(
+            email=email,
+            person_slug=person.person_slug,
+            human_role=person.person_role,
+        )
+    if principal.startswith(_SYSTEM_PRINCIPAL_PREFIX) and principal.removeprefix(_SYSTEM_PRINCIPAL_PREFIX):
+        return SystemCliCaller()
+    return NoIdentityCliCaller()
+
+
+def effective_caller_role() -> str | None:
+    """Return the current CLI caller's human role, if it has a person identity."""
+    return resolve_cli_caller().human_role
 
 
 def _write_auth_file(path: Path, payload: dict[str, str | float]) -> None:

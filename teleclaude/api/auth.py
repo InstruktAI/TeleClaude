@@ -32,6 +32,7 @@ from teleclaude.constants import (
     ROLE_SYSTEM,
     ROLE_TASKER,
     ROLE_WORKER,
+    SYSTEM_DAEMON_PRINCIPAL,
 )
 from teleclaude.core import db_models
 from teleclaude.core.conversation_messages import resolve_session_event_author
@@ -165,8 +166,8 @@ class CallerIdentity:
     human_role: str | None  # e.g. "admin", "member", etc.
     tmux_session_name: str | None  # for diagnostic use only
     email: str | None = None  # authenticated email from terminal login
-    principal: str | None = None  # "human:<email>" or "system:<id>" (token-auth only)
-    principal_role: str | None = None  # role carried with the token (token-auth only)
+    principal: str | None = None  # "human:<email>" or "system:<id>"
+    principal_role: str | None = None  # role resolved from the current principal owner
     entry_point: EntryPoint | None = None  # the creation door, stamped from request shape
     job: str | None = None  # session.job, when resolved from a loaded session
 
@@ -228,13 +229,17 @@ async def _verify_token_identity(x_session_token: str) -> CallerIdentity:
     # regardless of ledger state (which is the primary revocation barrier).
     if is_session_terminal(lifecycle_status=session.lifecycle_status, closed_at=session.closed_at):
         raise HTTPException(status_code=401, detail="session no longer active")
+    try:
+        principal, principal_role = resolve_session_principal(session)
+    except SessionIdentityError as exc:
+        raise HTTPException(status_code=401, detail=LOGIN_REQUIRED_DETAIL) from exc
     return CallerIdentity(
         session_id=token_record.session_id,
         system_role=_derive_session_system_role(session),
         human_role=session.human_role,
         tmux_session_name=session.tmux_session_name,
-        principal=token_record.principal,
-        principal_role=token_record.role,
+        principal=principal,
+        principal_role=principal_role,
         entry_point=EntryPoint.AGENT,
         job=session.job,
     )
@@ -286,7 +291,7 @@ def _build_daemon_identity() -> CallerIdentity:
         human_role=None,
         tmux_session_name=None,
         email=None,
-        principal="system:daemon",
+        principal=SYSTEM_DAEMON_PRINCIPAL,
         entry_point=EntryPoint.AGENT,
     )
 

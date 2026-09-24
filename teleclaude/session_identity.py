@@ -16,6 +16,10 @@ from teleclaude.core.operation_caller_identity import get_caller_session_id
 
 _IDENTITY_FILENAME = "teleclaude_identity.json"
 _SESSION_ID_FIELD = "session_id"
+_SESSION_TOKEN_FIELD = "session_token"
+_SYSTEM_ROLE_FIELD = "system_role"
+_HUMAN_ROLE_FIELD = "human_role"
+_PRINCIPAL_FIELD = "principal"
 
 
 def _identity_path() -> Path | None:
@@ -94,6 +98,11 @@ def get_human_role() -> str | None:
     return _read_field("human_role")
 
 
+def get_principal() -> str | None:
+    """Principal carried by this session's identity document."""
+    return _read_field(_PRINCIPAL_FIELD)
+
+
 def _atomic_write_identity(path: Path, data: dict[str, str | None]) -> None:
     """Atomic write of identity JSON to the given path."""
     tmp_path = path.with_suffix(".tmp")
@@ -132,6 +141,7 @@ def write_session_identity_to(
     session_token: str | None = None,
     system_role: str | None = None,
     human_role: str | None = None,
+    principal: str | None = None,
 ) -> None:
     """Write or update the session identity file in an explicit directory.
 
@@ -139,7 +149,39 @@ def write_session_identity_to(
     the daemon process's own environment.
     """
     path = directory / _IDENTITY_FILENAME
-    _write_identity_fields(path, session_id, session_token, system_role, human_role)
+    _write_identity_fields(path, session_id, session_token, system_role, human_role, principal)
+
+
+def rewrite_session_identity_to(
+    directory: Path,
+    session_id: str,
+    system_role: str | None,
+    human_role: str | None,
+    principal: str,
+) -> None:
+    """Rewrite identity fields from a session record while retaining its token."""
+    path = directory / _IDENTITY_FILENAME
+    session_token: str | None = None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raw = None
+    if isinstance(raw, dict):
+        token_value = raw.get(_SESSION_TOKEN_FIELD)
+        if isinstance(token_value, str):
+            session_token = token_value
+
+    identity: dict[str, str | None] = {
+        _SESSION_ID_FIELD: session_id,
+        _PRINCIPAL_FIELD: principal,
+    }
+    if session_token is not None:
+        identity[_SESSION_TOKEN_FIELD] = session_token
+    if system_role is not None:
+        identity[_SYSTEM_ROLE_FIELD] = system_role
+    if human_role is not None:
+        identity[_HUMAN_ROLE_FIELD] = human_role
+    _atomic_write_identity(path, identity)
 
 
 def _write_identity_fields(
@@ -148,6 +190,7 @@ def _write_identity_fields(
     session_token: str | None,
     system_role: str | None,
     human_role: str | None = None,
+    principal: str | None = None,
 ) -> None:
     existing: dict[str, str | None] = {}
     try:
@@ -164,5 +207,7 @@ def _write_identity_fields(
         existing["system_role"] = system_role
     if human_role is not None:
         existing["human_role"] = human_role
+    if principal is not None:
+        existing[_PRINCIPAL_FIELD] = principal
 
     _atomic_write_identity(path, existing)

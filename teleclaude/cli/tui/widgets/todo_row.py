@@ -13,7 +13,7 @@ from teleclaude.cli.tui.messages import ChipFilterToggle, JumpToSession
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.utils.formatters import format_relative_time
-from teleclaude.cli.tui.widgets.chip import PersonChip, resolve_person_chip
+from teleclaude.cli.tui.widgets.chip import OwnerChip, resolve_owner_chip
 from teleclaude.constants import TodoStatus
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
@@ -362,7 +362,7 @@ class TodoRow(TelecMixin, Widget):
         # Owner chip resolved once per render() and consumed when the chip column
         # is painted; its span is recorded relative to the column block, then
         # offset to an absolute cell range.
-        self._render_chip: PersonChip | None = None
+        self._render_chip: OwnerChip | None = None
         self._render_selected: bool = False
         self._chip_rel_region: tuple[int, int] | None = None
         # The active shared human filter, pushed by the view; the matching
@@ -634,7 +634,7 @@ class TodoRow(TelecMixin, Widget):
         # paint it in _finish_columns. The slug starts immediately after the
         # status glyph. Resolved from the lineage root — never the whole
         # chain, which would fail principal_to_email.
-        self._render_chip = resolve_person_chip(Lineage.root_of(self.todo.lineage))
+        self._render_chip = resolve_owner_chip(Lineage.root_of(self.todo.lineage))
         self._render_selected = is_selected
         self._chip_region = None
         self._chip_email = None

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.session_auth import effective_caller_role
+from teleclaude.cli.session_auth import resolve_cli_caller
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
@@ -224,7 +224,7 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
         third_party_requested=third_party,
     )
     docs_context = _resolve_docs_context()
-    effective_role = effective_caller_role()
+    caller = resolve_cli_caller()
     config = load_app_config(docs_context.project_root)
     output = build_context_output(
         areas=areas,
@@ -236,7 +236,7 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
         target_slug=target_slug,
         scope=scope,
         projects=projects,
-        effective_human_role=effective_role,
+        caller=caller,
         config=config,
         include_registered_projects=docs_context.include_registered_projects,
         retrieval_id=context.retrieval_id,
@@ -280,7 +280,7 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
         third_party_requested=False,
     )
     docs_context = _resolve_docs_context()
-    effective_role = effective_caller_role()
+    caller = resolve_cli_caller()
     config = load_app_config(docs_context.project_root)
     try:
         output = build_context_output(
@@ -294,7 +294,7 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
             scope=scope,
             projects=projects,
             closure=closure,
-            effective_human_role=effective_role,
+            caller=caller,
             config=config,
             include_registered_projects=docs_context.include_registered_projects,
             retrieval_id=context.retrieval_id,

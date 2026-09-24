@@ -73,6 +73,7 @@ ROLE_ORCHESTRATOR = "orchestrator"
 ROLE_WORKER = "worker"
 ROLE_INTEGRATOR = "integrator"
 ROLE_TASKER = "tasker"
+SYSTEM_DAEMON_PRINCIPAL = "system:daemon"
 # A job-runner session is a recurring scheduled job, e.g. log_bug_hunter or a
 # generic cron agent job. It is one of the standing roles (see
 # STANDING_SYSTEM_ROLES / is_standing_role below) permitted a no-human lineage

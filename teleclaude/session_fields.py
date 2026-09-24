@@ -8,6 +8,8 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from sqlmodel import SQLModel
 
+SESSION_PRINCIPAL_FIELD = "principal"
+
 
 @dataclass(kw_only=True)
 class SessionSnapshotTimestampFields:
@@ -42,6 +44,7 @@ class SessionSnapshotIdentityFields(SessionSnapshotDetachmentField):
     computer: str | None = None
     human_email: str | None = None
     human_role: str | None = None
+    principal: str | None = None
 
 
 class SessionDTOTimestampFields(BaseModel):
@@ -81,6 +84,7 @@ class SessionDTOIdentityFields(SessionDTODetachmentField):
     human_email: str | None = None
     human_name: str | None = None
     human_role: str | None = None
+    principal: str | None = None
 
 
 @dataclass(kw_only=True, init=False)

@@ -10,7 +10,7 @@ from teleclaude.config.schema import MessagingChannel
 from teleclaude.core.agent_availability import AgentAvailabilityStatus
 from teleclaude.core.command_input import CommandInputMode
 from teleclaude.core.session_status import AgentStatusValue
-from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
+from teleclaude.session_fields import SESSION_PRINCIPAL_FIELD, SessionDTOIdentityFields, SessionDTOTimestampFields
 from teleclaude.types.todo_kind import TodoDumpKind
 
 if TYPE_CHECKING:
@@ -238,6 +238,7 @@ class SessionDTO(SessionReadinessDTOFields, SessionDTOTimestampFields, SessionDT
                 "computer": session.computer,
                 "human_email": session.human_email,
                 "human_role": session.human_role,
+                SESSION_PRINCIPAL_FIELD: session.principal,
                 "visibility": session.visibility,
                 "system_role": session.system_role,
                 "job": session.job,

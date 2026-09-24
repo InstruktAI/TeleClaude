@@ -14,6 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.schema import AppConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
+from teleclaude.core.identity import CliCaller, PersonCliCaller, SystemCliCaller
 from teleclaude.doc_body import (
     INLINE_REF_RE,
     apply_planned_change_sections,
@@ -579,7 +580,7 @@ def _load_cross_project_snippets(
 
 def _include_snippet_factory(
     *,
-    effective_human_role: str | None,
+    caller: CliCaller | None,
     requested_ids: set[str],
     projects: list[str] | None,
     current_project_slug: str | None,
@@ -588,8 +589,12 @@ def _include_snippet_factory(
     include_registered_projects: bool,
     registered_project_slugs: set[str],
 ) -> Callable[[SnippetMeta], bool]:
+    privileged = isinstance(caller, SystemCliCaller) or (
+        isinstance(caller, PersonCliCaller) and caller.human_role == HUMAN_ROLE_ADMIN
+    )
+
     def _include(snippet: SnippetMeta) -> bool:
-        if effective_human_role != HUMAN_ROLE_ADMIN and snippet.visibility != "public":
+        if not privileged and snippet.visibility != "public":
             return False
         if global_snippets_root in snippet.path.parents:
             # Every published domain is universally visible; there is no
@@ -973,7 +978,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     domains: list[str] | None = None,
     list_projects: bool = False,
     projects: list[str] | None = None,
-    effective_human_role: str | None = None,
+    caller: CliCaller | None = None,
     config: AppConfig | None = None,
     test_agent: str | None = None,
     test_mode: str | None = None,
@@ -1098,7 +1103,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
 
     requested_ids = {sid.strip() for sid in (snippet_ids or []) if sid.strip()}
     include_snippet = _include_snippet_factory(
-        effective_human_role=effective_human_role,
+        caller=caller,
         requested_ids=requested_ids,
         projects=projects,
         current_project_slug=current_project_slug,

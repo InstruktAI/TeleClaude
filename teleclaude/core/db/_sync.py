@@ -13,7 +13,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER
+from teleclaude.constants import HUMAN_ROLE_CUSTOMER, SYSTEM_DAEMON_PRINCIPAL
 from teleclaude.core.agent_availability import (
     AgentAvailabilityStatus,
     AvailabilityState,
@@ -251,7 +251,7 @@ def resolve_session_principal(session: "Session") -> tuple[str, str]:
     Rules:
     - Inherited principal (session.principal set by parent): reuse it.
     - Human session (human_email present): principal="human:<email>".
-    - System session (session.system_role present): principal="system:<session_id>".
+    - System session (session.system_role present): principal is the daemon identity.
     - No identity: raises SessionIdentityError (401).
     """
     if session.principal:
@@ -262,8 +262,7 @@ def resolve_session_principal(session: "Session") -> tuple[str, str]:
         return principal, role
     # System session — only if explicitly created with a system_role.
     if session.system_role:
-        principal = f"system:{session.session_id}"
-        return principal, session.system_role
+        return SYSTEM_DAEMON_PRINCIPAL, session.system_role
     raise SessionIdentityError(
         f"Session {session.session_id} has no identity: "
         "no principal, no human_email, no system_role. "

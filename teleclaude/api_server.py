@@ -480,7 +480,8 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         ) -> dict[str, str | None]:
             """Return the resolved principal for the calling session.
 
-            Agent sessions (X-Session-Token) return their token principal.
+            Agent sessions (X-Session-Token) return the principal resolved from
+            the session record and its current role.
             Terminal/TUI sessions return their email-based identity.
             """
             if identity.principal:

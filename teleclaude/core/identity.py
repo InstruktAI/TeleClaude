@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
 
@@ -21,6 +21,47 @@ if TYPE_CHECKING:
     from teleclaude.core.models import MessageAuthor
 
 logger = get_logger(__name__)
+
+
+class CliCallerKind(StrEnum):
+    """Kinds of identity a local CLI caller can carry."""
+
+    PERSON = "person"
+    SYSTEM = "system"
+    NONE = "none"
+
+
+@dataclass(frozen=True)
+class PersonCliCaller:
+    """A caller acting with a person's carried or terminal identity."""
+
+    kind: Literal[CliCallerKind.PERSON] = CliCallerKind.PERSON
+    email: str | None = None
+    person_slug: str | None = None
+    human_role: str | None = None
+
+
+@dataclass(frozen=True)
+class SystemCliCaller:
+    """A caller acting with a system principal and no person role."""
+
+    kind: Literal[CliCallerKind.SYSTEM] = CliCallerKind.SYSTEM
+    email: None = None
+    person_slug: None = None
+    human_role: None = None
+
+
+@dataclass(frozen=True)
+class NoIdentityCliCaller:
+    """A caller for which no person or system identity is available."""
+
+    kind: Literal[CliCallerKind.NONE] = CliCallerKind.NONE
+    email: None = None
+    person_slug: None = None
+    human_role: None = None
+
+
+type CliCaller = PersonCliCaller | SystemCliCaller | NoIdentityCliCaller
 
 _DISCORD_AVATAR_BINDING_EVENT = "discord_avatar_binding_lifecycle"
 _PERSON_CONTEXT_BINDING_REGISTRY_UNAVAILABLE = "Person registry is unavailable for context binding"
