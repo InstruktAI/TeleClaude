@@ -364,15 +364,15 @@ precedence over the shared file within each root. The project layer reads only
 these two canonical files; `mcp.json` / `mcp.local.json` compatibility imports
 remain a machine-wide-root contract.
 
-Server entries in either scope may declare the optional boolean `hidden`
-(default `false`). A hidden server is excluded from index-mode listings baked
+Server entries in either scope may declare `hidden`; its type and default live
+in the MCP registry schema. A hidden server is excluded from index-mode listings baked
 into generated agent entrypoints while remaining fully served and listed by the
 runtime `telec mcp list` surface; `hidden` affects neither startup, credential
 lookup, nor lease fingerprints.
 
 
 
-`credentialScope` selects the credential owner and accepts `global` or `person`; omission means `global`. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
+`credentialScope` selects the credential owner — the machine, or the calling person — and an entry that omits it uses machine-wide credentials; its allowed values live in the MCP registry schema. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
 
 
 <!-- planned-change:config-schema-home-resolution -->
