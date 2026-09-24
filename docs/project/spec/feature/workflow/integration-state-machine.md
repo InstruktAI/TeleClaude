@@ -97,7 +97,8 @@ Then the owed deterministic maintenance is recorded from the canonical checkout 
 And integration does not wait for every maintenance action to finish
 And the state machine records a checkout-scoped marker only when the range owes a live-runtime log check
 And the marker carries the advanced range but no mechanical action id
-And the agent-stop checkpoint waits for any owed restart to succeed before it consumes the marker to surface only the log-check judgment
+And the agent-stop checkpoint directs the agent to read logs two minutes after the latest advancement represented by the marker
+And that one read discharges the marker without waiting for mechanical maintenance to finish
 ```
 <!-- /planned-change:nonblocking-commit-maintenance -->
 

@@ -93,11 +93,12 @@ contract governs only what happens when maintenance runs.
   exit when no pending work remains. Lock-file presence never means ownership.
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. Operational anomaly
-  detection observes failed or stale actions. Maintenance completion sends no
-  notification to the committer. When an activation owes restart and live
-  runtime log judgment, the required judgment remains outstanding until the
-  restart action reports health-checked success; an earlier log read cannot
-  discharge it.
+  detection observes failed or stale actions. The existing post-commit
+  checkpoint directs the committing or integrating agent to defer its one log
+  read until two minutes after the advancement. That read closes the agent's
+  log judgment without waiting for restart completion. Maintenance completion
+  sends no notification to the committer; anomalies after the read belong to
+  the log bug hunter.
 <!-- /planned:nonblocking-commit-maintenance -->
 
 ### Use cases
@@ -265,14 +266,15 @@ And operational anomaly detection can report it
 But the drain does not retry that terminal failure indefinitely
 ```
 
-#### UC-PCM15: Live-runtime judgment follows a successful restart
+#### UC-PCM15: The post-commit log judgment is delayed once
 
 ```gherkin
 Given a canonical-main change owes both daemon restart and live-runtime log judgment
 When Git returns before the restart finishes
-Then the required log judgment remains outstanding
-And it evaluates the changed runtime after the restart succeeds
-But the committer receives no maintenance-completion notification
+Then the committing or integrating agent defers its checkpoint log read for two minutes
+And that read closes the agent's log judgment without waiting for restart success
+And later anomalies remain discoverable by the log bug hunter
+But maintenance completion sends no further prompt to the agent
 ```
 <!-- /planned:nonblocking-commit-maintenance -->
 
