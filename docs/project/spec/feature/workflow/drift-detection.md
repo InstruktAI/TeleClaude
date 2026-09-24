@@ -79,13 +79,6 @@ Pending drift contract update:
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **code** | Artifact's `codebase_sha_at_write` vs current `origin/main` HEAD, scoped to the implementation-plan's declared `referenced-paths` block. | HEAD has moved AND at least one changed path overlaps the declared contract. Artifacts that declare no block carry an empty code surface and derive fresh. |
 
-<!-- planned-change:dependency-artifact-drift -->
-Prepare dependency ground may be satisfied by a direct dependency's
-human-approved PRD before that dependency reaches `prepared`. This is a gating
-relaxation enforced at slug resolution, not a drift surface: the prepare gate
-reads the dependency's live PRD approval, so a lost or changed approval re-blocks
-dispatch directly. No staleness class is derived for it.
-<!-- change:dependency-artifact-drift -->
 Prepare dependency ground may be satisfied by a direct dependency's
 human-approved PRD before that dependency reaches `prepared`. This is a gating
 relaxation enforced at slug resolution: the prepare gate reads the dependency's
@@ -103,7 +96,6 @@ stay gate-only (`project/spec/feature/workflow/dependency-graph`):
 
 A delivered dependency is not evaluated: what it delivered reaches the plan
 through the `code` class.
-<!-- /planned-change:dependency-artifact-drift -->
 
 ### Provenance recorded per artifact
 
@@ -149,12 +141,10 @@ drift class that applies to it. Per-artifact provenance:
   accepted set are not tracked, by design — references in the body, not
   by literal path substring).
 - `produced_at` — UTC wall-clock timestamp.
-<!-- planned:dependency-artifact-drift -->
 - `dependency_artifact_digests` — map of `{dependency_slug: {artifact_name: digest}}`
   over the dependencies in the Todo's `after` set at write time, covering each
   dependency's intent and prepared artifacts. Recorded for the
   `implementation-plan` only.
-<!-- /planned:dependency-artifact-drift -->
 
 Snippet digests are content hashes of the snippet body (excluding
 frontmatter `delivered_by` churn so a target → actual flip on an unrelated
@@ -179,12 +169,10 @@ snippets directly (intake → feature spec; architecture → domain/design
 snippets). `implementation-plan` does not author durable snippets, so it
 has no owned-snippet class.
 
-<!-- planned:dependency-artifact-drift -->
 `dependency-artifact` applies to the `implementation-plan` only: the plan is
 where a dependency's contract becomes task premises, ordering claims, and
 observation-map anchors, while every other tracked artifact reaches the plan
 through `upstream-artifact`.
-<!-- /planned:dependency-artifact-drift -->
 
 Artifacts absent from the matrix are not drift-reviewed artifacts. `input` is
 never a direct drift target: a direct `input` drift verdict is invalid because
@@ -208,9 +196,7 @@ the **evidence anchor** at which the verdict was made:
 - `head_sha_at_review` — the HEAD SHA when the analyzer ran.
 - `upstream_digests_at_review` — the upstream artifact digest map at review.
 - `snippet_digests_at_review` — the snippet digest map at review.
-<!-- planned:dependency-artifact-drift -->
 - `dependency_digests_at_review` — the dependency artifact digest map at review.
-<!-- /planned:dependency-artifact-drift -->
 
 On every prepare call, the per-artifact drift derivation first compares
 **current evidence** against the stamp's anchor for the same class. If any
@@ -262,7 +248,6 @@ checked per class against the recorded multi-dimensional anchor; any
 single dimension moving past its anchor re-pends that class. The
 orchestrator re-enters the state machine when the worker idles.
 
-<!-- planned:dependency-artifact-drift -->
 The lifecycle runner dispatches a Todo it would otherwise route to the work
 lane to the prepare lane when that Todo's implementation-plan derives
 `dependency-artifact` drift `pending`; the prepare call then routes the drift
@@ -271,7 +256,6 @@ as above. The prepare-lane dependency gate still applies
 count as prepared, the Todo stays dependency-blocked. A drift-reviewed stamp
 whose `dependency_digests_at_review` matches the current dependency digests
 ends the re-entry.
-<!-- /planned:dependency-artifact-drift -->
 
 ### Work-entry re-derivation
 
@@ -677,7 +661,6 @@ Scenario: provenance captures owned snippets for a project other than the daemon
   And async_provenance_complete is true
 ```
 
-<!-- planned:dependency-artifact-drift -->
 #### UC-WDD14: A rewritten dependency contract drifts the implementation-plan
 
 ```gherkin
@@ -719,7 +702,6 @@ Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
   Then the Todo settles at prepared
   And later lifecycle runner passes do not dispatch it to the prepare lane again until one of the dependency's intent or prepared artifacts moves again
 ```
-<!-- /planned:dependency-artifact-drift -->
 
 ### Cross-context references
 
@@ -743,13 +725,8 @@ Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
 
 ## Allowed values
 
-<!-- planned-change:dependency-artifact-drift -->
-- **Drift class:** `code`, `upstream-artifact`, `owned-snippet`,
-  `upstream-snippet`, `age`.
-<!-- change:dependency-artifact-drift -->
 - **Drift class:** `code`, `upstream-artifact`, `owned-snippet`,
   `upstream-snippet`, `dependency-artifact`, `age`.
-<!-- /planned-change:dependency-artifact-drift -->
 
 - **Drift status:** `fresh`, `pending`, `cosmetic`, `substantive`. Priority
   for collapse to per-artifact status: `substantive` > `pending` >
@@ -824,14 +801,12 @@ Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
   semantics changes self-heal stale stored values on the next prepare call
   without resetting `produced_at`, snippet/dependency provenance, or drift
   review stamps.
-<!-- planned:dependency-artifact-drift -->
 - **`dependency-artifact` arms at the plan's next write, not on upgrade.** An
   implementation-plan written before dependency provenance existed carries none
   and derives fresh for the class until it is next written. Resolving the absent
   field to `pending`, as the other per-class fields do, would send every
   prepared plan to the analyzer at once — the sweep the opt-in `age` class exists
   to avoid.
-<!-- /planned:dependency-artifact-drift -->
 
 ## See Also
 
