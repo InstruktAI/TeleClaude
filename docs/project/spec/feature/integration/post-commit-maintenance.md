@@ -94,8 +94,10 @@ contract governs only what happens when maintenance runs.
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. Operational anomaly
   detection observes failed or stale actions. Maintenance completion sends no
-  notification to the committer, and an earlier log judgment does not claim a
-  still-pending action succeeded.
+  notification to the committer. When an activation owes restart and live
+  runtime log judgment, the required judgment remains outstanding until the
+  restart action reports health-checked success; an earlier log read cannot
+  discharge it.
 <!-- /planned:nonblocking-commit-maintenance -->
 
 ### Use cases
@@ -261,6 +263,16 @@ When the drain continues with other owed actions
 Then the failed action remains identifiable by its activated state and action identity
 And operational anomaly detection can report it
 But the drain does not retry that terminal failure indefinitely
+```
+
+#### UC-PCM15: Live-runtime judgment follows a successful restart
+
+```gherkin
+Given a canonical-main change owes both daemon restart and live-runtime log judgment
+When Git returns before the restart finishes
+Then the required log judgment remains outstanding
+And it evaluates the changed runtime after the restart succeeds
+But the committer receives no maintenance-completion notification
 ```
 <!-- /planned:nonblocking-commit-maintenance -->
 
