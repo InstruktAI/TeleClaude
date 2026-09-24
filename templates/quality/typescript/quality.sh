@@ -3,10 +3,10 @@
 #
 # Owns the scoped lint/format behavior behind `make lint` / `make format` so the
 # Makefile recipe stays a single delegation line. The project owns this file once
-# copied in: it invokes only the project's own tools and has no TeleClaude
-# dependency, so `make lint` works standalone.
+# copied in: it invokes only the project's own tools, so `make lint` works
+# standalone.
 #
-# Scope contract (sdlc/design/project-toolchain): when FILES_FROM
+# Scope contract: when FILES_FROM
 # is set it names a temp file of NUL-terminated paths. Only those paths are
 # checked, each tool receives only the paths it actually owns, and a tool whose
 # bucket is empty does not run at all. With no FILES_FROM, everything runs.
