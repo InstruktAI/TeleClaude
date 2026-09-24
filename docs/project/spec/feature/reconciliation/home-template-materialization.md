@@ -67,7 +67,11 @@ And a target under the TeleClaude home is absent, identical, or byte-different
 When an agent runs machine installation
 Then every template is present at its matching home-relative path as a regular file
 And an identical target is left untouched
+<!-- planned-change:installable-template-trees -->
 And a missing or byte-different target receives the template content
+<!-- change:installable-template-trees -->
+And a missing target, or one differing from the template's rendered content, receives that rendered content
+<!-- /planned-change:installable-template-trees -->
 And no materialized target is a symbolic link
 ```
 
