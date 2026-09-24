@@ -37,7 +37,10 @@ be installed beside it without entering the retained set.
 
 - **Source tree.** `templates/home/**` in the canonical TeleClaude checkout.
 - **Target tree.** The TeleClaude home, preserving each source path relative to
-  the source tree.
+  the source tree after mapping every `dot_<name>` path segment to `.<name>`.
+- **Dotfile source names.** Dot-prefixed target files and directories use the
+  `dot_<name>` marker in the source tree, so the template source cannot take
+  effect inside the canonical checkout.
 - **File kind.** Sources and targets are regular files. Symbolic links are never
   created by this materialization path.
 <!-- planned-change:installable-template-trees -->
@@ -54,8 +57,9 @@ be installed beside it without entering the retained set.
   regular file fails installation before that target is replaced or removed.
 - **Activation order.** The complete template tree is materialized before the
   activation scan and activation commit begin.
-- **Retained-set source.** `templates/home/.gitignore` is the one declaration
-  consumed by membership evaluation and copied into the home for activation.
+- **Retained-set source.** `templates/home/dot_gitignore` is the one declaration
+  consumed by membership evaluation and copied to the home's `.gitignore` for
+  activation.
 
 ### Use cases
 
@@ -63,9 +67,10 @@ be installed beside it without entering the retained set.
 
 ```gherkin
 Given the canonical checkout contains repository-owned home templates
+And dot-prefixed target paths use the dot_ source marker
 And a target under the TeleClaude home is absent, identical, or byte-different
 When an agent runs machine installation
-Then every template is present at its matching home-relative path as a regular file
+Then every template is present at its mapped home-relative path as a regular file
 And an identical target is left untouched
 <!-- planned-change:installable-template-trees -->
 And a missing or byte-different target receives the template content
@@ -89,7 +94,7 @@ And home-repository activation does not begin
 #### UC-HTM3: Activation records the materialized retained-set declaration
 
 ```gherkin
-Given the home template tree carries the retained-set declaration and projection-only settings
+Given the home template tree carries its dot_gitignore declaration and dot_vscode projection-only settings
 When an agent runs machine installation
 Then the templates are materialized before the activation scan begins
 And membership evaluation consumes the same retained-set declaration that activation records
