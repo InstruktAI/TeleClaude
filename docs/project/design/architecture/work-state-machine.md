@@ -15,26 +15,26 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 ### Referenced files
 
-| File                                                                                                                                               | Purpose                                      |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py)                                                         | State machine implementation (`next_work()`) |
-| [`docs/software-development/procedure/lifecycle/work/build.md`](../../../software-development/procedure/lifecycle/work/build.md)                   | Build procedure                              |
-| [`docs/software-development/procedure/lifecycle/work/review-build.md`](../../../software-development/procedure/lifecycle/work/review-build.md)     | Review procedure                             |
-| [`docs/software-development/procedure/lifecycle/fix-review-findings.md`](../../../software-development/procedure/lifecycle/fix-review-findings.md) | Fix review procedure                         |
-| [`docs/software-development/procedure/lifecycle/work/finalize.md`](../../../software-development/procedure/lifecycle/work/finalize.md)             | Finalize procedure                           |
-| [`docs/general/procedure/orchestration.md`](../../../general/procedure/orchestration.md)                                                           | Orchestration loop procedure                 |
+| File                                                                                                               | Purpose                                      |
+| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| [`teleclaude/core/next_machine/core.py`](../../../../teleclaude/core/next_machine/core.py)                         | State machine implementation (`next_work()`) |
+| [`docs/sdlc/procedure/lifecycle/work/build.md`](../../../sdlc/procedure/lifecycle/work/build.md)                   | Build procedure                              |
+| [`docs/sdlc/procedure/lifecycle/work/review-build.md`](../../../sdlc/procedure/lifecycle/work/review-build.md)     | Review procedure                             |
+| [`docs/sdlc/procedure/lifecycle/fix-review-findings.md`](../../../sdlc/procedure/lifecycle/fix-review-findings.md) | Fix review procedure                         |
+| [`docs/sdlc/procedure/lifecycle/work/finalize.md`](../../../sdlc/procedure/lifecycle/work/finalize.md)             | Finalize procedure                           |
+| [`docs/general/procedure/orchestration.md`](../../../general/procedure/orchestration.md)                           | Orchestration loop procedure                 |
 
 ### Referenced doc snippets
 
-| Snippet ID                                                     | Content                                                  |
-| -------------------------------------------------------------- | -------------------------------------------------------- |
-| `software-development/procedure/lifecycle/work/build`          | Build phase — implement plan, commit per task            |
-| `software-development/procedure/lifecycle/work/review`         | Review phase — parallel lanes, structured findings       |
-| `software-development/procedure/lifecycle/fix-review-findings` | Fix phase — address findings, peer conversation          |
-| `software-development/procedure/lifecycle/work/finalize`       | Finalize — two-stage: worker prepare, orchestrator apply |
-| `general/procedure/orchestration`                              | Orchestration loop and dispatch rules                    |
-| `software-development/policy/definition-of-done`               | Quality gates for completion                             |
-| `software-development/policy/testing`                          | Pre-commit quality gates                                 |
+| Snippet ID                                     | Content                                                  |
+| ---------------------------------------------- | -------------------------------------------------------- |
+| `sdlc/procedure/lifecycle/work/build`          | Build phase — implement plan, commit per task            |
+| `sdlc/procedure/lifecycle/work/review`         | Review phase — parallel lanes, structured findings       |
+| `sdlc/procedure/lifecycle/fix-review-findings` | Fix phase — address findings, peer conversation          |
+| `sdlc/procedure/lifecycle/work/finalize`       | Finalize — two-stage: worker prepare, orchestrator apply |
+| `general/procedure/orchestration`              | Orchestration loop and dispatch rules                    |
+| `sdlc/policy/definition-of-done`               | Quality gates for completion                             |
+| `sdlc/policy/testing`                          | Pre-commit quality gates                                 |
 
 ## Inputs/Outputs
 
@@ -86,10 +86,9 @@ build_review:
 - **Ground-shift follow-up**: if `origin/main` is merged while review is in flight and the newly landed files overlap the current review surface, the state machine sends a targeted follow-up to the same reviewer instead of widening scope or spawning a new reviewer.
 - **Explicit build completion**: commits and passing gates are evidence only. Review does not reopen until the builder stamps `build_complete`.
 
-
 - **Review threshold**: at the configured threshold the machine reports the admitted-pass count and instructs the orchestrator to dispatch an assist against the loop; it refuses no pass and keeps looping.
 - **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready` on the finalize sub-state; the Work machine performs the triple-ref-gated advance from `review_approved` to terminal `lifecycle_phase=finalize_ready` and ends the worker's child sessions and own session inside the same step. There is no separate `handed_off` follow-up phase.
-- **Integration emission is state-bound, not path-bound**: the `TodosDb.write_state` chokepoint fires a `_on_phase_transition` hook on every owned-commit lifecycle-phase change; the daemon-registered translator emits the `domain.software-development.planning.todo_finalize_ready` event on every `* → finalize_ready` transition the chokepoint observes, regardless of which writer (the work-machine claim, or any future writer landing the transition through the same chokepoint) produced it. v1 `TodosDb` does NOT serialize writers per project, so concurrent writers landing the same transition can each fire the hook — the chokepoint provides **at-least-once** emission at the bus layer. The `IntegrationTriggerCartridge`'s `_spawned_event_keys` dedup keyed on `(slug, sha, worker_session_id)` collapses duplicates to **exactly one** integrator spawn per logical event, and the integrator's `integration/main` singleton lease serializes spawns into a single integration run per slug. The work-step no longer emits the event directly. The integrator's periodic candidate scanner remains the in-band safety net for cases where the chokepoint emission was not delivered (e.g., daemon down).
+- **Integration emission is state-bound, not path-bound**: the `TodosDb.write_state` chokepoint fires a `_on_phase_transition` hook on every owned-commit lifecycle-phase change; the daemon-registered translator emits the `domain.sdlc.planning.todo_finalize_ready` event on every `* → finalize_ready` transition the chokepoint observes, regardless of which writer (the work-machine claim, or any future writer landing the transition through the same chokepoint) produced it. v1 `TodosDb` does NOT serialize writers per project, so concurrent writers landing the same transition can each fire the hook — the chokepoint provides **at-least-once** emission at the bus layer. The `IntegrationTriggerCartridge`'s `_spawned_event_keys` dedup keyed on `(slug, sha, worker_session_id)` collapses duplicates to **exactly one** integrator spawn per logical event, and the integrator's `integration/main` singleton lease serializes spawns into a single integration run per slug. The work-step no longer emits the event directly. The integrator's periodic candidate scanner remains the in-band safety net for cases where the chokepoint emission was not delivered (e.g., daemon down).
 - **Stash prohibition**: git stash is forbidden in all agent workflows. The machine checks for stash debt.
 
 ## Primary flows
@@ -137,11 +136,11 @@ flowchart TD
     ReadState["Read todo state (todos.db)"]
     PhaseCheck{"lifecycle_phase?"}
 
-    DispatchBuild["Dispatch /next-build"]
-    DispatchReview["Dispatch or reuse /next-review-build"]
+    DispatchBuild["Dispatch /build"]
+    DispatchReview["Dispatch or reuse /review-build"]
     DispatchFix["Reviewer opens direct fix conversation with the builder session"]
-    DispatchDefer["Dispatch /next-defer"]
-    DispatchFinalize["Dispatch /next-finalize"]
+    DispatchDefer["Dispatch /defer"]
+    DispatchFinalize["Dispatch /finalize"]
     Terminal["lifecycle_phase=finalize_ready written<br/>TodosDb chokepoint fires _on_phase_transition<br/>daemon translator emits todo_finalize_ready<br/>worker sessions end inside the step"]
 
     Start --> ReadState
@@ -185,10 +184,10 @@ sequenceDiagram
     participant I as Integration Queue
 
     O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /next-build
+    SM-->>O: DISPATCH /build
 
     Note over O,B: Build Phase
-    O->>B: telec sessions run --command /next-build --args slug
+    O->>B: telec sessions run --command /build --args slug
     B->>B: Bind feature-spec scenarios, implement tasks, commit per task
     B->>B: Check all tasks [x], run scoped build gates, repo-wide lint/test when explicitly requested
     B-->>O: BUILD COMPLETE: slug
@@ -196,10 +195,10 @@ sequenceDiagram
     O->>O: telec sessions end builder-session
 
     O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /next-review-build
+    SM-->>O: DISPATCH /review-build
 
     Note over O,R: Review Phase
-    O->>R: telec sessions run --command /next-review-build --args slug --mode slow
+    O->>R: telec sessions run --command /review-build --args slug --mode slow
     R->>R: Run review lanes (code, tests, security, types, ...)
     R->>R: Write review-findings.md
     R-->>O: REVIEW COMPLETE: slug - Verdict: APPROVE
@@ -207,10 +206,10 @@ sequenceDiagram
 
     O->>SM: telec todo work slug
     SM->>SM: Read review-findings and reconcile verdict
-    SM-->>O: DISPATCH /next-finalize
+    SM-->>O: DISPATCH /finalize
 
     Note over O,F: Finalize Phase
-    O->>F: telec sessions run --command /next-finalize --args slug
+    O->>F: telec sessions run --command /finalize --args slug
     F->>F: git fetch origin main, git merge origin/main
     F->>F: git push origin HEAD:slug
     F-->>O: FINALIZE_READY: slug
@@ -220,7 +219,7 @@ sequenceDiagram
     O->>SM: telec todo work slug
     SM->>SM: triple-ref validate; write lifecycle_phase=finalize_ready via TodosDb.write_state
     SM->>SM: end finalizer's child sessions + own session inside _work_step_finalize_ready
-    Note over SM,I: TodosDb write-state chokepoint fires _on_phase_transition; daemon-registered translator emits domain.software-development.planning.todo_finalize_ready
+    Note over SM,I: TodosDb write-state chokepoint fires _on_phase_transition; daemon-registered translator emits domain.sdlc.planning.todo_finalize_ready
     I->>I: IntegrationTriggerCartridge consumes the event and spawns the integrator (Phase C)
     Note over I: Phase C begins
 ```
@@ -239,10 +238,10 @@ sequenceDiagram
     participant F as Fixer
 
     O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /next-review-build
+    SM-->>O: DISPATCH /review-build
 
     Note over O,F: Review Round 1
-    O->>R: telec sessions run --command /next-review-build --args slug --mode slow
+    O->>R: telec sessions run --command /review-build --args slug --mode slow
     R-->>O: Verdict: REQUEST CHANGES (3 findings)
     O->>O: telec todo stamp slug --verdict changes_requested --phase build_review
 
@@ -256,7 +255,7 @@ sequenceDiagram
     F-->>O: FIX COMPLETE: slug (3/3 addressed)
 
     O->>SM: telec todo work slug
-    SM-->>O: REUSE LIVE REVIEWER or DISPATCH /next-review-build if none is alive
+    SM-->>O: REUSE LIVE REVIEWER or DISPATCH /review-build if none is alive
 
     Note over O,F: Review Round 2
     O->>R: telec sessions send reviewer-session "ground shifted / please continue" or wait on existing review
@@ -266,14 +265,14 @@ sequenceDiagram
 
 ### Command dispatch map
 
-| Sub-Phase   | Command              | Worker Role  | Thinking Mode      | Output                                                                                                     |
-| ----------- | -------------------- | ------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Build       | `/next-build`        | Builder      | `med`              | Code, tests, commits                                                                                       |
-| Build (bug) | `/next-build`        | Builder      | `med`              | Plan execution + reproduction test (RED→GREEN)                                                             |
-| Review      | `/next-review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict                                                                              |
-| Fix         | _(no dispatch)_      | Fixer        | _(reused)_         | Reviewer opens a direct conversation with the existing builder session, which applies findings and commits |
-| Deferrals   | `/next-defer`        | Orchestrator | —                  | New todos from deferrals                                                                                   |
-| Finalize    | `/next-finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY                                                                              |
+| Sub-Phase   | Command         | Worker Role  | Thinking Mode      | Output                                                                                                     |
+| ----------- | --------------- | ------------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Build       | `/build`        | Builder      | `med`              | Code, tests, commits                                                                                       |
+| Build (bug) | `/build`        | Builder      | `med`              | Plan execution + reproduction test (RED→GREEN)                                                             |
+| Review      | `/review-build` | Reviewer     | `slow` (mandatory) | `review-findings.md`, verdict                                                                              |
+| Fix         | _(no dispatch)_ | Fixer        | _(reused)_         | Reviewer opens a direct conversation with the existing builder session, which applies findings and commits |
+| Deferrals   | `/defer`        | Orchestrator | —                  | New todos from deferrals                                                                                   |
+| Finalize    | `/finalize`     | Finalizer    | `med`              | Branch pushed, FINALIZE_READY                                                                              |
 
 ### Lifecycle events
 

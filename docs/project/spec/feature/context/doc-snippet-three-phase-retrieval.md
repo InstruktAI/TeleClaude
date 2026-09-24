@@ -57,7 +57,7 @@ read depth alone decides what an answer contains.
 
 ```
 Given a logged-in operator with the default terminal role
-When they run telec docs index --areas policy --domains software-development
+When they run telec docs index --areas policy --domains sdlc
 Then phase 1 returns matching snippet metadata sorted by taxonomy type general-to-specific (principle, concept, policy, procedure, design, spec, adr), then scope, then ID
 
 And each entry shows its ID and one-line description

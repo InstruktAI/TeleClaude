@@ -765,7 +765,7 @@ class OperationsService:
     async def _continue_task_run_in_place(operation: Operation) -> str:
         """In-place continuation for a caller already bound to the task slug.
 
-        A task is normally executed by a dedicated ``/next-run-task`` worker the
+        A task is normally executed by a dedicated ``/run-task`` worker the
         bridge dispatches; an operator START is unbound and takes that path. This
         fallback only fires when the caller session already drives the slug, so it
         returns the run-task continuation rather than the SDLC work machine.

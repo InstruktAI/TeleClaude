@@ -197,7 +197,7 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
     if phase == CreativePhase.ART_GENERATION_REQUIRED:
         return format_tool_call(
             ToolCallRequest(
-                command=SlashCommand.NEXT_CREATE_ART,
+                command=SlashCommand.CREATE_ART,
                 args=slug,
                 project=cwd,
                 subfolder="",
@@ -210,12 +210,12 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
         return _art_pending_approval(slug, cwd)
     if phase == CreativePhase.ART_ITERATION_REQUIRED:
         artist_id = await find_live_session_for_slug(
-            db, slug, f"/{SlashCommand.NEXT_CREATE_ART.value}", subdir_override=creative_subdir
+            db, slug, f"/{SlashCommand.CREATE_ART.value}", subdir_override=creative_subdir
         )
         return dispatch_or_reuse(
             artist_id,
             request=ToolCallRequest(
-                command=SlashCommand.NEXT_CREATE_ART,
+                command=SlashCommand.CREATE_ART,
                 args=slug,
                 project=cwd,
                 subfolder="",
@@ -238,7 +238,7 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
     if phase == CreativePhase.VISUAL_DRAFTS_REQUIRED:
         return format_tool_call(
             ToolCallRequest(
-                command=SlashCommand.NEXT_CREATE_HTML,
+                command=SlashCommand.CREATE_HTML,
                 args=slug,
                 project=cwd,
                 subfolder="",
@@ -251,12 +251,12 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
         return _visuals_pending_approval(slug, cwd)
     if phase == CreativePhase.VISUAL_ITERATION_REQUIRED:
         frontender_id = await find_live_session_for_slug(
-            db, slug, f"/{SlashCommand.NEXT_CREATE_HTML.value}", subdir_override=creative_subdir
+            db, slug, f"/{SlashCommand.CREATE_HTML.value}", subdir_override=creative_subdir
         )
         return dispatch_or_reuse(
             frontender_id,
             request=ToolCallRequest(
-                command=SlashCommand.NEXT_CREATE_HTML,
+                command=SlashCommand.CREATE_HTML,
                 args=slug,
                 project=cwd,
                 subfolder="",

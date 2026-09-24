@@ -26,7 +26,7 @@ the upstream contract. Tasks reference it as `@input#<section>`.
   and must raise _domain_ errors, never `HTTPException`. The api layer
   (`session_remote.py`) catches those and translates to HTTP status. Core
   decides; the edge translates (project/policy/adapter-boundaries;
-  software-development/principle/architectural-defaults §5 layered ownership).
+  sdlc/principle/architectural-defaults §5 layered ownership).
 - **Error propagation preserved** (`@input#notes--constraints`): target errors
   surface through the existing envelope path
   (`_messaging.py` `_execute_command` -> `{"status":"error",...}`), and api

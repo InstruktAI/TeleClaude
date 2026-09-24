@@ -17,13 +17,13 @@ from teleclaude.events.domains.marketing.handlers.campaign_budget_monitor.handle
 )
 from teleclaude.events.domains.marketing.handlers.content_pipeline.handler import process as marketing_content_pipeline
 from teleclaude.events.domains.marketing.handlers.feed_monitor.handler import process as marketing_feed_monitor
-from teleclaude.events.domains.software_development.handlers.build_notifier.handler import (
+from teleclaude.events.domains.sdlc.handlers.build_notifier.handler import (
     process as software_build_notifier,
 )
-from teleclaude.events.domains.software_development.handlers.deploy_tracker.handler import (
+from teleclaude.events.domains.sdlc.handlers.deploy_tracker.handler import (
     process as software_deploy_tracker,
 )
-from teleclaude.events.domains.software_development.handlers.todo_lifecycle.handler import (
+from teleclaude.events.domains.sdlc.handlers.todo_lifecycle.handler import (
     process as software_todo_lifecycle,
 )
 from teleclaude.events.envelope import EventEnvelope
@@ -50,7 +50,7 @@ class DomainHandlerSpec:
 
 
 _DOMAIN_HANDLERS: dict[str, tuple[DomainHandlerSpec, ...]] = {
-    "software-development": (
+    "sdlc": (
         DomainHandlerSpec("todo-lifecycle", software_todo_lifecycle),
         DomainHandlerSpec("build-notifier", software_build_notifier),
         DomainHandlerSpec("deploy-tracker", software_deploy_tracker),

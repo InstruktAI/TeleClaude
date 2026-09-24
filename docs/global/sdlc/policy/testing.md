@@ -1,0 +1,249 @@
+---
+description: 'Testing doctrine: test authorship is opt-in and no test is authored in a project that has not declared otherwise; where a project does opt in, tests bind feature-spec scenarios authored upstream under authorized intent, functional + smoke are the levels, coverage is measured against the scenario inventory, files mirror the spec, and drift is caught by the spec → test → code change process. Language specifics live in the per-language testing policy.'
+visibility: 'public'
+---
+
+# Testing — Policy
+
+## Rules
+
+### Test authorship is opt-in
+
+**No test is authored in a project that has not declared otherwise.** Absent a
+declaration, agents do not author, demand, or reward tests in that project, and
+verification follows the evidence named below.
+
+A project that keeps or grows a test corpus declares that in a project-scope
+ruling, per `general/policy/conflict-resolution`. The declaration states which
+it is: existing tests are kept and run but none are added, or new tests are
+authored under the mandates in the rest of this policy. Every mandate below
+governs only a project whose ruling opts into authorship — the binding rules,
+levels, file organization, coverage measurement, and assertion craft — and is
+inert elsewhere.
+
+Holding a corpus is not a declaration. A brownfield project's existing tests are
+kept, frozen, or removed by a recorded decision.
+
+**Removing a test is always permitted; authoring one is what the default
+forbids.**
+
+The default, and any project ruling under it, reaches checks where the agent
+that wrote the code also wrote down what the correct result is. It never reaches
+two things. First, live
+verification: an agent driving the real running system in its own session
+(CLI, API, a Playwright-driven browser walk of the changed flow) to prove its
+change works is verification, mandated by the definition of done everywhere,
+under every ruling, in every project. Second, checks that compare against
+something captured rather than decided: a visual screenshot baseline captured
+from the rendered system and approved by the human, so a committed
+screenshot-regression harness survives any test ban — baselines are updated
+only with approval from outside the authoring session, and an agent never
+blesses a diff its own change produced. Reading a test ban as a ban on either
+is a violation of the ruling, not compliance.
+
+### What a test is
+
+1. **Tests bind feature-spec scenarios; they never invent assertions.** Every test names the
+   scenario it realizes — `<spec_id>` and a stable scenario id (`UC-<area><n>`). The feature spec's
+   Gherkin (`Given / When / Then`) is the contract; the test body only drives the real system to
+   exercise that scenario. An agent binds an unbound scenario — it does not author the assertion.
+   **A test that binds no scenario and is not a smoke/wiring check (rule 5) must not exist — do not
+   write it, and delete it if it is already there. A missing bindable scenario is the reason there
+   is no test, never a licence to invent one.**
+2. **The scenario author and the test binder are distinct roles.** A scenario is authored and
+   frozen at intake, under authorized intent, per
+   `sdlc/procedure/feature-spec-authoring` — agent-authored and agent-audited, with
+   independent preparation review as the check that the scenario derives from the authorized
+   intent rather than from the code that will satisfy it. A later build pass binds it. A test
+   is never written by the same pass that authored its scenario — that is grading one's own work and
+   collapses the guarantee. The bug lane, which has no intake, carries one bounded exception: the
+   bug's plan phase authors at most one pending regression scenario encoding exactly the reported
+   symptom (see `lifecycle/prepare/plan-draft`, bug-scope clamp), and the build pass binds it — the
+   author/binder separation holds across the phases. Any scenario beyond that one is invention, not
+   the exception.
+3. **The applicable language testing policy owns unit-test eligibility.** It states whether the
+   language's compile-time guarantees justify colocated unit tests or whether behavior is verified
+   only through functional and smoke tests. Generic testing doctrine does not infer that decision
+   from a language label.
+
+### Levels
+
+4. **Functional is the primary level.** One real interaction chain at a boundary: real in-process
+   components, mocking only what crosses the process or network line. Each functional test asserts
+   its own boundary contract — the shape, event, or response it emits or consumes — so composition
+   is trustworthy without broad end-to-end tests. What counts as the boundary, which mocks are
+   legitimate (only the process or network line), and the tells of a unit test wearing the
+   functional label are defined in `sdlc/concept/functional-test-boundary`. The
+   marker is self-asserted by the author and proves nothing; the functional-versus-unit distinction
+   is a review judgment against that definition, never a path check or a scanner.
+5. **Smoke proves wiring, machine-checkably.** A small set of tests assert concrete wiring facts —
+   services registered, routes mounted, the bus subscribed, one request flowing end to end. "It
+   started without crashing" is not a smoke test; assert the structural facts.
+6. **Integration is a rare, justified exception.** Reserved for behavior that cannot be faked at the
+   functional level — real external-system semantics (a broker's redelivery rules, a database's
+   isolation behavior). Not a tier to grow; a short list, each entry justified.
+
+### File organization
+
+7. **One test file per feature spec, path-mirrored.** The feature spec determines the test file's
+   domain and identity; an agent never invents an unrelated test path. The applicable language
+   testing policy owns the root, filename normalization, suffix, runner discovery rules, and the
+   concrete form of functional or integration classification.
+
+   **Contract-defining artifacts are not tested — the artifact is the spec.** A thin shim whose
+   behavior is its own declaration — a command wrapper, a git filter, a fixed-response tool — is not
+   tested: a test of it would only restate the contract it declares (the literal-echo anti-pattern).
+   Test feature behavior bound to a spec, never a declaration. If such a tool grows branchy
+   decision-logic worth catching, that is a signal to simplify the tool or move the logic into a
+   tested unit — not to add a test to the tool. **This holds when the fix to a bug is itself such a
+   declaration (for example, declaring a required dependency): there is no reproduction test, because
+   a test would only restate the declaration.**
+
+### Coverage and drift
+
+8. **Coverage is measured against the scenario inventory** — scenarios bound ÷ total — not by
+   source-to-test file mapping. Bind `@critical`-tagged scenarios first; the remainder is a measured
+   backlog. Two tests are a duplicate when they exercise the same behavior — the same failure mode
+   or branch — whether or not they name the same scenario; a duplicate fails the coverage check.
+   Multiple tests under one scenario are not a duplicate when each exercises a behavior the others
+   do not: the scenario counts once toward coverage (bound ÷ total), and each distinct behavior
+   earns its own named test (rules 13-14). A binding to a non-existent scenario is an orphan; it too
+   fails the check.
+
+   Every scenario a plan will bind is reserved at prepare, on `main`, before the build-time binding
+   act — the claim is that the scenario is enclosed by a pending marker owning the binding for the
+   drafting todo. A newly authored scenario carries the claim as its own `planned:<slug>` block; an
+   existing live-and-unbound scenario is claimed by wrapping its `#### UC-…` block in a
+   `planned-change:<slug>` that restates the scenario unchanged, which the delivery fold clears so the
+   scenario stays live and the test binding becomes its permanent record. A scenario enclosed by no
+   pending marker is unclaimed. Because prepare authors directly to `main`, a concurrent prepare reads
+   the existing claim and either reuses the scenario by reference — adding no second binding — or
+   authors a distinct scenario; markers never nest, so two todos claiming the same region serialize
+   via `telec todo update <later> --after <earlier>`. The duplicate this rule forbids is prevented at
+   its source rather than only caught once both tests have landed.
+
+9. **A changed scenario forces its bound test to be revisited.** When a scenario's Gherkin changes,
+   the bound test is re-derived from the new contract before the change is done (rule 10) — the
+   spec-drift guard. This is carried by the change process and the reviewer, not by an automated
+   fingerprint: a behavior contract cannot change without its test being revisited.
+
+### The change process
+
+10. **Behavior changes start in the spec, then flow spec → test → code.** The feature snippet is
+    edited first — by the intent owner or by an agent under authorized intent, per the authoring
+    contract; the build agent reads the current spec against the existing bindings and
+    works the delta:
+    - **Removed scenario** → delete its bound test, then the code it exclusively covered.
+    - **Added scenario** → bind it (write the test), confirm it fails, implement, confirm it passes.
+    - **Changed scenario** → update the bound test to the new contract, confirm it fails against
+      current code, update the code, confirm it passes.
+      The agent derives the delta by reading the spec against what is already bound; the reviewer
+      checks the delta was honored.
+
+### Spec structure (so scenarios have stable identity)
+
+11. Spec structure and use-case identity are owned by
+    `sdlc/procedure/feature-spec-authoring`, which applies in every project
+    regardless of test authorship: scenarios live under `### Use cases`, each identified scenario
+    is a `#### UC-<area><n>:` subsection with exactly one fenced Gherkin block, ids are unique,
+    immutable, never renumbered or reused. A
+    Gherkin block not yet under a `#### UC-` header is an **anonymous scenario** — the
+    id-assignment backlog. Bindings reference `spec_id + UC-id`.
+
+### Assertion craft (all languages)
+
+12. **String content is never asserted by literal, substring, prefix, suffix, or pattern.** Three
+    permitted moves: a **snapshot** of any emitted string (the snapshot is the contract); a narrow
+    **non-empty guard** at boundaries where accidental erasure is the failure mode (asserts that
+    something was produced, never what); and a **named-constant identity** comparison when behavior
+    turns on identity (production and test import the same constant). Assert exceptions by type, not
+    message text; assert states by typed/enum fields. Rendered prose that realizes a spec scenario is
+    snapshot-covered at the renderer's boundary. Agent-facing advisory output — formatter
+    instructions, prompts, guidance strings — is its own declaration: a snapshot of it is permitted
+    but never mandated, and it is never asserted by content. A change to such prose is not a coverage
+    gap; the only forbidden outcome is a content-grading assert. A bare string literal used as test
+    input or fixture data is unremarkable and stays inline — it is not a magic-string violation, and
+    the closed-vocabulary/constant discipline does not reach it. When a forbidden content assertion
+    must be fixed, the remedy is a **snapshot** or, only when behavior turns on identity, the
+    **imported production constant** — never a constant defined inside the test to hold the expected
+    value. Hoisting a literal into a test-local constant is not a remedy but literal-echo;
+    "extract this string into a constant" is therefore not a valid review finding against a test.
+13. **Rejected as primary assertions:** logger/metric/trace calls and log text; native
+    struct/model/config shapes that are not an external wire contract; private helpers; constructor
+    or dependency-injection wiring; mock-call echoes where the mocked thing is not an architectural
+    boundary; literal-echo (rebuilding an expected value from source-visible literals); primitive
+    side-effects (only that a file/record was created) with no application logic exercised;
+    passthrough-only forwarding that is not itself the contract; parametrized / table-driven bodies
+    (one representative input per behavioral path, one named test per path); and redundant coverage
+    of the same behavior across files.
+14. **One behavioral path per test.** A case is a code path, not an input row. Tests are
+    deterministic, independent, and named so the name is a behavioral specification. Every test
+    answers: _what real bug in our code would this catch?_
+15. **Snapshot approval is a conscious act.** A snapshot's regression value is realized only when its
+    diff is read at update time — CI never updates snapshots, so a person or agent does, and a blind
+    `--snapshot-update` converts the test into theater and forfeits the guarantee. The approval is
+    cheap and bounded: confirm the diff is the delta you intended, then sniff for anomalies — empty or
+    missing blocks, unfilled placeholders, stale interpolations, garbled content. It does not require
+    re-deriving the value from the producing code or re-reading the rules that shaped it; intent-match
+    plus anomaly-sniff is the whole act. When a snapshot changes, state in the report what changed and
+    why it is intended — an unexplained snapshot delta is an unreviewed one.
+16. **Correctness never depends on real-clock timing.** A test synchronizes on the observable
+    condition it cares about — an emitted event, a state transition, a recorded call — never on a
+    real-wall-clock sleep chosen as a guess about how long that condition takes, and never on a
+    shrunk production timeout raced against a real delay. A test whose pass/fail turns on which of two
+    real-time intervals wins is non-deterministic by construction: it passes in isolation and flakes
+    under parallel load, where worker CPU contention perturbs scheduling without bound. Wait on the
+    condition with a bounded timeout that raises a clear error; when the behavior under test _is_
+    timing (a debounce window, a retry backoff, a deadline), drive time deterministically — a
+    controlled clock or an explicit timer advance — rather than sleeping real time and asserting on
+    the outcome of the race. Real time spent sleeping in a test is a defect twice over: it either
+    races (a flake) or pads the suite for no assertion value. The concrete waiting idiom is
+    per-language (see the per-language testing policy).
+
+## Rationale
+
+- Authorship is opt-in because a change is verified only against a standard that
+  originated outside the session that produced it
+  (`general/principle/verification-independence`). An agent authoring its own test
+  supplies both the work and the standard, so a green run demonstrates agreement
+  rather than correctness. The asymmetry between removing and adding follows from
+  the same point: deletion withdraws a claim, while authoring without an external
+  standard manufactures assurance that was never earned.
+- Agents reliably honor a specified contract but reliably produce poor tests and poor coherence
+  across a codebase. So tests exist to preserve coherence and yield a measurable, un-gameable
+  coverage signal against the authorized contract — not to catch bugs the agent would not have made.
+- Binding to tech-agnostic Gherkin authored upstream of the build — under authorized intent, with
+  independent derivation review — removes agent discretion over what to assert, makes coverage
+  objective and non-redundant, and lets the same scenarios bind to a future re-implementation — a
+  migration parity oracle. The independence is in the role separation and the review chain, not in
+  which species typed the sentence.
+- Where the applicable language policy determines that compile-time guarantees do not justify
+  agent-authored unit tests, such a test grades its own code and drifts to green-theater; functional
+  tests catch the real composition failures.
+- A test coupled to a real-clock margin is non-deterministic under the parallel test harness: worker
+  CPU contention makes scheduling jitter unbounded, so the test flakes on code it never touched. A
+  flaky test is worse than no test — it fails the shared gate on unrelated changes and erodes trust
+  in the signal every other agent depends on.
+
+## Scope
+
+- All repositories and all behavior-changing work, in every language. Language-specific idioms,
+  runners, file paths, and the unit-test exception are defined in the per-language testing policy.
+
+## Enforcement
+
+- Binding completeness — bound / unbound / duplicate / orphan against the scenario inventory — is
+  enforced; bindings are expressed and checked per-language.
+- Spec structure (the `### Use cases` section, well-formed unique `#### UC-` ids, one Gherkin block
+  per id) and binding completeness are upheld at review.
+- Per-language checks enforce the unit-test stance for each language.
+- The reviewer judges binding honesty: does the test drive the real system for its scenario without
+  mocking the thing under test.
+- The test-quality review lane rejects a test that couples correctness to a real-clock margin — an
+  arbitrary sleep, or a shrunk timeout raced against a real delay; the remedy is condition-based
+  synchronization or a controlled clock, never a widened margin.
+
+## Exceptions
+
+- Language testing policies may permit colocated unit tests where their compile-time guarantees
+  justify them. The exception and its exact placement are owned there.

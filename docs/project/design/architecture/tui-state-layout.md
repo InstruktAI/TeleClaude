@@ -55,10 +55,11 @@ flowchart LR
 - **Workflow Facts Arrive Resolved**: The Preparation view consumes `prepared_session_id` and per-artifact update timestamps from the workflow Todo projection. It never derives preparation completion from a live claim, reconstructs artifact recency from versions, or reads workflow storage directly. The existing artifact-name list remains the identity and ordering source; timestamp metadata only decorates those rows.
 - **Provenance Changes Rebuild the Detail Tree**: The todo fingerprint includes the prepared-session id, its current live/closed/missing classification, and the artifact timestamp mapping. A preparation completion, session lifecycle transition, or artifact rewrite therefore rebuilds the affected expanded details without becoming a second state owner.
 
-These invariants apply `software-development/principle/architectural-defaults`
-and `software-development/policy/domain-ownership`: the edge translates
+These invariants apply `sdlc/principle/architectural-defaults`
+and `sdlc/policy/domain-ownership`: the edge translates
 resolved owner contracts and keeps local presentation state, while workflow and
 agent runtime remain the only decision owners for their respective facts.
+
 - **Pane Style Transition Contract**: Session pane foreground remains constant across focus changes; focus/inactive transitions are represented by background only (terminal default for active, computed haze for inactive).
 - **Input Safety**: Bindings fire only on the bare control surface — when no popup is open and no text field is active. Pastes and injected key bursts that reach that bare surface are rejected before they can fire bindings.
 

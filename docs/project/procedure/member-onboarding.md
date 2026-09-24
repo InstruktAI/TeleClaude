@@ -74,7 +74,7 @@ For existing people who lost their email or need a fresh link. Generates a new t
 Before or shortly after sending the invite, the admin assesses the new member's expertise across the taxonomy domains and sets it in their profile:
 
 ```bash
-telec config people edit "John Doe" --expertise '{"software-development": {"python": "advanced", "typescript": "intermediate"}, "creative": "novice", "marketing": "novice"}'
+telec config people edit "John Doe" --expertise '{"sdlc": {"python": "advanced", "typescript": "intermediate"}, "creative": "novice", "marketing": "novice"}'
 ```
 
 This enables calibrated agent communication from the first session — the personal assistant adjusts its register per domain based on the member's expertise signal. See the expertise taxonomy spec for valid domains, subdivisions, and the JSON shape.
@@ -120,7 +120,7 @@ Before or shortly after sending the invite, the admin assesses the new member's 
 
 ```bash
 telec config person get john-doe
-telec config person patch john-doe --revision <revision> --yaml 'identity: {expertise: {"software-development": {"python": "advanced", "typescript": "intermediate"}, "creative": "novice", "marketing": "novice"}}'
+telec config person patch john-doe --revision <revision> --yaml 'identity: {expertise: {"sdlc": {"python": "advanced", "typescript": "intermediate"}, "creative": "novice", "marketing": "novice"}}'
 ```
 
 This enables calibrated agent communication from the first session — the personal assistant adjusts its register per domain based on the member's expertise signal. See the expertise taxonomy spec for valid domains, subdivisions, and the JSON shape.

@@ -140,15 +140,15 @@ And the accepted request reports the chosen agent and typed routing reason exact
 #### UC-CLR7: Normalization accepts a bare or slash-prefixed command token
 
 ```
-Given a request with command "next-build" and args "my-slug"
+Given a request with command "build" and args "my-slug"
 When the run-session preparation normalizes the inputs
 Then a leading slash, when present, is stripped from the command token
-And the full command becomes "next-build my-slug"
+And the full command becomes "build my-slug"
 And the command is parsed against the known command set for role inference
 ```
 
 ```
-Given a request whose command carries a leading slash ("/next-build" or "/software-development/next-build")
+Given a request whose command carries a leading slash ("/build" or "/sdlc/build")
 When the request is validated
 Then it is accepted and normalized to the command name without the slash
 And no request is rejected for lacking a leading slash
@@ -163,7 +163,7 @@ Then it is rejected with "project required"
 
 
 ```
-Given a request whose normalized command is in the worker-lifecycle command set (next-build, next-review-build, next-finalize)
+Given a request whose normalized command is in the worker-lifecycle command set (build, review-build, finalize)
 And the args field is empty after trimming
 When the run-session preparation validates the request
 Then it is rejected with "<command> requires a slug argument"
@@ -185,7 +185,7 @@ And structured lifecycle metadata such as role, job, and `working_slug` is resol
 #### UC-CLR4: A canonical command name is a bare token or exactly one domain segment plus a token
 
 ```
-Given a run-session request whose command is "next-build" or "software-development/next-build"
+Given a run-session request whose command is "build" or "sdlc/build"
 When loader composition validates the name before any corpus read
 Then both forms are accepted as canonical names
 And the loader is composed for the corpus document that name resolves to
@@ -277,7 +277,7 @@ And an empty/missing subfolder leaves the subdirectory unset, except for a workt
 #### UC-SFR1: A worktree-bound worker dispatch that is not bound to the slug's worktree is rejected at the door
 
 ```
-Given a run-session request whose command is a worktree-bound worker lifecycle command (next-build, next-review-build, next-finalize)
+Given a run-session request whose command is a worktree-bound worker lifecycle command (build, review-build, finalize)
 And the request resolves a working slug from its command arguments
 And the request's subfolder is anything other than that slug's worktree — empty, missing, or a different path
 When the run-session preparation validates the request
@@ -317,10 +317,10 @@ And this holds whether the request supplies command arguments or none
 #### UC-CLR12: An agent dispatches a global command by domain, or by a bare name that names exactly one
 
 ```
-Given an agent dispatches a session with the command software-development/next-build
+Given an agent dispatches a session with the command sdlc/build
 When the session starts
-Then it loads that command from the software-development domain and no other
-And given the agent instead dispatches the bare name next-build and exactly one domain carries it
+Then it loads that command from the sdlc domain and no other
+And given the agent instead dispatches the bare name build and exactly one domain carries it
 Then the session loads that one command
 And given the agent dispatches a bare name that two domains carry
 Then no session is started and the refusal names both commands
@@ -353,7 +353,7 @@ Then it is rejected with "role '<caller>' cannot dispatch <command> (requires di
 
 ```
 Given a caller carrying the integrator system role
-When it dispatches a worker-role command (e.g. /next-review-commits for the commits it merged)
+When it dispatches a worker-role command (e.g. /review-commits for the commits it merged)
 Then dispatch is permitted — the integrator may spawn worker sessions
 And dispatching an orchestrator-role command is still rejected, because the integrator's grant is worker-only
 ```
@@ -362,7 +362,7 @@ And dispatching an orchestrator-role command is still rejected, because the inte
 
 ```
 Given a caller carrying the orchestrator system role
-When it dispatches the integrator-role command (/next-integrate), for example to clear a blocked repo-root sync
+When it dispatches the integrator-role command (/integrate), for example to clear a blocked repo-root sync
 Then dispatch is permitted — the orchestrator's grant covers worker, orchestrator, and integrator roles
 And the integrator's singleton lease still decides whether the new session drains or yields
 ```
@@ -370,8 +370,8 @@ And the integrator's singleton lease still decides whether the new session drain
 #### UC-DPE1: Tasker may dispatch a worker-role session
 
 ```
-Given a caller carrying the tasker system role — a /next-prepare-task or /next-run-task session
-When it dispatches a worker-role command (e.g. /next-review-commits for a commit its task authored)
+Given a caller carrying the tasker system role — a /prepare-task or /run-task session
+When it dispatches a worker-role command (e.g. /review-commits for a commit its task authored)
 Then dispatch is permitted — tasker may spawn worker sessions, same grant as integrator
 ```
 
@@ -379,7 +379,7 @@ Then dispatch is permitted — tasker may spawn worker sessions, same grant as i
 
 ```
 Given a caller carrying the tasker system role
-When it dispatches an orchestrator-role command (/next-prepare, /next-work)
+When it dispatches an orchestrator-role command (/prepare, /work)
 Then it is rejected — the tasker's dispatch grant is worker-only
 And tasker otherwise carries only Worker's permissions — it cannot drive the todo state machine
 ```
@@ -389,7 +389,7 @@ And tasker otherwise carries only Worker's permissions — it cannot drive the t
 
 ```
 Given a todo slug X already driven by a live driver — a live orchestrator bound to X, or a live active-runner recorded for X
-And an orchestrator-class create request that would bind X — a run-session request whose command carries the orchestrator system role ("next-prepare", "next-work", or a prepare drafting phase the orchestrator performs inline: "next-prepare-intake", "next-prepare-architecture", "next-prepare-diagnose", "next-prepare-plan") resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
+And an orchestrator-class create request that would bind X — a run-session request whose command carries the orchestrator system role ("prepare", "work", or a prepare drafting phase the orchestrator performs inline: "prepare-intake", "prepare-architecture", "prepare-diagnose", "prepare-plan") resolving to X, or a generic session-create on a "trees/X" worktree launching such a command
 When the create-door dedup check runs before the session is created
 Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
 And no second session is created for X
@@ -398,7 +398,7 @@ And the refusal holds even when the requesting session is itself the holder — 
 
 ```
 Given a todo slug X with a live active-runner recorded for X
-And a task-lane create request that would bind X — a run-session or generic session-create launching "next-run-task" for X
+And a task-lane create request that would bind X — a run-session or generic session-create launching "run-task" for X
 When the create-door dedup check runs before the session is created
 Then the request is refused with a driver-start conflict that names the holder, returned as HTTP 409 detail
 And no second session is created for X
@@ -406,7 +406,7 @@ And no second session is created for X
 
 ```
 Given a todo slug X already driven by a live driver
-And a producing worker child-spawn that would bind X — a run-session or generic session-create launching a command such as "next-build" or "next-review-build" for X
+And a producing worker child-spawn that would bind X — a run-session or generic session-create launching a command such as "build" or "review-build" for X
 When the create-door dedup check runs
 Then the request is allowed and the worker session is created sharing working_slug X, because an orchestrator and the producing workers it spawns legitimately share the slug
 ```
@@ -414,7 +414,7 @@ Then the request is allowed and the worker session is created sharing working_sl
 #### UC-DSD4: Every request for a held review subject is refused, with nothing a caller can say to admit a second
 
 ```
-Given a live reviewer session holds review command C for todo slug X — C being one of "next-review-build", "next-review-plan", "next-review-architecture"
+Given a live reviewer session holds review command C for todo slug X — C being one of "review-build", "review-plan", "review-architecture"
 And an agent session asks to start that same command C for X
 When TeleClaude decides whether the new session may be created
 Then the request is refused with a driver-start conflict naming the holding session, surfaced to the caller as HTTP 409 detail
@@ -463,8 +463,8 @@ remain one subject and still dedup.
 
 
 ```
-Given a live "next-review-commits" session for project P opened by initiator session I
-And a create request launching "next-review-commits" for project P from the same initiator I
+Given a live "review-commits" session for project P opened by initiator session I
+And a create request launching "review-commits" for project P from the same initiator I
 When the create-door dedup check runs
 Then the request is refused with a driver-start conflict that names the holding reviewer session, returned as HTTP 409 detail
 And no second reviewer session is created
@@ -473,15 +473,15 @@ And the refusal does not depend on the requested SHAs, which differ every remedi
 ```
 
 ```
-Given a live "next-review-commits" session for project P opened by initiator session I
-And a create request launching "next-review-commits" from a different initiator, or for a different project
+Given a live "review-commits" session for project P opened by initiator session I
+And a create request launching "review-commits" from a different initiator, or for a different project
 When the create-door dedup check runs
 Then the request is allowed, because independent drivers and separate projects review independent series
 ```
 
 ```
-Given every "next-review-commits" session for project P and initiator I is closed
-And a create request launching "next-review-commits" for project P from initiator I
+Given every "review-commits" session for project P and initiator I is closed
+And a create request launching "review-commits" for project P from initiator I
 When the create-door dedup check runs
 Then the request is allowed, because a closed reviewer holds nothing and the next series opens its own
 ```
@@ -503,12 +503,12 @@ And hold release belongs to the lifecycle command's operator path after that pat
 
 ```
 Given a generic session-create request through the New Session modal or `telec sessions start`
-And its initial message is a slug-bound lifecycle command such as "next-work X" or "next-prepare X"
+And its initial message is a slug-bound lifecycle command such as "work X" or "prepare X"
 When the create-door preparation normalizes the request
 Then the slug is inferred from the command's argument and stamped as the create-session command's `working_slug` at creation time — the same creation-time metadata `telec sessions run` produces
 And this holds without a "trees/X" worktree subdir, so a repo-root manual start binds X
 And the create-door dedup check then refuses a duplicate driver for X exactly as it does for a run-session request
-And a command with no slug argument, such as "next-integrate", stamps no working_slug
+And a command with no slug argument, such as "integrate", stamps no working_slug
 ```
 
 
@@ -615,7 +615,7 @@ And a menu or ambiguous screen is left unchanged
 ### Cross-context references
 
 
-- **workflow** — commands resolved here correspond to workflow lifecycle verbs (`next-build`, `next-review-build`, `next-finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command documents the composed loader reads.
+- **workflow** — commands resolved here correspond to workflow lifecycle verbs (`build`, `review-build`, `finalize`) listed in the worker-lifecycle command set. Workflow owns the slug semantics and the command documents the composed loader reads.
 
 - **identity** — the caller identity (email, system role, session id) gates the run; the run-session clearance is the auth dependency. Email-bearing identities produce terminal-origin metadata; terminal/agent identities form the initiator-session backlink. Dispatch privilege is an identity-domain ACL.
 
@@ -624,7 +624,7 @@ And a menu or ambiguous screen is left unchanged
 
 
 
-- **config** — per-agent enablement gates the command-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their command-matrix row and generic session creation uses the Claude-first global order. Fresh-session thinking mode follows the same command matrix: explicit caller mode wins, command defaults are explicit, and an unrecognized command without an explicit mode is rejected. `next-review-commits` defaults to `med`; doc-only commit review explicitly supplies `fast`.
+- **config** — per-agent enablement gates the command-ordered candidate set before availability/degradation routing runs. An omitted agent is automatic preference; recognized commands use their command-matrix row and generic session creation uses the Claude-first global order. Fresh-session thinking mode follows the same command matrix: explicit caller mode wins, command defaults are explicit, and an unrecognized command without an explicit mode is rejected. `review-commits` defaults to `med`; doc-only commit review explicitly supplies `fast`.
 
 
 ## Known caveats

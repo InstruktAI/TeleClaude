@@ -352,7 +352,7 @@ def _eligible_snippet_files(snippets_root: Path, *, include_baseline: bool) -> l
 
     A companion ``<stem>.<slug>.md`` (sibling of an existing ``<stem>.md``) shares the
     parent's id and is the parent's pending replacement — it is never a standalone index
-    entry. See ``software-development/principle/documentation-first-development`` section 10.
+    entry. See ``sdlc/principle/documentation-first-development`` section 10.
     """
     return sorted(f for f in snippet_files(snippets_root, include_baseline=include_baseline) if not is_companion(f))
 

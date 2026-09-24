@@ -868,7 +868,7 @@ class RunSessionRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     computer: str = Field(default="local")
-    command: str = Field(..., min_length=1, description="Command name (e.g. 'next-build')")
+    command: str = Field(..., min_length=1, description="Command name (e.g. 'build')")
     args: str = Field(default="", description="Command arguments")
     project: str = Field(..., min_length=1, description="Project path")
     agent: AgentName | None = None

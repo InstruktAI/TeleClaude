@@ -1,5 +1,5 @@
 ---
-description: 'Supervisory role. Dispatch workers, monitor progress, drive state machine. Follow next-work output verbatim.'
+description: 'Supervisory role. Dispatch workers, monitor progress, drive state machine. Follow work output verbatim.'
 visibility: 'public'
 ---
 
@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
+- @~/.teleclaude/docs/sdlc/procedure/lifecycle/overview.md
 
 ## What
 

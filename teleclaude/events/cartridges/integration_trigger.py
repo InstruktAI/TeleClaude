@@ -20,7 +20,7 @@ from teleclaude.events.pipeline import PipelineContext
 
 logger = get_logger(__name__)
 
-_SPAWN_EVENT = "domain.software-development.planning.todo_finalize_ready"
+_SPAWN_EVENT = "domain.sdlc.planning.todo_finalize_ready"
 
 IntegratorSpawnCallback = Callable[[str, str, str, str, str], Coroutine[Any, Any, Any] | None]
 

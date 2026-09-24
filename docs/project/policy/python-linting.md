@@ -6,8 +6,8 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
 
 ## Required reads
 
-@~/.teleclaude/docs/software-development/policy/linting-requirements.md
-@~/.teleclaude/docs/software-development/policy/python/core.md
+@~/.teleclaude/docs/sdlc/policy/linting-requirements.md
+@~/.teleclaude/docs/sdlc/policy/python/core.md
 
 ## Rules
 
@@ -59,7 +59,7 @@ These exceptions name TeleClaude modules and guardrail configuration, so they ca
 
 An invariant belongs in the strongest layer that can express it, and for
 argument compatibility that layer is the type system
-(`software-development/policy/code-quality-practices`). A closed type that no
+(`sdlc/policy/code-quality-practices`). A closed type that no
 checker enforces is a comment: the annotation reads as a constraint, nothing
 rejects the call that violates it, and every reader downstream trusts a
 guarantee the build never made. Declaring strict type checking and then

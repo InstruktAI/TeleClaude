@@ -354,10 +354,10 @@ def handle_sessions_run(args: list[str]) -> None:
                               [--detach]
 
     Creates a new session and immediately runs the given bare canonical command with the
-    specified arguments. Useful for dispatching worker commands like next-build.
+    specified arguments. Useful for dispatching worker commands like build.
 
     Options:
-      --command <cmd>    Bare canonical command to run (e.g. next-build)
+      --command <cmd>    Bare canonical command to run (e.g. build)
       --path <path>      Project directory path (default: cwd)
       --args <args>      Command arguments (e.g. "my-slug")
       --agent <name>     Agent to use (default: automatic role-aware target resolution)
@@ -365,8 +365,8 @@ def handle_sessions_run(args: list[str]) -> None:
       --computer <name>  Target computer (optional; defaults to local)
       --subfolder <dir>  Subdirectory within the project
     Examples:
-      telec sessions run --command next-build --args my-slug
-      telec sessions run --command next-review-build --args my-slug --agent gemini
+      telec sessions run --command build --args my-slug
+      telec sessions run --command review-build --args my-slug --agent gemini
     """
     parsed = parse_command_args(SESSIONS_RUN, args)
     body: dict[str, object] = {  # guard: loose-dict - JSON request body

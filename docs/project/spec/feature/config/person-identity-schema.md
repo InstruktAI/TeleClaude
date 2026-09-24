@@ -116,7 +116,7 @@ And the entry is accepted
 
 ```
 Given a the global overlay's people list entry with expertise = {
-  "software-development": { "python": "expert", "rust": "intermediate" },
+  "sdlc": { "python": "expert", "rust": "intermediate" },
   "design": "advanced"
 }
 When PersonEntry validation runs

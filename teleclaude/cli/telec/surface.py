@@ -195,7 +195,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Creates a fresh session and runs the bare canonical command as the first agent message.",
-                    "Worker lifecycle commands: next-build, next-review-build, next-finalize.",
+                    "Worker lifecycle commands: build, review-build, finalize.",
                     (
                         "--detach: do not use unless explicitly instructed. Sanctioned only for a "
                         "personal-assistant dispatching an orchestrator to a project. --detach disables "
@@ -204,8 +204,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                 ],
                 examples=[
-                    "telec sessions run --command next-build --args my-slug",
-                    "telec sessions run --command next-review-plan --args my-slug",
+                    "telec sessions run --command build --args my-slug",
+                    "telec sessions run --command review-plan --args my-slug",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH_TASKER, human=_HR_MEMBER),
             ),
@@ -515,8 +515,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
         notes=[
             "Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.",
             "Omitting --areas and/or --domains returns all values for that dimension; pass a comma-separated subset to filter.",
-            "Example phase 1: telec docs index --areas policy,procedure --domains software-development",
-            "Example phase 2: telec docs get software-development/policy/testing project/spec/command-surface",
+            "Example phase 1: telec docs index --areas policy,procedure --domains sdlc",
+            "Example phase 2: telec docs get sdlc/policy/testing project/spec/command-surface",
         ],
     ),
     "todo": CommandDef(
@@ -548,7 +548,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT "
                     "prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — "
                     "in particular never instruct authoring an ADR or which snippets to write. Per "
-                    "software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is "
+                    "sdlc/policy/preparation-artifact-quality (Input artifact quality): HOW is "
                     "the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed "
                     "by general/policy/adr-discipline (default none, never by process step). Any HOW or doc "
                     "instruction left in content is an unverified hypothesis, not a directive. (--plan is the "
@@ -569,7 +569,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "--plan is valid with --kind change or --kind task.",
                     "Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. "
                     "Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.",
-                    "Process changes are decided by humans (software-development/policy/process-change-authority): "
+                    "Process changes are decided by humans (sdlc/policy/process-change-authority): "
                     "when the intent implies a behavioral delta to a process-layer contract (lifecycle state machines, "
                     "gate composition, review lanes, lifecycle procedures, todo/state semantics), file it only on a "
                     "human decision from the live conversation. Holding no such decision, do NOT file the todo: "
@@ -835,7 +835,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "report": CommandDef(
                 desc=(
                     "Interrogate the pre-filing decisions before scaffolding a bug; a completed filing "
-                    "enters the bug lane and the lifecycle router dispatches /next-prepare"
+                    "enters the bug lane and the lifecycle router dispatches /prepare"
                 ),
                 args="<description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved <reason>]",
                 flags=[
@@ -861,7 +861,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.",
                     "Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' "
                     "is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract "
-                    "(software-development/policy/process-change-authority): when the defect seems to demand a behavioral "
+                    "(sdlc/policy/process-change-authority): when the defect seems to demand a behavioral "
                     "delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, "
                     "lifecycle procedures), do NOT file it as a bug — escalate the process proposal to the human instead.",
                     "Require the observed symptom plus its trigger context verbatim in the description or --body: "

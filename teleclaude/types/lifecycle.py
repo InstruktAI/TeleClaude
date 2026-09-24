@@ -28,7 +28,7 @@ LEGACY_LIFECYCLE_PHASE_NORMALIZATION: dict[str, str] = {
 
 
 class LifecyclePhase(str, Enum):
-    """Ordered software-development lifecycle phases."""
+    """Ordered sdlc lifecycle phases."""
 
     DRAFT = "draft"
     PRD_DRAFTING = "prd_drafting"

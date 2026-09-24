@@ -41,7 +41,7 @@ Place it by the job's nature:
 - Project-only jobs: `docs/project/procedure/{job-slug}.md`
 
 Define the job-specific artifacts and report under Outputs, including any history
-the next run consumes. The `next-run-job` brief supplies the role boundary and
+the next run consumes. The `run-job` brief supplies the role boundary and
 structured outcome submission. A job procedure carries no `activation_trigger`:
 triggers belong to procedures an agent may invoke on its own judgment, and a job
 procedure is executed by the runner.

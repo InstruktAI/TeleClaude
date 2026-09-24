@@ -2,7 +2,7 @@
 
 Orchestrates context-aware file scoping and deterministic pipeline
 execution for language-aware linting. See design doc
-``software-development/design/workspace-scoping`` for the scoping
+``sdlc/design/workspace-scoping`` for the scoping
 contract: worktrees use dirty existing files, shared branches session-scope,
 explicit files bypass scoping.
 """

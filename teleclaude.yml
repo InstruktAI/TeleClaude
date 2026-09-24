@@ -9,7 +9,7 @@ env_allow_list: []
 
 business:
   publishes:
-    - slug: software-development
+    - slug: sdlc
       trigger: Writing, reviewing, testing, refactoring, or debugging code or
         tests
     - slug: creative
@@ -128,6 +128,6 @@ jobs:
   - category: system
     when:
       at: 03:00
-    job: software-development/procedure/maintenance/log-bug-hunter
+    job: sdlc/procedure/maintenance/log-bug-hunter
     agent: [codex, claude, gemini]
     thinking_mode: med

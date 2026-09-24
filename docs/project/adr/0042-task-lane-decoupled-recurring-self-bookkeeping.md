@@ -37,18 +37,18 @@ its own tasks, logs, and outputs independently of any code project.
    never enters the prepare machine and is never driven through
    `telec todo prepare`. The lane is two dedicated, runner-routed agent runs with
    a human authorization gate between them:
-   - `/next-prepare-task` reads `input`, drafts the `task-plan`, and ends by
+   - `/prepare-task` reads `input`, drafts the `task-plan`, and ends by
      requesting authorization. It writes nothing else.
-   - `/next-run-task` executes the authorized `task-plan` with the agent's native
+   - `/run-task` executes the authorized `task-plan` with the agent's native
      tooling.
      No PRD, architecture, implementation-plan, review, drift, or worktree applies.
 
 2. **`/analyze-todo-input` only classifies and routes.** It sets the kind on the
    todo it is handed and writes no `task-plan` and no child todos. Plan authoring
-   belongs to `/next-prepare-task`.
+   belongs to `/prepare-task`.
 
 3. **Authorization is the per-task autostart opt-in.** The lifecycle runner
-   dispatches `/next-run-task` only when the task is authorized, not held, has a
+   dispatches `/run-task` only when the task is authorized, not held, has a
    `task-plan`, and its schedule or dependency gate is satisfied. The default
    autostart policy (`task=false`) governs unauthorized tasks; a human
    authorization stamp flips that one task to runnable. `hold` is the override
@@ -89,17 +89,17 @@ its own tasks, logs, and outputs independently of any code project.
 - Tasks no longer route through the SDLC prepare state machine; the prepare
   machine carries no task branch, and `task_plan_drafting` and `task_running`
   are task-lane phases rather than prepare-machine phases.
-- The model introduces the `/next-prepare-task` and `/next-run-task` procedures,
+- The model introduces the `/prepare-task` and `/run-task` procedures,
   a `log` artifact, and recurrence — the `schedule` generalizing the one-shot
   `datetime`.
 - The result handoff (send a message / email) is invoked by the `task-plan`
-  through the existing `telec` CLI surface; `/next-run-task` does not own a
+  through the existing `telec` CLI surface; `/run-task` does not own a
   handoff primitive. Outbound messaging to external recipients is out of scope
   for this decision.
 - A holder remains the generic split primitive for SDLC todos; it is not a
   task-decomposition mechanism.
 - The output convention is enforced by prominent instruction in
-  `/next-run-task`; a hard filesystem sandbox is out of scope for this decision.
+  `/run-task`; a hard filesystem sandbox is out of scope for this decision.
 
 ## Alternatives Considered
 

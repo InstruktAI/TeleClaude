@@ -125,20 +125,20 @@ from teleclaude.types.commands import SystemCommand
 logger = get_logger(__name__)
 
 WORKER_LIFECYCLE_COMMANDS = {
-    SlashCommand.NEXT_BUILD,
-    SlashCommand.NEXT_REVIEW_BUILD,
-    SlashCommand.NEXT_FINALIZE,
+    SlashCommand.BUILD,
+    SlashCommand.REVIEW_BUILD,
+    SlashCommand.FINALIZE,
 }
 
 WORKTREE_BOUND_WORKER_COMMANDS = {
-    SlashCommand.NEXT_BUILD,
-    SlashCommand.NEXT_REVIEW_BUILD,
-    SlashCommand.NEXT_FINALIZE,
+    SlashCommand.BUILD,
+    SlashCommand.REVIEW_BUILD,
+    SlashCommand.FINALIZE,
 }
 
-NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.NEXT_REVIEW_COMMITS, SlashCommand.NEXT_RUN_JOB}
+NON_TODO_ARGUMENT_COMMANDS = {SlashCommand.REVIEW_COMMITS, SlashCommand.RUN_JOB}
 
-_JOB_COMMAND_GENERIC_CREATE_DETAIL = "next-run-job must be dispatched through /sessions/run"
+_JOB_COMMAND_GENERIC_CREATE_DETAIL = "run-job must be dispatched through /sessions/run"
 
 SLUG_INFERABLE_LIFECYCLE_COMMANDS = {
     command.value for command in COMMAND_ROLE_MAP if command not in NON_TODO_ARGUMENT_COMMANDS
@@ -336,7 +336,7 @@ async def guard_generic_create_session(
     if not isinstance(cmd, CreateSessionCommand):
         return DriverStartGuardResult()
     leading_command = _leading_command(request.message)
-    if _normalize_command(leading_command) is SlashCommand.NEXT_RUN_JOB:
+    if _normalize_command(leading_command) is SlashCommand.RUN_JOB:
         raise RunSessionRefusal(
             status_code=400,
             detail=_JOB_COMMAND_GENERIC_CREATE_DETAIL,
@@ -386,7 +386,7 @@ def _prepare_run_session(
         slash_cmd = SlashCommand(normalized_cmd)
     except ValueError:
         slash_cmd = None
-    is_job_command = slash_cmd is SlashCommand.NEXT_RUN_JOB
+    is_job_command = slash_cmd is SlashCommand.RUN_JOB
     if is_job_command:
         candidate_order, thinking_mode, job = normalize_job_run_request(request, normalized_args)
         effective_agent = None
@@ -756,8 +756,8 @@ async def _run_session(
     request_id = str(uuid.uuid4())
     requested_command = _normalize_command(request.command)
     normalized_command = requested_command.value if requested_command else (request.command.lstrip("/") or None)
-    command_kind = "prepare" if requested_command is SlashCommand.NEXT_PREPARE else normalized_command
-    request_entry_point = SessionEntryPoint.CRON if requested_command is SlashCommand.NEXT_RUN_JOB else entry_point
+    command_kind = "prepare" if requested_command is SlashCommand.PREPARE else normalized_command
+    request_entry_point = SessionEntryPoint.CRON if requested_command is SlashCommand.RUN_JOB else entry_point
     role_info = COMMAND_ROLE_MAP.get(requested_command) if requested_command else None
     agent_supplied = "agent" in request.model_fields_set
     requested_agent = request.agent if agent_supplied else None

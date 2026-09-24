@@ -216,9 +216,9 @@ async def _guard_reviewer_start(
 
     Dispatches on the two subject-identity forms named in
     ``@input#r1`` (fix-commit-review-reuse-is-prose-only-nothin): a slug-bound
-    reviewer (``/next-review-build``, ``/next-review-plan``,
-    ``/next-review-architecture``) is keyed by exact ``(project, slug, command)``;
-    commit review (``/next-review-commits``, no todo slug) is keyed by
+    reviewer (``/review-build``, ``/review-plan``,
+    ``/review-architecture``) is keyed by exact ``(project, slug, command)``;
+    commit review (``/review-commits``, no todo slug) is keyed by
     ``(project, initiating driver, command, thinking mode)`` — mode is part of
     that subject because the doc-hygiene lane runs at ``fast`` and the code lane
     at ``med``, and a mode-blind subject refuses the cheap lane as a duplicate of
@@ -234,7 +234,7 @@ async def _guard_reviewer_start(
     runtime_db = db or await get_db()
     command_value = command.value
     if slug:
-        # /next-review-plan and /next-review-architecture run at repo root
+        # /review-plan and /review-architecture run at repo root
         # (subdir=None); every other slug-bound reviewer runs in the slug
         # worktree, the lookup's default scope.
         subdir_override = "" if command_value in PREPARE_LIFECYCLE_COMMANDS else None

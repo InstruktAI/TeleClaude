@@ -12,14 +12,14 @@ from teleclaude.core.session_status import compute_agent_status
 
 CommandValues = str | tuple[str, ...]
 PREPARE_LIFECYCLE_COMMANDS: tuple[str, ...] = (
-    SlashCommand.NEXT_PREPARE.value,
-    SlashCommand.NEXT_PREPARE_INTAKE.value,
-    SlashCommand.NEXT_PREPARE_ARCHITECTURE.value,
-    SlashCommand.NEXT_PREPARE_DIAGNOSE.value,
-    SlashCommand.NEXT_PREPARE_PLAN.value,
-    SlashCommand.NEXT_REVIEW_ARCHITECTURE.value,
-    SlashCommand.NEXT_REVIEW_PLAN.value,
-    SlashCommand.NEXT_DRIFT_ANALYZE.value,
+    SlashCommand.PREPARE.value,
+    SlashCommand.PREPARE_INTAKE.value,
+    SlashCommand.PREPARE_ARCHITECTURE.value,
+    SlashCommand.PREPARE_DIAGNOSE.value,
+    SlashCommand.PREPARE_PLAN.value,
+    SlashCommand.REVIEW_ARCHITECTURE.value,
+    SlashCommand.REVIEW_PLAN.value,
+    SlashCommand.DRIFT_ANALYZE.value,
 )
 
 
@@ -145,9 +145,9 @@ async def find_live_reviewer_for_slug(
     per-slug scope, and :func:`_same_project_root`
     so a same-named slug in a different project never holds this subject — R1
     defines the subject as ``(project, slug, review command)``. This serves all
-    three slug-bound reviewer families — ``/next-review-build`` runs in the slug
-    worktree (default ``subdir_override``), while ``/next-review-plan`` and
-    ``/next-review-architecture`` run at repo root (caller passes
+    three slug-bound reviewer families — ``/review-build`` runs in the slug
+    worktree (default ``subdir_override``), while ``/review-plan`` and
+    ``/review-architecture`` run at repo root (caller passes
     ``subdir_override=""``).
     """
     project_root = Path(project_path).resolve()
@@ -164,8 +164,8 @@ async def find_live_reviewer_for_slug(
 
 
 async def find_live_root_next_prepare_session_for_slug(db: Db, slug: str) -> str | None:
-    """Return the newest live root ``/next-prepare`` session for ``slug``."""
-    return await find_live_prepare_worker_for_slug(db, slug, SlashCommand.NEXT_PREPARE.value)
+    """Return the newest live root ``/prepare`` session for ``slug``."""
+    return await find_live_prepare_worker_for_slug(db, slug, SlashCommand.PREPARE.value)
 
 
 async def find_live_root_prepare_lifecycle_sessions_for_slug(db: Db, slug: str) -> list[str]:

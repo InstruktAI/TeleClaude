@@ -3,8 +3,8 @@
 @~/.teleclaude/docs/general/principle/intelligence-boundaries.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
 @~/.teleclaude/docs/general/policy/adr-discipline.md
-@~/.teleclaude/docs/software-development/policy/ai-agent-security.md
-@~/.teleclaude/docs/software-development/policy/commits.md
+@~/.teleclaude/docs/sdlc/policy/ai-agent-security.md
+@~/.teleclaude/docs/sdlc/policy/commits.md
 @~/.teleclaude/docs/general/procedure/skill-use.md
 @~/.teleclaude/docs/general/spec/agent-artifacts.md
 @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md

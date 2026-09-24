@@ -45,7 +45,7 @@ class TaskScheduleClock:
                     event=SCHEDULER_TICK_MINUTE,
                     source="daemon",
                     level=EventLevel.WORKFLOW,
-                    domain="software-development",
+                    domain="sdlc",
                     visibility=EventVisibility.CLUSTER,
                     description="Lifecycle scheduler minute tick",
                     payload={

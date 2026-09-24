@@ -25,4 +25,4 @@ A vocabulary lets the agent (and the reviewer) name the failure before it lands.
 
 The patterns also map to specific corrections: comment over-trust → read the code; surface validation → trace with concrete values; bug denial → assume the bug exists and hunt the path; speed bias → slow down, verify more; pattern projection → check the wiring against the construct.
 
-The corrective discipline (return to sources, verify before concluding) is owned by `general/principle/grounding`. The active investigation steps are owned by `software-development/procedure/debugging`. This concept names _what to recognize_; the principle and procedure say _what to do about it_.
+The corrective discipline (return to sources, verify before concluding) is owned by `general/principle/grounding`. The active investigation steps are owned by `sdlc/procedure/debugging`. This concept names _what to recognize_; the principle and procedure say _what to do about it_.

@@ -9,7 +9,7 @@ description: "A task firing reports a durable outcome that the lifecycle runner 
 
 ## Context
 
-`project/adr/0051-task-run-is-persistent` made a `/next-run-task` session persistent:
+`project/adr/0051-task-run-is-persistent` made a `/run-task` session persistent:
 it executes, records to the `log`, and stays alive, never self-ending. That left the
 task lane with no durable terminal completion signal. The dispatch guard for a one-shot
 task is effectively "is this todo due AND is a run session alive": a one-shot's

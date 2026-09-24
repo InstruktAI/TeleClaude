@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DIAGNOSE_DRIVER_PROCEDURE_ID = "software-development/procedure/lifecycle/prepare/diagnose"
+_DIAGNOSE_DRIVER_PROCEDURE_ID = "sdlc/procedure/lifecycle/prepare/diagnose"
 _DIAGNOSE_PRE_DISPATCH_TEMPLATE = (
     "Load the prepare driver's diagnosis procedure with `{command}` and perform its triage step for `{slug}`. "
     "If triage retires the todo, stop this script without dispatching. Otherwise continue to STEP 1; the "
@@ -363,7 +363,7 @@ async def _prepare_dispatch(
     if phase in (PreparePhase.DRAFT, PreparePhase.PRD_DRAFTING):
         return _load_procedure(
             slug=slug,
-            command=SlashCommand.NEXT_PREPARE_INTAKE,
+            command=SlashCommand.PREPARE_INTAKE,
             hat="BA",
             expected="a `prd` artifact or an explicit blocker",
         )
@@ -375,7 +375,7 @@ async def _prepare_dispatch(
             cwd=cwd,
             phase=phase,
             state=state,
-            command=SlashCommand.NEXT_REVIEW_PRD,
+            command=SlashCommand.REVIEW_PRD,
             expected="a PRD review verdict and findings when needed",
         )
     if phase == PreparePhase.PRD_HUMAN_APPROVAL:
@@ -385,7 +385,7 @@ async def _prepare_dispatch(
     if phase == PreparePhase.ARCHITECTURE_DRAFTING:
         return _load_procedure(
             slug=slug,
-            command=SlashCommand.NEXT_PREPARE_ARCHITECTURE,
+            command=SlashCommand.PREPARE_ARCHITECTURE,
             hat="Architect",
             expected=(
                 "doc-snippet updates (domain spec / architecture-v2 design docs) "
@@ -401,12 +401,12 @@ async def _prepare_dispatch(
             cwd=cwd,
             phase=phase,
             state=state,
-            command=SlashCommand.NEXT_REVIEW_ARCHITECTURE,
+            command=SlashCommand.REVIEW_ARCHITECTURE,
             expected="an architecture review verdict and findings when needed",
         )
     if phase == PreparePhase.DIAGNOSE:
         diagnosis = StateWriter(state).state.artifacts.diagnosis
-        peer_session_id = await find_live_prepare_worker_for_slug(db, slug, SlashCommand.NEXT_PREPARE_DIAGNOSE.value)
+        peer_session_id = await find_live_prepare_worker_for_slug(db, slug, SlashCommand.PREPARE_DIAGNOSE.value)
         if not (diagnosis.digest or diagnosis.produced_at) or peer_session_id is None:
             return await _dispatch_worker(
                 db=db,
@@ -415,7 +415,7 @@ async def _prepare_dispatch(
                 cwd=cwd,
                 phase=phase,
                 state=state,
-                command=SlashCommand.NEXT_PREPARE_DIAGNOSE,
+                command=SlashCommand.PREPARE_DIAGNOSE,
                 expected="a `diagnosis` artifact or revision",
                 pre_dispatch=_diagnose_pre_dispatch_instruction(slug),
             )
@@ -429,7 +429,7 @@ async def _prepare_dispatch(
     if phase == PreparePhase.PLAN_DRAFTING:
         return _load_procedure(
             slug=slug,
-            command=SlashCommand.NEXT_PREPARE_PLAN,
+            command=SlashCommand.PREPARE_PLAN,
             hat="Planner",
             expected="an `implementation-plan` artifact or breakdown decision",
             reason=_plan_drafting_reason(state),
@@ -442,7 +442,7 @@ async def _prepare_dispatch(
             cwd=cwd,
             phase=phase,
             state=state,
-            command=SlashCommand.NEXT_REVIEW_PLAN,
+            command=SlashCommand.REVIEW_PLAN,
             expected="a plan review verdict and findings when needed",
         )
     if phase == PreparePhase.PREPARED:
@@ -463,7 +463,7 @@ async def _prepare_dispatch(
                 cwd=cwd,
                 phase=PreparePhase.BLOCKED,
                 state=state,
-                command=SlashCommand.NEXT_DRIFT_ANALYZE,
+                command=SlashCommand.DRIFT_ANALYZE,
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=_blockers_from_state(
                     state, cwd=project_root, artifact_write_timestamps=artifact_write_timestamps
@@ -488,7 +488,7 @@ async def _prepare_dispatch(
                 cwd=cwd,
                 phase=phase,
                 state=state,
-                command=SlashCommand.NEXT_DRIFT_ANALYZE,
+                command=SlashCommand.DRIFT_ANALYZE,
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=blockers,
                 additional_context=format_pending_classes_for_dispatch(drift_result),

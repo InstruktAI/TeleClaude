@@ -180,7 +180,7 @@ and `—` a route that carries no command at all; neither has a response mode to
 | GET    | /computers                      | READ            | List computers (cache + remote)    |
 | GET    | /projects                       | READ            | List projects (cache)              |
 | GET    | /todos                          | READ            | List todos (cache)                 |
-| POST   | /todos/work                     | RECEIPT         | Run next-work state machine        |
+| POST   | /todos/work                     | RECEIPT         | Run work state machine        |
 | POST   | /todos/integrate                | RECEIPT         | Run integration state machine      |
 | POST   | /todos/create                   | RECEIPT         | Run creative state machine         |
 | POST   | /todos/prepare                  | RECEIPT         | Run prepare state machine          |

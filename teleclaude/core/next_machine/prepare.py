@@ -297,7 +297,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         if lifecycle is LifecyclePhase.TASK_PLAN_DRAFTING:
             return format_procedure_load(
                 slug=resolved_slug,
-                command_name=SlashCommand.NEXT_PREPARE_TASK.value,
+                command_name=SlashCommand.PREPARE_TASK.value,
                 hat=_TASK_PREPARER_HAT,
                 expected=_TASK_PREPARER_EXPECTED,
             )

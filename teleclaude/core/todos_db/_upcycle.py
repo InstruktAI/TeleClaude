@@ -418,7 +418,7 @@ def _upcycle_v11_to_v12(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     """Drop the review-continuation apparatus's owned persisted fields.
 
     ``continuations`` had no independent consumer, so per
-    ``software-development/policy/backward-compatibility-hygiene`` the owned
+    ``sdlc/policy/backward-compatibility-hygiene`` the owned
     shape moves forward rather than acquiring a tolerance branch: the field is
     dropped from every review key, and its cycle-scoped offset is dropped from
     the four prepare keys. ``round_offset`` and ``reconciliation_pending``

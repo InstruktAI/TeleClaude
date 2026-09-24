@@ -1,5 +1,5 @@
 ---
-description: 'A /next-run-task firing is ephemeral: it executes, records, stamps its outcome, and ends on success — recurrence is the lifecycle runner spawning a fresh run at each due scheduler tick, not waking a live session. Removes the persistent successful-run beacon and the runner-wakes-the-live-session signalling; the errored-firing hold-and-stay-alive beacon is retained. Supersedes ADR-0051; supersedes in part ADR-0060; restores ADR-0042 §5.'
+description: 'A /run-task firing is ephemeral: it executes, records, stamps its outcome, and ends on success — recurrence is the lifecycle runner spawning a fresh run at each due scheduler tick, not waking a live session. Removes the persistent successful-run beacon and the runner-wakes-the-live-session signalling; the errored-firing hold-and-stay-alive beacon is retained. Supersedes ADR-0051; supersedes in part ADR-0060; restores ADR-0042 §5.'
 date: '2026-07-05'
 number: 63
 visibility: 'internal'
@@ -10,7 +10,7 @@ visibility: 'internal'
 ## Context
 
 `project/adr/0051-task-run-is-persistent` reversed ADR-0042 §5's
-ephemeral-and-terminate stance: it made a `/next-run-task` session **persistent** so
+ephemeral-and-terminate stance: it made a `/run-task` session **persistent** so
 the operator would have a live, inspectable "beacon" session per standing task, and it
 delivered recurrence by having the lifecycle runner **wake the live run session** on
 each due `scheduler.tick.minute` rather than spawning a fresh run.
@@ -28,13 +28,13 @@ on success.
 
 ## Decision
 
-A `/next-run-task` firing is **ephemeral**. It executes its firing against the durable
+A `/run-task` firing is **ephemeral**. It executes its firing against the durable
 `task-plan`, records to the `log`, delivers outputs to `{project_root}/workspace/<slug>/`,
 stamps its outcome, and **ends on success** — it does not stay alive for follow-up or
 for subsequent firings.
 
 - **Recurrence is a plain minute-granular ticker.** A due recurring task is dispatched
-  as a **fresh** `/next-run-task` at each due `scheduler.tick.minute` the runner
+  as a **fresh** `/run-task` at each due `scheduler.tick.minute` the runner
   evaluates, exactly like a one-shot. The runner never signals a live run session.
 - **A live run session is only a brake.** While a firing runs, the runner's existing
   `ALREADY_DRIVEN` suppression (live `active_runner`) prevents a concurrent second

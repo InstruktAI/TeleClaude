@@ -105,7 +105,7 @@ coexist alongside the newer flat families — both patterns are valid.
 | Family         | Levels                      | Visibility | Description                                               |
 | -------------- | --------------------------- | ---------- | --------------------------------------------------------- |
 | `system`       | INFRASTRUCTURE, OPERATIONAL | CLUSTER    | Platform health and worker lifecycle                      |
-| `domain`       | WORKFLOW, BUSINESS          | LOCAL      | Domain-specific events (e.g. software-development)        |
+| `domain`       | WORKFLOW, BUSINESS          | LOCAL      | Domain-specific events (e.g. sdlc)                        |
 | `node`         | INFRASTRUCTURE, OPERATIONAL | CLUSTER    | Node presence and metadata updates                        |
 | `deployment`   | WORKFLOW, BUSINESS          | LOCAL      | Deployment lifecycle (start → complete → fail → rollback) |
 | `content`      | WORKFLOW, BUSINESS          | LOCAL      | Content capture, processing, publication                  |
@@ -125,9 +125,9 @@ dead-letter growth. Payload fields are `original_entry_id`, `original_stream`,
 `attempt_count`, `failing_stage`, `consumer_id`, and `dlq_destination`; the
 idempotency key is `original_entry_id`.
 
-### Prepare lifecycle events (software-development domain)
+### Prepare lifecycle events (sdlc domain)
 
-The `domain.software-development.prepare.*` family covers every observable transition
+The `domain.sdlc.prepare.*` family covers every observable transition
 in the prepare state machine. All events carry `slug` as a payload field unless noted.
 
 | Event type                     | Level       | Description                                                  | Key payload fields           |

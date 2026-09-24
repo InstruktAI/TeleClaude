@@ -102,23 +102,23 @@ And the row layout closes the gap rather than reserving chip width
 
 ```
 Given an orchestrator session with working_slug "config-public-surface-contract"
-And title "/next-work config-public-surface-contract"
+And title "/work config-public-surface-contract"
 When the session row title line is rendered
 Then the slug is rendered once as a single highlighted span
 And the slug token is stripped from the title text so it is not duplicated
 And the title carries no surrounding quotes
-And the rendered line reads: [N] ▶ claude/med <chip> /next-work config-public-surface-contract
+And the rendered line reads: [N] ▶ claude/med <chip> /work config-public-surface-contract
 ```
 
 #### UC-XNAV-6: Worker rows render identically to orchestrator rows
 
 ```
 Given a worker session with working_slug "config-public-surface-contract"
-And title "/next-build config-public-surface-contract"
+And title "/build config-public-surface-contract"
 When the session row title line is rendered
 Then it uses the same chip + command + single highlighted slug layout as an orchestrator row
 And the slug appears once with no duplication and no double-space before the command tail
-And the rendered line reads: [N] ▶ claude/med <chip> /next-build config-public-surface-contract
+And the rendered line reads: [N] ▶ claude/med <chip> /build config-public-surface-contract
 ```
 
 #### UC-XNAV-7: Sessions without a work slug render no slug component
@@ -359,7 +359,6 @@ When another TeleClaude session completes preparation
 Then the prepared-session detail row identifies the later completing session
 ```
 
-
 #### UC-XNAV-29: System lineage renders the system chip
 
 ```
@@ -369,7 +368,6 @@ When the row is rendered
 Then a chip showing the single letter "S" is rendered in the chip's place
 And the chip carries no person's colors and does not act as a person filter
 ```
-
 
 ## Known caveats
 

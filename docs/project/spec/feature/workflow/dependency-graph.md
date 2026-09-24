@@ -7,8 +7,8 @@ visibility: 'public'
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
-- docs/global/software-development/spec/domain-spec.md
+- docs/global/sdlc/principle/domain-driven-design.md
+- docs/global/sdlc/spec/domain-spec.md
 - @docs/project/spec/domain/workflow.md
 
 ## What it is
@@ -143,7 +143,7 @@ And the same "child" is still WORK-blocked until "parent" is delivered
 Given a child created with "telec todo create child --kind change --after parent" while parent is not PREPARED
 When the lifecycle router consumes workflow.todo.created for "child"
 Then the router consults the dependency graph and finds the prepare gate unsatisfied
-And the router does not auto-dispatch /software-development/next-prepare for "child"
+And the router does not auto-dispatch /sdlc/prepare for "child"
 And "child" waits until "parent" reaches PREPARED, which triggers auto-continue (see @spec/feature/workflow/prepare-state-machine)
 ```
 

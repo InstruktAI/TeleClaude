@@ -87,14 +87,14 @@ class DriverLaunchClass(StrEnum):
     A create door always writes a new session row, so the guard keys on what the
     requested launch IS — classified from its slash command:
 
-    - ``ORCHESTRATOR``: a lifecycle orchestrator driver (``/next-prepare``,
-      ``/next-work``). Refused against ANY live holder, caller-independent — a
+    - ``ORCHESTRATOR``: a lifecycle orchestrator driver (``/prepare``,
+      ``/work``). Refused against ANY live holder, caller-independent — a
       second orchestrator row for a driven slug is never legitimate.
-    - ``TASK_LANE``: the task-lane driver (``/next-run-task``). Refused against a
+    - ``TASK_LANE``: the task-lane driver (``/run-task``). Refused against a
       live ``active_runner`` for the slug.
-    - ``REVIEWER``: a reviewer worker (``/next-review-build``,
-      ``/next-review-plan``, ``/next-review-architecture``,
-      ``/next-review-commits``). Refused against a live reviewer already open
+    - ``REVIEWER``: a reviewer worker (``/review-build``,
+      ``/review-plan``, ``/review-architecture``,
+      ``/review-commits``). Refused against a live reviewer already open
       for the same review subject — a reviewer's output is a verdict, and a
       second concurrent instance produces a contradictory one rather than a
       legitimate concurrent mutation.
@@ -317,34 +317,34 @@ class SlashCommand(str, Enum):
     ``teleclaude.agent_artifacts`` and ``project/design/architecture/agent-artifact-distribution#corpus-layout-and-names``.
     """
 
-    ANALYZE_TODO_INPUT = "software-development/analyze-todo-input"
-    NEXT_BUILD = "software-development/next-build"
-    NEXT_REVIEW_BUILD = "software-development/next-review-build"
-    NEXT_REVIEW_PRD = "software-development/next-review-prd"
-    NEXT_REVIEW_PLAN = "software-development/next-review-plan"
-    NEXT_REVIEW_ARCHITECTURE = "software-development/next-review-architecture"
-    NEXT_REVIEW_COMMITS = "software-development/next-review-commits"
-    NEXT_FINALIZE = "software-development/next-finalize"
-    NEXT_PREPARE_INTAKE = "software-development/next-prepare-intake"
-    NEXT_PREPARE_ARCHITECTURE = "software-development/next-prepare-architecture"
-    NEXT_PREPARE_DIAGNOSE = "software-development/next-prepare-diagnose"
-    NEXT_PREPARE_PLAN = "software-development/next-prepare-plan"
-    NEXT_PREPARE_TASK = "software-development/next-prepare-task"
-    NEXT_DRIFT_ANALYZE = "software-development/next-drift-analyze"
-    NEXT_PREPARE = "software-development/next-prepare"
-    NEXT_WORK = "software-development/next-work"
-    NEXT_RUN_TASK = "software-development/next-run-task"
-    NEXT_INTEGRATE = "software-development/next-integrate"
-    NEXT_COORDINATE = "software-development/next-coordinate"
-    NEXT_CREATE = "creative/next-create"
-    NEXT_CREATE_ART = "creative/next-create-art"
-    NEXT_CREATE_HTML = "creative/next-create-html"
-    NEXT_DEFER = "software-development/next-defer"
-    NEXT_ASSIST = "software-development/next-assist"
-    NEXT_RUN_JOB = "general/next-run-job"
+    ANALYZE_TODO_INPUT = "sdlc/analyze-todo-input"
+    BUILD = "sdlc/build"
+    REVIEW_BUILD = "sdlc/review-build"
+    REVIEW_PRD = "sdlc/review-prd"
+    REVIEW_PLAN = "sdlc/review-plan"
+    REVIEW_ARCHITECTURE = "sdlc/review-architecture"
+    REVIEW_COMMITS = "sdlc/review-commits"
+    FINALIZE = "sdlc/finalize"
+    PREPARE_INTAKE = "sdlc/prepare-intake"
+    PREPARE_ARCHITECTURE = "sdlc/prepare-architecture"
+    PREPARE_DIAGNOSE = "sdlc/prepare-diagnose"
+    PREPARE_PLAN = "sdlc/prepare-plan"
+    PREPARE_TASK = "sdlc/prepare-task"
+    DRIFT_ANALYZE = "sdlc/drift-analyze"
+    PREPARE = "sdlc/prepare"
+    WORK = "sdlc/work"
+    RUN_TASK = "sdlc/run-task"
+    INTEGRATE = "sdlc/integrate"
+    COORDINATE = "sdlc/coordinate"
+    CREATE = "creative/create"
+    CREATE_ART = "creative/create-art"
+    CREATE_HTML = "creative/create-html"
+    DEFER = "sdlc/defer"
+    ASSIST = "sdlc/assist"
+    RUN_JOB = "general/run-job"
 
 
-# Canonical `/next-*` commands that may run without a todo slug: the prepare
+# Canonical lifecycle commands that may run without a todo slug: the prepare
 # orchestrator, create orchestrator, and integrator can select work
 # themselves, review-commits is bound to commit SHAs rather than a slug, and
 # the coordinator watches the fleet without any todo at all. The dispatch
@@ -352,12 +352,12 @@ class SlashCommand(str, Enum):
 # cannot disagree on which commands may run argless.
 NON_SLUG_BOUND_COMMANDS = frozenset(
     {
-        SlashCommand.NEXT_PREPARE,
-        SlashCommand.NEXT_INTEGRATE,
-        SlashCommand.NEXT_REVIEW_COMMITS,
-        SlashCommand.NEXT_COORDINATE,
-        SlashCommand.NEXT_RUN_JOB,
-        SlashCommand.NEXT_CREATE,
+        SlashCommand.PREPARE,
+        SlashCommand.INTEGRATE,
+        SlashCommand.REVIEW_COMMITS,
+        SlashCommand.COORDINATE,
+        SlashCommand.RUN_JOB,
+        SlashCommand.CREATE,
     }
 )
 
@@ -397,28 +397,28 @@ class JobRole(str, Enum):
 # prepare-author write predicate (`PREPARE_AUTHOR_JOB_ROLES`) recognizes the job
 # regardless of which system role carries it.
 COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
-    SlashCommand.NEXT_BUILD: (ROLE_WORKER, JobRole.BUILDER),
-    SlashCommand.NEXT_REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_REVIEW_PRD: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_REVIEW_COMMITS: (ROLE_WORKER, JobRole.REVIEWER),
-    SlashCommand.NEXT_CREATE_ART: (ROLE_WORKER, JobRole.ARTIST),
-    SlashCommand.NEXT_CREATE_HTML: (ROLE_WORKER, JobRole.FRONTENDER),
-    SlashCommand.NEXT_FINALIZE: (ROLE_WORKER, JobRole.FINALIZER),
-    SlashCommand.NEXT_PREPARE_INTAKE: (ROLE_ORCHESTRATOR, JobRole.INTAKER),
-    SlashCommand.NEXT_PREPARE_ARCHITECTURE: (ROLE_ORCHESTRATOR, JobRole.ARCHITECT),
-    SlashCommand.NEXT_PREPARE_DIAGNOSE: (ROLE_WORKER, JobRole.DIAGNOSER),
-    SlashCommand.NEXT_PREPARE_PLAN: (ROLE_ORCHESTRATOR, JobRole.PLANNER),
-    SlashCommand.NEXT_PREPARE_TASK: (ROLE_TASKER, JobRole.TASK_PREPARER),
-    SlashCommand.NEXT_DRIFT_ANALYZE: (ROLE_WORKER, JobRole.DRIFT_ANALYZER),
-    SlashCommand.NEXT_PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
-    SlashCommand.NEXT_WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
-    SlashCommand.NEXT_RUN_TASK: (ROLE_TASKER, JobRole.TASK_RUNNER),
-    SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
-    SlashCommand.NEXT_COORDINATE: (ROLE_ORCHESTRATOR, JobRole.COORDINATOR),
-    SlashCommand.NEXT_CREATE: (ROLE_ORCHESTRATOR, JobRole.CREATE_ORCHESTRATOR),
-    SlashCommand.NEXT_RUN_JOB: (ROLE_JOB_RUNNER, JobRole.JOB_RUNNER),
+    SlashCommand.BUILD: (ROLE_WORKER, JobRole.BUILDER),
+    SlashCommand.REVIEW_BUILD: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.REVIEW_PRD: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.REVIEW_PLAN: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.REVIEW_ARCHITECTURE: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.REVIEW_COMMITS: (ROLE_WORKER, JobRole.REVIEWER),
+    SlashCommand.CREATE_ART: (ROLE_WORKER, JobRole.ARTIST),
+    SlashCommand.CREATE_HTML: (ROLE_WORKER, JobRole.FRONTENDER),
+    SlashCommand.FINALIZE: (ROLE_WORKER, JobRole.FINALIZER),
+    SlashCommand.PREPARE_INTAKE: (ROLE_ORCHESTRATOR, JobRole.INTAKER),
+    SlashCommand.PREPARE_ARCHITECTURE: (ROLE_ORCHESTRATOR, JobRole.ARCHITECT),
+    SlashCommand.PREPARE_DIAGNOSE: (ROLE_WORKER, JobRole.DIAGNOSER),
+    SlashCommand.PREPARE_PLAN: (ROLE_ORCHESTRATOR, JobRole.PLANNER),
+    SlashCommand.PREPARE_TASK: (ROLE_TASKER, JobRole.TASK_PREPARER),
+    SlashCommand.DRIFT_ANALYZE: (ROLE_WORKER, JobRole.DRIFT_ANALYZER),
+    SlashCommand.PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
+    SlashCommand.WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
+    SlashCommand.RUN_TASK: (ROLE_TASKER, JobRole.TASK_RUNNER),
+    SlashCommand.INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
+    SlashCommand.COORDINATE: (ROLE_ORCHESTRATOR, JobRole.COORDINATOR),
+    SlashCommand.CREATE: (ROLE_ORCHESTRATOR, JobRole.CREATE_ORCHESTRATOR),
+    SlashCommand.RUN_JOB: (ROLE_JOB_RUNNER, JobRole.JOB_RUNNER),
 }
 
 # The job roles the prepare lifecycle confers on a session that derives a prepare
@@ -604,10 +604,10 @@ class CheckpointModel:
 
 CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
 # A post-commit review is satisfied once the commit(s) are dispatched to a
-# reviewer — either a fresh run of next-review-commits (with an optional leading
+# reviewer — either a fresh run of review-commits (with an optional leading
 # slash, qualified or bare) or a remediation sent to an already-open reviewer
 # ("review commits <sha>" via telec sessions send).
-CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = [SlashCommand.NEXT_REVIEW_COMMITS.value, "review commits"]
+CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = [SlashCommand.REVIEW_COMMITS.value, "review commits"]
 
 # Universal base judgment actions (the verbs). TeleClaude owns this registry; every
 # onboarded project inherits it and references these ids in its own bindings or

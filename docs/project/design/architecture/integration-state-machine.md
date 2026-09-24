@@ -33,10 +33,10 @@ The Integration state machine is the **only role authorized to push canonical `m
 
 | Snippet ID                                             | Content                                                    |
 | ------------------------------------------------------ | ---------------------------------------------------------- |
-| `software-development/procedure/lifecycle/integration` | Integration procedure with agent actions                   |
+| `sdlc/procedure/lifecycle/integration` | Integration procedure with agent actions                   |
 | `project/spec/integration-orchestrator`                | Full integrator contract (events, lease, queue, lifecycle) |
-| `software-development/policy/version-control-safety`   | Git safety rules for all agents                            |
-| `software-development/policy/commits`                  | Commit format and attribution                              |
+| `sdlc/policy/version-control-safety`   | Git safety rules for all agents                            |
+| `sdlc/policy/commits`                  | Commit format and attribution                              |
 
 ## Inputs/Outputs
 
@@ -469,7 +469,7 @@ Delivery bookkeeping is the universal chokepoint for the delivered-snippet fold.
 
 ### Blueprint regeneration
 
-After a successful integration brings the repo root's `main` current (delivery bookkeeping complete), the integrator regenerates the project **codebase Blueprint** — the structural map agents consult at plan time (specced in `software-development/spec/codebase-blueprint`; the `context` bounded context owns the contract). It runs the pinned no-LLM code refresh `graphify update <repo-root> --force` — the `--force` override lets a legitimate net-node-reduction from a code-deleting refactor overwrite the cache instead of aborting into a persistent `status=error` — and writes two files at the project root (gitignored): `.teleclaude/blueprint/graph.json` and a freshness manifest `.teleclaude/blueprint/manifest.json` carrying `baseline_sha` (the `origin/main` commit it was built from), `generated_at`, and `status`. This is the single refresh point: the baseline always reflects the remote-main that worktrees branch from, so there is no per-step drift handling.
+After a successful integration brings the repo root's `main` current (delivery bookkeeping complete), the integrator regenerates the project **codebase Blueprint** — the structural map agents consult at plan time (specced in `sdlc/spec/codebase-blueprint`; the `context` bounded context owns the contract). It runs the pinned no-LLM code refresh `graphify update <repo-root> --force` — the `--force` override lets a legitimate net-node-reduction from a code-deleting refactor overwrite the cache instead of aborting into a persistent `status=error` — and writes two files at the project root (gitignored): `.teleclaude/blueprint/graph.json` and a freshness manifest `.teleclaude/blueprint/manifest.json` carrying `baseline_sha` (the `origin/main` commit it was built from), `generated_at`, and `status`. This is the single refresh point: the baseline always reflects the remote-main that worktrees branch from, so there is no per-step drift handling.
 
 **Freshness contract.** Consumers never trust the Blueprint blindly. They compare the manifest's `baseline_sha` against the current `origin/main` baseline; on mismatch, missing manifest, or `status != ok`, the Blueprint is stale and the consumer falls back to manual exploration. Regeneration is best-effort: a failure records a non-`ok` `status` (or leaves the prior manifest in place) and does NOT fail the integration — staleness is detected by consumers via the manifest, never silently consumed.
 

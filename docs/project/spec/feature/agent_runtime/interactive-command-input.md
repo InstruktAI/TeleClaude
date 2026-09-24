@@ -72,10 +72,10 @@ Scenario Outline: An operator starts a command from the new-session modal
 
   Examples:
     | input                    |
-    | next-integrate           |
-    | /next-integrate          |
-    | next-prepare example-item |
-    | /next-prepare example-item |
+    | integrate           |
+    | /integrate          |
+    | prepare example-item |
+    | /prepare example-item |
 ```
 
 #### UC-ICI2: Command input through Discord
@@ -171,5 +171,5 @@ contract; this capability registers no application commands.
 - docs/project/spec/feature/integration/conversation-only-adapters.md
 - docs/project/spec/feature/identity/command-clearance.md
 - docs/project/design/architecture/layer-ownership.md
-- ~/.teleclaude/docs/software-development/policy/domain-ownership.md
+- ~/.teleclaude/docs/sdlc/policy/domain-ownership.md
 - ~/.teleclaude/docs/general/policy/human-contract.md

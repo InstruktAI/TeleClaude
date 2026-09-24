@@ -44,7 +44,7 @@ async def _commit_reviewers_async(project_root: Path, initiator_session_id: str)
     """Resolve every live commit-review session open for this project and driver."""
     runtime_db = await get_db()
     return await list_live_commit_reviewers_for_initiator(
-        runtime_db, project_root, initiator_session_id, SlashCommand.NEXT_REVIEW_COMMITS.value
+        runtime_db, project_root, initiator_session_id, SlashCommand.REVIEW_COMMITS.value
     )
 
 
@@ -154,13 +154,13 @@ def _print_commit_review_guidance(project_root: Path, context_root: Path | None)
         review_dispatch = (
             "   Reuse the reviewer already open at the mode this series needs; a different lane\n"
             "   gets its own reviewer (--mode fast for doc-hygiene, --mode med for code review):\n"
-            f"     telec sessions run --command {SlashCommand.NEXT_REVIEW_COMMITS.value} "
+            f"     telec sessions run --command {SlashCommand.REVIEW_COMMITS.value} "
             "--args '<sha1,sha2,...>' --mode <fast|med>\n" + already_open
         )
     else:
         review_dispatch = (
             "   Start the reviewer for this series (--mode fast for doc-hygiene, --mode med for code review):\n"
-            f"     telec sessions run --command {SlashCommand.NEXT_REVIEW_COMMITS.value} "
+            f"     telec sessions run --command {SlashCommand.REVIEW_COMMITS.value} "
             "--args '<sha1,sha2,...>' --mode <fast|med>\n"
         )
     scope_diffstat = _resolved_scope_diffstat(project_root, context_root)

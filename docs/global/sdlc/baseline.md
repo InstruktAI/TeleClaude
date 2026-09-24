@@ -1,0 +1,12 @@
+@~/.teleclaude/docs/sdlc/policy/no-semantic-validators.md
+@~/.teleclaude/docs/sdlc/policy/code-quality.md
+@~/.teleclaude/docs/sdlc/policy/commits.md
+@~/.teleclaude/docs/sdlc/policy/testing.md
+@~/.teleclaude/docs/sdlc/policy/code-quality-practices.md
+@~/.teleclaude/docs/sdlc/policy/linting-requirements.md
+@~/.teleclaude/docs/sdlc/policy/definition-of-done.md
+@~/.teleclaude/docs/sdlc/policy/security-awareness.md
+@~/.teleclaude/docs/sdlc/policy/backward-compatibility-hygiene.md
+@~/.teleclaude/docs/sdlc/policy/version-control-safety.md
+@~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md
+@~/.teleclaude/docs/sdlc/procedure/blast-radius-discovery.md

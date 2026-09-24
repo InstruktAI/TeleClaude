@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/spec/init-scaffolding.md
+- @~/.teleclaude/docs/sdlc/spec/init-scaffolding.md
 
 ## What it is
 

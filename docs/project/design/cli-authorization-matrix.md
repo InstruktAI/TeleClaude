@@ -43,7 +43,7 @@ Per-command authorization matrix for `telec` CLI. Both system role (worker/orche
 **System roles** (session type):
 
 - **Worker**: dispatched agent doing scoped task work. Cannot spawn sessions, cannot orchestrate, cannot drive the todo state machine.
-- **Tasker**: dispatched `/next-prepare-task` or `/next-run-task` session. Otherwise a Worker, but additionally may dispatch worker-lane sessions via `sessions run` (e.g. a review) when its task-plan calls for it. Still cannot drive the todo state machine or dispatch an orchestrator/integrator session.
+- **Tasker**: dispatched `/prepare-task` or `/run-task` session. Otherwise a Worker, but additionally may dispatch worker-lane sessions via `sessions run` (e.g. a review) when its task-plan calls for it. Still cannot drive the todo state machine or dispatch an orchestrator/integrator session.
 - **Orchestrator**: personal assistant, help desk agent, any session a human interacts with. No system-level restrictions.
 
 **Human roles** (person identity -- NOT a linear hierarchy):

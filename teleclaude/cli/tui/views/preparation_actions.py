@@ -156,7 +156,7 @@ class PreparationViewActionsMixin:
 
     @staticmethod
     def _next_command(base: str, slug: str | None) -> str:
-        """Build /next-* command with optional slug."""
+        """Build lifecycle command with optional slug."""
         return f"/{base} {slug}" if slug else f"/{base}"
 
     def action_cursor_up(self) -> None:

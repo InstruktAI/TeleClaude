@@ -276,7 +276,7 @@ class AuditState(BaseModel):
 class TodoState(BaseModel):
     """Canonical state for a TeleClaude work item (schema v13).
 
-    ``lifecycle_phase`` is the only authoritative software-development phase
+    ``lifecycle_phase`` is the only authoritative sdlc phase
     pointer. ``phase`` remains the coarse pending/in_progress/done item status
     used by todo selection.
 

@@ -54,10 +54,10 @@ from teleclaude.services.project_catalog import ProjectCatalogService, ProjectNo
 
 logger = get_logger(__name__)
 
-_NEXT_RUN_JOB_COMMAND = f"/{SlashCommand.NEXT_RUN_JOB.value}"
+_RUN_JOB_COMMAND = f"/{SlashCommand.RUN_JOB.value}"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DYNAMIC_JOB_PACKAGE_PREFIX = "_teleclaude_job"
-_LEGACY_AGGREGATE_JOB_KEYS = frozenset({"log-bug-hunter", "software-development/procedure/maintenance/log-bug-hunter"})
+_LEGACY_AGGREGATE_JOB_KEYS = frozenset({"log-bug-hunter", "sdlc/procedure/maintenance/log-bug-hunter"})
 
 
 class Schedule(Enum):
@@ -261,7 +261,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig, project_root: Path)
             response = await client.run_session(
                 computer=computer,
                 project_path=project_path,
-                command=_NEXT_RUN_JOB_COMMAND,
+                command=_RUN_JOB_COMMAND,
                 args=_job_command_args(config),
             )
             return response.session_id, None

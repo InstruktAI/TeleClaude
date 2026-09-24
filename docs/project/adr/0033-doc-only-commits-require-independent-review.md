@@ -19,13 +19,13 @@ The tempting fix is self-review: have the authoring agent run the lane on its ow
 
 A doc-only commit that changes a doc snippet (`docs/**`) requires an **independent** doc-hygiene commit-review, enforced:
 
-1. **Independent, never self.** The authoring agent may not review a snippet it wrote. After the in-context commit, it dispatches a _separate_ reviewer on the commit SHA via `/next-review-commits`.
+1. **Independent, never self.** The authoring agent may not review a snippet it wrote. After the in-context commit, it dispatches a _separate_ reviewer on the commit SHA via `/review-commits`.
 2. **Fast or medium agent.** The check is narrow — the doc-hygiene lane over one or two changed snippets, confirming present-tense contract and no narration. It needs little reasoning, so a `--mode fast` (or medium) reviewer is correct and cheap. Cost is not a reason to skip it.
 3. **Enforced, not advisory.** The Path A card instructs the dispatch and says to wait for `REVIEW COMPLETE`; `documentation-discipline` makes a missing review a violation.
 4. **Still in-context, still not a todo.** The review reads the committed diff; it does not re-author. The live design context that makes doc-only work correct is preserved — the reason doc-only work stays out of the lifecycle is untouched.
 5. **Scoped to snippets.** Config/state/README-only commits with no doc snippet need no review.
 
-The mechanism already exists: `/next-review-commits` runs the lane catalog by SHA, and the `doc-hygiene` lane triggers on `docs/**` changes. The only change is removing the Path A exemption and naming the dispatch.
+The mechanism already exists: `/review-commits` runs the lane catalog by SHA, and the `doc-hygiene` lane triggers on `docs/**` changes. The only change is removing the Path A exemption and naming the dispatch.
 
 ## Consequences
 

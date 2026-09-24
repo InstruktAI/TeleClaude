@@ -10,7 +10,7 @@
 #   # requires a nonblank, single-line, bounded-length trigger — a domain
 #   # without one fails config load.
 #   publishes:
-#     - slug: software-development
+#     - slug: sdlc
 #       trigger: Writing, reviewing, testing, or refactoring code or tests
 #
 # jobs:
@@ -20,7 +20,7 @@
 #     when:
 #       at: 03:00
 #     type: agent
-#     job: software-development/procedure/maintenance/log-bug-hunter
+#     job: sdlc/procedure/maintenance/log-bug-hunter
 #     agent: claude
 #     thinking_mode: fast
 #

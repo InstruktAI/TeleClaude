@@ -85,7 +85,7 @@ def _handle_blueprint_affected(args: list[str]) -> None:
     freshness = evaluate_freshness(manifest, current_main_sha=main_sha)
     if freshness.state is not FreshnessState.FRESH:
         # A resolvable-but-stale baseline dispatches its own detached refresh —
-        # see software-development/spec/codebase-blueprint#UC-BP1. An unresolved
+        # see sdlc/spec/codebase-blueprint#UC-BP1. An unresolved
         # origin/main carries no main commit, so the dispatch declines it.
         dispatch_refresh(state_root, main_sha=main_sha)
     if freshness.state is FreshnessState.UNESTABLISHED:

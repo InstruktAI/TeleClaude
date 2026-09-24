@@ -60,7 +60,7 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
 def _has_review_dispatch_evidence(timeline: TurnTimeline) -> bool:
     """Return True when the commit(s) were dispatched to a reviewer this cycle.
 
-    Recognizes both a fresh ``/next-review-commits`` run and a remediation sent to
+    Recognizes both a fresh ``/review-commits`` run and a remediation sent to
     an already-open reviewer (``telec sessions send <id> "review commits ..."``),
     which discharges the post-commit review obligation.
     """
@@ -266,8 +266,8 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return matches_command_prefix(segment, ("telec", "reload"))
     if evidence == "telec sessions restart":
         return head == "telec" and "sessions" in rest and "restart" in rest
-    if evidence == SlashCommand.NEXT_REVIEW_COMMITS.value:
-        # Only a real dispatch: `telec sessions run --command next-review-commits`,
+    if evidence == SlashCommand.REVIEW_COMMITS.value:
+        # Only a real dispatch: `telec sessions run --command review-commits`,
         # with the command name as the value of --command (not merely mentioned).
         # A bare, unqualified token still resolves to this same command until the
         # documentation sweep lands, so both forms count as evidence here.

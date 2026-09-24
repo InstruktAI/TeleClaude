@@ -6,7 +6,7 @@ description: Adopts the global no-inline-logic contract for every executable car
 
 ## Required reads
 
-@~/.teleclaude/docs/software-development/policy/no-inline-logic.md
+@~/.teleclaude/docs/sdlc/policy/no-inline-logic.md
 
 ## Rules
 
@@ -23,7 +23,7 @@ Adoption is a project decision. Recording it here keeps the reusable global cont
 
 ## Enforcement
 
-- Reviewers apply `software-development/policy/no-inline-logic` to every changed carrier file.
+- Reviewers apply `sdlc/policy/no-inline-logic` to every changed carrier file.
 
 ## Exceptions
 

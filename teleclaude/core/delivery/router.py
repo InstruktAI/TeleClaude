@@ -10,7 +10,7 @@ override precedence, Telegram's ``user_id``-derived chat_id, WhatsApp's
 
 Router operates on plain session data and the set of currently-registered UI
 adapter type keys — never on adapter instances — so this module has no
-adapter imports (``software-development`` adapter-boundaries: core never
+adapter imports (``sdlc`` adapter-boundaries: core never
 imports adapter modules).
 """
 

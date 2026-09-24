@@ -1,7 +1,7 @@
 ---
 id: 'project/spec/feature/config/schema-driven-config-tui'
 type: 'spec'
-domain: 'software-development'
+domain: 'sdlc'
 scope: 'project'
 visibility: 'public'
 description: 'Schema-driven TUI config surface rendered from the canonical config schemas the wizard owns, replacing hand-patched form models and field maps.'
@@ -236,7 +236,6 @@ Then it is `internal` and does not render in the config TUI
 And it is absent from a fresh machine configuration generated from the schema
 ```
 
-
 #### UC-CFG-TUI-SCHEMA-16: People exposes registry-derived personal secrets
 
 ```
@@ -256,8 +255,6 @@ And unrelated person YAML, global environment, and other person secret files rem
 And the TUI introduces no role gate beyond its trusted local machine and terminal boundary
 ```
 
-
-
 #### UC-CFG-TUI-SCHEMA-17: Required fields are marked, and a set sensitive field is distinguishable from an unset one
 
 ```
@@ -268,7 +265,6 @@ Then each required field is marked with an asterisk and no optional field carrie
 And the unconfigured required field is distinguishable from the configured one without revealing either value
 And the marking reflects the same required-field rule the write path enforces, so the two cannot disagree
 ```
-
 
 The `tui` tier is the wizard's render set: the operator-facing fields the config
 wizard shows, declared per field in code. The `tier` marker is the opt-in form of
@@ -311,9 +307,7 @@ blacklist is retired as the authority.
   guarantees: single setup surface, idempotent re-runs, persisted-state resume,
   and write-then-read rendering after edits.
 
-
 - `project/spec/feature/agent_runtime/lazy-mcp-runtime` owns personal MCP credential requirements and owner-scoped lease behavior; the People view projects its registry requirements without becoming their source of truth.
-
 
 ## Allowed values
 

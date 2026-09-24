@@ -86,7 +86,7 @@ Run a canonical command on a new agent session
 
 **Flags:**
 
-- `--command`: Bare canonical command (e.g. next-build)
+- `--command`: Bare canonical command (e.g. build)
 - `--path`: Path to the project directory (optional; defaults to cwd)
 - `--args`: Command arguments
 - `--agent`: Agent: claude, codex, gemini, deepseek
@@ -98,7 +98,7 @@ Run a canonical command on a new agent session
 **Notes:**
 
 - Creates a fresh session and runs the bare canonical command as the first agent message.
-- Worker lifecycle commands: next-build, next-review-build, next-finalize.
+- Worker lifecycle commands: build, review-build, finalize.
 - --detach: do not use unless explicitly instructed. Sanctioned only for a personal-assistant dispatching an orchestrator to a project. --detach disables notifications — you will not learn when the child finishes, so omit it whenever your next step depends on the result.
 
 ### `telec sessions revive`
@@ -399,8 +399,8 @@ Query documentation snippets
 
 - Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.
 - Omitting --areas and/or --domains returns all values for that dimension; pass a comma-separated subset to filter.
-- Example phase 1: telec docs index --areas policy,procedure --domains software-development
-- Example phase 2: telec docs get software-development/policy/testing project/spec/command-surface
+- Example phase 1: telec docs index --areas policy,procedure --domains sdlc
+- Example phase 2: telec docs get sdlc/policy/testing project/spec/command-surface
 
 ### `telec docs index`
 
@@ -448,8 +448,8 @@ Create a todo with substantive content
 
 - `--after`: Comma-separated dependency slugs
 - `--schedule`: Task-only schedule: ISO-8601 instant or cron:<minute hour day month weekday> (0/7=Sunday)
-- `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only. --kind task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task) — code work is change/feature/bug.
-- `--approved`: Declares the pre-creation decisions were faced. Without it a complete creation request creates nothing and points to software-development/policy/todo-creation-discipline.
+- `--kind`: The work-unit's entry point into the lifecycle: feature|change|bug|task. Always set it when creating via the CLI — agents classify their own todos; omitting it is the TUI dump path only. --kind task is side-effect-only and never touches the repo (sdlc/spec/todo-kind-task) — code work is change/feature/bug.
+- `--approved`: Declares the pre-creation decisions were faced. Without it a complete creation request creates nothing and points to sdlc/policy/todo-creation-discipline.
 - `--icebox`: Create future todo parked in the icebox; does not auto-spawn
 - `--project-root` (`-p`): Target an explicit project root instead of the invocation cwd
 - `--group`: Attach the new todo as a child of <parent-slug>, making the parent a holder. Grouping moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent is rewritten to that child and committed as part of the same transition.
@@ -460,12 +460,12 @@ Create a todo with substantive content
 
 - Creates the todo entry, canonical state, and stores content as the input artifact.
 - --human-involved requires a non-empty reason and resolves the record from observed recency: a stale declaration records false and the todo is still created. The reason is never stored; omission records false and does not affect later actions.
-- Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per software-development/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
+- Content IS the input artifact — the author's INTENT (WHAT/WHY in operator language, affected surfaces, acceptance shape, brownfield grounding), never a work order. Do NOT prescribe HOW (file paths, mechanisms, edit/step instructions) or doc-layer deliverables — in particular never instruct authoring an ADR or which snippets to write. Per sdlc/policy/preparation-artifact-quality (Input artifact quality): HOW is the prepare phase's hypothesis to verify, doc routing is intake's, and an ADR is governed by general/policy/adr-discipline (default none, never by process step). Any HOW or doc instruction left in content is an unverified hypothesis, not a directive. (--plan is the deliberate exception: its content is a complete implementation-plan, not an input.)
 - Use --icebox for valid future work. Hidden --hold is an exceptional brake for valid work awaiting an external gate; neither surface makes unfinished intent valid. --group <parent-slug> creates a complete grouped child in one call and makes the parent a structural holder via the existing derivation; the first grouped child strips the parent's todo_state while preserving all its artifacts as frozen evidence, and is refused once the parent's lifecycle_phase has reached prepared or the work lane, so build, review, and finalize state is never shredded. Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and delivered_by membership naming the parent is rewritten to that child and committed as part of the same transition.
 - ALWAYS pass --kind — an agent that authored a todo's scope owns its classification. Omitting --kind (kind-less) is reserved for the TUI's direct-primitive dump path, where human intent is still unknown and /analyze-todo-input classifies it later. It is NOT a CLI shortcut to skip classifying work you understand.
 - --plan is valid with --kind change or --kind task.
 - Do NOT create a todo for work you can finish yourself in under ~5 minutes — do it inline and stay on it. Todos are for substantial, dispatchable work, never a way to defer a small fix you were asked to make now.
-- Process changes are decided by humans (software-development/policy/process-change-authority): when the intent implies a behavioral delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, lifecycle procedures, todo/state semantics), file it only on a human decision from the live conversation. Holding no such decision, do NOT file the todo: escalate the proposal to the human and go idle. The prepare orchestrator refuses process-change intents it cannot trace to a human decision.
+- Process changes are decided by humans (sdlc/policy/process-change-authority): when the intent implies a behavioral delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, lifecycle procedures, todo/state semantics), file it only on a human decision from the live conversation. Holding no such decision, do NOT file the todo: escalate the proposal to the human and go idle. The prepare orchestrator refuses process-change intents it cannot trace to a human decision.
 
 ### `telec todo list`
 
@@ -669,7 +669,7 @@ Stamp a verdict or readiness marker into todo state
 - `--task-approved`: Authorize the current task-plan for a task
 - `--architecture-skipped`: Skip architecture phase with a reason
 - `--drift-reviewed`: Record drift review: <artifact> <substantive|cosmetic> <reason>
-- `--kind-assign`: Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]. task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task).
+- `--kind-assign`: Assign kind and enter that kind's lifecycle entry phase: <feature|change|bug|task> [content]. task is side-effect-only and never touches the repo (sdlc/spec/todo-kind-task).
 - `--build-complete`: Record the worker's build-complete claim; gates run on the next telec todo work dispatch
 - `--finalize-ready`: Mark worktree as ready for finalize handoff
 - `--kickback`: Work-orchestrator-only: send an unbuildable todo back to plan drafting
@@ -684,7 +684,7 @@ Bug reporting and tracking
 
 ### `telec bugs report`
 
-Interrogate the pre-filing decisions before scaffolding a bug; a completed filing enters the bug lane and the lifecycle router dispatches /next-prepare
+Interrogate the pre-filing decisions before scaffolding a bug; a completed filing enters the bug lane and the lifecycle router dispatches /prepare
 
 **Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>] [--human-involved <reason>]`
 
@@ -701,7 +701,7 @@ Interrogate the pre-filing decisions before scaffolding a bug; a completed filin
 - File against the project that OWNS the defective code, not the one you happen to be standing in. Platform behavior misbehaving inside a side project is a platform bug: pass --project so the orchestrator that picks it up can actually deliver the fix. A bug filed where the code does not live cannot be fixed there and gets re-filed later, carrying stale conclusions with it. When you cannot tell which project owns it, ask.
 - The filing surface interrogates for duplication up front (todo list, in-flight bug lanes, suppressions); diagnose remains the deeper same-defect dedup that can still retire a twin the up-front check missed.
 - Your reported todo may therefore still be removed as a duplicate at diagnose — that is expected dedup, not a dropped report. The surviving todo carries the fix; do not re-report the same bug.
-- Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract (software-development/policy/process-change-authority): when the defect seems to demand a behavioral delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, lifecycle procedures), do NOT file it as a bug — escalate the process proposal to the human instead.
+- Report the OBSERVED wrong behavior, never a missing capability or a solution ('X has no way to do Y' is a fix wearing a symptom's clothes). A bug fix stays within the existing process contract (sdlc/policy/process-change-authority): when the defect seems to demand a behavioral delta to a process-layer contract (lifecycle state machines, gate composition, review lanes, lifecycle procedures), do NOT file it as a bug — escalate the process proposal to the human instead.
 - Require the observed symptom plus its trigger context verbatim in the description or --body: what happened, what was expected, and what preceded it. A report with no trigger context is unauditable later — this is the reporting invitation the schema alone cannot supply.
 
 ### `telec bugs list`

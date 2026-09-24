@@ -130,4 +130,4 @@ or lifecycle contract.
 - ~/.teleclaude/docs/general/principle/session-lifecycle.md
 - ~/.teleclaude/docs/general/principle/grounding.md
 - ~/.teleclaude/docs/general/principle/intelligence-boundaries.md
-- ~/.teleclaude/docs/general/procedure/orchestration.md — software-development orchestration and its role-owned recovery.
+- ~/.teleclaude/docs/general/procedure/orchestration.md — sdlc orchestration and its role-owned recovery.

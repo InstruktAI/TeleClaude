@@ -25,7 +25,7 @@ Its scope is the home's own history and membership. What a commit boundary does
 with a membership answer belongs to the surface that asks.
 
 The retained-set rule and the membership predicate are owned by the
-reconciliation context, per `software-development/policy/domain-ownership`.
+reconciliation context, per `sdlc/policy/domain-ownership`.
 Consumers invoke the published predicate; none restates it.
 
 ## Inputs/Outputs
@@ -118,7 +118,7 @@ that answer is the one for a regular file or directory created there; the same
 path later created as a symbolic link is `not-retained`. So a prospective write
 can be tested before it happens, and the test states the condition it assumes. An
 identity that cannot be reduced returns `not-retained`, per
-`software-development/policy/security-awareness`.
+`sdlc/policy/security-awareness`.
 
 ### No remote is configured, and none is implied
 
@@ -195,7 +195,7 @@ the declaration can exist. Enumerating what is present in the home and deciding
 whether a given path belongs are separate operations, and only the second answers
 for a path that does not yet exist. The installation-convergence entrypoint
 translates a run into a call on that core and decides nothing itself, per the
-layer direction in `software-development/principle/architectural-defaults`.
+layer direction in `sdlc/principle/architectural-defaults`.
 
 ## Failure modes
 

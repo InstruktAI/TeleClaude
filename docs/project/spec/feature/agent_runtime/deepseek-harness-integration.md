@@ -4,12 +4,12 @@ visibility: public
 ---
 
 # DeepSeek Harness Integration — Spec
+
 ## Required reads
 
 - @docs/project/spec/domain/agent_runtime.md
 - @docs/project/spec/domain/config.md
 - @docs/project/spec/feature/config/agents-inventory-requirement.md
-
 
 ## What it is
 
@@ -24,6 +24,7 @@ the vendor's, and is documented against the installed binary in
 `third-party/deepseek-dsh/runtime-surface` and `third-party/deepseek-dsh/hooks`.
 Provisioning steps belong to `project/procedure/onboard-agent-harness` and to
 the installer itself.
+
 ## Canonical fields
 
 ### Use cases
@@ -52,7 +53,6 @@ And a restricted-profile launch merges a sandbox-policy override into the
   session cwd)
 ```
 
-
 #### UC-DSH-AUTH-1: runner setup checks DeepSeek authentication
 
 ```gherkin
@@ -62,14 +62,14 @@ Then the DeepSeek CLI authentication state is checked with the other enabled run
 And an unusable authentication state is surfaced before managed work is dispatched to DeepSeek
 ```
 
-
 ### macOS launcher
 
 On macOS `resolve_agent_binary("deepseek")` resolves to the signed
 `DeepSeekLauncher.app` bundle rather than the bare binary, so the machine's
 permission grants attach to a stable identity across rebuilds. Launch arguments
 pass through the launcher unchanged. Bundle construction and signing are owned
-by `software-development/procedure/macos-stable-code-signing`.
+by `sdlc/procedure/macos-stable-code-signing`.
+
 #### UC-DSH-CHECKPOINT-1: stop checkpoints evaluate the DSH transcript
 
 ```
@@ -156,13 +156,12 @@ agent session's author identity.
 
 ### Boundaries
 
-
 - Structured schema-constrained one-shot calls are unsupported by the DeepSeek
-runtime. The headless profile accepts task text and prints a final message,
-but exposes no output-format, schema, response-field, or response-type
-contract. The canonical agent definition records that capability as
-unavailable, and structured one-shot callers receive an explicit unsupported-
-capability refusal rather than an unknown-agent failure.
+  runtime. The headless profile accepts task text and prints a final message,
+  but exposes no output-format, schema, response-field, or response-type
+  contract. The canonical agent definition records that capability as
+  unavailable, and structured one-shot callers receive an explicit unsupported-
+  capability refusal rather than an unknown-agent failure.
 - DSH transcripts are zstd-compressed; session discovery uses
   `session_pattern **/session.jsonl*` under `~/.dsh/sessions`, and session
   identity/project are read from the transcript's session entry (id, cwd),

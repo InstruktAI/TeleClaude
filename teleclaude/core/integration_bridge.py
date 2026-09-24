@@ -27,13 +27,13 @@ from teleclaude.core.models import (
 from teleclaude.core.origins import InputOrigin
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
-from teleclaude.events.schemas.software_development import IntegrationEventType
+from teleclaude.events.schemas.sdlc import IntegrationEventType
 from teleclaude.session_identity import get_session_id
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
 
-_SOFTWARE_DEVELOPMENT_DOMAIN = "software-development"
+_SDLC_DOMAIN = "sdlc"
 _UNKNOWN_SESSION = "unknown"
 _INTEGRATOR_SOURCE = "integrator/{session_id}"
 _CANDIDATE_PARKED_DESCRIPTION = "Candidate parked: {slug} ({branch}@{sha}): {reason}"
@@ -55,10 +55,10 @@ async def emit_review_approved(
     """Emit review.approved when a build review verdict stamps as approve."""
     ts = approved_at or datetime.now(UTC).isoformat()
     return await emit_event(
-        event="domain.software-development.review.approved",
+        event="domain.sdlc.review.approved",
         source=f"orchestrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
-        domain="software-development",
+        domain="sdlc",
         description=f"Review approved for {slug} (round {review_round})",
         entity=slug,
         payload={
@@ -81,10 +81,10 @@ async def emit_deployment_completed(
     """Emit deployment.completed after successful integration to main."""
     ts = integrated_at or datetime.now(UTC).isoformat()
     return await emit_event(
-        event="domain.software-development.deployment.completed",
+        event="domain.sdlc.deployment.completed",
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
-        domain="software-development",
+        domain="sdlc",
         description=f"Deployment completed for {slug} (merge {merge_commit[:8]})",
         entity=slug,
         payload={
@@ -110,10 +110,10 @@ async def emit_deployment_failed(
     """Emit deployment.failed when integration is blocked."""
     ts = blocked_at or datetime.now(UTC).isoformat()
     return await emit_event(
-        event="domain.software-development.deployment.failed",
+        event="domain.sdlc.deployment.failed",
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.BUSINESS,
-        domain="software-development",
+        domain="sdlc",
         description=f"Deployment failed for {slug} ({branch}@{sha[:8]})",
         entity=slug,
         payload={
@@ -146,10 +146,10 @@ async def emit_integration_started(
 ) -> str:
     """Emit integration.started when the state machine begins processing a candidate."""
     return await emit_event(
-        event="domain.software-development.integration.started",
+        event="domain.sdlc.integration.started",
         source=f"integrator/{session_id or (get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
-        domain="software-development",
+        domain="sdlc",
         description=f"Integration started for {slug} (queue depth: {queue_depth})",
         entity=slug,
         payload={
@@ -170,10 +170,10 @@ async def emit_integration_candidate_delivered(
     """Emit integration.candidate.delivered after a candidate is fully integrated."""
     ts = integrated_at or datetime.now(UTC).isoformat()
     return await emit_event(
-        event="domain.software-development.integration.candidate.delivered",
+        event="domain.sdlc.integration.candidate.delivered",
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.WORKFLOW,
-        domain="software-development",
+        domain="sdlc",
         description=f"Candidate delivered: {slug} ({branch} \u2192 main, merge {merge_commit_sha[:8]})",
         entity=slug,
         payload={
@@ -196,10 +196,10 @@ async def emit_integration_candidate_blocked(
     """Emit integration.candidate.blocked when a candidate cannot be integrated."""
     ts = blocked_at or datetime.now(UTC).isoformat()
     return await emit_event(
-        event="domain.software-development.integration.candidate.blocked",
+        event="domain.sdlc.integration.candidate.blocked",
         source=f"integrator/{(get_session_id() or 'unknown')}",
         level=EventLevel.BUSINESS,
-        domain="software-development",
+        domain="sdlc",
         description=f"Integration blocked for {slug} ({branch}@{sha[:8]}): {reason or 'unknown reason'}",
         entity=slug,
         payload={
@@ -228,7 +228,7 @@ async def emit_integration_candidate_parked(
         event=IntegrationEventType.CANDIDATE_PARKED,
         source=_INTEGRATOR_SOURCE.format(session_id=session_id),
         level=EventLevel.BUSINESS,
-        domain=_SOFTWARE_DEVELOPMENT_DOMAIN,
+        domain=_SDLC_DOMAIN,
         description=_CANDIDATE_PARKED_DESCRIPTION.format(
             slug=slug,
             branch=branch,
@@ -261,7 +261,7 @@ async def emit_integration_drain_completed(
         event=IntegrationEventType.DRAIN_COMPLETED,
         source=_INTEGRATOR_SOURCE.format(session_id=source_session_id),
         level=EventLevel.BUSINESS,
-        domain=_SOFTWARE_DEVELOPMENT_DOMAIN,
+        domain=_SDLC_DOMAIN,
         description=_DRAIN_COMPLETED_DESCRIPTION.format(
             delivered_count=delivered_count,
             parked_count=len(parked),
@@ -337,12 +337,12 @@ async def spawn_integrator_session(
     cmd = CreateSessionCommand(
         project_path=project_path,
         origin=InputOrigin.TERMINAL.value,
-        command=SlashCommand.NEXT_INTEGRATE.value,
-        initial_input=f"/{SlashCommand.NEXT_INTEGRATE.value}",
+        command=SlashCommand.INTEGRATE.value,
+        initial_input=f"/{SlashCommand.INTEGRATE.value}",
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
             thinking_mode="slow",
-            message=f"/{SlashCommand.NEXT_INTEGRATE.value}",
+            message=f"/{SlashCommand.INTEGRATE.value}",
             dispatch_mode=AgentDispatchMode.AUTOMATIC,
         ),
         system_role=ROLE_INTEGRATOR,

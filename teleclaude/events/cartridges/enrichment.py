@@ -58,7 +58,7 @@ class EnrichmentCartridge:
     async def _enrich_todo(self, _entity_id: str, entity_uri: str, db: EventDB) -> JsonDict | None:
         """Derive todo-oriented enrichment from recent planning and build events."""
         failure_count = await db.count_events_by_entity(
-            entity_uri, "domain.software-development.build.completed", payload_filter={"success": False}
+            entity_uri, "domain.sdlc.build.completed", payload_filter={"success": False}
         )
         phase_payload = await db.get_latest_event_payload(entity_uri, "todo_activated")
 

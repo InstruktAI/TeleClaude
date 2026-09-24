@@ -118,7 +118,7 @@ gate. Reads are never gated.
 A caller outside the claiming group is refused with HTTP 409 before any state
 mutation. The refusal names the holding session and the sanctioned door: address
 that session, which owns whether the concern changes its work
-(`software-development/policy/todo-creation-discipline`, "Reconcile a flagged
+(`sdlc/policy/todo-creation-discipline`, "Reconcile a flagged
 live todo"). A foreign caller never writes into a claimed todo's record.
 
 A direct human-identity writer — a login-resolved human principal carrying no

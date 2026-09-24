@@ -5,7 +5,7 @@ A kind is the work-unit's entry point into the lifecycle. There are exactly four
   change  → enters at plan (a known change to existing code; no PRD; intent is the input artifact)
   bug     → enters at diagnose (a defect; no PRD; verify the diagnosis first, then draft a plan)
   task    → non-SDLC, created silent, tracked by a task-plan artifact, side-effect
-            only — never touches the repo (software-development/spec/todo-kind-task)
+            only — never touches the repo (sdlc/spec/todo-kind-task)
 
 Orthogonal creation inputs (never declared as a kind):
   --plan <content> supplies a finished implementation-plan; the orchestrator fast-forwards entry to build.

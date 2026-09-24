@@ -78,7 +78,7 @@ contracts and never creates shared ownership.
   context emits it domain-qualified; the shared name table holds the values
   without owning them. Semantic owner and corpus domain are independent:
   `workflow` owns its todo-lifecycle names and emissions, while `config` owns
-  the configured-job command and the scheduler's `general/next-run-job`
+  the configured-job command and the scheduler's `general/run-job`
   emission. Each other command follows the context named by its governing
   contract. `context` owns the corpus those names are laid out in and the reach
   that admits a source into it, read from `config`'s publishing declaration;

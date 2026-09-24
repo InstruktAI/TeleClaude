@@ -40,7 +40,7 @@ checker / linter already provides.
 3. **Enforce invariants at the strongest layer, not a custom guard.** Remove the
    `TELECLAUDE_*` env-mutation scanner: the runtime configuration is a frozen,
    read-once typed seam, which already makes env mutation inert; the rule is
-   codified in `software-development/policy/code-quality-practices` (the process
+   codified in `sdlc/policy/code-quality-practices` (the process
    environment is not an in-process config/state channel) and enforced by review.
 4. **Remove dead config.** Delete `teleclaude/quality/guardrail_caps.py`, the
    `[tool.guardrails]` template section, the hardcoded `*_MAX_*` caps, and

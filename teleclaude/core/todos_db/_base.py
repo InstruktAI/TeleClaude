@@ -21,6 +21,7 @@ from teleclaude.core.db.connection_factory import create_async_db_engine, create
 
 from ._legacy_import import maybe_auto_import_legacy_markdown_todos
 from ._models import TODOS_DB_TABLES
+from ._sdlc_rename import migrate_sdlc_rename
 
 logger = get_logger(__name__)
 
@@ -607,6 +608,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_todo_removed_doc_reconciliation(conn)
         _migrate_todo_removed_claim(conn)
         _drop_dispatch_claims_table(conn)
+        migrate_sdlc_rename(conn)
         conn.commit()
     finally:
         conn.close()

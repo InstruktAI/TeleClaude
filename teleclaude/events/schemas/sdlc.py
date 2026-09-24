@@ -1,0 +1,479 @@
+"""Software development domain event schemas."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import TYPE_CHECKING
+
+from teleclaude.events.catalog import EventSchema, LifecycleFamily, NotificationLifecycle
+from teleclaude.events.envelope import EventLevel, EventVisibility
+
+if TYPE_CHECKING:
+    from teleclaude.events.catalog import EventCatalog
+
+
+class IntegrationEventType(StrEnum):
+    """Closed taxonomy for projector-visible integration drain events."""
+
+    CANDIDATE_PARKED = "domain.sdlc.integration.candidate.parked"
+    DRAIN_COMPLETED = "domain.sdlc.integration.drain.completed"
+
+
+def register_sdlc(catalog: EventCatalog) -> None:
+    """Register sdlc domain event schemas."""
+    catalog.register(
+        EventSchema(
+            event_type="scheduler.tick.minute",
+            description="Daemon minute wake-up for schedule-gated workflow evaluation",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(updates=True, meaningful_fields=["ticked_at", "computer"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.todo.created",
+            description="A workflow todo was created and may require lifecycle-runner evaluation",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                group_key="slug",
+                family=LifecycleFamily.TODO_LIFECYCLE,
+                meaningful_fields=["slug", "kind"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.todo.phase_advanced",
+            description="A workflow todo advanced lifecycle phase and may unblock runner work",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.TODO_LIFECYCLE,
+                meaningful_fields=["slug", "prior_lifecycle_phase", "lifecycle_phase"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.todo.updated",
+            description="A workflow todo control-plane field changed and may affect runner eligibility",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.TODO_LIFECYCLE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.todo.delivered",
+            description="A workflow todo was delivered and may unblock dependents",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="slug", family=LifecycleFamily.TODO_LIFECYCLE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="workflow.roadmap.entry_moved",
+            description="A roadmap entry moved between queues or dependency positions",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.TODO_LIFECYCLE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.planning.todo_finalize_ready",
+            description="Finalize-ready worker claim is ready for integration handoff",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                group_key="slug",
+                family=LifecycleFamily.PLANNING_READINESS,
+                meaningful_fields=["slug", "branch", "sha", "worker_session_id", "ready_at"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.planning.dor_assessed",
+            description="Definition of Ready was assessed for a work item",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PLANNING_READINESS,
+                meaningful_fields=["score", "verdict"],
+            ),
+            actionable=True,
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.build.completed",
+            description="Build phase completed for a work item",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug", family=LifecycleFamily.BUILD),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.review.verdict_ready",
+            description="Code review verdict is ready",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.REVIEW, meaningful_fields=["verdict", "round"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.review.needs_decision",
+            description="Review requires a human decision before proceeding",
+            default_level=EventLevel.BUSINESS,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.REVIEW, meaningful_fields=["question", "round"]
+            ),
+            actionable=True,
+        )
+    )
+
+    # --- Deploy events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.deploy.triggered",
+            description="Deployment was triggered for a work item",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "environment"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.deploy.succeeded",
+            description="Deployment completed successfully",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug", family=LifecycleFamily.DEPLOY_ATTEMPT),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.deploy.failed",
+            description="Deployment failed and requires attention",
+            default_level=EventLevel.BUSINESS,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.DEPLOY_ATTEMPT, meaningful_fields=["error"]
+            ),
+            actionable=True,
+        )
+    )
+
+    # --- Ops events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.ops.alert_fired",
+            description="An operational alert was triggered",
+            default_level=EventLevel.BUSINESS,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["alert_id", "severity"]),
+            actionable=True,
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.ops.alert_resolved",
+            description="An operational alert was resolved",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(resolves=True, group_key="alert_id", family=LifecycleFamily.OPS_ALERT),
+        )
+    )
+
+    # --- Maintenance events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.maintenance.dependency_update",
+            description="A dependency was updated to a new version",
+            default_level=EventLevel.OPERATIONAL,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="package",
+                family=LifecycleFamily.DEPENDENCY_UPDATE,
+                meaningful_fields=["package", "version"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.maintenance.security_patch",
+            description="A security patch is required for a dependency",
+            default_level=EventLevel.BUSINESS,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["advisory_id", "severity"]),
+            actionable=True,
+        )
+    )
+
+    # --- Prepare lifecycle events ---
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.input_refined",
+            description="Human thinking was captured or updated in input.md",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.discovery_started",
+            description="Requirements discovery phase dispatched",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug"]),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.requirements_drafted",
+            description="Requirements derived from triangulation",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.requirements_approved",
+            description="Requirements reviewed and approved, ready for plan drafting",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.plan_drafted",
+            description="Implementation plan drafted from approved requirements",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.plan_approved",
+            description="Implementation plan reviewed and approved",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.completed",
+            description="Preparation complete, todo ready for build",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(resolves=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.blocked",
+            description="Preparation blocked, requires human decision",
+            default_level=EventLevel.BUSINESS,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["blocker"]
+            ),
+            actionable=True,
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.phase_skipped",
+            description="Prepare phase skipped via inheritance from parent todo",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PREPARE_PIPELINE,
+                meaningful_fields=["phase", "reason"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.input_consumed",
+            description="Input consumed by discovery worker, requirements production started",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True, group_key="slug", family=LifecycleFamily.PREPARE_PIPELINE, meaningful_fields=["slug"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.artifact_produced",
+            description="Prepare artifact written and lifecycle-tracked in state",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PREPARE_PIPELINE,
+                meaningful_fields=["artifact", "digest"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.artifact_invalidated",
+            description="Upstream change cascaded staleness to a prepare artifact",
+            default_level=EventLevel.OPERATIONAL,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PREPARE_PIPELINE,
+                meaningful_fields=["stale_artifacts"],
+            ),
+            actionable=True,
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.prepare.review_scoped",
+            description="Scoped re-review dispatched with a findings artifact",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.PREPARE_PIPELINE,
+                meaningful_fields=["findings_artifact"],
+            ),
+        )
+    )
+    # --- Integration lifecycle events ---
+
+    catalog.register(
+        EventSchema(
+            event_type=IntegrationEventType.CANDIDATE_PARKED,
+            description="An integration candidate was parked for the current drain",
+            default_level=EventLevel.BUSINESS,
+            default_visibility=EventVisibility.LOCAL,
+            domain="sdlc",
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type=IntegrationEventType.DRAIN_COMPLETED,
+            description="An integration drain completed with delivered and parked outcomes",
+            default_level=EventLevel.BUSINESS,
+            default_visibility=EventVisibility.LOCAL,
+            domain="sdlc",
+        )
+    )
+
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.review.approved",
+            description="Review passed, candidate eligible for finalization",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                group_key="slug",
+                family=LifecycleFamily.REVIEW_GATE_APPROVED,
+                meaningful_fields=["approved_at"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.branch.pushed",
+            description="Worktree branch pushed to remote, candidate ready for integration",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                creates=True, group_key="branch", family=LifecycleFamily.BRANCH_PUSHED, meaningful_fields=["pushed_at"]
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.deployment.started",
+            description="Finalize ready, candidate queued for integration",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                group_key="slug",
+                family=LifecycleFamily.DEPLOYMENT_LIFECYCLE,
+                meaningful_fields=["ready_at"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.deployment.completed",
+            description="Integrated to main, delivery bookkeeping done",
+            default_level=EventLevel.WORKFLOW,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                resolves=True, group_key="slug", family=LifecycleFamily.DEPLOYMENT_LIFECYCLE
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
+            event_type="domain.sdlc.deployment.failed",
+            description="Integration blocked, needs attention",
+            default_level=EventLevel.BUSINESS,
+            domain="sdlc",
+            lifecycle=NotificationLifecycle(
+                updates=True,
+                group_key="slug",
+                family=LifecycleFamily.DEPLOYMENT_LIFECYCLE,
+                meaningful_fields=["blocked_at"],
+            ),
+            actionable=True,
+        )
+    )

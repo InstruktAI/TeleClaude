@@ -31,7 +31,7 @@ Ownership:
 
 ### Review lanes executed
 
-**Read `§ Run review lanes` in `software-development/procedure/lifecycle/work/review` before executing. Each lane below must produce a section in `review-findings.md` — even "No findings." A missing section means the review is incomplete.**
+**Read `§ Run review lanes` in `sdlc/procedure/lifecycle/work/review` before executing. Each lane below must produce a section in `review-findings.md` — even "No findings." A missing section means the review is incomplete.**
 
 - [ ] **scope**
 - [ ] **code**

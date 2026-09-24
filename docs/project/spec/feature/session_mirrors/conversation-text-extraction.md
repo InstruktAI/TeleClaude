@@ -40,7 +40,7 @@ command-derived title and stays searchable.
 
 Derived fields that come along with the text body:
 
-- `command` — the detected launch command (e.g. `next-review-plan`), else null.
+- `command` — the detected launch command (e.g. `review-plan`), else null.
 - `slug` — the launch command's argument, else null.
 - `is_worker` — true when the lifecycle command-role map marks the launch command a worker; false for an orchestrator, tasker, integrator, or a command the map does not carry.
 - `title` — when the detected command names a deployed artifact or a mapped lifecycle role, that command's wrapper heading (or the humanized command name when no heading is mapped) plus `: <slug>` when a slug was extracted; otherwise the first user message's stripped text truncated at the first newline and then to 120 characters with `...` when longer.

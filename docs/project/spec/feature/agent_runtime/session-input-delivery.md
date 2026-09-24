@@ -349,4 +349,4 @@ And their presence, absence, or wording changes no human-involvement declaration
 - docs/project/spec/hook-normalized-events.md
 - docs/project/spec/feature/agent_runtime/session-revival.md
 - ~/.teleclaude/docs/general/principle/intelligence-boundaries.md
-- ~/.teleclaude/docs/software-development/policy/domain-ownership.md
+- ~/.teleclaude/docs/sdlc/policy/domain-ownership.md

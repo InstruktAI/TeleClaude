@@ -10,7 +10,7 @@ visibility: 'public'
 The Todo aggregate inside the `workflow` bounded context is created through one CLI entrypoint that calls a single server-side route, plus a creative-machine entrypoint that does not itself create todo entries:
 
 - **`telec todo create <slug> <content> [--kind <kind>]`** — the single creation command. Both `<slug>` and `<content>` are required positionals; an empty or whitespace-only `<content>` is rejected before any request is made. `--kind` is optional. The workflow service writes the todo entry, the default state, and an artifact in one transaction. Flags:
-  - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo is persisted with `kind` unset and no `lifecycle_phase`, and `/software-development/analyze-todo-input` is dispatched to classify it and assign a kind autonomously via `telec todo stamp --kind-assign <kind>`. The classifier assigns the kind directly — there is no proposal and no human approval gate — then routes to that kind's entry phase. It never executes the work itself.
+  - `--kind <kind>` — **optional**. Canonical kind value: `feature` (PRD/intake lane), `change` (plan lane; no PRD), `bug` (diagnosis → plan lane), or `task` (non-SDLC action lane; created silent, grooms a `task-plan`). Omitting it creates a **kind-less** todo: the content is stored as `input`, the todo is persisted with `kind` unset and no `lifecycle_phase`, and `/sdlc/analyze-todo-input` is dispatched to classify it and assign a kind autonomously via `telec todo stamp --kind-assign <kind>`. The classifier assigns the kind directly — there is no proposal and no human approval gate — then routes to that kind's entry phase. It never executes the work itself.
   - `--icebox` — creates the todo directly in the icebox (roadmap `status="icebox"`) instead of `active`. The lifecycle runner skips iceboxed entries, so no session is dispatched; the todo's kind, state, and `input` artifact are written normally, and unfreezing it later returns it to `active` and starts its lane. It is the only flag that parks a new todo instead of letting it enter its lifecycle.
   - `--project-root <path>` (alias `-p`) — targets an explicit project root instead of the invocation cwd. The path resolves the project's workflow state root server-side, and the `workflow.todo.created` payload's `project_path` reflects it so the lifecycle runner acts against the targeted project.
 
@@ -20,7 +20,7 @@ The Todo aggregate inside the `workflow` bounded context is created through one 
 - `--schedule <iso-instant | recurring-rule>` — valid only for `--kind task`. It records the task's execution eligibility: a one-shot ISO-8601 instant, or a recurring rule that re-fires the task against its durable `task-plan` on each occurrence. It is mutually exclusive with `--after`; the workflow service rejects a create request that supplies both.
 - `--plan` — valid with `--kind change` or `--kind task`; rejected for `--kind feature` and `--kind bug`. The supplied content is the complete plan for that kind, written as the kind's plan artifact so drafting is skipped:
   - `--kind change --plan` writes the content as the `implementation-plan` artifact (prefixed `# <slug> — Implementation Plan`) and enters prepare at plan-drafting. The planner grounds the supplied plan (blast radius), reflects the affected doc snippets, and the plan is reviewed before `prepared`; the flag accelerates drafting, it does not bypass plan-draft or plan-review.
-  - `--kind task --plan` writes the content as the `task-plan` artifact (prefixed `# <slug> — Task Plan`), lands the task at `prepared`, and records the `task_approved` authorization stamp up front with its `approved_digest` set to the just-written `task-plan` digest — so the task is **pre-authorized by construction** and the lifecycle runner routes it straight to `/software-development/next-run-task` once its dependency or `schedule` gate passes, with no separate human authorization. A later `task-plan` edit changes the artifact digest and leaves the recorded `approved_digest` stale, so authorization must be renewed before the runner dispatches again.
+  - `--kind task --plan` writes the content as the `task-plan` artifact (prefixed `# <slug> — Task Plan`), lands the task at `prepared`, and records the `task_approved` authorization stamp up front with its `approved_digest` set to the just-written `task-plan` digest — so the task is **pre-authorized by construction** and the lifecycle runner routes it straight to `/sdlc/run-task` once its dependency or `schedule` gate passes, with no separate human authorization. A later `task-plan` edit changes the artifact digest and leaves the recorded `approved_digest` stale, so authorization must be renewed before the runner dispatches again.
 
 - `--hold` — **hidden specialist control.** Creates an **active** todo (roadmap `status="active"`) whose hold flag is set with `hold_audit.source=creation`, so the lifecycle router consumes the creation event without dispatch and the lifecycle runner skips the slug until the hold is released via `telec todo update <slug> --release`. Unlike `--icebox` it does not park the todo in the icebox: the todo carries normal state and its `input` artifact, and stays visible as an active held row. It is mutually exclusive with `--icebox`. It is reserved for live-human prepare orchestration (a human driving an agent to own a new todo's prepare phase). Hidden-ness is a property of the structured flag surfaces: it is suppressed from the usage line, the Options table, and generated command tables, while the create Notes explain it as the create-time parking flag for todos fleshed out progressively.
 
@@ -37,7 +37,7 @@ The Todo aggregate's invariants — unique kebab-case slug, kind fixed once assi
 The workflow service emits the event with this payload:
 
 - `slug` — the created slug.
-- `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/software-development/analyze-todo-input`).
+- `kind` — canonical kind from the request: `feature`, `change`, `bug`, `task`, or `null` when the todo was created kind-less (routed to `/sdlc/analyze-todo-input`).
 - `creation_mode` — `"pickup"` when pickup is requested, otherwise `"silent"`; derived from `pickup_requested`.
 - `pickup_requested` — boolean, false when the caller passed `--icebox` or the kind is `task`.
 - `lifecycle_phase` — the post-write `lifecycle_phase` value (`null` for kind-less creation, `"task_plan_drafting"` for a bare `--kind task`, `"prepared"` for `--kind task --plan`, `"plan_drafting"` for `--kind change --plan`, `"diagnose"` for `bug`, `"draft"` otherwise).
@@ -60,7 +60,7 @@ Then the CLI validates that <content> is non-empty and the provided --kind value
 And submits a creation request with kind="feature"
 And the workflow service creates the todo entry, default state, and an `input` artifact whose body is "# my-feature — Input\n\n<content>\n" in one transaction
 And the workflow service emits workflow.todo.created with kind="feature" and pickup_requested=true
-And the lifecycle router consumes the event and dispatches /software-development/next-prepare
+And the lifecycle router consumes the event and dispatches /sdlc/prepare
 And the CLI reports "Created todo: my-feature"
 ```
 
@@ -168,7 +168,7 @@ Then the request carries kind="change" and plan=true
 And the route writes the content as the `implementation-plan` artifact (body prefixed "# my-feature — Implementation Plan")
 And the route seeds the prepare lifecycle at plan-drafting so lifecycle_phase becomes "plan_drafting"
 And the route emits workflow.todo.created with canonical kind="change" and pickup_requested=true
-And the lifecycle router dispatches /software-development/next-prepare, where the planner grounds the supplied plan, reflects affected doc snippets, and the plan is reviewed before prepared
+And the lifecycle router dispatches /sdlc/prepare, where the planner grounds the supplied plan, reflects affected doc snippets, and the plan is reviewed before prepared
 And the CLI prints "Created todo: my-feature (kind=change)"
 ```
 
@@ -194,7 +194,7 @@ When the CLI parses the flags
 Then it submits a creation request with no kind (kind-less)
 And the workflow service creates the todo, stores the dump as the `input` artifact, sets kind=null and leaves lifecycle_phase absent
 And the workflow service emits workflow.todo.created with kind=null, lifecycle_phase=null, and pickup_requested=true
-And the lifecycle router dispatches /software-development/analyze-todo-input, which classifies the dump and assigns the kind autonomously with `telec todo stamp --kind-assign <kind>` without executing any work
+And the lifecycle router dispatches /sdlc/analyze-todo-input, which classifies the dump and assigns the kind autonomously with `telec todo stamp --kind-assign <kind>` without executing any work
 And the assignment fixes the kind exactly once and routes the todo to that kind's entry phase, with no human approval gate in between
 ```
 
@@ -206,8 +206,8 @@ When they run `telec todo create call-supplier-api "<what to do>" --kind task`
 Then workflow writes the roadmap row, Todo state, and `input` artifact atomically
 And sets kind="task" and lifecycle_phase="task_plan_drafting"
 And emits `workflow.todo.created` with kind="task", lifecycle_phase="task_plan_drafting", and project identity
-And the lifecycle runner may dispatch `/software-development/next-prepare-task`
-And the task cannot dispatch `/software-development/next-run-task` until a `task-plan` exists and the human authorization stamp is present
+And the lifecycle runner may dispatch `/sdlc/prepare-task`
+And the task cannot dispatch `/sdlc/run-task` until a `task-plan` exists and the human authorization stamp is present
 ```
 
 #### UC-WTC7: Task schedule and dependencies are mutually exclusive
@@ -233,9 +233,9 @@ And the task still requires a prepared `task-plan` and human authorization befor
 Given a caller runs `telec todo create my-task "<task-plan-content>" --kind task --plan`
 When the create request is accepted
 Then workflow writes the content as the `task-plan` artifact prefixed `# my-task — Task Plan`
-And the todo lands at lifecycle_phase="prepared" without dispatching `/software-development/next-prepare-task`
+And the todo lands at lifecycle_phase="prepared" without dispatching `/sdlc/prepare-task`
 And workflow records a `task_approved` stamp whose `approved_digest` equals the seeded `task-plan` digest
-And the lifecycle runner dispatches `/software-development/next-run-task` once the dependency or schedule gate passes, with no separate human authorization
+And the lifecycle runner dispatches `/sdlc/run-task` once the dependency or schedule gate passes, with no separate human authorization
 ```
 
 ```gherkin
@@ -257,7 +257,7 @@ Given a customer-support agent completes the pre-filing interrogation and files 
 When the workflow service handles the bug creation with kind="bug"
 Then it writes state + todo entry + `input` artifact and enters the diagnose phase
 And the workflow service emits workflow.todo.created with canonical kind="bug" and pickup_requested=true
-And the lifecycle router consumes the event and dispatches /software-development/next-prepare for the bug lane (diagnosis → plan → plan-review)
+And the lifecycle router consumes the event and dispatches /sdlc/prepare for the bug lane (diagnosis → plan → plan-review)
 And the bug skips the demo phase per the kind=bug lifecycle gate
 ```
 
@@ -421,7 +421,7 @@ Create-time dispatch is dependency-gated by the lane selected from the creation 
 Given an operator needs to create a todo
 When they run `telec todo create --help`
 Then the usage line shows `--kind` as optional with values `feature|change|bug|task`
-And the help states that omitting `--kind` creates a kind-less todo classified by `/software-development/analyze-todo-input`
+And the help states that omitting `--kind` creates a kind-less todo classified by `/sdlc/analyze-todo-input`
 And the help does not advertise retired kind values
 And the usage line and the Options table do not advertise the hidden `--hold` flag, which the Notes are free to explain
 ```
@@ -433,7 +433,7 @@ Given a human runs `telec todo create child "<content>" --kind change --after pa
 When the workflow service creates "child" and emits workflow.todo.created with pickup_requested=true
 And the lifecycle router consumes the event
 Then the router consults the dependency graph and finds "child"'s prepare gate unsatisfied (parent not PREPARED)
-And the router treats the dep-blocked child as silent — it does not dispatch /software-development/next-prepare for "child"
+And the router treats the dep-blocked child as silent — it does not dispatch /sdlc/prepare for "child"
 And the router logs "skipped: dependency-blocked" with the unsatisfied parent slug
 And "child" waits until "parent" reaches PREPARED, at which point auto-continue dispatches it (see @spec/feature/workflow/prepare-state-machine)
 ```
@@ -444,7 +444,7 @@ And "child" waits until "parent" reaches PREPARED, at which point auto-continue 
 Given a human runs `telec todo create child "<content>" --kind change --after parent` while "parent" is already PREPARED
 When the lifecycle router consumes workflow.todo.created for "child"
 Then the router finds "child"'s prepare gate satisfied
-And the router dispatches /software-development/next-prepare for "child" as usual
+And the router dispatches /sdlc/prepare for "child" as usual
 ```
 
 #### UC-WTC29: A held create carries the reason it is parked
@@ -459,7 +459,6 @@ And a `--reason` supplied without `--hold` is refused before any write rather th
 And the reason input is hidden from the structured flag surfaces exactly as `--hold` is
 ```
 
-
 #### UC-WTC30: Creation refuses a slug that violates the kebab-case invariant
 
 ```gherkin
@@ -471,23 +470,22 @@ And a slug carrying a path separator or a relative-path segment is refused the s
 And each `--after` dependency slug and the `--group` parent slug are held to that same format invariant
 ```
 
-
 ### Cross-context references
 
 - `operations` — async, receipt-backed long-running operations (e.g., `telec todo remove`) are surfaced through the operations subsystem; create itself is synchronous.
-- `integration` — the lifecycle router cartridge consumes `workflow.todo.created` and dispatches cartridge-appropriate orchestrators (`/software-development/next-prepare`, `/software-development/next-work`).
+- `integration` — the lifecycle router cartridge consumes `workflow.todo.created` and dispatches cartridge-appropriate orchestrators (`/sdlc/prepare`, `/sdlc/work`).
 - `agent_runtime` — the creative state machine driven by `telec todo design` spawns and supervises creative sessions through `agent_runtime`.
 
 ## Known caveats
 
 - `<content>` is a required positional on `telec todo create`. Empty or whitespace-only content is rejected by the CLI before any request; the workflow service also rejects it as a second line of defense.
-- `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/software-development/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). A bare `task` is created silent and enters `task_plan_drafting`, where `/software-development/next-prepare-task` authors its `task-plan`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review, or with `--kind task` when the content is a complete `task-plan`: the task is born `prepared` and pre-authorized (the `task_approved` stamp is written at creation, digest-bound to the seeded `task-plan`), so the runner routes it straight to `/software-development/next-run-task` once its dependency or `schedule` gate passes.
+- `--kind` is **optional** on `telec todo create`. The valid kinds are `feature`, `change`, `bug`, and `task`. Omitting it creates a kind-less todo (kind unset, no `lifecycle_phase`) whose `input` is classified by `/sdlc/analyze-todo-input`, which assigns a kind autonomously via `telec todo stamp --kind-assign <kind>` (no proposal and no human approval gate; it never executes the work). A bare `task` is created silent and enters `task_plan_drafting`, where `/sdlc/prepare-task` authors its `task-plan`. Use `--plan` with `--kind change` when the content is a complete implementation plan and should seed the implementation plan into plan-drafting before plan review, or with `--kind task` when the content is a complete `task-plan`: the task is born `prepared` and pre-authorized (the `task_approved` stamp is written at creation, digest-bound to the seeded `task-plan`), so the runner routes it straight to `/sdlc/run-task` once its dependency or `schedule` gate passes.
 - A created todo enters its kind's lifecycle; nothing holds it back at creation by default. Two flags suppress create-time dispatch (`pickup_requested=false`): `--icebox` parks it in the icebox (`status="icebox"`), and `--hold` leaves it **active** but sets the durable dispatch brake (`hold=True`, `hold_audit.source="creation"`). The lifecycle runner skips both — iceboxed entries by status, held entries by the hold brake — until the icebox is unfrozen or the hold is released. The two are mutually exclusive. The route always emits `workflow.todo.created` after a successful create.
 
 - `--group <parent-slug>` is the create-time path to a grouped child. It records the child's group reference to the parent row's durable id inside the create transaction. The first grouped child transitions the parent's row to status `holder` in the same transaction — removing its `todo_state` and voiding any claim or hold — while preserving all of its artifacts and their version history as frozen evidence, so a parent still in the prepare lane can be grouped without shredding prepared work (see UC-WTC24). A parent whose lifecycle_phase has reached `prepared` or the work lane is refused with a 409 instead (see UC-WTC16). `--release` is not accepted on create; `--hold` is the hidden create-time dispatch brake (see UC-WTC18). Grouping also moves the parent's pending documentation ownership to the first grouped child: every in-body marker, companion filename, and `delivered_by` membership naming the parent is rewritten to that child and committed as part of the same transition.
 
 - The `bugs report` helper wraps the same creation path with `kind=bug`. The prior CLI-side bug-emit helper has been removed; the workflow service is now the single emission point for bug creation as well.
-- The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/software-development/analyze-todo-input` for classification when dependency gates allow pickup.
+- The lifecycle router selects the lane from the event payload's `kind`, `lifecycle_phase`, and `pickup_requested`, then consults todo state only for dependency gating before auto-dispatch. `telec todo create` emits canonical `feature`, `change`, `bug`, or `task` kinds, or `kind=null` for a kind-less dump — which the router dispatches to `/sdlc/analyze-todo-input` for classification when dependency gates allow pickup.
 
 - **Dependency gate at create-time:** routing by `kind`/`lifecycle_phase`/`pickup_requested` selects the _lane_, but before auto-dispatching the router consults the dependency graph for the slug. A child with unsatisfied `after` dependencies for its lane (prepare lane → parents must be `PREPARED`; work lane → parents must be `delivered`, per `@spec/feature/workflow/dependency-graph`) is treated as silent: the event is still consumed but no orchestrator is dispatched. Only deps-satisfied todos auto-dispatch. This closes the create-time over-dispatch where `create parent; create child --after parent` spawned both orchestrators in parallel.
 

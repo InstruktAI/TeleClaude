@@ -67,7 +67,7 @@ The Todo query projection publishes `prepared_session_id` and an
 current artifact records. The existing `files` list remains the ordered
 artifact-name contract.
 
-This placement follows `software-development/policy/domain-ownership`:
+This placement follows `sdlc/policy/domain-ownership`:
 workflow records and publishes its facts once, while presentation consumers
 never reconstruct lifecycle or artifact policy.
 

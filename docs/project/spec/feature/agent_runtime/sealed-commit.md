@@ -117,7 +117,7 @@ And exits non-zero without producing a commit
 ```
 Given an agent on `main` commits a change that touches a doc snippet (docs/**)
 When the commit lands via `telec code commit --approved`
-Then an independent fast-or-medium reviewer runs the doc-hygiene lane over the changed snippets on the commit SHA via `/next-review-commits`
+Then an independent fast-or-medium reviewer runs the doc-hygiene lane over the changed snippets on the commit SHA via `/review-commits`
 And the agent reuses the reviewer already open for the patch series, or starts one if none is open — never a second
 And the authoring agent never reviews a snippet it wrote
 And a config/state/README-only commit with no doc snippet requires no review
@@ -979,4 +979,4 @@ And the partial-staging check is NOT silently bypassed
 
 - docs/project/design/code-commit.md
 - docs/global/general/spec/tools/telec-cli.md
-- docs/global/software-development/policy/version-control-safety.md
+- docs/global/sdlc/policy/version-control-safety.md

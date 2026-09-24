@@ -170,7 +170,7 @@ sequenceDiagram
     participant RemoteComputer
     participant WorkerAI
 
-    Operator->>TelecCLI: telec sessions run / next-work
+    Operator->>TelecCLI: telec sessions run / work
     TelecCLI->>APIServer: Session command
     APIServer->>Redis: Publish command
     Redis->>RemoteComputer: Transport event

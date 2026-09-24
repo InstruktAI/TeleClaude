@@ -1,0 +1,98 @@
+---
+description: 'Practical guidance for applying code-quality policy in day-to-day work.'
+visibility: 'public'
+---
+
+# Code Quality Practices — Policy
+
+## Rules
+
+### Structure and Responsibility
+
+- Follow the repository's configuration and established conventions.
+- Introduce new patterns only when required by the intent (**YAGNI**).
+- **SRP**: each module, function, or class has one reason to change. If a description requires "and," split it.
+- Separate core logic from interfaces and operational concerns (**Separation of Concerns**).
+- Prefer designs that are explicit, verifiable, and easy to reason about (**KISS**). Essential complexity is justified; accidental complexity is not.
+- Group by domain concern, not by technical category (**High Cohesion**). No `utils` or `helpers` modules.
+- Build complex behavior by combining simple pieces, not by extending class hierarchies (**Composition over Inheritance**).
+
+### Dependencies and Boundaries
+
+- High-level modules define shapes; low-level modules implement them (**DIP**). Core never imports from adapters.
+- Pass dependencies through parameters or constructors (**Loose Coupling**). Do not import singletons.
+- Only talk to immediate collaborators, not to their internals (**Law of Demeter**). Prefer one dot over a chain.
+- Make contracts explicit and enforce invariants at boundaries.
+- Preserve signature fidelity across all call chains.
+
+### State and Data
+
+- Use structured models to make illegal states unrepresentable.
+- Assign explicit ownership to state and its lifecycle (**Encapsulation**).
+- Default to immutable data. Keep mutable state in a single owner (**Immutability Preference**).
+- Avoid implicit global state or import-time side effects.
+- **The process environment is not an in-process configuration or state channel.** Deployment-time environment is read exactly once, at a single typed, immutable configuration seam; in-process code reads configuration through that seam, never from the environment directly, and never mutates the environment to change its own behavior. Setting the environment for a child process you spawn is the one allowed write — that is the child's startup seam, not in-process state.
+- A fixed set of related identifiers (states, modes, tab/section names, dispatch keys) is owned by one named, namespaced closed type and referenced by member — never inlined as a literal at call sites. Inlined copies drift (casing, typos) and make illegal states representable. The applicable language policy owns the concrete representation.
+- Runtime strings introduced or changed in production logic are referenced through semantic owners rather than inlined at call sites. Language policies define the ownership and placement rules. Test inputs and fixtures follow the testing policy and do not acquire production ownership merely by being moved into test-local constants.
+- **Enforce an invariant at the strongest layer that can express it**, in order: ① make the illegal state unrepresentable in the language's type system; ② use a native type checker or linter rule; ③ add a custom lint or guard **only** when ①–② provably cannot express it, with justification; ④ never use a runtime test for a static property. An invariant a type can express is enforced **by the type** — reaching for a lint, guardrail, regex, or meta-test to police what the type would make unrepresentable is the **lint-as-type-substitute** anti-pattern. It is also a separation-of-concerns violation: domain vocabulary (the values and their canonical owner) lives in the type, never embedded in generic tooling.
+
+### Duplication and Abstraction
+
+- Extract shared **knowledge** to a single owner (**DRY**). Same business rule in two places will diverge.
+- Tolerate duplicated **code** when the alternative couples unrelated domains. Duplication is cheaper than the wrong abstraction.
+- Do not create abstractions for patterns that occur once (**YAGNI**). Wait for a second real consumer.
+
+### Error Handling and Recovery
+
+- Fail fast on contract violations with clear diagnostics. Catch specific exceptions; let programming errors crash.
+- Keep recovery logic explicit and minimal.
+- Make error posture clear: when to stop, when to continue, and why.
+- Validate at system boundaries; trust within (**Fail Fast** at boundaries, not everywhere).
+
+### Concurrency
+
+- Preserve deterministic outcomes under concurrency.
+- Aggregate parallel work explicitly and keep ordering intentional.
+- Protect shared state with explicit ownership or isolation.
+
+### Observability
+
+- Log boundary events and failures with enough context to diagnose.
+- Prefer clarity over volume; log what changes decisions.
+
+### No Shell-Outs from Application Code
+
+- Use the language's native APIs and project helpers for all operations — filesystem, git, network, process management.
+- Do not invoke shell commands or child processes when a native or project-provided API exists.
+- The only escape hatch: the operation requires an external binary that has no language binding or project helper. In that case, the call **must** include a comment justifying why a native approach is not viable.
+- Reviewers **must reject** any shell/process invocation that lacks this justification.
+
+### Naming and Comments
+
+- Name for semantics, not origin. Names must make sense to someone who never saw the feature request or ticket that motivated the change.
+- Comments describe the present, never the past. No "removed X", "used to do Y", "added for Z", and no reference to the bug, ticket, incident, or motivation that prompted the code. Git history and ADRs own the "why it changed"; comments explain what is here now.
+- Comments and docstrings do not restate policy or shared rules. Describe what the code is; the policy is the single owner of the rule — reference it if needed, never duplicate it.
+- **Prose may name the owner of a runtime or configuration value; it never repeats the value.** Numbers, durations, limits, thresholds, ports, paths, defaults, cadences, retention windows, current enum members, configured services, registry contents — anything whose canonical value lives in code, configuration, schema, or a runtime registry. The copy goes stale the moment the value moves, and a reader who finds two answers cannot tell which is authoritative. Forbidden: `Soft-removed todos purge after 7 days.` Allowed: `Removed-todo retention is owned by REMOVED_TODO_RETENTION_WINDOW.` Prose explains purpose, invariants, ownership, and where to look; the declaration states the value once. A comment sitting beside the constant it describes is the clearest case: it has nothing to add by repeating it.
+- When removing code, remove it completely. No `_unused` renames, no `// removed` comments, no re-exports for backward compatibility unless explicitly required.
+
+### Testing Alignment
+
+- In tests, assert observable behavior and contracts, not narrative documentation wording.
+- String content is asserted via snapshots, never literal/substring/pattern comparison. Protocol identifiers go through named constants whose values are snapshot-governed at the schema layer. See `sdlc/policy/testing` → "String Assertions — One Paradigm".
+- The closed-vocabulary rule (State and Data) governs production **call sites**, where an inlined literal drifts and makes illegal states representable. In a test it means importing the production member when behavior turns on its identity — never that a fixture literal must be lifted out of the test body. "Extract this test string into a constant" is not a sanctioned remedy; the test-side owner is the string-assertion paradigm above (snapshot, or imported production member).
+
+## Rationale
+
+Apply the code-quality policy and design principles consistently in daily work. Named principles provide shared vocabulary for structural reasoning; these rules translate them into concrete habits.
+
+## Scope
+
+Applies to all code in the repository.
+
+## Enforcement
+
+Violations should be fixed before merge; reviewers enforce this policy.
+
+## Exceptions
+
+None. If a deviation is required, document the rationale and get explicit approval.

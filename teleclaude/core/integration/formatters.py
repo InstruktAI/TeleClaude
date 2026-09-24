@@ -180,7 +180,7 @@ The squash merge of {branch} into main encountered conflicts:
 **Cardinal rule: preserve the best of both worlds.** Never pick one side wholesale.
 Both branches contain intentional work — merge both contributions.
 
-Full procedure: `telec docs get software-development/procedure/lifecycle/integrate`
+Full procedure: `telec docs get sdlc/procedure/lifecycle/integrate`
 (see CONFLICT RESOLUTION REQUIRED section)
 
 ## Steps

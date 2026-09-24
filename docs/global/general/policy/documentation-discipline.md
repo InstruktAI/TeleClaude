@@ -31,12 +31,12 @@ restart, then check the logs` is directive. One string reaching a human and an
 - **A snippet without `delivered_by` is the current contract; staleness is a
   defect.** If code changes and a current snippet does not, the change updates it
   or marks it pending. Pending state and its clearing on delivery are
-  `software-development/principle/documentation-first-development`; the carriers
+  `sdlc/principle/documentation-first-development`; the carriers
   are `general/procedure/doc-snippet-authoring`.
 
 ### Doc-driven delivery
 
-- **Todo routing belongs to** `software-development/policy/todo-creation-discipline`;
+- **Todo routing belongs to** `sdlc/policy/todo-creation-discipline`;
   this policy governs the documentation once routing is decided and grants no
   authoring authority.
 - **Functionality is doc-driven — snippets first.** A todo that delivers
@@ -45,8 +45,8 @@ restart, then check the logs` is directive. One string reaching a human and an
   builder executes against it and does not decide doc reflection on its own.
 - **A feature spec is owed only for behavioral work delivered through a todo**,
   against the bounded context that owns the behavior; the classification and
-  placement are `software-development/principle/documentation-first-development`
-  and `software-development/procedure/feature-spec-authoring`. Global doctrine
+  placement are `sdlc/principle/documentation-first-development`
+  and `sdlc/procedure/feature-spec-authoring`. Global doctrine
   (policy, principle, procedure, spec) is directive text: reflected and reviewed
   as above, never given a use case.
 - **Agent artifacts are not doc snippets** (`general/policy/agent-artifact-governance`).
@@ -55,7 +55,7 @@ restart, then check the logs` is directive. One string reaching a human and an
 
 - **Governed documentation is never self-reviewed.** A doc-only commit that
   changes a snippet gets an independent fast doc-hygiene review via
-  `/next-review-commits` on its SHA, covering the security lane's
+  `/review-commits` on its SHA, covering the security lane's
   repository-privacy check and the doc-hygiene lane. Both are reviewer judgment,
   never prose scanning. Standalone descriptive prose outside the snippet system,
   such as a README, is not governed content; directive text is, wherever it lives.
@@ -71,7 +71,7 @@ restart, then check the logs` is directive. One string reaching a human and an
 ## Rationale
 
 Documentation leads and code catches up
-(`software-development/principle/documentation-first-development`); this policy
+(`sdlc/principle/documentation-first-development`); this policy
 is that disposition's rule layer.
 
 Reader identity cannot classify a surface that one string serves to both humans
@@ -92,7 +92,7 @@ All agents, all sessions, every documentation change, every domain.
 
 Plan-review applies the documentation lane as a hard gate; build-review and
 commit-review apply it as the backstop
-(`software-development/policy/definition-of-done-lanes`). The independent
+(`sdlc/policy/definition-of-done-lanes`). The independent
 doc-hygiene commit-review catches self-reviewed and stale snippets.
 
 ## Exceptions
@@ -101,4 +101,4 @@ doc-hygiene commit-review catches self-reviewed and stale snippets.
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/policy/todo-creation-discipline.md — owns whether work executes in context or through a todo.
+- ~/.teleclaude/docs/sdlc/policy/todo-creation-discipline.md — owns whether work executes in context or through a todo.

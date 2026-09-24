@@ -339,4 +339,4 @@ output outside reminder-service presentation.
 - docs/project/spec/feature/integration/agent-cli-hook-reception.md
 - docs/project/design/architecture/layer-ownership.md
 - docs/project/design/architecture/ui-adapter.md
-- ~/.teleclaude/docs/software-development/policy/event-log-discipline.md
+- ~/.teleclaude/docs/sdlc/policy/event-log-discipline.md

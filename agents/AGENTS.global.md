@@ -55,13 +55,13 @@ These gates are absolute. Load at their stated boundary, every time.
 
 **Functional code or tests** (write, modify, refactor, or fix):
 
-READ `~/.teleclaude/docs/software-development/domain-baseline-bundle.md`.
+READ `~/.teleclaude/docs/sdlc/domain-baseline-bundle.md`.
 
 Additionally, load the language-specific policy for the code you are touching:
 
-- Python: `telec docs get software-development/policy/python/core software-development/policy/python/testing`
-- TypeScript: `telec docs get software-development/policy/typescript/core software-development/policy/typescript/testing`
-- Rust: `telec docs get software-development/policy/rust/core software-development/policy/rust/testing`
+- Python: `telec docs get sdlc/policy/python/core sdlc/policy/python/testing`
+- TypeScript: `telec docs get sdlc/policy/typescript/core sdlc/policy/typescript/testing`
+- Rust: `telec docs get sdlc/policy/rust/core sdlc/policy/rust/testing`
 
 **Reading documentation in `docs/`**:
 
@@ -93,11 +93,11 @@ telec docs get general/spec/agent-artifacts
 
 Load when you sense the trigger condition. If the condition applies, the load is mandatory.
 
-| When you encounter...                                                        | Load                                                                                    |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| A bug or unexpected behavior                                                 | `telec docs get software-development/procedure/debugging general/concept/failure-modes` |
-| Architectural or structural decisions                                        | `telec docs get software-development/principle/design-fundamentals`                     |
-| Security-sensitive code paths                                                | `telec docs get software-development/policy/security-awareness`                         |
-| Public API or interface changes, owned data, config, or schema shape changes | `telec docs get software-development/policy/backward-compatibility-hygiene`             |
+| When you encounter...                                                        | Load                                                                    |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| A bug or unexpected behavior                                                 | `telec docs get sdlc/procedure/debugging general/concept/failure-modes` |
+| Architectural or structural decisions                                        | `telec docs get sdlc/principle/design-fundamentals`                     |
+| Security-sensitive code paths                                                | `telec docs get sdlc/policy/security-awareness`                         |
+| Public API or interface changes, owned data, config, or schema shape changes | `telec docs get sdlc/policy/backward-compatibility-hygiene`             |
 
 <!-- /LOCKED_FILE -->

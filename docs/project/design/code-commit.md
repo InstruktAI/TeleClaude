@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-@~/.teleclaude/docs/software-development/policy/commits.md
+@~/.teleclaude/docs/sdlc/policy/commits.md
 
 ## Purpose
 
@@ -282,7 +282,7 @@ Deletion-only commits
    `telec code commit` invocation to surface commit-first and post-commit
    review-routing guidance. They then commit with `--approved`; the committed
    diff determines whether a post-commit review is required or recommended per
-   `software-development/policy/commits`. This design owns the mechanics; the
+   `sdlc/policy/commits`. This design owns the mechanics; the
    policy owns the behavioral rule.
 
 6. **Orchestrator restriction.** Orchestrators cannot commit on any branch.
@@ -482,7 +482,7 @@ stages the remaining conflicts, then reruns `telec code commit`.
 ## See also
 
 - docs/project/adr/0047-commit-gates-in-process-no-stash.md
-- docs/global/software-development/design/workspace-scoping.md
-- docs/global/software-development/policy/version-control-safety.md
+- docs/global/sdlc/design/workspace-scoping.md
+- docs/global/sdlc/policy/version-control-safety.md
 - docs/project/adr/0065-integrator-parks-and-drains-with-integrity-only-gating.md — why a slug worktree's only baseline is `origin/main`: the integrator inspects and squashes against it.
 - docs/project/adr/0097-involvement-is-observed-not-adjudicated.md — why the involvement record is resolved from observed presence and never refuses the commit.

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 _FOREIGN_ARTIFACT_CLAIM_DETAIL = (
     "todo '{slug}' is claimed by session '{holder}'; write refused. "
     "Address that session about the concern instead of writing into its "
-    "record (software-development/policy/todo-creation-discipline, "
+    "record (sdlc/policy/todo-creation-discipline, "
     "'Reconcile a flagged live todo')."
 )
 _FOREIGN_UPDATE_CLAIM_DETAIL = (

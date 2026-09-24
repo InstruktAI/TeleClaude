@@ -49,7 +49,7 @@ and how existing installations reach the declared state.
   worktree shares its owning checkout's state precisely because workflow
   creates linked worktrees and defines what they share. That the subject also
   carries a configuration file is not an ownership basis
-  (`software-development/policy/domain-ownership`). Consumers cross each
+  (`sdlc/policy/domain-ownership`). Consumers cross each
   boundary through the owning contract, and no consumer walks the ancestor
   chain, reads a tier declaration, or interprets git metadata itself.
 - **Resolution carries no location logic.** No resolver, loader, or consumer
@@ -96,7 +96,7 @@ and how existing installations reach the declared state.
   the repositories that already hold these files. A configuration file is a
   regular tracked file, so a machine-local path in one would commit local
   topology and resolve nowhere else
-  (`software-development/policy/security-awareness`).
+  (`sdlc/policy/security-awareness`).
 <!-- change:config-schema-home-resolution -->
 - **Every schema reference is relative and fixed by the tier.** A project
   configuration references its schema through the project root's machine-local
@@ -106,7 +106,7 @@ and how existing installations reach the declared state.
   holds, so every machine writes the same bytes for the same document. A
   configuration file is a regular tracked file, so a machine-local path in one
   would commit local topology and resolve nowhere else
-  (`software-development/policy/security-awareness`); the machine-local part
+  (`sdlc/policy/security-awareness`); the machine-local part
   lives in the untracked link instead.
 <!-- /planned-change:config-schema-home-resolution -->
 - **The schema reference is advisory and never load-bearing.** Loading reads

@@ -1,5 +1,5 @@
 ---
-description: 'Orchestration loop for the next-work state machine and worker session handling.'
+description: 'Orchestration loop for the work state machine and worker session handling.'
 visibility: 'public'
 ---
 
@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
+- @~/.teleclaude/docs/sdlc/procedure/lifecycle/overview.md
 
 ## Goal
 
@@ -50,7 +50,7 @@ The state machine owns execution: dispatch, session ending, phase transitions,
 fix relay and terminal cleanup. Execute its returned script; enact
 `telec sessions end self` through `session-departure` rather than inline.
 At a halt, the orchestrator owns classification and recovery routing under
-`software-development/procedure/lifecycle/review` and
+`sdlc/procedure/lifecycle/review` and
 `general/policy/human-contract`, alongside reminder management and tailing.
 That judgment never substitutes for an independent verdict or authorizes a
 state mutation outside the supported lifecycle surface.
@@ -206,7 +206,7 @@ credit, or instability:
 ### Review Threshold Handling (Orchestrator-Owned)
 
 When a preparation or work review reaches its documented threshold, apply
-`software-development/procedure/lifecycle/review` §6. Nothing is refused: the
+`sdlc/procedure/lifecycle/review` §6. Nothing is refused: the
 count is reported once and the orchestrator dispatches an assist against the
 loop, keeping it alive as one of its children for the life of that loop. The
 assist owns the loop-level disposition: whether another review pass is useful
@@ -247,7 +247,7 @@ findings block regardless of round count. The schema has three tiers and every
 tier blocks the verdict — there is no fourth tier and no deferral path.
 
 When a prepare or work review crosses its threshold, the orchestrator dispatches
-`next-assist` against the slug and sends it a line each time a pass lands. Before
+`assist` against the slug and sends it a line each time a pass lands. Before
 re-entering the state machine for another reviewer pass, it waits for the
 assist's turn to complete. A silent assist turn leaves continuation available;
 a stated disposition is the next action this orchestrator executes. That may

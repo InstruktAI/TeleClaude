@@ -166,4 +166,4 @@ None.
 - ~/.teleclaude/docs/general/policy/leadership.md
 - ~/.teleclaude/docs/general/principle/autonomy.md
 - ~/.teleclaude/docs/general/principle/stewardship.md
-- ~/.teleclaude/docs/software-development/policy/process-change-authority.md
+- ~/.teleclaude/docs/sdlc/policy/process-change-authority.md

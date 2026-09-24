@@ -1,7 +1,7 @@
 """Shared inbound resolve-or-create orchestrator: one seam for every UI adapter.
 
 Mirrors ``core/delivery/router.py`` on the inbound side — this module has no
-adapter imports (``software-development`` adapter-boundaries: core never
+adapter imports (``sdlc`` adapter-boundaries: core never
 imports adapter modules).
 """
 

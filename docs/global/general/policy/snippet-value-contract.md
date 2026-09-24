@@ -108,7 +108,7 @@ The default is **skip unless justified**, not "produce when applicable."
     field, never inline body prose. The delivering slug is coordination
     metadata; it never appears in the body. A pending snippet's body reads as
     present-tense contract — `delivered_by` is the only thing that says "not
-    yet" (`software-development/principle/documentation-first-development`).
+    yet" (`sdlc/principle/documentation-first-development`).
   - **Future framing** ("will", "is planned", "the new surface is going to")
     → present-tense description of the intended shape. Forward design is
     written as contract, not as forecast.
@@ -156,7 +156,7 @@ governs a rule's _reason_, not a worked demonstration kept for its own sake.
 
 - **`project/design/architecture`** — Skeleton mostly correct, but the
   "Inputs/Outputs" section restated the public logging contract that already
-  lives in `software-development/policy/python/logging`. Net new signal
+  lives in `sdlc/policy/python/logging`. Net new signal
   ≈ 20%. Anti-pattern: **Duplication** (the global policy already answers it).
   Correct shape: a one-line reverse pointer to the global policy plus any
   project-specific layering, if any exists.
@@ -164,8 +164,8 @@ governs a rule's _reason_, not a worked demonstration kept for its own sake.
   `monkeypatch` usage. Every Python repository tests this way. Anti-pattern:
   **Genericity**. Correct outcome: skip the snippet. The language's testing
   policy answers it.
-- **`project/policy/conventions`** — Restated `software-development/policy/python/core`,
-  `software-development/policy/python/tooling`, and `[tool.ruff]` from
+- **`project/policy/conventions`** — Restated `sdlc/policy/python/core`,
+  `sdlc/policy/python/tooling`, and `[tool.ruff]` from
   `pyproject.toml`. Anti-pattern: **Restatement** + **Duplication**.
   Correct outcome: skip; the global Python policies and the source
   configuration both answer it.
@@ -184,12 +184,12 @@ governs a rule's _reason_, not a worked demonstration kept for its own sake.
   constraints invisible in the YAML (why a step exists, what failure mode
   it defends).
 - **`project/spec/configuration`** — Restated the per-app environment-variable
-  contract that lives in `software-development/policy/python/logging`. This
+  contract that lives in `sdlc/policy/python/logging`. This
   is the most catastrophic case in the set: **the project IS the
   implementation of the global policy**, and the snippet duplicated the
   contract instead of pointing back. Anti-pattern: **Duplication** of a
   global policy by its own implementing project. Correct shape: a
-  reverse-pointer snippet — `See also: software-development/policy/python/logging`
+  reverse-pointer snippet — `See also: sdlc/policy/python/logging`
   — plus any project-local extension if one exists. This is the canonical
   example of why the **Reverse pointers** value-creator exists.
 
@@ -225,7 +225,7 @@ Applies to all snippet authoring contexts:
 
 - Manual snippet authoring via `general/procedure/doc-snippet-authoring`.
 - Automated authoring during `/projects-analyze` via
-  `software-development/procedure/project-analysis`.
+  `sdlc/procedure/project-analysis`.
 - Future authoring flows (company onboarding, scaffolding, manual updates).
 
 The contract is procedural, not structural. It is enforced by the author
@@ -237,7 +237,7 @@ would violate `general/principle/intelligence-boundaries`.
 
 - `general/procedure/doc-snippet-authoring` Required-reads this policy and
   installs Step 0 ("Earn the snippet") before taxonomy interpretation.
-- `software-development/procedure/project-analysis` Required-reads
+- `sdlc/procedure/project-analysis` Required-reads
   `doc-snippet-authoring`, transitively inheriting this policy.
 - Reviewers apply the value test during snippet review. A snippet that
   fails the test is rejected; the reviewer either skips it or replaces it

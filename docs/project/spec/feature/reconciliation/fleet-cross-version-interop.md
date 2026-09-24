@@ -7,7 +7,7 @@ description: "A deliberately multi-version fleet keeps interoperating — nodes 
 
 ## Required reads
 
-- docs/global/software-development/spec/feature-spec.md
+- docs/global/sdlc/spec/feature-spec.md
 - @docs/project/spec/domain/reconciliation.md
 
 ## What it is

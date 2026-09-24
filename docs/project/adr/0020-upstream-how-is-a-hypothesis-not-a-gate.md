@@ -37,7 +37,7 @@ the human is surfaced only when correcting the HOW forces a scope/intent change.
 
 We explicitly **reject a creation-time gate** that blocks or rejects inputs for
 carrying HOW. The rule lives on the consumer side, codified in
-`software-development/policy/preparation-artifact-quality` (the "Consuming
+`sdlc/policy/preparation-artifact-quality` (the "Consuming
 upstream intent — HOW is a hypothesis" rule), backed by the producer-side
 input-quality rule and by `general/principle/grounding`.
 

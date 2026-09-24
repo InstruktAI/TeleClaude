@@ -7,9 +7,9 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/domain-ownership.md
-- @~/.teleclaude/docs/software-development/principle/architecture-boundary-purity.md
-- @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
+- @~/.teleclaude/docs/sdlc/policy/domain-ownership.md
+- @~/.teleclaude/docs/sdlc/principle/architecture-boundary-purity.md
+- @~/.teleclaude/docs/sdlc/principle/design-fundamentals.md
 
 ## Purpose
 

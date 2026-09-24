@@ -174,6 +174,6 @@ Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 ## See Also
 
 - ~/.teleclaude/docs/general/procedure/project-onboarding.md
-- ~/.teleclaude/docs/software-development/procedure/project-analysis.md
-- ~/.teleclaude/docs/software-development/spec/init-scaffolding.md
+- ~/.teleclaude/docs/sdlc/procedure/project-analysis.md
+- ~/.teleclaude/docs/sdlc/spec/init-scaffolding.md
 - ~/.teleclaude/docs/general/procedure/company-onboarding.md

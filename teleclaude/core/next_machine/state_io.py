@@ -105,7 +105,7 @@ def _sync_artifact_state(cwd: str, slug: str, artifact_name: str, *, produced: b
 
     if produced:
         _emit_prepare_event(
-            "domain.software-development.prepare.artifact_produced",
+            "domain.sdlc.prepare.artifact_produced",
             {"slug": slug, "artifact": artifact_name, "digest": digest},
         )
 

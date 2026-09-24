@@ -9,7 +9,7 @@ delivered_by:
 ## Required reads
 
 - @~/.teleclaude/docs/general/principle/trust-and-guardrails.md
-- @~/.teleclaude/docs/software-development/policy/ai-agent-security.md
+- @~/.teleclaude/docs/sdlc/policy/ai-agent-security.md
 
 ## Rules
 

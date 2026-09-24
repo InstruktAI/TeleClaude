@@ -103,7 +103,7 @@ TeleClaudeNext.
   to the context that creates linked worktrees and defines what they share.
   Carrying a configuration file is not an ownership basis. The decomposition is
   `project/design/architecture/config-tier-resolution`.
-- **Also owns:** the canonical `general/next-run-job` command name and every
+- **Also owns:** the canonical `general/run-job` command name and every
   scheduler emission of it, because the command executes the configured job
   declaration and changes when that job model changes. `agent_runtime` consumes
   the emitted value through its ordinary command-dispatch contract and owns the

@@ -10,8 +10,8 @@ visibility: public
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
-- docs/global/software-development/spec/domain-spec.md
+- docs/global/sdlc/principle/domain-driven-design.md
+- docs/global/sdlc/spec/domain-spec.md
 - @docs/project/spec/domain/agent_runtime.md
 
 ## What it is

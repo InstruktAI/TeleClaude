@@ -5,14 +5,14 @@ CREATION_VALIDITY_GATE_ITEM = (
     "   create nothing; hold and icebox do not make it valid.\n\n"
     "- Direct execution — if the settled work belongs in-context, execute it with the authority already held\n"
     "   and create no lifecycle record.\n\n"
-    "Authority: software-development/policy/todo-creation-discipline.\n"
+    "Authority: sdlc/policy/todo-creation-discipline.\n"
 )
 
 
 def render_todo_creation_gate(approval_flag: str) -> str:
     return (
         "Nothing was created. Face these before this work enters the lifecycle\n"
-        "(software-development/policy/todo-creation-discipline governs every one):\n\n"
+        "(sdlc/policy/todo-creation-discipline governs every one):\n\n"
         f"{CREATION_VALIDITY_GATE_ITEM}\n"
         "- Doc-only - documentation, ADRs, README, agent artifacts? After the\n"
         "   applicable authoring gate opens, execute it in-context per\n"
@@ -23,7 +23,7 @@ def render_todo_creation_gate(approval_flag: str) -> str:
         "     telec todo artifacts read <slug> input\n\n"
         "- Ownership & authority - owning project of the changed files correct\n"
         "   (--project-root)? A process-layer change carries a live human\n"
-        "   decision per software-development/policy/process-change-authority?\n"
+        "   decision per sdlc/policy/process-change-authority?\n"
         "   A human was present at this filing, declared (--human-involved)?\n\n"
         "Only once these are faced, create with:\n"
         f"  telec todo create {approval_flag} <slug> <content> --kind <feature|change|bug|task>\n"

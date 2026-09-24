@@ -102,7 +102,7 @@ start when that compiler is missing, so the remedy is stated before any work beg
 rather than at the launcher step.
 
 Each bundle is signed for a stable code identity that survives rebuilds, per
-`software-development/procedure/macos-stable-code-signing`: one shared machine-local
+`sdlc/procedure/macos-stable-code-signing`: one shared machine-local
 signing authority with a per-executable identifier, so Full Disk Access grants keep
 matching after a recompile. The build resolves that authority itself: it creates the
 self-signed certificate when none exists, exports a backup for reissuing it elsewhere,

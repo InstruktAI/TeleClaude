@@ -110,7 +110,7 @@ def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchCl
     """Classify a session-create launch by its requested command for driver-start dedup.
 
     The create-door guard keys on what the requested launch IS (`DriverLaunchClass`):
-    a lifecycle orchestrator command is an ``ORCHESTRATOR`` driver, ``/next-run-task``
+    a lifecycle orchestrator command is an ``ORCHESTRATOR`` driver, ``/run-task``
     is the ``TASK_LANE`` driver, a reviewer command (identified by its `JobRole` in
     `COMMAND_ROLE_MAP` rather than a hand-maintained list, so a review command added
     later inherits the class automatically) is ``REVIEWER``, and every other command
@@ -124,7 +124,7 @@ def classify_driver_launch(command: SlashCommand | str | None) -> DriverLaunchCl
         command = resolved
     if command is None:
         return DriverLaunchClass.WORKER_CHILD
-    if command is SlashCommand.NEXT_RUN_TASK:
+    if command is SlashCommand.RUN_TASK:
         return DriverLaunchClass.TASK_LANE
     role_info = COMMAND_ROLE_MAP.get(command)
     if role_info is not None and role_info[0] == ROLE_ORCHESTRATOR:

@@ -16,7 +16,7 @@ from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_status import is_session_terminal
 from teleclaude.core.session_title import compose_command_session_title
 
-_COORDINATOR_COMMAND = SlashCommand.NEXT_COORDINATE.value
+_COORDINATOR_COMMAND = SlashCommand.COORDINATE.value
 _IDENTITY_RECONCILIATION_ERROR = "Adopted coordinator identity document could not be reconciled"
 ADOPTION_REASON_NO_LIVE_HOLDER = "no_live_holder"
 ADOPTION_REASON_CALLER_ALREADY_HOLDER = "caller_already_holder"
@@ -29,7 +29,7 @@ REFUSED_MESSAGE = (
 )
 ADOPTED_MESSAGE = (
     "This session is now the project's coordinator. Fetch "
-    "`software-development/procedure/lifecycle/coordinate` with `telec docs get`, read every required read "
+    "`sdlc/procedure/lifecycle/coordinate` with `telec docs get`, read every required read "
     "it lists in full, then follow the procedure."
 )
 

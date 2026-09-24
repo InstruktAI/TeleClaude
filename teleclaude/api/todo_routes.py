@@ -449,7 +449,7 @@ async def _emit_todo_updated(*, slug: str, cwd: str) -> None:
             event="workflow.todo.updated",
             source="api.todo.update",
             level=EventLevel.WORKFLOW,
-            domain="software-development",
+            domain="sdlc",
             payload={
                 "slug": slug,
                 "updated_at": datetime.now(UTC).isoformat(),
@@ -711,7 +711,7 @@ async def todo_content_create(
             event="workflow.todo.created",
             source="api.todo.create",
             level=EventLevel.WORKFLOW,
-            domain="software-development",
+            domain="sdlc",
             payload={
                 "slug": slug,
                 "kind": None if request.kind is None else map_v1_kind_to_canonical(request.kind),

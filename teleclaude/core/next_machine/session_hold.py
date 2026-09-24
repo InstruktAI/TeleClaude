@@ -92,7 +92,7 @@ async def _emit_todo_updated(*, slug: str, project_path: str, source: str) -> No
             event="workflow.todo.updated",
             source=source,
             level=EventLevel.WORKFLOW,
-            domain="software-development",
+            domain="sdlc",
             payload={
                 "slug": slug,
                 "project_path": project_path,

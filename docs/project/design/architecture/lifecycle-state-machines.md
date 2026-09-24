@@ -28,11 +28,11 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 ### Referenced doc snippets
 
-| Snippet ID                                          | Content                                     |
-| --------------------------------------------------- | ------------------------------------------- |
-| `software-development/procedure/lifecycle-overview` | Full lifecycle phases and handoffs          |
-| `general/procedure/orchestration`                   | Orchestration loop and dispatch rules       |
-| `project/spec/integration-orchestrator`             | Integration contract (events, lease, queue) |
+| Snippet ID                              | Content                                     |
+| --------------------------------------- | ------------------------------------------- |
+| `sdlc/procedure/lifecycle-overview`     | Full lifecycle phases and handoffs          |
+| `general/procedure/orchestration`       | Orchestration loop and dispatch rules       |
+| `project/spec/integration-orchestrator` | Integration contract (events, lease, queue) |
 
 ## Inputs/Outputs
 
@@ -174,15 +174,15 @@ flowchart TB
 
 All workers are dispatched via `telec sessions run`. The machine specifies the command; the orchestrator specifies agent and thinking mode.
 
-| Phase    | Worker Role                               | Command                                                                                                    | Thinking Mode      |
-| -------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------ |
-| Prepare  | Intaker / Architect / Diagnoser / Planner | `/next-prepare-intake`, `/next-prepare-architecture`, `/next-prepare-diagnose` (bug), `/next-prepare-plan` | `slow`             |
-| Prepare  | Drift Analyzer                            | `/next-drift-analyze`                                                                                      | `fast`             |
-| Prepare  | Reviewer                                  | `/next-review-architecture`, `/next-review-plan`                                                           | `slow`             |
-| Build    | Builder                                   | `/next-build` (all kinds, incl. bug)                                                                       | `med`              |
-| Review   | Reviewer                                  | `/next-review-build`                                                                                       | `slow` (mandatory) |
-| Fix      | Fixer                                     | _(no dispatch — reviewer opens a direct conversation with the existing builder session)_                   | _(reused)_         |
-| Finalize | Finalizer                                 | `/next-finalize`                                                                                           | `med`              |
+| Phase    | Worker Role                               | Command                                                                                  | Thinking Mode      |
+| -------- | ----------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------ |
+| Prepare  | Intaker / Architect / Diagnoser / Planner | `/prepare-intake`, `/prepare-architecture`, `/prepare-diagnose` (bug), `/prepare-plan`   | `slow`             |
+| Prepare  | Drift Analyzer                            | `/drift-analyze`                                                                         | `fast`             |
+| Prepare  | Reviewer                                  | `/review-architecture`, `/review-plan`                                                   | `slow`             |
+| Build    | Builder                                   | `/build` (all kinds, incl. bug)                                                          | `med`              |
+| Review   | Reviewer                                  | `/review-build`                                                                          | `slow` (mandatory) |
+| Fix      | Fixer                                     | _(no dispatch — reviewer opens a direct conversation with the existing builder session)_ | _(reused)_         |
+| Finalize | Finalizer                                 | `/finalize`                                                                              | `med`              |
 
 ### Detailed documentation
 

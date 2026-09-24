@@ -104,6 +104,6 @@ And the project is left with no owner rather than a partial one
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/policy/code-quality-practices.md — the structural-model rule under which a second simultaneous owner is excluded by the model rather than detected after the fact.
+- ~/.teleclaude/docs/sdlc/policy/code-quality-practices.md — the structural-model rule under which a second simultaneous owner is excluded by the model rather than detected after the fact.
 - docs/project/spec/feature/config/tier-permissions.md — the permission axes a project root answers, including a project that sits inside a person's personal space.
 - docs/project/spec/feature/config/organizational-membership.md — project assignment, which states who may work in a project and never whose it is.

@@ -32,7 +32,7 @@ _PREPARE_REVIEW_PHASES: dict[PreparePhase, ReviewPhase] = {
 }
 _THRESHOLD_REPORT_TEMPLATE = (
     "Review round threshold crossed for {slug}: phase={phase}, admitted={admitted}, "
-    f"threshold={{threshold}}. Dispatch an assist against this loop: run /{SlashCommand.NEXT_ASSIST.value} for "
+    f"threshold={{threshold}}. Dispatch an assist against this loop: run /{SlashCommand.ASSIST.value} for "
     "{slug}, phase {phase}, giving it the target, the review evidence ({report_artifact}), "
     "both sessions, and the contract under dispute. Nothing is refused — continue "
     "dispatching or reusing the reviewer as usual."

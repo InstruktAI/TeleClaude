@@ -86,7 +86,7 @@ FLAG_TAIL_TOOLS = Flag("--tools", desc="Include tool use entries", arity=SWITCH)
 FLAG_TAIL_FULL = Flag("--full", desc="Show all projected messages instead of the latest user turn", arity=SWITCH)
 FLAG_TAIL_PANE = Flag("--pane", desc="Show the current terminal pane instead of transcript messages", arity=SWITCH)
 
-FLAG_RUN_COMMAND = Flag("--command", desc="Bare canonical command (e.g. next-build)", arity=VALUE)
+FLAG_RUN_COMMAND = Flag("--command", desc="Bare canonical command (e.g. build)", arity=VALUE)
 FLAG_RUN_ARGS = Flag("--args", desc="Command arguments", arity=VALUE)
 FLAG_RUN_SUBFOLDER = Flag("--subfolder", desc="Subdirectory within the project", arity=VALUE)
 FLAG_RUN_ADDITIONAL_CONTEXT = Flag(
@@ -184,7 +184,7 @@ FLAG_TODO_KIND = Flag(
         f"The work-unit's entry point into the lifecycle: {TODO_KIND_USAGE}. Always set it "
         "when creating via the CLI — agents classify their own todos; omitting it is the "
         "TUI dump path only. --kind task is side-effect-only and never touches the repo "
-        "(software-development/spec/todo-kind-task) — code work is change/feature/bug."
+        "(sdlc/spec/todo-kind-task) — code work is change/feature/bug."
     ),
     arity=VALUE,
 )
@@ -193,7 +193,7 @@ FLAG_TODO_CREATE_APPROVED = Flag(
     desc=(
         "Declares the pre-creation decisions were faced. Without it a complete creation "
         "request creates nothing and points to "
-        "software-development/policy/todo-creation-discipline."
+        "sdlc/policy/todo-creation-discipline."
     ),
     arity=SWITCH,
 )
@@ -346,7 +346,7 @@ FLAG_STAMP_KIND_ASSIGN = Flag(
     "--kind-assign",
     desc=(
         f"Assign kind and enter that kind's lifecycle entry phase: <{TODO_KIND_USAGE}> [content]. "
-        "task is side-effect-only and never touches the repo (software-development/spec/todo-kind-task)."
+        "task is side-effect-only and never touches the repo (sdlc/spec/todo-kind-task)."
     ),
     arity=GREEDY,
 )

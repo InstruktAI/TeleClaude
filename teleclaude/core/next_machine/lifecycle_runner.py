@@ -100,12 +100,12 @@ def _command_for_lane(lane: RunnerLane) -> tuple[str, str]:
     if lane is RunnerLane.ANALYZE:
         return f"/{SlashCommand.ANALYZE_TODO_INPUT.value}", ""
     if lane is RunnerLane.TASK_PREPARE:
-        return f"/{SlashCommand.NEXT_PREPARE_TASK.value}", ""
+        return f"/{SlashCommand.PREPARE_TASK.value}", ""
     if lane is RunnerLane.TASK_RUN:
-        return f"/{SlashCommand.NEXT_RUN_TASK.value}", ""
+        return f"/{SlashCommand.RUN_TASK.value}", ""
     if lane is RunnerLane.WORK:
-        return f"/{SlashCommand.NEXT_WORK.value}", ""
-    return f"/{SlashCommand.NEXT_PREPARE.value}", ""
+        return f"/{SlashCommand.WORK.value}", ""
+    return f"/{SlashCommand.PREPARE.value}", ""
 
 
 def _role_for_lane(lane: RunnerLane) -> tuple[str, JobRole]:

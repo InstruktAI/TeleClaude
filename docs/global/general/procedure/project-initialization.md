@@ -85,7 +85,6 @@ Source: `teleclaude/project_setup/plumbing.py:converge_plumbing()`
 
 ### 5. Sync project artifacts
 
-
 Runs the bootstrap sync — validation runs and reports findings without blocking — to build
 snippet indexes, inflate `AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to
 agent runtimes.
@@ -116,7 +115,6 @@ appends the project's durable main checkout to `~/.teleclaude/projects.yaml`
 idempotently. The registered path is always that canonical checkout: invoked
 from a linked worktree, initialization resolves back to the owning checkout, so
 an ephemeral worktree path never enters the registry.
-
 
 `telec projects init` is the **sole** writer of the project registry. Publication
 must not mutate `~/.teleclaude/projects.yaml`. Once registered, the project
@@ -175,6 +173,6 @@ Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 ## See Also
 
 - ~/.teleclaude/docs/general/procedure/project-onboarding.md
-- ~/.teleclaude/docs/software-development/procedure/project-analysis.md
-- ~/.teleclaude/docs/software-development/spec/init-scaffolding.md
+- ~/.teleclaude/docs/sdlc/procedure/project-analysis.md
+- ~/.teleclaude/docs/sdlc/spec/init-scaffolding.md
 - ~/.teleclaude/docs/general/procedure/company-onboarding.md

@@ -7,8 +7,8 @@ visibility: 'public'
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
-- docs/global/software-development/spec/domain-spec.md
+- docs/global/sdlc/principle/domain-driven-design.md
+- docs/global/sdlc/spec/domain-spec.md
 - @docs/project/spec/domain/workflow.md
 
 ## What it is
@@ -206,7 +206,6 @@ And "telec todo list --include-delivered" can show the delivered history
 And a new "shipped-thing" slug may be created because the unique-slug index excludes delivered entries
 ```
 
-
 #### UC-WM31: Delivery without a commit is refused for SDLC work
 
 ```
@@ -216,7 +215,6 @@ Then the delivery is refused and the command exits non-zero naming the missing p
 And the entry keeps its current status with no delivered_at and no delivered_commit
 And the pending documentation material reconciled for the attempted delivery is left as it was
 ```
-
 
 ```
 Given an active todo "feature-y" that is no longer wanted

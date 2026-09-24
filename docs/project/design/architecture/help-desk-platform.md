@@ -79,9 +79,9 @@ The help desk is a standalone git repository, separate from the TeleClaude codeb
 ```
 
 <!-- planned-change:align-config-cli-ownership -->
-The `docs/global/organization/` directory follows the standard global-docs convention: `telec projects init` symlinks it to `~/.teleclaude/docs/organization/`, making org-level documentation visible across all projects on the machine (same mechanism TeleClaude uses for `general/` and `software-development/`).
+The `docs/global/organization/` directory follows the standard global-docs convention: `telec projects init` symlinks it to `~/.teleclaude/docs/organization/`, making org-level documentation visible across all projects on the machine (same mechanism TeleClaude uses for `general/` and `sdlc/`).
 <!-- change:align-config-cli-ownership -->
-The `docs/global/organization/` directory follows the standard global-docs convention: `telec config project init` symlinks it to `~/.teleclaude/docs/organization/`, making org-level documentation visible across all projects on the machine (same mechanism TeleClaude uses for `general/` and `software-development/`).
+The `docs/global/organization/` directory follows the standard global-docs convention: `telec config project init` symlinks it to `~/.teleclaude/docs/organization/`, making org-level documentation visible across all projects on the machine (same mechanism TeleClaude uses for `general/` and `sdlc/`).
 <!-- /planned-change:align-config-cli-ownership -->
 
 The `docs/project/` directory holds help-desk-specific documentation — escalation rules, support SLAs, procedures — scoped to this project only. The escalation tool spec, policy, and procedure live here and are referenced by the operator brain artifact via `## Required reads`.
@@ -96,12 +96,12 @@ The `AGENTS.master.md` compiles into `AGENTS.md` (same as all agent artifacts) a
 
 ### Organization Doc Domain
 
-A new `organization` domain sits alongside `general` and `software-development` in the global doc snippet hierarchy:
+A new `organization` domain sits alongside `general` and `sdlc` in the global doc snippet hierarchy:
 
 ```
 ~/.teleclaude/docs/
 ├── general/                # cross-project platform knowledge
-├── software-development/   # coding standards and practices
+├── sdlc/   # coding standards and practices
 └── organization/           # NEW: org product docs, policies, FAQ — visible everywhere
 ```
 

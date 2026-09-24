@@ -9,9 +9,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-AUTHORING_GUIDE = (
-    "software-development/procedure/snapshot-testing (docs/global/software-development/procedure/snapshot-testing.md)"
-)
+AUTHORING_GUIDE = "sdlc/procedure/snapshot-testing (docs/global/sdlc/procedure/snapshot-testing.md)"
 EXEMPTIONS_PATH = Path(".teleclaude/snapshot-testing-exemptions.txt")
 STRING_METHODS = frozenset({"startswith", "endswith", "find", "index", "__contains__"})
 REGEX_METHODS = frozenset({"match", "search", "fullmatch"})

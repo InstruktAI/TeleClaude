@@ -7,7 +7,7 @@ description: Envelope-authoritative conversation delivery — one grammar regist
 ## Required reads
 
 @docs/project/design/architecture/human-message-envelope.md
-@~/.teleclaude/docs/software-development/policy/python/logging.md
+@~/.teleclaude/docs/sdlc/policy/python/logging.md
 
 ## Purpose
 

@@ -7,7 +7,7 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/principle/documentation-first-development.md
+- @~/.teleclaude/docs/sdlc/principle/documentation-first-development.md
 
 ## What it is
 
@@ -29,7 +29,7 @@ converge. The feature names each
 
 class explicitly, records the provenance needed to detect it, derives a
 status per class on every `telec todo prepare` call, and routes a
-`/software-development/next-drift-analyze` worker when classification cannot be made
+`/sdlc/drift-analyze` worker when classification cannot be made
 deterministically from evidence alone.
 
 Drift detection is **fail-safe by design**: when provenance is missing,
@@ -46,10 +46,10 @@ cleared by the existing `--drift-reviewed` stamp surface. It also
 participates at the work-entry boundary: `telec todo work` calls the same
 shared derivation function before its `prepared → build_started` handoff. The
 work state machine owns the work-entry continuation — on a `pending` collapsed
-status it dispatches the `software-development/next-drift-analyze` worker and the orchestrator
+status it dispatches the `sdlc/drift-analyze` worker and the orchestrator
 re-enters `telec todo work {slug}`; on the re-entered `substantive` status it
 promotes the claim-holder in place to `prepare-orchestrator` and hands that
-session off to drive `/software-development/next-prepare {slug}`; on `cosmetic` (valid anchor) it
+session off to drive `/sdlc/prepare {slug}`; on `cosmetic` (valid anchor) it
 proceeds. The work orchestrator never calls `telec todo prepare`. Autonomous
 continuation needs no human gate on either verdict: the promoted session
 re-derives and self-ends through the prepare terminal, and work resumes only
@@ -90,8 +90,8 @@ copy that goes stale when its source moves (`general/principle/grounding`). It i
 scoped to a dependency's artifacts, never to the `after` edges themselves, which
 stay gate-only (`project/spec/feature/workflow/dependency-graph`):
 
-| Class                   | Evidence checked                                                                                                                                                                                                  | When pending                                                                                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Class                   | Evidence checked                                                                                                                                                                                                                                                       | When pending                                                                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | **dependency-artifact** | For each dependency in the Todo's `after` set when the implementation-plan was written, the digest of that dependency's intent and prepared artifacts (`input`, `prd`, `architecture`, `diagnosis`, `implementation-plan` — whichever exist) vs their current digests. | A dependency still in the `after` set and not yet delivered has had one of those artifacts rewritten or removed since the plan was written. |
 
 A delivered dependency is not evaluated: what it delivered reaches the plan
@@ -220,7 +220,7 @@ new phase:
   derivation, the machine computes drift status for every present tracked
   artifact in the coverage matrix across every applicable class.
 - If any artifact's overall drift status is `pending`, the machine routes
-  to the BLOCKED branch and emits a `/software-development/next-drift-analyze` dispatch
+  to the BLOCKED branch and emits a `/sdlc/drift-analyze` dispatch
   instruction, listing the artifacts and classes pending review.
 - If any re-derivable artifact's drift status is `substantive`, the machine
   clears the artifact's review verdict (and every downstream artifact's review
@@ -235,7 +235,7 @@ new phase:
 - If every artifact's drift status is `fresh` or `cosmetic`, the machine
   derives `PREPARED` (subject to the other gates) and the chain proceeds.
 
-The `/software-development/next-drift-analyze` worker reads the pending classes per artifact,
+The `/sdlc/drift-analyze` worker reads the pending classes per artifact,
 inspects the appropriate evidence for every pending class, and stamps
 **one verdict per artifact** (the per-artifact stamp shape with multi-
 dimensional evidence anchor; the CLI signature
@@ -273,9 +273,9 @@ order in work entry becomes:
    any worktree** (drift derivation compares against `origin/main` HEAD and
    persisted provenance; no worktree is required).
 5. If a collapsed drift status is `pending`, dispatch the
-   `software-development/next-drift-analyze` worker and have the orchestrator re-enter on
+   `sdlc/drift-analyze` worker and have the orchestrator re-enter on
    `telec todo work`; if it is `substantive`, promote the claim-holder in
-   place and hand that session off to drive `/software-development/next-prepare {slug}`. **No
+   place and hand that session off to drive `/sdlc/prepare {slug}`. **No
    worktree created. No state mutated.**
 6. Only when every artifact's collapsed drift status is `fresh` or
    `cosmetic` (with a valid anchor): proceed with worktree preparation,
@@ -297,10 +297,10 @@ Detail of the call itself:
 - When the shared derivation reports a tracked artifact's collapsed
   status as `pending` or `substantive`, work does NOT advance
   `lifecycle_phase` and does NOT create or touch the worktree. On `pending`
-  it dispatches the `software-development/next-drift-analyze` worker and the orchestrator
+  it dispatches the `sdlc/drift-analyze` worker and the orchestrator
   re-enters `telec todo work {slug}`; on `substantive` it promotes the
   claim-holder in place to `prepare-orchestrator` and hands that session off
-  to drive `/software-development/next-prepare {slug}`. The work orchestrator never calls
+  to drive `/sdlc/prepare {slug}`. The work orchestrator never calls
   `telec todo prepare`.
 - When every tracked artifact's collapsed status is `fresh` or `cosmetic`
   (with a valid evidence anchor), work proceeds with the existing
@@ -595,14 +595,14 @@ Scenario: work entry bounces to prepare on pending drift, then resumes autonomou
   And the work machine does NOT advance lifecycle_phase
   And the work machine does NOT create or touch the worktree
   And the orchestrator follows the script and calls "telec todo prepare my-feature"
-  And the prepare BLOCKED branch dispatches the software-development/next-drift-analyze worker
+  And the prepare BLOCKED branch dispatches the sdlc/drift-analyze worker
   And the analyzer stamps "--drift-reviewed implementation-plan cosmetic '<reason>'"
   And the cosmetic stamp records the current evidence anchor
   And the next "telec todo prepare my-feature" call derives PREPARED
   And the PREPARED terminal's lineage-conditioned reminder resumes the bounced work orchestrator at "telec todo work my-feature"
   And the orchestrator follows that script
   And work re-runs drift derivation, observes fresh/valid-anchor status
-  And proceeds with worktree creation and software-development/next-build dispatch
+  And proceeds with worktree creation and sdlc/build dispatch
   And no human gate fires anywhere in the round-trip
 ```
 
@@ -705,7 +705,7 @@ Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
 
 ### Cross-context references
 
-- `agent_runtime` — the `/software-development/next-drift-analyze` worker session is dispatched
+- `agent_runtime` — the `/sdlc/drift-analyze` worker session is dispatched
   via the same `agent_runtime.session.started` event shape as
   architecture/plan reviewers. Reuse-or-spawn matching applies per
   `prepare-state-machine#reviewer-reuse`.
@@ -810,7 +810,7 @@ Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/drift-analyze.md
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/drift-analyze.md
 - docs/project/spec/feature/workflow/prepare-state-machine.md
 - docs/project/design/architecture/prepare-flow.md
 - docs/project/spec/feature/workflow/state-stamping.md

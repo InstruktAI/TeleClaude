@@ -8,8 +8,8 @@ visibility: 'public'
 ## Required reads
 
 - @~/.teleclaude/docs/general/procedure/project-initialization.md
-- @~/.teleclaude/docs/software-development/procedure/project-analysis.md
-- @~/.teleclaude/docs/software-development/spec/init-scaffolding.md
+- @~/.teleclaude/docs/sdlc/procedure/project-analysis.md
+- @~/.teleclaude/docs/sdlc/spec/init-scaffolding.md
 
 ## Goal
 

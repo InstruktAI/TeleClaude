@@ -20,7 +20,7 @@ One-off operations (e.g., initial YouTube subscription fetch during onboarding) 
 ### Execution ownership
 
 An agent job executes the procedure named by its declaration. That procedure owns
-the task, its artifacts, and its recovery steps; the `next-run-job` brief binds
+the task, its artifacts, and its recovery steps; the `run-job` brief binds
 the job role and submits its structured outcome. A script job runs in-process
 and returns its outcome directly. Scheduling, dispatch, and outcome notification
 belong to the runner.
@@ -164,7 +164,6 @@ and the walk continues.
 
 ### Configuration surface
 
-
 #### Project-level: `teleclaude.yml`
 
 The project-root `teleclaude.yml` registers a project's jobs as a list under the `jobs:` key;
@@ -200,7 +199,6 @@ that composed set rather than raw entries.
 published jobs available to every project; a project runs a published job only by subscribing
 to it. `~/.teleclaude/people/{name}/teleclaude.yml` carries per-subscriber configuration.
 Discovery (`teleclaude/cron/discovery.py`) scans both for subscribers of a given service.
-
 
 ## Primary flows
 
@@ -263,7 +261,7 @@ class JobResult:
    outputs and recovery, and sync it so its ID resolves.
 2. Register in `teleclaude.yml` with `job` carrying the procedure's snippet ID.
 
-The runner dispatches `/next-run-job <id>` through the canonical command-session contract,
+The runner dispatches `/run-job <id>` through the canonical command-session contract,
 rooted at the project the run belongs to, and opens a run keyed by that project and ID. The
 agent loads the procedure with its required-read closure, does its work, writes a run report
 under its project's run directory, reports its outcome via `telec jobs report <id>`, and
@@ -272,7 +270,6 @@ An agent outcome carries the reporting session's identity as well as the project
 and job. The sweep closes only the run opened for that session; a late outcome
 from an earlier run cannot close its successor.
 
-
 ### Schedule semantics
 
 A job runs on the cadence declared in its `when` block — an interval (`every`, e.g.
@@ -280,7 +277,6 @@ A job runs on the cadence declared in its `when` block — an interval (`every`,
 Exactly one of `every`/`at` is set. The full scheduling contract is
 `project/spec/feature/config/job-schedule-contract`. Jobs that have never run wait for the
 first scheduled occurrence after discovery.
-
 
 ### Run lifecycle persistence
 
@@ -362,4 +358,4 @@ cron_runner.py --list       List available jobs and their status
 
 An agent job's complete mandate is the procedure its `job` pointer names. There is no
 separate job document: the procedure carries the workflow and its dependencies;
-the `next-run-job` brief supplies the job-role boundary and structured close-out.
+the `run-job` brief supplies the job-role boundary and structured close-out.

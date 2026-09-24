@@ -28,17 +28,17 @@ Defined in `teleclaude/config/schema.py` as `ProficiencyLevel`:
 
 Three fixed domains. Adding a new domain requires a schema update and a change to this spec.
 
-| Domain                 | Description                                  |
-| ---------------------- | -------------------------------------------- |
-| `software-development` | Code, infrastructure, architecture, tooling. |
-| `creative`             | Visual design, writing, UX, branding, media. |
-| `marketing`            | Growth, content, analytics, campaigns, SEO.  |
+| Domain      | Description                                  |
+| ----------- | -------------------------------------------- |
+| `sdlc`      | Code, infrastructure, architecture, tooling. |
+| `creative`  | Visual design, writing, UX, branding, media. |
+| `marketing` | Growth, content, analytics, campaigns, SEO.  |
 
 ### Starter subdivisions
 
 Subdivisions within each domain. New subdivisions can be added without a schema change — they are starter recommendations, not an exhaustive enumeration.
 
-**software-development**
+**sdlc**
 
 `python`, `typescript`, `go`, `rust`, `devops`, `databases`, `api-design`, `frontend`, `backend`, `testing`, `security`, `architecture`
 
@@ -58,7 +58,7 @@ Domain-level proficiency (flat):
 
 ```json
 {
-  "software-development": "expert",
+  "sdlc": "expert",
   "creative": "intermediate",
   "marketing": "novice"
 }
@@ -68,7 +68,7 @@ Subdivision-level proficiency (nested):
 
 ```json
 {
-  "software-development": {
+  "sdlc": {
     "python": "expert",
     "typescript": "advanced",
     "frontend": "intermediate",
@@ -83,7 +83,7 @@ Mixed (domain-level for some, subdivision-level for others):
 
 ```json
 {
-  "software-development": {
+  "sdlc": {
     "python": "expert",
     "typescript": "advanced",
     "devops": "advanced",

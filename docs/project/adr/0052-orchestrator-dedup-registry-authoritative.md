@@ -16,7 +16,7 @@ dispatcher (`dispatch_lifecycle_session` / `adopt_headless_session`). That decis
 assumed there are no side spawn paths — every live driver is one the dispatcher
 recorded.
 
-That assumption is false for orchestrators. A `/next-prepare` (or `/next-work`)
+That assumption is false for orchestrators. A `/prepare` (or `/work`)
 session started directly through `telec sessions run` — by an operator, an agent,
 or the TUI — flows through `POST /sessions/run`, which carries `working_slug` onto
 the session row but never writes `active_runner` (only the dispatcher does). The
@@ -45,7 +45,7 @@ the manual-start path.
 `active_runner` is demoted from sole dedup authority. It remains:
 
 - the gate-approval / lane-handoff pointer the workflow service dereferences; and
-- the dedup signal for **non-orchestrator (task-lane) drivers** — a `/next-run-task`
+- the dedup signal for **non-orchestrator (task-lane) drivers** — a `/run-task`
   run session is not an orchestrator (`system_role != orchestrator`), so a
   registry query filtered on the orchestrator role would not catch it. The
   `active_runner` branch covers that case unchanged.

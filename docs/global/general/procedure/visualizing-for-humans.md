@@ -60,7 +60,7 @@ heavyweight canvas tooling for the rare case that genuinely needs it.
    "whiteboard", or "diagram" appearing in the request are not the test. If a
    human is only going to look at the result, Mermaid serves them better and
    costs a fraction. When the test passes, follow
-   `software-development/procedure/architecture-canvas` for the mechanics.
+   `sdlc/procedure/architecture-canvas` for the mechanics.
 
 6. **Revise from the human's words, not from their edits.** Collaboration here
    means: the agent shows, the human reacts in prose, the agent re-authors the

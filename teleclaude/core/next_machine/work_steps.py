@@ -176,7 +176,7 @@ async def _handle_build_complete_claim(
 
     if not gates_passed:
         await _commit_writer(writer, todos_db, slug, state)
-        builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
+        builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.BUILD.value}")
         if builder_id is None:
             return False, format_error(
                 "BUILD_GATE_FAILED",
@@ -237,7 +237,7 @@ async def _work_step_build_started(
             next_call=f"telec todo prepare {slug}",
         )
 
-    command = SlashCommand.NEXT_BUILD
+    command = SlashCommand.BUILD
     model = StateWriter(state).state
     old_plan_digest = model.build_plan_digest
     current_plan_digest = model.artifacts.implementation_plan.digest
@@ -442,7 +442,7 @@ async def _work_step_build_complete(
 
     admission = build_review_admission(state)
     report = format_review_threshold_report(slug, admission)
-    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
+    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.REVIEW_BUILD.value}")
 
     # Reconcile live-review state: detects ground shifts, reuses active reviewers.
     resolution = await resolve_pending_review_state(
@@ -487,7 +487,7 @@ async def _work_step_build_complete(
         return False, f"{report}\n\n{redispatch_script}" if report else redispatch_script
 
     request = ToolCallRequest(
-        command=SlashCommand.NEXT_REVIEW_BUILD,
+        command=SlashCommand.REVIEW_BUILD,
         args=slug,
         project=_derive_project_root(cwd, slug),
         subfolder=f"{WORKTREE_DIR}/{slug}",
@@ -529,8 +529,8 @@ async def _work_step_review_changes_requested(
     head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
 
     # Fix not yet committed: relay findings to live builder.
-    builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
-    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
+    builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.BUILD.value}")
+    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.REVIEW_BUILD.value}")
 
     if builder_id is None:
         return False, format_error(
@@ -556,8 +556,8 @@ async def _work_step_review_changes_requested(
     message = (
         f"Review requested changes for {slug}. "
         f"Findings artifact: `review-findings`. Target: source code in the worktree. "
-        f"Required read: software-development/procedure/lifecycle/fix-review-findings "
-        f"(fetch with `telec docs get software-development/procedure/lifecycle/fix-review-findings`). "
+        f"Required read: sdlc/procedure/lifecycle/fix-review-findings "
+        f"(fetch with `telec docs get sdlc/procedure/lifecycle/fix-review-findings`). "
         f"Address every Requirement-Violation, Critical, and Important finding — "
         f"anything less keeps the verdict at REQUEST CHANGES per the severity schema "
         f"in lifecycle/work/review. Requirement-Violation findings in particular "
@@ -695,8 +695,8 @@ async def _work_step_review_approved(
     Preconditions: no uncommitted changes in the worktree.
     Branches:
     - Finalize-ready claim present → triple-ref check, advance lifecycle, emit event.
-    - Pending deferrals → dispatch ``/next-defer``.
-    - No deferrals → dispatch ``/next-finalize`` (worker stamps finalize_ready).
+    - Pending deferrals → dispatch ``/defer``.
+    - No deferrals → dispatch ``/finalize`` (worker stamps finalize_ready).
     """
     finalize_result = await _handle_finalize_ready_claim(
         slug=slug, cwd=cwd, worktree_cwd=worktree_cwd, todos_db=todos_db, state=state
@@ -710,7 +710,7 @@ async def _work_step_review_approved(
     if await todos_db.has_pending_deferrals(slug):
         return False, format_tool_call(
             ToolCallRequest(
-                command=SlashCommand.NEXT_DEFER,
+                command=SlashCommand.DEFER,
                 args=slug,
                 project=_derive_project_root(cwd, slug),
                 subfolder=f"{WORKTREE_DIR}/{slug}",
@@ -735,7 +735,7 @@ async def _work_step_review_approved(
     note = "BUG FIX: Skip delivery bookkeeping. Delete todo directory after merge." if is_bug else ""
     return False, format_tool_call(
         ToolCallRequest(
-            command=SlashCommand.NEXT_FINALIZE,
+            command=SlashCommand.FINALIZE,
             args=slug,
             project=_derive_project_root(cwd, slug),
             subfolder=f"{WORKTREE_DIR}/{slug}",

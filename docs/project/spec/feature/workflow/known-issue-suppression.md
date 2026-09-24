@@ -36,7 +36,6 @@ registration.
 A suppression's creation provenance is the principal the platform resolves for
 the registering caller. A caller the platform cannot identify registers nothing.
 
-
 ## Canonical fields
 
 ### Use cases
@@ -103,12 +102,11 @@ Then no entry is written to the ledger
 And the refusal names how to establish an identity
 ```
 
-
 ### Cross-context references
 
 - **workflow** — a suppression's optional `source_bug` names the bug whose triage
   produced it; the bug lane owns that record.
-- **software-development** — the consumer is the log-bug-hunter maintenance
+- **sdlc** — the consumer is the log-bug-hunter maintenance
   procedure, which subtracts active suppressions before filing.
 
 ## Known caveats

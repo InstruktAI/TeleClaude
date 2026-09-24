@@ -33,7 +33,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
                 event=event_type,
                 source=f"orchestrator/{(get_session_id() or 'unknown')}",
                 level=EventLevel.WORKFLOW,
-                domain="software-development",
+                domain="sdlc",
                 description=description,
                 entity=slug,
                 payload=dict(payload),

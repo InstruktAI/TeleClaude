@@ -149,7 +149,7 @@ design is owned by the project docs — read those, not this section, for how it
 actually wired:
 
 - **Decision + seam:** `project/adr/0016-graphify-as-codebase-blueprint-engine`
-- **Capability contract:** `software-development/spec/codebase-blueprint`
+- **Capability contract:** `sdlc/spec/codebase-blueprint`
 - **Generation trigger:** the integration design's "Blueprint regeneration"
 - **Plan-time consumption:** the `plan-draft` procedure
 

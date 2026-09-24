@@ -165,7 +165,7 @@ class AgentExecutable:
     """Platform-specific binary resolution for one agent's CLI.
 
     ``macos_launcher_app`` is always installed on macOS for TCC/Full-Disk-Access
-    identity stability (`software-development/procedure/macos-stable-code-signing`).
+    identity stability (`sdlc/procedure/macos-stable-code-signing`).
     ``macos_launch_binary`` is the binary inside that bundle actually invoked at
     launch time; when it is ``None``, the bundle is installed but launch still
     resolves ``unix_binary`` directly (the Gemini/Antigravity case today: the CLI

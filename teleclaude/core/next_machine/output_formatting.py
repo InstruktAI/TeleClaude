@@ -463,13 +463,13 @@ def format_work_entry_drift_bounce(
     """Dispatch the drift analyzer from the work-entry bounce on pending drift.
 
     The work state machine owns the work-entry drift path end-to-end: on a
-    ``pending`` collapsed status it dispatches the ``next-drift-analyze`` worker
+    ``pending`` collapsed status it dispatches the ``drift-analyze`` worker
     and tells the orchestrator to re-enter ``telec todo work`` once the analyzer
     idles. The work orchestrator never calls ``telec todo prepare`` — its only
     verb is ``telec todo work``.
     """
     request = ToolCallRequest(
-        command=f"/{SlashCommand.NEXT_DRIFT_ANALYZE.value}",
+        command=f"/{SlashCommand.DRIFT_ANALYZE.value}",
         args=slug,
         project=project_root,
         subfolder="",
@@ -491,7 +491,7 @@ def format_work_entry_substantive_handoff(slug: str) -> str:
     reaches PREPARED again, durable build residue directs it to resume work
     rather than self-end.
     """
-    loader = format_command_loader_message(SlashCommand.NEXT_PREPARE.value, slug)
+    loader = format_command_loader_message(SlashCommand.PREPARE.value, slug)
     return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 WORK_ENTRY_SUBSTANTIVE_DRIFT: {slug} has substantive prepare-artifact drift. Worktree setup was not started.
@@ -508,7 +508,7 @@ Then call `telec todo prepare {slug}` and follow its output verbatim. The prepar
 
 def format_work_entry_kickback_handoff(slug: str) -> str:
     """Hand a kicked-back work orchestrator into prepare without teardown."""
-    loader = format_command_loader_message(SlashCommand.NEXT_PREPARE.value, slug)
+    loader = format_command_loader_message(SlashCommand.PREPARE.value, slug)
     return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 WORK_ENTRY_KICKBACK: {slug} was kicked back to plan drafting. Its worktree, local and remote branch, workspace, build commits, and live sessions remain intact.

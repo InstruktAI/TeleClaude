@@ -24,7 +24,7 @@ Commit attribution names the party that did the work.
 - Standing co-author lines are prohibited — for the agent, for the human, and for the tooling. Boilerplate attribution asserts involvement that did not occur.
 - Commit messages carry no session identifiers. Session provenance is recoverable from the session mirrors; putting internal identifiers in a public, durable history is a repository-privacy cost with no offsetting benefit.
 
-The canonical statement lives in `software-development/policy/commits`; the per-agent identity strings live in each agent's addendum.
+The canonical statement lives in `sdlc/policy/commits`; the per-agent identity strings live in each agent's addendum.
 
 ## Consequences
 

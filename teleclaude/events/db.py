@@ -144,6 +144,13 @@ _RECONCILE_RETIRED_DOCS_WATCHER_NOTIFICATIONS = (
     "WHERE event_type = ? AND (agent_status <> ? OR resolved_at IS NULL)"
 )
 
+# Forward migration of stored notifications to the renamed `sdlc` domain; the
+# old domain name exists only as this migration's input.
+_RENAMED_DOMAIN_FROM = "software-development"
+_RENAMED_DOMAIN_TO = "sdlc"
+_RENAMED_DOMAIN_COLUMNS = ("event_type", "domain", "entity", "idempotency_key", "description", "payload")
+_RENAME_DOMAIN_SQL_TEMPLATE = "UPDATE notifications SET {column} = replace({column}, ?, ?) WHERE instr({column}, ?) > 0"
+
 _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_notifications_event_type ON notifications (event_type);",
     "CREATE INDEX IF NOT EXISTS idx_notifications_level ON notifications (level);",
@@ -202,6 +209,11 @@ class EventDB:
             if column_name not in existing_columns:
                 await self._conn.execute(f"ALTER TABLE notifications ADD COLUMN {column_name} TEXT")
         await self._conn.execute("UPDATE notifications SET occurred_at = created_at WHERE occurred_at IS NULL")
+        for column_name in _RENAMED_DOMAIN_COLUMNS:
+            await self._conn.execute(
+                _RENAME_DOMAIN_SQL_TEMPLATE.format(column=column_name),
+                (_RENAMED_DOMAIN_FROM, _RENAMED_DOMAIN_TO, _RENAMED_DOMAIN_FROM),
+            )
         # Preserve retired event rows as history while closing their notification projections.
         resolved_at = _now_iso()
         await self._conn.execute(

@@ -72,7 +72,7 @@ The confirmed plan is the handoff input to the work phase.
 
 ```mermaid
 flowchart TD
-    Entry([Entry: /next-prepare invocation<br/>or auto-spawn from dump])
+    Entry([Entry: /prepare invocation<br/>or auto-spawn from dump])
     Entry --> ModeCheck{human in the<br/>conversation?}
 
     ModeCheck -->|no| InputOnly{input rich enough<br/>to write the PRD?}
@@ -89,7 +89,7 @@ flowchart TD
     PRDApprove -->|no human in the conversation| Idle[Idle — await the human]
     PRDApprove -->|human approves| AssessArch
 
-    Idle -.user invokes /next-prepare.-> PRDApprove
+    Idle -.user invokes /prepare.-> PRDApprove
 
     AssessArch{Architecture phase needed?<br/>BA assesses size and scope}
     AssessArch -->|skip — stamp with reason| PlanPhase
@@ -119,7 +119,7 @@ flowchart TD
 
 **Use case 1 — new work item, human in the conversation (default).**
 
-Trigger: user invokes `/next-prepare` (with or without slug), or asks an active agent to load the prepare procedure.
+Trigger: user invokes `/prepare` (with or without slug), or asks an active agent to load the prepare procedure.
 
 Mode: a human is in the conversation.
 
@@ -131,11 +131,11 @@ Trigger: `telec todo create <slug> <description> --kind <kind>` without `--icebo
 
 Mode: no human in the conversation.
 
-Flow: the orchestrator's only authorized basis is the `input` artifact. When it is rich enough, the BA fills the PRD template from it and writes the PRD artifact; when it is not, the flow stops against `@input` and authors no PRD. Either way `prd_approved` is not stamped and the agent goes idle. When the human later invokes `/next-prepare {slug}`, the state machine reports the PRD awaiting approval, or the gap awaiting elaboration. Human approves, refines, or elaborates. Flow proceeds from there.
+Flow: the orchestrator's only authorized basis is the `input` artifact. When it is rich enough, the BA fills the PRD template from it and writes the PRD artifact; when it is not, the flow stops against `@input` and authors no PRD. Either way `prd_approved` is not stamped and the agent goes idle. When the human later invokes `/prepare {slug}`, the state machine reports the PRD awaiting approval, or the gap awaiting elaboration. Human approves, refines, or elaborates. Flow proceeds from there.
 
 **Use case 3 — refinement / resume of existing todo.**
 
-Trigger: user invokes `/next-prepare {slug}` on an existing todo.
+Trigger: user invokes `/prepare {slug}` on an existing todo.
 
 Flow: agent queries the state machine; gets current layer + outstanding stamps + drift state. Agent presents state to user at proficiency-appropriate register. User indicates direction:
 
@@ -161,7 +161,7 @@ Also covers the parked-create case: human comes back to a slug created with `--i
 
 ## See Also
 
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
-- ~/.teleclaude/docs/software-development/principle/architectural-defaults.md
-- ~/.teleclaude/docs/software-development/concept/intake-frameworks.md
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/intake.md
+- ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/architecture.md
+- ~/.teleclaude/docs/sdlc/principle/architectural-defaults.md
+- ~/.teleclaude/docs/sdlc/concept/intake-frameworks.md

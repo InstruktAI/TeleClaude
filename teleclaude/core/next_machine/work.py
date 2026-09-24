@@ -296,7 +296,7 @@ async def _advance_prepared_to_build_started(
 
 async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, lifecycle_phase: str) -> str:
     """Format orchestrator recovery instructions for work-entry main-sync conflicts."""
-    builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
+    builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.BUILD.value}")
     if builder_id is None:
         return format_error(
             "MERGE_MAIN_FAILED",
@@ -368,7 +368,7 @@ async def _check_work_entry_drift(
     Re-derives drift, then branches three ways on the collapsed verdict: a
     ``pending`` artifact dispatches the drift analyzer and re-enters work once it
     idles; a ``substantive`` artifact hands the same session off to drive
-    ``/next-prepare`` (its next ``telec todo prepare`` call implicitly adopts the
+    ``/prepare`` (its next ``telec todo prepare`` call implicitly adopts the
     prepare-orchestrator role in place — the claim is unchanged, only the lane
     changes); ``cosmetic`` and ``fresh`` are non-blocking and proceed to
     worktree creation. The work orchestrator never re-enters the prepare

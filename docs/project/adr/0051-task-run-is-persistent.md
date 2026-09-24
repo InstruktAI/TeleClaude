@@ -2,7 +2,7 @@
 visibility: public
 number: 0051
 date: '2026-06-18'
-description: 'A /next-run-task session is persistent — it executes against the durable task-plan, records to the log, delivers to the workspace, and stays alive for human follow-up and subsequent scheduled firings; the lifecycle runner wakes the live session on each due tick rather than spawning a fresh ephemeral run. Supersedes ADR-0042 §5 (ephemeral-and-terminate); the rest of ADR-0042 stands.'
+description: 'A /run-task session is persistent — it executes against the durable task-plan, records to the log, delivers to the workspace, and stays alive for human follow-up and subsequent scheduled firings; the lifecycle runner wakes the live session on each due tick rather than spawning a fresh ephemeral run. Supersedes ADR-0042 §5 (ephemeral-and-terminate); the rest of ADR-0042 stands.'
 ---
 
 # ADR-0051: Task Runs Are Persistent, Not Ephemeral — ADR
@@ -16,12 +16,12 @@ terminates, with the `log` carrying continuity across otherwise-memoryless firin
 In delivery, a task run is the operator's live window into what a standing intent is
 doing: a terminated session leaves no surface to inspect mid- or post-firing, and the
 session list cannot show a running task as a standing beacon. The requirement is that
-`/next-run-task` stay alive. That conflicts with ADR-0042 §5's ephemeral-and-terminate
+`/run-task` stay alive. That conflicts with ADR-0042 §5's ephemeral-and-terminate
 stance, and this record captures the reversal.
 
 ## Decision
 
-A `/next-run-task` session is **persistent**. It executes its firing against the
+A `/run-task` session is **persistent**. It executes its firing against the
 durable `task-plan`, records to the `log`, delivers outputs to
 `{project_root}/workspace/<slug>/`, and **stays alive for human follow-up; it never
 self-ends**.

@@ -577,10 +577,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 sha = str(finalize_state.get("sha", ""))
                 branch = str(finalize_state.get("branch", slug))
                 await emit_event(
-                    event="domain.software-development.planning.todo_finalize_ready",
+                    event="domain.sdlc.planning.todo_finalize_ready",
                     source="workflow",
                     level=EventLevel.WORKFLOW,
-                    domain="software-development",
+                    domain="sdlc",
                     visibility=EventVisibility.LOCAL,
                     entity=slug,
                     description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
@@ -599,7 +599,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     event="workflow.todo.phase_advanced",
                     source="workflow",
                     level=EventLevel.WORKFLOW,
-                    domain="software-development",
+                    domain="sdlc",
                     entity=slug,
                     description=f"Lifecycle phase advanced for {slug}: {prior_phase} -> {new_phase}",
                     payload={
@@ -615,7 +615,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     event="workflow.todo.delivered",
                     source="workflow",
                     level=EventLevel.WORKFLOW,
-                    domain="software-development",
+                    domain="sdlc",
                     visibility=EventVisibility.LOCAL,
                     entity=slug,
                     description=f"Delivered {slug}",

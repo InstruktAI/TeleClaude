@@ -116,7 +116,7 @@ ensure_teleclaude_yaml() {
 kind: global
 business:
   domains:
-    software-development: docs
+    sdlc: docs
 EOF
         print_success "Created teleclaude.yml"
     else

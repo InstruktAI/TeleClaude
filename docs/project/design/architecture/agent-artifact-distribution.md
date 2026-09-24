@@ -120,7 +120,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   the contract that defines their meaning rather than by `workflow` or by their
   runtime host. The shared name table in the codebase is a mechanical
   cross-context registry — it holds every value in one place and owns none of
-  them (`software-development/policy/domain-ownership`). `context` lays the
+  them (`sdlc/policy/domain-ownership`). `context` lays the
   corpus out against those names and owns none of them.
 - **`agent_runtime` owns resolution within the global corpus, and the
   session metadata that carries the name.** The rule is stated in the agent
@@ -144,7 +144,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   package the platform republishes unchanged, so a commit touching it routes
   to no separate post-commit doc-hygiene review. The adoption security gate is
   owned by `general/procedure/skill-management` under
-  `software-development/policy/ai-agent-security`; this design classifies
+  `sdlc/policy/ai-agent-security`; this design classifies
   doc-hygiene routing and neither restates nor weakens that gate.
 - The mixed global-skills tree is represented by two disjoint registry
   boundaries: the exact `agents/global/skills/AGENTS.master.md` file is an
@@ -196,7 +196,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   the root-relative path of a file that is at the corpus root, so each entry is
   carried forward unchanged in meaning and the file gains its version. Domain
   code reads only the versioned shape; the unversioned reader exists only inside
-  that migration step (`software-development/policy/backward-compatibility-hygiene`,
+  that migration step (`sdlc/policy/backward-compatibility-hygiene`,
   owned internal data). The same step rekeys the one phase-wide owner an
   unversioned manifest carries to the repository that produced it — the mother,
   which was the only repository able to publish globally while that shape was
@@ -208,11 +208,11 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   (`@prd#premises-and-assumptions`): a command publishes under the domain that
   owns the contract it executes, and a command whose contract is domain-agnostic
   publishes under `general`, which is the mother's alone. Two cases are named
-  here because the name misleads: `next-assist` executes a software-development
-  lifecycle procedure and publishes under `software-development`, not `general`;
-  `next-run-job` executes a configured job, and the job model is `config`'s —
+  here because the name misleads: `assist` executes a sdlc
+  lifecycle procedure and publishes under `sdlc`, not `general`;
+  `run-job` executes a configured job, and the job model is `config`'s —
   the declaration, the schedule contract, its canonical
-  `general/next-run-job` name, and the scheduler emission all resolve there,
+  `general/run-job` name, and the scheduler emission all resolve there,
   while `agent_runtime` dispatches the scheduled job into a session as it
   dispatches any command. The `general` path is its corpus partition, not a
   second semantic owner.
@@ -225,7 +225,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
 - Retraction removes what an owner staged before and does not stage now, so the
   hazard it poses is a staged set that shrinks. Two independent things can
   shrink it, and the migration's shape answers only one. Both roots carrying a
-  command means no *source* goes absent. Partitioning the staged corpus into
+  command means no _source_ goes absent. Partitioning the staged corpus into
   `<domain>/` directories is the other: an enumerator that lists one level and
   counts only files sees an empty staged set the moment the corpus stops being
   flat, and retracts everything the owner held. Ownership enumeration is
@@ -248,7 +248,7 @@ and no loss of offered artifacts at any point in the migration (`@prd#sc-5-the-m
   canonical value. Already-qualified values, unknown external command values,
   and null remain unchanged. The migration runs before live-session attribution
   performs exact equality, and runtime consumers carry no permanent old-shape
-  compatibility branch (`software-development/policy/backward-compatibility-hygiene`).
+  compatibility branch (`sdlc/policy/backward-compatibility-hygiene`).
 
 ## Primary flows
 
@@ -309,7 +309,7 @@ sequenceDiagram
   sibling lands ownership records.
 - **A consumer restates its own directory list instead of reading the
   registry.** A second source of truth; reviewers treat it as an ownership
-  defect (`software-development/policy/domain-ownership`).
+  defect (`sdlc/policy/domain-ownership`).
 - **A source path matches no registry boundary or more than one.** Registry
   classification fails before validation or review routing; no consumer picks
   a fallback class.

@@ -14,7 +14,7 @@ def register_all(catalog: EventCatalog) -> None:
     registrars = (
         ("teleclaude.events.schemas.system", "register_system"),
         ("teleclaude.events.schemas.jobs", "register_jobs"),
-        ("teleclaude.events.schemas.software_development", "register_software_development"),
+        ("teleclaude.events.schemas.sdlc", "register_sdlc"),
         ("teleclaude.events.schemas.marketing", "register_marketing"),
         ("teleclaude.events.schemas.creative_production", "register_creative_production"),
         ("teleclaude.events.schemas.node", "register_node"),

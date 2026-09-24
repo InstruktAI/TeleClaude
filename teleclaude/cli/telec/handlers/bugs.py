@@ -67,7 +67,7 @@ _BUG_FILING_GATE = (
     "\n"
     "- Ordering / dependency — downstream of, or dependent on, work already\n"
     "   in flight? Route it to that lane per the amendment/FYI rules in\n"
-    "   software-development/policy/todo-creation-discipline; do not file a\n"
+    "   sdlc/policy/todo-creation-discipline; do not file a\n"
     "   sibling.\n"
     "\n"
     "- Evidence & ownership — organic-trigger evidence in hand (not\n"

@@ -222,7 +222,7 @@ def main() -> None:
 
     # Multi-bound scenarios carry more than one test. Reported as review leads only —
     # whether the extra tests exercise distinct behaviors or are redundant is a reviewer
-    # judgment (software-development/policy/testing Rule 8), so this is never gated.
+    # judgment (sdlc/policy/testing Rule 8), so this is never gated.
     seen: dict[tuple[str, str], int] = {}
     for b in report.bindings:
         seen[(b.spec_id, b.scenario_id)] = seen.get((b.spec_id, b.scenario_id), 0) + 1
@@ -261,7 +261,7 @@ def main() -> None:
         # Ratchet against the committed baseline: orphan bindings (a test citing a
         # scenario that does not exist) and the anonymous-scenario backlog may shrink
         # but never grow. A regression fails the gate. Behavioral duplication is a
-        # reviewer judgment, not a mechanical check (software-development/policy/testing
+        # reviewer judgment, not a mechanical check (sdlc/policy/testing
         # Rule 8), so it is not gated here.
         baseline = json.loads(_BASELINE_FILE.read_text(encoding="utf-8")) if _BASELINE_FILE.exists() else {}
         regressions = [

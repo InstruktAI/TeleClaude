@@ -1,7 +1,7 @@
 ---
 id: 'project/spec/feature/integration/single-ingress-webhook-termination'
 type: 'spec'
-domain: 'software-development'
+domain: 'sdlc'
 scope: 'project'
 visibility: 'public'
 description: 'One ingress computer terminates all external webhooks for the cluster — it is the only publicly reachable node, verifies and normalizes each inbound payload into a unified event, and relays it to the whole cluster unconditionally, so every other computer reacts by subscription without being publicly exposed.'
@@ -11,7 +11,7 @@ description: 'One ingress computer terminates all external webhooks for the clus
 
 ## Required reads
 
-- docs/global/software-development/spec/feature-spec.md
+- docs/global/sdlc/spec/feature-spec.md
 - @docs/project/spec/domain/integration.md
 
 ## What it is

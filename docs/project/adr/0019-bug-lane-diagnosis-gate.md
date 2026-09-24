@@ -38,11 +38,11 @@ For a bug, the `DIAGNOSE` phase is loaded inline by the prepare orchestrator
 to specific code, and **prescribes** the fix approach and a verification approach
 (an executable reproduction where possible, or a documented observable reproduction
 plus a plan task to build the missing functional/e2e coverage). It produces a
-`diagnosis` artifact; it does not open a worktree or commit. `next-prepare-plan`
+`diagnosis` artifact; it does not open a worktree or commit. `prepare-plan`
 consumes `diagnosis` "when present" (exactly as it consumes `architecture`), with
-no kind-branching. `next-review-plan` validates the diagnosis in one clearly-fenced
+no kind-branching. `review-plan` validates the diagnosis in one clearly-fenced
 section gated on the artifact's presence — there is no separate diagnosis review.
-The reproduction test is authored by the builder during `/next-build` (RED→GREEN);
+The reproduction test is authored by the builder during `/build` (RED→GREEN);
 `/next-bugs-fix` and the standalone `bug-fix` work procedure are retired.
 
 ## Consequences
@@ -55,7 +55,7 @@ Positive:
   by plan-review.
 - Maximal reuse: bugs ride the existing plan-draft → plan-review → build →
   build-review machinery and the existing lifecycle-router auto-dispatch (`bug` now
-  routes to `/next-prepare` like `change`). No parallel rails, one new phase.
+  routes to `/prepare` like `change`). No parallel rails, one new phase.
 - The bug lane is shorter than a feature (no PRD, no architecture), so the rigor does
   not overshoot intent.
 
@@ -88,5 +88,5 @@ Invariants going forward:
   Rejected: a second review dispatch per bug for no gain over folding the diagnosis
   check into the existing plan-review.
 - **A standalone `bug-analysis` artifact carrying a bespoke fix prescription.**
-  Rejected in favor of reusing `implementation-plan`, so `/next-build` (a proven
+  Rejected in favor of reusing `implementation-plan`, so `/build` (a proven
   DoD-complete executor) runs the fix and `/next-bugs-fix` retires.

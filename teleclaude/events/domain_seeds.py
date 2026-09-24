@@ -6,8 +6,8 @@ from teleclaude.core.models import JsonDict
 
 DEFAULT_EVENT_DOMAINS: JsonDict = {
     "domains": {
-        "software-development": {
-            "name": "software-development",
+        "sdlc": {
+            "name": "sdlc",
             "enabled": True,
             "guardian": {
                 "agent": "claude",
@@ -21,9 +21,9 @@ DEFAULT_EVENT_DOMAINS: JsonDict = {
             },
             "autonomy": {
                 "by_cartridge": {
-                    "software-development/todo-lifecycle": "auto_notify",
-                    "software-development/build-notifier": "notify",
-                    "software-development/deploy-tracker": "notify",
+                    "sdlc/todo-lifecycle": "auto_notify",
+                    "sdlc/build-notifier": "notify",
+                    "sdlc/deploy-tracker": "notify",
                 },
             },
         },
