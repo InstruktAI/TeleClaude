@@ -18,10 +18,9 @@ invoking process reads for itself. A content inbox entry's author and a
 known-issue suppression's creation provenance name the principal caller
 verification resolved: `human:<email>` for a registered person, whether a session
 carries that principal or a terminal login names them, and the carried system
-principal for work with no human origin. A sealed commit's author follows the
-commit policy — the agent of the session caller verification resolved, or the
-person's own ambient git identity when the caller is a person at a terminal — as
-`project/spec/feature/agent_runtime/sealed-commit` states.
+principal for work with no human origin. A sealed commit takes its author from
+the caller verification resolved, under the rules
+`project/spec/feature/agent_runtime/sealed-commit` owns.
 
 A caller that caller verification cannot identify has nothing recorded under a
 borrowed name: a command that would have to attribute a record to it refuses
