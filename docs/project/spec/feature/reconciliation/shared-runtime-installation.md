@@ -1,7 +1,7 @@
 ---
 description: Machine installation exposes repository-owned runtime support through safe, idempotent links from the TeleClaude home.
 delivered_by:
-  - retire-docs-watcher
+  - config-schema-home-resolution
 ---
 
 # Shared Runtime Installation — Spec
