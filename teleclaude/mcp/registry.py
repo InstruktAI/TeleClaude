@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 from teleclaude.config.context_root import resolve_context_root
 from teleclaude.config.schema import ConfigKind
@@ -22,7 +22,8 @@ COMPAT_MCP_CONFIG_FILE = "mcp.json"
 COMPAT_MCP_LOCAL_CONFIG_FILE = "mcp.local.json"
 MCP_REMOTE_PACKAGE = "mcp-remote@0.1.38"
 DEFAULT_IDLE_TTL_SECONDS = 900.0
-SCHEMA_PATH = "schemas/teleclaude-mcp.schema.json"
+MCP_SCHEMA_SOURCE_PATH: Final[Path] = Path(__file__).with_name("teleclaude-mcp.schema.json")
+MCP_SCHEMA_FILENAME: Final = "teleclaude-mcp.schema.json"
 
 _ENV_REFERENCE_RE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)(?:[:?+\-=][^}]*)?\}|([A-Za-z_][A-Za-z0-9_]*))")
 _SHELL_ENV_REFERENCE_NAMES = frozenset({"HOME", "LOGNAME", "PATH", "PWD", "SHELL", "TEMP", "TMP", "TMPDIR", "USER"})

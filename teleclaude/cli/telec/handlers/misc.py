@@ -27,7 +27,7 @@ from teleclaude.project_setup.plumbing import PlumbingConvergenceRunOutcome, con
 _NO_TUI_RUNNING = "No running telec TUI to reload."
 _RELOADED_TUIS = "Reloaded %d telec TUI(s): %s"
 _PID_SEPARATOR = ", "
-_PLUMBING_ROOT_RESULT = "{project_root}: {outcome}"
+_PLUMBING_ROOT_RESULT = "{project_root}: {outcome} (schema-link: {schema_link}, schema-copy: {schema_copy})"
 _PLUMBING_RUN_RESULT = "Plumbing convergence {outcome}: {root_count} registered root(s)."
 
 __all__ = [
@@ -224,6 +224,8 @@ def _handle_projects(args: list[str]) -> None:
                 _PLUMBING_ROOT_RESULT.format(
                     project_root=root_result.project_root,
                     outcome=root_result.outcome,
+                    schema_link=root_result.schema_link,
+                    schema_copy=root_result.schema_copy,
                 ),
             )
         print(_PLUMBING_RUN_RESULT.format(outcome=result.outcome, root_count=result.root_count))

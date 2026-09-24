@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=schemas/teleclaude-project.schema.json
+# yaml-language-server: $schema=.teleclaude/schemas/teleclaude-project.schema.json
 kind: project
 project_name: TeleClaude
 project_slug: teleclaude
@@ -40,6 +40,10 @@ checkpoint:
       main_only: true
       precedence: 20
       command: [uv, sync]
+    config-schemas:
+      main_only: true
+      precedence: 30
+      command: [uv, run, --quiet, python, -m, teleclaude.core.reconciliation.config_schemas]
     tui-reload:
       main_only: true
       precedence: 40
@@ -95,6 +99,9 @@ checkpoint:
     - scope:
         include: [teleclaude/cli/tui/**]
       actions: [tui-reload]
+    - scope:
+        include: [teleclaude/**/*.py, teleclaude/mcp/teleclaude-mcp.schema.json]
+      actions: [config-schemas]
 
 jobs:
   # help_desk_intelligence:

@@ -117,6 +117,9 @@ target/
 .teleclaude*copy/
 scratch_*.txt
 
+# Configuration schemas are generated into the machine home.
+/schemas/
+
 # Helpdesk generated files (should NEVER happen but must never be tracked)
 helpdesk/
 !helpdesk/AGENTS.master.md

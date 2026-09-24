@@ -99,7 +99,7 @@ def _declare_inferred_capabilities(project_root: Path) -> Capabilities:
         raw[capability.value] = {_ENABLED_KEY: enabled}
         changed = True
     if changed:
-        write_declared_config(manifest_path, ConfigKind.PROJECT, raw, schema_root=project_root)
+        write_declared_config(manifest_path, ConfigKind.PROJECT, raw)
     return resolve_capabilities(project_root)
 
 
@@ -132,7 +132,7 @@ def migrate_legacy_deployment_channel(source_path: Path) -> bool:
 
     del source_doc["deployment"]
     source_kind = ConfigKind.GLOBAL if source_path == GLOBAL_CONFIG_PATH else ConfigKind.PROJECT
-    write_declared_config(source_path, source_kind, source_doc, schema_root=source_path.parent)
+    write_declared_config(source_path, source_kind, source_doc)
     logger.info("Migrated legacy deployment block from %s", source_path)
     return True
 

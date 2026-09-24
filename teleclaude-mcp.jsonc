@@ -1,5 +1,5 @@
 {
-  "$schema": "./schemas/teleclaude-mcp.schema.json",
+  "$schema": ".teleclaude/schemas/teleclaude-mcp.schema.json",
   "servers": {
     "context7": {
       "trigger": "Use to read easily ingestible technical third-party documentation.",

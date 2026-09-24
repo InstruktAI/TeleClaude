@@ -246,7 +246,7 @@ def ensure_project_config(project_root: Path) -> None:
     config_path = project_root / ConfigFileName.OVERLAY
     if config_path.exists():
         return
-    write_declared_config(config_path, ConfigKind.PROJECT, _EMPTY_PROJECT_CONFIG_DOCUMENT, schema_root=project_root)
+    write_declared_config(config_path, ConfigKind.PROJECT, _EMPTY_PROJECT_CONFIG_DOCUMENT)
 
 
 def get_project_slug(project_root: Path) -> str:

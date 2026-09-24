@@ -68,7 +68,7 @@ def advance_config(
         return AdvanceResult(eligible=True, completed=False, advanced=False, reason=_DOCUMENT_MISSING)
     with file_transaction(path) as transaction:
         document = _load_document_content(transaction.read_text(), path)
-        transaction.replace_text(render_declared_config(path, kind, document, schema_root=_schema_root(kind, root)))
+        transaction.replace_text(render_declared_config(kind, document))
     state["completed_roots"].append(root_key)
     _write_state(state_path, state)
     return AdvanceResult(eligible=True, completed=True, advanced=True)
@@ -115,12 +115,6 @@ def _tier_directories(parent: Path) -> list[Path]:
     if not parent.is_dir():
         return []
     return [path for path in parent.iterdir() if path.is_dir()]
-
-
-def _schema_root(kind: ConfigKind, root: Path) -> Path:
-    if kind is ConfigKind.PROJECT or kind is ConfigKind.GLOBAL:
-        return root
-    return root.parent.parent
 
 
 def _load_document_content(content: str, path: Path) -> Mapping[str, object]:

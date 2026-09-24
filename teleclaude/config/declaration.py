@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from enum import Enum
 from io import StringIO
@@ -14,7 +13,8 @@ from ruamel.yaml import YAML
 from teleclaude.config._file_io import file_transaction
 from teleclaude.config.schema import ConfigKind
 
-_SCHEMA_DIRECTORY: Final = "schemas"
+HOME_SCHEMA_DIRECTORY: Final = "schemas"
+PROJECT_SCHEMA_LINK_DIRECTORY: Final = ".teleclaude/schemas"
 _SCHEMA_MODELINE_PREFIX: Final = "# yaml-language-server: $schema="
 _UTF8: Final = "utf-8"
 _NEWLINE: Final = "\n"
@@ -25,6 +25,12 @@ _SCHEMA_FILENAMES: Final[dict[ConfigKind, str]] = {
     ConfigKind.PROJECT: "teleclaude-project.schema.json",
     ConfigKind.PERSON: "teleclaude-person.schema.json",
     ConfigKind.COMPANY: "teleclaude-company.schema.json",
+}
+_SCHEMA_REFERENCES: Final[dict[ConfigKind, str]] = {
+    ConfigKind.GLOBAL: f"{HOME_SCHEMA_DIRECTORY}/{_SCHEMA_FILENAMES[ConfigKind.GLOBAL]}",
+    ConfigKind.PROJECT: f"{PROJECT_SCHEMA_LINK_DIRECTORY}/{_SCHEMA_FILENAMES[ConfigKind.PROJECT]}",
+    ConfigKind.PERSON: f"../../{HOME_SCHEMA_DIRECTORY}/{_SCHEMA_FILENAMES[ConfigKind.PERSON]}",
+    ConfigKind.COMPANY: f"../../{HOME_SCHEMA_DIRECTORY}/{_SCHEMA_FILENAMES[ConfigKind.COMPANY]}",
 }
 
 
@@ -37,36 +43,22 @@ def write_declared_config(
     path: Path,
     kind: ConfigKind,
     document: Mapping[str, object],
-    *,
-    schema_root: Path,
 ) -> None:
-    """Atomically write a declared configuration document and available modeline."""
-    _atomic_write(path, render_declared_config(path, kind, document, schema_root=schema_root))
+    """Atomically write a declared configuration document with its tier reference."""
+    _atomic_write(path, render_declared_config(kind, document))
 
 
 def render_declared_config(
-    path: Path,
     kind: ConfigKind,
     document: Mapping[str, object],
-    *,
-    schema_root: Path,
 ) -> str:
     """Render a declared document for an already-held file transaction."""
-    schema_path = schema_root / _SCHEMA_DIRECTORY / schema_filename(kind)
-    modeline = _schema_modeline(path, schema_path)
-    return _render_document(kind, document, modeline)
+    return _render_document(kind, document, _SCHEMA_MODELINE_PREFIX + _SCHEMA_REFERENCES[kind])
 
 
 def write_yaml_document(path: Path, document: Mapping[str, object]) -> None:
     """Atomically write a YAML document that does not carry a tier declaration."""
     _atomic_write(path, _render_yaml(document, None))
-
-
-def _schema_modeline(config_path: Path, schema_path: Path) -> str | None:
-    if not schema_path.is_file():
-        return None
-    relative_schema_path = os.path.relpath(schema_path, config_path.parent)
-    return f"{_SCHEMA_MODELINE_PREFIX}{relative_schema_path}"
 
 
 def _render_document(kind: ConfigKind, document: Mapping[str, object], modeline: str | None) -> str:

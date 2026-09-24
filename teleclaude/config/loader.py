@@ -130,7 +130,7 @@ def load_config[T: BaseModel](
         migrate_global_file(path, canonical_people_dir)
         raw = _read_config_mapping(path)
     if kind in (ConfigKind.GLOBAL, ConfigKind.PROJECT):
-        migrate_jobs_config(path, kind, schema_root=root)
+        migrate_jobs_config(path, kind)
         raw = _read_config_mapping(path)
     references = find_environment_references(raw)
     environment_path = path.with_name(ConfigFileName.ENV)
@@ -179,7 +179,7 @@ def load_declared_project_config(root: Path) -> ProjectConfig | None:
 def save_project_config(path: Path, config: ProjectConfig) -> None:
     """Save project config to disk using atomic write (temp + rename)."""
     data = config.model_dump(mode="json", exclude_defaults=True)
-    _write_overlay_config(path, ConfigKind.PROJECT, data, schema_root=path.parent)
+    _write_overlay_config(path, ConfigKind.PROJECT, data)
 
 
 def _model_to_dict(model: BaseModel) -> dict[str, Any]:  # guard: loose-dict - Pydantic model_dump output
@@ -217,9 +217,7 @@ def save_global_config(config: GlobalConfig, path: Path | None = None) -> None:
         overlay = _model_to_dict(config)
         merged = _deep_merge(existing, overlay)
         reconciled, environment_updates = _reconcile_overlay_document(target, ConfigKind.GLOBAL, merged)
-        transaction.replace_text(
-            render_declared_config(target, ConfigKind.GLOBAL, reconciled, schema_root=target.parent)
-        )
+        transaction.replace_text(render_declared_config(ConfigKind.GLOBAL, reconciled))
     _write_overlay_environment(target, ConfigKind.GLOBAL, environment_updates)
     logger.info("Saved global config to %s (merged, preserved %d existing keys)", target, len(existing))
 
@@ -233,7 +231,7 @@ def save_person_config(slug: str, config: PersonConfig) -> None:
     person_dir.mkdir(parents=True, exist_ok=True)
     target = person_dir / ConfigFileName.OVERLAY
     data = _model_to_dict(config)
-    _write_overlay_config(target, ConfigKind.PERSON, data, schema_root=person_dir.parent.parent)
+    _write_overlay_config(target, ConfigKind.PERSON, data)
     logger.info("Saved person config for %s to %s", slug, target)
 
 
@@ -307,7 +305,6 @@ def save_company_config(slug: str, config: CompanyConfig, companies_root: Path |
         company_dir / ConfigFileName.OVERLAY,
         ConfigKind.COMPANY,
         _model_to_dict(config),
-        schema_root=company_dir.parent.parent,
     )
     logger.info("Saved company config for %s", slug)
 
@@ -378,12 +375,10 @@ def _write_overlay_config(
     path: Path,
     kind: ConfigKind,
     document: dict[str, Any],  # guard: loose-dict - Pydantic model_dump output
-    *,
-    schema_root: Path,
 ) -> None:
     """Persist one overlay while retaining its raw environment references."""
     reconciled, environment_updates = _reconcile_overlay_document(path, kind, document)
-    write_declared_config(path, kind, reconciled, schema_root=schema_root)
+    write_declared_config(path, kind, reconciled)
     _write_overlay_environment(path, kind, environment_updates)
 
 

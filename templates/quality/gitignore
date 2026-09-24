@@ -47,6 +47,7 @@ graphify-out/
 
 # TeleClaude stuff
 
+.teleclaude/
 scratchpad/
 workspace/
 trees/

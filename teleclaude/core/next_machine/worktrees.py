@@ -27,9 +27,12 @@ from teleclaude.core.next_machine._types import (
     WorktreePrepDecision,
 )
 from teleclaude.core.next_machine.state_io import _file_sha256
+from teleclaude.core.reconciliation.config_schemas import converge_project_schema_link
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
 
 logger = get_logger(__name__)
+_WORKTREE_SCHEMA_LINK_EVENT = "worktree_config_schema_link"
+_WORKTREE_SCHEMA_LINK_FAILED_EVENT = "worktree_config_schema_link_failed"
 
 
 def _worktree_prep_state_path(cwd: str, slug: str) -> Path:
@@ -161,6 +164,24 @@ def _create_or_attach_worktree(cwd: str, slug: str) -> bool:
 def ensure_worktree_with_policy(cwd: str, slug: str) -> EnsureWorktreeResult:
     """Ensure worktree exists and run prep only when policy says it's stale."""
     created = _create_or_attach_worktree(cwd, slug)
+    worktree_root = Path(cwd) / WORKTREE_DIR / slug
+    try:
+        schema_link = converge_project_schema_link(worktree_root)
+    except (GitCommandError, OSError):
+        # The schema association is advisory, so a failed link does not invalidate the worktree.
+        logger.exception(
+            _WORKTREE_SCHEMA_LINK_FAILED_EVENT,
+            slug=slug,
+            project_root=str(worktree_root),
+        )
+    else:
+        logger.info(
+            _WORKTREE_SCHEMA_LINK_EVENT,
+            slug=slug,
+            project_root=str(worktree_root),
+            disposition=schema_link.disposition,
+            resolved_target=str(schema_link.resolved_target) if schema_link.resolved_target is not None else None,
+        )
     prep_decision = _decide_worktree_prep(cwd, slug, created=created)
     if prep_decision.should_prepare:
         _prepare_worktree(cwd, slug)
