@@ -224,8 +224,9 @@ delivery, unconditionally. The sentinel is how an agent whose runtime cannot end
 a turn silently closes a turn that warrants no output, so content suppression is
 structural — never a preference, and never conversational substance. The
 sentinel governs the turn's content, never the fact that the turn ended: a
-passive listener is still told the turn finished, and that notice states the
-`NOOP` outcome in place of an instruction to inspect
+passive listener is still told the turn finished, when it stops, and that
+notice states the `NOOP` outcome in place of an instruction to inspect whenever
+the output read at that moment is `NOOP`
 (`project/spec/feature/agent_runtime/session-subscriptions`). The raw transcript
 retains the turn.
 <!-- /planned-change:noop-turn-end-notifies-listeners -->
