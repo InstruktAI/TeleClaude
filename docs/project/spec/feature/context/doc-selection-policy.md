@@ -64,7 +64,6 @@ When the Selection policy resolves visibility
 Then snippets of every visibility (public and internal) are included
 ```
 
-<!-- planned:fix-orchestrator-session-human-role-unresolved -->
 
 #### UC-DSP31: A caller acting as a system principal reads every visibility
 
@@ -74,7 +73,6 @@ When the Selection policy resolves visibility
 Then snippets of every visibility (public and internal) are included
 ```
 
-<!-- /planned:fix-orchestrator-session-human-role-unresolved -->
 
 <!-- planned-change:docs-tier-layering -->
 ```

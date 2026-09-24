@@ -1,5 +1,5 @@
 ---
-description: "Validate an inbound session-token signal at the identity context's boundary, returning a CallerIdentity carrying the bound principal and role."
+description: "Validate an inbound session-token signal at the identity context's boundary, returning a CallerIdentity carrying the principal and role its session currently resolves to."
 visibility: 'public'
 ---
 
@@ -12,7 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-The v1 rule for turning an inbound session-token signal into a verified `CallerIdentity`. The token path takes priority over the dual-factor caller-session-id path so identity-context-spawned agent sessions can authenticate even when no `human_role` is present. Validation has two layers: a ledger lookup (cached with a short TTL) that produces the bound `(principal, role)`, and a defense-in-depth check against the owning session's lifecycle that rejects tokens whose session is closing or closed regardless of what the ledger says. The result is a `CallerIdentity` carrying the session id, the principal and role from the token, and the live system/human role derived from the session record.
+The v1 rule for turning an inbound session-token signal into a verified `CallerIdentity`. The token path takes priority over the dual-factor caller-session-id path so identity-context-spawned agent sessions can authenticate even when no `human_role` is present. Validation has two layers: a ledger lookup (cached with a short TTL) that proves which session is calling, and a defense-in-depth check against the owning session's lifecycle that rejects tokens whose session is closing or closed regardless of what the ledger says. The token establishes the session; the session's principal and role come from principal resolution over its record (`feature/identity/principal-resolution`), not from a copy stamped at issuance, so a change to how a session resolves takes effect for sessions already holding a token. The result is a `CallerIdentity` carrying the session id, the principal and role the session currently resolves to, and the live system/human role derived from the session record.
 
 ## Canonical fields
 
@@ -71,6 +71,6 @@ And clearance is granted or denied based on the (system_role, human_role-or-prin
 
 - Cache TTL is short for both the token entry and the session record. A token revoked between cache load and TTL expiry is still caught: the session record is reloaded on every token-path call, and the defense-in-depth lifecycle check reads the freshly-cached session — the revoker explicitly invalidates the session cache after the lifecycle write to make this work (see `feature/identity/session-token-revocation`).
 - The rejection message "invalid or expired session token" covers both "never existed" and "was revoked" — the wording is deliberately ambiguous. There is no separate code path for an expired-but-known token because tokens have no expiry.
-- The principal_role on a `CallerIdentity` reflects the role stamped at issuance time, not the live session's role. Clearance gates that read `principal_role` (the human_role fallback) trust the stamp; gates that read `system_role` trust the live session via the system-role derivation in caller verification.
+- The principal and principal_role on a `CallerIdentity` reflect the session's current resolution, not the values the ledger stamped at issuance. The ledger's principal and role columns are still written at issuance and are not consulted on the token path. Gates that read `system_role` trust the live session via the system-role derivation in caller verification.
 - Cache eviction is age-based ("oldest entry"), not LRU — a stable working set above the cache cap can thrash, but that is far beyond realistic concurrent agent counts.
 - The token path is taken whenever the session-token signal is present, even if the caller-session-id signal is also present. The dual-factor path is reached only when no token signal is supplied. This is intentional: agents always have a token; humans never do.

@@ -84,19 +84,11 @@ principal.
 
 **Who gets a token:**
 
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
-| Principal type                | Token issued?                  | Auth path                                                   |
-| ----------------------------- | ------------------------------ | ----------------------------------------------------------- |
-| `human:<email>`               | **No**                         | `x-telec-email` or `x-caller-session-id` + tmux cross-check |
-| `system:<session_id>`         | **Yes**                        | `x-session-token` header                                    |
-| Inherited `session.principal` | **Yes** (if system-originated) | Inherits parent's auth path                                 |
-<!-- change:fix-orchestrator-session-human-role-unresolved -->
 | Principal type                | Token issued?                  | Auth path                                                   |
 | ----------------------------- | ------------------------------ | ----------------------------------------------------------- |
 | `human:<email>`               | **No**                         | `x-telec-email` or `x-caller-session-id` + tmux cross-check |
 | `system:daemon`               | **Yes**                        | `x-session-token` header                                    |
 | Inherited `session.principal` | **Yes** (if system-originated) | Inherits parent's auth path                                 |
-<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 **Token lifecycle:**
 
@@ -109,24 +101,6 @@ boundary.
 
 **Flow (system-principal sessions only):**
 
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
-1. Daemon calls `resolve_session_principal(session)` at bootstrap to derive a principal:
-   - `human:<email>` when `session.human_email` is set → **no token issued**.
-   - `system:<session_id>` for daemon-spawned (automated) sessions → **token issued**.
-   - Inherited `session.principal` is reused directly for child sessions so the full
-     agent chain shares one stable identity.
-2. For system principals only: daemon issues a token via
-   `db.issue_session_token(session_id, principal, role)` → UUID.
-3. Token is injected into the tmux environment as `TELEC_SESSION_TOKEN`.
-4. CLI calls from within the session send `x-session-token: <token>` header.
-5. `verify_caller()` validates the token first (before the session-id dual-factor path):
-   - Calls `db.validate_session_token(token)` — checks `revoked_at` only.
-   - Populates `CallerIdentity.principal` and `CallerIdentity.principal_role` from the record.
-6. `is_command_allowed()` uses `principal_role` as the effective human role when `human_role`
-   is absent — this lets daemon-spawned sessions pass role clearance without a human behind them.
-7. On session close, `db.revoke_session_tokens(session_id)` is called and the token cache is
-   invalidated so in-flight requests with the stale token are rejected immediately.
-<!-- change:fix-orchestrator-session-human-role-unresolved -->
 1. Daemon calls `resolve_session_principal(session)` at bootstrap to derive a principal:
    - `human:<email>` when `session.human_email` is set → **no token issued**.
    - `system:daemon` for every session with no human origin — the platform's own principal,
@@ -144,7 +118,6 @@ boundary.
    is absent — this lets daemon-spawned sessions pass role clearance without a human behind them.
 7. On session close, `db.revoke_session_tokens(session_id)` is called and the token cache is
    invalidated so in-flight requests with the stale token are rejected immediately.
-<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 **Key headers:**
 
@@ -168,18 +141,10 @@ nothing. The CLI resolves no identity itself.
 
 **Principal types:**
 
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
-| Format                | When set                                                | Credential                        |
-| --------------------- | ------------------------------------------------------- | --------------------------------- |
-| `human:<email>`       | Session created with a human identity (human_email set) | None                              |
-| `system:<session_id>` | Daemon-spawned automated session                        | Session token                     |
-| `system:daemon`       | The daemon process itself, which owns no session row    | Process-local daemon credential   |
-<!-- change:fix-orchestrator-session-human-role-unresolved -->
 | Format          | When set                                                                     | Credential                                                    |
 | --------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `human:<email>` | Session created with a human identity (human_email set)                      | None                                                          |
 | `system:daemon` | The daemon process itself, and every session with no human origin            | Process-local daemon credential; a session token per session |
-<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 **Token ledger table:** `session_tokens` — stores token, session_id, principal, role,
 issued_at, revoked_at. Token lifetime is controlled exclusively by revocation on
@@ -249,11 +214,7 @@ Child worker sessions should be linked to parent orchestrator session identity w
 - `/sessions/run` accepts terminal/TUI callers whose identity is resolved by `verify_caller` even when `x-caller-session-id` is empty.
 - When a caller session identity is present, `initiator_session_id` is written for child-session linkage.
 - Requests without caller session identity remain valid, but they create unlinked sessions because terminal/TUI callers do not have a parent TeleClaude session.
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
-- A lifecycle session the runner auto-dispatches for a todo whose `created_by_principal` is a `human:<email>` establishes that human as its root identity: the session row carries the owning human's `principal`/`human_email`, so its resolved principal is `human:<email>` rather than `system:<session_id>`, and the rest of the chain inherits it through `initiator_session_id`. The session's `system_role` is left untouched, so the attribution does not change what the session is authorized to do.
-<!-- change:fix-orchestrator-session-human-role-unresolved -->
 - A lifecycle session the runner auto-dispatches for a todo whose `created_by_principal` is a `human:<email>` establishes that human as its root identity: the session row carries the owning human's `principal`/`human_email`, so its resolved principal is `human:<email>` rather than `system:daemon`, and the rest of the chain inherits it through `initiator_session_id`. The session's `system_role` is left untouched, so the attribution does not change what the session is authorized to do.
-<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 
 ### 8) Person-bound service identity

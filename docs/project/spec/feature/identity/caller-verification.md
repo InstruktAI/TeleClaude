@@ -154,21 +154,12 @@ And a gate that requires a human principal accepts the caller
 
 #### UC-CV-SESSION-PRINCIPAL-SYSTEM: A system-role session resolves to a system principal and the human gate refuses it
 
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
-```
-Given a call with no session-token signal and a caller-session-id whose session record has system_role set, no human_email, and no inherited principal
-When caller verification runs
-Then the returned CallerIdentity carries principal="system:<session_id>"
-And a gate that requires a human principal refuses the caller
-```
-<!-- change:fix-orchestrator-session-human-role-unresolved -->
 ```
 Given a call with no session-token signal and a caller-session-id whose session record has system_role set, no human_email, and no inherited principal
 When caller verification runs
 Then the returned CallerIdentity carries principal="system:daemon"
 And a gate that requires a human principal refuses the caller
 ```
-<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 #### UC-CV-SESSION-PRINCIPAL-NONE: A human_role-only session keeps no principal yet stays authorized on its role
 

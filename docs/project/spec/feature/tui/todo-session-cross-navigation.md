@@ -79,16 +79,6 @@ Then the chip shows the uppercase initials "AS"
 And the chip colors resolve from alice's PersonConfig.color
 ```
 
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
-#### UC-XNAV-3: Session human chip resolves from human_email
-
-```
-Given an agent session whose human_email is "alice@example.com"
-When the session row title line is rendered
-Then a chip shows alice's initials after the agent/mode segment
-And the chip colors resolve from alice's PersonConfig.color
-```
-<!-- change:fix-orchestrator-session-human-role-unresolved -->
 #### UC-XNAV-3: Session human chip resolves from the session's lineage root
 
 ```
@@ -98,25 +88,15 @@ When the session row title line is rendered
 Then a chip shows alice's initials after the agent/mode segment
 And the chip colors resolve from alice's PersonConfig.color
 ```
-<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 #### UC-XNAV-4: Unresolvable human renders no chip
 
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
-```
-Given a todo with a null created_by_principal, or a principal whose email matches no registered person
-When the row is rendered
-Then no chip is rendered
-And the row layout closes the gap rather than reserving chip width
-```
-<!-- change:fix-orchestrator-session-human-role-unresolved -->
 ```
 Given a todo with a null created_by_principal, or a human principal whose email matches no registered person
 When the row is rendered
 Then no chip is rendered
 And the row layout closes the gap rather than reserving chip width
 ```
-<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 #### UC-XNAV-5: Session work slug is one highlighted component
 
@@ -379,7 +359,6 @@ When another TeleClaude session completes preparation
 Then the prepared-session detail row identifies the later completing session
 ```
 
-<!-- planned:fix-orchestrator-session-human-role-unresolved -->
 
 #### UC-XNAV-29: System lineage renders the system chip
 
@@ -391,7 +370,6 @@ Then a chip showing the single letter "S" is rendered in the chip's place
 And the chip carries no person's colors and does not act as a person filter
 ```
 
-<!-- /planned:fix-orchestrator-session-human-role-unresolved -->
 
 ## Known caveats
 

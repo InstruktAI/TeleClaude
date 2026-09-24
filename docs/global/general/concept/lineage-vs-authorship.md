@@ -7,16 +7,6 @@ visibility: 'public'
 
 ## What
 
-<!-- planned-change:fix-orchestrator-session-human-role-unresolved -->
-Every durable record in the platform — a git commit, a todo row, an artifact
-write — carries identity: an author field, a lineage principal, a chain-root
-email. That identity names the **authority the work ran under**, not the party
-that did the work. This is an autonomous system: agents do the work, and the
-human's identity threads through everything as lineage because the system runs
-under their account. A commit authored under the human's name was almost
-always written by an agent. A todo whose lineage root is the human was, more
-often than not, filed by an agent operating under that lineage.
-<!-- change:fix-orchestrator-session-human-role-unresolved -->
 Every durable record in the platform — a git commit, a todo row, an artifact
 write — carries identity: an author field, a lineage principal, a chain-root
 email. That identity names the **authority the work ran under**, not the party
@@ -28,7 +18,6 @@ root instead, and names that system authority in the same way. A commit
 authored under the human's name was almost always written by an agent. A todo
 whose lineage root is the human was, more often than not, filed by an agent
 operating under that lineage.
-<!-- /planned-change:fix-orchestrator-session-human-role-unresolved -->
 
 Attribution questions — "who created this?", "who wrote that?", "did you do
 this?" — are answered from the evidence built for them: a todo's creation

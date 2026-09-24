@@ -1,5 +1,5 @@
 ---
-description: "Per-session identity file in the session's TMPDIR carrying session_id, session_token, system_role, and human_role; written atomically by the identity context, read by CLI subprocesses to populate identity signals."
+description: "Per-session identity file in the session's TMPDIR carrying session_id, session_token, system_role, human_role, and principal; written atomically by the identity context, read by CLI subprocesses to populate identity signals and to resolve the caller a process inside the session acts as."
 visibility: 'public'
 ---
 
@@ -12,7 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-The file-based contract that lets any CLI subprocess running inside a TeleClaude session know which session it belongs to without consulting the identity context. Every session has a dedicated TMPDIR (allocated by `agent_runtime`'s tmux bridge); inside that TMPDIR the identity context writes a small structured identity document carrying four fields — `session_id`, `session_token`, `system_role`, and `human_role`. The bootstrap writer issues a fresh session token for system principals and merges the resulting record into the file; per-field reader helpers expose each value to the CLI without raising on missing or malformed input. Subprocesses inside the session resolve their own identity by inspecting the file under `$TMPDIR` and populate the session-token, caller-session-id, and (via the consumed `system_role`/`human_role` values) the role context on every call into the identity context. For identity-context-hosted async tasks that have no TMPDIR of their own, a context-var override lets the operations layer impersonate the originating session's id for the duration of the task.
+The file-based contract that lets any CLI subprocess running inside a TeleClaude session know which session it belongs to without consulting the identity context. Every session has a dedicated TMPDIR (allocated by `agent_runtime`'s tmux bridge); inside that TMPDIR the identity context writes a small structured identity document carrying five fields — `session_id`, `session_token`, `system_role`, `human_role`, and `principal`. The bootstrap writer issues a fresh session token for system principals and merges the resulting record into the file; per-field reader helpers expose each value to the CLI without raising on missing or malformed input. Subprocesses inside the session resolve their own identity by inspecting the file under `$TMPDIR` and populate the session-token and caller-session-id signals on every call into the identity context. The carried `principal` is the identity a process inside the session acts as: identity is resolved at the edge and carried inside, so a process that carries a principal never consults a terminal login to learn who it is. For identity-context-hosted async tasks that have no TMPDIR of their own, a context-var override lets the operations layer impersonate the originating session's id for the duration of the task.
 
 ## Canonical fields
 
@@ -28,12 +28,13 @@ And the document is written with stable key ordering and a trailing newline
 ```
 
 ```
-Given a session whose resolved principal is "system:<session_id>"
+Given a session whose resolved principal is "system:daemon"
 When the bootstrap writer runs
 Then session-token issuance produces a fresh UUID4 (see `feature/identity/session-token-issuance`)
 And the identity file carries that UUID4 in the session_token field
 And the file's system_role mirrors the session's system_role (lowercased, stripped)
 And the file's human_role mirrors the session's human_role
+And the file's principal is that system principal
 ```
 
 ```
@@ -42,6 +43,7 @@ When the bootstrap writer runs
 Then no session token is issued (the principal does not start with "system:")
 And the identity file is written with session_token absent
 And subsequent reader calls for the token return None
+And the file's principal is that human principal
 And the session authenticates via the terminal-email and caller-session-id signals instead
 ```
 
@@ -95,12 +97,51 @@ And every reader helper returns None
 And the in-process writer raises a runtime error "Cannot write session identity: no TMPDIR set"
 ```
 
+#### UC-SIF1: A session with human lineage acts as its person
+
+```
+Given an agent working inside a session whose lineage roots at a registered person
+When a process inside that session resolves the caller it acts as
+Then it acts as that person, with the role the people registry holds for them at that moment
+And a change to that person's role takes effect on the next resolution
+And no terminal login is consulted
+And a lineage root that matches no registered person yields a caller with no role
+```
+
+#### UC-SIF2: A session with system lineage acts as the system
+
+```
+Given an agent working inside a session whose lineage roots at a system principal — a standing role, or a session one started
+When a process inside that session resolves the caller it acts as
+Then it acts as that system principal
+And what it may do is what its system role permits, with no person's role applying
+And no terminal login is consulted
+```
+
+#### UC-SIF3: A process outside any session is resolved at the edge
+
+```
+Given a process with no session identity document present — it runs outside any session
+When it resolves the caller it acts as
+Then the terminal login is the only source consulted, as for any caller arriving from outside
+```
+
+#### UC-SIF4: A session identity document that carries no usable principal fails closed
+
+```
+Given a process whose session identity document is present but malformed, or valid but carrying no principal
+When the caller resolver decides the caller it acts as
+Then it acts as a caller with no identity
+And the resolver consults no terminal login, because the document's presence places the process inside a session
+```
+
 ### Cross-context references
 
 - The session TMPDIR itself is allocated by `agent_runtime` via the tmux bridge; this snippet owns the file's contract, not the directory's lifecycle.
 - The `session_token` field is produced by `feature/identity/session-token-issuance` (system principals only) and consumed by `feature/identity/session-token-validation` inside the identity context.
 - The `session_id` field is the binding key for `feature/identity/caller-verification`'s dual-factor path: the identity context cross-checks the inbound caller-session-id against the live tmux-session signal before honoring it.
 - `system_role` and `human_role` mirror the columns on the session record; they are written into the file as a convenience for CLI tools that want to surface the role locally without an extra round-trip — the identity context never trusts a client-supplied role.
+- `principal` is the session's resolved principal from `feature/identity/principal-resolution` — its lineage root: the owning person for work with human lineage, the system principal for work without. It is identity, not a derived band: a caller's role is read from the people registry when it is needed, never copied here.
 - The context-var override is the bridge that lets identity-context-hosted async operations carry the originating session's id past the boundary where a TMPDIR no longer exists. Without it, internally-spawned callers would have no `session_id` to present.
 - No v1 domain event is emitted by writing the identity file. In v2 the equivalent state change is the materialization of a `SessionPrincipal`, which is recorded inside the identity context but not emitted as its own event (the token-issuance event covers the observable side).
 
@@ -116,7 +157,7 @@ And the in-process writer raises a runtime error "Cannot write session identity:
   owning session's canonical native binding merely by emitting hooks.
 
 - The reader helpers are deliberately total (never raise). A malformed identity file, a non-dict root, or a non-string field value all degrade to None silently. This is intentional fail-closed behavior — a corrupted file produces an unauthenticated caller rather than a crash — but it means file corruption can masquerade as "no identity" without warning.
-- The bootstrap writer merges fields rather than overwriting wholesale (it reads the existing document before adding fields). Stages that run after bootstrap can add or update individual fields; they cannot blank out fields written by an earlier stage by passing `None`. To erase a field requires deleting the file.
-- The context-var override has priority over the TMPDIR file ONLY for the session-id reader. The other three readers (token, system_role, human_role) read exclusively from disk. Identity-context-hosted code that needs token-level identity must obtain the token from the session store directly — there is no token override path.
+- The bootstrap writer merges fields rather than overwriting wholesale (it reads the existing document before adding fields). Stages that run after bootstrap can add or update individual fields; they cannot blank out fields written by an earlier stage by passing `None`. The one exception is the record rewrite used when a live session's identity changes (startup reconciliation, adoption into a standing role): it writes every identity field from the session record, so a field the record no longer carries — a human role cleared at adoption — is absent afterwards, and it keeps the session's existing token, the one field the record does not hold.
+- The context-var override has priority over the TMPDIR file ONLY for the session-id reader. The other four readers (token, system_role, human_role, principal) read exclusively from disk. Identity-context-hosted code that needs token-level identity must obtain the token from the session store directly — there is no token override path.
 - Private file mode is applied to both the tmp file and the final file, but the directory mode is whatever the surrounding TMPDIR provides — this snippet does not lock down the TMPDIR itself. A laxly permissioned TMPDIR is a defense-in-depth gap on shared hosts.
 - The full UUID is written verbatim into the file; readers and consumers must NOT truncate when forwarding the value to logs, signals, or messages (see `docs/project/spec/session-identity-truth.md`).
