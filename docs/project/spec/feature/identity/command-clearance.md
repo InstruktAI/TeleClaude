@@ -176,6 +176,10 @@ Then the claim gate accepts (no live claim exists)
 And the requested mutation is applied to the todo state
 ```
 
+#### UC-CSU9
+
+#### UC-CSU10
+
 #### UC-CSU11: A session dispatched by the claim holder updates the todo
 
 ```
