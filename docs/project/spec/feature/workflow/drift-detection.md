@@ -91,11 +91,11 @@ human-approved PRD before that dependency reaches `prepared`. This is a gating
 relaxation enforced at slug resolution: the prepare gate reads the dependency's
 live PRD approval, so a lost or changed approval re-blocks dispatch directly.
 
-Gating keeps a Todo from starting on ground that has moved; it does nothing for
-an implementation-plan already written against a dependency's contract. That
-case is the **dependency-artifact** class. It is scoped to a dependency's
-artifacts, never to the `after` edges themselves, which stay gate-only
-(`project/spec/feature/workflow/dependency-graph`):
+The **dependency-artifact** class tracks an implementation-plan's reliance on the
+contracts of the Todos it depends on, since a plan's reading of a dependency is a
+copy that goes stale when its source moves (`general/principle/grounding`). It is
+scoped to a dependency's artifacts, never to the `after` edges themselves, which
+stay gate-only (`project/spec/feature/workflow/dependency-graph`):
 
 | Class                   | Evidence checked                                                                                                                                                                                                  | When pending                                                                                                                 |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
