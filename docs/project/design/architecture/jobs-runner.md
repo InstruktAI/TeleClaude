@@ -337,7 +337,11 @@ script job's `script` module stem — so the same published job carries separate
 every project that subscribes to it.
 <!-- change:job-name-identity -->
 Entries are keyed by project slug and job name, so the same published job carries separate
-lifecycles in every project that subscribes to it.
+lifecycles in every project that subscribes to it. A job reads only the entry under its own
+name: an entry whose key names no job in the project's effective set is inert — no job reads,
+closes, or reports it — and a job with no entry under its name starts fresh, waiting for its
+first scheduled occurrence. Renaming a job therefore starts its history anew; nothing carries
+an entry across a rename or an identity change.
 <!-- /planned-change:job-name-identity -->
 
 ```json
