@@ -262,6 +262,17 @@ checked per class against the recorded multi-dimensional anchor; any
 single dimension moving past its anchor re-pends that class. The
 orchestrator re-enters the state machine when the worker idles.
 
+<!-- planned:dependency-artifact-drift -->
+The lifecycle runner dispatches a Todo it would otherwise route to the work
+lane to the prepare lane when that Todo's implementation-plan derives
+`dependency-artifact` drift `pending`; the prepare call then routes the drift
+as above. The prepare-lane dependency gate still applies
+(`project/spec/feature/workflow/dependency-graph`): while a dependency does not
+count as prepared, the Todo stays dependency-blocked. A drift-reviewed stamp
+whose `dependency_digests_at_review` matches the current dependency digests
+ends the re-entry.
+<!-- /planned:dependency-artifact-drift -->
+
 ### Work-entry re-derivation
 
 The work state machine calls the same derivation function at its entry
@@ -685,6 +696,28 @@ Scenario: a dependency whose contract has not moved leaves the plan fresh
   And none of that dependency's intent or prepared artifacts has been rewritten since
   When drift is derived for the implementation-plan
   Then the prepare orchestrator finds no dependency-artifact drift for that dependency
+```
+
+#### UC-WDD16: A prepared Todo waiting on a dependency is re-entered when that dependency's contract moves
+
+```gherkin
+Scenario: the lifecycle runner re-enters a prepared Todo whose dependency contract moved
+  Given a prepared Todo whose implementation-plan was written while it depended on another Todo that has not delivered
+  And one of that dependency's intent or prepared artifacts has been rewritten since
+  And that dependency counts as prepared for the prepare-lane gate
+  When the lifecycle runner evaluates the Todo
+  Then the runner dispatches the Todo to the prepare lane instead of reporting it dependency-blocked
+  And the prepare orchestrator finds the implementation-plan's drift pending under dependency-artifact
+```
+
+#### UC-WDD17: A cosmetic verdict on the moved dependency ends the re-entry
+
+```gherkin
+Scenario: a cosmetic dependency-artifact verdict returns the Todo to waiting on its dependency
+  Given a prepared Todo re-entered for dependency-artifact drift
+  When the drift analyzer stamps the implementation-plan cosmetic against the dependency's current artifacts
+  Then the Todo settles at prepared
+  And later lifecycle runner passes report it dependency-blocked until the dependency delivers or its artifacts move again
 ```
 <!-- /planned:dependency-artifact-drift -->
 
