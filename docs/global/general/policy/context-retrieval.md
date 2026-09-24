@@ -7,54 +7,41 @@ visibility: 'public'
 
 ## Rules
 
-- **Read a domain's baseline bundle before substantive work in it when not yet loaded.** When a task enters a
-  knowledge domain — e.g. writing or reviewing code/tests enters `software-development` —
-  read that domain's bundle once at entry: `~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`,
-  but only if not yet loaded in this session. A procedure that always needs the bundle names that generated
-  bundle directly in its `## Required reads`; artifact transpilation expands the bundle into the procedure.
-  The bundle is the domain's full mandatory contract, pre-resolved to read in one pass; read it in full instead
-  of piecemeal index browsing when starting fresh in a domain. Skip it only when the domain's contracts are
-  already in context this session.
-- Use `telec docs` as the entry point for information discovery. **Always pass filters** —
-  a bare `telec docs index` floods ~70KB into your context. Use
-  `--areas <type>` and/or `--domains <domain>` and/or `--baseline-only` to scope the listing
-  to what you actually need.
-- Use it before any task where missing context could alter decisions.
-- Use the three‑phase flow: filtered index first, then `telec docs get <id>` for selected IDs,
-  then fetch any IDs listed in the `# Required reads (not loaded)` header of the previous response.
-- Dependencies are NOT auto-expanded inline by default. The `# Required reads (not loaded)`
-  header lists their IDs — fetch them explicitly with a follow-up `telec docs get` call if
-  needed.
-- **Activatable-procedure catalog instructions deliver their required-read closure in one
-  pass.** Executing the fetch instruction shown by the catalog returns the selected procedure
-  and every eligible transitive required read exactly once. Ordinary documentation retrieval
-  and its explicit follow-up flow remain unchanged.
-- **A scheduled agent job receives its procedure the same way.** The job runner's startup
-  instruction names the procedure snippet ID the job's declaration carries; executing that
-  instruction returns the procedure and every eligible required read in one pass.
-- **Third-party library docs: check consolidated docs first.** Before web searching or using
-  Context7 for any library, framework, or tool, run `telec docs index --third-party` to check
-  for existing coverage. If a consolidated snippet exists, use it. Web search and Context7 are
-  fallbacks for gaps in coverage, not the starting point.
+- **Read a domain's baseline bundle once, at entry.** When a task enters a
+  knowledge domain — writing or reviewing code or tests enters
+  `software-development` — read
+  `~/.teleclaude/docs/<domain>/domain-baseline-bundle.md` in full, unless its
+  contracts are already loaded this session. The bundle is the domain's mandatory
+  contract, pre-resolved for one pass; a procedure that always needs it names the
+  bundle in its `## Required reads`.
+- **`telec docs` is the entry point for discovery, and always filtered.** Use
+  `--areas`, `--domains`, and/or `--baseline-only`; an unfiltered index floods the
+  context. Retrieve before any task where missing context could alter decisions.
+- **Three phases:** filtered index, then `telec docs get <id>` for the selected
+  ids, then the ids listed under `# Required reads (not loaded)` in that
+  response. Dependencies are never expanded inline by default.
+- **An activatable procedure's catalog instruction delivers its closure in one
+  pass**, and a scheduled job's startup instruction does the same for the
+  procedure its declaration names. Ordinary retrieval keeps the explicit
+  follow-up flow.
+- **Third-party docs: consolidated first.** Run `telec docs index --third-party`
+  before web search or Context7; those are fallbacks for coverage gaps.
 
 ## Rationale
 
-- Immediate context prevents drift from established policy, architecture, and procedure.
-- Consolidated third-party docs are curated, verified, and project-aware. Live web results are
-  noisy, may be outdated, and bypass the team's shared knowledge.
+Immediate context prevents drift from established policy, architecture, and
+procedure. Consolidated third-party docs are curated and project-aware; live web
+results are noisy and bypass shared knowledge.
 
 ## Scope
 
-- Applies to all agents, all projects, and all tasks.
+All agents, all projects, all tasks.
 
 ## Enforcement
 
-- Entering domain work without reading that domain's bundle
-  (`~/.teleclaude/docs/<domain>/domain-baseline-bundle.md`), when its contracts are not already
-  loaded, is a process miss — read the bundle first.
-- If unsure about policies, procedures, roles, or constraints, run a filtered
-  `telec docs index --areas <type>` (or `--baseline-only`) before editing or executing.
+Reviewers treat domain work begun without the domain's contracts loaded as a
+process miss; the remedy is to load them before continuing.
 
 ## Exceptions
 
-- None.
+None.
