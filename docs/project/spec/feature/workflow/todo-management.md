@@ -174,7 +174,7 @@ And the CLI renders the service's answer without reading the todo store itself
 #### UC-WM33: Todo and bug reads refuse a caller the platform cannot identify
 
 ```
-Given a process that carries no identity the platform can verify — no terminal login, no usable session identity
+Given a process with no resolved person or principal — no terminal login, no usable session identity, or a verified session whose record holds only an operational role
 When it runs "telec todo list", "telec todo show", "telec todo artifacts list", "telec todo artifacts read", or "telec bugs list"
 Then the workflow service refuses the request before any todo is read
 And no todo, artifact, or bug content is printed

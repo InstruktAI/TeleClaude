@@ -12,7 +12,11 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:cli-authorization-reads-via-daemon -->
 `telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI handler has two paths. A process inside a session — one whose TMPDIR holds a session identity document — queries the identity context's whoami capability and prints the Principal and Role its session resolves to, whether it presents a session token or its session id; it never reads the terminal login. A process outside any session reads its per-TTY auth document and resolves the Role through the human-identity resolver against the `people` config. The whoami capability is itself gated by caller verification, so invoking it inside an agent session also exercises the full caller-verification path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
+<!-- change:cli-authorization-reads-via-daemon -->
+`telec auth whoami` is the operator-facing question "who does the system think I am?". Inside a session and at a terminal alike, the CLI queries the identity context's whoami capability and prints what caller verification resolved for the identity signals it sends. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role its session resolves to, whether it presents a session token or its session id, and never reads the terminal login; a document that is present but unusable is reported and nothing is asked. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path; the CLI resolves no Role itself. The whoami capability is gated by caller verification, so every invocation exercises the full caller-verification path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
+<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 <!-- planned:external-session-identity -->
 ### Attested self-identification
@@ -52,6 +56,7 @@ And the capability returns `{"principal": "system:c3f1d8a2-7b94-4e6c-9f0e-2a8d7b
 And the CLI prints two lines: `Principal: system:c3f1d8a2-7b94-4e6c-9f0e-2a8d7b6c4e5f` and `Role: worker`
 ```
 
+<!-- planned-change:cli-authorization-reads-via-daemon -->
 ```
 Given a terminal outside any session — no session identity document — with a TTY auth document holding `maurice@instrukt.ai`
 And `people` config maps that email to the `admin` Role
@@ -66,6 +71,22 @@ Given a terminal outside any session with no TTY login document
 When the operator runs `telec auth whoami`
 Then the CLI prints `No login set for current TTY (<tty>).` and exits with success
 ```
+<!-- change:cli-authorization-reads-via-daemon -->
+```
+Given a terminal outside any session — no session identity document — whose login document names `ada@example.com`
+And the `people` registry holds `ada@example.com` with the `admin` Role
+When the operator runs `telec auth whoami`
+Then the CLI sends that login as its identity signal to the identity context's whoami capability
+And it prints `Email: ada@example.com` and `Role: admin` from the capability's answer, then `TTY: <pts/N>` and `Session auth file: <path>`
+And the CLI resolves no Role itself
+```
+
+```
+Given a terminal outside any session that caller verification cannot identify — no login document on a host with more than one registered person, or a login naming no registered person
+When the operator runs `telec auth whoami`
+Then the CLI prints that no identity is established for the current TTY, with the refusal's instruction to log in, and exits with success
+```
+<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 ```
 Given an environment outside any session with no detectable TTY
