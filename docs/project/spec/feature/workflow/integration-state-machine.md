@@ -95,7 +95,7 @@ Given integration advances repository-root main through a fast-forward or finali
 When that canonical-root advancement completes
 Then the owed deterministic maintenance is recorded from the canonical checkout and begins independently
 And integration does not wait for every maintenance action to finish
-And the state machine records a checkout-scoped marker only when the range owes a live-runtime log check
+And the canonical-main commit boundary records a checkout-scoped marker only when the range owes a live-runtime log check
 And the marker carries the advanced range and activation time but no mechanical action id
 And the standing integrator retains the marker until every owed maintenance action succeeds and the latest maintenance-ready time is recorded
 And its runtime log judgment discharges the marker only from evidence read after that time, covering the earliest activation through completed maintenance

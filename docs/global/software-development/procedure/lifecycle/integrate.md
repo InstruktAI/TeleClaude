@@ -66,6 +66,12 @@ each decision point until the queue is drained.
     failures and recover within the integration lane, and keep outstanding
     live-runtime judgment with the integrator. Continue observing those actions
     on the parked queue watch when they outlive this drain.
+    `telec code maintenance status` reports the checkout's outstanding actions,
+    terminal failures, and integrator judgment, each with its recovery command.
+    After the cause of a terminal failure is addressed, `telec code maintenance
+    retry` replays that action for its original activation; `telec code
+    maintenance drain` resumes interrupted work and records maintenance
+    readiness when no owed action remains.
 <!-- /planned:nonblocking-commit-maintenance -->
 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
 5. Before any push, run repo-wide verification:
@@ -258,7 +264,8 @@ escalation for that set. The next move belongs to the human.
 - **Intent:** `Recheck the integration queue and outstanding canonical-main maintenance from current source truth. Judge completed maintenance and recover failures within the integration lane; if a candidate is ready, continue the drain, otherwise remain parked.`
 - **Firing behavior:** inspect checkout-scoped integrator judgment markers,
   outstanding maintenance records, and structured terminal outcomes for
-  canonical-main activations, including direct commits with no todo candidate.
+  canonical-main activations, including direct commits with no todo candidate,
+  through `telec code maintenance status`.
   Keep the judgment pending while any owed action is unfinished or failed.
   After terminal success, inspect the changed runtime and read logs from a
   window beginning no later than the earliest activation recorded on the
