@@ -214,8 +214,7 @@ target runs elsewhere, per the locality rule the stop template already follows.
 <!-- planned:noop-turn-end-notifies-listeners -->
 A stop whose entire authored output, as read when the turn stops, is `NOOP`
 uses its own stop template: it states that the turn ended with `NOOP` and
-carries no inspect command, because the notification already holds the whole
-output. The stop notification is sent at stop time; a stop whose output is not
+carries no inspect command. The stop notification is sent at stop time; a stop whose output is not
 yet readable then uses the inspect template.
 <!-- /planned:noop-turn-end-notifies-listeners -->
 
