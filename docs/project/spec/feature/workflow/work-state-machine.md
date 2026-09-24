@@ -255,6 +255,7 @@ When the work orchestrator re-enters `telec todo work my-feature`
 Then the machine consumes the verdict only when the current `review-findings` digest is R and the todo's own change is unchanged since H
 And the todo's own change is unchanged since H when H is an ancestor of the current worktree HEAD and every commit the todo branch gained on its own line since H is a merge of origin/main whose content is exactly the automatic merge of its parents
 And an absent binding, missing report, later report rewrite, or any other commit the todo branch gained since H leaves the build review pending for re-review
+And when the machine cannot determine whether the todo's own change is unchanged since H, it reports that to the orchestrator and neither consumes nor revokes the verdict
 And only a current approve advances to review_approved
 And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
 ```
@@ -354,14 +355,29 @@ And the dispatch request handed to agent runtime carries that same value
 #### UC-WSM15: A successful origin/main merge preserves all work in the todo worktree
 
 ```gherkin
-Given a Todo worktree carrying any of build commits, a build-complete claim, a stamped build-review verdict, a live review, a finalize-ready claim, or uncommitted builder edits
-When "telec todo work my-feature" re-enters after origin/main has advanced
-Then a successful merge of origin/main into the worktree leaves every build commit, build-complete fact, review verdict, finalize-ready claim, and admitted review-round count in force
+Given a Todo worktree carrying build commits, a build-complete claim, a stamped build-review verdict, a live review, or admitted review rounds
+When a merge of origin/main into that worktree completes without conflicts
+Then every build commit, build-complete fact, review verdict, and admitted review-round count remains in force
 And because of that merge the machine dispatches no reviewer, sends a live reviewer no follow-up, attributes no merge commit to the builder, and asks no finalizer to push or re-stamp
-And a worktree holding uncommitted edits stays exactly as it is: work entry defers the merge instead of committing those edits on the builder's behalf
-And once a finalize-ready claim is recorded, work entry merges nothing further into the worktree, so the stamped SHA and the published branch remain the integration candidate
-And a merge that fails with conflicts is the only merge outcome the machine reports to the orchestrator, which routes recovery to the builder
-And when the machine cannot determine whether the todo's own change is unchanged, it reports that to the orchestrator and neither consumes nor revokes any verdict, claim, or commit
+```
+
+#### UC-WSM16: Work entry leaves uncommitted worktree edits untouched
+
+```gherkin
+Given a Todo worktree holding uncommitted edits
+When "telec todo work my-feature" reaches its origin/main merge step
+Then work entry defers the merge for that call
+And the edits stay uncommitted, with no commit authored on the builder's behalf
+And a later call merges once the worktree is clean
+```
+
+#### UC-WSM17: A recorded finalize-ready claim freezes the worktree against work-entry merges
+
+```gherkin
+Given a Todo whose finalizer stamped finalize-ready for SHA F and published its branch at F
+When "telec todo work my-feature" re-enters after origin/main has advanced
+Then work entry merges nothing into the worktree
+And the finalize-ready claim for F is consumed against unchanged worktree, branch, and remote refs
 ```
 <!-- /planned:successful-merge-preserves-worktree-work -->
 
