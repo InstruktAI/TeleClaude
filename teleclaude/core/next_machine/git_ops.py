@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol, cast
@@ -17,11 +18,13 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     STATE_KEY_ARCHITECTURE,
+    STATE_KEY_DIAGNOSIS,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
     WORKTREE_DIR,
+    TodoStatus,
 )
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL, upstream_keys_for
 from teleclaude.core.next_machine._types import ARTIFACT_UPSTREAMS as ARTIFACT_UPSTREAMS  # re-export
@@ -87,6 +90,25 @@ _STATE_KEY_TO_ARTIFACT: dict[str, str] = {
     STATE_KEY_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
 }
+
+DEPENDENCY_ARTIFACT_KEYS: tuple[str, ...] = (
+    STATE_KEY_INPUT,
+    STATE_KEY_PRD,
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_DIAGNOSIS,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+)
+
+
+@dataclass(frozen=True)
+class DependencyArtifactSnapshot:
+    """Current lifecycle status and present artifact digests for one dependency."""
+
+    status: TodoStatus
+    digests: dict[str, str]
+
+
+DependencyArtifactSnapshots = dict[str, DependencyArtifactSnapshot]
 
 
 class DependencyStatusReader(Protocol):
@@ -314,6 +336,81 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
     return _reviewed_verdict_or_pending(
         stamp,
         evidence_matches_review=lambda reviewed: reviewed.upstream_digests_at_review == current,
+    )
+
+
+def build_dependency_artifact_snapshot(
+    dependencies: list[tuple[str, TodoStatus]],
+    state_for: Callable[[str], TodoState | None],
+) -> DependencyArtifactSnapshots:
+    """Capture current dependency status and non-empty tracked artifact digests."""
+    snapshot: DependencyArtifactSnapshots = {}
+    for dep_slug, status in dependencies:
+        state = state_for(dep_slug)
+        digests = (
+            {
+                state_key: entry.digest
+                for state_key in DEPENDENCY_ARTIFACT_KEYS
+                if (entry := getattr(state.artifacts, state_key)).digest
+            }
+            if state is not None
+            else {}
+        )
+        snapshot[dep_slug] = DependencyArtifactSnapshot(status=status, digests=digests)
+    return snapshot
+
+
+def dependency_artifact_evidence(
+    recorded: dict[str, dict[str, str]],
+    snapshot: DependencyArtifactSnapshots,
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """Compare recorded dependency keys that are still active or iceboxed."""
+    current_evidence: dict[str, dict[str, str]] = {}
+    moved_dependencies: list[str] = []
+    for dep_slug, recorded_digests in recorded.items():
+        dependency = snapshot.get(dep_slug)
+        if dependency is None or dependency.status not in (TodoStatus.ACTIVE, TodoStatus.ICEBOX):
+            continue
+        current_digests = {key: dependency.digests.get(key, "") for key in recorded_digests}
+        current_evidence[dep_slug] = current_digests
+        if any(current_digests[key] != digest for key, digest in recorded_digests.items()):
+            moved_dependencies.append(dep_slug)
+    return current_evidence, moved_dependencies
+
+
+def derive_dependency_artifact_drift(
+    model: TodoState,
+    snapshot: DependencyArtifactSnapshots,
+) -> ArtifactDriftStatus:
+    """Derive implementation-plan drift from recorded undelivered dependencies."""
+    plan = model.artifacts.implementation_plan
+    if _artifact_is_absent(plan) or not plan.dependency_artifact_digests:
+        return DRIFT_FRESH
+    current_evidence, moved_dependencies = dependency_artifact_evidence(
+        plan.dependency_artifact_digests,
+        snapshot,
+    )
+    if not moved_dependencies:
+        return DRIFT_FRESH
+    stamp = _drift_stamp_for_artifact(model, STATE_KEY_IMPLEMENTATION_PLAN)
+    return _reviewed_verdict_or_pending(
+        stamp,
+        evidence_matches_review=lambda reviewed: _dependency_evidence_matches_review(
+            reviewed.dependency_digests_at_review,
+            current_evidence,
+        ),
+    )
+
+
+def _dependency_evidence_matches_review(
+    anchor: dict[str, dict[str, str]],
+    current_evidence: dict[str, dict[str, str]],
+) -> bool:
+    """Match every currently evaluated dependency digest against its review anchor."""
+    return all(
+        anchor.get(dep_slug, {}).get(state_key) == digest
+        for dep_slug, digests in current_evidence.items()
+        for state_key, digest in digests.items()
     )
 
 
@@ -777,16 +874,22 @@ def review_surface_overlap_files(cwd: str, previous_head: str, current_head: str
 
 
 __all__ = [
+    "DEPENDENCY_ARTIFACT_KEYS",
     "DRIFT_COSMETIC",
     "DRIFT_FRESH",
     "DRIFT_PENDING",
     "DRIFT_SUBSTANTIVE",
     "ArtifactDriftStatus",
+    "DependencyArtifactSnapshot",
+    "DependencyArtifactSnapshots",
     "_has_meaningful_diff",
     "_merge_origin_main_into_worktree",
+    "build_dependency_artifact_snapshot",
     "build_git_hook_env",
+    "dependency_artifact_evidence",
     "derive_age_drift",
     "derive_artifact_drift",
+    "derive_dependency_artifact_drift",
     "derive_owned_snippet_drift",
     "derive_upstream_artifact_drift",
     "derive_upstream_snippet_drift",

@@ -70,6 +70,7 @@ class RunnerTodo:
     plan_review_current: bool = False
     current_plan_digest: str = ""
     reviewed_plan_digest: str = ""
+    dependency_drift_pending_on: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

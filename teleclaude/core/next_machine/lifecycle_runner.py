@@ -15,6 +15,12 @@ from teleclaude.config import WorkflowRunnerMode, config
 from teleclaude.constants import COMMAND_ROLE_MAP, JobRole, SlashCommand, TodoStatus
 from teleclaude.core.dates import task_schedule_due
 from teleclaude.core.db import Db, get_db
+from teleclaude.core.next_machine.git_ops import (
+    DRIFT_PENDING,
+    build_dependency_artifact_snapshot,
+    dependency_artifact_evidence,
+    derive_dependency_artifact_drift,
+)
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_CHANGE, KIND_FEATURE, KIND_TASK, canonical_kind
 from teleclaude.core.next_machine.lifecycle import (
     coerce_lifecycle_phase,
@@ -57,6 +63,7 @@ _RUNNER_REPREPARE_EVENT = "todo_runner_routed_to_prepare"
 _RUNNER_REPREPARE_MESSAGE = "todo runner routed to prepare"
 _RUNNER_REPREPARE_OUTCOME = "prepare"
 _RUNNER_REPREPARE_REASON = "plan_review_not_current"
+_RUNNER_DEPENDENCY_ARTIFACT_DRIFT_REASON = "dependency_artifact_drift_pending"
 
 
 # Steady-state terminal reasons carry the entire backlog and never change
@@ -174,11 +181,16 @@ def _resolve_kinded_dispatch(
     if phase == LifecyclePhase.FINALIZE_READY and todo.plan_review_current:
         return None, RunnerSkipReason.FINALIZE_READY
     if lifecycle_phase_index(phase) >= lifecycle_phase_index(LifecyclePhase.PREPARED) and todo.plan_review_current:
-        # Work lane — entering the execution runtime. Autostart gates this only.
-        if not _autostart_enabled(kind, autostart):
-            return None, RunnerSkipReason.POLICY_DISABLED
-        unmet = [dep for dep in todo.after if dep not in delivered_slugs]
-        lane = RunnerLane.WORK
+        if todo.dependency_drift_pending_on:
+            # Re-derive a prepared dependent before its work runtime resumes.
+            unmet = [dep for dep in todo.after if dep not in prepared_slugs]
+            lane = RunnerLane.PREPARE
+        else:
+            # Work lane — entering the execution runtime. Autostart gates this only.
+            if not _autostart_enabled(kind, autostart):
+                return None, RunnerSkipReason.POLICY_DISABLED
+            unmet = [dep for dep in todo.after if dep not in delivered_slugs]
+            lane = RunnerLane.WORK
     else:
         # Prepare lane — preparation always runs regardless of autostart; agents
         # park at the human approval gates (PRD) at the right moments anyway.
@@ -274,7 +286,19 @@ def decide_dispatches(
         if _at_capacity():
             decision.skip(RunnerSkipReason.AT_CAPACITY, slug)
             continue
-        if lane is RunnerLane.PREPARE and coerce_lifecycle_phase(todo.lifecycle_phase) is LifecyclePhase.FINALIZE_READY:
+        if lane is RunnerLane.PREPARE and todo.dependency_drift_pending_on:
+            logger.info(
+                _RUNNER_REPREPARE_MESSAGE,
+                event=_RUNNER_REPREPARE_EVENT,
+                outcome=_RUNNER_REPREPARE_OUTCOME,
+                reason=_RUNNER_DEPENDENCY_ARTIFACT_DRIFT_REASON,
+                slug=slug,
+                lifecycle_phase=todo.lifecycle_phase or "",
+                dependencies=sorted(todo.dependency_drift_pending_on),
+            )
+        elif (
+            lane is RunnerLane.PREPARE and coerce_lifecycle_phase(todo.lifecycle_phase) is LifecyclePhase.FINALIZE_READY
+        ):
             logger.info(
                 _RUNNER_REPREPARE_MESSAGE,
                 event=_RUNNER_REPREPARE_EVENT,
@@ -441,6 +465,15 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
     )
     status_reads = await todos_db.read_status_and_states_by_id([row["id"] for row in rows])
     deps = await todos_db.load_deps()
+    states_by_slug: dict[str, TodoState | None] = {}
+    statuses_by_slug: dict[str, TodoStatus] = {}
+    for row in rows:
+        status_read = status_reads.get(row["id"], TodoStatusStateRead(status=None, state=None, is_holder=False))
+        if status_read.status is not None:
+            statuses_by_slug[row["slug"]] = TodoStatus(status_read.status)
+        states_by_slug[row["slug"]] = (
+            TodoState.model_validate(status_read.state) if status_read.state is not None else None
+        )
     loaded: dict[str, RunnerTodo] = {}
     reconciled: list[str] = []
     for row in rows:
@@ -492,7 +525,42 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
             plan_review_current=todo.plan_review_current,
             current_plan_digest=todo.current_plan_digest,
             reviewed_plan_digest=todo.reviewed_plan_digest,
+            dependency_drift_pending_on=todo.dependency_drift_pending_on,
         )
+        state = states_by_slug.get(todo.slug)
+        if state is not None and todo.kind in {KIND_FEATURE, KIND_CHANGE, KIND_BUG}:
+            dependency_snapshot = build_dependency_artifact_snapshot(
+                [
+                    (dep_slug, statuses_by_slug[dep_slug])
+                    for dep_slug in deps.get(todo.slug, [])
+                    if dep_slug in statuses_by_slug
+                ],
+                states_by_slug.get,
+            )
+            if derive_dependency_artifact_drift(state, dependency_snapshot) == DRIFT_PENDING:
+                _, moved_dependencies = dependency_artifact_evidence(
+                    state.artifacts.implementation_plan.dependency_artifact_digests,
+                    dependency_snapshot,
+                )
+                todo = RunnerTodo(
+                    slug=todo.slug,
+                    status=todo.status,
+                    kind=todo.kind,
+                    lifecycle_phase=todo.lifecycle_phase,
+                    human_approval_pending=todo.human_approval_pending,
+                    hold=todo.hold,
+                    active_runner=todo.active_runner,
+                    manually_started=todo.manually_started,
+                    after=todo.after,
+                    schedule=todo.schedule,
+                    task_plan_digest=todo.task_plan_digest,
+                    task_approved=todo.task_approved,
+                    task_approved_digest=todo.task_approved_digest,
+                    plan_review_current=todo.plan_review_current,
+                    current_plan_digest=todo.current_plan_digest,
+                    reviewed_plan_digest=todo.reviewed_plan_digest,
+                    dependency_drift_pending_on=tuple(sorted(moved_dependencies)),
+                )
         if todo.active_runner and not await _is_live_runner(db, todo.active_runner):
             await _clear_active_runner(todos_db, row)
             reconciled.append(todo.slug)
@@ -513,6 +581,7 @@ async def _load_todos(todos_db: TodosDb, db: Db) -> tuple[dict[str, RunnerTodo],
                 plan_review_current=todo.plan_review_current,
                 current_plan_digest=todo.current_plan_digest,
                 reviewed_plan_digest=todo.reviewed_plan_digest,
+                dependency_drift_pending_on=todo.dependency_drift_pending_on,
             )
         loaded[todo.slug] = todo
     return loaded, reconciled

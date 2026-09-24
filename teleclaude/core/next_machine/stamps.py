@@ -47,11 +47,17 @@ from teleclaude.core.db import db as runtime_db
 from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine._types import upstream_keys_for
 from teleclaude.core.next_machine.claim_authority import ClaimOwnership, classify_claim_ownership
-from teleclaude.core.next_machine.git_ops import get_head_commit, get_origin_main_sha, has_build_commits_beyond_main
+from teleclaude.core.next_machine.git_ops import (
+    dependency_artifact_evidence,
+    get_head_commit,
+    get_origin_main_sha,
+    has_build_commits_beyond_main,
+)
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_ENTRY_PHASE, KIND_TASK
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, diagnosis_settled_current, reset_finalize
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.next_machine.provenance import (
+    read_dependency_artifact_snapshot,
     read_owned_snippet_digests,
     read_referenced_snippet_digests,
     sync_artifact_provenance,
@@ -680,6 +686,13 @@ async def _apply_drift_reviewed_stamp(
     )
     upstream_digests = _current_upstream_digests(writer, state_key)
     entry = getattr(writer.state.artifacts, state_key)
+    dependency_digests_at_review: dict[str, dict[str, str]] = {}
+    if state_key == STATE_KEY_IMPLEMENTATION_PLAN:
+        dependency_snapshot = await read_dependency_artifact_snapshot(todos_db, slug)
+        dependency_digests_at_review, _ = dependency_artifact_evidence(
+            entry.dependency_artifact_digests,
+            dependency_snapshot,
+        )
     if not entry.async_provenance_complete:
         entry.owned_snippet_digests = owned_snippets
         entry.referenced_snippet_digests = referenced_snippets
@@ -694,6 +707,7 @@ async def _apply_drift_reviewed_stamp(
         head_sha_at_review=get_origin_main_sha(repo_root),
         upstream_digests_at_review=upstream_digests,
         snippet_digests_at_review={**owned_snippets, **referenced_snippets},
+        dependency_digests_at_review=dependency_digests_at_review,
     )
 
 

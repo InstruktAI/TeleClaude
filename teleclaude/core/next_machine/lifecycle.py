@@ -35,6 +35,7 @@ from teleclaude.core.next_machine.git_ops import (
     _parse_iso_datetime,
     derive_age_drift,
     derive_artifact_drift,
+    derive_dependency_artifact_drift,
     derive_owned_snippet_drift,
     derive_upstream_artifact_drift,
     derive_upstream_snippet_drift,
@@ -47,6 +48,7 @@ from teleclaude.core.next_machine.kinds import (
     KIND_TASK,
     PLAN_ONLY_PREPARE_KINDS,
 )
+from teleclaude.core.next_machine.provenance import read_dependency_artifact_snapshot
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.session_identity import get_session_id
@@ -55,6 +57,7 @@ from teleclaude.types.lifecycle import (
     LIFECYCLE_PHASE_ORDER,
     PREPARE_LIFECYCLE_PHASES,
     WORK_LIFECYCLE_PHASES,
+    DriftClass,
     LifecyclePhase,
 )
 from teleclaude.types.todos import ApprovalStamp, ArtifactEntry, ReviewVerdictState, TodoState
@@ -67,6 +70,7 @@ __all__ = [
     "_DRIFT_MATRIX_ARTIFACTS",
     "_DRIFT_REROUTABLE_CLASSES_BY_ARTIFACT",
     "ApprovalGate",
+    "DriftResult",
     "LifecyclePhase",
     "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
@@ -137,25 +141,21 @@ _CREATIVE_APPROVAL_GATES: tuple[tuple[str, ApprovalGate, str], ...] = (
 )
 
 
-_DRIFT_CLASS_CODE = "code"
-_DRIFT_CLASS_UPSTREAM_ARTIFACT = "upstream-artifact"
-_DRIFT_CLASS_OWNED_SNIPPET = "owned-snippet"
-_DRIFT_CLASS_UPSTREAM_SNIPPET = "upstream-snippet"
-_DRIFT_CLASS_AGE = "age"
 _ALL_DRIFT_CLASSES = (
-    _DRIFT_CLASS_CODE,
-    _DRIFT_CLASS_UPSTREAM_ARTIFACT,
-    _DRIFT_CLASS_OWNED_SNIPPET,
-    _DRIFT_CLASS_UPSTREAM_SNIPPET,
-    _DRIFT_CLASS_AGE,
+    DriftClass.CODE,
+    DriftClass.UPSTREAM_ARTIFACT,
+    DriftClass.OWNED_SNIPPET,
+    DriftClass.UPSTREAM_SNIPPET,
+    DriftClass.AGE,
 )
 _IMPLEMENTATION_PLAN_DRIFT_CLASSES = (
-    _DRIFT_CLASS_CODE,
-    _DRIFT_CLASS_UPSTREAM_ARTIFACT,
-    _DRIFT_CLASS_UPSTREAM_SNIPPET,
-    _DRIFT_CLASS_AGE,
+    DriftClass.CODE,
+    DriftClass.UPSTREAM_ARTIFACT,
+    DriftClass.UPSTREAM_SNIPPET,
+    DriftClass.DEPENDENCY_ARTIFACT,
+    DriftClass.AGE,
 )
-_DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+_DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str, tuple[DriftClass, ...]], ...] = (
     (STATE_KEY_PRD, STATE_KEY_PRD, _ALL_DRIFT_CLASSES),
     (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE, _ALL_DRIFT_CLASSES),
     (ARTIFACT_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN, _IMPLEMENTATION_PLAN_DRIFT_CLASSES),
@@ -170,6 +170,7 @@ _DRIFT_PRIORITY: tuple[ArtifactDriftStatus, ...] = (
     DRIFT_COSMETIC,
     DRIFT_FRESH,
 )
+DriftResult = dict[str, dict[DriftClass, ArtifactDriftStatus]]
 
 
 def coerce_lifecycle_phase(raw: object) -> LifecyclePhase | None:
@@ -530,38 +531,44 @@ async def derive_lifecycle_drift(
     todos_db: DependencyStatusReader,
     snippet_digest_fn: Callable[[str], str],
     writer: object,
-) -> dict[str, dict[str, ArtifactDriftStatus]]:
+) -> DriftResult:
     """Return per-artifact, per-class drift for every present tracked artifact."""
-    _ = slug, todos_db, writer
-    drift: dict[str, dict[str, ArtifactDriftStatus]] = {}
+    _ = writer
+    drift: DriftResult = {}
     for artifact_name, state_key, applicable_classes in _DRIFT_TRACKED_ARTIFACTS:
         entry = getattr(model.artifacts, state_key)
         if not entry.digest and not entry.produced_at:
             continue
-        class_drift: dict[str, ArtifactDriftStatus] = {}
+        class_drift: dict[DriftClass, ArtifactDriftStatus] = {}
         for class_name in applicable_classes:
-            if class_name == _DRIFT_CLASS_CODE:
+            if class_name == DriftClass.CODE:
                 class_drift[class_name] = derive_artifact_drift(
                     entry,
                     model.approvals.drift_reviewed.get(artifact_name),
                     "",
                     repo_root or "",
                 )
-            elif class_name == _DRIFT_CLASS_UPSTREAM_ARTIFACT:
+            elif class_name == DriftClass.UPSTREAM_ARTIFACT:
                 class_drift[class_name] = derive_upstream_artifact_drift(model, artifact_name)
-            elif class_name == _DRIFT_CLASS_OWNED_SNIPPET:
+            elif class_name == DriftClass.OWNED_SNIPPET:
                 class_drift[class_name] = derive_owned_snippet_drift(
                     model,
                     artifact_name,
                     snippet_digest_fn=snippet_digest_fn,
                 )
-            elif class_name == _DRIFT_CLASS_UPSTREAM_SNIPPET:
+            elif class_name == DriftClass.UPSTREAM_SNIPPET:
                 class_drift[class_name] = derive_upstream_snippet_drift(
                     model,
                     artifact_name,
                     snippet_digest_fn=snippet_digest_fn,
                 )
-            elif class_name == _DRIFT_CLASS_AGE:
+            elif class_name == DriftClass.DEPENDENCY_ARTIFACT:
+                if entry.dependency_artifact_digests:
+                    dependency_snapshot = await read_dependency_artifact_snapshot(todos_db, slug)
+                    class_drift[class_name] = derive_dependency_artifact_drift(model, dependency_snapshot)
+                else:
+                    class_drift[class_name] = DRIFT_FRESH
+            elif class_name == DriftClass.AGE:
                 class_drift[class_name] = derive_age_drift(
                     model,
                     artifact_name,
@@ -573,7 +580,7 @@ async def derive_lifecycle_drift(
 
 
 def collapse_drift(
-    result: dict[str, dict[str, ArtifactDriftStatus]],
+    result: DriftResult,
 ) -> dict[str, ArtifactDriftStatus]:
     """Collapse per-class drift to per-artifact status by priority."""
     collapsed: dict[str, ArtifactDriftStatus] = {}

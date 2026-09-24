@@ -27,10 +27,16 @@ from teleclaude.constants import (
     STATE_KEY_TASK_PLAN,
 )
 from teleclaude.core.next_machine._types import upstream_keys_for
-from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_origin_main_sha
+from teleclaude.core.next_machine.git_ops import (
+    DependencyArtifactSnapshots,
+    DependencyStatusReader,
+    build_dependency_artifact_snapshot,
+    extract_referenced_paths,
+    get_origin_main_sha,
+)
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.paths import DEFAULT_TELECLAUDE_HOME, GLOBAL_DOCS_DIR
-from teleclaude.types.todos import ArtifactEntry
+from teleclaude.types.todos import ArtifactEntry, TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -89,6 +95,13 @@ async def sync_artifact_provenance(
         repo_root=repo_root,
         snippet_digest_fn=snippet_digest_fn,
     )
+    if key == STATE_KEY_IMPLEMENTATION_PLAN:
+        dependency_snapshot = await read_dependency_artifact_snapshot(todos_db, slug)
+        entry.dependency_artifact_digests = {
+            dep_slug: dependency.digests for dep_slug, dependency in dependency_snapshot.items() if dependency.digests
+        }
+    else:
+        entry.dependency_artifact_digests = {}
     entry.produced_at = datetime.now(UTC).isoformat()
     entry.async_provenance_complete = True
     _clear_rewrite_drift_state(writer, artifact_name)
@@ -117,6 +130,7 @@ def sync_artifact_provenance_sync_subset(
     entry.produced_at = datetime.now(UTC).isoformat()
     entry.owned_snippet_digests = {}
     entry.referenced_snippet_digests = {}
+    entry.dependency_artifact_digests = {}
     entry.async_provenance_complete = False
     _clear_rewrite_drift_state(writer, artifact_name)
 
@@ -146,6 +160,7 @@ def clear_artifact_provenance(writer: StateWriter, slug: str, artifact_name: str
     entry.upstream_digests = {}
     entry.owned_snippet_digests = {}
     entry.referenced_snippet_digests = {}
+    entry.dependency_artifact_digests = {}
     entry.async_provenance_complete = False
     _clear_rewrite_drift_state(writer, artifact_name)
 
@@ -165,6 +180,22 @@ async def read_owned_snippet_digests(
         for snippet_id in _snippet_ids_delivered_by(slug, repo_root=repo_root)
         if (digest := snippet_digest_fn(snippet_id))
     }
+
+
+async def read_dependency_artifact_snapshot(
+    reader: DependencyStatusReader,
+    slug: str,
+) -> DependencyArtifactSnapshots:
+    """Read and validate dependency state before capturing artifact digests."""
+    dependencies = await reader.get_deps_with_status(slug)
+    states: dict[str, TodoState | None] = {}
+    for dependency in dependencies:
+        persisted = await reader.read_state(dependency.dep_slug)
+        states[dependency.dep_slug] = TodoState.model_validate(persisted) if persisted is not None else None
+    return build_dependency_artifact_snapshot(
+        [(dependency.dep_slug, dependency.todo_status) for dependency in dependencies],
+        states.__getitem__,
+    )
 
 
 async def read_referenced_snippet_digests(
