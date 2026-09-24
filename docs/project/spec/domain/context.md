@@ -73,7 +73,9 @@ scope is a property of the caller, never of the invocation's directory.
 - **Also owns:** a procedure's activation declaration — whether agents start it
   by selecting it through an activation trigger, the platform starts it when
   events it subscribes to arrive, or it is supporting knowledge started by
-  neither — the validation that a procedure declares at most one mode, and the
+  neither — the validation that a procedure declares at most one mode and
+  declares subscriptions only where it is published in the global tier or a
+  company's tier, and the
   catalogue consequence: a triggered procedure is offered as self-service work,
   while a subscribed procedure is presented as a configured responsibility and
   is never offered as work an agent may start.

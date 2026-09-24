@@ -181,6 +181,25 @@ When the same invocation runs
 Then the normalizer is called with both arguments
 ```
 
+<!-- planned:procedure-event-activation -->
+#### UC-IF15: A normalized event carries its source's configured company
+
+```gherkin
+Scenario Outline: The company on an inbound event is the one its source declares
+  Given a hooks.inbound source <declaration>
+  And a verified payload for that source <payload company>
+  When the delivery handler normalizes and dispatches the payload
+  Then every dispatched event carries <carried company>
+  And the company is the same on every computer the event is relayed to
+
+  Examples:
+    | declaration                        | payload company                 | carried company                 |
+    | declares a registered company      | names no company                | the declared company            |
+    | declares a registered company      | names a different company       | the declared company            |
+    | declares no company                | names a company                 | no company                      |
+```
+<!-- /planned:procedure-event-activation -->
+
 ### Cross-context references
 
 - This is the canonical inbound boundary for the `integration` context.

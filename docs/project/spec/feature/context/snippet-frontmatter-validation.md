@@ -207,6 +207,18 @@ Given a procedure snippet declares neither activation mode
 When snippet validation runs
 Then no activation-mode finding is reported
 ```
+
+#### UC-SFV4: Only a procedure published where subscriptions are routed may declare them
+
+```
+Given a procedure snippet published in the global tier or in a company's tier declares the events that activate it
+When snippet validation runs
+Then no subscription-tier finding is reported
+Given a procedure snippet published in any other tier declares the events that activate it
+When snippet validation runs
+Then a subscription-tier finding is reported for that file, naming its tier
+And the sync exits with a non-zero status
+```
 <!-- /planned:procedure-event-activation -->
 
 ### Cross-context references
