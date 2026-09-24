@@ -149,6 +149,14 @@ tooling.
 
 14. **ADR discipline (decision capture).** Specs, procedures, and principles describe the _current state_; they hold no reasoning logs. An ADR is reserved for a real, contestable decision and the default is none — consult `general/policy/adr-discipline` for the bar before writing one.
 
+15. **Every edit meets the value contract, not only a new snippet.** Step 0
+    decides whether a snippet should exist; this step governs every region you
+    write, including a pending block inside an existing snippet. Before
+    committing, hold each changed region against the anti-patterns in
+    `general/policy/snippet-value-contract`: a value, path, filename, or
+    example whose owner is code, configuration, a schema, or another snippet
+    is replaced by the owner's name or id.
+
 ## Outputs
 
 - New or updated snippet with correct structure.

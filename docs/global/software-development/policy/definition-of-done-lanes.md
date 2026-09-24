@@ -596,8 +596,8 @@ For each changed snippet body, flag the Narration anti-pattern in its four forms
 4. **Future framing** — "will", "is planned", "the new surface is going to …",
    instead of a present-tense description of the intended shape.
 
-For each changed snippet body, and for a `docs/global/baseline.md` diff per
-item 8's own trigger below, additionally flag the coherence anti-patterns
+For each changed snippet body, and for a baseline-manifest diff per item 8's
+own trigger below, additionally flag the coherence anti-patterns
 (`snippet-value-contract` owns the full definition; do not re-derive it here):
 
 5. **Duplication without a citation, or a citation that misrepresents its
@@ -620,11 +620,12 @@ item 8's own trigger below, additionally flag the coherence anti-patterns
    snippet carrying procedure mechanics (numbered execution steps) that belong
    in a procedure.
 8. **Manual in the baseline** — new or expanded content in a snippet listed in
-   `docs/global/baseline.md` that only some sessions need: a declaration
+   any baseline manifest — a `baseline.md` at the global, domain, or project
+   docs root — that only some sessions in that scope need: a declaration
    schema, a role-specific mechanics block, a lookup table. The reviewer checks
    whether the changed snippet is baseline-listed before applying this finding;
    it does not apply to on-demand snippets. This item's trigger is not only a
-   changed snippet body: a diff that adds a row to `docs/global/baseline.md`
+   changed snippet body: a diff that adds a row to any baseline manifest
    itself promotes that snippet to always-loaded even when the snippet's own
    body is untouched in the same commit. Read the promoted snippet's current
    content against this item when the manifest changes, not only when the
@@ -639,9 +640,15 @@ item 8's own trigger below, additionally flag the coherence anti-patterns
     duration, limit, threshold, port, path, default, cadence, retention
     window, enum member, configured service, or registry entry. Naming the
     value's owner is fine; restating the value itself is not — it goes stale
-    the moment the value moves, and nothing downstream catches it. A JSON or
-    YAML example reproducing a live schema's shape is this finding, not an
-    illustration.
+    the moment the value moves, and nothing downstream catches it. An example
+    of an artifact whose shape a schema, generator, or configuration file owns
+    — a sample JSON or YAML document, generated file contents, captured command
+    output — is this finding, not an illustration.
+11. **Value test on a new snippet** — a snippet the diff adds must answer a
+    named future-agent question that no source read, loaded policy or
+    principle, README, or existing snippet already answers. A new snippet that
+    fails the value test is rejected or collapsed into a citation from an
+    existing one.
 
 When the changed snippet is an ADR (`docs/project/adr/**`), additionally hold its
 body to the ADR contract (`general/policy/adr-discipline`, `general/procedure/adr-authoring`
@@ -679,9 +686,10 @@ Severity guidance:
   baseline snippet).
 - Restatement of source code, config, or workflow YAML introduced or left
   uncorrected by this change → **Important**.
-- Value-copying — a copied number, path, default, enum member, or registry
-  entry whose canonical home is code, config, or schema — introduced or left
-  uncorrected by this change → **Important**.
+- Value-copying — a copied number, path, default, enum member, registry
+  entry, or example of a schema-, generator-, or config-owned artifact —
+  introduced or left uncorrected by this change → **Important**.
+- A new snippet that fails the value test → **Important**.
 - A language-specific directive introduced in a generic snippet → **Important**;
   **Critical** when it conflicts with the applicable language owner or directs
   implementation through the wrong language mechanism.

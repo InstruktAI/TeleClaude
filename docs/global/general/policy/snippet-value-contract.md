@@ -43,7 +43,11 @@ The default is **skip unless justified**, not "produce when applicable."
   canonical value lives in code, configuration, schema, or a runtime registry.
   The copy goes stale the moment the value moves, and a reader who finds two
   answers cannot tell which is authoritative. State purpose, invariants, and
-  ownership; let the declaration carry the value.
+  ownership; let the declaration carry the value. An example of an artifact
+  whose shape a schema, generator, or configuration file owns — a sample JSON
+  or YAML document, a generated file's contents, captured command output — is
+  value-copying of the whole shape at once: name the schema or source that owns
+  it instead.
 - **Duplication.** Repeating content already present in a global snippet.
   Every normative rule has exactly one owning snippet; every other snippet
   cites it with a gist and the owner's id
@@ -61,8 +65,9 @@ The default is **skip unless justified**, not "produce when applicable."
   procedure owns the steps. Operational detail in a principle makes it read as
   one more rulebook, and the disposition that generalizes to unforeseen cases is
   lost in it.
-- **Manual in the baseline.** A snippet every session loads carrying content
-  only some sessions need: declaration schemas, catalogs, role-specific
+- **Manual in the baseline.** A snippet a baseline manifest makes ambient —
+  loaded by every session in the manifest's global, domain, or project scope —
+  carrying content only some of those sessions need: declaration schemas, catalogs, role-specific
   mechanics, lookup tables. The baseline carries dispositions and the rules
   every session acts on; the rest lives in on-demand snippets that a baseline
   rule names at the moment it applies. Each ambient character is paid by every
