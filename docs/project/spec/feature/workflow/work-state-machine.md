@@ -355,29 +355,10 @@ And the dispatch request handed to agent runtime carries that same value
 #### UC-WSM15: A successful origin/main merge preserves all work in the todo worktree
 
 ```gherkin
-Given a work orchestrator agent drives a Todo whose worktree carries build commits, a build-complete claim, a stamped build-review verdict, a live review, or admitted review rounds
-When a merge of origin/main into that worktree completes without conflicts
-Then every build commit, build-complete fact, review verdict, and admitted review-round count remains in force
-And because of that merge the orchestrator agent receives no reviewer dispatch, no follow-up for its live reviewer agent, no attribution of the merge commit to its builder agent, and no request for its finalizer agent to push or re-stamp
-```
-
-#### UC-WSM16: Work entry leaves uncommitted worktree edits untouched
-
-```gherkin
-Given a builder agent has uncommitted edits in its Todo worktree
-When the work orchestrator agent calls "telec todo work my-feature" and the call reaches its origin/main merge step
-Then work entry defers the merge for that call
-And the builder agent finds its edits still uncommitted, with no commit authored on its behalf
-And a later call merges once the worktree is clean
-```
-
-#### UC-WSM17: A recorded finalize-ready claim freezes the worktree against work-entry merges
-
-```gherkin
-Given a finalizer agent stamped finalize-ready for SHA F and published the Todo's branch at F
-When the work orchestrator agent re-enters "telec todo work my-feature" after origin/main has advanced
-Then work entry merges nothing into the worktree
-And the orchestrator agent's finalize-ready handoff for F proceeds against unchanged worktree, branch, and remote refs, with no request to push or re-stamp
+Given a work orchestrator agent drives a Todo whose worktree carries any of uncommitted builder edits, build commits, a build-complete claim, a stamped build-review verdict, a live review, admitted review rounds, or a finalize-ready claim
+When origin/main advances without conflicting with that worktree and the work orchestrator agent re-enters "telec todo work my-feature"
+Then every uncommitted edit, build commit, build-complete fact, review verdict, admitted review-round count, and finalize-ready claim remains in force
+And the orchestrator agent receives no reviewer dispatch, no follow-up for its live reviewer agent, no attribution of a merge commit to its builder agent, and no request for its finalizer agent to push or re-stamp
 ```
 <!-- /planned:successful-merge-preserves-worktree-work -->
 
