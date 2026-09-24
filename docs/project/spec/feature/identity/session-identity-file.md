@@ -130,6 +130,7 @@ When it resolves the caller it acts as
 Then the terminal login is the only source consulted, as for any caller arriving from outside
 ```
 
+<!-- planned-change:prepare-kickback-project-doc-access -->
 #### UC-SIF4: A session identity document that carries no usable principal fails closed
 
 ```
@@ -138,6 +139,28 @@ When the caller resolver decides the caller it acts as
 Then it acts as a caller with no identity
 And the resolver consults no terminal login, because the document's presence places the process inside a session
 ```
+<!-- change:prepare-kickback-project-doc-access -->
+#### UC-SIF4: A session identity document that names no usable session fails closed
+
+```
+Given a process whose session identity document is present but malformed, or names a session with no open record on this computer
+When the caller resolver decides the caller it acts as
+Then it acts as a caller with no identity
+And the resolver consults no terminal login, because the document's presence places the process inside a session
+```
+<!-- /planned-change:prepare-kickback-project-doc-access -->
+
+<!-- planned:prepare-kickback-project-doc-access -->
+#### UC-SIF5: A session reads what its recorded identity admits, whatever its document carries
+
+```
+Given an agent working inside a session whose record roots its lineage at a registered person with the admin role
+And the session's identity document names that session but carries no principal, or a principal other than the record's
+When a process inside that session runs telec docs get on a non-public project snippet
+Then the snippet's content is returned
+And no "access: denied" notice is shown for it
+```
+<!-- /planned:prepare-kickback-project-doc-access -->
 
 ### Cross-context references
 
@@ -145,7 +168,11 @@ And the resolver consults no terminal login, because the document's presence pla
 - The `session_token` field is produced by `feature/identity/session-token-issuance` (system principals only) and consumed by `feature/identity/session-token-validation` inside the identity context.
 - The `session_id` field is the binding key for `feature/identity/caller-verification`'s dual-factor path: the identity context cross-checks the inbound caller-session-id against the live tmux-session signal before honoring it.
 - `system_role` and `human_role` mirror the columns on the session record; they are written into the file as a convenience for CLI tools that want to surface the role locally without an extra round-trip — the identity context never trusts a client-supplied role.
+<!-- planned-change:prepare-kickback-project-doc-access -->
 - `principal` is the session's resolved principal from `feature/identity/principal-resolution` — its lineage root: the owning person for work with human lineage, the system principal for work without. It is identity, not a derived band: a caller's role is read from the people registry when it is needed, never copied here.
+<!-- change:prepare-kickback-project-doc-access -->
+- `principal` mirrors the principal `feature/identity/principal-resolution` resolves for the session record — its lineage root: the owning person for work with human lineage, the system principal for work without. No caller resolution reads it: a process inside the session resolves the caller it acts as from the session record that `session_id` names, through the same principal resolution the identity context applies, so the document and the identity context cannot disagree about who the session is. A caller's role is read from the people registry when it is needed, never copied here.
+<!-- /planned-change:prepare-kickback-project-doc-access -->
 - The context-var override is the bridge that lets identity-context-hosted async operations carry the originating session's id past the boundary where a TMPDIR no longer exists. Without it, internally-spawned callers would have no `session_id` to present.
 - No v1 domain event is emitted by writing the identity file. In v2 the equivalent state change is the materialization of a `SessionPrincipal`, which is recorded inside the identity context but not emitted as its own event (the token-issuance event covers the observable side).
 
@@ -162,6 +189,10 @@ And the resolver consults no terminal login, because the document's presence pla
 
 - The reader helpers are deliberately total (never raise). A malformed identity file, a non-dict root, or a non-string field value all degrade to None silently. This is intentional fail-closed behavior — a corrupted file produces an unauthenticated caller rather than a crash — but it means file corruption can masquerade as "no identity" without warning.
 - The bootstrap writer merges fields rather than overwriting wholesale (it reads the existing document before adding fields). Stages that run after bootstrap can add or update individual fields; they cannot blank out fields written by an earlier stage by passing `None`. The one exception is the record rewrite used when a live session's identity changes (startup reconciliation, adoption into a standing role): it writes every identity field from the session record, so a field the record no longer carries — a human role cleared at adoption — is absent afterwards, and it keeps the session's existing token, the one field the record does not hold.
+<!-- planned-change:prepare-kickback-project-doc-access -->
 - The context-var override has priority over the TMPDIR file ONLY for the session-id reader. The other four readers (token, system_role, human_role, principal) read exclusively from disk. Identity-context-hosted code that needs token-level identity must obtain the token from the session store directly — there is no token override path.
+<!-- change:prepare-kickback-project-doc-access -->
+- The context-var override has priority over the TMPDIR file ONLY for the session-id reader. The other readers (token, system_role, human_role) read exclusively from disk; the `principal` field has no reader. Identity-context-hosted code that needs token-level identity must obtain the token from the session store directly — there is no token override path.
+<!-- /planned-change:prepare-kickback-project-doc-access -->
 - Private file mode is applied to both the tmp file and the final file, but the directory mode is whatever the surrounding TMPDIR provides — this snippet does not lock down the TMPDIR itself. A laxly permissioned TMPDIR is a defense-in-depth gap on shared hosts.
 - The full UUID is written verbatim into the file; readers and consumers must NOT truncate when forwarding the value to logs, signals, or messages (see `docs/project/spec/session-identity-truth.md`).
