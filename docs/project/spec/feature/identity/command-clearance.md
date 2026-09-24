@@ -244,25 +244,24 @@ Then the gate rejects the caller with a not-permitted authorization failure nami
 ```
 
 <!-- planned:cli-authorization-config-via-daemon -->
-### Configuration operations the CLI executes locally
+### Operational configuration commands
 
 Environment listing and setting, configuration validation, and the notification
-toggle run in the CLI's own process. Before touching configuration, the CLI asks the
-daemon for the verb's clearance; the daemon verifies the caller and answers with the
-same band evaluation the gate applies, and records the decision. A refusal ends the
-operation before it reads or writes anything. An unidentified caller is refused with
-the login door. Validation alone proceeds when no daemon is listening, as
+toggle are served by the daemon. Each route verifies the caller, applies the verb's
+band, and records the decision before it reads or writes configuration; a refusal
+returns nothing, and an unidentified caller is refused with the login door. When no
+daemon is listening, validation alone runs in the CLI's own process, as
 `project/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7 requires, and
-records that no authority was available. The other operations fail while no daemon
-is listening.
+records that no authority was available. The other commands fail while no daemon is
+listening.
 
-#### UC-CLO1: A caller inside the band runs the operation
+#### UC-CLO1: A caller inside the band is served
 
 ```
 Given an agent session whose system role is in the band of `telec config env list`
 When the session lists the environment
-Then the daemon answers that the caller is cleared and records the allowed decision
-And the CLI produces the environment listing
+Then the daemon records the allowed decision
+And the daemon serves the environment listing the CLI renders
 ```
 
 #### UC-CLO2: A caller outside the band is refused before any read
