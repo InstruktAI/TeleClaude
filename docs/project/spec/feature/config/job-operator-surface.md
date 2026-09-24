@@ -16,9 +16,9 @@ unanswerable without reading config files and state JSON by hand: what is
 configured and available, how is each job doing at runtime, and let me turn one on
 or off or run it now.
 
-A job's identity is its execution pointer, as the declaration model defines it —
-the procedure snippet ID of an agent job, the module stem of a script job. The
-surface names jobs by that identity everywhere, and never by a separate name.
+A job's identity is its declared name, as the declaration model defines it. The
+surface names jobs by that name everywhere — in its output and in the argument
+every job-targeting subcommand takes — and never by the execution pointer.
 
 The surface resolves the invoking project and reports against that project's
 effective and available job set:
@@ -34,14 +34,18 @@ effective and available job set:
   job's `when` schedule against that run state. A job that has never run shows no
   last run and no last outcome, but still shows a next due, projected from when the
   runner first saw the job — the same instant the runner itself anchors a first run on.
+  A job the runner runs on its subscribers' schedules rather than its own shows the
+  earliest next due across its enabled subscribers' schedules, and no next due when it
+  has no enabled subscriber. An available job has no run state and shows none.
 - **enable** / **disable** turn the project's subscription to a published job on
-  and off. Enabling adds or activates the project's subscribing entry for that
-  job's pointer; disabling deactivates the entry it finds. Because a subscription
-  exists only against a published job, naming a job that is not published — a
-  local job or an unknown pointer — fails without writing anything, and so does
-  disabling a job the project does not subscribe to. The change is observable on
-  the next list.
-- **run** dispatches a job on demand through the existing run path.
+  and off. Enabling adds a subscribing entry carrying the job's name, or activates
+  the one the project already has; disabling deactivates the entry it finds. Because
+  a subscription exists only against a published job, naming a job that is not
+  published — a local job or an unknown name — fails without writing anything, and
+  disabling a job the project does not subscribe to reports that and writes nothing.
+  The change is observable on the next list.
+- **run** dispatches one of the project's effective jobs on demand through the
+  existing run path, in the invoking project only.
 
 Runtime status the surface displays is read from the runner's run state through the
 jobs HTTP API; subscription is a config write to the project's own jobs. The surface
@@ -57,7 +61,7 @@ runner run-state, and project config.
 ```
 Given a project with a local job, a published job it subscribes to, and a published job it does not subscribe to
 When an operator or agent lists jobs at the CLI
-Then all three jobs appear, each named by its execution pointer
+Then all three jobs appear, each named by its declared name
 And each is marked with its relationship to the project — local, subscribed, or available
 ```
 
@@ -84,7 +88,7 @@ And it still shows a next due time anchored on when the runner first saw the job
 ```
 Given a published job the project does not subscribe to
 When an operator or agent enables the job at the CLI
-Then the project's own jobs carry an active subscribing entry for that job's pointer
+Then the project's own jobs carry an active subscribing entry carrying that job's name
 And the job appears as subscribed on the next list
 ```
 
@@ -93,14 +97,14 @@ And the job appears as subscribed on the next list
 ```
 Given a published job the project subscribes to
 When an operator or agent disables the job at the CLI
-Then the project's subscribing entry for that job's pointer is deactivated
+Then the project's subscribing entry for that job's name is deactivated
 And the job appears as available rather than subscribed on the next list
 ```
 
 #### UC-JOS-6: Subscribing to a job that is not published is rejected without a write
 
 ```
-Given a job that is not published — a local job or an unknown pointer
+Given a job that is not published — a local job or an unknown name
 When an operator or agent tries to enable or disable it at the CLI
 Then the command fails naming the job
 And the project's configuration is left unchanged
@@ -109,9 +113,9 @@ And the project's configuration is left unchanged
 #### UC-JOS-7: Run a job on demand
 
 ```
-Given a configured job
+Given a job in the invoking project's effective job set
 When an operator or agent runs the job on demand at the CLI
-Then the job is dispatched through the existing run path for the invoking project
+Then the job is dispatched through the existing run path for the invoking project only
 And the operator is told the run was accepted
 ```
 
@@ -122,6 +126,16 @@ Given a published job the project has no subscribing entry for
 When an operator or agent disables the job at the CLI
 Then the command reports that the project does not subscribe to it
 And the project's configuration is left unchanged
+```
+
+#### UC-JOS-9: Status of a subscriber-scheduled job shows its earliest subscriber due
+
+```
+Given a job the runner runs on its subscribers' schedules
+And two enabled person subscriptions to it with different `when` schedules
+When an operator or agent requests job status at the CLI
+Then the job shows as next due the earlier of the two subscribers' next occurrences
+And a job with no enabled subscriber shows no next due
 ```
 
 ## Known caveats
@@ -137,4 +151,5 @@ And the project's configuration is left unchanged
   with an open run is not re-dispatched until its run closes.
 - A subscribing entry carries the project's own overrides for the published
   declaration. Enable and disable turn that entry on and off; they never author or
-  remove the overrides an operator has set on it.
+  remove the overrides an operator has set on it, and leave the rest of the project's
+  configuration file — comments and `${VAR}` references included — as it was.
