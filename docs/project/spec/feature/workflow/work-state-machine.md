@@ -360,6 +360,10 @@ When origin/main advances without conflicting with that worktree and the work or
 Then every uncommitted edit, build commit, build-complete fact, review verdict, admitted review-round count, and finalize-ready claim remains in force
 And the orchestrator agent receives no reviewer dispatch, no follow-up for its live reviewer agent, no attribution of a merge commit to its builder agent, and no request for its finalizer agent to push or re-stamp
 ```
+
+#### UC-WSM16
+
+#### UC-WSM17
 <!-- /planned:successful-merge-preserves-worktree-work -->
 
 ### Cross-context references
