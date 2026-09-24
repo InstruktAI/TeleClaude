@@ -9,171 +9,95 @@ visibility: public
 
 ## Rules
 
-### Routing: documentation vs functionality
-
-- **Todo routing has one owner.** `software-development/policy/todo-creation-discipline`
-  decides whether work executes in context or through a todo. This policy begins
-  after that routing decision and governs the documentation itself; it grants no
-  authoring authority.
-- **Cross-project doc work preserves the authoring session.** When the session
-  holding the live design context needs to change documentation owned by another
-  project, that caller authors the complete intended content in caller-owned
-  temporary files. It starts a general-purpose session rooted at the owning
-  project and relays only the absolute temporary-file paths and their target
-  repository-relative paths; document content never travels in the message body.
-  The owning-project agent applies those files as-is, without summarizing,
-  translating, rewriting, or improving them, then performs that project's normal
-  validation, sync, commit, and review routing. If repository state or a local
-  contract prevents exact application, the owning-project agent reports the
-  blocker to the caller and leaves the content unchanged. The caller retains the
-  temporary files until success or cancellation is confirmed, then removes them.
-- **Governed documentation is not review-exempt.** In-context execution is not
-  self-reviewed execution. A doc-only commit that changes a documentation
-  snippet requires an **independent doc-hygiene review**: the authoring agent may
-  NOT review text it wrote — it believes its own work is correct, which is no
-  review. After the in-context commit, dispatch a **fast** reviewer via
-  `/next-review-commits` on the commit SHA. The reviewer applies the security
-  lane's repository-privacy check and the doc-hygiene lane to the changed
-  snippet. Both checks are reviewer judgment; neither is implemented as prose
-  scanning.
-  Standalone descriptive prose outside the snippet system — including README
-  files — is not currently governed content and does not independently require
-  review. Directive text remains executable contract and follows its behavioral
-  review path regardless of file location.
-- **Functionality changes are doc-driven — snippets first.** Creating a todo that
-  delivers functionality requires authoring or updating the affected doc snippets
-  **up front**, pending, with `delivered_by` naming the delivering slug, as part
-  of creating that todo. The planner shapes the doc work into the plan; the builder
-  then executes against snippets that are already touched, and does not decide doc
-  reflection on its own.
-
-### Reflection: the doc layer tracks reality
+### The doc layer tracks reality
 
 - **Every behavioral delta is reflected in the doc layer.** A change that alters
-  or adds a documented contract updates the corresponding snippet
-  (spec / principle / policy / concept / ADR), or records an explicit
-  `doc_impact_none: <reason>`.
-- **A behavioral delta is a change to code-enforced, observable behavior — not to
-  descriptive prose.** Reflection triggers when the _contract_ a test could bind
-  (`Given / When / Then`) changes. Descriptive text — what a surface did, what
-  exists, where to look, what a flag means — _is_ its own documentation. Editing
-  it is a doc-layer-internal change, never a feature-spec use case; changed
-  snippets still receive doc-hygiene review.
-  Standalone descriptive prose outside the snippet system carries no review
-  requirement.
-  If no test could bind the change, it is not a contract delta and authors no use case.
-- **Directive text on an agent-reachable surface is executable contract, not
-  advisory prose.** The discriminator is what the words _do_, never who reads
-  them: text that tells its reader to take an action — a runtime decision block,
-  a dispatched worker's brief, a procedure step, a CLI or build-target message
-  naming a next move — _is_ the implementation, and editing it changes behavior
-  as surely as editing code. `--all runs against every configured source` is
-  descriptive; `run make restart, then check the logs` is directive, and so is
-  any replacement that prescribes a different next move. Reader identity never
-  softens this: one terminal string reaches a human and an agent alike, so a
-  shared surface resolves to contract, never to copy. The preceding rule's escape
-  hatch inverts here: that no test binds such text is what makes the change
-  higher-risk, not lower, because nothing downstream catches it. Reflect it and
-  review it as a behavioral delta. Those two are the whole remedy this rule
-  owes: the snippet edit is the reflection, and independent review of the commit
-  is the review. A commit that rewrites what an agent does is
-  never labelled copy-only, wording, or "no logic change" — that label is itself
-  the defect, because it routes a behavioral change away from every gate built to
-  catch one.
+  or adds a documented contract updates the owning snippet, or records an
+  explicit `doc_impact_none: <reason>`.
+- **A behavioral delta is a change to code-enforced, observable behavior** — a
+  contract a test could bind. Descriptive text (what exists, where to look, what
+  a flag means) is its own documentation; editing it is a doc-layer change, not a
+  contract delta.
+- **Directive text on an agent-reachable surface is executable contract.** The
+  discriminator is what the words _do_, never who reads them: text that tells its
+  reader to take an action — a runtime decision block, a worker brief, a
+  procedure step, a CLI message naming a next move — is the implementation.
+  `--all runs against every configured source` is descriptive; `run make
+restart, then check the logs` is directive. One string reaching a human and an
+  agent alike resolves to contract. That no test binds such text makes the change
+  higher-risk, not lower. Its remedy is exactly two things: reflect it in the
+  owning snippet, and put the commit through independent review. It is never
+  labelled copy-only, wording, or "no logic change."
 - **A snippet without `delivered_by` is the current contract; staleness is a
-  defect.** If code changes and a current snippet does not, the snippet is wrong —
-  the change updates it (preferred) or adds `delivered_by` with the change's slug.
-- **Pending state is carried only by `delivered_by`.** A live snippet is never
-  overwritten in place to describe an undelivered change; the change is authored as
-  a planned section or a companion. Mechanics live in
-  `general/procedure/doc-snippet-authoring`; field shapes in
-  `general/spec/snippet-authoring-schema`.
-- **Delivery clears `delivered_by`.** The integrator folds the slug's planned
-  sections and companions into the live contract and clears the field before the
-  delivery commit — by machine, not by memory, and not by the documentation pipeline.
+  defect.** If code changes and a current snippet does not, the change updates it
+  or marks it pending. Pending state and its clearing on delivery are
+  `software-development/principle/documentation-first-development`; the carriers
+  are `general/procedure/doc-snippet-authoring`.
 
-### Organization and boundaries
+### Doc-driven delivery
 
-- **Feature specs are authored for behavioral work; non-behavioral work
-  produces none.** The classification is one question, asked at intent entry:
-  does the change alter what an observer can experience of the system? Users
-  comprise humans and agents, and well-logged internals are observable by
-  agents, so "observable by no one" is not a real category. A behavioral change
-  gets its Gherkin use cases in a feature spec, authored per
-  `software-development/procedure/feature-spec-authoring`; a non-behavioral
-  change (refactor, migration, tooling with no contract delta) gets no feature
-  spec. Silence on the question means unclassified — it is asked, never
-  defaulted.
-- **A feature spec is owed only for behavioral work delivered through a todo,
-  against the bounded context that owns the behavior.** Global doctrine — a
-  policy, principle, procedure, or spec that agents read and act on — is
-  reflected and reviewed as a behavioral delta under the directive-text rule
-  above, and authors no use case. Demanding one for doc-only work asks for an
-  artifact reachable only through a todo this policy forbids.
+- **Todo routing belongs to** `software-development/policy/todo-creation-discipline`;
+  this policy governs the documentation once routing is decided and grants no
+  authoring authority.
+- **Functionality is doc-driven — snippets first.** A todo that delivers
+  functionality authors or updates the affected snippets up front, pending, as
+  part of creating the todo. The planner shapes that doc work into the plan; the
+  builder executes against it and does not decide doc reflection on its own.
+- **A feature spec is owed only for behavioral work delivered through a todo**,
+  against the bounded context that owns the behavior; the classification and
+  placement are `software-development/principle/documentation-first-development`
+  and `software-development/procedure/feature-spec-authoring`. Global doctrine
+  (policy, principle, procedure, spec) is directive text: reflected and reviewed
+  as above, never given a use case.
+- **Agent artifacts are not doc snippets** (`general/policy/agent-artifact-governance`).
 
-  What is owed is bounded here; where a feature spec may live is not. Placement
-  follows the taxonomy and `general/policy/artifact-scope`, which admit a feature
-  spec at any scope its owning context sits at.
+### Review and cross-project authoring
 
-- **Agent artifacts — commands and skills — are not doc snippets** — they have
-  no code to be pending against, so they carry no planned markers and no
-  `delivered_by`. Their authoring lifecycle (human-decided, authored on `main`,
-  never routed through a todo) is governed by
-  `general/policy/agent-artifact-governance`.
-- **When authoring or editing any doc snippet, load and follow**
-  `general/procedure/doc-snippet-authoring` (how) and
-  `general/spec/snippet-authoring-schema` (shapes).
+- **Governed documentation is never self-reviewed.** A doc-only commit that
+  changes a snippet gets an independent fast doc-hygiene review via
+  `/next-review-commits` on its SHA, covering the security lane's
+  repository-privacy check and the doc-hygiene lane. Both are reviewer judgment,
+  never prose scanning. Standalone descriptive prose outside the snippet system,
+  such as a README, is not governed content; directive text is, wherever it lives.
+- **Cross-project doc work preserves the authoring session.** The session holding
+  the design context writes the complete content to caller-owned temporary files
+  and relays only their absolute paths and target repository paths to a session
+  rooted in the owning project. That agent applies them exactly — no rewriting,
+  summarizing, or improving — then runs its project's validation, sync, commit,
+  and review routing. If it cannot apply them exactly, it reports the blocker and
+  leaves the content unchanged. The caller removes the files once success or
+  cancellation is confirmed.
 
 ## Rationale
 
-Documentation leads and code catches up (`software-development/principle/documentation-first-development`).
-This policy is the enforceable _rules_ layer of that disposition — kept separate
-from the principle (the why) and the procedure (the how) so a rule is stated once.
+Documentation leads and code catches up
+(`software-development/principle/documentation-first-development`); this policy
+is that disposition's rule layer.
 
-The same preservation requirement applies across project boundaries. Moving the
-mechanical write to a project-owned session must not move authorship with it: the
-temporary files carry the already-authored document, while the receiving session
-owns application and project-local gates only.
+Reader identity cannot classify a surface that one string serves to both humans
+and agents; what the words do can be read from the string itself, so every
+reviewer resolves the same case the same way.
 
-The directive-versus-descriptive cut replaces a reader-identity cut that no
-shared surface can answer. A build target's output reaches a human at a terminal
-and an agent in a worktree through one string, so "who reads it" admits both
-answers and a reviewer under time pressure takes the permissive one — classifying
-an instruction as copy and exiting the lane. What the words do is readable from
-the string itself, so the ambiguous case resolves the same way for every reviewer.
+An author reviewing their own snippet believes it correct, which is no review.
 
-Naming that cut's remedy closes the gap it opened. Classifying doctrine as
-executable contract is correct and says nothing about which artifacts follow, so
-a reviewer completing the inference on its own arrives at a feature spec — and
-the two rules then contradict each other, since a feature spec is produced at
-prepare inside a todo and doc-only work may never become one. A reading that can
-only be satisfied by violating a neighbouring rule is not a stricter reading of
-the policy; it is a defect in it. The remedy is stated where the classification
-is made so no one has to derive it.
+Moving a mechanical write to another project must not move authorship with it:
+the files carry the already-authored document, and the receiving session owns
+only application and its project's gates.
 
 ## Scope
 
-- All agents, all sessions, every documentation change, every domain.
+All agents, all sessions, every documentation change, every domain.
 
 ## Enforcement
 
-- A cross-project doc handoff that places document content in the dispatch message
-  or lets the owning-project agent re-author the supplied files violates the
-  authoring-session boundary.
-- Plan-review applies the documentation lane as a hard gate (a behavioral delta
-  with neither a snippet update nor a `doc_impact_none` justification blocks the
-  plan); build-review and commit-review apply the docs lane as the backstop. See
-  `software-development/policy/definition-of-done-lanes`.
-- A doc-only commit that changes a documentation snippet without a subsequent
-  **independent doc-hygiene commit-review** is a violation. The authoring agent
-  never reviews its own snippet text; the review is performed by a **fast**
-  reviewer over the committed SHA.
-- Reviewers treat a stale current snippet as a defect.
+Plan-review applies the documentation lane as a hard gate; build-review and
+commit-review apply it as the backstop
+(`software-development/policy/definition-of-done-lanes`). The independent
+doc-hygiene commit-review catches self-reviewed and stale snippets.
 
 ## Exceptions
 
-- Trivial implementation-internal changes with no contract change touch no docs —
-  doc-first scales with the size and reach of the change.
+- Trivial implementation-internal changes with no contract change touch no docs.
 
 ## See Also
 
