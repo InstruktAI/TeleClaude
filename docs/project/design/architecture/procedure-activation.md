@@ -61,6 +61,12 @@ rule it relies on is stated by its owner:
   addressed to that computer, so exactly one computer consumes it, and single
   holding is that computer's resolve-or-create serialized per procedure and
   company. Computer is a routing fact, not an identity dimension.
+- **A route change moves the agent, not a copy of it.** When a company's
+  activation computer changes, the former computer receives no further
+  activations for that company, and its standing agents are told the route
+  moved, settle, and end. The new computer starts each procedure's agent on its
+  next activation, resuming from the domain's durable work record, so one agent
+  continues each procedure and company.
 - **No contract without its handler.** Procedure-subscription contracts are
   derived state: held in memory only, never persisted or restored at startup,
   and rebuilt from the publication index when the activation handler registers
@@ -89,19 +95,19 @@ rule it relies on is stated by its owner:
 Every step reuses an existing platform contract; nothing here is new
 infrastructure.
 
-| Step                                   | Existing mechanism                                              | Relation                                                                                                     |
-| -------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Event reaches every computer           | Single-ingress relay and inbound webhook framework              | Reused unchanged                                                                                             |
-| Company travels with the event         | Inbound normalization at the ingress                            | Adapted: stamps the source's declared company                                                                |
-| Subscription becomes routable          | Contract-routing model                                          | Adapted: contracts are derived from the publication index, held in memory, and rebuilt rather than persisted |
-| Match reaches the activation           | Contract `handler` target                                       | Adapted: the handler receives the matched contract, which carries the procedure's canonical ID               |
-| Start or wake crosses into the runtime | Computer-addressed command dispatch                             | Reused unchanged                                                                                             |
-| Find or create the standing agent      | Inbound resolve-or-create seam used by WhatsApp and Discord     | Adapted: serialized per key, which the seam currently is not                                                 |
-| Start                                  | Canonical command-session dispatch used by scheduled agent jobs | Reused with the procedure and company supplied                                                               |
-| Wake                                   | Session-input delivery                                          | Reused unchanged                                                                                             |
-| Outcome record                         | Durable operation outcomes, receipt-first                       | Reused as a caller-less operation opened at submission                                                       |
-| Company across restart                 | Session record                                                  | Extended with company, origin, and resolution state                                                          |
-| Company for tools inside the session   | Session identity document                                       | Extended with company fields reconstructed from the session record                                           |
+| Step                                   | Existing mechanism                                              | Relation                                                                                                                          |
+| -------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Event reaches every computer           | Single-ingress relay and inbound webhook framework              | Reused unchanged                                                                                                                  |
+| Company travels with the event         | Inbound normalization at the ingress                            | Adapted: stamps the source's declared company                                                                                     |
+| Subscription becomes routable          | Contract-routing model                                          | Adapted: contracts are derived from the publication index, held in memory, and rebuilt rather than persisted                      |
+| Match reaches the activation           | Contract `handler` target                                       | Adapted: the handler receives the matched contract, which carries the procedure's canonical ID                                    |
+| Start or wake crosses into the runtime | Computer-addressed command dispatch                             | Reused unchanged                                                                                                                  |
+| Find or create the standing agent      | Inbound resolve-or-create seam used by WhatsApp and Discord     | Adapted: serialized per key, which the seam currently is not                                                                      |
+| Start                                  | Canonical command-session dispatch used by scheduled agent jobs | Reused with the procedure and company supplied                                                                                    |
+| Wake                                   | Session-input delivery                                          | Reused unchanged                                                                                                                  |
+| Outcome record                         | Durable operation outcomes, receipt-first                       | Adapted: a new operation kind opened at submission, with its own `agent_runtime.procedure_activation` completed/failed event pair |
+| Company across restart                 | Session record                                                  | Extended with company, origin, and resolution state                                                                               |
+| Company for tools inside the session   | Session identity document                                       | Extended with company fields reconstructed from the session record                                                                |
 
 ### Activation
 
@@ -173,6 +179,10 @@ owned without being offered it.
   activation route and no published subscription is silently inert. A company
   with no configured sources receives no events and needs no activation
   computer.
+- **A company's activation computer changes while agents stand** — the former
+  computer's agents stop receiving activations, are told the route moved, and
+  end once settled; the new computer starts afresh from the durable work
+  record. Activations are never delivered to both.
 - **A daemon restarts with procedure subscriptions published** — derived
   contracts are not restored from storage; they are rebuilt from the
   publication index when the activation handler registers, so none can match

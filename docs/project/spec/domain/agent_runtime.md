@@ -101,9 +101,15 @@ TeleClaudeNext repository.
   the agent through the canonical command-session dispatch under the system
   principal with the company and the procedure, and wakes an existing agent
   through session-input delivery whether it is idle or mid-turn. Each
-  activation is a durable operation whose completion or failure is recorded
-  once; a failure is never presented as success and never moves the
-  responsibility to another agent. A standing agent does not end itself when a
+  activation is a durable operation of its own kind, whose outcome events
+  `agent_runtime.procedure_activation.completed` and
+  `agent_runtime.procedure_activation.failed` this context owns and registers;
+  completion or failure is recorded once, a failure is never presented as
+  success, and it never moves the responsibility to another agent. When a
+  company's declared activation computer changes, the former computer receives
+  no further activations for that company; its standing agents are told the
+  route moved, settle, and end under the session lifecycle, and the new
+  computer starts each procedure's agent on its next activation. A standing agent does not end itself when a
   turn or an assignment completes. Its continuity rests on the durable work
   record owned by its procedure's domain, so a restarted agent resumes from that
   record rather than from its transcript.
