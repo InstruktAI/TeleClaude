@@ -499,7 +499,7 @@ Missing documentation updates are **Important** findings. Missing config surface
 
 #### Doc-snippet hygiene
 
-**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (Narration anti-pattern) + `software-development/policy/process-change-authority` + `software-development/policy/language-policy-ownership`.
+**Authority:** `general/principle/intent-first-documentation` + `general/policy/adr-discipline` + `general/policy/snippet-value-contract` (full anti-pattern list, not Narration alone) + `general/policy/referencing-doc-snippets` (citation form) + `software-development/policy/process-change-authority` + `software-development/policy/language-policy-ownership`.
 
 Conditional lane — fires whenever the diff touches a `docs/**` snippet **or any
 directive-text surface** (below). The DoD docs lane above checks that docs _exist
@@ -596,6 +596,53 @@ For each changed snippet body, flag the Narration anti-pattern in its four forms
 4. **Future framing** — "will", "is planned", "the new surface is going to …",
    instead of a present-tense description of the intended shape.
 
+For each changed snippet body, and for a `docs/global/baseline.md` diff per
+item 8's own trigger below, additionally flag the coherence anti-patterns
+(`snippet-value-contract` owns the full definition; do not re-derive it here):
+
+5. **Duplication without a citation, or a citation that misrepresents its
+   owner** — the change restates a rule that another snippet already owns,
+   rather than citing it (gist + backticked id, per
+   `general/policy/referencing-doc-snippets`); or it does cite an id, but the
+   gist claims something the cited snippet does not actually state, or the id
+   names the wrong owner. A citation is not exempt from being read: when the
+   diff adds or changes one, open the cited snippet and confirm the gist is
+   true of it before clearing this item. A rule already stated in
+   `general/policy/leadership` or `general/policy/human-contract` reappearing
+   in full elsewhere, with or without an inaccurate citation attached, is this
+   finding, not a style note.
+6. **Section echo** — a required section restating another section of the same
+   snippet, most often Enforcement re-listing Rules as "X is a violation," or
+   Rationale restating a rule instead of naming the invariant it protects.
+7. **Layer bleed** — a `principle` snippet carrying enforcement-grade rule
+   clauses (trigger conditions, exact required phrasing, "is a violation"
+   language) that belong in the policy operationalizing it; or a `policy`
+   snippet carrying procedure mechanics (numbered execution steps) that belong
+   in a procedure.
+8. **Manual in the baseline** — new or expanded content in a snippet listed in
+   `docs/global/baseline.md` that only some sessions need: a declaration
+   schema, a role-specific mechanics block, a lookup table. The reviewer checks
+   whether the changed snippet is baseline-listed before applying this finding;
+   it does not apply to on-demand snippets. This item's trigger is not only a
+   changed snippet body: a diff that adds a row to `docs/global/baseline.md`
+   itself promotes that snippet to always-loaded even when the snippet's own
+   body is untouched in the same commit. Read the promoted snippet's current
+   content against this item when the manifest changes, not only when the
+   snippet does.
+9. **Restatement** — the changed region paraphrases source code, a
+   configuration file, or workflow YAML instead of pointing to it. Check
+   against the actual source the snippet claims to describe, not just against
+   other snippets: a snippet is the wrong source of truth for what a codebase
+   or config file already states.
+10. **Value-copying** — the changed region repeats a value whose canonical
+    home is code, configuration, a schema, or a runtime registry: a number,
+    duration, limit, threshold, port, path, default, cadence, retention
+    window, enum member, configured service, or registry entry. Naming the
+    value's owner is fine; restating the value itself is not — it goes stale
+    the moment the value moves, and nothing downstream catches it. A JSON or
+    YAML example reproducing a live schema's shape is this finding, not an
+    illustration.
+
 When the changed snippet is an ADR (`docs/project/adr/**`), additionally hold its
 body to the ADR contract (`general/policy/adr-discipline`, `general/procedure/adr-authoring`
 — "What an ADR is"):
@@ -623,6 +670,18 @@ Severity guidance:
   **Important**.
 - An edited parent snippet with an unsynced pending companion → **Important**.
 - A snippet whose contract is correct but carries a stray rationale clause that belongs in its Rationale section or is dropped → **Important**.
+- Duplication without a citation, or a new/changed citation whose gist
+  misrepresents or misidentifies its owner, introduced or left uncorrected by
+  this change, where the owning snippet already exists → **Important**.
+- Layer bleed or Section echo introduced by this change → **Important**.
+- New baseline-listed content that is Manual-in-the-baseline → **Important**,
+  with the correct-shape note (move to an on-demand snippet, cite from the
+  baseline snippet).
+- Restatement of source code, config, or workflow YAML introduced or left
+  uncorrected by this change → **Important**.
+- Value-copying — a copied number, path, default, enum member, or registry
+  entry whose canonical home is code, config, or schema — introduced or left
+  uncorrected by this change → **Important**.
 - A language-specific directive introduced in a generic snippet → **Important**;
   **Critical** when it conflicts with the applicable language owner or directs
   implementation through the wrong language mechanism.
