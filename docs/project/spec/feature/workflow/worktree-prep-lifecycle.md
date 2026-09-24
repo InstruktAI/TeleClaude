@@ -100,11 +100,26 @@ Otherwise "npm install" if a "package.json" exists
 Otherwise prep is a no-op and the marker is still written so subsequent calls skip
 ```
 
+<!-- planned:config-schema-home-resolution -->
+#### UC-WPL1: An ensured worktree resolves its configuration schemas
+
+```
+Given a slug worktree of an adopted project, whether newly created or already prepared
+When the work state machine asks the workflow service to ensure the worktree is ready
+Then the worktree carries its own configuration-schema link to the TeleClaude home's published schemas
+And that holds whether or not preparation ran
+And no worktree-tracked file is edited
+```
+<!-- /planned:config-schema-home-resolution -->
+
 ### Cross-context references
 
 - `git` (system tool, not a bounded context) — worktree add/remove, branch create/delete, fetch, push --delete.
 - filesystem — prep marker at `<worktree>/.teleclaude/worktree-prep-state.json`; archive root under the long-term storage directory; workspace symlink at `<project_root>/workspace/<slug>/`.
 - `workflow` — delivery cleanup is invoked from the integration state machine's cleanup phase and from any code path that observes a delivered status.
+<!-- planned:config-schema-home-resolution -->
+- `reconciliation` — owns the configuration-schema link; ensuring a worktree invokes its published link operation for the worktree root (`project/spec/feature/reconciliation/project-plumbing-convergence`).
+<!-- /planned:config-schema-home-resolution -->
 
 ## Known caveats
 

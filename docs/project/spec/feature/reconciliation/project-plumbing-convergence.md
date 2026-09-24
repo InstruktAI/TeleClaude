@@ -14,6 +14,17 @@ A project's installed git plumbing is machine state: the TeleClaude-owned
 directory and the `teleclaude-docs` filter driver in the repository's own git
 config. Neither is tracked by the project, so a clone carries neither.
 
+<!-- planned:config-schema-home-resolution -->
+The project's configuration-schema link is machine state in the same way: a
+symbolic link in the project's machine-local state directory, which the project
+never tracks, pointing at the TeleClaude home's published schemas
+(`project/spec/feature/reconciliation/config-schema-publication`). A project's
+committed configuration files reference their schemas through that link, so the
+same committed reference resolves on every machine that carries its own link.
+The link's location is the one the configuration writer's project-tier
+reference names (`teleclaude/config/declaration.py`).
+<!-- /planned:config-schema-home-resolution -->
+
 Convergence is the act of comparing that observed machine state against the
 project's capability declaration and performing the sanctioned actions that
 close the gap. It is reconciliation's rule. The declaration it reads is
@@ -57,6 +68,20 @@ remains outside every synchronization path.
   a prior filter pattern's residue, are re-checked out so the smudge filter
   applies to them. A locally modified file is left untouched. Repair resolves a
   file's filter attribute, so it runs after the filter attributes are written.
+<!-- planned:config-schema-home-resolution -->
+- **Schema link.** Every adopted project carries the link, whatever it
+  subscribes. An absent link is created, a link pointing elsewhere is repointed,
+  and a correct link is left untouched. A directory or file already occupying
+  the link path is reported and left untouched.
+- **Stray schema copies.** A per-project schema copy left at the project root is
+  removed when the project does not track it and it holds nothing but
+  TeleClaude's generated schema files. A tracked copy,
+  or one holding anything else, is reported and left untouched: removing it is
+  a commit in that project, which convergence never makes.
+- **Reporting.** A retained stray copy and an occupied link path are reported
+  for the root without failing its convergence. Neither affects the hooks or
+  the filter driver.
+<!-- /planned:config-schema-home-resolution -->
 - **No tracked file is written.** Convergence writes only untracked machine
   state. The one project-tracked file TeleClaude ever writes is the
   `.gitattributes` docs-filter line, written additively at adoption by its own
@@ -103,7 +128,11 @@ Then the TeleClaude-owned hooks are refreshed from their current templates
 And the project-authored hook is left in place
 ```
 
+<!-- planned-change:config-schema-home-resolution -->
 #### UC-RPC4: A project subscribing neither receives no plumbing
+<!-- change:config-schema-home-resolution -->
+#### UC-RPC4: A project subscribing neither receives no git plumbing
+<!-- /planned-change:config-schema-home-resolution -->
 
 ```gherkin
 Given a repository whose declaration activates no executable action binding
@@ -179,6 +208,49 @@ When fleet convergence runs
 Then that root is reported as unavailable
 And every other registered root still converges
 ```
+
+<!-- planned:config-schema-home-resolution -->
+#### UC-RPC12: Convergence links an adopted project to the published schemas
+
+```gherkin
+Given an adopted project whose root carries no configuration-schema link, or a link pointing elsewhere
+When an agent runs project initialization or fleet convergence for that project
+Then the project's configuration-schema link points at the TeleClaude home's published schema directory
+And the schema reference in the project's committed configuration resolves to the published project schema
+And no project-tracked file is edited
+```
+
+#### UC-RPC13: Convergence removes a stray untracked schema copy
+
+```gherkin
+Given an adopted project whose root holds a schema copy the project does not track
+And that copy holds only TeleClaude-generated schema files
+When an agent runs project initialization or fleet convergence for that project
+Then that schema copy is removed
+And the project's convergence completes successfully
+```
+
+#### UC-RPC14: A tracked or foreign schema copy is reported and kept
+
+```gherkin
+Given an adopted project whose root holds a schema copy that the project tracks or that holds a file TeleClaude did not generate
+When an agent runs fleet convergence
+Then that copy and every file in it are left in place
+And the agent sees that root reported as retaining a schema copy
+And no commit is made in that project
+And every other registered root still converges
+```
+
+#### UC-RPC15: An occupied link path is reported and kept
+
+```gherkin
+Given an adopted project whose configuration-schema link path is occupied by a directory or a regular file
+When an agent runs fleet convergence
+Then the occupying entry is left unchanged
+And the agent sees that root reported as having its schema link path occupied
+And the project's hooks and docs filter driver still converge
+```
+<!-- /planned:config-schema-home-resolution -->
 
 ## Known caveats
 
