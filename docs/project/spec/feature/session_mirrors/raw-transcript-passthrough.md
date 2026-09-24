@@ -107,22 +107,6 @@ Then the CLI prints "No transcript found for session '<S>'" and exits non-zero
 
 #### UC-RTP-1: Raw-transcript capability wire format
 
-<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
-```
-Given a mirror exists for session_id S with metadata.transcript_path = P that exists on disk
-When a caller invokes the raw-transcript capability for S
-Then the response is the UTF-8 content of P returned as plain text
-
-Given the mirror is missing
-Then the capability reports "Mirror not found"
-
-Given the mirror exists but metadata.transcript_path is missing or not a string
-Then the capability reports "Transcript path missing"
-
-Given the mirror exists with a transcript_path but the file does not exist
-Then the capability reports "Transcript file not found"
-```
-<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
 ```
 Given a mirror exists for session_id S with metadata.transcript_path = P that exists on disk
 And that mirror lies within the caller's history scope
@@ -141,7 +125,6 @@ Then the capability reports "Transcript file not found"
 Given a caller the capability cannot identify
 Then the capability refuses the request before any mirror is read
 ```
-<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 #### Remote --raw passthrough
 

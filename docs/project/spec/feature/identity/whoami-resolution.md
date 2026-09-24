@@ -12,11 +12,7 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
-`telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI handler has two paths that mirror v1's two authentication shapes: an agent session (one with a session token in its TMPDIR identity file) queries the identity context's whoami capability and prints the token-stamped Principal and Role; a terminal session (no token) reads its per-TTY auth document and resolves the Role through the human-identity resolver against the `people` config. The whoami capability is itself gated by caller verification, so invoking it inside an agent session also exercises the full token-Resolution path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
-<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
 `telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI handler has two paths. A process inside a session — one whose TMPDIR holds a session identity document — queries the identity context's whoami capability and prints the Principal and Role its session resolves to, whether it presents a session token or its session id; it never reads the terminal login. A process outside any session reads its per-TTY auth document and resolves the Role through the human-identity resolver against the `people` config. The whoami capability is itself gated by caller verification, so invoking it inside an agent session also exercises the full caller-verification path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
-<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 <!-- planned:external-session-identity -->
 ### Attested self-identification
@@ -56,28 +52,6 @@ And the capability returns `{"principal": "system:c3f1d8a2-7b94-4e6c-9f0e-2a8d7b
 And the CLI prints two lines: `Principal: system:c3f1d8a2-7b94-4e6c-9f0e-2a8d7b6c4e5f` and `Role: worker`
 ```
 
-<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
-```
-Given a terminal session with no session token and a TTY auth document holding `maurice@instrukt.ai`
-And `people` config maps that email to the `admin` Role
-When the operator runs `telec auth whoami`
-Then the CLI skips the token branch and reads the email via the session-auth reader
-And the role lookup returns `admin`
-And the CLI prints `Email: maurice@instrukt.ai`, `Role: admin`, `TTY: <pts/N>`, `Session auth file: <path>`
-```
-
-```
-Given a terminal session with no session token and no TTY login document
-When the operator runs `telec auth whoami`
-Then the CLI prints `No login set for current TTY (<tty>).` and exits with success
-```
-
-```
-Given an environment with no detectable TTY and no session token
-When the operator runs `telec auth whoami`
-Then the CLI prints `Error: no terminal session detected (TTY unavailable).` and exits with a failure status
-```
-<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
 ```
 Given a terminal outside any session — no session identity document — with a TTY auth document holding `maurice@instrukt.ai`
 And `people` config maps that email to the `admin` Role
@@ -118,7 +92,6 @@ When the operator runs `telec auth whoami`
 Then the CLI reports that the session carries no usable identity and exits with a failure status
 And no terminal login is consulted or printed
 ```
-<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 <!-- planned-change:cli-authorization-reads-via-daemon -->
 ```

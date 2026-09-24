@@ -63,18 +63,6 @@ And no rows print "No conversations found matching '<terms>' across <agents>"
 
 #### Service search wire format
 
-<!-- planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
-```
-Given a caller invokes the search capability with q=<query>, agent=<filter>, limit=<n>, and optionally identity=<value> and project=<value>
-And the identity and project selectors compose with the query rather than replacing it
-And a request carrying a selector and an empty query is a selector-only search
-When the service resolves the agent filter
-Then the response is a sequence of rows with fields
-  session_id, computer, agent, project, title, sort_timestamp, timestamp, topic
-And an unknown agent value is rejected with a validation error referencing the unknown value
-And limit is clamped to the inclusive range [1, 100]
-```
-<!-- change:fix-history-role-filter-fails-open-on-unresolved-role -->
 ```
 Given a caller invokes the search capability with q=<query>, agent=<filter>, limit=<n>, and optionally identity=<value> and project=<value>
 And the identity and project selectors compose with the query rather than replacing it
@@ -89,7 +77,6 @@ And limit is clamped to the inclusive range [1, 100]
 Given a caller the capability cannot identify
 Then the capability refuses the request before any mirror is read
 ```
-<!-- /planned-change:fix-history-role-filter-fails-open-on-unresolved-role -->
 
 #### UC-HCS-4: Dispatched-worker sessions are excluded, driving sessions are not
 
