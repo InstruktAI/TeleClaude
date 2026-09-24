@@ -40,6 +40,15 @@ and relationships, per the Selection policy; the same depth applies to any
 phase-3 follow-up fetch.
 <!-- /planned-change:docs-tier-layering -->
 
+<!-- planned:cli-authorization-docs-via-daemon -->
+Both verbs are served by the daemon for the caller it resolves. The command
+line sends its identity signals, its selectors, and the directory it was
+invoked from, and prints the answer; it resolves no caller and filters nothing
+(`project/spec/identity-and-auth` §6). Every role may read documentation
+(`project/design/cli-authorization-matrix`), so no caller is refused retrieval:
+read depth alone decides what an answer contains.
+<!-- /planned:cli-authorization-docs-via-daemon -->
+
 ## Canonical fields
 
 ### Use cases
@@ -203,6 +212,28 @@ Then documentation retrieval succeeds without requiring a current project
 And the eligible global documentation and documentation published by registered projects are available
 ```
 
+<!-- planned:cli-authorization-docs-via-daemon -->
+#### UC-3PR12: An answer follows the identity the platform holds, not the one a caller claims
+
+```gherkin
+Given an agent session whose own process presents an identity claim different from the identity the platform holds for that session
+And the claimed identity may read an internal snippet the held identity may not
+When the session runs telec docs get on that snippet
+Then the snippet is withheld with the access-denied notice
+And the claim widens nothing the held identity could not already read
+```
+
+#### UC-3PR13: A caller the platform cannot identify receives the outsider's view
+
+```gherkin
+Given a caller that presents no identity the platform accepts
+When the caller runs telec docs index or telec docs get
+Then retrieval succeeds with material that declares itself public
+And internal material is withheld
+And a rejected credential yields the same answer as presenting none
+```
+<!-- /planned:cli-authorization-docs-via-daemon -->
+
 ### Cross-context references
 
 <!-- planned-change:docs-tier-layering -->
@@ -250,3 +281,4 @@ And the eligible global documentation and documentation published by registered 
   project and global only and are never cross-project-loaded.
 - The v1 CLI namespace is `telec docs *`. The v2 target is `telec context
 docs *`. The verb rename is a known migration cleanup.
+
