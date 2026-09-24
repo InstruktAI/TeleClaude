@@ -372,7 +372,7 @@ lookup, nor lease fingerprints.
 
 
 
-`credentialScope` selects the credential owner — the machine, or the calling person — and an entry that omits it uses machine-wide credentials; its allowed values live in the MCP registry schema. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
+`credentialScope` selects the credential owner — the machine, or the calling person; its allowed values and default live in the MCP registry schema. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
 
 
 <!-- planned-change:config-schema-home-resolution -->
