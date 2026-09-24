@@ -166,6 +166,8 @@ Given an operator or agent is inside a project worktree
 When they run "telec todo list" or "telec bugs list"
 Then the CLI sends the invocation working directory to the workflow service
 And the service answers from that project's todo list for the caller it verifies
+And the answer honors the caller's section and delivery-cutoff filters
+And each listed bug fix's progress is the one its lifecycle state determines
 And the CLI renders the service's answer without reading the todo store itself
 ```
 
