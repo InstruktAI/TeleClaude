@@ -293,8 +293,8 @@ telec sync
 **What to show:** The agent artifact system — how skills and commands are authored and distributed.
 
 ```bash
-ls agents/skills/
-ls agents/commands/
+ls agents/global/skills/
+ls agents/global/commands/
 ```
 
 **What to say:**
@@ -305,10 +305,10 @@ ls agents/commands/
 
 ```bash
 # See available skills
-ls agents/skills/
+ls agents/global/skills/
 
 # See the build command — this is what runs when a todo needs implementation
-cat agents/commands/next-build.md | head -30
+cat agents/global/commands/software-development/next-build.md | head -30
 
 # Artifacts get compiled and deployed by telec sync
 telec sync
@@ -331,8 +331,8 @@ ls ~/.claude/commands/   # Claude-specific compiled output
 
 **Where to find files:**
 
-- Skills source: [`agents/skills/`](agents/skills/)
-- Commands source: [`agents/commands/`](agents/commands/)
+- Skills source: [`agents/global/skills/`](agents/global/skills/)
+- Commands source: [`agents/global/commands/`](agents/global/commands/) (one folder per domain)
 - Master file: [`AGENTS.master.md`](AGENTS.master.md)
 - Governance policy: [`docs/project/policy/agent-artifact-governance.md`](docs/project/policy/agent-artifact-governance.md)
 - Distribution procedure: [`docs/project/procedure/agent-artifact-distribution.md`](docs/project/procedure/agent-artifact-distribution.md)
@@ -456,10 +456,10 @@ not mean findings are outstanding, and its absence does not mean the phase has r
 
 **Where to find files:**
 
-- Prepare orchestrator: [`agents/commands/next-prepare.md`](agents/commands/next-prepare.md)
-- Intake command: [`agents/commands/next-prepare-intake.md`](agents/commands/next-prepare-intake.md)
-- Architecture command: [`agents/commands/next-prepare-architecture.md`](agents/commands/next-prepare-architecture.md)
-- Plan command: [`agents/commands/next-prepare-plan.md`](agents/commands/next-prepare-plan.md)
+- Prepare orchestrator: [`agents/global/commands/software-development/next-prepare.md`](agents/global/commands/software-development/next-prepare.md)
+- Intake command: [`agents/global/commands/software-development/next-prepare-intake.md`](agents/global/commands/software-development/next-prepare-intake.md)
+- Architecture command: [`agents/global/commands/software-development/next-prepare-architecture.md`](agents/global/commands/software-development/next-prepare-architecture.md)
+- Plan command: [`agents/global/commands/software-development/next-prepare-plan.md`](agents/global/commands/software-development/next-prepare-plan.md)
 
 ---
 
@@ -502,8 +502,8 @@ telec todo show my-feature
 
 **Where to find files:**
 
-- Work orchestrator: [`agents/commands/next-work.md`](agents/commands/next-work.md)
-- Build command: [`agents/commands/next-build.md`](agents/commands/next-build.md)
+- Work orchestrator: [`agents/global/commands/software-development/next-work.md`](agents/global/commands/software-development/next-work.md)
+- Build command: [`agents/global/commands/software-development/next-build.md`](agents/global/commands/software-development/next-build.md)
 - Integration orchestrator spec: [`docs/project/spec/integration-orchestrator.md`](docs/project/spec/integration-orchestrator.md)
 
 ---
@@ -550,7 +550,7 @@ telec sessions run --command /next-review-build --args my-feature --path .
 
 **Where to find files:**
 
-- Review command: [`agents/commands/next-review-build.md`](agents/commands/next-review-build.md)
+- Review command: [`agents/global/commands/software-development/next-review-build.md`](agents/global/commands/software-development/next-review-build.md)
 
 ---
 
@@ -589,8 +589,8 @@ telec todo list --delivered-only
 
 **Where to find files:**
 
-- Integrate command: [`agents/commands/next-integrate.md`](agents/commands/next-integrate.md)
-- Finalize command: [`agents/commands/next-finalize.md`](agents/commands/next-finalize.md)
+- Integrate command: [`agents/global/commands/software-development/next-integrate.md`](agents/global/commands/software-development/next-integrate.md)
+- Finalize command: [`agents/global/commands/software-development/next-finalize.md`](agents/global/commands/software-development/next-finalize.md)
 - Integration orchestrator: [`docs/project/spec/integration-orchestrator.md`](docs/project/spec/integration-orchestrator.md)
 
 ---
@@ -664,20 +664,20 @@ telec bugs report "Footer text overlaps on narrow terminals"
 # See active bugs
 telec bugs list
 
-# The fixer agent runs /next-bugs-fix automatically
-# It reads the bug description, finds the code, applies the fix, and commits
+# The lifecycle router dispatches /next-prepare, which diagnoses the bug
+# before the normal build, review, and integrate lanes deliver the fix
 ```
 
 **Under the hood:**
 
 - `telec bugs report` scaffolds a bug todo in the workflow store
-- It dispatches a fixer agent session running `/next-bugs-fix`
-- The fixer investigates the codebase, applies a fix, writes tests, and commits
+- The lifecycle router dispatches `/next-prepare`, which runs the diagnosis (`/next-prepare-diagnose`)
+- The settled diagnosis becomes the plan the normal build, review, and integrate lanes deliver
 - Bug state is tracked like any other todo item
 
 **Where to find files:**
 
-- Bug fix command: [`agents/commands/next-bugs-fix.md`](agents/commands/next-bugs-fix.md)
+- Bug diagnosis command: [`agents/global/commands/software-development/next-prepare-diagnose.md`](agents/global/commands/software-development/next-prepare-diagnose.md)
 
 ---
 
@@ -789,8 +789,8 @@ telec sessions escalate --message "Need design decision on API shape"
 **Where to find files:**
 
 - AI-to-AI operations: [`docs/global/general/procedure/ai-to-ai-operations.md`](../docs/global/general/procedure/ai-to-ai-operations.md)
-- Work orchestrator: [`agents/commands/next-work.md`](agents/commands/next-work.md)
-- Prepare orchestrator: [`agents/commands/next-prepare.md`](agents/commands/next-prepare.md)
+- Work orchestrator: [`agents/global/commands/software-development/next-work.md`](agents/global/commands/software-development/next-work.md)
+- Prepare orchestrator: [`agents/global/commands/software-development/next-prepare.md`](agents/global/commands/software-development/next-prepare.md)
 
 ---
 

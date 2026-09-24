@@ -31,8 +31,10 @@ MARKDOWN_DIRS = [
     "docs-3rd",  # Third-party research
 ]
 AGENT_ARTIFACT_DIRS = (
-    Path("agents/commands"),
-    Path("agents/skills"),
+    Path("agents/global/commands"),
+    Path("agents/global/skills"),
+    Path("agents/project/commands"),
+    Path("agents/project/skills"),
 )
 
 # Root-level markdown files to validate
