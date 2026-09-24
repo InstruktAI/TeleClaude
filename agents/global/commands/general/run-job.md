@@ -1,9 +1,11 @@
 ---
 description: Job runner command - execute one configured agent job from its procedure and report its outcome
-argument-hint: '<procedure-snippet-id>'
+argument-hint: '<job> [procedure-snippet-id]'
 parameters:
   - name: job
     required: true
+  - name: procedure
+    default: $job
 ---
 
 # Run Job
@@ -20,8 +22,8 @@ Execute one configured agent job from the procedure its declaration points at an
 
 ## Steps
 
-1. Treat `$job` as the job's identity: the procedure snippet ID its `job:` declaration carries.
-2. Run `telec docs get $job --closure` and follow the returned procedure and every included required read as your complete instruction set.
+1. Treat `$job` as the job's identity and `$procedure` as the procedure snippet ID its declaration's `job:` pointer carries.
+2. Run `telec docs get $procedure --closure` and follow the returned procedure and every included required read as your complete instruction set.
 3. Produce the procedure's output, then close the run with `telec jobs report $job --success <true|false> --message '<summary>' [--items-processed <n>] [--error '<error>' ...]`. Report success only when the assigned work completed; an empty successful run also completes. Record a failed procedure load or execution as failure.
 
 ## Discipline
