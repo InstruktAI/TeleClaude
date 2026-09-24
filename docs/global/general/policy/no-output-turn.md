@@ -7,66 +7,55 @@ description: How an agent closes a turn that warrants no output, and why a prose
 
 ## Rules
 
-- **A turn that owes nothing closes with the sentinel `NOOP` and nothing else.**
-  No agent runtime can end a turn having authored no output, so silence is
-  something an agent says, never something it omits. The sentinel is that turn's
-  entire authored content: no preamble, no trailing remark, no formatting around
-  it.
-- **Output is owed when it changes what the receiver does next** — it answers a
-  question that was asked, reports a blocker, contradiction, scope change, or
-  decision point, carries information that changes the receiver's next move, or
-  delivers a result or artifact. `general/spec/agent-shorthand` carries the
-  enumerated validity contract for agent-to-agent exchanges.
-- **A prose stand-in for silence is invalid output, not an escape from it.**
-  "Standing by", "nothing further", "acknowledged", "going quiet", a lone dash,
-  and every other way of writing nothing are substantive turns: they are
-  delivered, they reach the receiver, and between linked peers they wake the
-  other side into answering them. An instruction to stay silent is discharged by
-  the sentinel and by nothing else.
-- **The sentinel closes the turn and does nothing else.** It carries the same
-  single meaning on every turn, whatever that turn received. It never signals
-  agreement, completion, or readiness, never stands in for an act a command
-  performs, and no contract gives it a second consequence.
+- **A turn that owes nothing closes with the sentinel `NOOP` and nothing else** —
+  no preamble, no trailing remark, no formatting around it. No runtime can end a
+  turn with no output, so silence is something an agent says, never something it
+  omits.
+- **Output is owed when it changes what the receiver does next**: it answers a
+  question asked, reports a blocker, contradiction, scope change, or decision
+  point, carries information that changes the receiver's next move, or delivers a
+  result. `general/spec/agent-shorthand` enumerates validity for agent-to-agent
+  exchanges.
+- **A prose stand-in for silence is output.** "Standing by", "nothing further",
+  "acknowledged", "going quiet", a lone dash — each is delivered, and between
+  linked peers each wakes the other into answering. An instruction to stay silent
+  is discharged by the sentinel and nothing else. Decorating the sentinel makes it
+  one of these.
+- **The sentinel closes the turn and does nothing else.** It never signals
+  agreement, completion, or readiness, never stands in for a command's act, and
+  no contract may give it a second consequence.
 - **Where a bare-sentinel turn is suppressed is the platform's decision, not the
   agent's.** The platform owns which surfaces drop such a turn, and the raw
-  transcript retains it either way. An agent uses the sentinel because nothing is
-  owed, never because it predicts where that turn would have landed.
+  transcript retains it either way — the sentinel is the agent's own write to
+  its own transcript, never something the platform edits back out. Use it
+  because nothing is owed, never because of where the turn would land.
 
 ## Rationale
 
-An agent instructed to stay silent, with no way to say nothing, invents one — and
-every invention is a message. Two linked peers each invented a different prose
-surrogate and spent eleven turns telling each other they had stopped talking;
-each surrogate was substantive output, was cross-shared, and woke the peer into
-producing the next one. The sentinel exists so the instruction is satisfiable: it
-is the one authored output the platform is built to drop, so the turn closes
-without reaching anyone.
+An instruction to stay silent must be satisfiable. The sentinel is the one
+authored output the platform is built to drop on the surfaces it suppresses it
+from, so the turn closes there without reaching anyone; every invented
+surrogate is a message, and between linked peers surrogates sustain the
+exchange they were meant to end.
 
-Keeping the sentinel's meaning single is what makes it safe to reach for on any
-turn. A sentinel that also retired a reminder, confirmed a handoff, or signalled
-readiness would have to be withheld whenever those consequences were unwanted —
-and an agent that cannot use it freely is back to inventing prose.
+A single meaning is what makes the sentinel safe to reach for on any turn. Any
+second consequence would force an agent to withhold it when that consequence is
+unwanted — and back to inventing prose.
 
 ## Scope
 
 All agents, all sessions, every turn whose authored output would otherwise be
-nothing: agent-to-agent exchanges, reminder firings, and any turn an agent takes
-with nothing owed to anyone.
+nothing.
 
 ## Enforcement
 
-- A turn whose authored content is a prose stand-in for silence is invalid
-  output. A reviewer, a peer, or the agent's own next turn names it as the
-  acknowledgement it was written to avoid.
-- Decorating the sentinel — prefixing it, explaining it, or pairing it with a
-  status line — produces a substantive turn and is the same violation.
-- A contract that assigns the sentinel a consequence beyond closing the turn is a
-  defect in that contract.
+A reviewer, a peer, or the agent's own next turn names a prose stand-in as the
+acknowledgement it was written to avoid. A contract that assigns the sentinel a
+second consequence is a defect in that contract.
 
 ## Exceptions
 
-- None. An agent that owes output writes that output; the sentinel is for the
-  turn that owes none.
+None.
 
 ## See Also
 
