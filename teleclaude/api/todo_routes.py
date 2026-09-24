@@ -29,7 +29,10 @@ from teleclaude.api.auth import (
     optional_caller_identity,
 )
 from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
-from teleclaude.api.todo_artifact_authority import resolve_creation_lineage
+from teleclaude.api.todo_artifact_authority import (
+    refuse_todo_update_outside_claiming_group,
+    resolve_creation_lineage,
+)
 from teleclaude.api.todo_create_support import seed_plan_drafting, seed_task_plan_authorization
 from teleclaude.api.todo_dependency_validation import validate_requested_dependencies
 from teleclaude.api.todo_update_support import TASK_ERROR_RELEASE_REFUSAL as TASK_ERROR_RELEASE_REFUSAL
@@ -322,6 +325,7 @@ async def todo_update(  # pyright: ignore
     todos_db = await _get_todos_db_from_cwd(cwd)
 
     await require_slug_in_todo(todos_db, slug)
+    await refuse_todo_update_outside_claiming_group(todos_db, identity, slug)
     raw_state = await todos_db.read_state(slug)
     current_kind = raw_state.get("kind") if isinstance(raw_state, dict) else None
     active_runner = raw_state.get("active_runner") if isinstance(raw_state, dict) else None

@@ -178,10 +178,14 @@ _SYS_INTG = frozenset({ROLE_INTEGRATOR})
 # (`sessions start/run/revive/end`) tasker needs to manage sessions it spawns;
 # tasker still does not gain the state-machine-driving verbs (todo prepare/work).
 _SYS_ORCH_TASKER = _SYS_ORCH | {ROLE_TASKER}
+# Claim-scoped todo mutation admits every agent role except worker; ownership
+# is checked against the todo's claim rather than encoded in the band.
+_SYS_CLAIM_SCOPED_TODO_UPDATE = frozenset(
+    {ROLE_SYSTEM, ROLE_ORCHESTRATOR, ROLE_INTEGRATOR, ROLE_TASKER, ROLE_JOB_RUNNER}
+)
 # A job-runner session is not dispatch-capable and must not gain the broad
 # _SYS_ALL clearance (sessions send/restart, channels publish, message, ...).
-# It is scoped to exactly the create verbs its lineage justifies filing under:
-# `telec todo create` and `telec bugs report`.
+# It gains selected additional verbs only where job lineage bounds the action.
 _SYS_ALL_PLUS_JOB_RUNNER = _SYS_ALL | {ROLE_JOB_RUNNER}
 
 _HR_ADMIN = frozenset({HUMAN_ROLE_ADMIN})
