@@ -31,6 +31,7 @@ from teleclaude.core.operation_outcome_delivery import deliver_remote_operation_
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.session_listeners import (
     NotificationKind,
+    StopNotificationVariant,
     deliver_remote_distress_notification,
     deliver_remote_stop_notification,
 )
@@ -70,6 +71,12 @@ _ATTENTION_NATIVE_EVENT_KEY = "native_event"
 _ATTENTION_DETAILS_KEY = "details"
 _ATTENTION_OBSERVED_AT_KEY = "observed_at"
 _ATTENTION_INGRESS_ID_KEY = "ingress_id"
+_UNKNOWN_STOP_NOTIFICATION_VARIANT_EVENT = "unknown_stop_notification_variant"
+_INVALID_STOP_NOTIFICATION_VARIANT_ERROR = "invalid stop notification variant"
+_INVALID_STOP_NOTIFICATION_VARIANT_RESPONSE: JsonDict = {
+    "status": "error",
+    "error": _INVALID_STOP_NOTIFICATION_VARIANT_ERROR,
+}
 
 
 def _session_message_projection_options(data: JsonDict) -> SessionMessageProjectionOptions:
@@ -406,6 +413,13 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
             caller_session_id = args[2]
             title_b64 = args[3] if len(args) > 3 and args[3] != "-" else None
             occurrence_key = args[4] if len(args) > 4 else None
+            notification_variant = StopNotificationVariant.INSPECT
+            if len(args) > 5:
+                try:
+                    notification_variant = StopNotificationVariant(args[5])
+                except ValueError:
+                    logger.warning(_UNKNOWN_STOP_NOTIFICATION_VARIANT_EVENT, variant=args[5])
+                    return dict(_INVALID_STOP_NOTIFICATION_VARIANT_RESPONSE)
             resolved_title = None
 
             if title_b64:
@@ -420,6 +434,7 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 computer=source_computer,
                 title=resolved_title,
                 occurrence_key=occurrence_key,
+                variant=notification_variant,
             )
             return {"status": "success", "data": None}
 

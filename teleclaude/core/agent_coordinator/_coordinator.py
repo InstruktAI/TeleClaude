@@ -43,7 +43,7 @@ from teleclaude.core.session_lifecycle import (
     LifecycleTransitionReason,
     transition_session,
 )
-from teleclaude.core.session_listeners import NotificationKind
+from teleclaude.core.session_listeners import NotificationKind, StopNotificationVariant
 from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
@@ -665,7 +665,9 @@ class AgentCoordinator(
             session_id,
             payload,
             source_computer,
-            suppress_notifications=output_result.is_suppressed,
+            notification_variant=(
+                StopNotificationVariant.NOOP if output_result.is_suppressed else StopNotificationVariant.INSPECT
+            ),
             output_version=(stop_timestamp if output_result.has_substantive_output else None),
         )
 
@@ -832,7 +834,7 @@ class AgentCoordinator(
         payload: AgentStopPayload,
         source_computer: str | None,
         *,
-        suppress_notifications: bool,
+        notification_variant: StopNotificationVariant,
         output_version: str | None,
     ) -> None:
         """Complete stop fan-out, listener notification, and forwarding."""
@@ -843,12 +845,14 @@ class AgentCoordinator(
             source_computer=source_computer,
         )
 
-        if suppress_notifications:
-            return
-
         title_raw = payload.raw.get("title")
         title = title_raw if isinstance(title_raw, str) and title_raw else None
-        await self._notify_session_listener(session_id, source_computer=source_computer, title_override=title)
+        await self._notify_session_listener(
+            session_id,
+            variant=notification_variant,
+            source_computer=source_computer,
+            title_override=title,
+        )
 
         if output_version is not None:
             publication = await self.client.notify_session_observed_stop(session_id, output_version)
@@ -856,7 +860,7 @@ class AgentCoordinator(
                 logger.info(_SESSION_OBSERVED_STOP_SENT_EVENT, session_id=session_id, observer=publication.observer)
 
         if not (source_computer and source_computer != config.computer.name):
-            await self._forward_stop_to_initiator(session_id)
+            await self._forward_stop_to_initiator(session_id, notification_variant)
 
     async def handle_tool_use(self, context: AgentEventContext) -> None:
         """Handle pre_tool_use event — agent started a tool call.

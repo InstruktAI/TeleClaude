@@ -17,6 +17,7 @@ from teleclaude.core.events import AgentAttentionObservation
 from teleclaude.core.models import MessageMetadata, Session, SessionOriginMetadata
 from teleclaude.core.session_listeners import (
     NotificationKind,
+    StopNotificationVariant,
     notify_distress,
     notify_distress_human_fallback,
     notify_stop,
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _DISTRESS_COMMAND = "/distress_notification {session_id} {computer} {caller} {kind} {title} {occurrence}"
+_STOP_NOTIFICATION_COMMAND = "/stop_notification {session_id} {computer} {caller} {title} {occurrence} {variant}"
 _ATTENTION_METADATA_KEY = "attention_observation"
 _ATTENTION_PROVIDER_KEY = "provider"
 _ATTENTION_NATIVE_EVENT_KEY = "native_event"
@@ -132,6 +134,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         self,
         target_session_id: str,
         *,
+        variant: StopNotificationVariant,
         source_computer: str | None = None,
         title_override: str | None = None,
     ) -> None:
@@ -154,7 +157,12 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         if "\n\nADDITIONAL CONTEXT" in display_title:
             display_title = display_title.split("\n\nADDITIONAL CONTEXT")[0]
         computer = source_computer or LOCAL_COMPUTER
-        await notify_stop(target_session_id, computer, title=display_title)
+        await notify_stop(
+            target_session_id,
+            computer,
+            title=display_title,
+            variant=variant,
+        )
 
     async def _notify_session_distress(
         self,
@@ -283,7 +291,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         )
         return result
 
-    async def _forward_stop_to_initiator(self, session_id: str) -> None:
+    async def _forward_stop_to_initiator(self, session_id: str, variant: StopNotificationVariant) -> None:
         """Forward stop event to a remote initiator via Redis.
 
         The initiator's session id travels on the wire alongside its
@@ -318,12 +326,18 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         title_b64 = "-"
         if session.title:
             title_b64 = base64.b64encode(session.title.encode()).decode()
+        occurrence_key = uuid4().hex
 
         try:
             await self.client.send_request(
                 computer_name=initiator_computer,
-                command=(
-                    f"/stop_notification {session_id} {config.computer.name} {session.initiator_session_id} {title_b64} {uuid4().hex}"
+                command=_STOP_NOTIFICATION_COMMAND.format(
+                    session_id=session_id,
+                    computer=config.computer.name,
+                    caller=session.initiator_session_id,
+                    title=title_b64,
+                    occurrence=occurrence_key,
+                    variant=variant.value,
                 ),
                 metadata=MessageMetadata(),
             )
