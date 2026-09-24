@@ -235,6 +235,7 @@ Then the quality-checklist artifact exists with the standard checklist template 
 And a prepared Todo whose quality-checklist already has substantive content keeps it unchanged
 ```
 
+<!-- planned-change:successful-merge-preserves-worktree-work -->
 #### UC-WSM8: Build review consumes only a current report and worktree binding
 
 ```gherkin
@@ -245,6 +246,19 @@ And an absent binding, missing report, later worktree commit, or later report re
 And only a current approve advances to review_approved
 And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
 ```
+<!-- change:successful-merge-preserves-worktree-work -->
+#### UC-WSM8: Build review consumes only a current report and an unchanged todo change
+
+```gherkin
+Given a build reviewer writes `review-findings` and stamps approve or changes_requested against worktree HEAD H and report digest R
+When the work orchestrator re-enters `telec todo work my-feature`
+Then the machine consumes the verdict only when the current `review-findings` digest is R and the todo's own change is unchanged since H
+And the todo's own change is unchanged since H when H is an ancestor of the current worktree HEAD and every commit the todo branch gained on its own line since H is a merge of origin/main whose content is exactly the automatic merge of its parents
+And an absent binding, missing report, later report rewrite, or any other commit the todo branch gained since H leaves the build review pending for re-review
+And only a current approve advances to review_approved
+And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
+```
+<!-- /planned-change:successful-merge-preserves-worktree-work -->
 
 #### UC-WSM9: Kickback work re-entry hands off to prepare in place with all working state preserved
 
@@ -284,6 +298,7 @@ And the record of which plan version the build executes against settles only whe
 And a crash-recovered session re-entering the build derives identical instructions from durable state alone
 ```
 
+<!-- planned-change:successful-merge-preserves-worktree-work -->
 #### UC-WSM12: Build review reports its crossed threshold and dispatches an assist
 
 ```gherkin
@@ -298,6 +313,22 @@ And it reports that instruction once, on the crossing pass, and not on later pas
 And the admitted-pass count keeps rendering on later passes
 And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
 ```
+<!-- change:successful-merge-preserves-worktree-work -->
+#### UC-WSM12: Build review reports its crossed threshold and dispatches an assist
+
+```gherkin
+Given a Todo has admitted build-review passes up to its configured round threshold
+And no approve verdict is current under UC-WSM8
+When the orchestrator calls "telec todo work my-feature"
+Then the machine reports the phase, admitted-pass count, threshold and current review evidence, and instructs the orchestrator to dispatch an assist against the loop
+And it refuses no reviewer dispatch and emits no continuation stamp
+And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
+And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
+And it reports that instruction once, on the crossing pass, and not on later passes
+And the admitted-pass count keeps rendering on later passes
+And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
+```
+<!-- /planned-change:successful-merge-preserves-worktree-work -->
 
 #### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure
 
@@ -318,6 +349,20 @@ When it names a command in that script
 Then the name is that command's canonical domain-qualified value
 And the dispatch request handed to agent runtime carries that same value
 ```
+
+<!-- planned:successful-merge-preserves-worktree-work -->
+#### UC-WSM15: A successful origin/main merge preserves all work in the todo worktree
+
+```gherkin
+Given a Todo worktree carrying any of build commits, a build-complete claim, a stamped build-review verdict, a live review, a finalize-ready claim, or uncommitted builder edits
+When "telec todo work my-feature" re-enters after origin/main has advanced
+Then a successful merge of origin/main into the worktree leaves every build commit, build-complete fact, review verdict, finalize-ready claim, and admitted review-round count in force
+And because of that merge the machine dispatches no reviewer, sends a live reviewer no follow-up, attributes no merge commit to the builder, and asks no finalizer to push or re-stamp
+And a worktree holding uncommitted edits stays exactly as it is: work entry defers the merge instead of committing those edits on the builder's behalf
+And once a finalize-ready claim is recorded, work entry merges nothing further into the worktree, so the stamped SHA and the published branch remain the integration candidate
+And a merge that fails with conflicts is the only merge outcome the machine reports to the orchestrator, which routes recovery to the builder
+```
+<!-- /planned:successful-merge-preserves-worktree-work -->
 
 ### Cross-context references
 
