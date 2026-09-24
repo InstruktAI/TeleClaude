@@ -10,6 +10,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from teleclaude.constants import SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import PhaseStatus, StateValue
 from teleclaude.core.next_machine.git_ops import get_head_commit, review_surface_overlap_files
@@ -199,7 +200,7 @@ async def resolve_pending_review_state(
     reviewer_id, reviewer_status = await find_live_session_with_status_for_slug(
         context.db,
         context.slug,
-        "/next-review-",
+        SlashCommand.REVIEW_BUILD.value,
     )
 
     if reviewer_id is not None and reviewer_status in ("active", "unknown"):
