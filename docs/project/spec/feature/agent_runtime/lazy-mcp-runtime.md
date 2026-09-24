@@ -266,15 +266,6 @@ Then each response matches the same invocation from the project checkout root
 
 #### UC-LMCP-19: The project's agent entrypoint carries its MCP index
 
-<!-- planned-change:retire-docs-watcher -->
-```
-Given a TeleClaude project declares MCP servers in its own registry
-When `telec sync` regenerates that project's agent entrypoint files
-Then the generated entrypoint carries an index of the project's declared servers with their activation triggers
-And the machine-wide baked index is unchanged
-And a project with no registry declarations gets no project MCP index section
-```
-<!-- change:retire-docs-watcher -->
 ```
 Given a TeleClaude project declares MCP servers in its own registry
 When publication regenerates that project's agent entrypoint files for its recorded commit
@@ -282,7 +273,6 @@ Then the generated entrypoint carries an index of the project's declared servers
 And the machine-wide baked index is unchanged
 And a project with no registry declarations gets no project MCP index section
 ```
-<!-- /planned-change:retire-docs-watcher -->
 
 #### UC-LMCP-21: Hidden servers stay out of baked indexes but remain served
 

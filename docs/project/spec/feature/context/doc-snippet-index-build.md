@@ -47,15 +47,6 @@ does not police cross-project ownership.
 
 #### UC-DIB6: A project's catalog is written from its sources
 
-<!-- planned-change:retire-docs-watcher -->
-```
-Given a project with valid snippet sources under docs/
-When the operator runs telec sync
-Then the index-build phase runs
-And docs/project/index.yaml is written with one entry per valid Source
-And docs/third-party/index.yaml is written when third-party sources exist
-```
-<!-- change:retire-docs-watcher -->
 ```
 Given a project with valid snippet sources under docs/
 And the recorded commit is the latest canonical commit for that project
@@ -65,7 +56,6 @@ And the project's canonical checkout receives docs/project/index.yaml with one e
 And its canonical checkout receives docs/third-party/index.yaml when committed third-party sources exist
 And local telec docs retrieval reads those canonical-checkout indexes
 ```
-<!-- /planned-change:retire-docs-watcher -->
 
 
 #### UC-DIB7: Classification is derived from the source's path
@@ -208,7 +198,6 @@ And the source beneath the undeclared sibling is not walked
 ```
 <!-- /planned:docs-tier-layering -->
 
-<!-- planned:retire-docs-watcher -->
 #### UC-DIB16: An older publication replay preserves the checkout catalog
 
 ```gherkin
@@ -218,7 +207,6 @@ When maintenance replays the older range
 Then the agent's local documentation retrieval still includes the newer committed documentation
 And the checkout's catalog remains aligned with its latest canonical commit
 ```
-<!-- /planned:retire-docs-watcher -->
 
 ### Cross-context references
 

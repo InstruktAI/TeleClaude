@@ -25,13 +25,8 @@ there is no id-to-path check.
 
 Frontmatter shape is always validated: `delivered_by`, when present, must be a
 non-empty list of slug strings; absence means the snippet is current. No
-<!-- planned-change:retire-docs-watcher -->
-`status` field is validated or required. On a full `telec sync` run with the
-todos DB reachable, relationship state is additionally validated against the
-<!-- change:retire-docs-watcher -->
 `status` field is validated or required. When publication runs with the
 todos DB reachable, relationship state is additionally validated against the
-<!-- /planned-change:retire-docs-watcher -->
 **local** todos store: every `delivered_by` slug and every in-body planned /
 planned-change marker slug is checked. A slug resolving to a retained todo —
 active, icebox, or soft-removed — is tolerated. A slug that names **no todo in
@@ -47,15 +42,6 @@ without a reachable todos DB validate shape only.
 
 ### Use cases
 
-<!-- planned-change:retire-docs-watcher -->
-```
-Scenario: Missing required frontmatter field
-  Given a snippet file without a "description" key in frontmatter
-  When telec sync validates the file
-  Then a missing-frontmatter-field finding is reported for "description"
-  And the sync exits with a non-zero status
-```
-<!-- change:retire-docs-watcher -->
 ```
 Scenario: Missing required frontmatter field
   Given a snippet file without a "description" key in frontmatter
@@ -63,7 +49,6 @@ Scenario: Missing required frontmatter field
   Then a missing-frontmatter-field finding is reported for "description"
   And validation exits with a non-zero status
 ```
-<!-- /planned-change:retire-docs-watcher -->
 
 ```
 Scenario: delivered_by is an empty list

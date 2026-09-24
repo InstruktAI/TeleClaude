@@ -62,13 +62,6 @@ tooling.
 7.  Organize content inside those valid sections. Use subordinate headings such as `###` when they improve readability; do not flatten useful structure just to avoid internal headings.
 8.  If validation rejects a heading, first ask whether it should be downgraded under an existing schema section rather than deleted or flattened.
 
-<!-- planned-change:retire-docs-watcher -->
-9.  Deployment is the docs watcher's job: it publishes the whole tree on every
-    save, so an agent never runs a sync of its own, and the commit gate validates
-    the batch. Keep the regenerated index files with the eventual commit — they
-    are build outputs and reflect the current truth of the docs directory. This
-    step supplies neither authoring nor commit authority.
-<!-- change:retire-docs-watcher -->
 9.  Publication happens only from recorded committed state: the commit gate
     validates the batch and commit or merge maintenance publishes that recorded
     range, so authoring a snippet invokes no publication of its own. Initial
@@ -78,12 +71,7 @@ tooling.
     eventual commit — they are build outputs and reflect the committed truth of
     the docs directory. This step supplies neither authoring nor commit
     authority.
-<!-- /planned-change:retire-docs-watcher -->
-<!-- planned-change:retire-docs-watcher -->
-10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
-<!-- change:retire-docs-watcher -->
 10. Do not edit `docs/index.yaml` directly; the internal committed-state index build owns it.
-<!-- /planned-change:retire-docs-watcher -->
 
 11. Avoid creating index.md files; only baseline.md manifests are allowed.
 12. **Changing an existing snippet — bounded vs wholesale.** A live snippet is never overwritten in place to describe a change before it is delivered. Match the pending carrier to the shape of the change: bounded additions, replacements, and removals stay in body markers; wholesale reworks use a companion. The pending carrier names the delivering `<slug>`.

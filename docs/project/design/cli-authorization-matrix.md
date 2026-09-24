@@ -97,10 +97,6 @@ This table's system-role columns predate Integrator and System (see the code's `
 <!-- change:align-config-cli-ownership -->
 <!-- /planned-change:align-config-cli-ownership -->
 | `telec version`       | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                                     |
-<!-- planned-change:retire-docs-watcher -->
-| `telec sync`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Validate artifact sources; the mutating mode builds and deploys artifacts. Workers don't sync. Only admins and members should sync. |
-<!-- change:retire-docs-watcher -->
-<!-- /planned-change:retire-docs-watcher -->
 
 ### Documentation
 
@@ -254,10 +250,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec projects init`         | Contributors, newcomers, customers          |
 <!-- change:align-config-cli-ownership -->
 <!-- /planned-change:align-config-cli-ownership -->
-<!-- planned-change:retire-docs-watcher -->
-| `telec sync`                  | Contributors, newcomers, customers          |
-<!-- change:retire-docs-watcher -->
-<!-- /planned-change:retire-docs-watcher -->
 | `telec todo create`           | Newcomers, customers                        |
 | `telec todo design`           | Contributors, newcomers, customers          |
 | `telec todo remove`           | Contributors, newcomers, customers          |

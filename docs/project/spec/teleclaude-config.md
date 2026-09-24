@@ -758,11 +758,7 @@ through `ProjectCatalogService`. `telec projects init` is the sole writer of the
 <!-- change:align-config-cli-ownership -->
 through `ProjectCatalogService`. `telec config project init` is the sole writer of the
 <!-- /planned-change:align-config-cli-ownership -->
-<!-- planned-change:retire-docs-watcher -->
-registry; `telec sync` no longer registers projects. `project_slug` is the
-<!-- change:retire-docs-watcher -->
 registry; publication never registers projects. `project_slug` is the
-<!-- /planned-change:retire-docs-watcher -->
 canonical machine identity used for the log namespace
 (`instrukt-ai-logs {project_slug}`), the cross-project docs namespace, and
 service-level project lookup. `project_name` remains display-only.

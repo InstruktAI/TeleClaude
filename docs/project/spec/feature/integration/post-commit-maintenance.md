@@ -35,14 +35,12 @@ contract governs only what happens when maintenance runs.
 - **Trigger.** A recorded commit on canonical main, or a successful canonical-main
   merge operation, including a fast-forward. Maintenance is not conditioned on
   who or what advanced main, nor on whether a session is present.
-<!-- planned:retire-docs-watcher -->
 - **Immutable activation range.** Hook ingress resolves symbolic Git names to
   object ids before action selection or logging. An ordinary commit records its
   parent and committed tip; a root commit records an absent parent and its tip;
   a merge or fast-forward records the resolved pre-activation and post-activation
   tips. Changed-file resolution, command expansion, outcomes, and replay all use
   those immutable fields.
-<!-- /planned:retire-docs-watcher -->
 - **Owed set.** The `main_only` actions the committed paths resolve from the
   maintenance registry and shared bindings. Actions in the same precedence
   wave run concurrently; the next precedence wave starts after every action in
@@ -60,7 +58,6 @@ contract governs only what happens when maintenance runs.
 - **Failure posture.** The commit is already recorded before maintenance
   begins. A failing action is reported and the remaining actions still run;
   no failure withdraws, amends, or blocks the commit.
-<!-- planned:retire-docs-watcher -->
 - **Committed source.** A publication action receives the recorded range that
   selected it and advances only that repository contribution to the range tip.
   Every other repository remains at its previously activated revision until its
@@ -69,7 +66,6 @@ contract governs only what happens when maintenance runs.
   original recorded range and action id. Recovery emits the same attempt and
   outcome records as the first run and never substitutes the current working
   tree or a newer head.
-<!-- /planned:retire-docs-watcher -->
 - **Absence.** A commit made where the hook is not installed performs no
   maintenance and raises no signal. Nothing detects that absence here:
   installed plumbing is machine state whose comparison against the project's
@@ -188,7 +184,6 @@ But the integration worktree performs no maintenance action
 ```
 <!-- /planned-change:nonblocking-commit-maintenance -->
 
-<!-- planned:retire-docs-watcher -->
 #### UC-PCM7: Publication uses the recorded commit, not later working-tree state
 
 ```gherkin
@@ -220,7 +215,6 @@ Then maintenance records an absent before revision and the immutable committed t
 And changed-file resolution includes the complete root-commit tree
 And an agent reading the structured records observes that same normalized activation range on every action command and outcome
 ```
-<!-- /planned:retire-docs-watcher -->
 
 <!-- planned:home-tier-commit-maintenance -->
 #### UC-PCM10: A tier-documentation commit in the platform home owes publication

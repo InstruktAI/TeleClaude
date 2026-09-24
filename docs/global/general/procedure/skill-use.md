@@ -46,11 +46,6 @@ Find and use an existing curated TeleClaude skill.
 
 - If the listing command prints nothing, no global skill is deployed for this host;
   continue at step 3 rather than assuming the catalog is broken.
-<!-- planned-change:retire-docs-watcher -->
-- If a listed `SKILL.md` path does not resolve, the catalog pointer is stale — run
-  `telec sync` and list again before treating the skill as unavailable.
-<!-- change:retire-docs-watcher -->
 - If a listed `SKILL.md` path does not resolve, the catalog pointer is stale — the
   deployed catalog advances at the next commit-boundary publication, so list again
   after that publication runs before treating the skill as unavailable.
-<!-- /planned-change:retire-docs-watcher -->

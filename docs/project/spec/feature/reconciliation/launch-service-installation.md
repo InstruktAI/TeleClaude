@@ -1,8 +1,7 @@
 ---
-description: Installation of the host's TeleClaude launch units, including withdrawal of the
-  retired docs-watch unit from hosts that still carry it.
+description: Installation of the host's TeleClaude launch units, including withdrawal
+  of the retired docs-watch unit from hosts that still carry it.
 visibility: internal
-delivered_by: [retire-docs-watcher]
 ---
 
 # Launch Service Installation — Spec

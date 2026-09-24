@@ -72,7 +72,6 @@ agent handles authentication, interactivity, and confirmation as judgment, not
 code branches. A project with no company resolves no org and stays local-only;
 remote setup never gates project setup.
 
-<!-- planned:retire-docs-watcher -->
 ### 1b. Project initialization installs plumbing but does not publish
 
 `telec projects init` materializes the declaration and converges the project's
@@ -81,7 +80,6 @@ the setup working tree. The first validated canonical commit activates those
 sources through commit maintenance; an initial activation before that boundary
 must identify and validate a clean recorded `HEAD` rather than deploying the
 current working tree.
-<!-- /planned:retire-docs-watcher -->
 
 ### 2. macOS launcher build (`make launchers`) and installation (`make install`)
 

@@ -166,11 +166,7 @@ The command activates a Knowledge Author role that:
 4. Authors doc snippets following the snippet authoring schema
 
 
-<!-- planned-change:retire-docs-watcher -->
-5. Runs `telec sync` after each batch to deploy artifacts
-<!-- change:retire-docs-watcher -->
 5. Commits each batch; commit-boundary publication deploys the artifacts
-<!-- /planned-change:retire-docs-watcher -->
 
 
 6. Commits new documentation
@@ -269,11 +265,7 @@ The operator brain (`AGENTS.master.md`) references the help desk docs:
 - @docs/project/spec/tools/escalation.md
 ```
 
-<!-- planned-change:retire-docs-watcher -->
-At `telec sync`, these get inlined into the generated agent artifact. The operator brain knows when, how, and with what tool to escalate — without leaking into other projects.
-<!-- change:retire-docs-watcher -->
 At publication, these get inlined into the generated agent artifact. The operator brain knows when, how, and with what tool to escalate — without leaking into other projects.
-<!-- /planned-change:retire-docs-watcher -->
 
 ### Admin Relay Channel
 

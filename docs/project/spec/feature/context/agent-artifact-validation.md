@@ -111,17 +111,6 @@ Scenario: An agent validates a repository whose sources exceed its declared reac
   And nothing under .agents/ is read as an authored source
 ```
 
-<!-- planned-change:retire-docs-watcher -->
-```
-Scenario: Published or project-local supporting Markdown keeps its upstream structure
-  Given a skill package exists in a skill source folder of any tier
-  And the folder contains SKILL.md and optional supporting Markdown resources
-  When telec sync processes the skill
-  Then supporting Markdown is not checked for TeleClaude headings, section order, role lines, or taxonomy shape
-  And SKILL.md receives identity validation
-  And the package is rendered through the artifact output pipeline without rewriting its authored structure
-```
-<!-- change:retire-docs-watcher -->
 ```
 Scenario: Published or project-local supporting Markdown keeps its upstream structure
   Given a skill package exists in a skill source folder of any tier
@@ -131,7 +120,6 @@ Scenario: Published or project-local supporting Markdown keeps its upstream stru
   And SKILL.md receives identity validation
   And the package is rendered through the artifact output pipeline without rewriting its authored structure
 ```
-<!-- /planned-change:retire-docs-watcher -->
 
 
 #### UC-AAV3: Scoped validation grades the artifacts in its path set

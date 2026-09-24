@@ -17,19 +17,6 @@ visibility: 'public'
 - Write the consolidated index to `docs/index.yaml`.
 
 
-<!-- planned-change:retire-docs-watcher -->
-```mermaid
-flowchart LR
-    Docs["docs/**/*.md"]
-    Scanner["telec sync"]
-    Index["docs/index.yaml"]
-    Selector["Context Selector"]
-
-    Docs -->|scan| Scanner
-    Scanner -->|generate| Index
-    Selector -->|read| Index
-```
-<!-- change:retire-docs-watcher -->
 ```mermaid
 flowchart LR
     Docs["docs/**/*.md"]
@@ -41,7 +28,6 @@ flowchart LR
     Scanner -->|generate| Index
     Selector -->|read| Index
 ```
-<!-- /planned-change:retire-docs-watcher -->
 
 
 ## Inputs/Outputs
@@ -73,11 +59,7 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
-<!-- planned-change:retire-docs-watcher -->
-    participant Script as telec sync
-<!-- change:retire-docs-watcher -->
     participant Script as publication
-<!-- /planned-change:retire-docs-watcher -->
     participant FS as Filesystem
     participant Parser
     participant Index as index.yaml

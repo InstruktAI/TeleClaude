@@ -90,12 +90,10 @@ across boots belongs at the home root beside the pidfile.
   per-feature control-file subdirectory.
 - Each path under `$TELECLAUDE_HOME` is defined once, in `teleclaude/paths.py`.
   Modules import the constant; they never re-declare the literal.
-<!-- planned:retire-docs-watcher -->
 - Machine installation owns canonical-checkout symlinks for repository-owned
   runtime support. It preserves an already-correct link, replaces only a known
   legacy generated directory, and refuses a target whose unexpected contents
   would otherwise be discarded.
-<!-- /planned:retire-docs-watcher -->
 
 ## Known caveats
 

@@ -27,19 +27,11 @@ visibility: 'public'
 | `{{WORKING_DIR}}`  | `$PROJECT_ROOT` (repo root)      | `/home/user/project`                   |
 | `{{PATH}}`         | Constructed from known bin dirs  | `/opt/homebrew/bin:/usr/local/bin:...` |
 | `{{HOME}}`         | `$HOME`                          | `/home/user`                           |
-<!-- planned-change:retire-docs-watcher -->
-| `{{LABEL}}`        | Service-specific label string    | `ai.instrukt.teleclaude.docs.watch`    |
-<!-- change:retire-docs-watcher -->
 | `{{LABEL}}`        | Service-specific label string    | `ai.instrukt.teleclaude.cron`          |
-<!-- /planned-change:retire-docs-watcher -->
 | `{{COMMAND}}`      | Service-specific command         | `uv run --quiet ...`                   |
 | `{{WATCH_PATHS}}`  | Constructed from project paths   | XML plist array entries                |
 | `{{PROJECT_ROOT}}` | `$PROJECT_ROOT`                  | `/home/user/project`                   |
-<!-- planned-change:retire-docs-watcher -->
-| `{{UNIT_ID}}`      | Systemd unit name                | `teleclaude-docs-watch`                |
-<!-- change:retire-docs-watcher -->
 | `{{UNIT_ID}}`      | Systemd unit name                | `teleclaude-cron`                      |
-<!-- /planned-change:retire-docs-watcher -->
 
 ### Adding a new service template
 
