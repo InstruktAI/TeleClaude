@@ -9,7 +9,9 @@
 # Scope contract: when FILES_FROM
 # is set it names a temp file of NUL-terminated paths. Only those paths are
 # checked, each tool receives only the paths it actually owns, and a tool whose
-# bucket is empty does not run at all. With no FILES_FROM, everything runs.
+# bucket is empty does not run at all. A listed tool configuration file widens
+# the run to everything, since it changes how every file is checked. With no
+# FILES_FROM, everything runs.
 set -euo pipefail
 
 usage() {
