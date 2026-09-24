@@ -119,16 +119,14 @@ TeleClaudeNext.
   `project/spec/feature/config/unknown-key-warning`.
 
 <!-- planned:procedure-event-activation -->
-- **Also owns:** two activation declarations and their validation: an inbound
-  event source's company — the registered company its events belong to — and a
-  company's activation computer — the one computer that runs activations for
-  that company, declared once in the company tier so every source of the
-  company routes to the same computer. A source naming an unregistered company,
-  or a company that declares no activation computer, is rejected, so every
-  accepted source has an activation route. Owning the declarations is not owning
-  what a company context means, which belongs to `project/spec/domain/identity`,
-  or what a session does with it, which belongs to
-  `project/spec/domain/agent_runtime`.
+- **Also owns:** an inbound event source's company declaration — the registered
+  company its events belong to — validated against registered companies; a
+  source naming an unregistered company is rejected. It also answers, on each
+  computer, whether a company is configured there, which every computer
+  consults before activating anything for that company. Owning the declarations
+  is not owning what a company context means, which belongs to
+  `project/spec/domain/identity`, or what a session does with it, which belongs
+  to `project/spec/domain/agent_runtime`.
 <!-- /planned:procedure-event-activation -->
 
 #### Use cases (index of feature specs)

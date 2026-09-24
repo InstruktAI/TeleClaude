@@ -26,6 +26,13 @@ A standing agent is started by an event, so it runs under the platform's system
 principal with the company mapped from the event's source. The principal is
 therefore the same for every standing agent and is not part of its identity.
 
+A standing agent is a session, so it lives on one computer, and each computer
+decides for itself. On a computer that hosts the company, the activation runner
+wakes an agent already running the procedure for that company when it finds one
+or more, and starts one only when it finds none. That is the runner's own
+behavior: nothing restricts starting such an agent by hand, and nothing
+coordinates computers.
+
 A standing agent is an ordinary scoped session. Standing confers no platform
 role authority: it is not the integrator, the project coordinator, or a job
 runner, and acquires none of their powers by continuing.
@@ -141,6 +148,24 @@ When the platform records the outcome
 Then an agent inspecting the activation record observes a failure
 And the record does not present the activation as completed
 And the procedure's responsibility is not transferred to another agent
+```
+
+#### UC-PSA10: An agent already running the procedure for the company counts as standing
+
+```gherkin
+Given an agent was started by hand to run a procedure for a company on a computer
+When an activation for that procedure and company arrives on that computer
+Then the activation is delivered to an agent already running it
+And no further agent is started
+```
+
+#### UC-PSA11: Starting an agent by hand is never refused
+
+```gherkin
+Given a standing agent runs a procedure for a company on a computer
+When an operator or agent starts another session for that procedure and company by hand
+Then that session starts
+And the activation runner raises no objection to it
 ```
 
 ### Cross-context references

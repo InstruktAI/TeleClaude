@@ -1,5 +1,5 @@
 ---
-description: A session's company context — exposed to the agent from human membership, selected with an optional --company on creation and dispatch, carried forward, mapped from the source for event-started work, validated once at resolution, and published for tool subprocesses to read.
+description: A session's company context — set only by --company or by being started from a session that has one, carried to every worker, profiled only when set, never derived from location, validated once at resolution, and published for tool subprocesses to read.
 visibility: internal
 delivered_by:
   - procedure-event-activation
@@ -13,12 +13,19 @@ Company context is the business scope a session operates under. It is a company
 reference, never a location fact: the working directory, the source repository,
 and the procedure's name do not select it.
 
+A session has a company only when it is created with one: through an explicit
+selection, or by being started from a session that has one, which carries it to
+every worker without restating. Only such a session carries a company profile.
+Standing in a company's project gives a session no company and no profile: the
+project says whose project it is, not whose business the session operates.
+
 Two origins establish it and are never conflated. Human-directed work carries
-the person's established lineage together with the company they selected or
-that follows unambiguously from their membership. Company automation started by
-an event runs under the platform's system-principal contract, with the company
-mapped from the configured event source; no human origin is fabricated for an
-event.
+the person's established lineage together with the company they selected.
+Company automation started by an event runs under the platform's
+system-principal contract, with the company mapped from the configured event
+source; no human origin is fabricated for an event. A person with exactly one
+eligible company needs no selection for a tool to resolve that company, but the
+session carries no profile for it.
 
 Resolution happens once. A requested company is validated against the
 requester's membership where the context is resolved, and what the session
@@ -45,13 +52,6 @@ standing and confers no credential privilege.
 
 #### UC-CSC1: A human-lineage session starts knowing its eligible companies
 
-```gherkin
-Given a person is a member of one or more companies
-When a session carrying that person's lineage starts
-Then the agent's startup context carries that person's resolved company memberships
-And it carries any company already selected for the session
-```
-
 #### UC-CSC2: A company is selected explicitly on creation and dispatch
 
 ```gherkin
@@ -63,13 +63,6 @@ And it supplies no caller identity, role, or credential
 ```
 
 #### UC-CSC3: Sole membership needs no explicit selection
-
-```gherkin
-Given a person is a member of exactly one company
-When a session is created for that person with no explicit company selection
-Then the session operates under that company
-And no selection was required of the caller
-```
 
 #### UC-CSC4: An established company is carried forward
 
@@ -139,6 +132,48 @@ When a tool running as a subprocess inside that session reads the session's publ
 Then it observes the unresolved state
 And it can tell that state apart from a resolved company
 And it does not observe a company value
+```
+
+#### UC-CSC11: A human-lineage session starts knowing its memberships
+
+```gherkin
+Given a person is a member of one or more companies
+When a session carrying that person's lineage starts
+Then the agent's startup context lists that person's company memberships
+```
+
+#### UC-CSC12: Sole membership resolves for tools without a profile
+
+```gherkin
+Given a person is a member of exactly one company
+And a session carrying that person's lineage is created with no company selection
+When a tool running inside the session reads the session's published context
+Then it reads that one company as resolved
+And the agent's startup context carries no company profile
+```
+
+#### UC-CSC13: A company profile is present exactly when the session has a company
+
+```gherkin
+Scenario Outline: The profile follows the session's company, never its location
+  Given a session <how it was created>
+  When it starts
+  Then the agent's startup context <profile outcome>
+
+  Examples:
+    | how it was created                                              | profile outcome                   |
+    | was created with a company selection                            | carries that company's profile    |
+    | was started from a session that has a company                   | carries that company's profile    |
+    | stands in a company's project and was created without a company | carries no company profile        |
+```
+
+#### UC-CSC14: A company that does not exist is an error
+
+```gherkin
+Given no company is registered under a name
+When a session is created or work is dispatched selecting that name
+Then the request fails with an error naming the unknown company
+And no session is started
 ```
 
 ### Cross-context references

@@ -94,40 +94,36 @@ TeleClaudeNext repository.
   semantic owner emits, and decides neither reach, layout, nor vocabulary.
 
 <!-- planned:procedure-event-activation -->
-- **Owns (procedure standing agents):** one standing agent per procedure per
-  company, on the activation computer its company declares. An activation command resolves the
-  standing agent through the inbound resolve-or-create seam, serialized per
-  procedure and company so concurrent activations cannot create two. It starts
-  the agent through the canonical command-session dispatch under the system
-  principal with the company and the procedure, and wakes an existing agent
-  through session-input delivery whether it is idle or mid-turn. Each
-  activation is a durable operation of its own kind, whose outcome events
+- **Owns (procedure activation runner):** on each computer, one standing agent
+  per procedure per company, as the runner's own behavior. The runner resolves
+  the agent through the inbound resolve-or-create seam, serialized per
+  procedure and company so concurrent activations there cannot both start one.
+  When one or more sessions already run the procedure for the company, it wakes
+  one and starts none; when none does, it starts one by dispatching the generic
+  procedure-activation command — carrying the procedure's identity and the
+  company — in the company's home, under the system principal, with the
+  session's company set. The triggering event reaches a new agent as its first
+  input through the same session-input delivery that wakes an existing one,
+  never as additional startup context. Nothing restricts starting such a
+  session by hand, and nothing coordinates computers. Each activation is a
+  durable operation of its own kind, whose outcome events
   `agent_runtime.procedure_activation.completed` and
   `agent_runtime.procedure_activation.failed` this context owns and registers;
   completion or failure is recorded once, a failure is never presented as
-  success, and it never moves the responsibility to another agent. When a
-  company's declared activation computer changes, the former computer receives
-  no further activations for that company; its standing agents are told the
-  route moved, settle, and end under the session lifecycle, and the new
-  computer starts each procedure's agent on its next activation. A standing agent does not end itself when a
-  turn or an assignment completes. Its continuity rests on the durable work
-  record owned by its procedure's domain, so a restarted agent resumes from that
-  record rather than from its transcript.
-- **Owns (session company context):** the company a session operates under — an
-  explicit selection on session creation or dispatch, otherwise the company
-  carried from the dispatching session, otherwise the requester's sole eligible
-  company. Where company context is required and absent or ambiguous, the
-  request is answered with the eligible companies and how to select one; a
-  selection outside the requester's memberships is refused. The context is
-  established once, at session creation, and recorded on the session record —
-  the company, its origin, and whether it is resolved, absent, or ambiguous —
-  so it survives a restart. It is carried into delegated sessions and published
-  through the session identity document for tools running inside the session. A session's startup context carries the requester's memberships and
-  the established company. A project's declared owning company is a fact about
-  the project and is never presented as the session's operating company.
-- **Consumes (company context):** `identity`'s organizational membership
-  resolution to find eligible companies and validate a selection; this context
-  never re-derives membership.
+  success, and it never moves the responsibility to another agent. The agent's
+  lifecycle and its handling of later events belong to the procedure it loads.
+- **Owns (session company):** a session has a company only when it is created
+  with `--company` or started from a session that has one; the company is
+  recorded on the session record and carried to every session it starts
+  without restating. A company that does not exist is an error and one outside
+  the requester's memberships is refused; neither starts a session. A company
+  profile is injected into startup context only when the session has a company.
+  Standing in a company's project injects none: the startup header derived
+  from the project is removed. A human-lineage session's startup context lists
+  the person's memberships.
+- **Consumes (company):** `identity`'s organizational membership resolution to
+  validate a selection and to list memberships; this context never re-derives
+  membership.
 <!-- /planned:procedure-event-activation -->
 
 ## See Also

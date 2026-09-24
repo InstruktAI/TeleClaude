@@ -64,11 +64,13 @@ implementation remain the current appliance contract.
   ingress and before it is relayed, with the company `config` declares for its
   source; turning each published procedure subscription into a contract in the
   existing contract-routing model that carries the procedure's canonical ID;
-  and, only on the computer the event's company declares as its activation
-  computer, matching the event against those contracts and producing one
-  activation per match: the procedure, the company, the event's context, and
-  the platform's system principal as its origin. Every other computer produces
-  no activation for it, so all of a company's activations run on one computer.
+  and, on each computer, matching the event against those contracts only when
+  `config` answers that the event's company is configured on that computer,
+  producing one activation per match: the procedure, the company, the event's
+  context, and the platform's system principal as its origin. A computer that
+  does not host the company, and any computer receiving an event with no
+  company, produces no activation and records no failure. The event names no
+  consumer; each computer decides for itself and nothing coordinates them.
   Procedure-subscription contracts are derived state: held only in the
   registry's memory, never persisted or restored from storage, and rebuilt from
   the publication index `context` publishes when the activation handler
@@ -80,10 +82,10 @@ implementation remain the current appliance contract.
   knows which one matched when subscriptions overlap.
 - **Does not own (procedure activation):** whether a standing agent exists,
   starting or waking it, or the identity it runs under. The activation
-  handler's first act submits the activation to `agent_runtime` as a
-  computer-addressed command with a durable operation receipt, so the operation
-  exists before any fallible step; a submission that itself fails is emitted as
-  a platform error event. It takes no further decision.
+  handler's first act submits the activation to `agent_runtime` as a command
+  addressed to its own computer with a durable operation receipt, so the
+  operation exists before any fallible step; a submission that itself fails is
+  emitted as a platform error event. It takes no further decision.
 <!-- /planned:procedure-event-activation -->
 
 ## See Also

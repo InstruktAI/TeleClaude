@@ -60,15 +60,16 @@ TeleClaudeNext.
   consumed at CLI, API, integration, and runtime boundaries.
 
 <!-- planned:procedure-event-activation -->
-- **Also owns:** the session identity document's company fields — the session's
-  established company, its origin (human-directed work with its human
-  principal, or system-principal company work), and whether the company is
-  resolved, absent, or ambiguous — reconstructed from the session record
-  `agent_runtime` owns, so they survive a restart like every other field the
-  document carries.
-  Identity writes and publishes them for readers inside the session and
-  interprets nothing further; readers consume the published answer and never
-  re-validate it.
+- **Also owns:** the session identity document's company fields, which tools
+  running inside the session read — the company, the origin (human-directed
+  work with its human principal, or system-principal company work), and whether
+  the company is resolved, absent, or ambiguous. The company is the session
+  record's company when `agent_runtime` has set one; otherwise, for a
+  human-lineage session whose person has exactly one eligible company, that
+  company as resolved; otherwise unresolved, naming the eligible companies when
+  several remain. Identity writes the fields from the session record and its
+  own membership resolution, so they survive a restart, and interprets nothing
+  further; readers consume the published answer and never re-validate it.
 <!-- /planned:procedure-event-activation -->
 
 ## See Also

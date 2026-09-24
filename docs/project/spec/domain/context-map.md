@@ -91,18 +91,17 @@ contracts and never creates shared ownership.
 
 <!-- planned:procedure-event-activation -->
 - `context` publishes each procedure's declared event subscriptions and
-  publication tier; `integration` turns them into routing contracts and
-  consumes `config`'s declarations — each source's company and each company's
-  activation computer — to stamp each event and scope each match to one
-  computer.
-  `integration` hands each resulting activation to `agent_runtime` as a
-  computer-addressed command and never starts, addresses, or inspects a
-  session. `agent_runtime` owns the standing agent and each session's company
-  context, consuming `identity`'s membership resolution and supplying the
-  established context to the session identity document `identity` writes. None
-  restates another's rule: `integration` never decides whether an agent stands,
-  `agent_runtime` never matches events or reads procedure metadata, and
-  `identity` never chooses a session's company.
+  publication tier; `integration` turns them into routing contracts, stamps
+  each event with the company `config` declares for its source, and on each
+  computer matches only when `config` answers that the company is configured
+  there. `integration` hands each resulting activation to `agent_runtime` as a
+  command addressed to its own computer and never starts, addresses, or
+  inspects a session. `agent_runtime` owns the activation runner and each
+  session's company, consuming `identity`'s membership resolution; `identity`
+  writes the session identity document from the session record and its own
+  membership resolution. None restates another's rule: `integration` never
+  decides whether an agent stands, `agent_runtime` never matches events or reads
+  procedure metadata, and `identity` never chooses a session's company.
 <!-- /planned:procedure-event-activation -->
 
 The daemon, handler, adapter, database, and background-worker labels are layers

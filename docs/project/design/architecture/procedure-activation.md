@@ -1,5 +1,5 @@
 ---
-description: How a published procedure's event subscriptions become routing contracts, and how a matched event starts or wakes that procedure's standing agent for a company on the receiving computer — composed entirely from existing routing, dispatch, session, operation, and identity contracts.
+description: How a published procedure's event subscriptions become routing contracts, and how each computer that hosts an event's company starts or wakes that procedure's standing agent through one generic command — composed from existing routing, dispatch, session, operation, and identity contracts.
 visibility: internal
 delivered_by:
   - procedure-event-activation
@@ -11,9 +11,9 @@ delivered_by:
 
 Connect a procedure's declared event subscriptions to the agent that answers
 them, without a per-scenario command and without a business workflow engine. A
-procedure declares which events concern it; a matching event starts that
-procedure's standing agent for the event's company, or wakes the one already
-standing.
+procedure declares which events concern it; on each computer that hosts the
+event's company, a matching event starts that procedure's standing agent for the
+company, or wakes the one already running.
 
 This document owns only the relationship among the participating contexts. Each
 rule it relies on is stated by its owner:
@@ -21,9 +21,9 @@ rule it relies on is stated by its owner:
 | Concern                                                                   | Owner           | Contract                                                                                                                                             |
 | ------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | The activation declaration, its validation, and the catalogue consequence | `context`       | `project/spec/domain/context`, `project/spec/feature/context/snippet-frontmatter-validation`, `project/spec/feature/context/agents-master-inflation` |
-| A source's company and a company's activation computer                    | `config`        | `project/spec/domain/config`                                                                                                                         |
+| A source's company, and whether a company is configured on a computer     | `config`        | `project/spec/domain/config`                                                                                                                         |
 | Matching an event to a subscription and producing an activation           | `integration`   | `project/spec/feature/integration/procedure-subscription-routing`                                                                                    |
-| The standing agent and each session's company context                     | `agent_runtime` | `project/spec/feature/agent_runtime/procedure-standing-agent`, `project/spec/feature/agent_runtime/company-scoped-session-context`                   |
+| The activation runner and each session's company                          | `agent_runtime` | `project/spec/feature/agent_runtime/procedure-standing-agent`, `project/spec/feature/agent_runtime/company-scoped-session-context`                   |
 | Membership facts and the session identity document                        | `identity`      | `project/spec/domain/identity`                                                                                                                       |
 
 ## Inputs/Outputs
@@ -35,14 +35,16 @@ rule it relies on is stated by its owner:
   company its source declares.
 - Each published procedure's declared subscriptions and publication tier, from
   the publication index.
-- Each configured source's company, and each company's activation computer.
+- Whether the event's company is configured on the receiving computer.
 
 **Outputs:**
 
-- One durable operation per activation, completing when the agent is started or
-  woken and failing visibly when neither is possible.
+- On each computer that hosts the company: one durable operation per
+  activation, completing when an agent is started or woken and failing visibly
+  when neither is possible.
 - A standing agent session for the procedure and company, started under the
-  system principal, or an existing one woken with the event's context.
+  system principal with the session's company set, or an existing one woken
+  with the event.
 
 ## Invariants
 
@@ -54,33 +56,37 @@ rule it relies on is stated by its owner:
   membership only, so overlapping lists never merge procedures and editing a
   list never forks a second agent. The principal is not an identity dimension:
   every event-started agent runs under the same system principal.
-- **One computer per company.** A company declares the one computer that runs
-  its activations. Every computer receives the relayed event, but only the
-  company's activation computer matches procedure subscriptions for it,
-  whichever of the company's sources emitted it. The activation is a command
-  addressed to that computer, so exactly one computer consumes it, and single
-  holding is that computer's resolve-or-create serialized per procedure and
-  company. Computer is a routing fact, not an identity dimension.
-- **A route change moves the agent, not a copy of it.** When a company's
-  activation computer changes, the former computer receives no further
-  activations for that company, and its standing agents are told the route
-  moved, settle, and end. The new computer starts each procedure's agent on its
-  next activation, resuming from the domain's durable work record, so one agent
-  continues each procedure and company.
+- **Each computer decides for itself.** The event names no consumer. Every
+  computer receives it and first looks up whether its company is configured
+  there; a computer that does not host the company does nothing and records no
+  failure, and an event with no company activates nothing. No mechanism
+  coordinates computers, and running one company on two computers, each pointed
+  at its own instance, is the operator's configuration.
+- **The runner starts no second agent; nothing else is guarded.** On a computer
+  that hosts the company, the runner's resolve-or-create is serialized per
+  procedure and company. It wakes a session already running the procedure for
+  the company when it finds one or more, and starts one only when it finds none.
+  Starting such a session by hand is never refused.
+- **One thin command starts every activated agent.** The generic
+  procedure-activation command carries the procedure's identity and the company,
+  runs in the company's home, and loads the procedure with its required reads as
+  the agent's complete instruction set. It says nothing about lifecycle or about
+  later events; the loaded procedure owns both.
+- **One delivery path for events.** The triggering event reaches a new agent as
+  its first input, through the session-input delivery that wakes an existing
+  agent. No event travels as additional startup context.
+- **Company is explicit.** A session has a company only when created with
+  `--company` or started from a session that has one, and only then carries a
+  company profile. Location never supplies a company or a profile.
 - **No contract without its handler.** Procedure-subscription contracts are
   derived state: held in memory only, never persisted or restored at startup,
   and rebuilt from the publication index when the activation handler registers
-  and whenever the index changes. A matched procedure contract therefore always
-  reaches its handler, and a newly published subscription routes without a
-  restart.
-- **One route per activation.** An activation reaches its standing agent through
-  command dispatch and session-input delivery. The process-local event bus is not
-  on this path.
+  and whenever the index changes.
 - **Attention, not effect.** An activation directs the agent's attention.
-  Duplicate, late, and superseded events reach it and are reconciled against
-  its domain's durable work record. No acknowledgement, replay, or de-duplication
-  engine is added around delivery, and missed or due attention is recovered by
-  the platform's timer and periodic activation.
+  Duplicate, late, and superseded events reach it and are reconciled by its
+  procedure against its domain's durable work record. No acknowledgement,
+  replay, or de-duplication engine is added around delivery, and missed or due
+  attention is recovered by the platform's timer and periodic activation.
 - **Failure stays with its owner.** The activation handler's first act submits
   the activation with a durable operation receipt, so every activation has an
   operation before any step that can fail. An activation that cannot be
@@ -92,22 +98,19 @@ rule it relies on is stated by its owner:
 
 ### Reused mechanisms
 
-Every step reuses an existing platform contract; nothing here is new
-infrastructure.
-
-| Step                                   | Existing mechanism                                              | Relation                                                                                                                          |
-| -------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Event reaches every computer           | Single-ingress relay and inbound webhook framework              | Reused unchanged                                                                                                                  |
-| Company travels with the event         | Inbound normalization at the ingress                            | Adapted: stamps the source's declared company                                                                                     |
-| Subscription becomes routable          | Contract-routing model                                          | Adapted: contracts are derived from the publication index, held in memory, and rebuilt rather than persisted                      |
-| Match reaches the activation           | Contract `handler` target                                       | Adapted: the handler receives the matched contract, which carries the procedure's canonical ID                                    |
-| Start or wake crosses into the runtime | Computer-addressed command dispatch                             | Reused unchanged                                                                                                                  |
-| Find or create the standing agent      | Inbound resolve-or-create seam used by WhatsApp and Discord     | Adapted: serialized per key, which the seam currently is not                                                                      |
-| Start                                  | Canonical command-session dispatch used by scheduled agent jobs | Reused with the procedure and company supplied                                                                                    |
-| Wake                                   | Session-input delivery                                          | Reused unchanged                                                                                                                  |
-| Outcome record                         | Durable operation outcomes, receipt-first                       | Adapted: a new operation kind opened at submission, with its own `agent_runtime.procedure_activation` completed/failed event pair |
-| Company across restart                 | Session record                                                  | Extended with company, origin, and resolution state                                                                               |
-| Company for tools inside the session   | Session identity document                                       | Extended with company fields reconstructed from the session record                                                                |
+| Step                                   | Existing mechanism                                                                     | Relation                                                                                                     |
+| -------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Event reaches every computer           | Single-ingress relay and inbound webhook framework                                     | Reused unchanged                                                                                             |
+| Company travels with the event         | Inbound normalization at the ingress                                                   | Adapted: stamps the source's declared company                                                                |
+| Subscription becomes routable          | Contract-routing model                                                                 | Adapted: contracts are derived from the publication index, held in memory, and rebuilt rather than persisted |
+| Match reaches the activation           | Contract `handler` target                                                              | Adapted: the handler receives the matched contract, which carries the procedure's canonical ID               |
+| Start or wake crosses into the runtime | Command dispatch addressed to the receiving computer                                   | Reused unchanged                                                                                             |
+| Find or create the standing agent      | Inbound resolve-or-create seam used by WhatsApp and Discord                            | Adapted: serialized per procedure and company                                                                |
+| Start                                  | Canonical command-session dispatch, as the scheduled-job runner's generic command uses | Reused with a sibling generic command carrying procedure and company                                         |
+| Event delivery on start and wake       | Session-input delivery                                                                 | Reused unchanged                                                                                             |
+| Outcome record                         | Durable operation outcomes, receipt-first                                              | Adapted: a new operation kind with its own `agent_runtime.procedure_activation` completed/failed event pair  |
+| Company on the session                 | Session record                                                                         | Extended with the session's company                                                                          |
+| Company for tools inside the session   | Session identity document                                                              | Extended with company fields written from the session record and membership resolution                       |
 
 ### Activation
 
@@ -117,42 +120,38 @@ sequenceDiagram
     participant Ing as Ingress and relay
     participant Rt as Contract routing (integration)
     participant Act as Activation handler (integration)
-    participant Cmd as Command dispatch
-    participant AR as Standing agents (agent_runtime)
     participant Op as Durable operation
+    participant AR as Activation runner (agent_runtime)
 
     Src->>Ing: webhook
-    Ing->>Ing: stamp company from the source declaration
+    Ing->>Ing: stamp the source's company
     Ing->>Rt: relay verified event to every computer
-    Note over Rt: only the company's activation computer continues
-    Rt->>Rt: match subscription contracts
+    Note over Rt: each computer continues only if the company is configured there
+    Rt->>Rt: match derived subscription contracts
     Rt->>Act: event with the matched contract (procedure ID)
     Act->>Op: submit activation, receipt-first
-    Act->>Cmd: activate(procedure, company, event context, system origin), addressed to this computer
-    Cmd->>AR: activation command
-    AR->>AR: resolve standing agent, serialized per procedure and company
-    alt none standing
-        AR->>AR: start via command-session dispatch under the system principal
-    else standing, idle or mid-turn
-        AR->>AR: deliver event context via session-input delivery
+    Act->>AR: activate(procedure, company, event), addressed to this computer
+    AR->>AR: resolve, serialized per procedure and company
+    alt none running
+        AR->>AR: dispatch the generic command in the company home, company set, system principal
     end
+    AR->>AR: deliver the event as input to the agent
     AR->>Op: complete, or fail with reason
 ```
 
-### Company context on a human-directed session
+### Company on a human-directed session
 
-A session created or dispatched with an explicit company selection operates
-under that company once `agent_runtime` validates it against `identity`'s
-membership resolution. Without a selection it inherits the dispatching
-session's company, then falls back to the requester's sole eligible company.
-The established company, its origin, and its resolution state are recorded on
-the session record and written from it to the session identity document, so a
-tool running inside the session reads them without re-deriving anything and a
-restart reconstructs them.
+A session created with `--company` operates for that company once
+`agent_runtime` validates it against `identity`'s membership resolution; an
+unknown company is an error and a foreign one is refused. The company is
+recorded on the session record and set on every session it starts. Only such a
+session carries a company profile in its startup context; standing in a
+company's project adds none.
 
-Startup context is composed from the same facts. The project's declared owning
-company remains a project fact shown as such; the operating company is the
-established one.
+Tools inside a session read the session identity document, which `identity`
+writes from the session record: the session's company when set, otherwise a
+sole eligible company as resolved, otherwise an unresolved answer naming the
+eligible companies.
 
 ### Catalogue
 
@@ -164,49 +163,35 @@ owned without being offered it.
 
 ## Failure modes
 
-- **No standing agent can be started or reached** — the agent runtime is
-  unavailable or the computer cannot resolve the procedure or company. The
+- **No standing agent can be started or reached** on a hosting computer — the
   activation's durable operation fails with its reason, readable as an
   operation outcome. Nothing retries on another agent's behalf.
 - **Activation submission fails** — no operation can be opened. The failure is
   emitted as a platform error event; nothing is reported as activated.
-- **The company's activation computer is offline** — it receives nothing, like
-  a daemon restart. The standing agent reconciles on its next activation and periodic
-  activation covers attention no event triggers. No other computer acts in its
-  place.
-- **A source names a company that declares no activation computer** —
-  configuration validation rejects the source, so every accepted source has an
-  activation route and no published subscription is silently inert. A company
-  with no configured sources receives no events and needs no activation
-  computer.
-- **A company's activation computer changes while agents stand** — the former
-  computer's agents stop receiving activations, are told the route moved, and
-  end once settled; the new computer starts afresh from the durable work
-  record. Activations are never delivered to both.
+- **The company is not configured on a computer** — that computer does nothing
+  and records nothing. This is the normal case on every computer that does not
+  serve the company.
+- **An event carries no company** — no computer activates anything for it.
+- **Concurrent activations for one procedure and company** — serialized
+  resolve-or-create leaves one agent; each later activation is delivered to it.
+- **Two computers host the same company** — each runs its own agent. The
+  operator points each at its own instance; the platform does not intervene.
+- **A procedure declares both activation modes** — publication fails
+  validation, so no contract is derived from it.
 - **A daemon restarts with procedure subscriptions published** — derived
   contracts are not restored from storage; they are rebuilt from the
   publication index when the activation handler registers, so none can match
   before its handler exists.
-- **Concurrent activations for one procedure and company** — serialized
-  resolve-or-create leaves one agent; each later activation is delivered to it.
-  An activation arriving while the agent is still starting is delivered after
-  the session is ready rather than starting a second one.
-- **A procedure declares both activation modes** — publication fails
-  validation, so no contract is derived from it.
-- **A source with no company** — its events are stamped with no company and
-  match no procedure subscription. The absence of a match is not a failure.
 - **An event is missed, for example during a daemon restart** — no activation
-  occurs for it. The standing agent reconciles against its domain's durable
-  work record on the next activation, and periodic activation covers attention
-  that no event triggers.
-- **A requested company outside the requester's memberships** — refused at
-  session creation. No session operates under it.
-- **Company context required but ambiguous** — the request is answered with the
-  eligible companies and how to select one. Nothing is guessed.
+  occurs for it. The procedure reconciles against its domain's durable work
+  record on the next activation, and periodic activation covers attention no
+  event triggers.
+- **A requested company does not exist, or the requester is not a member** —
+  refused at session creation. No session operates under it.
 
 ## See Also
 
 - docs/project/design/architecture/hook-service.md — the contract-routing model this design adds a subscriber to.
 - docs/project/adr/0062-commands-carry-target-computer.md — computer-addressed command dispatch.
 - docs/project/spec/feature/agent_runtime/durable-operation-outcomes.md — the outcome record each activation uses.
-- docs/project/spec/feature/agent_runtime/scheduled-agent-command-dispatch.md — the schedule-driven sibling that starts a session per run.
+- docs/project/spec/feature/agent_runtime/scheduled-agent-command-dispatch.md — the generic-command dispatch the activation command mirrors.

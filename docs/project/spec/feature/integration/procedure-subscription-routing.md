@@ -18,11 +18,11 @@ Routing decides nothing about whether an agent already stands, and never starts
 or addresses a session itself.
 
 The company comes from the event source's own declaration and travels with the
-event from the ingress; the one computer that acts on it is the activation
-computer that company declares. Neither is derived from the procedure's name or
-from any checkout location. Every computer receives the event; only the
-company's activation computer matches it, so all of a company's activations run
-on one computer.
+event from the ingress. It is never derived from the procedure's name or from
+any checkout location. The event names no consumer: every computer receives it,
+and each computer first looks up whether that company is configured on it. A
+computer that hosts the company matches the event; any other computer does
+nothing, which is the normal case rather than a failure.
 
 A published subscription is live for the company it is published to.
 Publication is the registration: nothing stands between an author declaring the
@@ -82,13 +82,20 @@ And sees no human principal presented as having initiated it
 
 #### UC-PSR6: A company's events activate only on its activation computer
 
+#### UC-PSR7: A computer that does not host the event's company produces no activation
+
 ```gherkin
-Given a company declares the computer that runs its activations
-And that company has more than one configured event source
-And several computers publish a procedure declaring an event type those sources emit
-When verified events of that type from each of those sources reach every computer
-Then an agent inspecting the activation record sees activations only on the company's activation computer
-And sees none on any other computer
+Scenario Outline: Nothing activates where the company is not hosted
+  Given a computer publishes a procedure declaring an event type as activating it
+  And a verified event of that type reaches the computer <company condition>
+  When the event is matched against the published procedure subscriptions
+  Then an agent inspecting that computer's activation record sees no activation for the event
+  And sees no failure recorded for it
+
+  Examples:
+    | company condition                                     |
+    | naming a company that is not configured on it         |
+    | carrying no company                                   |
 ```
 
 ### Cross-context references
