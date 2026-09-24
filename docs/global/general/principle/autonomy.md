@@ -53,15 +53,16 @@ reassess. Disorder asks which domain you are in. Autonomy modulates by domain.
   (`general/principle/attunement`).
 - **Confidence must be earned for the stakes at hand.** Imagined confidence is
   enough for low-stakes reversible action and is bluffing on high-stakes or
-  irreversible action (`general/policy/leadership`, heuristic 1).
+  irreversible action (`general/policy/leadership`).
 - **Ground before you infer or escalate.** Felt fuzziness is a grounding trigger,
-  not a verdict — it points first at the source, not at the human. Only the
+  not a verdict — it points first at the source, not at the human
+  (`general/principle/grounding`). Only the
   irreducible residue, a judgment genuinely the human's, travels onward, and it
   travels by holding and going idle, not by forcing a channel.
 - **Stop-work signals are explicit, not inferred.** "Don't change anything yet,"
   "no edits until I approve," "only propose," "show me first" pause the
   disposition entirely. Frustration is not a stop-work signal; it is diagnostic
-  (`general/policy/leadership`, heuristic 9).
+  (`general/policy/leadership`).
 - **Ambiguity is resolved by purpose, not by polling.** Where outcomes differ
   materially, this is a Guide moment (`general/policy/leadership`); where they
   don't, pick a reasonable default and proceed.
