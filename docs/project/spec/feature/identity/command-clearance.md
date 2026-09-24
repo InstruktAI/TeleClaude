@@ -87,11 +87,9 @@ And the gate rejects the caller — the human band is never consulted for agent 
 
 ### Claim-scoped todo update
 
-`telec todo update` replaces role privilege with object state. The verb's system band admits every agent system role except `worker`; a roleless agent session is admitted through the verb's human band. Every admitted caller that carries an agent session id — dispatch-capable roles and roleless sessions included — is then gated on the todo's claim. No role holds unrestricted access to this verb.
+`telec todo update` replaces role privilege with object state. The verb's system band admits every agent system role except `worker`; a roleless agent session is admitted through the verb's human band. Every admitted caller other than a direct human identity — dispatch-capable roles and roleless sessions included — is then checked against the todo's claim. No role holds unrestricted access to this verb.
 
 The claim gate is the claiming-group predicate governing artifact writes (`feature/workflow/artifact-versioning`, Write authority). A todo whose `active_runner` names a live session is claimed; its claiming group is the holding session plus every session it dispatched, transitively through `initiator_session_id`. The gate admits a caller inside the claiming group, and admits any caller on an unclaimed todo — no `active_runner`, or one naming a session that is no longer live. It refuses a caller outside a live claim's group with the claim-conflict shape naming the holding session: the caller's door is that session. The todo state is unchanged by a refused update.
-
-Claim acquisition, claim release and the gate share one per-todo serialization, and a release clears a claim only while it still names the session being released. After request admission and validation, the build-started freeze, the gate and every state write the update performs run as one serialized span, so a claim is recorded either before the gate evaluates — and refuses the update — or after the update's writes complete. A slug rename executes as a deferred durable operation; a rename submitted by any caller other than a direct human identity evaluates the gate again under the same serialization and holds it through the physical rename, reporting a conflict through the operation record.
 
 `worker` is excluded at the verb band before any claim lookup runs. A direct human-identity caller — a login-resolved human principal carrying no agent session id and no system role — is not a session, is not gated by the claim, and is evaluated against the verb's human band; it is the caller class the artifact-write claim gate exempts (`feature/workflow/artifact-versioning`, UC-WAV16, UC-WAV23). Any other caller carrying no agent session id, such as the daemon's own credential, belongs to no claiming group and is refused on a live claim.
 
@@ -176,26 +174,6 @@ And a todo whose active_runner names a session that is no longer live
 When the session calls `telec todo update` on that todo
 Then the claim gate accepts (no live claim exists)
 And the requested mutation is applied to the todo state
-```
-
-#### UC-CSU9: A claim acquired after admission refuses the update
-
-```
-Given an agent session's `telec todo update` request admitted for an unclaimed todo
-And a different live session outside the caller's claiming group records the todo's claim after admission and before the update's serialized span begins
-When the gate evaluates
-Then the claim gate refuses with a claim conflict naming the holding session
-And the todo state is unchanged
-```
-
-#### UC-CSU10: A claim acquired before a deferred rename executes refuses the rename
-
-```
-Given an agent session's `telec todo update --slug <new>` request admitted and queued while the todo is unclaimed
-And a different live session outside the caller's claiming group records the todo's claim before the deferred execution begins
-When the rename operation evaluates the gate
-Then the operation completes as a claim conflict naming the holding session
-And the todo keeps its original slug with every todo surface unchanged
 ```
 
 #### UC-CSU11: A session dispatched by the claim holder updates the todo
