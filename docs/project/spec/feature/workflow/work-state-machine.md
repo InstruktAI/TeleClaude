@@ -361,9 +361,9 @@ Then every uncommitted edit, build commit, build-complete fact, review verdict, 
 And the orchestrator agent receives no reviewer dispatch, no follow-up for its live reviewer agent, no attribution of a merge commit to its builder agent, and no request for its finalizer agent to push or re-stamp
 ```
 
-#### UC-WSM16
+#### UC-WSM16:
 
-#### UC-WSM17
+#### UC-WSM17:
 <!-- /planned:successful-merge-preserves-worktree-work -->
 
 ### Cross-context references
