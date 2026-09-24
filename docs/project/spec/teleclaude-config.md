@@ -45,23 +45,6 @@ resolution contract is `project/spec/feature/config/tier-declaration`.
 The machine runtime `config.yml` is outside this: it carries a different
 filename and takes no part in tier resolution.
 
-<!-- planned-change:config-schema-home-resolution -->
-One JSON Schema per tier is generated from the same models the runtime
-validates against and committed at repo-root
-`schemas/teleclaude-{global,project,person,company}.schema.json`, beside the MCP
-registry schema. All four are deployed into the TeleClaude home tree beside the
-home's own configuration files; the project-tier schema is deployed to each
-project root beside that project's `teleclaude.yml`, by the same step that
-writes that project's generated entrypoints, and is committed as they are.
-
-A file points at its schema with a `# yaml-language-server: $schema=<ref>`
-modeline naming a schema in its own tree — a sibling for a project config, the
-home's copy for a home-tree file — and the modeline is written only once that
-schema is in place. Every reference therefore resolves from any checkout, with
-no network fetch and no machine-local path. The modeline serves the editor
-only: loading reads `kind` alone, and a file with no modeline resolves
-identically.
-<!-- change:config-schema-home-resolution -->
 One JSON Schema per tier is generated from the same models the runtime
 validates against and published, with the MCP registry schema, into the
 TeleClaude home. No repository carries a schema file; publication is specified
@@ -77,7 +60,6 @@ The same document therefore produces the same bytes on every machine, with no
 network fetch and no machine-local path. The modeline serves the editor only:
 loading reads `kind` alone, and a file whose modeline does not resolve loads
 identically.
-<!-- /planned-change:config-schema-home-resolution -->
 
 `kind` names a file's tier. It is unrelated to the machine-config field
 exposure levels described below, which govern which `config.yml` fields reach
@@ -315,38 +297,6 @@ value is never rendered back.
 
 ### TeleClaude MCP registry
 
-<!-- planned-change:config-schema-home-resolution -->
-TeleClaude-owned MCP registries live at repo-root `teleclaude-mcp.jsonc` and
-optional repo-root `teleclaude-mcp.local.jsonc`. The shared file is committed;
-the local file is machine-specific and gitignored. Both files use JSONC with a
-TeleClaude wrapper shape:
-
-```jsonc
-{
-  "$schema": "./schemas/teleclaude-mcp.schema.json",
-  "servers": {
-    "<slug>": {
-      "trigger": "string",
-      "transport": "stdio | http | sse | streamable-http",
-      "command": "string",
-      "args": ["string"],
-      "url": "string",
-      "headers": { "Header-Name": "value" },
-      "env": { "ENV_NAME": "${ENV_NAME}" },
-      "lazy": {
-        "idleTtlSec": 900,
-        "concurrency": "serialized",
-      },
-    },
-  },
-}
-```
-
-`trigger` is the agent-facing activation text shown by `telec mcp list`. It is
-metadata only: it does not create environment requirements or change a daemon
-lease fingerprint. `lazy` values shown above are defaults, not required
-boilerplate.
-<!-- change:config-schema-home-resolution -->
 TeleClaude-owned MCP registries live at repo-root `teleclaude-mcp.jsonc` and
 optional repo-root `teleclaude-mcp.local.jsonc`. The shared file is committed;
 the local file is machine-specific and gitignored. Both are JSONC documents
@@ -356,7 +306,6 @@ the MCP registry schema authored in the MCP context's source (`teleclaude/mcp/`)
 `trigger` is the agent-facing activation text shown by `telec mcp list`. It is
 metadata only: it does not create environment requirements or change a daemon
 lease fingerprint.
-<!-- /planned-change:config-schema-home-resolution -->
 
 
 A TeleClaude project's own `teleclaude-mcp.jsonc` and optional
@@ -379,15 +328,6 @@ lookup, nor lease fingerprints.
 `credentialScope` selects the credential owner — the machine, or the calling person; its allowed values and default live in the MCP registry schema. A person-scoped server requires authoritative caller identity and resolves every placeholder from that person's secret store. The declaration participates in normalized registry and lease fingerprints.
 
 
-<!-- planned-change:config-schema-home-resolution -->
-Registry authors omit default-valued properties; the runtime model and JSON
-Schema provide the defaults. The schema file is committed at repo-root
-`schemas/teleclaude-mcp.schema.json`, so VS Code and other JSON Schema aware
-editors can validate and autocomplete the JSONC files without network access.
-Committed registry files use the portable relative `$schema` reference.
-Machine-local generated examples may use an absolute `file://` schema reference
-to the installed schema under `~/.teleclaude/schemas/`.
-<!-- change:config-schema-home-resolution -->
 Registry authors omit default-valued properties; the runtime model and the
 registry schema provide the defaults. The registry schema is published with the
 configuration schemas
@@ -395,7 +335,6 @@ configuration schemas
 committed registry file references it relatively through its root's
 machine-local schema link, so JSON Schema aware editors validate and
 autocomplete it without network access and without a machine-local path.
-<!-- /planned-change:config-schema-home-resolution -->
 
 
 The effective TeleClaude MCP registry is resolved per invocation scope by one

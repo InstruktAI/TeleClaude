@@ -60,14 +60,6 @@ tier.
   tier it is: `global`, `project`, `person`, or `company`. The machine
   configuration file is outside this contract — it carries a different
   filename and never participates in tier resolution.
-<!-- planned-change:config-schema-home-resolution -->
-- Every file references its editor schema, so an editor validates the file as
-  its declared tier. The reference names a schema in the file's own tree — a
-  project configuration names a sibling at its project root, a home-tree file
-  names the home's copy — so it resolves from every checkout of the file that
-  carries it, with no network fetch and no path that means something different
-  on another machine.
-<!-- change:config-schema-home-resolution -->
 - Every file references its editor schema, so an editor validates the file as
   its declared tier. The reference is relative and is fixed by the tier alone:
   a project configuration names its tier schema through the project root's
@@ -75,23 +67,15 @@ tier.
   schema directory from its designated location. The same file content
   therefore resolves on every machine that has published its schemas, with no
   network fetch and no path that means something different on another machine.
-<!-- /planned-change:config-schema-home-resolution -->
 - The declaration is a declared, validated field of each tier's typed
   schema — never an unvalidated passenger key. The four values are one closed
   vocabulary, and each tier's schema accepts only its own value.
-<!-- planned-change:config-schema-home-resolution -->
-- The declaration and the schema reference are independent properties of a
-  file: either is supplied or repaired without regard to the other. Only the
-  declaration is load-bearing, and a file never references a schema that is not
-  in place.
-<!-- change:config-schema-home-resolution -->
 - The declaration and the schema reference are independent properties of a
   file: either is supplied or repaired without regard to the other. Only the
   declaration is load-bearing. Every write of a declared file carries its
   tier's schema reference, whether or not the writing machine holds that schema,
   so a file's committed content never depends on the state of the machine that
   wrote it.
-<!-- /planned-change:config-schema-home-resolution -->
 - Advancement runs against an epoch, opened only by the versioned installation
   upgrade that introduces it and never by a load. Its eligible set is captured
   from the registries when it opens and includes manifest entries that are
@@ -195,16 +179,6 @@ And company configuration composes alongside its member projects through their d
 
 #### UC-CFG-WSD10: A declared file missing its schema reference is repaired
 
-<!-- planned-change:config-schema-home-resolution -->
-```
-Given a same-named configuration file the tier registries name
-And that file carries a valid tier declaration and no schema reference
-And that file's schema is in place
-When that file is advanced
-Then the file is advanced to carry its schema reference
-And its existing tier declaration is left as it stands
-```
-<!-- change:config-schema-home-resolution -->
 ```
 Given a same-named configuration file the tier registries name
 And that file carries a valid tier declaration and no schema reference
@@ -212,7 +186,6 @@ When that file is advanced
 Then the file is advanced to carry its schema reference
 And its existing tier declaration is left as it stands
 ```
-<!-- /planned-change:config-schema-home-resolution -->
 
 #### UC-CFG-WSD11: A file that cannot be written fails its own load
 
@@ -237,16 +210,6 @@ And an unwritable file at one root leaves every other root resolving
 
 #### UC-CFG-WSD13: A schema reference is never written ahead of its schema
 
-<!-- planned-change:config-schema-home-resolution -->
-```
-Given a configuration file whose schema is not yet in place at its root
-When that file is advanced
-Then its tier declaration is written
-And no schema reference is written
-And the schema reference is written by a later advance once the schema is in place
-```
-<!-- change:config-schema-home-resolution -->
-<!-- /planned-change:config-schema-home-resolution -->
 
 #### UC-CFG-WSD14: A declaration removed after advancement is not restored
 
@@ -303,7 +266,6 @@ And no epoch is opened by the load
 And no tier declaration is supplied from the file's location
 ```
 
-<!-- planned:config-schema-home-resolution -->
 #### UC-CFG-WSD19: A written file carries its tier's schema reference on every machine
 
 ```
@@ -313,7 +275,6 @@ When an agent's configuration operation writes that file
 Then the file carries its tier's schema reference
 And the written content is identical to what any other machine writes for the same document
 ```
-<!-- /planned:config-schema-home-resolution -->
 
 ### Cross-context references
 

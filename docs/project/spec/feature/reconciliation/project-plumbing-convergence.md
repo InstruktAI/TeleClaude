@@ -14,7 +14,6 @@ A project's installed git plumbing is machine state: the TeleClaude-owned
 directory and the `teleclaude-docs` filter driver in the repository's own git
 config. Neither is tracked by the project, so a clone carries neither.
 
-<!-- planned:config-schema-home-resolution -->
 The project's configuration-schema link is machine state in the same way: a
 symbolic link in the project's machine-local state directory, which the project
 never tracks, pointing at the TeleClaude home's published schemas
@@ -23,7 +22,6 @@ committed configuration files reference their schemas through that link, so the
 same committed reference resolves on every machine that carries its own link.
 The link's location is the one the configuration writer's project-tier
 reference names (`teleclaude/config/declaration.py`).
-<!-- /planned:config-schema-home-resolution -->
 
 Convergence is the act of comparing that observed machine state against the
 project's capability declaration and performing the sanctioned actions that
@@ -68,7 +66,6 @@ remains outside every synchronization path.
   a prior filter pattern's residue, are re-checked out so the smudge filter
   applies to them. A locally modified file is left untouched. Repair resolves a
   file's filter attribute, so it runs after the filter attributes are written.
-<!-- planned:config-schema-home-resolution -->
 - **Schema link.** Every adopted project carries the link, whatever it
   subscribes. Before the link exists, the repository's local exclude list names
   its path, so the link is never offered for commit whatever the project's own
@@ -84,7 +81,6 @@ remains outside every synchronization path.
 - **Reporting.** A retained stray copy and an occupied link path are reported
   for the root without failing its convergence. Neither affects the hooks or
   the filter driver.
-<!-- /planned:config-schema-home-resolution -->
 - **No tracked file is written.** Convergence writes only untracked machine
   state. The one project-tracked file TeleClaude ever writes is the
   `.gitattributes` docs-filter line, written additively at adoption by its own
@@ -131,11 +127,7 @@ Then the TeleClaude-owned hooks are refreshed from their current templates
 And the project-authored hook is left in place
 ```
 
-<!-- planned-change:config-schema-home-resolution -->
-#### UC-RPC4: A project subscribing neither receives no plumbing
-<!-- change:config-schema-home-resolution -->
 #### UC-RPC4: A project subscribing neither receives no git plumbing
-<!-- /planned-change:config-schema-home-resolution -->
 
 ```gherkin
 Given a repository whose declaration activates no executable action binding
@@ -212,7 +204,6 @@ Then that root is reported as unavailable
 And every other registered root still converges
 ```
 
-<!-- planned:config-schema-home-resolution -->
 #### UC-RPC12: Convergence links an adopted project to the published schemas
 
 ```gherkin
@@ -254,7 +245,6 @@ Then the occupying entry is left unchanged
 And the agent sees that root reported as having its schema link path occupied
 And the project's hooks and docs filter driver still converge
 ```
-<!-- /planned:config-schema-home-resolution -->
 
 ## Known caveats
 

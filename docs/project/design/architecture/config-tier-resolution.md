@@ -28,17 +28,10 @@ and how existing installations reach the declared state.
 - **Inputs:** the invocation directory; the same-named configuration files on
   its ancestor chain and the tier each one declares; the git metadata at a
   project context root; the registered project roots in the projects manifest.
-<!-- planned-change:config-schema-home-resolution -->
-- **Outputs:** a context root and its declared tier, or none; a project
-  shared-state root for project contexts; the composed app config for the
-  resolved context; the published editor schemas under `schemas/` and their
-  deployed copies under the TeleClaude home.
-<!-- change:config-schema-home-resolution -->
 - **Outputs:** a context root and its declared tier, or none; a project
   shared-state root for project contexts; the composed app config for the
   resolved context; the editor schemas published into the TeleClaude home's
   schema directory.
-<!-- /planned-change:config-schema-home-resolution -->
 
 ## Invariants
 
@@ -87,17 +80,6 @@ and how existing installations reach the declared state.
   a file declaring another tier fails that model's validation instead of loading
   as something else. Being a declared field also keeps it valid under strict
   unknown-key rejection.
-<!-- planned-change:config-schema-home-resolution -->
-- **Every schema reference is relative to a schema in the file's own tree.** A
-  project configuration references a sibling schema deployed at its own project
-  root; a home-tree file references the home's deployed copies. No reference is
-  absolute and none is fetched over a network, so a schema resolves from every
-  checkout of the file that carries it and needs no distribution surface beyond
-  the repositories that already hold these files. A configuration file is a
-  regular tracked file, so a machine-local path in one would commit local
-  topology and resolve nowhere else
-  (`sdlc/policy/security-awareness`).
-<!-- change:config-schema-home-resolution -->
 - **Every schema reference is relative and fixed by the tier.** A project
   configuration references its schema through the project root's machine-local
   schema link; a home-tree file references the home's published schema
@@ -108,7 +90,6 @@ and how existing installations reach the declared state.
   would commit local topology and resolve nowhere else
   (`sdlc/policy/security-awareness`); the machine-local part
   lives in the untracked link instead.
-<!-- /planned-change:config-schema-home-resolution -->
 - **The schema reference is advisory and never load-bearing.** Loading reads
   the declaration alone, so a missing, stale, or unresolvable modeline is never
   an error.
@@ -179,21 +160,6 @@ checkout-owned artifact and follows the project-state root.
 the four tier models. Generating from the model is what keeps a published
 schema from drifting from the shape it describes.
 
-<!-- planned-change:config-schema-home-resolution -->
-Reconciliation owns the writing. The same boundary that composes the home docs and
-skills roots writes the four canonical schemas at this repository's root, deploys
-all four into the home tree beside the home's own configuration files, and
-deploys the project-tier schema to a project root beside that project's
-configuration file — the boundary that already writes that project's generated
-entrypoints. A deployed schema is a generated artifact its project commits, as
-the generated entrypoints are.
-
-A file carries its association as a YAML schema modeline naming a schema in its
-own tree: a project configuration names its sibling, and a home-tree file names
-the home's deployed copy. Every configuration file therefore validates from any
-checkout, with no network fetch and no path that means something different on
-another machine.
-<!-- change:config-schema-home-resolution -->
 Reconciliation owns the writing
 (`project/spec/feature/reconciliation/config-schema-publication`). It
 publishes the four tier schemas, together with the MCP registry schema the MCP
@@ -210,7 +176,6 @@ configuration names its schema through the root's link, and a home-tree file
 names the home's schema directory relative to its designated location. Every configuration file therefore validates on any machine that has
 published its schemas, with no network fetch and no path that means something
 different on another machine.
-<!-- /planned-change:config-schema-home-resolution -->
 
 **Advancing stored files.** A same-named configuration file is advanced before
 it is loaded. Advancement supplies what the file lacks — its tier declaration,
@@ -270,18 +235,6 @@ A file advancement cannot write fails that file's load, naming the file and the
 declaration it needs. The failure is scoped to that file; every other root
 continues to resolve.
 
-<!-- planned-change:config-schema-home-resolution -->
-Writing a project's schema association depends on that project's sibling schema
-being in place, so advancement writes the association only once the
-reconciliation-owned deployment reports the schema deployed at that root. Where
-deployment cannot complete, the declaration is still written — the two repairs
-are independent, and only the declaration is load-bearing — and the association
-is retried by the next advance. A file never carries a modeline naming a schema
-that is not there.
-
-A newly created global, person, company, or project configuration is written
-declared, and associated once its schema is deployed.
-<!-- change:config-schema-home-resolution -->
 Writing a schema association does not depend on the schema being present on
 the writing machine. The association is a fixed function of the tier, so
 advancement writes it together with the declaration, and every later write of a
@@ -290,7 +243,6 @@ committed file's content depend on the machine that wrote it.
 
 A newly created global, person, company, or project configuration is written
 declared and associated.
-<!-- /planned-change:config-schema-home-resolution -->
 
 Advancement never overwrites a declaration that is present: an unknown or
 model-inconsistent value fails rather than being replaced.

@@ -1,7 +1,7 @@
 ---
-description: Every TeleClaude configuration schema is published once per machine into a real directory in the TeleClaude home, from the canonical checkout's current source, and no repository carries a schema copy.
-delivered_by:
-  - config-schema-home-resolution
+description: Every TeleClaude configuration schema is published once per machine into
+  a real directory in the TeleClaude home, from the canonical checkout's current source,
+  and no repository carries a schema copy.
 ---
 
 # Config Schema Publication — Spec
