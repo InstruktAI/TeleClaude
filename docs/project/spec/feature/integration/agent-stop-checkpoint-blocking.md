@@ -255,6 +255,7 @@ When the checkpoint evaluates the agent-stop boundary
 Then the agent receives a checkpoint requiring the commit step
 ```
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP10: Code categories with no per-category action
 
 ```gherkin
@@ -281,7 +282,20 @@ Then every branch-eligible category still appears in the changed-category summar
 And no action is surfaced, because its evidence was observed
 (The changed-category summary reports the branch-eligible category set, independent of evidence suppression. Off-main deferrals are separate affirmative decisions and never appear as required actions.)
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-CP10: Code categories with no per-category action
 
+```gherkin
+Given a regular session's turn-local changes touch a code category with no per-category action
+And the changed paths owe this project's live-runtime log judgment
+When the heuristic engine evaluates the turn on main or in a worktree
+Then the maintenance log-check action is not surfaced to that session
+And any distinct branch-eligible actions still follow their bindings and evidence
+And categories for those eligible actions remain in the changed-category summary even after evidence satisfies them
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
+
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP11: Integrator post-advance log-check force-fire
 
 ```gherkin
@@ -293,6 +307,24 @@ Then the checkpoint force-fires even though no turn-local Edit or Write change e
 And it surfaces only the log-check action for the accumulated range
 And no install, dependency, restart, reload, sync, review, commit, or test action is surfaced from that marker
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-CP11: Integrator post-advance log-check force-fire
+
+```gherkin
+Given a session whose role is integrator
+And a canonical-main advancement has a checkout-scoped marker for live-runtime judgment
+And every action owed by that marker has succeeded with a maintenance-ready time recorded
+When the heuristic engine evaluates the turn window
+Then the checkpoint force-fires despite no turn-local Edit or Write change
+And it surfaces only the log-check action for the accumulated activations
+And no mechanical maintenance or unrelated judgment action is surfaced from that marker
+
+Given an owed action is pending, failed, or interrupted, or no maintenance-ready time is recorded
+When the heuristic engine evaluates that marker
+Then it does not force-fire log judgment yet
+And the marker remains for integrator recovery and a later eligible check
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 #### UC-CP29: Main movement without a log marker creates no checkpoint
 
@@ -452,6 +484,7 @@ But an earlier read or a narrower window leaves the marker outstanding
 ```
 <!-- /planned-change:nonblocking-commit-maintenance -->
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP32: A successor integrator inherits unfinished log judgment
 
 ```gherkin
@@ -460,6 +493,17 @@ And another integrator acquires the lease for the same checkout
 When the heuristic engine evaluates that session
 Then the accumulated log-check obligation is surfaced to the successor
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-CP32: A successor integrator inherits unfinished log judgment
+
+```gherkin
+Given the integrator session ends while the checkout-scoped marker remains
+And another integrator acquires the lease for the same checkout
+When the successor inspects the marker
+Then it inherits the accumulated activations and any unfinished maintenance recovery
+And the log-check obligation surfaces only after every owed action succeeds and maintenance readiness is recorded
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 <!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
