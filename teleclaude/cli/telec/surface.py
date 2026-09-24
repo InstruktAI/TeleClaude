@@ -15,6 +15,7 @@ from .surface_types import (
     _HR_MEMBER_CONTRIB_NEWCOMER,
     _SYS_ALL,
     _SYS_ALL_PLUS_JOB_RUNNER,
+    _SYS_CLAIM_SCOPED_TODO_UPDATE,
     _SYS_INTG,
     _SYS_ORCH,
     _SYS_ORCH_TASKER,
@@ -683,13 +684,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Mutates slug, deps, kind, or hold; --after replaces the full dependency set.",
+                    "Agent callers may update only an unclaimed todo or one held by their claiming group; a live foreign claim is refused with the holder named.",
                     "Kind and slug changes are refused after build starts; --after remains allowed.",
                     "--hold requires --reason; --reason is refused without --hold, and --hold and --release are mutually exclusive.",
                     "--unclaim clears the caller-owned runner claim; --release only clears the dispatch brake.",
                     "--force only applies to kind orphan handling.",
                     "Combining --slug with other legs is staged, not a single atomic patch.",
                 ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                auth=CommandAuth(system=_SYS_CLAIM_SCOPED_TODO_UPDATE, human=_HR_MEMBER),
             ),
             "prepare": CommandDef(
                 desc="Run the Phase A (prepare) state machine",

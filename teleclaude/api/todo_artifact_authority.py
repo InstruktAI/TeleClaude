@@ -22,6 +22,17 @@ from teleclaude.types.creation_record import HUMAN_ROOT_PREFIX, SYSTEM_ROOT_PREF
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
+_FOREIGN_ARTIFACT_CLAIM_DETAIL = (
+    "todo '{slug}' is claimed by session '{holder}'; write refused. "
+    "Address that session about the concern instead of writing into its "
+    "record (software-development/policy/todo-creation-discipline, "
+    "'Reconcile a flagged live todo')."
+)
+_FOREIGN_UPDATE_CLAIM_DETAIL = (
+    "todo '{slug}' is claimed by session '{holder}'; update refused. "
+    "Address that session about the concern instead of updating its todo."
+)
+
 
 def resolved_write_principal(identity: CallerIdentity) -> str | None:
     """Resolve the session id recorded as an artifact's ``updated_by``.
@@ -76,25 +87,49 @@ async def refuse_foreign_claim(todos_db: TodosDb, identity: CallerIdentity, slug
     agent session id — is never gated by the claim (UC-WAV16, UC-WAV23). This
     check consults ``active_runner`` but never sets it.
     """
-    state = await todos_db.read_state(slug)
-    active_runner = (state or {}).get("active_runner")
-    if not isinstance(active_runner, str) or not active_runner:
-        return
-    if not await is_live_session_id(runtime_db, active_runner):
-        return
     if not identity.session_id:
         return
-    if await session_in_claiming_group(identity.session_id, active_runner):
+    holder = await _foreign_live_claim_holder(todos_db, identity.session_id, slug)
+    if holder is None:
         return
     raise HTTPException(
         status_code=409,
-        detail=(
-            f"todo '{slug}' is claimed by session '{active_runner}'; write refused. "
-            "Address that session about the concern instead of writing into its "
-            "record (software-development/policy/todo-creation-discipline, "
-            "'Reconcile a flagged live todo')."
-        ),
+        detail=_FOREIGN_ARTIFACT_CLAIM_DETAIL.format(slug=slug, holder=holder),
     )
+
+
+async def refuse_todo_update_outside_claiming_group(
+    todos_db: TodosDb,
+    identity: CallerIdentity,
+    slug: str,
+) -> None:
+    """Refuse an agent update from outside a slug's live claiming group."""
+    if not identity.session_id and identity.system_role is None:
+        return
+    holder = await _foreign_live_claim_holder(todos_db, identity.session_id, slug)
+    if holder is None:
+        return
+    raise HTTPException(
+        status_code=409,
+        detail=_FOREIGN_UPDATE_CLAIM_DETAIL.format(slug=slug, holder=holder),
+    )
+
+
+async def _foreign_live_claim_holder(
+    todos_db: TodosDb,
+    caller_session_id: str,
+    slug: str,
+) -> str | None:
+    """Return the live claim holder when the caller is outside its group."""
+    state = await todos_db.read_state(slug)
+    holder = (state or {}).get("active_runner")
+    if not isinstance(holder, str) or not holder:
+        return None
+    if not await is_live_session_id(runtime_db, holder):
+        return None
+    if caller_session_id and await session_in_claiming_group(caller_session_id, holder):
+        return None
+    return holder
 
 
 async def refuse_non_prepare_writer(identity: CallerIdentity, slug: str, name: str) -> None:
