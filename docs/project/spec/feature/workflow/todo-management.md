@@ -158,7 +158,6 @@ Then the CLI sends the invocation working directory to the workflow service
 And the service resolves the removed slug from that project rather than the daemon default directory
 ```
 
-<!-- planned:cli-authorization-reads-via-daemon -->
 #### UC-WM32: Listing reads the caller's project through the workflow service
 
 ```
@@ -181,7 +180,6 @@ And no todo, artifact, or bug content is printed
 And the refusal names how to establish an identity
 ```
 
-<!-- /planned:cli-authorization-reads-via-daemon -->
 ```
 Given active todos [ready-a, prep-b]
 And ready-a has all after dependencies delivered and a ready lifecycle phase

@@ -124,12 +124,6 @@ boundary.
 - `x-session-token`: daemon-issued credential for system sessions only
   (takes priority over `x-caller-session-id` when present).
 
-<!-- planned-change:cli-authorization-reads-via-daemon -->
-**`telec auth whoami` inside an agent session:**
-When `TELEC_SESSION_TOKEN` is present, `whoami` resolves the principal via the daemon's
-`GET /auth/whoami` endpoint and prints `Principal: <principal>` and `Role: <role>`.
-Falls back to terminal email display when no token is present (human sessions).
-<!-- change:cli-authorization-reads-via-daemon -->
 **`telec auth whoami`:**
 Inside a session and at a terminal alike, `whoami` asks the daemon's `GET /auth/whoami`
 endpoint and prints its answer. The answer is what caller verification resolved: the
@@ -137,7 +131,6 @@ principal (`human:<email>` for a person, whether a session carries it or a termi
 login names them), the role, the person's email, and the session id when the caller is
 a session. A process whose session identity document is unusable is told so and asks
 nothing. The CLI resolves no identity itself.
-<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 **Principal types:**
 

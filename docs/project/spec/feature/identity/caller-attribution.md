@@ -1,7 +1,6 @@
 ---
-description: A record the platform writes on a caller's behalf takes who made it from caller verification, never from an identity the invoking process read for itself.
-delivered_by:
-  - cli-authorization-reads-via-daemon
+description: A record the platform writes on a caller's behalf takes who made it from
+  caller verification, never from an identity the invoking process read for itself.
 ---
 
 # Caller Attribution — Spec

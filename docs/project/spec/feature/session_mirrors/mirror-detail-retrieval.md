@@ -11,17 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:cli-authorization-reads-via-daemon -->
-Operators inspect a specific past session by addressing its mirror with a
-full session identifier. The lookup matches that identifier exactly; a
-shortened value is refused rather than resolved. Optional
-computer scoping narrows the lookup when callers supply a host name. The CLI
-path renders a human-readable header — title, project, computer, start
-timestamp, both identifiers and which source answered — followed by the
-conversation body in full. The detail capability of the session_mirrors service
-returns a structured payload with session_id, identity, title, timestamps,
-conversation_text, and message_count.
-<!-- change:cli-authorization-reads-via-daemon -->
 Operators inspect a specific past session by addressing its mirror with a
 full session identifier. The lookup matches that identifier exactly; a
 shortened value is refused rather than resolved. Optional
@@ -41,7 +30,6 @@ identifiers and which source answered — followed by the conversation body in f
 The detail capability of the session_mirrors service returns one stored mirror
 by exact identifier as a structured payload with session_id, identity, title,
 timestamps, conversation_text, and message_count.
-<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 ## Canonical fields
 
@@ -114,27 +102,6 @@ Then the missing-store condition is swallowed
 And the function reports "no mirror" without raising
 ```
 
-<!-- planned-change:cli-authorization-reads-via-daemon -->
-#### UC-MDR-1: CLI accepts a TeleClaude session id
-
-```
-Given an operator runs `telec history show <session-id>` with a TeleClaude session id
-And no mirror matches that id directly
-And the session record for that id carries a native agent session id
-When the CLI resolves the lookup
-Then the CLI repeats only the mirror lookup under the native agent session id
-And the on-disk transcript discovery is never repeated under a resolved id, because it applies no role band
-And the session's mirror is rendered, whether the session is still running or already closed
-And `--raw` for a resolved id streams the transcript recorded on that mirror rather than a rediscovered file
-
-Given the caller's role band excludes that session's mirror from the detail lookup
-Then the resolved native id opens neither the mirror nor the transcript
-And the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
-
-Given no session record carries the supplied id
-Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
-```
-<!-- change:cli-authorization-reads-via-daemon -->
 #### UC-MDR-1: CLI accepts a TeleClaude session id
 
 ```
@@ -154,7 +121,6 @@ And the CLI reports "No transcript found for session '<session-id>'" and exits n
 Given no session record carries the supplied id
 Then the CLI reports "No transcript found for session '<session-id>'" and exits non-zero
 ```
-<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 #### UC-MDR-2: An id lookup takes a full UUID
 
@@ -183,7 +149,6 @@ Then the response states the latest conversation coverage it can establish
 And content beyond that coverage is not represented as absent from the session
 ```
 
-<!-- planned:cli-authorization-reads-via-daemon -->
 #### UC-MDR-6: The platform's verification, not the requesting process, decides a detail request
 
 ```
@@ -194,7 +159,6 @@ Then the request is refused
 And no conversation, header, or transcript is printed
 ```
 
-<!-- /planned:cli-authorization-reads-via-daemon -->
 
 ## Known caveats
 

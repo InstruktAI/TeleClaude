@@ -33,11 +33,9 @@ optional `--match`, `--disposition`, `--project`, `--source-bug`, and
 `telec bugs unsuppress <id>` removes one entry by the id assigned at
 registration.
 
-<!-- planned:cli-authorization-reads-via-daemon -->
 A suppression's creation provenance is the principal the platform resolves for
 the registering caller. A caller the platform cannot identify registers nothing.
 
-<!-- /planned:cli-authorization-reads-via-daemon -->
 
 ## Canonical fields
 
@@ -88,7 +86,6 @@ Then the new suppression is honored
 And no participant other than the front door has written to the ledger file
 ```
 
-<!-- planned:cli-authorization-reads-via-daemon -->
 #### UC-KIS6: A suppression records the registering caller's resolved principal
 
 ```
@@ -106,7 +103,6 @@ Then no entry is written to the ledger
 And the refusal names how to establish an identity
 ```
 
-<!-- /planned:cli-authorization-reads-via-daemon -->
 
 ### Cross-context references
 

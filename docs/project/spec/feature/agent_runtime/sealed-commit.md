@@ -630,27 +630,6 @@ And no session identity is adopted from the machine-global login record
 ```
 
 <!-- /planned:external-session-identity -->
-<!-- planned-change:cli-authorization-reads-via-daemon -->
-#### UC-CGIP-17 — No agent session but a human terminal login degrades honestly to the human as author
-
-```
-Given no agent session resolves for the current telec code commit invocation
-And a human is logged in at the current terminal (telec auth login)
-When the commit lands
-Then git's own ambient identity resolves the author
-And the message carries no Session: trailer
-```
-
-#### UC-CGIP-18 — Neither an agent session nor a terminal login fails the commit loudly
-
-```
-Given no agent session resolves for the current telec code commit invocation
-And no human is logged in at the current terminal
-When telec code commit is invoked
-Then the commit fails loudly with a diagnostic
-And no commit is produced attributing the change to whichever identity git's ambient config happens to name
-```
-<!-- change:cli-authorization-reads-via-daemon -->
 #### UC-CGIP-17 — A person the platform resolves at a terminal degrades honestly to the human as author
 
 ```
@@ -678,7 +657,6 @@ When telec code commit is invoked
 Then the commit fails loudly, naming how to check and restore the service
 And no commit is produced from an identity the invoking process decided for itself
 ```
-<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 #### UC-CGIP-16 — Human-Involved is a per-commit declaration, never derived from the todo record
 

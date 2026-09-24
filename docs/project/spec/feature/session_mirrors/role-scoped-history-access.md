@@ -32,14 +32,6 @@ The scopes are:
   returned; an unidentified caller never receives a wider view than an
   identified one.
 
-<!-- planned-change:cli-authorization-reads-via-daemon -->
-Every surface that serves mirrors to a caller identifies that caller first: the
-CLI detail path, history search, the search command a peer receives over the
-relay, and the session_mirrors service's search, detail, and raw-transcript
-capabilities. Reads that serve no caller — mirror generation's check for an
-existing record, and memory extraction's transcript read — consider every mirror,
-because their result reaches no one.
-<!-- change:cli-authorization-reads-via-daemon -->
 Every surface that serves mirrors to a caller identifies that caller first: the
 history detail capability that answers `telec history show`, history search,
 the search command a peer receives over the relay, and the session_mirrors
@@ -47,7 +39,6 @@ service's search, detail, and raw-transcript capabilities. Reads that serve no
 caller — mirror generation's check for an existing record, and memory
 extraction's transcript read — consider every mirror, because their result
 reaches no one.
-<!-- /planned-change:cli-authorization-reads-via-daemon -->
 
 A filtered miss and an absent mirror are the same outcome to the caller, and
 neither reaches past the store. The on-disk transcript discovery is consulted only

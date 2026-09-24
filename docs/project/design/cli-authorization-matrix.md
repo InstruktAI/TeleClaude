@@ -131,11 +131,7 @@ This table's system-role columns predate Integrator and System (see the code's `
 
 | Command               | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                          |
 | --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-<!-- planned-change:cli-authorization-reads-via-daemon -->
-| `telec todo list`     | R    | ❌     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the todo list is useful for orientation. Workers don't need todo-list context. Customers should not see internal planning. |
-<!-- change:cli-authorization-reads-via-daemon -->
 | `telec todo list`     | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Reading the todo list is useful for orientation. Workers read it too: reviewers and diagnosers check it for overlapping and duplicate work. Customers should not see internal planning. |
-<!-- /planned-change:cli-authorization-reads-via-daemon -->
 | `telec todo freeze`   | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Freezing an entry is planning management. Only admins and members.                                                                 |
 | `telec todo unfreeze` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring an iceboxed entry is planning management. Only admins and members.                                                       |
 | `telec todo deliver`  | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Delivering is planning management. Only admins and members.                                                                        |
@@ -147,13 +143,11 @@ This table's system-role columns predate Integrator and System (see the code's `
 | `telec bugs report` | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers CAN report bugs (explicitly stated). Anyone on the team can report. Customers should use escalate instead. |
 | `telec bugs list`   | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Listing bugs is a read operation. Workers can see bug status. Customers should not see internal bug tracking.      |
 
-<!-- planned:cli-authorization-reads-via-daemon -->
 Job-runner sessions, which have no column here, are admitted to `telec todo list`,
 `telec todo artifacts read`, and `telec bugs list`: a scheduled job that files bugs reads
 the todo and bug landscape before filing, so it does not file a defect that is already
 reported or being fixed.
 
-<!-- /planned:cli-authorization-reads-via-daemon -->
 
 ### Content Pipeline
 
@@ -269,18 +263,10 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo reactivate`       | Contributors, newcomers, customers          |
 | `telec todo verify-artifacts` | Customers                                   |
-<!-- planned-change:cli-authorization-reads-via-daemon -->
-| `telec todo list`             | Customers                                   |
-<!-- change:cli-authorization-reads-via-daemon -->
-<!-- /planned-change:cli-authorization-reads-via-daemon -->
 | `telec todo freeze`           | Contributors, newcomers, customers          |
 | `telec todo unfreeze`         | Contributors, newcomers, customers          |
 | `telec todo deliver`          | Contributors, newcomers, customers          |
 | `telec bugs report`           | Customers                                   |
-<!-- planned-change:cli-authorization-reads-via-daemon -->
-| `telec bugs list`             | Customers                                   |
-<!-- change:cli-authorization-reads-via-daemon -->
-<!-- /planned-change:cli-authorization-reads-via-daemon -->
 | `telec content dump`          | Newcomers, customers                        |
 | `telec events list`           | Customers                                   |
 | `telec config wizard`         | Members, contributors, newcomers, customers |
