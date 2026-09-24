@@ -21,6 +21,12 @@ _CONFIG_FOR_TESTS = config
 IDLE_SUMMARY_INTERVAL_S = 60.0
 PROCESS_START_GRACE_S = 3.0
 _HOT_PATH_CAPTURE_LINES = 20
+_TRANSIENT_SNAPSHOT_LABELS: dict[type[Exception], str] = {
+    tmux_bridge.TmuxUnavailableError: "tmux binary unavailable",
+    tmux_bridge.SubprocessTimeoutError: "tmux snapshot timeout",
+    tmux_bridge.TmuxSnapshotMalformedError: "tmux snapshot malformed",
+}
+_TRANSIENT_SNAPSHOT_ERRORS = tuple(_TRANSIENT_SNAPSHOT_LABELS)
 
 
 @dataclass
@@ -350,19 +356,11 @@ class OutputPoller:
                         tmux_session_name,
                         capture_lines=_HOT_PATH_CAPTURE_LINES,
                     )
-                except tmux_bridge.TmuxUnavailableError as exc:
-                    label = "tmux binary unavailable"
-                    suppressed_transient_ticks[label] = suppressed_transient_ticks.get(label, 0) + 1
-                    last_transient_error[label] = str(exc)
-                    maybe_log_transient_skip(label)
-                    await asyncio.sleep(poll_interval)
-                    continue
-                except tmux_bridge.SubprocessTimeoutError as exc:
-                    # Kill-and-reap happens before the raise (communicate_with_timeout), so the
-                    # snapshot client leaves no surviving process or partial state: the next tick
-                    # spawns a clean client. Transient by construction, same as the binary-
-                    # unavailable case above.
-                    label = "tmux snapshot timeout"
+                except _TRANSIENT_SNAPSHOT_ERRORS as exc:
+                    # Each class loses one tick only. A timeout kill-and-reaps before the raise
+                    # (communicate_with_timeout), and a snapshot is stateless per tick, so the
+                    # next tick spawns a clean client and re-reads everything.
+                    label = _TRANSIENT_SNAPSHOT_LABELS[type(exc)]
                     suppressed_transient_ticks[label] = suppressed_transient_ticks.get(label, 0) + 1
                     last_transient_error[label] = str(exc)
                     maybe_log_transient_skip(label)

@@ -17,6 +17,7 @@ from teleclaude.utils import strip_ansi_codes
 from ._subprocess import (
     SUBPROCESS_TIMEOUT_QUICK,
     SubprocessTimeoutError,
+    TmuxSnapshotMalformedError,
     TmuxUnavailableError,
     communicate_with_timeout,
     get_snapshot_semaphore,
@@ -31,6 +32,7 @@ _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell
 _TMUX_OPERATION_ERRORS = (OSError, ValueError, SubprocessTimeoutError)
 _TMUX_DIAGNOSTIC_ERRORS = (OSError, ValueError, TypeError, psutil.Error, SubprocessTimeoutError)
 _SNAPSHOT_MARKER = "__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__"
+_SNAPSHOT_MARKER_MISSING = "tmux snapshot output missing required boundary marker (stdout_bytes={size})"
 DEFAULT_CAPTURE_LINES = 200
 FALLBACK_CAPTURE_LINES = 40
 
@@ -212,7 +214,7 @@ def _parse_snapshot_stdout(stdout: bytes) -> tuple[str, bool]:
     """Parse combined capture-pane/list-panes output from a single tmux call."""
     decoded = stdout.decode("utf-8", errors="replace")
     if _SNAPSHOT_MARKER not in decoded:
-        raise ValueError("tmux snapshot output missing required boundary marker")
+        raise TmuxSnapshotMalformedError(_SNAPSHOT_MARKER_MISSING.format(size=len(stdout)))
 
     output_text, pane_state_text = decoded.rsplit(_SNAPSHOT_MARKER, 1)
     lines = pane_state_text.strip().splitlines()

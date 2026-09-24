@@ -67,6 +67,14 @@ class TmuxUnavailableError(Exception):
     """
 
 
+class TmuxSnapshotMalformedError(Exception):
+    """Raised when a successful snapshot call returned output without its boundary marker.
+
+    The snapshot is stateless per tick, so one unreadable read loses that tick
+    only; pollers skip it the same way they skip a snapshot timeout.
+    """
+
+
 async def wait_with_timeout(
     process: Process,
     timeout: float = SUBPROCESS_TIMEOUT_DEFAULT,
