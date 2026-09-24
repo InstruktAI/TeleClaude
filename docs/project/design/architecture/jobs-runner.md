@@ -302,6 +302,7 @@ class JobResult:
 
 1. Write the job's procedure (see the Job Authoring procedure), including its
    outputs and recovery, and sync it so its ID resolves.
+<!-- planned-change:job-name-identity -->
 2. Register in `teleclaude.yml` with `job` carrying the procedure's snippet ID.
 
 The runner dispatches `/run-job <id>` through the canonical command-session contract,
@@ -309,6 +310,16 @@ rooted at the project the run belongs to, and opens a run keyed by that project 
 agent loads the procedure with its required-read closure, does its work, writes a run report
 under its project's run directory, reports its outcome via `telec jobs report <id>`, and
 stops.
+<!-- change:job-name-identity -->
+2. Register in `teleclaude.yml` with a `name` and `job` carrying the procedure's snippet ID.
+
+The runner dispatches `/run-job <name>` through the canonical command-session contract,
+rooted at the project the run belongs to, and opens a run keyed by that project and name. The
+run boundary gives the session both the job's name and the procedure its declaration points
+at. The agent loads the procedure with its required-read closure, does its work, writes a run
+report under its project's run directory, reports its outcome via `telec jobs report <name>`,
+and stops.
+<!-- /planned-change:job-name-identity -->
 An agent outcome carries the reporting session's identity as well as the project
 and job. The sweep closes only the run opened for that session; a late outcome
 from an earlier run cannot close its successor.

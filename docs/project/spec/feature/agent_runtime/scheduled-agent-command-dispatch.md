@@ -31,6 +31,7 @@ And session bootstrap issues the session's system-principal credential
 
 #### UC-SACD2:
 
+<!-- planned-change:job-name-identity -->
 ```gherkin
 Given a configured agent job is dispatched to any enabled agent runtime
 When the new session receives its first instruction
@@ -38,6 +39,16 @@ Then the instruction is prepared through the shared command-loading mechanism
 And it identifies the job by its procedure snippet ID, the value its declaration carries
 And the runtime does not receive an unrecognized native command
 ```
+<!-- change:job-name-identity -->
+```gherkin
+Given a configured agent job is dispatched to any enabled agent runtime
+When the new session receives its first instruction
+Then the instruction is prepared through the shared command-loading mechanism
+And it identifies the job by its declared name
+And it names the procedure snippet ID the declaration's `job` pointer carries
+And the runtime does not receive an unrecognized native command
+```
+<!-- /planned-change:job-name-identity -->
 
 #### UC-SACD3:
 
