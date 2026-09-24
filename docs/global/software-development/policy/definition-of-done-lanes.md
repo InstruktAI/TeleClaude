@@ -644,11 +644,12 @@ own trigger below, additionally flag the coherence anti-patterns
     of an artifact whose shape a schema, generator, or configuration file owns
     — a sample JSON or YAML document, generated file contents, captured command
     output — is this finding, not an illustration.
-11. **Value test on a new snippet** — a snippet the diff adds must answer a
-    named future-agent question that no source read, loaded policy or
-    principle, README, or existing snippet already answers. A new snippet that
-    fails the value test is rejected or collapsed into a citation from an
-    existing one.
+11. **Value test on a new snippet** — a snippet the diff adds must pass the
+    value test in `general/policy/snippet-value-contract`: it answers a named
+    future-agent question that a one-minute read of the relevant source, an
+    already-loaded global policy or principle, the project's README, or an
+    existing snippet does not already answer. A new snippet that fails is
+    rejected or collapsed into a citation from an existing one.
 
 When the changed snippet is an ADR (`docs/project/adr/**`), additionally hold its
 body to the ADR contract (`general/policy/adr-discipline`, `general/procedure/adr-authoring`
