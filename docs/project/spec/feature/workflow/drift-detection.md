@@ -713,11 +713,11 @@ Scenario: the lifecycle runner re-enters a prepared Todo whose dependency contra
 #### UC-WDD17: A cosmetic verdict on the moved dependency ends the re-entry
 
 ```gherkin
-Scenario: a cosmetic dependency-artifact verdict returns the Todo to waiting on its dependency
+Scenario: a cosmetic dependency-artifact verdict ends the prepare-lane re-entry
   Given a prepared Todo re-entered for dependency-artifact drift
   When the drift analyzer stamps the implementation-plan cosmetic against the dependency's current artifacts
   Then the Todo settles at prepared
-  And later lifecycle runner passes report it dependency-blocked until the dependency delivers or its artifacts move again
+  And later lifecycle runner passes do not dispatch it to the prepare lane again until one of the dependency's intent or prepared artifacts moves again
 ```
 <!-- /planned:dependency-artifact-drift -->
 
