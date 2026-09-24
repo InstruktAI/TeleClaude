@@ -7,199 +7,100 @@ description: Durable agent reminders for goal alignment, cooperative peer-respon
 
 ## Rules
 
-### Reminders carry intent, not authority
+### A reminder is a claim on the next move
 
-- **A reminder is a claim that the agent holds the next move.** Arming, keeping,
-  and cancelling all answer one question — does the next move belong to this
-  agent? Three states govern it:
-  - **Mine, now** — act. No reminder.
-  - **Not mine** — do not arm; cancel if armed. Whether the move passed to a
-    human, an orchestrator, or nobody makes no difference: an escalated signal,
-    a dispatcher that will tail this session, and a terminal outcome left as
-    the record are all the same state.
-  - **Mine, but gated** — arm, and the gate's nature picks the shape. A gate
-    certain to resolve at a known time is one-shot. A gate externally owned
-    and unbounded is recurring.
-- **Cancel at the transition, not at a later firing.** The moment the next
-  move stops being the agent's — work delivered, signal escalated, execution
-  delegated to a prescribed watcher — is when its reminder is cancelled, while
-  the agent is still thinking about the work. A firing that arrives after the
-  transition is the fallback that catches a missed cancellation, not the
-  intended cleanup path.
+Arming, keeping, and cancelling answer one question: does the next move belong
+to this agent?
 
-- A reminder is durable intent left by a session for its future self. It is not
-  a liveness heartbeat, human authorization, proof of delivery, or proof that an
-  agent processed input.
-- Before acting on a due reminder, read everything that arrived after its armed
-  time. When later input changes, supersedes, or invalidates the encoded intent,
-  discard that intent and re-evaluate from current state.
-- A reminder never substitutes stale stored data for fresh grounding. An agent
-  reminded to perform an important scheduled action re-establishes relevance,
-  source truth, and any authorization the action requires at execution time.
-- An agent never occupies a terminal or tool runtime merely to wait for time,
-  human input, a notification, or external completion. Blocking `sleep`, wait
-  commands, polling loops, and long-lived tool cells make the session
-  unavailable to incoming conversation. Arm the applicable reminder when
-  future-self intent is needed, then yield with no waiting process left behind;
-  the reminder or incoming event re-enters the session through its normal input
-  path.
-- A due reminder whose intent is already satisfied or obsolete warrants no
-  authored output beyond the sentinel, whose contract is
-  `general/policy/no-output-turn`. A one-shot firing has already consumed its
-  reminder and ends with the sentinel. A recurring firing cancels its own slug
-  first, then ends the same way. Neither authors a summary, status, or
-  confirmation.
-- Retiring a reminder is always an explicit act. The sentinel closes the turn
-  and retires nothing, so a reminder whose intent has died is cancelled by its
-  own command.
+- **Mine, now** — act. No reminder.
+- **Not mine** — do not arm; cancel if armed. It makes no difference whether the
+  move passed to a human, an orchestrator, or nobody.
+- **Mine, but gated** — arm. A gate certain to resolve at a known time is
+  one-shot; a gate externally owned and unbounded is recurring.
 
-### Reminder identity and lifecycle
+Cancel at the transition — the moment the move stops being yours, while you are
+still thinking about the work. A later firing is the fallback for a missed
+cancellation, not the cleanup path.
 
-- A reminder's identity is `(authenticated session, intent-revealing slug)`.
-  Distinct intents use distinct slugs and may coexist without a numeric cap.
-- Setting the same slug again in one session atomically replaces the live
-  reminder. The earlier schedule cannot fire after replacement succeeds.
-- Every reminder is cancelable. Cancel one slug when its subgoal is satisfied;
-  cancel all reminders only when every outstanding reminder intent for the
-  session is obsolete. Cancellation is session-scoped and idempotent.
-- Relative reminders may be one-shot or recurring. Absolute-time reminders are
-  one-shot. Recurrence is explicit, never inferred merely because an intent
-  sounds ongoing.
-- Prescribed reminder slugs are reserved once their definitions are delivered.
-  Arbitrary slugs remain available when they do not collide with a prescribed
-  definition. Historical arbitrary reminders do not reserve a slug forever.
+### A reminder carries intent, not authority
 
-### Reminder transcript and presentation
+- It is durable intent left for your future self — not a liveness heartbeat,
+  human authorization, proof of delivery, or proof that input was processed.
+- Before acting on a firing, read everything that arrived after its armed time.
+  If later input changed or superseded the intent, discard it and re-evaluate
+  from current state. Re-establish relevance, source truth, and any required
+  authorization at execution time; never act on the stored copy.
+- A firing whose intent is already satisfied or obsolete owes no output
+  (`general/policy/no-output-turn`). A one-shot has already consumed itself; a
+  recurring firing cancels its own slug first. Retiring a reminder is always an
+  explicit cancel — the sentinel retires nothing.
 
-- Every material reminder transition is recorded in source order in the
-  service's typed reminder records: armed, replaced, cancelled, and the firing
-  itself. A firing is the reminder acting now, not a separate `due` status
-  message.
-- Agent-facing reminder text uses the compact platform-owned bracketed envelope
-  defined by the reminder-service contract. Opening and closing lines are
-  structural and agents never imitate them.
-- Armed, replaced, and cancelled transitions are recorded in the service's
-  durable reminder records. Only a firing is delivered to the agent. A
-  reminder command returns a minimal acknowledgement.
-- A false event-activation predicate is silent because no transition occurred.
-  It creates no transcript entry, envelope, derived event, transport write, or
-  session input.
+### Yield; never wait in a terminal
 
-### Prescribed reminder declarations
+Never occupy a terminal or tool runtime to wait for time, input, a
+notification, or external completion — no `sleep`, wait commands, polling loops,
+or long-lived tool cells. Arm the reminder you need and yield; the reminder or
+the incoming event re-enters the session through its normal input path. Never
+reimplement reminders with detached processes, transport messages, or
+runtime-specific timers.
 
-A prescribed reminder is documented beside the policy, procedure, command, or
-job that owns its intent under `#### Reminder: <slug>`. The declaration states:
+### Identity and lifecycle
 
-- owner;
-- caller parameters;
-- activation anchor;
-- duration or absolute schedule;
-- one-shot or recurring behavior;
-- exact arm condition;
-- exact agent-authored intent;
-- firing behavior;
-- cancellation or stop condition; and
-- minimal formatter invocation.
-
-The owning surface states its cadence. The general reminder service never
-repeats or overrides a caller's process interval. A delivered prescribed
-definition registers its slug with the service so an arbitrary reminder cannot
-squat it; registration does not move the declaration away from its owner.
-
-A time-recurring profile may declare adaptive cadence. Its declaration names
-the initial interval, backoff rule, maximum interval, activity that resets the
-interval, and terminal cancellation condition. Re-setting the same prescribed
-slug atomically replaces its recurring schedule, so a continuing watcher never
-passes through an unarmed gap while becoming quieter or more responsive.
-Profiles without an adaptive-cadence declaration do not acquire one by caller
-choice. Event-triggered profiles have no cadence to override.
+- Identity is `(authenticated session, intent-revealing slug)`. Distinct intents
+  use distinct slugs and may coexist.
+- Setting a live slug again atomically replaces it; the earlier schedule cannot
+  fire after replacement succeeds.
+- Cancel one slug when its subgoal is satisfied; cancel all only when every
+  outstanding intent is obsolete. Cancellation is session-scoped and idempotent.
+- Relative reminders may be one-shot or recurring; absolute-time reminders are
+  one-shot. Recurrence is explicit, never inferred from an intent that sounds
+  ongoing.
+- Prescribed slugs are reserved and declared beside their owner
+  (`general/spec/reminder-profile-declaration`); the role-owned profiles live in
+  the coordinate and integrate procedures.
 
 #### Reminder: goal-drive
 
-- **Owner:** Agent Reminder policy.
-- **Parameters:** free-form `intent` (optional; a default reassessment intent is used when omitted).
-- **Activation anchor:** immediately when sustained work starts.
-- **Duration:** five minutes of session inactivity. The schedule slides: each
-  occurrence anchors to the session's last activity, so the reminder never
-  fires while the agent is actively working and first fires after the interval
-  passes with no activity and the goal still open.
-- **Recurrence:** recurring; the service advances the sliding cadence without
-  an agent re-arming after every occurrence.
-- **Arm condition:** set before the first substantive autonomous action of sustained work. Do not arm it after a state-machine procedure delegates execution and prescribes its own watcher; that watcher owns the waiting cadence. A terminal or human-gated procedure state makes `goal-drive` inapplicable and requires immediate cancellation.
-- **Intent:** defaults to `Reassess whether the current work remains aligned with the goal. If aligned, continue; otherwise correct course or stop.`; `--intent` overrides with agent-authored text.
-- **Firing behavior:** check for later input first, then reassess only the active
-  goal. It is not a debrief or housekeeping trigger. Mid-work drift discipline
-  is carried by agent instructions, not by this profile's firings.
-- **Cancellation:** cancel the moment the next move stops being this agent's —
-  the goal delivered, abandoned, or handed to a human or dispatcher, or stale
-  intent left with no successor. These are one condition, not a catalogue: the
-  agent no longer holds the next move. A firing that finds the goal retired
-  cancels this slug, then ends with exactly `NOOP`.
-- **Invocation:** `telec reminders set goal-drive` (uses the default intent) or `telec reminders set goal-drive --intent <intent>`.
-
-#### Role-owned profiles classified under the rule
-
-`coordinator-sweep`, `integrator-main-clearance`,
-`integrator-candidate-settledness`, and `integrator-queue-watch` are declared
-beside their owners — the coordinate and integrate lifecycle procedures — and
-those declarations are authoritative for parameters, cadence, intent, and
-invocation. This policy adds only their classification under the next-move
-rule:
-
-- `coordinator-sweep` — the one profile whose arming premise cannot lapse: the
-  fleet is always live, so the next move is permanently the holder's. Recurring,
-  with caller-owned backoff. An empty sweep is the function succeeding, never
-  grounds for retirement.
-- `integrator-main-clearance` — recurring: the gate is other sessions' work,
-  externally owned and unbounded. Waiting keeps the reminder; escalating to a
-  human passes the next move and cancels it.
-- `integrator-candidate-settledness` — one-shot: the gate is time, certain to
-  elapse, so the firing resolves the question either way.
-- `integrator-queue-watch` — recurring: the gate is candidate arrival. The
-  firing that finds a ready candidate cancels the watch as part of acting on
-  it.
+- **Owner:** this policy.
+- **Parameters:** optional `--intent`; the default is `Reassess whether the current work remains aligned with the goal. If aligned, continue; otherwise correct course or stop.`
+- **Activation anchor / arm condition:** before the first substantive autonomous
+  action of sustained work. Not after a procedure has delegated execution and
+  prescribed its own watcher; a terminal or human-gated procedure state makes it
+  inapplicable and requires immediate cancellation.
+- **Duration / recurrence:** recurring, five minutes of session inactivity. The
+  schedule slides to the last activity, so it never fires while the agent works.
+- **Firing behavior:** check for later input, then reassess only the active goal.
+  Not a debrief or housekeeping trigger.
+- **Cancellation:** the moment the next move stops being this agent's — goal
+  delivered, abandoned, or handed off. A firing that finds the goal retired
+  cancels the slug, then ends with exactly `NOOP`.
+- **Invocation:** `telec reminders set goal-drive [--intent <intent>]`.
 
 ## Rationale
 
-Agent runtimes do not reliably preserve local timers across turn closure. A
-platform-owned reminder makes future intent durable and inspectable while
-keeping the semantic decision with the agent. Intent-revealing slugs let agents
-and humans understand why a reminder exists, multiple reminders preserve
-independent subgoals, and cancellation prevents completed work from returning
-as zombie activity.
+Agent runtimes do not reliably keep local timers across turn closure; a
+platform-owned reminder makes future intent durable while the semantic decision
+stays with the agent. Intent-revealing slugs keep reminders readable, multiple
+slugs keep subgoals independent, and cancellation keeps finished work from
+returning as zombie activity.
 
-Goal drive supplies a low-noise alignment rhythm during sustained work.
+Retirement is explicit because a turn receives whatever arrives in it; a
+turn-scoped silence cannot say which reminder it meant, so reading cancellation
+out of it would retire reminders the agent still wanted.
 
-Keeping retirement explicit is what lets the sentinel mean one thing. A turn
-receives whatever arrives in it — a peer message, a human message, a firing —
-so a single turn-scoped bit cannot answer an occurrence-scoped question without
-guessing which arrival it referred to. Reading cancellation out of that bit
-makes a turn's silence toward one correspondent retire a reminder the agent
-still wanted, and the agent cannot see the pending state that would warn it.
-An explicit cancel costs one command and states what it does.
-
-Yielding instead of terminal-waiting keeps the session receptive to the human
-and lets the platform own re-entry. A terminal process is an execution surface,
-not a scheduler or conversational parking mechanism.
+Yielding keeps the session receptive to the human. A terminal is an execution
+surface, not a scheduler.
 
 ## Scope
 
-- Applies to every agent session using the platform reminder service.
-- Local prescribed profiles remain governed by their owning job or procedure.
-- Infrastructure liveness heartbeats, leases, peer refresh, cache health, and
-  operation heartbeats are outside this policy.
+Every agent session using the platform reminder service. Infrastructure
+heartbeats, leases, peer refresh, cache health, and operation heartbeats are
+outside it.
 
 ## Enforcement
 
-- Sustained work without `goal-drive` armed before substantive action is a
-  process violation.
-- Acting on reminder intent without first checking later input is a process
-  violation.
-- Using a blocking terminal command, polling loop, or long-lived tool cell only
-  to wait for time, input, notification, or external completion is a process
-  violation.
-- Reimplementing reminders with detached processes, blocking waits, transport
-  messages, or agent-runtime-specific timer folklore is a process violation.
+Reviewers and supervising sessions apply these rules to transcripts; sustained
+work with no `goal-drive` armed, and any blocking wait, are the common findings.
 
 ## Exceptions
 
