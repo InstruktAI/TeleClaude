@@ -123,8 +123,9 @@ TeleClaudeNext.
   event source's company — the registered company its events belong to — and a
   company's activation computer — the one computer that runs activations for
   that company, declared once in the company tier so every source of the
-  company routes to the same computer. A source naming an unregistered company
-  is rejected. Owning the declarations is not owning
+  company routes to the same computer. A source naming an unregistered company,
+  or a company that declares no activation computer, is rejected, so every
+  accepted source has an activation route. Owning the declarations is not owning
   what a company context means, which belongs to `project/spec/domain/identity`,
   or what a session does with it, which belongs to
   `project/spec/domain/agent_runtime`.

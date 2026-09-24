@@ -79,6 +79,9 @@ properties, payload)` before entering the dispatch pipeline.
 - **Handlers see their contract.** An internal handler receives the matched
   contract alongside the event, so a handler shared by several contracts knows
   which one matched.
+- **Derived contracts are not persisted.** A contract its owner derives from its
+  own source of truth is held in the registry's memory only. It is never
+  restored from storage at startup; its owner rebuilds it.
 <!-- /planned:procedure-event-activation -->
 - **At-least-once external delivery.** External webhooks are enqueued in
   `webhook_outbox` and delivered with exponential backoff. Dead-lettering after

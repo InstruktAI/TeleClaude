@@ -69,9 +69,12 @@ implementation remain the current appliance contract.
   activation per match: the procedure, the company, the event's context, and
   the platform's system principal as its origin. Every other computer produces
   no activation for it, so all of a company's activations run on one computer.
-  The procedure-subscription contracts are derived and registered in the same
-  step that registers the activation handler, so a procedure contract never
-  exists without the handler that serves it.
+  Procedure-subscription contracts are derived state: held only in the
+  registry's memory, never persisted or restored from storage, and rebuilt from
+  the publication index `context` publishes when the activation handler
+  registers and whenever that index changes. A procedure contract therefore
+  never exists without the handler that serves it, and a newly published
+  subscription becomes routable without a restart.
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.
