@@ -13,8 +13,14 @@ through `telec bugs report`. The bug lifecycle owns diagnosis and implementation
 
 ## Preconditions
 
+<!-- planned-change:job-name-identity -->
 - The runner started this session in the target project with this procedure's
   snippet ID as the job identity.
+<!-- change:job-name-identity -->
+- The runner started this session in the target project for a job declaration
+  whose `job` pointer names this procedure; the declaration's `name` is the job
+  identity.
+<!-- /planned-change:job-name-identity -->
 - The project's log name and the job's schedule are available from its configuration.
 - `instrukt-ai-logs`, `telec bugs suppressions`, `telec bugs list`,
   `telec todo list`, `telec todo artifacts read`, `telec docs index`, `git`,

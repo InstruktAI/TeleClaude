@@ -87,6 +87,7 @@ daemon thread cannot keep the process alive, so a hung job is hard-reaped when t
 process exits at end of pass, releasing the pidlock for the next trigger. No subprocess is
 spawned and no stdout is parsed.
 
+<!-- planned-change:job-name-identity -->
 **Agent jobs** (`script` absent, `job` required) — The runner opens a run and creates an
 agent session (fire-and-forget) identified by the procedure snippet ID in `job`. That ID
 is the job's identity everywhere: the dispatch argument, the run state key, the run
@@ -94,6 +95,16 @@ directory, and the report key. The agent loads the procedure with its required-r
 closure, executes its task, produces its declared artifacts, and reports a
 structured outcome via `telec jobs report <id>`. The runner's sweep on a later tick reads
 that outcome and closes the run; a run never reported within its window is stalled.
+<!-- change:job-name-identity -->
+**Agent jobs** (`script` absent, `job` required) — The runner opens a run and creates an
+agent session (fire-and-forget) for the job's declared name; the session executes the
+procedure snippet ID in `job`. The name is the job's identity everywhere: the dispatch
+argument, the run state key, the run directory, and the report key. The agent loads the
+procedure with its required-read closure, executes its task, produces its declared
+artifacts, and reports a structured outcome via `telec jobs report <name>`. The runner's
+sweep on a later tick reads that outcome and closes the run; a run never reported within
+its window is stalled.
+<!-- /planned-change:job-name-identity -->
 
 Agent jobs are daemon-independent for outcome reporting: the structured outcome is written
 to the job's run directory on the local filesystem, so a run still closes when the daemon
@@ -152,7 +163,11 @@ and the walk continues.
 
 ## Invariants
 
+<!-- planned-change:job-name-identity -->
 - Jobs are schedule-ignorant. They define `name` and `run()` only; scheduling lives in `teleclaude.yml`.
+<!-- change:job-name-identity -->
+- Jobs are schedule-ignorant and name-ignorant. A job module defines `run()` only; its name and schedule live in its `teleclaude.yml` declaration.
+<!-- /planned-change:job-name-identity -->
 - A job without a `teleclaude.yml` entry is never invoked (except with `--force`).
 - A job that has never run waits for its first scheduled occurrence after discovery.
 - A run is opened at dispatch and closed only by a real outcome — dispatch never marks success.
@@ -160,12 +175,17 @@ and the walk continues.
 - Both job classes produce the same `JobResult` outcome and `job.run.*` event shape.
 - A clean run is silent; an actionable outcome (failure or stall) notifies a human.
 - Agent jobs produce a run report and a structured outcome every run, even with nothing to process.
+<!-- planned-change:job-name-identity -->
 - An agent job has one identity, the procedure snippet ID its `job` pointer carries; a script job's identity is its `script` module's stem. Dispatch, run state, the run directory, and the report key all use that identity and nothing else names the job.
+<!-- change:job-name-identity -->
+- A job has one identity, the `name` its declaration carries. Dispatch, run state, the run directory, the report key, the runner's job filter, and the jobs API all use that name, and nothing derives another identity from the execution pointer.
+<!-- /planned-change:job-name-identity -->
 
 ### Configuration surface
 
 #### Project-level: `teleclaude.yml`
 
+<!-- planned-change:job-name-identity -->
 The project-root `teleclaude.yml` registers a project's jobs as a list under the `jobs:` key;
 an entry has no name key. A job declares WHEN it runs through the `when` block (see
 `project/spec/feature/config/job-schedule-contract`) and WHAT it runs through exactly one
@@ -183,6 +203,25 @@ falling back to the published defaults for the rest. Nothing validates what a pr
 override; the job runs in that project alone. An entry whose pointer is not in the global
 registry is a local job declaration (exactly one pointer plus a `when` schedule). A name-keyed
 `jobs` mapping written before this shape is rewritten to the list at the config load boundary.
+<!-- change:job-name-identity -->
+The project-root `teleclaude.yml` registers a project's jobs as a list under the `jobs:` key.
+Every entry carries a required `name` (lowercase kebab-case), which is the job's identity
+(see `project/spec/feature/config/job-declaration-model`). A job declares WHEN it runs
+through the `when` block (see `project/spec/feature/config/job-schedule-contract`) and WHAT
+it runs through exactly one execution pointer — `script` (path, in-process job) or `job`
+(procedure snippet ID, agent job). The pointer present IS the execution class; there is no
+separate discriminator field. The remaining execution fields are `agent` (a non-empty ordered
+preference list the run boundary hands to automatic dispatch), `thinking_mode`, and `timeout`
+(seconds; default 1800).
+
+A project `jobs` entry that carries the name of a published global job is a
+**subscription**: it turns the global job on for this project (`enabled`, default on) and
+overrides whatever else it sets — `when`, `agent`, `thinking_mode`, `timeout`, `category` —
+falling back to the published defaults for the rest, including the execution pointer.
+Nothing validates what a project may override except the pointer, which a subscription
+cannot change; the job runs in that project alone. An entry whose name is not in the global
+registry is a local job declaration (a name, exactly one pointer, and a `when` schedule).
+<!-- /planned-change:job-name-identity -->
 
 A job's candidate order comes only from its effective declaration. A one-entry list
 uses the same selection path as any other list; exhaustion fails the run with the
@@ -237,7 +276,11 @@ returns an explicit API error.
 
 1. Create a Python module in `jobs/` exposing a `Job` subclass and a module-level `JOB`
    instance, with a PEP 723 header and a `run_job_cli(JOB)` `__main__` for standalone use.
+<!-- planned-change:job-name-identity -->
 2. Register in `teleclaude.yml` with `script` pointing to the module.
+<!-- change:job-name-identity -->
+2. Register in `teleclaude.yml` with a `name` and `script` pointing to the module.
+<!-- /planned-change:job-name-identity -->
 
 `JOB.run(context)` receives the project it runs in — its root and slug — so one published
 module serves every subscribing project without reading an ambient working directory. A
@@ -288,9 +331,14 @@ without discarding its original record.
 
 File: `~/.teleclaude/state/cron_state.json`
 
+<!-- planned-change:job-name-identity -->
 Entries are keyed by project slug and job identity — an agent job's procedure snippet ID, a
 script job's `script` module stem — so the same published job carries separate lifecycles in
 every project that subscribes to it.
+<!-- change:job-name-identity -->
+Entries are keyed by project slug and job name, so the same published job carries separate
+lifecycles in every project that subscribes to it.
+<!-- /planned-change:job-name-identity -->
 
 ```json
 {
