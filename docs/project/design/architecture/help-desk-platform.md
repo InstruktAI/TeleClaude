@@ -138,7 +138,7 @@ Templates are plain files — no templating engine. Nothing is org-specific yet.
 
 ### Knowledge Authoring Command
 
-A global command (`agents/commands/author-knowledge.md`) that helps users offload organizational knowledge into structured documentation through conversation. Available in all projects, not specific to help desk.
+A global command (`agents/global/commands/general/author-knowledge.md`) that helps users offload organizational knowledge into structured documentation through conversation. Available in all projects, not specific to help desk.
 
 The command activates a Knowledge Author role that:
 

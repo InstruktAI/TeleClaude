@@ -44,8 +44,8 @@ human, who is the sole authority on intent.
   each phase's procedure, does the phase's work, advances the state machine, and
   loads the next procedure when the state machine routes there.
 - Each phase has its own focus, sharpened by a hat. Intake = BA hat
-  (`~/.teleclaude/commands/next-prepare-intake.md`). Architecture = Architect hat
-  (`~/.teleclaude/commands/next-prepare-architecture.md`). Plan = Planner hat (`~/.teleclaude/commands/next-prepare-plan.md`). The
+  (`~/.teleclaude/commands/software-development/next-prepare-intake.md`). Architecture = Architect hat
+  (`~/.teleclaude/commands/software-development/next-prepare-architecture.md`). Plan = Planner hat (`~/.teleclaude/commands/software-development/next-prepare-plan.md`). The
   hat is the loaded procedure; the lifecycle awareness underneath persists
   across hats.
 - Reviewers are independently dispatched. Each derived artifact
@@ -80,11 +80,11 @@ human, who is the sole authority on intent.
 The state machine drives a deterministic phase chain. Each phase is one focus
 turn of the same driving session.
 
-| Phase        | Procedure                                             | Hat       | Authority gate                          |
-| ------------ | ----------------------------------------------------- | --------- | --------------------------------------- |
-| Intake       | `~/.teleclaude/commands/next-prepare-intake.md`       | BA        | `prd_approved` (human only)             |
-| Architecture | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect | `architecture_review` verdict `approve` |
-| Plan         | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner   | `plan_review` verdict `approve`         |
+| Phase        | Procedure                                                                  | Hat       | Authority gate                          |
+| ------------ | -------------------------------------------------------------------------- | --------- | --------------------------------------- |
+| Intake       | `~/.teleclaude/commands/software-development/next-prepare-intake.md`       | BA        | `prd_approved` (human only)             |
+| Architecture | `~/.teleclaude/commands/software-development/next-prepare-architecture.md` | Architect | `architecture_review` verdict `approve` |
+| Plan         | `~/.teleclaude/commands/software-development/next-prepare-plan.md`         | Planner   | `plan_review` verdict `approve`         |
 
 Each phase ends by calling `telec todo prepare {slug}`. The state machine
 routes the next action — load the next procedure, dispatch a reviewer, pause for

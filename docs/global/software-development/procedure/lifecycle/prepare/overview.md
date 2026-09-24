@@ -35,9 +35,9 @@ focused procedure and advances through the machine-owned transitions.
    there.
 
 2. **Each phase has its own focus, sharpened by a hat:**
-   - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/next-prepare-intake.md`
-   - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/next-prepare-architecture.md`
-   - **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/next-prepare-plan.md`
+   - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/software-development/next-prepare-intake.md`
+   - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/software-development/next-prepare-architecture.md`
+   - **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/software-development/next-prepare-plan.md`
 
    Putting on a hat sharpens focus for the current phase; it does not erase
    the lifecycle awareness underneath. The hat comes off when the phase ends
@@ -281,15 +281,15 @@ When the state machine routes you to a phase, load the corresponding procedure
 and do its focused work. Each procedure ends by calling `telec todo prepare
 {slug}` to advance — that's how the lifecycle proceeds.
 
-| Phase               | Kind(s)              | Procedure                                             | Focus                       |
-| ------------------- | -------------------- | ----------------------------------------------------- | --------------------------- |
-| Intake              | Feature              | `~/.teleclaude/commands/next-prepare-intake.md`       | BA                          |
-| PRD review          | Feature              | `~/.teleclaude/commands/next-review-prd.md`           | Reviewer                    |
-| Diagnose            | Bug                  | `~/.teleclaude/commands/next-prepare-diagnose.md`     | Diagnoser (dispatched peer) |
-| Architecture        | Feature              | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect                   |
-| Architecture review | Feature              | `~/.teleclaude/commands/next-review-architecture.md`  | Reviewer                    |
-| Plan                | Feature, change, bug | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner                     |
-| Plan review         | Feature, change, bug | `~/.teleclaude/commands/next-review-plan.md`          | Reviewer                    |
+| Phase               | Kind(s)              | Procedure                                                                  | Focus                       |
+| ------------------- | -------------------- | -------------------------------------------------------------------------- | --------------------------- |
+| Intake              | Feature              | `~/.teleclaude/commands/software-development/next-prepare-intake.md`       | BA                          |
+| PRD review          | Feature              | `~/.teleclaude/commands/software-development/next-review-prd.md`           | Reviewer                    |
+| Diagnose            | Bug                  | `~/.teleclaude/commands/software-development/next-prepare-diagnose.md`     | Diagnoser (dispatched peer) |
+| Architecture        | Feature              | `~/.teleclaude/commands/software-development/next-prepare-architecture.md` | Architect                   |
+| Architecture review | Feature              | `~/.teleclaude/commands/software-development/next-review-architecture.md`  | Reviewer                    |
+| Plan                | Feature, change, bug | `~/.teleclaude/commands/software-development/next-prepare-plan.md`         | Planner                     |
+| Plan review         | Feature, change, bug | `~/.teleclaude/commands/software-development/next-review-plan.md`          | Reviewer                    |
 
 Intake's focused work includes situating the premise against the existing todo
 landscape — reconciling overlap and undeclared dependencies with sibling todos
