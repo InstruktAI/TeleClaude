@@ -39,8 +39,7 @@ be installed beside it without entering the retained set.
 - **Target tree.** The TeleClaude home, preserving each source path relative to
   the source tree after mapping every `dot_<name>` path segment to `.<name>`.
 - **Dotfile source names.** Dot-prefixed target files and directories use the
-  `dot_<name>` marker in the source tree, so the template source cannot take
-  effect inside the canonical checkout.
+  `dot_<name>` marker in the source tree.
 - **File kind.** Sources and targets are regular files. Symbolic links are never
   created by this materialization path.
 <!-- planned-change:installable-template-trees -->
