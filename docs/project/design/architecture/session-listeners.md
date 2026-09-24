@@ -55,6 +55,9 @@ audience is empty.
 - **Multiple callers allowed per target.** Many callers can listen to the same target.
 - **Caller cleanup cascades.** All listeners registered by a caller are removed when the caller session ends.
 - **Link-aware suppression is per notification kind.** Turn-end delivery to a caller is skipped while an active direct link exists between that caller and the target; distress delivery is not. The listener row is never mutated by link create / close — only delivery is gated. Canonical rule lives in `session-subscriptions`.
+<!-- planned:noop-turn-end-notifies-listeners -->
+- **A turn end reaches listeners whatever its content.** The `NOOP` sentinel governs content surfaces only (`session-projection`). The stop fan-out and the forward to a cross-computer initiator run for a `NOOP` turn exactly as for any other turn, so one-shot rows are spent on it like on any other reply.
+<!-- /planned:noop-turn-end-notifies-listeners -->
 - **No destructive coupling.** Creating, reusing, or closing a direct link must not call `register_listener` / `unregister_listener`. Earlier code paths that did so are bugs; the contract forbids them.
 - **Cross-restart correctness.** Because rows are durable, restart preserves both persistent and one-shot listeners. A one-shot listener registered before restart will still fire on the next event after restart.
 - **The per-turn notification gate is scoped by `(target, kind)`.** Each
@@ -207,6 +210,12 @@ Every kind names the target session and states which of the three it is, so a
 caller can decide its next move without first tailing the target. The computer
 clause and the command's computer selector appear together and only when the
 target runs elsewhere, per the locality rule the stop template already follows.
+
+<!-- planned:noop-turn-end-notifies-listeners -->
+A stop whose entire authored output is `NOOP` uses its own stop template: it
+states that the turn ended with `NOOP` and carries no inspect command, because
+the notification already holds the whole output.
+<!-- /planned:noop-turn-end-notifies-listeners -->
 
 ### 6. Stale Listener Inspection
 

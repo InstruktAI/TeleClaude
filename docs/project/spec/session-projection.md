@@ -210,12 +210,26 @@ cross-share content remains visible on every projected surface because it is
 conversational substance, not infrastructure chatter. The TUI continues to show the
 raw pane unchanged and does not consume projection filtering.
 
+<!-- planned-change:noop-turn-end-notifies-listeners -->
 A turn-complete output consisting solely of the sentinel `NOOP` is a no-op turn:
 it is dropped from every projected surface and from notification delivery,
 unconditionally. The sentinel is how an agent whose runtime cannot end a turn
 silently closes a turn that warrants no output, so suppression is structural —
 never a preference, and never conversational substance. The raw transcript
 retains the turn.
+<!-- change:noop-turn-end-notifies-listeners -->
+A turn-complete output consisting solely of the sentinel `NOOP` is a no-op turn:
+its content is dropped from every projected surface and from direct-link
+delivery, unconditionally. The sentinel is how an agent whose runtime cannot end
+a turn silently closes a turn that warrants no output, so content suppression is
+structural — never a preference, and never conversational substance. The
+sentinel governs the turn's content, never the fact that the turn ended: a
+passive listener is still told the turn finished, and that notice states the
+`NOOP` outcome in place of an instruction to inspect
+(`project/spec/feature/agent_runtime/session-subscriptions`). The raw transcript
+retains the turn.
+<!-- /planned-change:noop-turn-end-notifies-listeners -->
+
 
 ### Reminder lifecycle visibility
 
