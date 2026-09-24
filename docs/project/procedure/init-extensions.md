@@ -189,6 +189,17 @@ The step is skipped in CI mode and in the deps-only install a git worktree resol
 
 Source: `bin/install.sh:install_log_runtime()`
 
+<!-- planned:config-schema-home-resolution -->
+### 5. Configuration-schema publication (`make install`)
+
+`make install` publishes every configuration schema into the TeleClaude home
+before converging this checkout's plumbing. The act and its guarantees are
+`project/spec/feature/reconciliation/config-schema-publication`. The step is
+skipped in CI mode and in the deps-only install a git worktree resolves to.
+
+Source: `teleclaude/core/reconciliation/config_schemas.py`
+<!-- /planned:config-schema-home-resolution -->
+
 
 ## Outputs
 
@@ -198,6 +209,9 @@ Source: `bin/install.sh:install_log_runtime()`
 
 - Logging runtime present, current, and wired by `make install`, with the resolved log
   root and health status reported to the user.
+<!-- planned:config-schema-home-resolution -->
+- Configuration schemas published into the TeleClaude home by `make install`.
+<!-- /planned:config-schema-home-resolution -->
 
 ## Recovery
 
