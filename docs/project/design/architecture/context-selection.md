@@ -250,37 +250,6 @@ contributes, so a participating tier that holds nothing is visible as a tier
 with zero entries to a caller who may see it, and invisible to one who may not.
 <!-- /planned:docs-tier-layering -->
 
-<!-- planned:cli-authorization-docs-via-daemon -->
-### 8. Serving Boundary
-
-Selection runs in the daemon. The command line parses and validates its
-arguments, then sends the request, the directory it was invoked from, and its
-identity signals, and prints the rendered answer it receives. The daemon's
-caller verification is the boundary that owns injection: it resolves the
-caller, and the retrieval request receives that caller as a typed parameter.
-The invocation directory resolves what the invocation offers, never who is
-calling.
-
-```mermaid
-sequenceDiagram
-    participant CLI as telec docs
-    participant Daemon as Daemon API
-    participant Identity as Caller verification
-    participant Selector
-
-    CLI->>Daemon: request + invocation directory + identity signals
-    Daemon->>Identity: resolve caller
-    Identity-->>Daemon: resolved caller (or none)
-    Daemon->>Selector: request, invocation context, caller
-    Selector-->>Daemon: rendered answer
-    Daemon-->>CLI: rendered answer
-    CLI->>CLI: print
-```
-
-A caller the daemon cannot resolve, including one whose credential it rejects,
-reaches the Selector as no caller rather than as a refusal, and is read as the
-Unresolvable Caller below.
-<!-- /planned:cli-authorization-docs-via-daemon -->
 
 ## Failure modes
 
@@ -304,8 +273,4 @@ Unresolvable Caller below.
   produces an authorization answer that changes when someone changes directory,
   which is not an authorization answer at all.
 <!-- /planned:docs-tier-layering -->
-<!-- planned:cli-authorization-docs-via-daemon -->
-- **Daemon Unavailable**: The command line cannot reach the daemon. Retrieval
-  fails with the daemon-unavailable error and no local read is attempted.
-<!-- /planned:cli-authorization-docs-via-daemon -->
 
