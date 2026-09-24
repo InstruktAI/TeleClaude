@@ -31,8 +31,7 @@ the sessions recorded in it, and acts on nothing it finds.
 - **Does not own:** live-session lifecycle, input delivery, process control, or
   mutation of the sessions represented in history — the transcript this domain
   indexes is written only by the agent CLI process, never by this platform
-  (`project/design/architecture/session-lifecycle`, Native Transcript File Is
-  Never Platform-Written).
+  (`project/design/architecture/session-lifecycle`).
 - **Published contracts:** mirror records and history search/read queries;
   agent runtime supplies facts but retains live-session authority.
 
