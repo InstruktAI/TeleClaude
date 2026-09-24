@@ -254,6 +254,12 @@ Then the gate rejects the caller with a not-permitted authorization failure nami
 
 <!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
 
+- The `telec todo update` claim check reads the todo's claim once, when the request is handled. A claim recorded while a request is in flight — including before a deferred slug rename executes — is not seen by that request.
+
+<!-- /planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
+
+<!-- planned:grant-claim-scoped-todo-update-to-non-worker-roles -->
+
 ## See Also
 
 - docs/project/adr/0067-authorization-reads-the-object-not-the-caller-role.md — why `telec todo update` authorizes on the todo's claim rather than the caller's role.
