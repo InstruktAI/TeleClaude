@@ -57,8 +57,11 @@ deterministic maintenance was recorded and whose live-runtime log judgment
 remains. It is keyed to the canonical checkout rather than to a session, so a
 successor integrator inherits unfinished judgment without repeating mechanical
 work. The commit boundary records it for direct main commits and integration
-advancements alike. The integrator inspects terminal maintenance outcomes and changed
-runtime before its log-check evidence discharges the marker. A regular
+advancements alike, after the owed action records are durable. It retains the
+activation times and becomes eligible only after every owed action succeeds;
+the executor records its latest maintenance-ready time. The integrator reads
+logs after that time from a window beginning no later than the earliest
+activation. Earlier or narrower log evidence cannot discharge the marker. A regular
 committing session receives no maintenance log-check action from this project.
 <!-- /planned-change:nonblocking-commit-maintenance -->
 
@@ -390,6 +393,7 @@ And the commit action is not required
 (A commit persists already-made mutations; it is never itself a mutation of the files it commits, so it can never be the last mutation those files must be committed after — the self-referential ordering that would demand a commit strictly after the commit is excluded.)
 ```
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP20: Post-advance log judgment begins with a range-only marker
 
 ```gherkin
@@ -397,7 +401,19 @@ Given integration completes deterministic maintenance for a canonical-root advan
 When it records the checkout-scoped marker
 Then the marker carries the advanced range and no mechanical action id
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-CP20: Post-advance log judgment begins with a range-only marker
 
+```gherkin
+Given a canonical-main advancement whose paths owe live-runtime judgment
+And its deterministic maintenance actions are durably recorded
+When the commit boundary records the checkout-scoped marker
+Then the marker carries that advancement and its activation time but no mechanical action id
+And it remains ineligible for discharge until every owed action succeeds
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
+
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP30: Post-delivery log markers accumulate ranges
 
 ```gherkin
@@ -405,7 +421,18 @@ Given another qualifying advancement occurs before log-check evidence is observe
 When its range is recorded
 Then the marker accumulates both ranges
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-CP30: Post-delivery log markers accumulate ranges
 
+```gherkin
+Given another qualifying advancement occurs before integrator log judgment is discharged
+When its range is recorded
+Then the checkout-scoped marker accumulates both ranges and their activation times
+And one later log read must cover the earliest activation through the latest completed maintenance
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
+
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP31: Log evidence discharges the range marker
 
 ```gherkin
@@ -413,6 +440,17 @@ Given the integrator runs the applicable log check
 When a later agent-stop observes that evidence
 Then the marker is removed and no post-delivery checkpoint force-fires for those ranges again
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-CP31: Log evidence discharges the range marker
+
+```gherkin
+Given every action owed by the marker's accumulated advancements has succeeded
+And the integrator reads logs after the latest maintenance completion with a window beginning no later than the earliest activation
+When a later agent-stop observes that evidence
+Then the marker is removed and no post-delivery checkpoint force-fires for those ranges again
+But an earlier read or a narrower window leaves the marker outstanding
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 #### UC-CP32: A successor integrator inherits unfinished log judgment
 
@@ -423,6 +461,7 @@ When the heuristic engine evaluates that session
 Then the accumulated log-check obligation is surfaced to the successor
 ```
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP23: Worktree checkpoints omit live-runtime log checks
 
 ```gherkin
@@ -438,6 +477,23 @@ And no current-cycle log-check evidence exists
 When the checkpoint engine evaluates the agent-stop boundary
 Then the live-runtime log-check action remains eligible
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-CP23: Worktree checkpoints omit live-runtime log checks
+
+```gherkin
+Given a regular agent session is working from a non-main todo worktree
+And its turn-local changes match a scope that owes integrator live-runtime judgment
+When the checkpoint engine evaluates the agent-stop boundary
+Then the worktree checkpoint omits the live-runtime log-check action
+And any other worktree-eligible actions remain unchanged
+
+Given a regular agent session is working from canonical main
+And its turn-local changes match the same scope
+When the checkpoint engine evaluates the agent-stop boundary
+Then the ordinary file-based checkpoint still omits the maintenance log-check action
+And the checkout-scoped integrator marker retains that judgment for the standing integrator
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 #### UC-CP24: Actionless checkpoint evaluation is silent
 
@@ -459,6 +515,7 @@ Then the reason is framed by the canonical XML checkpoint control envelope
 And no bracket checkpoint envelope is emitted on the hook boundary
 ```
 
+<!-- planned-change:nonblocking-commit-maintenance -->
 #### UC-CP28: Maintenance the commit boundary performs is not an agent obligation
 
 ```gherkin
@@ -476,6 +533,22 @@ When the heuristic engine evaluates the turn window
 Then the judgment action is surfaced
 (The engine resolves the checkpoint registry alone, so a maintenance action a binding names is not a checkpoint obligation at all; log-check and test remain the agent's.)
 ```
+<!-- change:nonblocking-commit-maintenance -->
+#### UC-CP28: Maintenance the commit boundary performs is not an agent obligation
+
+```gherkin
+Given a regular session commits daemon code on canonical main through the sealed commit path
+And the committed paths owe deterministic maintenance and live-runtime judgment
+When the checkpoint evaluates that session
+Then it surfaces neither maintenance nor maintenance log-check to the committer
+And the independent post-commit review action remains owed for the committed code
+And the checkout-scoped integrator marker retains live-runtime judgment
+
+Given the same turn also owes a distinct judgment action eligible for that session
+When the checkpoint evaluates the turn
+Then that distinct action remains eligible
+```
+<!-- /planned-change:nonblocking-commit-maintenance -->
 
 #### UC-CP26: The checkpoint names the session's own undelivered work
 
@@ -519,9 +592,16 @@ And its required actions are the ones their categories carry
   is passed to `get_checkpoint_content` and stored in `CheckpointContext`
   to gate the integrator-maintenance force-fire path.
 - Reads the session's working slug for structured checkpoint diagnostics.
+<!-- planned-change:nonblocking-commit-maintenance -->
 - Consumes the checkout-scoped range marker written after integration completes
   deterministic maintenance, and surfaces only the remaining live-runtime log
   judgment.
+<!-- change:nonblocking-commit-maintenance -->
+- Consumes the checkout-scoped marker recorded at each qualifying canonical-main
+  activation after its action records are durable. It surfaces integrator log
+  judgment only after the executor records terminal success and the latest
+  maintenance-ready time; an earlier or narrower read cannot discharge it.
+<!-- /planned-change:nonblocking-commit-maintenance -->
 - Writes checkpoint-seen entries that `session-state-mutation-via-outbox`
   consumes to update last-checkpoint timestamp.
 

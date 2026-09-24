@@ -259,9 +259,12 @@ escalation for that set. The next move belongs to the human.
 - **Firing behavior:** inspect checkout-scoped integrator judgment markers,
   outstanding maintenance records, and structured terminal outcomes for
   canonical-main activations, including direct commits with no todo candidate.
-  Judge the changed runtime only after its owed
-  maintenance reaches terminal success; retain unresolved judgment across
-  reminder beats, and route terminal failures through bounded recovery. Then
+  Keep the judgment pending while any owed action is unfinished or failed.
+  After terminal success, inspect the changed runtime and read logs from a
+  window beginning no later than the earliest activation recorded on the
+  marker; an earlier or narrower read does not discharge it. Retain unresolved
+  judgment across reminder beats and route terminal failures through bounded
+  recovery. Then
   invoke the integration state machine once. If it dequeues a candidate,
   cancel this watcher before continuing; if the queue remains empty, leave it
   live and execute the returned instruction verbatim.

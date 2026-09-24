@@ -94,7 +94,14 @@ contract governs only what happens when maintenance runs.
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code
-  activation, including a direct main commit with no todo candidate. Operational
+  activation after its owed action records are durable, including a direct main
+  commit with no todo candidate. The judgment retains the activation time and
+  becomes eligible only after all owed actions succeed; restart success includes
+  its daemon-health check. The drain records the latest maintenance-ready time
+  on that marker; if interrupted before recording readiness, the judgment stays
+  outstanding for integrator recovery even when action files are absent. A log
+  read can discharge it only after that ready time
+  with a window covering the activation through completed maintenance. Operational
   anomaly detection observes failed or stale actions. A regular committer has no
   post-commit maintenance log judgment. The standing integrator inspects
   outstanding and terminal maintenance through its recurring watch, judges
@@ -288,6 +295,16 @@ When the standing integrator's recurring watch runs
 Then it discovers the retained judgment for that commit even if maintenance has already completed
 And judges the changed runtime after the owed actions reach terminal success
 But the original committer receives no maintenance log-check obligation
+```
+
+#### UC-PCM17: Early or narrow log evidence does not close integrator judgment
+
+```gherkin
+Given a canonical-main change still has an owed maintenance action pending
+When the standing integrator reads logs before that action succeeds
+Then the live-runtime judgment for that change remains outstanding
+And after every owed action succeeds, a log read whose window covers the activation and completed maintenance may close it
+But a read whose window misses that interval does not close it
 ```
 <!-- /planned:nonblocking-commit-maintenance -->
 
