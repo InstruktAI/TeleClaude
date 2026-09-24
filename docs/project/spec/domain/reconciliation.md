@@ -47,6 +47,9 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 <!-- planned:home-tier-commit-maintenance -->
 - **home-template-materialization** — `docs/project/spec/feature/reconciliation/home-template-materialization.md` — materializing repository-owned regular-file templates into the TeleClaude home before activation
 <!-- /planned:home-tier-commit-maintenance -->
+<!-- planned:installable-template-trees -->
+- **template-installation** — `docs/project/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
+<!-- /planned:installable-template-trees -->
 
 
 ## See Also

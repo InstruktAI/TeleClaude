@@ -10,7 +10,11 @@ visibility: 'public'
 - Service templates live in `templates/` and use `{{MARKER}}` double-brace placeholders for all environment-specific values.
 - Templates must never contain hardcoded home directories, user-specific paths, or machine-specific binary locations.
 
+<!-- planned-change:installable-template-trees -->
 - `bin/init/install_services.sh` resolves markers via `sed` substitution on every `make install`, renders the result to a temporary file, and writes it to `~/Library/LaunchAgents/` (macOS) or `/etc/systemd/system/` (Linux) only when that rendered content differs from the deployed definition. The unit is reloaded on the same condition, so an unchanged definition never disturbs its running service.
+<!-- change:installable-template-trees -->
+- `bin/init/install_services.sh` renders every service template through the shared template renderer on every `make install`, supplying the service-specific values and leaving `{{HOME}}` and `{{USER}}` to the environment, per `project/spec/feature/reconciliation/template-installation`. It renders to a temporary file and writes it to `~/Library/LaunchAgents/` (macOS) or `/etc/systemd/system/` (Linux) only when that rendered content differs from the deployed definition. The unit is reloaded on the same condition, so an unchanged definition never disturbs its running service. A template with an unresolved marker fails the installation before any definition is deployed from it.
+<!-- /planned-change:installable-template-trees -->
 
 - Markers are resolved from runtime detection (`command -v`, `$HOME`, `$PROJECT_ROOT`), never from static strings.
 
@@ -40,7 +44,11 @@ visibility: 'public'
 ### Adding a new service template
 
 1. Create the template in `templates/` with markers for all paths.
+<!-- planned-change:installable-template-trees -->
 2. Add an `install_launchd_<name>()` or `install_systemd_<name>()` function in `bin/init/install_services.sh` that resolves markers via `sed` and deploys through the shared content-gated helper, so the definition is written and reloaded only on a content difference.
+<!-- change:installable-template-trees -->
+2. Add an `install_launchd_<name>()` or `install_systemd_<name>()` function in `bin/init/install_services.sh` that renders the template through the shared template renderer, supplying only the values the environment does not carry, and deploys through the shared content-gated helper, so the definition is written and reloaded only on a content difference.
+<!-- /planned-change:installable-template-trees -->
 3. Call the installer from `install_service()`.
 4. Verify: `grep -r '/Users/\|/home/' templates/` must return nothing.
 
