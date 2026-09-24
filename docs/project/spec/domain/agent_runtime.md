@@ -95,7 +95,7 @@ TeleClaudeNext repository.
 
 <!-- planned:procedure-event-activation -->
 - **Owns (procedure standing agents):** one standing agent per procedure per
-  company, on the computer its event source names. An activation command resolves the
+  company, on the activation computer its company declares. An activation command resolves the
   standing agent through the inbound resolve-or-create seam, serialized per
   procedure and company so concurrent activations cannot create two. It starts
   the agent through the canonical command-session dispatch under the system

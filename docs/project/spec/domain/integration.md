@@ -61,14 +61,17 @@ implementation remain the current appliance contract.
 
 <!-- planned:procedure-event-activation -->
 - **Owns (procedure subscription routing):** stamping a verified event, at the
-  ingress and before it is relayed, with the company and the activation
-  computer that `config` declares for its source; turning each published
-  procedure subscription into a contract in the existing contract-routing model
-  that carries the procedure's canonical ID; and, on the computer the event
-  names, matching it against those contracts and producing one activation per
-  match: the procedure, the company, the event's context, and the platform's
-  system principal as its origin. A computer the event does not name produces
-  no activation for it, so one event activates on exactly one computer.
+  ingress and before it is relayed, with the company `config` declares for its
+  source; turning each published procedure subscription into a contract in the
+  existing contract-routing model that carries the procedure's canonical ID;
+  and, only on the computer the event's company declares as its activation
+  computer, matching the event against those contracts and producing one
+  activation per match: the procedure, the company, the event's context, and
+  the platform's system principal as its origin. Every other computer produces
+  no activation for it, so all of a company's activations run on one computer.
+  The procedure-subscription contracts are derived and registered in the same
+  step that registers the activation handler, so a procedure contract never
+  exists without the handler that serves it.
 - **Also owns (internal handler boundary):** an internal handler receives the
   matched contract alongside the event, so a handler serving several contracts
   knows which one matched when subscriptions overlap.
