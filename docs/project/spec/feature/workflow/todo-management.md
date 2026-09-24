@@ -175,7 +175,7 @@ And the CLI renders the service's answer without reading the todo store itself
 
 ```
 Given a process with no resolved person or principal — no terminal login, no usable session identity, or a verified session whose record holds only an operational role
-When it runs "telec todo list", "telec todo show", "telec todo artifacts list", "telec todo artifacts read", or "telec bugs list"
+When it runs "telec todo list", "telec todo show", "telec todo artifacts list", "telec todo artifacts read", "telec todo artifacts diff", or "telec bugs list"
 Then the workflow service refuses the request before any todo is read
 And no todo, artifact, or bug content is printed
 And the refusal names how to establish an identity
