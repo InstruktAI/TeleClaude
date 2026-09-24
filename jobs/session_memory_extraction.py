@@ -66,7 +66,7 @@ from teleclaude.core.models import Session
 from teleclaude.core.summarizer import _call_summarizer
 from teleclaude.memory.store import MemoryStore
 from teleclaude.memory.types import ObservationInput, ObservationType
-from teleclaude.mirrors.store import get_mirror
+from teleclaude.mirrors.store import ALL_MIRROR_ACCESS, get_mirror
 from teleclaude.utils.transcript import StructuredMessage, extract_structured_messages
 
 logger = get_logger(__name__)
@@ -247,7 +247,7 @@ class SessionMemoryExtractionJob(Job):
 
         Returns the transcript text, or None if no new content exists.
         """
-        mirror = get_mirror(session_id)
+        mirror = get_mirror(session_id, access=ALL_MIRROR_ACCESS)
         if mirror is None:
             return None
 

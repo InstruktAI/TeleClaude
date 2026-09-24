@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-
-from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
@@ -17,22 +14,6 @@ __all__ = [
     "_handle_history_search",
     "_handle_history_show",
 ]
-
-
-def resolve_cli_caller_role() -> str | None:
-    """Resolve the caller's role from terminal auth email via people config."""
-    email = read_current_session_email()
-    if not email:
-        return None
-    try:
-        global_cfg = importlib.import_module("teleclaude.config.loader").load_global_config()
-    except (AttributeError, ImportError, OSError, TypeError, ValueError):
-        return None
-    normalized = email.strip().lower()
-    for person in global_cfg.people:
-        if person.email.strip().lower() == normalized:
-            return str(person.role)
-    return None
 
 
 def _handle_history(args: list[str]) -> None:
@@ -109,8 +90,6 @@ def _handle_history_show(args: list[str]) -> None:
         print(exc)
         raise SystemExit(1) from exc
 
-    caller_email = read_current_session_email()
-    caller_role = resolve_cli_caller_role()
     agents = parse_agents(parsed.value(F.FLAG_HISTORY_SHOW_AGENT) or "all")
     show_transcript(
         agents,
@@ -118,7 +97,5 @@ def _handle_history_show(args: list[str]) -> None:
         include_thinking=parsed.has(F.FLAG_THINKING),
         raw=parsed.has(F.FLAG_HISTORY_RAW),
         computers=list(parsed.values(F.FLAG_COMPUTER_MANY)),
-        caller_email=caller_email,
-        caller_role=caller_role,
         json_output=parsed.has(F.FLAG_HISTORY_JSON),
     )

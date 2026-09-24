@@ -10,16 +10,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 from pydantic import TypeAdapter
 
-from teleclaude.api.auth import CallerIdentity, clearance_history_search
+from teleclaude.api.auth import CallerIdentity, caller_from_verified_identity, clearance_history_search
 from teleclaude.api.session_remote import is_remote_target
 from teleclaude.config import config
+from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.command_dispatch import RemoteDispatchError, parse_remote_dispatch_data_diagnosed
+from teleclaude.core.identity import PersonCliCaller, human_principal_for_email
 from teleclaude.core.models import JsonDict, MessageMetadata
 from teleclaude.history.service import (
     HistorySearchPayload,
     build_history_search_payload,
     parse_history_agents,
 )
+from teleclaude.mirrors.store import history_access_for_caller
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -64,6 +67,11 @@ async def search_history(
     caller: CallerIdentity = Depends(clearance_history_search),
 ) -> HistorySearchPayload:
     """Search local or peer mirrors through the authenticated daemon boundary."""
+    resolved_caller = caller_from_verified_identity(caller)
+    access = history_access_for_caller(resolved_caller)
+    if access is None:
+        raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
+
     try:
         agents = parse_history_agents(agent)
     except ValueError as exc:
@@ -88,6 +96,11 @@ async def search_history(
             origin_metadata=origin_metadata,
             human_email=caller.email,
             human_role=caller.human_role,
+            caller_principal=(
+                human_principal_for_email(resolved_caller.email)
+                if isinstance(resolved_caller, PersonCliCaller) and resolved_caller.email
+                else caller.principal
+            ),
         )
         try:
             message_id = await _STATE.client.send_request(
@@ -133,8 +146,7 @@ async def search_history(
         query=q,
         agents=agents,
         limit=limit,
-        caller_email=caller.email,
-        caller_role=caller.human_role,
+        access=access,
         include_workers=include_workers,
         identity=identity,
         project=project,

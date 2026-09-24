@@ -1039,7 +1039,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "whoami": CommandDef(
-                desc="Show terminal login identity for this TTY",
+                desc="Show the identity carried by this session or terminal",
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
