@@ -20,16 +20,16 @@ already running, from the session list it can read.
 #### UC-ODD6: Onboarding resolves no dispatch holder
 
 ```gherkin
-Given an open analysis session whose project path is a project root
-When that project or its owning company is initialized again
-Then initialization completes without consulting the session record
-And no second analysis session is started
+Given a project root, once with and once without an open analysis session whose project path is that root
+When the project is initialized in each state
+Then initialization completes with the same outcome in both states
+And no analysis session is started in either
 ```
 
 ## Known caveats
 
-- Use-case identifiers 1 through 5 are retired with the dispatch they
-  described and are not reused.
+- Use-case identifiers 1 through 5 are not in use in this contract and are not
+  reused.
 - Two explicit starts of the same analysis command for one root start two
   sessions; the sessions surface applies no per-procedure deduplication.
 
