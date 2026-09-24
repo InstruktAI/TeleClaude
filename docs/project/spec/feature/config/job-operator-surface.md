@@ -151,5 +151,5 @@ And a job with no enabled subscriber shows no next due
   with an open run is not re-dispatched until its run closes.
 - A subscribing entry carries the project's own overrides for the published
   declaration. Enable and disable turn that entry on and off; they never author or
-  remove the overrides an operator has set on it, and leave the rest of the project's
-  configuration file — comments and `${VAR}` references included — as it was.
+  remove the overrides an operator has set on it, and leave every other job entry,
+  every other key of the project's configuration, and its `${VAR}` references as they were.
