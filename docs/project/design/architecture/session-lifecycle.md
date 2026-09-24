@@ -107,6 +107,16 @@ stateDiagram-v2
 - **Single Owner**: Each session is owned by the adapter that created it; ownership never transfers.
 - **State Progression**: Sessions move forward through states only (no rollback from Closed to Active).
 - **Cleanup Finality**: Once marked Closed, session metadata is immutable and tmux resources are released.
+- **Native Transcript File Is Never Platform-Written**: The daemon's session
+  metadata, channel state, and summary artifacts above are its own durable
+  records, separate from the agent CLI's native transcript file. That file is
+  written only by the agent CLI process itself: the daemon's sole lever on it
+  is delivered input (text injected into the tmux pane), which the CLI records
+  as a turn along with everything it produces in response — assistant text,
+  tool calls, thinking, system reminders. Nothing in this platform edits,
+  rewrites, or truncates the native transcript file in place. `session_mirrors`'
+  indexing, search, extraction, and projection are read-only derivations from
+  it (`project/spec/domain/session_mirrors`).
 
 ## Primary flows
 
