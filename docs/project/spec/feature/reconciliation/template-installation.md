@@ -10,15 +10,16 @@ delivered_by:
 
 TeleClaude installs repository-owned templates in several places: service
 definitions during machine installation, the home template tree before home
-activation, project skeleton files and the help desk workspace during project
+activation, TeleClaude-owned git hooks into project and home repositories,
+project skeleton files and the help desk workspace during project
 initialization. Each installation renders the template's placeholders and
 places the result under a name derived from the template's path. One rendering
 contract and one naming contract govern all of them, so a template behaves the
 same wherever it is installed.
 
 What an installation does with the rendered result — refreshing a differing
-target, prompting before replacing a project-owned file, reloading a service,
-or creating a workspace once — remains the installing surface's own contract.
+target, prompting before replacing a project-owned file, preserving a hook it
+does not own, reloading a service, or creating a workspace once — remains the installing surface's own contract.
 The shared rule is that the rendered content, never the raw template, is what
 the surface compares against its target, so an unchanged rendered result leaves
 the target untouched.

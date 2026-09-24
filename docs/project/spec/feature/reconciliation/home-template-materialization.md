@@ -12,11 +12,20 @@ delivered_by:
 
 ## What it is
 
+<!-- planned-change:installable-template-trees -->
 The home template tree is the source for repository-owned regular files that
 machine installation places at matching relative paths under the TeleClaude
 home. Materialization copies bytes rather than linking them, so the installed
 home remains valid when the canonical checkout moves and every materialized
 file remains eligible for the home's regular-file-only retained history.
+<!-- change:installable-template-trees -->
+The home template tree is the source for repository-owned regular files that
+machine installation places at matching relative paths under the TeleClaude
+home. Materialization writes each template's rendered content rather than
+linking it, so the installed home remains valid when the canonical checkout
+moves and every materialized file remains eligible for the home's
+regular-file-only retained history.
+<!-- /planned-change:installable-template-trees -->
 
 Materialization precedes home-repository activation. The retained-set
 declaration in the template tree is therefore both the declaration consumed by
@@ -31,8 +40,16 @@ be installed beside it without entering the retained set.
   the source tree.
 - **File kind.** Sources and targets are regular files. Symbolic links are never
   created by this materialization path.
+<!-- planned-change:installable-template-trees -->
 - **Content gate.** An absent or byte-different target is written; an identical
   target is left untouched.
+<!-- change:installable-template-trees -->
+- **Content gate.** Each template is rendered per the template-installation
+  contract (`project/spec/feature/reconciliation/template-installation`) before
+  comparison. An absent target, or one whose bytes differ from the rendered
+  content, is written; an identical target is left untouched. An unresolved
+  placeholder fails installation before any target is written.
+<!-- /planned-change:installable-template-trees -->
 - **Conflict posture.** A source or target whose filesystem type is not a
   regular file fails installation before that target is replaced or removed.
 - **Activation order.** The complete template tree is materialized before the
