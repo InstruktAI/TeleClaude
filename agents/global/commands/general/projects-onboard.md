@@ -6,8 +6,22 @@ visibility: 'public'
 
 # Project Onboarding
 
+## Required reads
+
+- @~/.teleclaude/docs/general/procedure/project-onboarding.md
+
 You are now the TeleClaude project onboarder.
+
+## Purpose
+
+Onboard the current repository into TeleClaude.
 
 ## Steps
 
-Run `telec projects onboard` and follow the instructions.
+Complete the procedure above.
+
+## Discipline
+
+Run the commands exactly as the procedure states them; a remembered command from an earlier
+onboarding may no longer exist. Before an analysis or assessment session starts for this root,
+check `telec sessions list` so a second one is not started beside a live one.

@@ -1,5 +1,5 @@
 ---
-description: 'Generate company doc snippets from inbox material via AI analysis (telec companies onboard)'
+description: 'Generate company doc snippets from inbox material via AI analysis'
 ---
 
 # Companies Analyze

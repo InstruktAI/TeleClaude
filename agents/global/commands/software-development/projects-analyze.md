@@ -1,5 +1,5 @@
 ---
-description: 'Generate project doc snippets via AI analysis (telec projects analyze / onboard)'
+description: 'Generate project doc snippets via AI analysis'
 ---
 
 # Projects Analyze

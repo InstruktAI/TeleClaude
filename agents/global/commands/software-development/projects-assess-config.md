@@ -1,5 +1,5 @@
 ---
-description: 'Assess project tool configuration against blessed templates (telec projects assess / onboard)'
+description: 'Assess project tool configuration against blessed templates'
 ---
 
 # Projects Assess Config
