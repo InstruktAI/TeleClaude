@@ -76,7 +76,7 @@ Load when creating, changing, proposing, or drafting a snippet first enters
 consideration, before deciding its shape.
 
 ```
-telec docs get general/procedure/doc-snippet-authoring general/spec/snippet-authoring-schema
+telec docs get general/procedure/doc-snippet-authoring --closure
 ```
 
 **Agent artifacts** (create or edit):
@@ -85,7 +85,8 @@ Load when creating, changing, proposing, or drafting an agent artifact first
 enters consideration, before deciding its shape.
 
 ```
-telec docs get general/procedure/agent-artifact-authoring general/spec/agent-artifacts
+telec docs get general/procedure/agent-artifact-authoring --closure
+telec docs get general/spec/agent-artifacts
 ```
 
 ### Conditional
