@@ -118,6 +118,15 @@ TeleClaudeNext.
   supply strictness as a validation argument. The behavioral contract is
   `project/spec/feature/config/unknown-key-warning`.
 
+<!-- planned:procedure-event-activation -->
+- **Also owns:** an inbound event source's company association — the registered
+  company a configured source's events belong to — as a declared setting
+  validated against registered companies. Owning the association is not owning
+  what a company context means, which belongs to `project/spec/domain/identity`,
+  or what a session does with it, which belongs to
+  `project/spec/domain/agent_runtime`.
+<!-- /planned:procedure-event-activation -->
+
 #### Use cases (index of feature specs)
 
 - **project-registry** — `docs/project/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry

@@ -59,6 +59,21 @@ implementation remain the current appliance contract.
   authorized to do is identity's.
 <!-- /planned-change:external-session-identity -->
 
+<!-- planned:procedure-event-activation -->
+- **Owns (procedure subscription routing):** turning each published procedure
+  subscription into a contract in the existing contract-routing model, matching
+  verified events against those contracts for the company the event's
+  configured source is associated with, and producing one activation per match:
+  the procedure, that company, the event's context, and the platform's system
+  principal as its origin. The contract's target is an internal activation
+  handler, so a match and its activation run on the computer that received the
+  event.
+- **Does not own (procedure activation):** whether a standing agent exists,
+  starting or waking it, or the identity it runs under. The activation handler
+  hands each activation to `agent_runtime` as a computer-addressed command
+  through the command-dispatch contract and takes no further decision.
+<!-- /planned:procedure-event-activation -->
+
 ## See Also
 
 - docs/project/adr/0069-vnext-authority-lives-in-separate-repository.md

@@ -89,6 +89,20 @@ contracts and never creates shared ownership.
   corpus or matches sessions itself, `context` never composes a dispatch, and
   `agent_runtime` never decides reach or command vocabulary.
 
+<!-- planned:procedure-event-activation -->
+- `context` publishes each procedure's declared event subscriptions and
+  publication tier; `integration` turns them into routing contracts and
+  consumes `config`'s source-to-company association to scope each match.
+  `integration` hands each resulting activation to `agent_runtime` as a
+  computer-addressed command and never starts, addresses, or inspects a
+  session. `agent_runtime` owns the standing agent and each session's company
+  context, consuming `identity`'s membership resolution and supplying the
+  established context to the session identity document `identity` writes. None
+  restates another's rule: `integration` never decides whether an agent stands,
+  `agent_runtime` never matches events or reads procedure metadata, and
+  `identity` never chooses a session's company.
+<!-- /planned:procedure-event-activation -->
+
 The daemon, handler, adapter, database, and background-worker labels are layers
 or hosting mechanisms, not additional contexts. The TUI and the CLI are
 `presentation`'s hosting surfaces. Existing placement outside
