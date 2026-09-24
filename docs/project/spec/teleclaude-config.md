@@ -45,7 +45,7 @@ resolution contract is `project/spec/feature/config/tier-declaration`.
 The machine runtime `config.yml` is outside this: it carries a different
 filename and takes no part in tier resolution.
 
-<!-- planned-change:retire-docs-watcher -->
+<!-- planned-change:config-schema-home-resolution -->
 One JSON Schema per tier is generated from the same models the runtime
 validates against and committed at repo-root
 `schemas/teleclaude-{global,project,person,company}.schema.json`, beside the MCP
@@ -53,16 +53,6 @@ registry schema. All four are deployed into the TeleClaude home tree beside the
 home's own configuration files; the project-tier schema is deployed to each
 project root beside that project's `teleclaude.yml`, by the same step that
 writes that project's generated entrypoints, and is committed as they are.
-<!-- change:retire-docs-watcher -->
-One JSON Schema per tier is generated from the same models the runtime
-validates against and committed at repo-root
-`schemas/teleclaude-{global,project,person,company}.schema.json`, beside the MCP
-registry schema. Machine installation exposes that canonical schema directory
-at the TeleClaude home through one symlink; publication generates or deploys no
-home schema copy. The project-tier schema is still deployed to each project
-root beside that project's `teleclaude.yml`, by the project-output step that
-writes that project's generated entrypoints, and is committed as they are.
-<!-- /planned-change:retire-docs-watcher -->
 
 A file points at its schema with a `# yaml-language-server: $schema=<ref>`
 modeline naming a schema in its own tree — a sibling for a project config, the
@@ -71,6 +61,33 @@ schema is in place. Every reference therefore resolves from any checkout, with
 no network fetch and no machine-local path. The modeline serves the editor
 only: loading reads `kind` alone, and a file with no modeline resolves
 identically.
+<!-- change:config-schema-home-resolution -->
+One JSON Schema per tier is generated from the same models the runtime
+validates against, and published with the MCP registry schema into
+`~/.teleclaude/schemas/` as
+`teleclaude-{global,project,person,company}.schema.json` and
+`teleclaude-mcp.schema.json`. That directory is the only copy on a machine: no
+repository, TeleClaude's own included, carries a schema file. Publication is
+specified in `project/spec/feature/reconciliation/config-schema-publication`.
+Every adopted project root carries `.teleclaude/schemas`, a machine-local link
+to that directory maintained by project plumbing convergence.
+
+A file points at its schema with a `# yaml-language-server: $schema=<ref>`
+modeline whose target is fixed by its tier and written on every write of the
+file:
+
+| Tier    | File                                          | Modeline target                                   |
+| ------- | --------------------------------------------- | ------------------------------------------------- |
+| global  | `~/.teleclaude/teleclaude.yml`                | `schemas/teleclaude-global.schema.json`           |
+| person  | `~/.teleclaude/people/{slug}/teleclaude.yml`  | `../../schemas/teleclaude-person.schema.json`     |
+| company | `~/.teleclaude/companies/{slug}/teleclaude.yml` | `../../schemas/teleclaude-company.schema.json`  |
+| project | `<project-root>/teleclaude.yml`               | `.teleclaude/schemas/teleclaude-project.schema.json` |
+
+Every reference is relative, so the same committed content resolves on every
+machine that has published its schemas, with no network fetch and no
+machine-local path. The modeline serves the editor only: loading reads `kind`
+alone, and a file whose modeline does not resolve loads identically.
+<!-- /planned-change:config-schema-home-resolution -->
 
 `kind` names a file's tier. It is unrelated to the machine-config field
 exposure levels described below, which govern which `config.yml` fields reach

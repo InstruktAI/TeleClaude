@@ -166,18 +166,6 @@ The step is skipped in CI mode and in the deps-only install a git worktree resol
 
 Source: `bin/install.sh:install_log_runtime()`
 
-<!-- planned:retire-docs-watcher -->
-### 5. Configuration-schema link (`make install`)
-
-The shared-runtime linking step exposes the canonical checkout's `schemas/`
-directory at the TeleClaude home. An already-correct symlink is unchanged. A
-known legacy generated schema directory is replaced only when its contents are
-the generated schema set; any unexpected entry or conflicting target type
-fails installation without deleting it. Documentation and artifact publication
-never writes the home schema path.
-
-Source: `bin/init/link_shared_scripts.sh:link_shared_scripts()`
-<!-- /planned:retire-docs-watcher -->
 
 ## Outputs
 
@@ -187,10 +175,6 @@ Source: `bin/init/link_shared_scripts.sh:link_shared_scripts()`
 
 - Logging runtime present, current, and wired by `make install`, with the resolved log
   root and health status reported to the user.
-<!-- planned:retire-docs-watcher -->
-- The TeleClaude home schema path linked to the canonical checkout's generated
-  schema directory, with legacy generated content migrated safely.
-<!-- /planned:retire-docs-watcher -->
 
 ## Recovery
 
