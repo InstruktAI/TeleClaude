@@ -89,10 +89,9 @@ def resolve_command_document(command_name: str) -> ResolvedCommand | None:
 
     A domain-qualified name (``<domain>/<name>``) resolves directly. A bare
     token scans every domain directory in the global corpus for a same-named
-    file: a single domain match is canonicalized to ``<domain>/<name>``; the
-    transitional flat root file is the fallback only when no domain match
-    exists; more than one domain match raises rather than silently picking
-    one candidate.
+    file: a single domain match is canonicalized to ``<domain>/<name>``; no
+    match resolves to nothing; more than one domain match raises rather than
+    silently picking one candidate.
     """
     segments = command_name.split(_QUALIFIED_NAME_SEPARATOR)
     if len(segments) == 2:
@@ -107,10 +106,7 @@ def resolve_command_document(command_name: str) -> ResolvedCommand | None:
     if len(domain_matches) == 1:
         domain, document = domain_matches[0]
         return ResolvedCommand(f"{domain}/{name}", document)
-    legacy_document = (COMMANDS_DIR / f"{name}{_COMMAND_FILE_SUFFIX}").resolve()
-    if not legacy_document.is_relative_to(_COMMANDS_ROOT) or not legacy_document.is_file():
-        return None
-    return ResolvedCommand(name, legacy_document)
+    return None
 
 
 def resolve_slash_command(command: str | None) -> SlashCommand | None:

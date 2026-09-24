@@ -638,8 +638,7 @@ CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
 
 # The only two locations an agent-artifact source ever lives: a project's own
 # root master, and its `agents/` tree (root masters/addenda, the tiered
-# global/project commands and skills, and the transitional flat mother
-# roots). `.agents/` is deliberately excluded — it is the delivery location
+# global/project commands and skills). `.agents/` is deliberately excluded — it is the delivery location
 # the local phase writes to, never a source. Owned here (rather than in
 # `teleclaude.agent_artifacts`, the registry that classifies paths against
 # this same set) because `constants` sits below `project_root`/`domains` in

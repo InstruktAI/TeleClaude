@@ -100,7 +100,6 @@ class ArtifactSource:
     reach: ArtifactReach
     kind: ArtifactKind | None = None
     domain: str | None = None
-    transitional: bool = False
 
 
 class UnclassifiedSourceError(ValueError):
@@ -195,7 +194,7 @@ def _iter_root_files(project_root: Path) -> Iterator[ArtifactSource]:
 
 
 def _iter_uniform_command_tree(
-    root: Path, *, tier: ArtifactTier, reach: ArtifactReach, domain: str | None, transitional: bool
+    root: Path, *, tier: ArtifactTier, reach: ArtifactReach, domain: str | None
 ) -> Iterator[ArtifactSource]:
     if not root.is_dir():
         return
@@ -208,12 +207,11 @@ def _iter_uniform_command_tree(
                 reach=reach,
                 kind=ArtifactKind.COMMAND,
                 domain=domain,
-                transitional=transitional,
             )
 
 
 def _iter_skill_packages(
-    root: Path, *, tier: ArtifactTier, reach: ArtifactReach, authorship: ArtifactAuthorship, transitional: bool
+    root: Path, *, tier: ArtifactTier, reach: ArtifactReach, authorship: ArtifactAuthorship
 ) -> Iterator[ArtifactSource]:
     if not root.is_dir():
         return
@@ -228,7 +226,6 @@ def _iter_skill_packages(
                 authorship=authorship,
                 reach=reach,
                 kind=ArtifactKind.SKILL,
-                transitional=transitional,
             )
 
 
@@ -239,7 +236,6 @@ def _iter_skill_package_tree(
     tier: ArtifactTier,
     reach: ArtifactReach,
     authorship: ArtifactAuthorship,
-    transitional: bool,
 ) -> Iterator[ArtifactSource]:
     if not root.is_dir():
         return
@@ -250,9 +246,8 @@ def _iter_skill_package_tree(
             tier=tier,
             authorship=ArtifactAuthorship.AUTHORED,
             reach=reach,
-            transitional=transitional,
         )
-    yield from _iter_skill_packages(root, tier=tier, reach=reach, authorship=authorship, transitional=transitional)
+    yield from _iter_skill_packages(root, tier=tier, reach=reach, authorship=authorship)
 
 
 def _iter_global_commands(project_root: Path) -> Iterator[ArtifactSource]:
@@ -263,18 +258,8 @@ def _iter_global_commands(project_root: Path) -> Iterator[ArtifactSource]:
                 continue
             reach = ArtifactReach.MOTHER_ONLY if domain_dir.name == _GENERAL_DOMAIN else ArtifactReach.DOMAIN
             yield from _iter_uniform_command_tree(
-                domain_dir, tier=ArtifactTier.GLOBAL, reach=reach, domain=domain_dir.name, transitional=False
+                domain_dir, tier=ArtifactTier.GLOBAL, reach=reach, domain=domain_dir.name
             )
-    # Transitional flat mother commands: both roots carry every command for
-    # the length of the cutover (see the PRD's expand-then-contract migration).
-    legacy_commands_root = _agents_root(project_root) / _COMMANDS_DIRNAME
-    yield from _iter_uniform_command_tree(
-        legacy_commands_root,
-        tier=ArtifactTier.GLOBAL,
-        reach=ArtifactReach.MOTHER_ONLY,
-        domain=None,
-        transitional=True,
-    )
 
 
 def _iter_global_skills(project_root: Path) -> Iterator[ArtifactSource]:
@@ -285,17 +270,6 @@ def _iter_global_skills(project_root: Path) -> Iterator[ArtifactSource]:
         tier=ArtifactTier.GLOBAL,
         reach=ArtifactReach.MOTHER_ONLY,
         authorship=ArtifactAuthorship.INCORPORATED,
-        transitional=False,
-    )
-    # Transitional flat mother skill catalog, mirrored byte-for-byte at the
-    # tiered root until the flat root is deleted after this delivery folds.
-    yield from _iter_skill_package_tree(
-        agents_root / _SKILLS_DIRNAME,
-        _GLOBAL_MASTER_FILENAME,
-        tier=ArtifactTier.GLOBAL,
-        reach=ArtifactReach.MOTHER_ONLY,
-        authorship=ArtifactAuthorship.INCORPORATED,
-        transitional=True,
     )
 
 
@@ -305,14 +279,12 @@ def _iter_project_sources(project_root: Path) -> Iterator[ArtifactSource]:
         tier=ArtifactTier.PROJECT,
         reach=ArtifactReach.SELF,
         domain=None,
-        transitional=False,
     )
     yield from _iter_skill_packages(
         project_skills_root(project_root),
         tier=ArtifactTier.PROJECT,
         reach=ArtifactReach.SELF,
         authorship=ArtifactAuthorship.AUTHORED,
-        transitional=False,
     )
 
 
@@ -353,8 +325,6 @@ def _boundary_violation(project_root: Path, resolved: Path) -> str | None:
         _GENERATED_ROOT_ENTRYPOINT_FILENAME,
         _GENERATED_ROOT_POINTER_FILENAME,
     ):
-        return None
-    if first in (_COMMANDS_DIRNAME, _SKILLS_DIRNAME):
         return None
     if first in (_GLOBAL_DIRNAME, _PROJECT_DIRNAME):
         if len(relative_parts) < 2 or relative_parts[1] in (_COMMANDS_DIRNAME, _SKILLS_DIRNAME):

@@ -1198,12 +1198,11 @@ def _iter_project_agent_masters(project_root: Path) -> list[Path]:
     # Skill package directories can carry arbitrary, deep third-party file
     # trees, including a coincidentally named AGENTS.master.md that is not a
     # project-directory master. Every root this repository's own skill tree
-    # can occupy — tiered, transitional flat, and project-local — is skipped
+    # can occupy — tiered and project-local — is skipped
     # rather than walked; global_skill_source_root only resolves when
     # project_root is Mother, and is a no-op path otherwise.
     skill_tree_roots = {
         global_skill_source_root(project_root),
-        project_root / "agents" / "skills",
         project_root / "agents" / "project" / "skills",
     }
     matches: list[Path] = []
@@ -1327,10 +1326,8 @@ def _resolve_pipeline_capabilities(
 def _collect_global_command_files(project_root_path: Path) -> dict[str, Path]:
     """Map corpus-relative output path to source file for every in-reach global command.
 
-    Both the domain-partitioned tree (``<domain>/<name>.md``) and the
-    transitional flat mother root (``<name>.md``) are included — the
-    expand-then-contract migration keeps both live until the flat root is
-    deleted on ``main`` after this delivery folds. Reach is re-checked here
+    Global commands live only in the domain-partitioned tree
+    (``<domain>/<name>.md``). Reach is re-checked here
     as defense in depth; the sealed commit already refused an out-of-reach
     source before it could ever reach this pass.
     """
@@ -1340,7 +1337,7 @@ def _collect_global_command_files(project_root_path: Path) -> dict[str, Path]:
             continue
         if agent_artifacts.reach_violation(project_root_path, source) is not None:
             continue
-        relative = f"{source.domain}/{source.entrypoint.name}" if source.domain else source.entrypoint.name
+        relative = f"{source.domain}/{source.entrypoint.name}"
         command_files[relative] = source.entrypoint
     return command_files
 
