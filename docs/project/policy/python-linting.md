@@ -24,10 +24,12 @@ description: TeleClaude-specific Python lint exceptions and guardrail placement 
 
 ### Argument-type checking
 
-- Pyright reports argument-type incompatibility across the repository. It is the
-  only checker that does so everywhere: mypy's per-module overrides in
-  `pyproject.toml` disable `arg-type` across a large first-party surface, so a
-  call-site type error inside that surface reaches no other gate.
+- Pyright reports argument-type incompatibility for Python files under the
+  analyzed source roots configured in `pyrightconfig.json`, apart from the
+  CLI/API carve-out below. Those roots do not cover every first-party Python
+  directory; enabling the rule does not imply repository-wide coverage.
+  Mypy's per-module overrides disable `arg-type` across a large first-party
+  surface, so Pyright is the effective gate for those checked call sites.
 - The carve-out covers the CLI surface and the API surface, and nothing else:
   the `teleclaude/cli` package, the `teleclaude/api` package, and the
   `teleclaude/api_server` module that serves the same routes from the package
