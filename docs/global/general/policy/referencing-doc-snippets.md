@@ -26,6 +26,21 @@ visibility: 'public'
 - Third-party sources must appear under **See also** only (soft references).
   They must not appear in Required reads.
 
+### Inline citations
+
+- A rule another snippet owns is cited in prose, never restated: a one-clause
+  gist followed by the owner's backticked id — _orient the human before a
+  consequential move (`general/policy/leadership`)_. The gist carries the rule's
+  force where the reader acts; the id routes the reader to the single place that
+  states it in full, with its reason.
+- A bare backticked id is a pointer, not a citation. Use it where the reader
+  needs to know where something lives, not what it requires.
+- Cite by id only — never by file path, never by section anchor. A rule that can
+  only be located with an anchor lives in a snippet too large to own it.
+- A citation never paraphrases the owner beyond its gist. When the citing text
+  needs more of the rule than one clause carries, the reader needs the owner:
+  make it a Required read, or narrow the citing text so one clause suffices.
+
 ## Rationale
 
 - Inline `@` references are the single enforced mechanism for mandatory reading declared by a static artifact. Runtime instructions name the required snippet without expanding it so the receiving session controls the read once.
@@ -35,6 +50,9 @@ visibility: 'public'
   remain machine-local but consistent within one operator's environment.
 - Repo‑relative `@docs/...` keeps project docs portable and consistent.
 - Soft references prevent third-party docs from being auto-included in agent context.
+- A rule stated in two snippets is two rules to a reader: each wording is read
+  as possibly distinct, and the copies drift until they contradict. The gist
+  keeps the emphasis a repetition was reaching for; the id keeps one owner.
 - An authored global snippet resolves to its publisher source because that source is readable
   before a host has published anything. A generated artifact has no such source, so the same
   mapping substitutes a file nothing regenerates for the one the reference names. The substitute
@@ -53,6 +71,8 @@ visibility: 'public'
 - Static Required reads must use inline `@` references only.
 - Runtime brief, formatter, and peer-message output containing an inline `@` documentation reference is a defect.
 - Soft references must appear in a `See also` section at the bottom and must not use `@`.
+- Reviewers treat a restated rule whose owner is another snippet as a finding and
+  replace it with a citation.
 
 ## Exceptions
 
