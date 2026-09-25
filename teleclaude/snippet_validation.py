@@ -12,7 +12,7 @@ import yaml
 
 from teleclaude.constants import TAXONOMY_TYPES
 from teleclaude.domains import publishes_for_root, valid_domains
-from teleclaude.paths import GLOBAL_DOCS_DIR
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR
 
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 _GENERATED_DOMAIN_BUNDLE_FILENAME = "domain-baseline-bundle.md"
@@ -35,21 +35,43 @@ class SnippetScope(StrEnum):
 
     GLOBAL = "global"
     PROJECT = "project"
+    PERSON = "person"
+    COMPANY = "company"
+
+
+#: Snippet-id prefixes reserved by the scope vocabulary, never a project slug.
+#: Derived from ``SnippetScope`` so a future tier is reserved the moment its
+#: scope value is added, plus the structural markers that are not scopes
+#: (``general`` is global's identity prefix; ``global`` itself never appears as
+#: one). A future tier's prefix is reserved the moment its scope enum member exists.
+RESERVED_SNIPPET_ID_PREFIXES: frozenset[str] = frozenset({"general", "third-party", "baseline"}) | frozenset(
+    member.value for member in SnippetScope if member is not SnippetScope.GLOBAL
+)
+
+#: Scopes whose identity carries an owner segment: ``<scope>/<owner>/<taxonomy>/<rest>``.
+_TIER_OWNER_SCOPES: frozenset[str] = frozenset({SnippetScope.PERSON.value, SnippetScope.COMPANY.value})
 
 
 @dataclass(frozen=True)
 class SnippetIdParts:
-    """Parsed components of a snippet ID."""
+    """Parsed components of a snippet ID.
+
+    ``owner`` is set only for the person and company tiers, whose identity carries
+    an owning slug segment (``person/<slug>/<taxonomy>/<rest>``,
+    ``company/<slug>/<taxonomy>/<rest>``); every other scope renders three segments.
+    """
 
     scope: str
     taxonomy: str
     rest: str
+    owner: str | None = None
 
     def value(self) -> str:
         """Return the full snippet ID string."""
+        base = f"{self.scope}/{self.owner}/{self.taxonomy}" if self.owner else f"{self.scope}/{self.taxonomy}"
         if self.rest:
-            return f"{self.scope}/{self.taxonomy}/{self.rest}"
-        return f"{self.scope}/{self.taxonomy}"
+            return f"{base}/{self.rest}"
+        return base
 
 
 @dataclass(frozen=True)
@@ -82,7 +104,7 @@ def _split_parts(value: str) -> tuple[list[str], bool]:
 
 
 def _allowed_scopes(domains: Iterable[str]) -> set[str]:
-    return {"general", "project", *domains}
+    return {"general", SnippetScope.PROJECT.value, SnippetScope.PERSON.value, SnippetScope.COMPANY.value, *domains}
 
 
 def validate_snippet_id_format(
@@ -90,7 +112,12 @@ def validate_snippet_id_format(
     *,
     domains: Iterable[str],
 ) -> tuple[SnippetIdParts | None, str | None]:
-    """Validate a snippet ID string and return parsed parts or an error code."""
+    """Validate a snippet ID string and return parsed parts or an error code.
+
+    Arity is tier-dependent: the person and company tiers carry an owner segment
+    (``<scope>/<owner>/<taxonomy>/<rest>``); every other scope is
+    ``<scope>/<taxonomy>/<rest>``. One parser renders both, via ``SnippetIdParts``.
+    """
     if not value.strip():
         return None, "missing"
     raw = value.strip()
@@ -105,9 +132,18 @@ def validate_snippet_id_format(
         return None, "empty_segment"
     if len(parts) < 2:
         return None, "missing_taxonomy"
-    scope, taxonomy = parts[0], parts[1]
+    scope = parts[0]
     if scope not in _allowed_scopes(domains):
         return None, "invalid_scope"
+    if scope in _TIER_OWNER_SCOPES:
+        if len(parts) < 3:
+            return None, "missing_taxonomy"
+        owner, taxonomy = parts[1], parts[2]
+        if taxonomy not in ALLOWED_TAXONOMIES:
+            return None, "invalid_taxonomy"
+        rest = "/".join(parts[3:])
+        return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest, owner=owner), None
+    taxonomy = parts[1]
     if taxonomy not in ALLOWED_TAXONOMIES:
         return None, "invalid_taxonomy"
     rest = "/".join(parts[2:])
@@ -175,13 +211,47 @@ def expected_snippet_id_for_path(
     return None, "invalid_docs_root"
 
 
+def tier_root_kind(root: Path) -> SnippetScope | None:
+    """Whether ``root`` is a declared company or person tier's documentation home.
+
+    A tier root is a direct child of a directory named ``companies`` or
+    ``people`` — structural, not tied to the real machine's platform home, so a
+    root under a publication snapshot or an isolated fixture classifies the same
+    way a root under the live home does. Dispatch reads the root's own location
+    rather than a caller-supplied flag, so every caller of
+    :func:`derive_snippet_classification` classifies a tier file the same way it
+    classifies a project file, with no second entry point to keep in agreement.
+    Public: also consumed by ``docs_publishers`` to resolve a Required-read
+    reference into a sibling tier from within a validated tier file.
+    """
+    resolved = root.expanduser().resolve()
+    if resolved.parent.name == COMPANIES_ROOT.name:
+        return SnippetScope.COMPANY
+    if resolved.parent.name == PEOPLE_DIR.name:
+        return SnippetScope.PERSON
+    return None
+
+
 def derive_snippet_classification(
     path: Path,
     *,
     project_root: Path,
     domains: Iterable[str],
 ) -> tuple[SnippetClassification | None, str | None]:
-    """Derive snippet classification from its filesystem path."""
+    """Derive snippet classification from its filesystem path.
+
+    For a declared company or person tier's documentation home, ``project_root`` is
+    the tier root itself and the layout is ``<tier root>/docs/<taxonomy>/<rest>`` —
+    no ``global``/``project`` scope segment. See :func:`_tier_root_kind`.
+    """
+    tier_kind = tier_root_kind(project_root)
+    if tier_kind is not None:
+        docs_root = project_root / "docs"
+        owner_slug = project_root.name
+        if tier_kind is SnippetScope.COMPANY:
+            return derive_company_snippet_classification(path, company_docs_root=docs_root, company_slug=owner_slug)
+        return derive_person_snippet_classification(path, person_docs_root=docs_root, person_slug=owner_slug)
+
     id_path = companion_parent(path) or path
     snippet_id, id_error = expected_snippet_id_for_path(id_path, project_root=project_root, domains=domains)
     if id_error:
@@ -213,24 +283,28 @@ def derive_snippet_classification(
 
 
 COMPANY_SNIPPET_DOMAIN = "company"
+PERSON_SNIPPET_DOMAIN = "person"
 
 
-def derive_company_snippet_classification(
+def _derive_tier_snippet_classification(
     path: Path,
     *,
-    company_docs_root: Path,
+    tier_docs_root: Path,
+    owner_slug: str,
+    scope: SnippetScope,
+    domain: str,
 ) -> tuple[SnippetClassification | None, str | None]:
-    """Derive a company snippet's classification from its path under ``companies/<slug>/docs/``.
+    """Derive a tier snippet's classification from its path under ``<tier root>/docs/``.
 
-    Path-derived, never authored: ``docs/<taxonomy>/<slug>.md`` →
-    ``company/<taxonomy>/<slug>``. Company snippets are ``scope: global`` (global in
-    reach) but filtered by their company folder in the path (scoped in visibility to
-    member projects); the literal ``company`` domain prefix is the company-tier marker.
+    Path-derived, never authored: ``docs/<taxonomy>/<rest>`` →
+    ``<scope>/<owner_slug>/<taxonomy>/<rest>``, the tier-qualified identity that
+    disambiguates a person or company by its own slug (`SC-8`). Shared body for
+    the company and person derivations, which differ only in scope and domain.
     """
     try:
-        rel = path.resolve().relative_to(company_docs_root.resolve())
+        rel = path.resolve().relative_to(tier_docs_root.resolve())
     except (ValueError, OSError):
-        return None, "not_under_company_docs_root"
+        return None, "not_under_tier_docs_root"
     parts = rel.parts
     if len(parts) < 2:
         return None, "missing_taxonomy_or_slug"
@@ -242,15 +316,58 @@ def derive_company_snippet_classification(
         rest = rest[: -len(".md")]
     if not rest:
         return None, "missing_slug"
-    snippet_id = SnippetIdParts(scope=COMPANY_SNIPPET_DOMAIN, taxonomy=raw_taxonomy, rest=rest).value()
+    snippet_id = SnippetIdParts(scope=scope.value, taxonomy=raw_taxonomy, rest=rest, owner=owner_slug).value()
     return (
-        SnippetClassification(
-            id=snippet_id,
-            type=SnippetTaxonomy(raw_taxonomy),
-            scope=SnippetScope.GLOBAL,
-            domain=COMPANY_SNIPPET_DOMAIN,
-        ),
+        SnippetClassification(id=snippet_id, type=SnippetTaxonomy(raw_taxonomy), scope=scope, domain=domain),
         None,
+    )
+
+
+def derive_company_snippet_classification(
+    path: Path,
+    *,
+    company_docs_root: Path,
+    company_slug: str | None = None,
+) -> tuple[SnippetClassification | None, str | None]:
+    """Derive a company snippet's classification from its path under ``companies/<slug>/docs/``.
+
+    ``company_slug`` defaults to ``company_docs_root``'s parent directory name — the
+    ``<slug>`` in ``companies/<slug>/docs`` — so an existing caller that only ever
+    passed the docs root keeps working unchanged. Scope is ``SnippetScope.COMPANY``,
+    the company tier's own scope: filtered to that company's members by ``context``'s
+    caller-scope resolution, not by global reach. The literal ``company`` domain
+    marks the tier.
+    """
+    slug = company_slug or company_docs_root.parent.name
+    return _derive_tier_snippet_classification(
+        path,
+        tier_docs_root=company_docs_root,
+        owner_slug=slug,
+        scope=SnippetScope.COMPANY,
+        domain=COMPANY_SNIPPET_DOMAIN,
+    )
+
+
+def derive_person_snippet_classification(
+    path: Path,
+    *,
+    person_docs_root: Path,
+    person_slug: str | None = None,
+) -> tuple[SnippetClassification | None, str | None]:
+    """Derive a person snippet's classification from its path under ``people/<slug>/docs/``.
+
+    ``person_slug`` defaults to ``person_docs_root``'s parent directory name — the
+    ``<slug>`` in ``people/<slug>/docs``. Scope is ``SnippetScope.PERSON``, the tier
+    reserved for that person's own material. The literal ``person`` domain marks the
+    tier.
+    """
+    slug = person_slug or person_docs_root.parent.name
+    return _derive_tier_snippet_classification(
+        path,
+        tier_docs_root=person_docs_root,
+        owner_slug=slug,
+        scope=SnippetScope.PERSON,
+        domain=PERSON_SNIPPET_DOMAIN,
     )
 
 
@@ -531,6 +648,9 @@ def generated_domain_bundle_domain(ref: str, *, domains: Iterable[str]) -> str |
     return None
 
 
+_TIER_ADDRESS_DIRNAMES: frozenset[str] = frozenset({COMPANIES_ROOT.name, PEOPLE_DIR.name})
+
+
 def _validate_global_ref(ref: str, rel: str, domains: Iterable[str]) -> str | None:
     if rel.startswith("docs/"):
         return "nested_docs_root"
@@ -541,6 +661,18 @@ def _validate_global_ref(ref: str, rel: str, domains: Iterable[str]) -> str | No
     parts, has_empty = _split_parts(rel)
     if has_empty:
         return "empty_segment"
+    if parts[0] in _TIER_ADDRESS_DIRNAMES:
+        # A tier's published address: companies/<slug>/<taxonomy>/<rest> or
+        # people/<slug>/<taxonomy>/<rest> — the deployed directory layout, not
+        # the singular scope vocabulary a snippet id renders.
+        if len(parts) < 4:
+            return "missing_segments"
+        taxonomy = parts[2]
+        if taxonomy not in ALLOWED_TAXONOMIES:
+            return "invalid_taxonomy"
+        if not parts[-1].endswith(".md"):
+            return "missing_md_extension"
+        return None
     if len(parts) < 3:
         return "missing_segments"
     if parts[0] == "baseline":

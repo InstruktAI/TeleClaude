@@ -8,7 +8,7 @@ Used by recorded-commit publication to build indexes from its source snapshot.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Final, NotRequired, TypedDict, cast
 
@@ -27,10 +27,17 @@ from teleclaude.doc_body import PLANNED_BLOCK_RE, PLANNED_CHANGE_BLOCK_RE
 from teleclaude.paths import ConfigFileName
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
-from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
+from teleclaude.snippet_roots import (
+    is_excluded_snippet_path,
+    iter_snippet_roots,
+    iter_tier_snippet_roots,
+    snippet_files,
+)
 from teleclaude.snippet_validation import (
+    SnippetClassification,
     companion_slug,
     derive_company_snippet_classification,
+    derive_person_snippet_classification,
     derive_snippet_classification,
     is_companion,
     load_domains,
@@ -496,36 +503,47 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
     return {"project_root": root, "snippets_root": snippets_root_str, "snippets": snippets}
 
 
-_COMPANY_AUTHORED_CLASSIFICATION_KEYS = ("id", "type", "scope", "domain")
+_TIER_AUTHORED_CLASSIFICATION_KEYS = ("id", "type", "scope", "domain")
 
 
-def build_company_index_payload(company_dir: Path) -> IndexPayload:
-    """Build the index.yaml payload for a company docs tree (``companies/<slug>/docs``).
+def _build_tier_index_payload(
+    tier_docs_root: Path,
+    classify: Callable[[Path], tuple[SnippetClassification | None, str | None]],
+    *,
+    tier_label: str,
+) -> IndexPayload:
+    """Build the index.yaml payload for a tier docs tree (``companies/<slug>/docs`` or ``people/<slug>/docs``).
 
     Classification is path-derived; the only authored frontmatter is ``description``
     (``visibility`` optional). A snippet that authors ``id``/``type``/``scope``/``domain``
     violates the no-authored-classification contract and fails the build loudly.
+
+    Recorded rooted at ``tier_docs_root``, which is a publication snapshot when
+    building at platform-home publication time; ``reroot_index_document``
+    re-expresses the recorded roots at install time, so this function need not
+    know its own install-time destination.
     """
-    docs_root = company_dir / "docs"
-    if not docs_root.exists():
-        return {"project_root": str(docs_root), "snippets_root": str(docs_root), "snippets": []}
+    if not tier_docs_root.exists():
+        return {"project_root": str(tier_docs_root), "snippets_root": str(tier_docs_root), "snippets": []}
 
     snippets: list[SnippetEntry] = []
-    for file_path in _eligible_snippet_files(docs_root, include_baseline=False):
+    for file_path in _eligible_snippet_files(tier_docs_root, include_baseline=False):
         post = frontmatter.load(file_path)
         metadata: Mapping[str, object] = post.metadata or {}
-        authored = [key for key in _COMPANY_AUTHORED_CLASSIFICATION_KEYS if key in metadata]
+        authored = [key for key in _TIER_AUTHORED_CLASSIFICATION_KEYS if key in metadata]
         if authored:
             raise ValueError(
-                f"Company snippet {file_path} authors path-derived classification keys {authored}; "
-                "company snippets author only 'description'."
+                f"{tier_label} snippet {file_path} authors path-derived classification keys {authored}; "
+                f"{tier_label.lower()} snippets author only 'description'."
             )
         description = metadata.get("description")
         if not isinstance(description, str):
-            raise ValueError(f"Company snippet {file_path} is missing a 'description'.")
-        classification, reason = derive_company_snippet_classification(file_path, company_docs_root=docs_root)
+            raise ValueError(f"{tier_label} snippet {file_path} is missing a 'description'.")
+        classification, reason = classify(file_path)
         if classification is None:
-            raise ValueError(f"Cannot derive company snippet classification for {file_path}: {reason or 'unknown'}")
+            raise ValueError(
+                f"Cannot derive {tier_label.lower()} snippet classification for {file_path}: {reason or 'unknown'}"
+            )
         raw_visibility = metadata.get("visibility")
         visibility = (
             raw_visibility
@@ -540,37 +558,44 @@ def build_company_index_payload(company_dir: Path) -> IndexPayload:
                 "scope": classification.scope.value,
                 "domain": classification.domain,
                 "activation_trigger": None,
-                "path": str(file_path.relative_to(docs_root)),
+                "path": str(file_path.relative_to(tier_docs_root)),
                 "visibility": visibility,
             }
         )
 
     snippets.sort(key=lambda e: e["id"])
-    return {"project_root": str(docs_root), "snippets_root": str(docs_root), "snippets": snippets}
+    return {"project_root": str(tier_docs_root), "snippets_root": str(tier_docs_root), "snippets": snippets}
 
 
-def write_company_index(company_dir: Path) -> Path:
-    """Build and write the company docs index.yaml. Returns the target path."""
+def build_company_index_payload(company_dir: Path) -> IndexPayload:
+    """Build the index.yaml payload for a company docs tree (``companies/<slug>/docs``)."""
     docs_root = company_dir / "docs"
-    target = docs_root / "index.yaml"
-    payload = build_company_index_payload(company_dir)
-    if not payload["snippets"]:
-        if target.exists():
-            target.unlink()
-        return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=False), encoding="utf-8")
-    return target
+    return _build_tier_index_payload(
+        docs_root,
+        lambda file_path: derive_company_snippet_classification(file_path, company_docs_root=docs_root),
+        tier_label="Company",
+    )
 
 
-def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
-    """Build and write index.yaml for a snippet root. Returns the target path."""
-    target = snippets_root / "index.yaml"
-    # Third-party indexes are handled separately by write_third_party_index_yaml
-    if "third-party" in snippets_root.parts:
-        return target
-    payload = build_index_payload(project_root, snippets_root)
-    if not payload["snippets"]:
+def build_person_index_payload(person_dir: Path) -> IndexPayload:
+    """Build the index.yaml payload for a person docs tree (``people/<slug>/docs``)."""
+    docs_root = person_dir / "docs"
+    return _build_tier_index_payload(
+        docs_root,
+        lambda file_path: derive_person_snippet_classification(file_path, person_docs_root=docs_root),
+        tier_label="Person",
+    )
+
+
+def _write_index_content_gated(target: Path, payload: IndexPayload, *, delete_if_empty: bool) -> Path:
+    """Write an index.yaml only when its rendered content differs from what's on disk.
+
+    A tier catalog is kept even when empty (``delete_if_empty=False``): its
+    existence is what tells a reader the tier participates, and an absent file
+    is indistinguishable from an undeclared tier-shaped folder. Project and
+    global catalogs keep the existing delete-when-empty behavior.
+    """
+    if not payload["snippets"] and delete_if_empty:
         if target.exists():
             target.unlink()
         return target
@@ -582,6 +607,32 @@ def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
             return target
     target.write_text(rendered, encoding="utf-8")
     return target
+
+
+def write_company_index(company_dir: Path) -> Path:
+    """Build and write the company docs index.yaml. Returns the target path."""
+    docs_root = company_dir / "docs"
+    return _write_index_content_gated(
+        docs_root / "index.yaml", build_company_index_payload(company_dir), delete_if_empty=False
+    )
+
+
+def write_person_index(person_dir: Path) -> Path:
+    """Build and write the person docs index.yaml. Returns the target path."""
+    docs_root = person_dir / "docs"
+    return _write_index_content_gated(
+        docs_root / "index.yaml", build_person_index_payload(person_dir), delete_if_empty=False
+    )
+
+
+def write_index_yaml(project_root: Path, snippets_root: Path) -> Path:
+    """Build and write index.yaml for a snippet root. Returns the target path."""
+    target = snippets_root / "index.yaml"
+    # Third-party indexes are handled separately by write_third_party_index_yaml
+    if "third-party" in snippets_root.parts:
+        return target
+    payload = build_index_payload(project_root, snippets_root)
+    return _write_index_content_gated(target, payload, delete_if_empty=True)
 
 
 def build_all_indexes(project_root: Path) -> list[Path]:
@@ -598,4 +649,19 @@ def build_all_indexes(project_root: Path) -> list[Path]:
     if third_party_index:
         written.append(third_party_index)
 
+    return written
+
+
+def build_tier_indexes(platform_home_snapshot: Path) -> list[Path]:
+    """Build index.yaml for every declared, participating company and person tier.
+
+    Invoked only from the platform-home publication branch, against the
+    materialized committed snapshot — never the ambient home working tree. Each
+    written catalog records paths against the snapshot; ``reroot_index_document``
+    re-expresses them at whichever location installs or deploys the tier's
+    material, since the snapshot itself is removed once publication ends.
+    """
+    written: list[Path] = []
+    for root, kind in iter_tier_snippet_roots(platform_home_snapshot):
+        written.append(write_company_index(root) if kind is ConfigKind.COMPANY else write_person_index(root))
     return written

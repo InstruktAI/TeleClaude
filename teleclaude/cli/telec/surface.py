@@ -480,7 +480,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
-                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <domain>] [--scope <{F.SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
+                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <domain>] [--scope <{F.SCOPE_VALUES}>] [--project <slug>] [--person <slug>] [--company <slug>] [--target <slug>]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_DOCS_BASELINE_ONLY,
@@ -489,6 +489,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     F.FLAG_DOCS_DOMAINS,
                     F.FLAG_DOCS_SCOPE,
                     F.FLAG_DOCS_PROJECT,
+                    F.FLAG_DOCS_PERSON,
+                    F.FLAG_DOCS_COMPANY,
                     F.FLAG_DOCS_TARGET,
                 ],
                 notes=[
@@ -498,12 +500,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "get": CommandDef(
                 desc="Fetch full snippet content by ID (phase 2)",
-                args=f"<id> [id...] [--scope <{F.SCOPE_VALUES}>] [--project <slug>] [--target <slug>]",
+                args=f"<id> [id...] [--scope <{F.SCOPE_VALUES}>] [--project <slug>] [--person <slug>] [--company <slug>] [--target <slug>]",
                 flags=[
                     F.FLAG_HELP,
                     F.FLAG_DOCS_GET_CLOSURE,
                     F.FLAG_DOCS_SCOPE,
                     F.FLAG_DOCS_PROJECT,
+                    F.FLAG_DOCS_PERSON,
+                    F.FLAG_DOCS_COMPANY,
                     F.FLAG_DOCS_GET_TARGET,
                 ],
                 runtime_notes=[

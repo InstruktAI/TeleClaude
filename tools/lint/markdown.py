@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from teleclaude.docs_publishers import DocsPublisherResolutionError, publisher_resolution
+from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.resource_validation import _error, clear_errors, get_errors, validate_all_snippets
 
 # Directories to scan for markdown files
@@ -181,12 +182,25 @@ def _validate_files(file_paths: list[Path], repo_root: Path) -> list[str]:
     return all_errors
 
 
+def _is_platform_home(repo_root: Path) -> bool:
+    """Return whether repo_root is the machine's platform home."""
+    return repo_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
+
+
 def _validate_snippets(repo_root: Path, *, paths: list[Path] | None = None) -> list[str]:
-    """Run the snippet reader over publisher sources; it needs no documentation lease."""
+    """Run the snippet reader over publisher sources; it needs no documentation lease.
+
+    The platform home's own tier roots (companies/people) join the walk only
+    when this run's repository root is the home itself — the home's commit
+    gate is this validator's guardrails leg. Every other repository's run
+    passes no tier home, so a malformed or uncommitted home tier file never
+    reaches an unrelated repository's run.
+    """
     clear_errors()
+    tier_home = repo_root if _is_platform_home(repo_root) else None
     try:
         with publisher_resolution(repo_root):
-            validate_all_snippets(repo_root, paths=paths)
+            validate_all_snippets(repo_root, paths=paths, tier_home=tier_home)
     except DocsPublisherResolutionError as exc:
         _error("snippet_global_source_resolution_failed", path=str(repo_root), reason=str(exc))
     return [_format_validation_finding(finding) for finding in get_errors()]

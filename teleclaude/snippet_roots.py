@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from teleclaude.capabilities import PermissionSurface, resolve_tier_permissions
+from teleclaude.config.loader import list_company_config_paths
+from teleclaude.config.schema import ConfigKind
+from teleclaude.paths import ConfigFileName
+
 
 def is_excluded_snippet_path(path: Path, snippets_root: Path) -> bool:
     """Skip support fragments and directories whose name starts with ``_``."""
@@ -47,4 +52,28 @@ def iter_snippet_roots(project_root: Path) -> list[Path]:
             include_baseline = False
         if snippet_files(candidate, include_baseline=include_baseline):
             roots.append(candidate)
+    return roots
+
+
+def iter_tier_snippet_roots(home: Path) -> list[tuple[Path, ConfigKind]]:
+    """Enumerate declared, documentation-participating company and person tiers.
+
+    ``home`` is the platform home explicitly — production callers pass the
+    runtime home, so tier roots are never bound at import. Discovers candidates
+    by the presence of a tier declaration (a ``teleclaude.yml`` naming the tier)
+    under ``home``, then filters by the published participation query — an
+    undeclared tier-shaped folder is skipped rather than raising, and a declared
+    tier that does not participate contributes no root.
+    """
+    roots: list[tuple[Path, ConfigKind]] = []
+    for config_path in list_company_config_paths(home / "companies"):
+        root = config_path.parent
+        if resolve_tier_permissions(root).participates_in(PermissionSurface.DOCUMENTATION):
+            roots.append((root, ConfigKind.COMPANY))
+    people_root = home / "people"
+    if people_root.exists():
+        for config_path in sorted(people_root.glob(f"*/{ConfigFileName.OVERLAY}")):
+            root = config_path.parent
+            if resolve_tier_permissions(root).participates_in(PermissionSurface.DOCUMENTATION):
+                roots.append((root, ConfigKind.PERSON))
     return roots
