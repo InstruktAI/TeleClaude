@@ -28,10 +28,20 @@ guarantees:
    unlink the tmp file before re-raising. The original target file is left
    untouched.
 
+<!-- planned-change:config-first-version-migrations -->
 3. **Minimal serialised form.** The project overlay is serialised to JSON-
    compatible primitives with default-valued fields excluded, so the written
    file shows only operator-set values — no noise from default-factory
-   blocks like `deployment: { channel: "alpha", pinned_minor: "" }`.
+   blocks.
+<!-- change:config-first-version-migrations -->
+3. **Minimal serialised form.** The project overlay is serialised to JSON-
+   compatible primitives with default-valued fields excluded, so the written
+   file shows only operator-set values — no noise from default-factory
+   blocks. The capability blocks are the exception: `code`, `docs` and
+   `agents` are always written with their `enabled` value, because a
+   capability is claimed or declined only by an explicit value
+   (`project/spec/feature/config/project-capability-manifest`).
+<!-- /planned-change:config-first-version-migrations -->
 
 The helper is sync, takes a path and a validated project overlay instance,
 and returns on success. There is no read-modify-write helper at this
@@ -68,18 +78,30 @@ And the original exception is re-raised unchanged
 And the target path is unchanged from its prior state
 ```
 
+<!-- planned-change:config-first-version-migrations -->
 #### UC-CFG-WRITE-3: Defaults are stripped from the on-disk file
 
 ```
-Given a project overlay with default deployment settings (channel "alpha", empty pinned_minor)
-And the operator set business.domains["primary"] = "instrukt.ai" but touched nothing else
+Given a project overlay whose only value differing from its default is the project name the operator set
 When the project-config writer runs
-Then the serialization with defaults excluded omits the entire `deployment` block
-And omits any other block whose values match their defaults
-And the resulting YAML contains only the business block (and any other non-default fields)
+Then the serialization with defaults excluded omits every block whose values match their defaults
+And the resulting YAML contains only the project name (and any other non-default fields)
 And re-loading the file via the project overlay loader rebuilds the same effective overlay
   because absent blocks reconstruct from default values
 ```
+<!-- change:config-first-version-migrations -->
+#### UC-CFG-WRITE-3: Defaults are stripped from the on-disk file, capability declarations are kept
+
+```
+Given a project overlay whose code capability is disabled and whose docs and agents capabilities are enabled
+And whose only other value differing from its default is the project name the operator set
+When the project-config writer runs
+Then the written file omits every other block whose values match their defaults
+And it declares each of the code, docs, and agents capabilities with its enabled value
+And re-loading the file via the project overlay loader rebuilds the same effective overlay
+```
+<!-- /planned-change:config-first-version-migrations -->
+
 
 #### UC-CFG-WRITE-4: JSON-mode dump produces YAML-safe primitives
 

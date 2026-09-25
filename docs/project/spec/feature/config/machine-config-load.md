@@ -34,6 +34,14 @@ It does not make the machine file an overlay tier or a context root, and a
 machine configuration without the declaration loads unchanged.
 <!-- /planned:align-config-cli-ownership -->
 
+<!-- planned:config-first-version-migrations -->
+Every stored machine configuration comes to declare `kind: computer`.
+Installation creates a new machine configuration declared, and a stored one
+without the declaration gains it through the configuration migration list
+(`project/spec/feature/config/document-migration`). A load supplies the absent
+declaration in memory and writes nothing.
+<!-- /planned:config-first-version-migrations -->
+
 ## Canonical fields
 
 ### Use cases
@@ -53,6 +61,18 @@ Then the load fails naming the file and the declared kind
 ```
 <!-- /planned:align-config-cli-ownership -->
 
+<!-- planned:config-first-version-migrations -->
+#### UC-CFG-LOAD-15: A stored machine configuration gains its declared kind
+
+```gherkin
+Given a machine configuration stored without a kind declaration
+When a configuration migration run stores it
+Then it declares the computer kind
+And its existing operator values are preserved
+And it resolves the same runtime configuration as before the run
+```
+<!-- /planned:config-first-version-migrations -->
+
 #### UC-CFG-LOAD-1: Default config.yml path is the machine home
 
 ```
@@ -67,6 +87,7 @@ And the module-level `config_path` global is set to the absolute path
 
 #### UC-CFG-LOAD-1b: The bundled blueprint seeds and backfills the machine config
 
+<!-- planned-change:config-first-version-migrations -->
 #### UC-CFG-LOAD-10: Installation produces a machine configuration from the schema
 
 ```
@@ -76,6 +97,19 @@ Then the machine configuration is produced from the configuration schema
 And each field declared sensitive is written as its derived environment reference
 And no field's resolved secret value is written
 ```
+<!-- change:config-first-version-migrations -->
+#### UC-CFG-LOAD-10: Installation produces a machine configuration from the schema
+
+```
+Given a host carrying no machine configuration at <RuntimeConfig.home>/config.yml
+When installation runs
+Then the machine configuration is produced from the configuration schema
+And it declares the computer kind
+And each field declared sensitive is written as its derived environment reference
+And no field's resolved secret value is written
+```
+<!-- /planned-change:config-first-version-migrations -->
+
 
 <!-- planned-change:config-migration-chain -->
 #### UC-CFG-LOAD-11: Installation leaves an existing machine configuration alone
