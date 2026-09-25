@@ -286,11 +286,14 @@ the client sends any request:
   that document is never trusted; a caller outside any session resolves from its
   terminal login, and the TUI from the identity it was launched with,
 - a session's principal resolves through the principal-resolution capability, and
-  a gate grants a session no role its principal does not resolve to,
-- a `telec` command is cleared against its own verb band
-  (`project/design/cli-authorization-matrix`) in the process that runs it, before
-  its first request; the TUI clears each action it performs against the verb band
-  of the command that action performs,
+  its roles are the ones stamped on its record when it started: its system role,
+  and the person role it was started under, or the role the people registry holds
+  for its principal when the record stamps none; a running session keeps those
+  roles, and a changed person role applies to sessions started after the change,
+- every request a `telec` command sends to the daemon is cleared as that command,
+  against its verb band (`project/design/cli-authorization-matrix`), once, before
+  the first request leaves the process that runs it; the TUI clears each action
+  against the verb of the command that action performs,
 - a caller that resolves to no person and no system principal is refused before
   any request is sent; a role outside the band is refused with the not-permitted
   failure naming the role and the verb,
