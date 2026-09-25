@@ -143,9 +143,8 @@ When session scoping resolves paths for the session (checkpoint
   attribution, todo scaffolding)
 Then the deepseek extractor returns write/edit and shell-mutator paths
   from the normalized tool timeline
-And transcript rendering (parse_session_transcript through the
-  TRANSCRIPT_READERS record) accepts the deepseek agent without
-  an unknown-agent fallback
+And rendering the session's transcript produces the deepseek
+  conversation rather than an unknown-agent fallback
 ```
 
 ### Commit identity
