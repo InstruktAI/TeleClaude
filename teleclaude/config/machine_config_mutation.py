@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 from io import StringIO
 
-from ruamel.yaml import YAML
-
 from teleclaude.agent_registry import AgentName
 from teleclaude.config import DEFAULT_CONFIG, TeleclaudeConfig, build_config_from_raw, config_path
 from teleclaude.config._file_io import FileTransaction, file_transaction
@@ -19,6 +17,7 @@ from teleclaude.config._file_migrations import (
     partition_legacy_discord_provider_ids,
 )
 from teleclaude.config._models import ReleaseChannel
+from teleclaude.config._yaml import round_trip_yaml
 
 _DOCUMENT_MAPPING_ERROR = "Machine configuration must be a YAML mapping."
 _MISSING_CONFIG_ERROR = "Machine configuration does not exist."
@@ -36,17 +35,6 @@ _AGENTS = "agents"
 _DEFAULT = "default"
 _ENABLED = "enabled"
 _RETIRED_PROVIDER_FIELD_ERROR = "Retired Discord provider identifiers are not valid machine-config input."
-
-
-def _round_trip_yaml() -> YAML:
-    """Return a fresh quote-preserving round-trip parser for one load or dump.
-
-    A ruamel parser holds per-document scanner state, so one instance shared by
-    concurrent config loads corrupts each other's parse.
-    """
-    parser = YAML()
-    parser.preserve_quotes = True
-    return parser
 
 
 class MachineConfigOperation(StrEnum):
@@ -169,7 +157,7 @@ def _read_mapping(transaction: FileTransaction) -> dict[object, object]:
     content = transaction.read_text()
     if not content:
         raise FileNotFoundError(_MISSING_CONFIG_ERROR)
-    document = _round_trip_yaml().load(content)
+    document = round_trip_yaml().load(content)
     if not isinstance(document, dict):
         raise ValueError(_DOCUMENT_MAPPING_ERROR)
     return document
@@ -178,7 +166,7 @@ def _read_mapping(transaction: FileTransaction) -> dict[object, object]:
 def _write_mapping(transaction: FileTransaction, document: Mapping[object, object]) -> None:
     """Serialize one validated document through the active atomic transaction."""
     buffer = StringIO()
-    _round_trip_yaml().dump(dict(document), buffer)
+    round_trip_yaml().dump(dict(document), buffer)
     transaction.replace_text(buffer.getvalue())
 
 

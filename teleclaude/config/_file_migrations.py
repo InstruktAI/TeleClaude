@@ -9,9 +9,8 @@ from io import StringIO
 from pathlib import Path
 from typing import Final
 
-from ruamel.yaml import YAML
-
 from teleclaude.config._file_io import FileTransaction, file_transaction
+from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.schema import PersonEntry
 from teleclaude.paths import INVITATIONS_PATH, ConfigFileName
 
@@ -60,17 +59,6 @@ _LEGACY_DISCORD_FIELD_NAMES: Final = frozenset(
         "general_channel_id",
     }
 )
-
-
-def _round_trip_yaml() -> YAML:
-    """Return a fresh quote-preserving round-trip parser for one load or dump.
-
-    A ruamel parser holds per-document scanner state, so one instance shared by
-    concurrent config loads corrupts each other's parse.
-    """
-    parser = YAML()
-    parser.preserve_quotes = True
-    return parser
 
 
 @dataclass(frozen=True)
@@ -315,7 +303,7 @@ def _load_mapping(content: str) -> dict[object, object]:
 
 
 def _load_mapping_or_none(content: str) -> dict[object, object] | None:
-    document = _round_trip_yaml().load(content) or {}
+    document = round_trip_yaml().load(content) or {}
     if not isinstance(document, dict):
         return None
     return document
@@ -323,5 +311,5 @@ def _load_mapping_or_none(content: str) -> dict[object, object] | None:
 
 def _write_mapping(transaction: FileTransaction, document: object) -> None:
     buffer = StringIO()
-    _round_trip_yaml().dump(document, buffer)
+    round_trip_yaml().dump(document, buffer)
     transaction.replace_text(buffer.getvalue())

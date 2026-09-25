@@ -7,10 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from ruamel.yaml import YAML
-
 from teleclaude.config._environment import expand_environment_references, read_environment_file
 from teleclaude.config._file_io import file_transaction
+from teleclaude.config._yaml import round_trip_yaml
 from teleclaude.config.declaration import render_declared_config
 from teleclaude.config.person_secrets import (
     clear_person_mcp_secret,
@@ -26,17 +25,6 @@ from teleclaude.slug import validate_slug
 _CANONICAL_DISCORD_TOKEN_ENV = "DISCORD_TOKEN"
 _LEGACY_DISCORD_TOKEN_ENV = "DISCORD_BOT_TOKEN"
 _TOKEN_REFERENCE = f"${{{_CANONICAL_DISCORD_TOKEN_ENV}}}"
-
-
-def _round_trip_yaml() -> YAML:
-    """Return a fresh quote-preserving round-trip parser for one load or dump.
-
-    A ruamel parser holds per-document scanner state, so one instance shared by
-    concurrent config loads corrupts each other's parse.
-    """
-    parser = YAML()
-    parser.preserve_quotes = True
-    return parser
 
 
 @dataclass(frozen=True)
@@ -98,7 +86,7 @@ def configure_person_discord_voice_bot(
 
 
 def _load_mapping(content: str, path: Path) -> JsonDict:
-    parsed = _round_trip_yaml().load(content) if content else {}
+    parsed = round_trip_yaml().load(content) if content else {}
     if not isinstance(parsed, dict):
         raise ValueError(f"Person configuration must be a mapping: {path}")
     return cast(JsonDict, parsed)
