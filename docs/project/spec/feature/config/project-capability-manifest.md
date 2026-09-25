@@ -528,7 +528,8 @@ And after that value changes in the .env, the next git invocation decides from t
   validation elsewhere.
 - The first read of a declaration after it or its referenced environment file
   changes, or after a configuration migration run, pays one start of the installation's interpreter; every later
-  read is served without one.
+  read is served without one. A shell that cannot compare sub-second modification
+  times keeps no answer, and on it every read resolves through the runtime.
 <!-- /planned-change:config-first-version-migrations -->
 
 
