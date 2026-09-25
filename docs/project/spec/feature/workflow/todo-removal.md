@@ -13,7 +13,11 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:fix-tui-closed-session-reflection -->
 `telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/artifact/dependency reads hide it immediately, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive plans abandonment of every pending documentation carrier, captures the exact reversible material with the retained Todo, and refuses the transition if any affected source cannot be resolved, written, or committed safely. A successful removal therefore makes the tombstone and its abandoned documentation state durable together; failure names the slug, source path, line, and reason without reporting removal success.
+<!-- change:fix-tui-closed-session-reflection -->
+`telec todo remove <slug>` soft-removes the live Todo entry: the entry becomes `status=removed`, default todo-list/state/dependency reads hide it immediately while its retained artifacts stay readable until purge, and live dependency edges are scrubbed in both directions. Before that mutation, the shared soft-remove primitive plans abandonment of every pending documentation carrier, captures the exact reversible material with the retained Todo, and refuses the transition if any affected source cannot be resolved, written, or committed safely. A successful removal therefore makes the tombstone and its abandoned documentation state durable together; failure names the slug, source path, line, and reason without reporting removal success.
+<!-- /planned-change:fix-tui-closed-session-reflection -->
 
 The durable entry, lifecycle state, current artifacts, and every artifact version-history record remain retained by the Todo's durable identity for the retention window. For any non-draft Todo, successful removal still releases physical working resources immediately — the git worktree at `trees/<slug>/`, the local feature branch, the matching remote branch, the archived `workspace/<slug>/` directory, and binary outputs under `workspace/<slug>/art|html/` (these are archived before deletion). The removal is dispatched as a receipt-backed durable operation, and the CLI polls the receipt until the operation reports `completed` or `failed`. Structured removal refusals are persisted on the operation so the CLI can render the affected snippet paths without recomputing state.
 
@@ -226,7 +230,11 @@ And automation-only marker cleanup creates no snippet-review obligation
 
 - A holder is not removable: it sits outside the todo lifecycle, and removal targets todos only. Children are removed individually, no cascade runs in either direction, and a holder whose children have all been retired simply stops rendering while its row and frozen artifacts remain as evidence of the split.
 
+<!-- planned-change:fix-tui-closed-session-reflection -->
 - Artifact reads addressed to a removed slug return empty content, indistinguishable from an absent artifact; the removed-state refusal applies to artifact writes. The live-work guard reads sessions and operations from the daemon store, so a removal issued while the daemon store is unavailable fails rather than proceeding unguarded.
+<!-- change:fix-tui-closed-session-reflection -->
+- Artifact reads addressed to a slug that no live Todo owns resolve to that slug's most recently removed retained entry and return its retained content until purge; a view that already holds a retained entry's durable identity reads that entry directly. Lifecycle checks that decide what a live Todo holds consider live entries only; a successor Todo that reuses the slug starts with none of a removed entry's artifacts. The removed-state refusal applies to artifact writes. The live-work guard reads sessions and operations from the daemon store, so a removal issued while the daemon store is unavailable fails rather than proceeding unguarded.
+<!-- /planned-change:fix-tui-closed-session-reflection -->
 
 - The remote branch delete uses a short timeout and is non-fatal — a slow or unreachable origin will not block the operation from reporting completed, but may leave a stale remote branch that must be cleaned up out of band.
 - The receipt-backed dispatch means the removal returns before the cascade has executed; callers that need a synchronous outcome must poll the receipt (the CLI does this automatically).
