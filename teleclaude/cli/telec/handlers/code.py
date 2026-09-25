@@ -30,6 +30,7 @@ from teleclaude.cli.telec.handlers._code_git_state import (
     working_tree_snapshot,
 )
 from teleclaude.cli.telec.handlers._code_invocation import resolve_invocation_state
+from teleclaude.cli.telec.handlers._code_maintenance import handle_code_maintenance
 from teleclaude.cli.telec.handlers._code_post_commit import handle_code_post_commit
 from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merge
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
@@ -109,6 +110,7 @@ class CodeSubcommand(StrEnum):
     POST_MERGE = "post-merge"
     PRE_COMMIT = "pre-commit"
     PUBLISH = "publish"
+    MAINTENANCE = "maintenance"
 
 
 _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
@@ -119,6 +121,7 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.INSTALL,
         CodeSubcommand.BLUEPRINT,
         CodeSubcommand.OWNERS,
+        CodeSubcommand.MAINTENANCE,
     }
 )
 _COMMIT_SUBCOMMANDS = frozenset({CodeSubcommand.COMMIT, CodeSubcommand.ADD})
@@ -166,6 +169,8 @@ def handle_code(args: list[str]) -> None:
         handle_code_blueprint(rest)
     elif sub is CodeSubcommand.OWNERS:
         handle_code_owners(rest)
+    elif sub is CodeSubcommand.MAINTENANCE:
+        handle_code_maintenance(rest)
 
 
 def _require_code_capability(command: CodeSubcommand) -> None:

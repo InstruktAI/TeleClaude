@@ -34,8 +34,9 @@ _INTEGRATOR_CANDIDATE_SETTLEDNESS_INTENT = (
     "If a candidate is ready, continue the drain; otherwise follow the integration procedure's queue-empty outcome."
 )
 _INTEGRATOR_QUEUE_WATCH_INTENT = (
-    "Recheck the integration queue from current source truth. If a candidate is ready, cancel this queue watch "
-    "and continue the drain; otherwise remain parked under the integration procedure."
+    "Recheck the integration queue and outstanding canonical-main maintenance from current source truth. "
+    "Judge completed maintenance and recover failures within the integration lane; if a candidate is ready, "
+    "continue the drain, otherwise remain parked."
 )
 _DEFAULT_GOAL_DRIVE_INTENT = (
     "Reassess whether the current work remains aligned with the goal. "

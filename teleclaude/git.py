@@ -18,6 +18,8 @@ from pathlib import Path
 
 from teleclaude.paths import BIN_DIR, DEFAULT_BIN_DIR
 
+_GIT_LOCAL_ENV_VARS_ARGUMENT = "--local-env-vars"
+
 
 def _wrapper_dirs() -> set[Path]:
     """Return all git wrapper directories that Python git automation must bypass."""
@@ -157,4 +159,13 @@ def no_autostash_env() -> dict[str, str]:
     env[f"GIT_CONFIG_KEY_{count + 1}"] = "merge.autoStash"
     env[f"GIT_CONFIG_VALUE_{count + 1}"] = "false"
     env["GIT_CONFIG_COUNT"] = str(count + 2)
+    return env
+
+
+def hook_free_environment(repo_root: str | Path) -> dict[str, str]:
+    """Return an environment without Git's repository-local hook variables."""
+    env = os.environ.copy()  # fmt: skip  # guard: direct-env-read - allowed: child-process environment construction
+    names = Repo(str(Path(repo_root).resolve())).git.rev_parse(_GIT_LOCAL_ENV_VARS_ARGUMENT).splitlines()
+    for name in names:
+        env.pop(name, None)
     return env

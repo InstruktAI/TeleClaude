@@ -23,11 +23,12 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import ENV_ENABLE, INTEGRATOR_GITOP_ENV
 from teleclaude.core.blueprint._paths import refresh_lock_path
-from teleclaude.core.blueprint.generate import regenerate_blueprint
+from teleclaude.core.blueprint.generate import blueprint_generation_lock, regenerate_blueprint
 from teleclaude.core.blueprint.post_merge import _rev_parse, resolve_post_merge_root
 from teleclaude.project_root import is_slug_worktree, resolve_invocation_cwd, resolve_workspace_root
 
 logger = get_logger(__name__)
+_ORIGIN_MAIN_REFERENCE = "origin/main"
 
 
 def _dispatched_from_slug_worktree() -> bool:
@@ -99,23 +100,15 @@ def main() -> int:
     process runs.
     """
     repo_root = resolve_post_merge_root()
-    lock_path = refresh_lock_path(repo_root)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    fh = lock_path.open("a+")
     try:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        fh.close()
-        return 0
-    try:
-        main_sha = _rev_parse(repo_root, "origin/main")
-        if main_sha is not None:
-            regenerate_blueprint(repo_root, baseline_sha=main_sha)
+        with blueprint_generation_lock(repo_root, wait=False) as acquired:
+            if not acquired:
+                return 0
+            main_sha = _rev_parse(repo_root, _ORIGIN_MAIN_REFERENCE)
+            if main_sha is not None:
+                regenerate_blueprint(repo_root, baseline_sha=main_sha)
     except Exception:
         logger.warning("blueprint refresh child failed repo_root=%s", repo_root, exc_info=True)
-    finally:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-        fh.close()
     return 0
 
 

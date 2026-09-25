@@ -486,6 +486,7 @@ class CheckpointConfig(ClosedModel):
 
     actions: dict[str, CheckpointActionConfig] = {}
     maintenance: dict[str, CheckpointMaintenanceConfig] = {}
+    integrator_judgment: list[str] = []
     code: CheckpointCodeConfig | None = None
     bindings: list[CheckpointBindingConfig] = []
     docs: CheckpointExtraActionsConfig | None = None
@@ -531,6 +532,17 @@ class CheckpointConfig(ClosedModel):
                 f"declared in both actions and maintenance: {', '.join(sorted(duplicate_ids))}"
             )
         valid_ids = action_ids | maintenance_ids
+        main_only_action_ids = {action_id for action_id, action in CHECKPOINT_BASE_ACTIONS.items() if action.main_only}
+        main_only_action_ids.difference_update(self.actions)
+        main_only_action_ids.update(action_id for action_id, action in self.actions.items() if action.main_only)
+        invalid_integrator_ids = [
+            action_id for action_id in self.integrator_judgment if action_id not in main_only_action_ids
+        ]
+        if invalid_integrator_ids:
+            raise ValueError(
+                "checkpoint.integrator_judgment references unknown or non-main-only checkpoint action id(s): "
+                f"{', '.join(invalid_integrator_ids)}"
+            )
 
         def _check(action_ids: list[str], where: str) -> None:
             if not action_ids:

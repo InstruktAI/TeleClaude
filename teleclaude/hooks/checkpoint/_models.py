@@ -29,6 +29,7 @@ class CheckpointActionReason(StrEnum):
     ACTION_REQUIRED = "action_required"
     EVIDENCE_OBSERVED = "evidence_observed"
     OFF_MAIN_INELIGIBLE = "off_main_ineligible"
+    INTEGRATOR_OWNED = "integrator_owned"
 
 
 @dataclass(frozen=True)

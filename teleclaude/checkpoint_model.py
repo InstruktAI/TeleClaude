@@ -8,7 +8,7 @@ merged declaration only; no consumer recreates path or capability policy.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -23,10 +23,12 @@ from teleclaude.constants import (
     CHECKPOINT_BASE_DOCS_BINDING,
     CHECKPOINT_BASE_MAINTENANCE,
     CHECKPOINT_HOME_DOCS_BINDING,
+    LOG_CHECK_ACTION_ID,
     CheckpointAction,
     CheckpointBinding,
     CheckpointModel,
     CheckpointScope,
+    JudgmentOwner,
     MaintenanceAction,
     _compile_glob,
 )
@@ -158,6 +160,7 @@ def _fill_slug(action: CheckpointAction, project_slug: str) -> CheckpointAction:
         off_main_eligible=action.off_main_eligible,
         precedence=action.precedence,
         evidence_must_follow_last_mutation=action.evidence_must_follow_last_mutation,
+        judged_by=action.judged_by,
     )
 
 
@@ -250,11 +253,14 @@ def merge_overlay(
 
         bindings = _append_conventional_extras(bindings, overlay)
 
+        for action_id in getattr(overlay, "integrator_judgment", None) or []:
+            actions[action_id] = replace(actions[action_id], judged_by=JudgmentOwner.INTEGRATOR)
+
         code_cfg = getattr(overlay, "code", None)
         if capabilities.code and code_cfg is not None:
             code_scope = _scope_from_cfg(code_cfg.scope)
             if code_scope.include:
-                bindings.append(CheckpointBinding(scope=code_scope, actions=("test", "log-check")))
+                bindings.append(CheckpointBinding(scope=code_scope, actions=("test", LOG_CHECK_ACTION_ID)))
 
         for binding_cfg in getattr(overlay, "bindings", None) or []:
             bindings.append(

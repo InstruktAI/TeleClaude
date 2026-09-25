@@ -6,8 +6,9 @@ import sys
 
 from teleclaude.core.blueprint.post_merge import resolve_post_merge_root, run_post_merge_regeneration
 from teleclaude.core.integration.post_commit_maintenance import (
+    record_activation,
     resolve_post_merge_activation_range,
-    run_post_commit_maintenance,
+    start_drain_contender,
 )
 from teleclaude.project_root import resolve_git_root, resolve_invocation_cwd, resolve_project_root
 
@@ -24,5 +25,5 @@ def handle_code_post_merge(args: list[str]) -> None:
     canonical_root = resolve_project_root(effective_root)
     activation_range = resolve_post_merge_activation_range(effective_root)
     run_post_merge_regeneration(effective_root)
-    maintenance_root = effective_root if effective_root != canonical_root else canonical_root
-    run_post_commit_maintenance(maintenance_root, activation_range)
+    if record_activation(effective_root, activation_range):
+        start_drain_contender(canonical_root)
