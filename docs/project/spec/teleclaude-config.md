@@ -501,7 +501,7 @@ file. `make install` writes opted-in agents' `enabled`
 The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
 Installation produces the runtime file from the configuration schema when the host
 carries none, writing each sensitive field as its derived environment reference. A host
-that already carries a runtime file is never regenerated; installation only applies the
+that already carries a runtime file is never regenerated; installation applies the
 configuration migrations the file has not yet passed
 (`project/spec/feature/config/document-migration`). The TUI, daemon, and installer
 read and write only the runtime

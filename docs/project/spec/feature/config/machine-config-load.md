@@ -93,7 +93,7 @@ And no field is added, removed, or re-derived from the schema
 Given a host already carrying a machine configuration at <RuntimeConfig.home>/config.yml
 When installation runs
 Then no setting in that configuration is re-derived from the schema or replaced by a generated value
-And the only change installation makes to it is applying the configuration migrations it has not yet passed
+And the configuration migrations it has not yet passed are applied to it
 ```
 <!-- /planned-change:config-migration-chain -->
 
