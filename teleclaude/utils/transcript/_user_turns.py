@@ -34,14 +34,14 @@ _CLAUDE_TEXT_ARTIFACT_RE = re.compile(
 _DEEPSEEK_TEXT_ARTIFACT_RE = re.compile(r"^\s*<system-reminder\b[^>]*>.*</system-reminder\s*>\s*$", re.DOTALL)
 _RUNTIME_CONTEXT_PREFIXES = ("Current runtime context.", "This is an automatically generated checkpoint")
 _CLAUDE_HOOK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
-_NON_CODEX_RUNTIME_SPANS = (
+_INJECTED_CONTEXT_SPANS = (
     re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL),
     re.compile(r"<hook_context>.*?</hook_context>", re.DOTALL),
     re.compile(r"<command-message>.*?</command-message>", re.DOTALL),
     re.compile(r"<command-name>.*?</command-name>", re.DOTALL),
     re.compile(r"<command-args>.*?</command-args>", re.DOTALL),
 )
-_NON_CODEX_COMPATIBILITY_SPANS = (
+_COMPATIBILITY_SPANS = (
     re.compile(r"<environment_context>.*?</environment_context>", re.DOTALL),
     re.compile(
         r"<codex_internal_context\b(?=[^>]*\ssource\s*=\s*[\"']goal[\"'])[^>]*>.*?</codex_internal_context\s*>",
@@ -64,6 +64,7 @@ _CLAUDE_PERMISSION_MODE_FIELD = "permissionMode"
 _CLAUDE_BYPASS_PERMISSIONS = "bypassPermissions"
 _MESSAGE_CONTENT_FIELD = "content"
 _AUTHORED_TEXT_SEPARATOR = "\n\n"
+_EMPTY_TEXT = ""
 _CLAUDE_ENTRY_ID_FIELD = "uuid"
 _CLAUDE_PARENT_ENTRY_ID_FIELD = "parentUuid"
 _MESSAGE_ROLE_FIELD = "role"
@@ -328,14 +329,6 @@ def resolve_claude_turn_commitment(
     return ClaudeTurnCommitmentResolver(entries).resolve(candidate_entry_id)
 
 
-def _agent_value(agent_name: AgentName | str | None) -> str | None:
-    if isinstance(agent_name, AgentName):
-        return agent_name.value
-    if isinstance(agent_name, str):
-        return agent_name.lower()
-    return None
-
-
 def _is_platform_control_text(text: str) -> bool:
     """Recognize only one complete registered platform-control envelope."""
     segments = cut_transcript_entry(text, is_user_entry=True)
@@ -478,7 +471,7 @@ def _position_origin(
         return UserContentOrigin.CANDIDATE_HUMAN
     if recognition is not None and _codex_legacy_recognition_is_valid(text, recognition):
         return UserContentOrigin.RUNTIME
-    if agent is not None and _TRANSCRIPT_TEXT_VOCABULARY[agent](text):
+    if agent is not None and RUNTIME_USER_VOCABULARY[agent].position_is_runtime(text):
         return UserContentOrigin.RUNTIME
     return UserContentOrigin.CANDIDATE_HUMAN
 
@@ -497,7 +490,7 @@ def classify_user_content_blocks(
 
     agent = _runtime_agent(agent_name)
     is_codex = agent is AgentName.CODEX
-    entry_is_runtime = agent is not None and _ENTRY_MARKERS[agent](entry)
+    entry_is_runtime = agent is not None and RUNTIME_USER_VOCABULARY[agent].entry_is_runtime(entry)
     content = message.get(_MESSAGE_CONTENT_FIELD)
     if isinstance(content, str):
         text = content if content.strip() else None
@@ -532,13 +525,13 @@ def is_runtime_artifact_text(agent_name: AgentName | str | None, text: str) -> b
     if _platform_text_origin(text) is not None:
         return True
     agent = _runtime_agent(agent_name)
-    return agent is not None and _PROMPT_TEXT_VOCABULARY[agent](text)
+    return agent is not None and RUNTIME_USER_VOCABULARY[agent].prompt_is_runtime(text)
 
 
 def is_runtime_artifact_entry(entry: Mapping[str, object], agent_name: AgentName | str | None) -> bool:
     """Return whether the runtime or platform injected every text position of an entry."""
     agent = _runtime_agent(agent_name)
-    if agent is not None and _ENTRY_MARKERS[agent](entry):
+    if agent is not None and RUNTIME_USER_VOCABULARY[agent].entry_is_runtime(entry):
         return True
     textual = [position for position in classify_user_content_blocks(entry, agent_name) if position.text is not None]
     return bool(textual) and all(position.origin is UserContentOrigin.RUNTIME for position in textual)
@@ -558,16 +551,13 @@ def normalize_runtime_user_text(agent_name: AgentName | str | None, text: str) -
             ]
             if chunks:
                 normalized = "\n\n".join(chunks)
-    for pattern in _NON_CODEX_RUNTIME_SPANS:
-        normalized = pattern.sub("", normalized)
-    if _agent_value(agent_name) == AgentName.CODEX.value:
-        recognition = _codex_structural_recognition(normalized)
-        for span in reversed(recognition.spans):
-            normalized = f"{normalized[: span.start]}{normalized[span.end :]}"
-    else:
-        for pattern in _NON_CODEX_COMPATIBILITY_SPANS:
-            normalized = pattern.sub("", normalized)
-    return normalized.strip()
+    for pattern in _INJECTED_CONTEXT_SPANS:
+        normalized = pattern.sub(_EMPTY_TEXT, normalized)
+    agent = _runtime_agent(agent_name)
+    strip_runtime_spans = (
+        RUNTIME_USER_VOCABULARY[agent].strip_runtime_spans if agent is not None else _strip_compatibility_spans
+    )
+    return strip_runtime_spans(normalized).strip()
 
 
 def _entry_timestamp(entry: Mapping[str, object]) -> datetime | None:
@@ -668,38 +658,59 @@ def _no_native_entry_marker(_entry: Mapping[str, object]) -> bool:
     return False
 
 
-_ENTRY_MARKERS: Mapping[AgentName, Callable[[Mapping[str, object]], bool]] = MappingProxyType(
-    {
-        AgentName.CLAUDE: _claude_entry_is_runtime,
-        AgentName.CODEX: _no_native_entry_marker,
-        AgentName.GEMINI: _no_native_entry_marker,
-        AgentName.DEEPSEEK: _no_native_entry_marker,
-    }
-)
-"""Native markers by which a runtime flags a whole user-role entry as its own injection."""
+def _strip_codex_structural_spans(text: str) -> str:
+    recognition = _codex_structural_recognition(text)
+    for span in reversed(recognition.spans):
+        text = f"{text[: span.start]}{text[span.end :]}"
+    return text
+
+
+def _strip_compatibility_spans(text: str) -> str:
+    for pattern in _COMPATIBILITY_SPANS:
+        text = pattern.sub(_EMPTY_TEXT, text)
+    return text
+
+
+@dataclass(frozen=True)
+class RuntimeUserVocabulary:
+    """How one runtime marks the user-role text it injects on its own behalf.
+
+    ``entry_is_runtime`` reads native markers on a whole transcript entry;
+    ``position_is_runtime`` recognizes a complete injected text in one
+    transcript position; ``prompt_is_runtime`` recognizes it at the prompt
+    hook, which sees text only; ``strip_runtime_spans`` removes the runtime's
+    injected spans from mixed text.
+    """
+
+    entry_is_runtime: Callable[[Mapping[str, object]], bool]
+    position_is_runtime: Callable[[str], bool]
+    prompt_is_runtime: Callable[[str], bool]
+    strip_runtime_spans: Callable[[str], str]
+
 
 # Codex transcript positions carry native provenance (content kinds, or the
-# legacy structural recognition), so no text vocabulary applies to them.
-_TRANSCRIPT_TEXT_VOCABULARY: Mapping[AgentName, Callable[[str], bool]] = MappingProxyType(
+# legacy structural recognition), so no text vocabulary applies to them there;
+# at the prompt hook Codex keeps its narrower hook-ingress contract.
+RUNTIME_USER_VOCABULARY: Mapping[AgentName, RuntimeUserVocabulary] = MappingProxyType(
     {
-        AgentName.CLAUDE: _claude_text_is_runtime,
-        AgentName.CODEX: _no_native_text_vocabulary,
-        AgentName.GEMINI: _no_native_text_vocabulary,
-        AgentName.DEEPSEEK: _deepseek_text_is_runtime,
+        AgentName.CLAUDE: RuntimeUserVocabulary(
+            _claude_entry_is_runtime, _claude_text_is_runtime, _claude_text_is_runtime, _strip_compatibility_spans
+        ),
+        AgentName.CODEX: RuntimeUserVocabulary(
+            _no_native_entry_marker,
+            _no_native_text_vocabulary,
+            _codex_prompt_is_runtime,
+            _strip_codex_structural_spans,
+        ),
+        AgentName.GEMINI: RuntimeUserVocabulary(
+            _no_native_entry_marker, _no_native_text_vocabulary, _no_native_text_vocabulary, _strip_compatibility_spans
+        ),
+        AgentName.DEEPSEEK: RuntimeUserVocabulary(
+            _no_native_entry_marker, _deepseek_text_is_runtime, _deepseek_text_is_runtime, _strip_compatibility_spans
+        ),
     }
 )
-"""Complete text a runtime injects into a transcript position, recognized by its declared shapes."""
-
-# The prompt hook sees text only; Codex keeps its narrower hook-ingress contract.
-_PROMPT_TEXT_VOCABULARY: Mapping[AgentName, Callable[[str], bool]] = MappingProxyType(
-    {
-        AgentName.CLAUDE: _claude_text_is_runtime,
-        AgentName.CODEX: _codex_prompt_is_runtime,
-        AgentName.GEMINI: _no_native_text_vocabulary,
-        AgentName.DEEPSEEK: _deepseek_text_is_runtime,
-    }
-)
-"""Complete prompt text a runtime submits on its own behalf, as seen at the prompt hook."""
+"""The one record per runtime of how it marks its own user-role text; onboarding a harness adds one."""
 
 _TURN_OPENING_ORIGINS = frozenset({UserContentOrigin.CANDIDATE_HUMAN, UserContentOrigin.COMMAND_LOADER})
 
@@ -765,6 +776,7 @@ def find_turn_start_idx(
 
 
 __all__ = [
+    "RUNTIME_USER_VOCABULARY",
     "ClaudeTurnCommitment",
     "ClaudeTurnCommitmentOutcome",
     "ClaudeTurnCommitmentReason",
@@ -773,6 +785,7 @@ __all__ = [
     "CodexLegacyShape",
     "CodexStructuralRecognition",
     "CodexStructuralSpan",
+    "RuntimeUserVocabulary",
     "TurnStart",
     "UserContentBlockClassification",
     "UserContentOrigin",

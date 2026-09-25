@@ -197,27 +197,27 @@ Every entry here is a place a missing branch degrades silently.
 
 1. `teleclaude/utils/transcript/_iterators.py` — the entry iterator, normalizing
    the vendor vocabulary to the shared shape, carrying timestamps, and handling
-   compression. Register it in `_get_entries_for_agent`.
-2. **Search for duplicate dispatches of the same decision.** `_get_entries_for_agent`
-   is the canonical per-agent iterator switch, and it is not the only one. A
-   second switch that lacks the new agent falls through to the Claude iterator
-   and produces plausible, wrong output rather than an error.
-3. `teleclaude/utils/transcript/_extraction.py` — the parser registry.
-4. `teleclaude/utils/transcript/_rendering.py` — a markdown parser plus its
-   `AGENT_TRANSCRIPT_PARSERS` entry, so transcript views do not hit the
-   unknown-agent fallback.
-5. `teleclaude/utils/transcript_discovery.py` — discovery, session-id
+   compression, plus the runtime's `TRANSCRIPT_READERS` record: display name,
+   reader, tail limiter, and the checkpoint window normalizer when its transcript
+   can be read from the tail. Every transcript load, render, and parse resolves
+   the runtime through that record.
+2. **Search for per-agent decisions outside the records.** A branch on the agent
+   name that the records do not own falls through to another runtime's
+   behavior and produces plausible, wrong output rather than an error. Route
+   such a decision through the record instead of adding a branch.
+3. `teleclaude/utils/transcript_discovery.py` — discovery, session-id
    extraction, and project recovery. **Skip the non-session artifacts** found in
    Phase 0 question 12 before their ids reach the identity invariant.
-6. `teleclaude/utils/transcript/_user_turns.py` — declare the runtime's native
-   vocabularies (entry markers, transcript text, prompt text) in its dispatch
-   tables. TeleClaude's own envelopes and the command loader are classified
-   once for every runtime by `teleclaude/core/injected_text.py` and need no
-   per-runtime entry.
-7. `teleclaude/session_scoping/_extractors/<agent>.py` plus its `__init__.py`
+4. `teleclaude/utils/transcript/_user_turns.py` — the runtime's
+   `RUNTIME_USER_VOCABULARY` record: its native entry markers, the complete
+   texts it injects into a transcript position and at the prompt hook, and the
+   spans it injects into mixed text. TeleClaude's own envelopes and the command
+   loader are classified once for every runtime by
+   `teleclaude/core/injected_text.py` and need no per-runtime entry.
+5. `teleclaude/session_scoping/_extractors/<agent>.py` plus its `__init__.py`
    registration — write/edit and shell-mutator paths from the normalized tool
    timeline.
-8. `teleclaude/history/search.py` — include the agent in the all-agents list.
+6. `teleclaude/history/search.py` — include the agent in the all-agents list.
 
 ### 7. Surfaces
 

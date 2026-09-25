@@ -7,10 +7,11 @@ import json
 import os
 import re
 from collections import deque
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import cast
 
 import zstandard
@@ -25,7 +26,7 @@ from teleclaude.events.envelope import EventVisibility
 from ._checkpoint_anchors import find_last_checkpoint_anchor
 from ._parsers import normalize_transcript_entry_message
 from ._user_turns import find_last_turn_start, is_turn_start_entry
-from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _parse_timestamp
+from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _apply_tail_limit, _apply_tail_limit_codex, _parse_timestamp
 
 logger = get_logger(__name__)
 
@@ -71,6 +72,8 @@ def _report_transcript_format_mismatch(agent: str, path: Path, exc: json.JSONDec
 
 
 __all__ = [
+    "TRANSCRIPT_READERS",
+    "TranscriptReader",
     "_entry_role",
     "_get_checkpoint_entries_for_agent",
     "_get_entries_for_agent",
@@ -793,6 +796,56 @@ def _dsh_tool_result_entry(data: Mapping[str, object], *, timestamp: str | None)
     }
 
 
+def _read_claude(path: Path, tail_entries: int | None) -> Iterable[JsonDict]:
+    return _iter_claude_entries(path, tail_entries=tail_entries)
+
+
+def _read_codex(path: Path, tail_entries: int | None) -> Iterable[JsonDict]:
+    return _iter_codex_entries(path, tail_entries=tail_entries)
+
+
+def _read_gemini(path: Path, _tail_entries: int | None) -> Iterable[JsonDict]:
+    return _iter_gemini_entries(path)
+
+
+def _read_deepseek(path: Path, _tail_entries: int | None) -> Iterable[JsonDict]:
+    return _iter_deepseek_entries(path)
+
+
+def _claude_checkpoint_window(entries: Sequence[JsonDict]) -> list[JsonDict]:
+    return list(entries)
+
+
+def _codex_checkpoint_window(entries: Sequence[JsonDict]) -> list[JsonDict]:
+    return list(_normalize_codex_entries(entries))
+
+
+@dataclass(frozen=True)
+class TranscriptReader:
+    """How one runtime's native transcript is read and presented.
+
+    ``checkpoint_window`` normalizes a raw JSONL suffix window for runtimes
+    whose transcripts can be read from their tail; a runtime without one is
+    always read whole.
+    """
+
+    display_name: str
+    read: Callable[[Path, int | None], Iterable[JsonDict]]
+    tail_limit: Callable[[str, int], str]
+    checkpoint_window: Callable[[Sequence[JsonDict]], list[JsonDict]] | None
+
+
+TRANSCRIPT_READERS: Mapping[AgentName, TranscriptReader] = MappingProxyType(
+    {
+        AgentName.CLAUDE: TranscriptReader("Claude Code", _read_claude, _apply_tail_limit, _claude_checkpoint_window),
+        AgentName.CODEX: TranscriptReader("Codex", _read_codex, _apply_tail_limit_codex, _codex_checkpoint_window),
+        AgentName.GEMINI: TranscriptReader("Gemini", _read_gemini, _apply_tail_limit, None),
+        AgentName.DEEPSEEK: TranscriptReader("DeepSeek Harness", _read_deepseek, _apply_tail_limit, None),
+    }
+)
+"""The one reader per runtime; onboarding a harness adds its record here."""
+
+
 def _get_entries_for_agent(
     transcript_path: str,
     agent_name: AgentName,
@@ -801,26 +854,18 @@ def _get_entries_for_agent(
 ) -> list[JsonDict] | None:
     """Load and return transcript entries for the given agent type.
 
-    Returns None if path doesn't exist or agent type is unknown.
+    Returns None if the path doesn't exist.
     """
     path = Path(transcript_path).expanduser()
     if not path.exists():
         return None
-
-    if agent_name == AgentName.CLAUDE:
-        return list(_iter_claude_entries(path, tail_entries=tail_entries))
-    if agent_name == AgentName.GEMINI:
-        return list(_iter_gemini_entries(path))
-    if agent_name == AgentName.CODEX:
-        return list(_iter_codex_entries(path, tail_entries=tail_entries))
-    if agent_name == AgentName.DEEPSEEK:
-        return list(_iter_deepseek_entries(path))
-    return None
+    return list(TRANSCRIPT_READERS[agent_name].read(path, tail_entries))
 
 
 def _get_checkpoint_entries_for_agent(transcript_path: str, agent_name: AgentName) -> list[JsonDict] | None:
     """Load the shortest complete JSONL suffix that establishes a checkpoint boundary."""
-    if agent_name not in (AgentName.CLAUDE, AgentName.CODEX):
+    checkpoint_window = TRANSCRIPT_READERS[agent_name].checkpoint_window
+    if checkpoint_window is None:
         return _get_entries_for_agent(transcript_path, agent_name)
 
     path = Path(transcript_path).expanduser()
@@ -828,9 +873,7 @@ def _get_checkpoint_entries_for_agent(transcript_path: str, agent_name: AgentNam
         return None
 
     for window in _iter_jsonl_entry_windows(path):
-        entries = (
-            list(_normalize_codex_entries(window.entries)) if agent_name == AgentName.CODEX else list(window.entries)
-        )
+        entries = checkpoint_window(window.entries)
         if window.at_beginning or (
             find_last_checkpoint_anchor(entries, agent_name) is not None
             or find_last_turn_start(entries, agent_name) is not None

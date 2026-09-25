@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
@@ -23,161 +21,13 @@ from ._block_renderers import (
 )
 from ._iterators import (
     _get_entries_for_agent,
-    _iter_claude_entries,
-    _iter_codex_entries,
-    _iter_deepseek_entries,
-    _iter_gemini_entries,
     _start_index_after_timestamp_or_rotation,
 )
 from ._noop_turns import without_noop_output
 from ._user_turns import find_turn_start_idx
-from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _format_thinking, _parse_timestamp
+from ._utils import _apply_tail_limit, _format_thinking, _parse_timestamp
 
 logger = get_logger(__name__)
-
-
-def parse_claude_transcript(
-    transcript_path: str,
-    title: str,
-    since_timestamp: str | None = None,
-    until_timestamp: str | None = None,
-    tail_chars: int = 2000,
-    collapse_tool_results: bool = False,
-) -> str:
-    """Convert Claude Code JSONL transcript to markdown with filtering.
-
-    guard: allow-string-compare
-
-    Args:
-        transcript_path: Path to Claude session .jsonl file
-        title: Session title for header
-        since_timestamp: Optional ISO 8601 UTC start filter (inclusive)
-        until_timestamp: Optional ISO 8601 UTC end filter (inclusive)
-        tail_chars: Max characters to return from end (default 2000, 0 for unlimited)
-
-    Returns:
-        Markdown formatted conversation with timestamps on each section
-    """
-    path = Path(transcript_path).expanduser()
-    if not path.exists():
-        return f"Transcript file not found: {transcript_path}"
-
-    try:
-        entries = _iter_claude_entries(path)
-        return _render_transcript_from_entries(
-            entries,  # type: ignore[arg-type]
-            title,
-            since_timestamp,
-            until_timestamp,
-            tail_chars,
-            collapse_tool_results=collapse_tool_results,
-        )
-    except Exception as e:
-        return f"Error parsing transcript: {e}"
-
-
-def parse_codex_transcript(
-    transcript_path: str,
-    title: str,
-    since_timestamp: str | None = None,
-    until_timestamp: str | None = None,
-    tail_chars: int = 2000,
-    collapse_tool_results: bool = False,
-) -> str:
-    """Convert Codex JSONL transcript to markdown with filtering.
-
-    guard: allow-string-compare
-    """
-
-    path = Path(transcript_path).expanduser()
-    if not path.exists():
-        return f"Transcript file not found: {transcript_path}"
-
-    try:
-        entries = _iter_codex_entries(path)
-        return _render_transcript_from_entries(
-            entries,  # type: ignore[arg-type]
-            title,
-            since_timestamp,
-            until_timestamp,
-            tail_chars,
-            tail_limit_fn=_apply_tail_limit_codex,
-            collapse_tool_results=collapse_tool_results,
-        )
-    except Exception as e:
-        return f"Error parsing transcript: {e}"
-
-
-def parse_gemini_transcript(
-    transcript_path: str,
-    title: str,
-    since_timestamp: str | None = None,
-    until_timestamp: str | None = None,
-    tail_chars: int = 2000,
-    collapse_tool_results: bool = False,
-) -> str:
-    """Convert Gemini JSON transcript into markdown.
-
-    guard: allow-string-compare
-    """
-
-    path = Path(transcript_path).expanduser()
-    if not path.exists():
-        return f"Transcript file not found: {transcript_path}"
-
-    try:
-        entries = _iter_gemini_entries(path)
-        return _render_transcript_from_entries(
-            entries,  # type: ignore[arg-type]
-            title,
-            since_timestamp,
-            until_timestamp,
-            tail_chars,
-            collapse_tool_results=collapse_tool_results,
-        )
-    except Exception as e:
-        return f"Error parsing transcript: {e}"
-
-
-def parse_deepseek_transcript(
-    transcript_path: str,
-    title: str,
-    since_timestamp: str | None = None,
-    until_timestamp: str | None = None,
-    tail_chars: int = 2000,
-    collapse_tool_results: bool = False,
-) -> str:
-    """Convert a DSH session transcript (zstd or plain JSONL) into markdown.
-
-    guard: allow-string-compare
-
-    Args:
-        transcript_path: Path to the DSH ``session.jsonl.zstd`` artifact
-        title: Session title for header
-        since_timestamp: Optional ISO 8601 UTC start filter (inclusive)
-        until_timestamp: Optional ISO 8601 UTC end filter (inclusive)
-        tail_chars: Max characters to return from end (default 2000, 0 for unlimited)
-        collapse_tool_results: Whether to collapse tool result blocks
-
-    Returns:
-        Markdown formatted conversation
-    """
-    path = Path(transcript_path).expanduser()
-    if not path.exists():
-        return f"Transcript file not found: {transcript_path}"
-
-    try:
-        entries = _iter_deepseek_entries(path)
-        return _render_transcript_from_entries(
-            entries,  # type: ignore[arg-type]
-            title,
-            since_timestamp,
-            until_timestamp,
-            tail_chars,
-            collapse_tool_results=collapse_tool_results,
-        )
-    except Exception as e:
-        return f"Error parsing transcript: {e}"
 
 
 def _resolve_render_start_index(
@@ -368,7 +218,7 @@ def render_clean_agent_output(
     return "\n".join(lines).strip(), last_entry_dt
 
 
-def _render_transcript_from_entries(
+def render_transcript_from_entries(
     entries: Iterable[dict[str, object]],  # guard: loose-dict - External entries
     title: str,
     since_timestamp: str | None,
@@ -508,25 +358,3 @@ def render_agent_output(
 
     result = "\n".join(lines).strip()
     return result, last_entry_dt
-
-
-@dataclass(frozen=True)
-class TranscriptParserInfo:
-    """Metadata for formatting a native agent transcript."""
-
-    display_name: str
-    file_prefix: str
-    parse: Callable[[str, str, str | None, str | None, int, bool], str]
-
-
-AGENT_TRANSCRIPT_PARSERS: dict[AgentName, TranscriptParserInfo] = {
-    AgentName.CLAUDE: TranscriptParserInfo("Claude Code", "claude", parse_claude_transcript),
-    AgentName.GEMINI: TranscriptParserInfo("Gemini", "gemini", parse_gemini_transcript),
-    AgentName.CODEX: TranscriptParserInfo("Codex", "codex", parse_codex_transcript),
-    AgentName.DEEPSEEK: TranscriptParserInfo("DeepSeek Harness", "deepseek", parse_deepseek_transcript),
-}
-
-
-def get_transcript_parser_info(agent_name: AgentName) -> TranscriptParserInfo:
-    """Return metadata for the given agent's transcript parser."""
-    return AGENT_TRANSCRIPT_PARSERS[agent_name]

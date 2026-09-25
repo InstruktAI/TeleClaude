@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,15 +14,12 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 
 from ._iterators import (
+    TRANSCRIPT_READERS,
     _get_entries_for_agent,
-    _iter_claude_entries,
-    _iter_codex_entries,
-    _iter_deepseek_entries,
-    _iter_gemini_entries,
     _start_index_after_timestamp_or_rotation,
 )
 from ._parsers import normalize_transcript_entry_message
-from ._rendering import _render_transcript_from_entries
+from ._rendering import render_transcript_from_entries
 from ._user_turns import (
     extract_authored_user_text,
     extract_text_from_message_content,
@@ -30,8 +27,6 @@ from ._user_turns import (
     find_turn_start_idx,
 )
 from ._utils import (
-    _apply_tail_limit,
-    _apply_tail_limit_codex,
     _escape_triple_backticks,
     _parse_timestamp,
 )
@@ -300,24 +295,14 @@ def parse_session_transcript(
     if not path.exists():
         return f"Transcript file not found: {transcript_path}"
 
-    iterators: dict[AgentName, Callable[..., Iterable[JsonDict]]] = {
-        AgentName.CLAUDE: _iter_claude_entries,
-        AgentName.GEMINI: _iter_gemini_entries,
-        AgentName.CODEX: _iter_codex_entries,
-        AgentName.DEEPSEEK: _iter_deepseek_entries,
-    }
-    iter_fn = iterators.get(agent_name)
-    if not iter_fn:
-        return f"Unknown agent: {agent_name}"
-
-    tail_fn = _apply_tail_limit_codex if agent_name == AgentName.CODEX else _apply_tail_limit
-    rendered = _render_transcript_from_entries(
-        iter_fn(path),  # type: ignore[arg-type]
+    reader = TRANSCRIPT_READERS[agent_name]
+    rendered = render_transcript_from_entries(
+        reader.read(path, None),  # type: ignore[arg-type]
         title,
         since_timestamp,
         until_timestamp,
         tail_chars,
-        tail_limit_fn=tail_fn,
+        tail_limit_fn=reader.tail_limit,
         collapse_tool_results=collapse_tool_results,
         include_thinking=include_thinking,
         include_tools=include_tools,

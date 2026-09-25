@@ -58,7 +58,7 @@ from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand,
 from teleclaude.types.creation_record import Lineage
 from teleclaude.types.todo_kind import ALL_DUMP_KINDS
 from teleclaude.utils import strip_ansi_codes
-from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
+from teleclaude.utils.transcript import TRANSCRIPT_READERS, parse_session_transcript
 
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
@@ -852,7 +852,7 @@ async def get_session_data(
         logger.error("Unknown agent for session %s: %s", session_id, exc)
         return {"status": "error", "error": str(exc)}
 
-    parser_info = get_transcript_parser_info(agent_name)
+    transcript_reader = TRANSCRIPT_READERS[agent_name]
 
     # Parse session transcript to markdown with filtering
     try:
@@ -866,7 +866,7 @@ async def get_session_data(
         )
         logger.info(
             "Parsed %s transcript (%d bytes) for session %s",
-            parser_info.display_name,
+            transcript_reader.display_name,
             len(markdown_content),
             session_id,
         )

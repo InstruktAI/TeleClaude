@@ -35,6 +35,8 @@ from teleclaude.utils.transcript._extraction import (
 )
 from teleclaude.utils.transcript._identity import native_entry_id
 from teleclaude.utils.transcript._iterators import (
+    TRANSCRIPT_READERS,
+    TranscriptReader,
     _entry_role,
     _get_entries_for_agent,
     _is_rotation_fallback_candidate,
@@ -53,15 +55,9 @@ from teleclaude.utils.transcript._parsers import (
 
 if TYPE_CHECKING:
     from teleclaude.utils.transcript._rendering import (
-        AGENT_TRANSCRIPT_PARSERS,
-        TranscriptParserInfo,
-        _render_transcript_from_entries,
-        get_transcript_parser_info,
-        parse_claude_transcript,
-        parse_codex_transcript,
-        parse_gemini_transcript,
         render_agent_output,
         render_clean_agent_output,
+        render_transcript_from_entries,
     )
 from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defined]
     StructuredMessage,
@@ -112,10 +108,10 @@ from teleclaude.utils.transcript.tailer import (
 
 __all__ = [
     # _rendering
-    "AGENT_TRANSCRIPT_PARSERS",
     # _utils
     "CHECKPOINT_JSONL_TAIL_ENTRIES",
     "CHECKPOINT_JSONL_TAIL_READ_BYTES",
+    "TRANSCRIPT_READERS",
     # _tool_calls
     "CheckpointAnchor",
     "ClaudeTurnCommitment",
@@ -124,7 +120,7 @@ __all__ = [
     "ClaudeTurnCommitmentResolver",
     "StructuredMessage",
     "ToolCallRecord",
-    "TranscriptParserInfo",
+    "TranscriptReader",
     "TranscriptTailBatch",
     "TranscriptTailCursor",
     "TranscriptTailReadError",
@@ -162,7 +158,6 @@ __all__ = [
     "_process_thinking_block",
     "_process_tool_result_block",
     "_process_tool_use_block",
-    "_render_transcript_from_entries",
     "_should_skip_entry",
     "_start_index_after_timestamp_or_rotation",
     "_wrap_thinking_emphasis",
@@ -182,7 +177,6 @@ __all__ = [
     "find_last_turn_start",
     "find_turn_start_idx",
     "get_assistant_messages_since",
-    "get_transcript_parser_info",
     "is_authored_user_entry",
     "is_checkpoint_anchor_entry",
     "is_runtime_artifact_entry",
@@ -192,13 +186,11 @@ __all__ = [
     "native_entry_id",
     "normalize_runtime_user_text",
     "normalize_transcript_entry_message",
-    "parse_claude_transcript",
-    "parse_codex_transcript",
-    "parse_gemini_transcript",
     "parse_session_transcript",
     "read_appended_jsonl_entries",
     "render_agent_output",
     "render_clean_agent_output",
+    "render_transcript_from_entries",
     "resolve_claude_turn_commitment",
     "transcript_has_stop_response",
     "unwrap_pasted_content",
@@ -207,13 +199,7 @@ __all__ = [
 
 def __getattr__(name: str) -> object:
     if name in {
-        "AGENT_TRANSCRIPT_PARSERS",
-        "TranscriptParserInfo",
-        "_render_transcript_from_entries",
-        "get_transcript_parser_info",
-        "parse_claude_transcript",
-        "parse_codex_transcript",
-        "parse_gemini_transcript",
+        "render_transcript_from_entries",
         "render_agent_output",
         "render_clean_agent_output",
     }:
