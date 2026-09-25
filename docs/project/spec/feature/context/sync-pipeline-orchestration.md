@@ -37,22 +37,29 @@ The publication pipeline is:
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
    outputs from those snapshots.
 <!-- change:stale-sync-retry-regresses-global-publication -->
-2. **Build indexes** — derive indexes from the triggering project's recorded
-   snapshot for publication and write portable derived indexes to its
-   canonical checkout.
+2. **Build indexes** — once the recorded snapshot validates, record its tip
+   as the canonical checkout's published generation, then derive indexes from
+   that snapshot and write portable derived indexes to its canonical checkout.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
-   outputs from those snapshots, then record the recorded tip as the canonical
-   checkout's published generation.
+   outputs from those snapshots.
 
-A canonical checkout's published generation is the recorded tip of its latest
-successful publication. Publication compares against it once it holds
-publication serialization. A recorded tip that is a strict ancestor of the
-published generation is superseded: its publication runs no index or
-distribution phase, leaves the canonical checkout's indexes and every deployed
-runtime output unchanged, and reports a superseded outcome. Any other recorded
-tip publishes and becomes the published generation, so a replay of a range
-whose later successors have not yet published advances deployment rather than
-waiting on them.
+A canonical checkout's published generation is the newest recorded tip whose
+publication validated and began writing output, so it never trails what is
+deployed. Publication compares against it once it holds publication
+serialization:
+
+- A recorded tip that is a strict ancestor of the published generation is
+  superseded: its publication runs no index or distribution phase, leaves the
+  canonical checkout's indexes and every deployed runtime output unchanged, and
+  reports a superseded outcome.
+- With no published generation recorded, only a recorded tip equal to the
+  canonical checkout's latest commit publishes; any other replay fails without
+  changing output, and its action remains recoverable.
+- Any other recorded tip publishes and becomes the published generation, so a
+  replay of a range whose later successors have not yet published advances
+  deployment rather than waiting on them. A publication that fails after
+  becoming the published generation keeps that standing; replaying its own
+  range publishes it again.
 <!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
 
@@ -143,7 +150,8 @@ And the replay reports its terminal outcome for that original range
 
 ```gherkin
 Given publication failed for a recorded commit range
-And no later commit's source has been published, while a later commit or working-tree edit exists
+And the checkout records a published generation that does not descend from that range's tip
+And a later commit or working-tree edit exists
 When an agent replays the publication action for the failed range
 Then an agent retrieving the deployed documentation reads the original committed input
 And the later source does not replace it

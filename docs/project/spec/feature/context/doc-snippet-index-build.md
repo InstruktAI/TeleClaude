@@ -56,7 +56,7 @@ And local telec docs retrieval reads those canonical-checkout indexes
 
 ```
 Given a project with valid snippet sources under docs/
-And no later canonical commit's source has been published for that project
+And the recorded commit is the project's latest canonical commit, or its checkout records a published generation that does not descend from the recorded commit
 When commit-boundary publication runs for that recorded commit
 Then the index-build phase runs
 And the project's canonical checkout receives docs/project/index.yaml with one entry per valid committed Source and paths rooted at that checkout
