@@ -354,18 +354,19 @@ And snippets of every other tier are excluded
 ### Cross-context references
 
 <!-- planned-change:docs-tier-layering -->
-- **identity** — terminal-session role is resolved upstream by the CLI and
-  passed in; the predicate composition uses it to filter visibility.
+- **identity** — the caller is resolved upstream by the CLI and passed in; the
+  predicate composition reads its platform role, or its standing as a system
+  principal, to filter visibility.
 - **config** — supplies the registered publishers' `business.publishes`
   declarations (their union is the valid-domain set used for cross-project ID
   classification), the project catalog of known project slugs, and the
   `project_slug` that determines which IDs are "own" vs. "cross-project".
 <!-- change:docs-tier-layering -->
-- **identity** — the resolved caller: their person identity, their platform
-  role, and the company relationships and project reach that resolution
-  reports, received from the dispatch boundary. Read depth is derived from
-  these resolved facts; this policy owns neither the resolution nor the
-  declarations beneath it.
+- **identity** — the resolved caller: a person with their platform role and
+  the company relationships and project reach that resolution reports, a system
+  principal, or no identity, received from the command edge. Read depth is
+  derived from these resolved facts; this policy owns neither the resolution nor
+  the declarations beneath it.
 - **config** — supplies the registered publishers' `business.publishes`
   declarations (their union is the valid-domain set used for cross-project ID
   classification), the project catalog of known project slugs, the

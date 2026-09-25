@@ -190,16 +190,23 @@ the default set, at the depth this stage grants the caller for it. Naming never
 changes depth. A caller with no resolvable identity gains no tier from a
 relationship it does not have.
 
-**Layer placement.** The caller arrives already resolved. Identity resolution
-belongs to the boundary that owns injection, and the resolved caller reaches the
-command surface as a typed parameter alongside the arguments a caller supplied.
-The command surface translates those arguments into a request; it resolves
-nothing and decides no reach. The resolution stage decides. Catalog loading
-executes what it decided.
+A caller acting as a system principal holds no person tier and no relationship,
+so its default read set is global and what the invocation offers. Its depth is
+full on every tier it reaches, as a platform administrator's is, so a tier it
+names is read in full.
 
-A surface that reaches outward to fill its own inputs — reading a login file, an
-environment, or an identity service to discover who is calling — has taken both
-a decision and an ownership that are not its own. A surface that inspects a
+**Layer placement.** Identity owns resolving who is calling and publishes the
+answer as one typed caller: a person carrying their slug and platform role, a
+system principal, or no identity. The command edge obtains that caller once per
+invocation through identity's caller query — the same query every
+identity-sensitive command read uses — and hands it to this stage with the
+arguments the caller supplied. The edge translates; it decides no reach. The
+resolution stage decides, reading the person's organizational membership through
+identity's resolution. Catalog loading executes what it decided.
+
+A stage below the command edge that reaches outward to learn who is calling —
+reading a login document, a session record, the environment, or the identity
+service — has taken identity's ownership. A command edge that inspects a
 relationship to choose what to load has taken the reach decision.
 
 **Naming a tier.** One rule covers every selector that names a tier — a person,
@@ -245,6 +252,13 @@ own catalog is deployed beside its material whether or not it has entries.
 Discovery reads the deployed corpus for every tier; a snippet body resolves
 through the same source-tree resolver every other tier uses.
 
+The platform home declares no project, yet its recorded-commit publication is a
+target for one contribution: the participating tiers it holds. That activation
+validates and catalogs those tiers from the recorded commit and replaces their
+contribution as a unit, retaining every other publisher's; it opens no project
+or global agent-artifact publication from the home. An activation for any other
+publisher retains the tier contribution unchanged.
+
 Discovery names every tier in the caller's read set with the entries it
 contributes, so a participating tier that holds nothing is visible as a tier
 with zero entries to a caller who may see it, and invisible to one who may not.
@@ -262,10 +276,11 @@ with zero entries to a caller who may see it, and invisible to one who may not.
 
 <!-- planned:docs-tier-layering -->
 - **Unresolvable Caller**: The call carries no identity that resolves to a
-  person. No relationship-derived source enters scope at all — no person tier, no
-  company, no assigned project — and what remains is what the invocation already
-  offers, read at public-only depth. Absent identity never widens a read, and
-  public-only is a depth rather than authority to assemble every tier at it.
+  person or a system principal. No relationship-derived source enters scope at
+  all — no person tier, no company, no assigned project — and what remains is
+  what the invocation already offers, read at public-only depth. Absent identity
+  never widens a read, and public-only is a depth rather than authority to
+  assemble every tier at it.
 - **Declared-but-absent tier**: A relationship names a person or company with no
   configuration present. The misconfiguration is surfaced rather than silently
   producing an empty tier, which is indistinguishable from a correctly empty one.
