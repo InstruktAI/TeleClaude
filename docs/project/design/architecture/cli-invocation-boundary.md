@@ -46,10 +46,12 @@ design owns only the path that connects them.
 2. **Worktree code never runs against the live home.** A slug worktree's `bin/telec`
    runs only when its home resolves to a location other than the live home. Aimed at
    the live home, it is refused before any worktree code runs, and the refusal names
-   the scratch-home form of the call. The home is resolved once — every spelling,
-   symlink and `..` followed — and the interpreter receives exactly the location that
-   was checked. A scratch home that holds no machine configuration receives a copy of
-   the live one before the worktree's code starts; nothing else is copied. The integration worktree is not a slug worktree.
+   the scratch-home form of the call. An unset or empty home is the live home. Any
+   other home is compared with the live home by filesystem identity, so no spelling,
+   symlink, `..` or letter case reaches it, and the interpreter receives exactly the
+   location that was checked. A scratch home that holds no machine configuration
+   receives a copy of the live one before the worktree's code starts; nothing else is
+   copied. The integration worktree is not a slug worktree.
 3. **`telec code` grades a change with the change's own code.** Lint lanes, guardrail
    allowlists, schemas and the rendered command surface that judge a worktree's change
    come from that worktree, while `telec code` itself runs installed code. The
@@ -114,9 +116,9 @@ verified after delivery (`project/policy/test-moratorium`).
 ### Grading a change
 
 `telec code lint` or `telec code commit` from a worktree runs installed code for its
-own orchestration and hands the grading lanes to the worktree's code, run against a
-fresh scratch home, so a change that edits a guardrail allowlist or a schema is judged
-by the edited version. A checkout that is the installation, or that is not a TeleClaude
+own orchestration and hands the lint gate — its native leg and guardrail lane — to
+the worktree's own `telec code lint`, run against a fresh scratch home, so a change
+that edits a guardrail allowlist or a schema is judged by the edited version. A checkout that is the installation, or that is not a TeleClaude
 checkout, is graded by installed code as before.
 
 ## Failure modes
@@ -128,7 +130,6 @@ checkout, is graded by installed code as before.
 | Session marker names no admissible row                 | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
 | Worktree `bin/telec` aimed at the live home            | Refused before worktree code runs; live home untouched.                                                                              |
 | Scratch home holds no machine configuration            | A copy of the live one is placed there before worktree code runs; the live home is only read.                                        |
-| Graded checkout predates the grading hand-off          | Its change is graded by installed code, and the command says so.                                                                     |
 | Daemon unreachable                                     | Only commands that act through the daemon fail; everything else runs.                                                                |
 | A change imports a new module on the pre-dispatch path | The guardrail rejects it before it lands.                                                                                            |
 

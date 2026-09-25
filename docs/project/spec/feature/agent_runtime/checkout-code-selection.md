@@ -25,7 +25,7 @@ is refused before any of the worktree's code runs. A scratch home that holds no 
 configuration starts from a copy of the live one.
 
 Grading stays self-referential: `telec code lint` and `telec code commit` called from a
-worktree hand their guardrail lane to that worktree's code, run against a fresh scratch
+worktree hand their lint gate to that worktree's own code, run against a fresh scratch
 home of its own, so a change is judged by the rules it carries.
 
 The path this behavior sits on is described in
@@ -77,20 +77,13 @@ And the live machine configuration is unchanged
 #### UC-CCS5: Grading from a worktree applies the worktree's own rules
 
 ```gherkin
-Given a slug worktree whose change edits a rule the guardrail lane applies
+Given a slug worktree whose change edits a rule the lint gate applies
 When an agent lints or commits that change with the global telec from the worktree
-Then the guardrail lane judges the change by the worktree's version of the rule
+Then the lint gate judges the change by the worktree's version of the rule
 And the grading leaves the live home unchanged
 ```
 
-#### UC-CCS6: A checkout that predates the grading hand-off is graded by installed rules and says so
-
-```gherkin
-Given a slug worktree whose code predates the grading hand-off
-When an agent lints or commits from it with the global telec
-Then the guardrail lane judges the change by the installed canonical checkout's rules
-And the agent is told that the installed rules, not the worktree's, graded the change
-```
+#### UC-CCS6
 
 ## Known caveats
 
