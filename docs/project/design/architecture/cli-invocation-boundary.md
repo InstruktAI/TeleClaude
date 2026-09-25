@@ -46,12 +46,17 @@ design owns only the path that connects them.
 2. **Worktree code never runs against the live home.** A slug worktree's `bin/telec`
    runs only when its home resolves to a location other than the live home. Aimed at
    the live home, it is refused before any worktree code runs, and the refusal names
-   the scratch-home form of the call. The integration worktree is not a slug
-   worktree.
+   the scratch-home form of the call. The home is resolved once — every spelling,
+   symlink and `..` followed — and the interpreter receives exactly the location that
+   was checked. A scratch home that holds no machine configuration receives a copy of
+   the live one before the worktree's code starts, because every CLI start reads it;
+   nothing else is copied. The integration worktree is not a slug worktree.
 3. **`telec code` grades a change with the change's own code.** Lint lanes, guardrail
    allowlists, schemas and the rendered command surface that judge a worktree's change
-   come from that worktree, while `telec code` itself runs installed code. Bookkeeping
-   commands run installed code and read and write the live home as usual.
+   come from that worktree, while `telec code` itself runs installed code. The
+   worktree's grading code runs against a fresh scratch home seeded the same way and
+   discarded when grading ends, never against the live home. Bookkeeping commands run
+   installed code and read and write the live home as usual.
 4. **Only the auth gate precedes dispatch.** Before a handler runs, the CLI reads the
    command surface to identify the command and passes the caller through one gate.
    Nothing else runs, loads, or validates first.
@@ -99,16 +104,21 @@ flowchart TD
 An agent in a slug worktree runs its bookkeeping with the global `telec` exactly as
 anywhere else. To drive its own change by hand — a help path, a probe of a command it
 changed — it calls the worktree's `bin/telec` with `TELECLAUDE_HOME` set to a scratch
-home. That process runs the worktree's code against the scratch home's configuration,
-database and state. A command that acts through the daemon still reaches the live
-daemon, which runs delivered code; daemon-side behavior is verified after delivery
-(`project/policy/test-moratorium`).
+home. That process runs the worktree's code against the scratch home: configuration,
+database and state rooted in the home follow it. The scratch home starts with a copy
+of the live machine configuration and nothing else; anything more a probe needs, the
+prober provides. State rooted in the project — a checkout's todo store — and the
+daemon do not move with the home. A command that writes project state or acts through
+the daemon reaches the live one, whose code is delivered code; that behavior is
+verified after delivery (`project/policy/test-moratorium`).
 
 ### Grading a change
 
 `telec code lint` or `telec code commit` from a worktree runs installed code for its
-own orchestration and hands the grading lanes to the worktree's code, so a change that
-edits a guardrail allowlist or a schema is judged by the edited version.
+own orchestration and hands the grading lanes to the worktree's code, run against a
+fresh scratch home, so a change that edits a guardrail allowlist or a schema is judged
+by the edited version. A checkout that is the installation, or that is not a TeleClaude
+checkout, is graded by installed code as before.
 
 ## Failure modes
 
@@ -118,12 +128,15 @@ edits a guardrail allowlist or a schema is judged by the edited version.
 | People roster cannot be read                           | The caller resolves to no identity and receives the unauthorized view; commands needing no caller still run.                         |
 | Session marker names no admissible row                 | The caller resolves to no identity inside the session; it is never widened to another identity.                                      |
 | Worktree `bin/telec` aimed at the live home            | Refused before worktree code runs; live home untouched.                                                                              |
+| Scratch home holds no machine configuration            | A copy of the live one is placed there before worktree code runs; the live home is only read.                                        |
+| Graded checkout predates the grading hand-off          | Its change is graded by installed code, and the command says so.                                                                     |
 | Daemon unreachable                                     | Only commands that act through the daemon fail; everything else runs.                                                                |
 | A change imports a new module on the pre-dispatch path | The guardrail rejects it before it lands.                                                                                            |
 
 ## See Also
 
 - docs/project/adr/0102-a-telec-wrapper-runs-the-checkout-it-belongs-to.md — why the wrapper's location, not the caller's directory, selects the code.
+- docs/project/spec/feature/agent_runtime/checkout-code-selection.md — the agent-facing use cases for code selection, the scratch-home refusal, and self-grading.
 - docs/project/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity.md — why the caller is authorized in the CLI process.
 - ~/.teleclaude/docs/general/principle/trust-and-guardrails.md — why a write to shared state that others have read cannot be repaired by restoring it, and why a refusal names its door.
 - docs/project/policy/test-moratorium.md — how changes are verified without tests, and why daemon behavior is verified after delivery.

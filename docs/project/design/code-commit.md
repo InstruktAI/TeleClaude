@@ -244,6 +244,7 @@ The pathspec commit is built internally from `workspace scope plus
    "foreign-staged" check; the pathspec alone enforces the boundary. Agents
    must not unstage foreign files they see in the index.
 
+<!-- planned-change:global-telec-runs-main-checkout -->
 4. **The gates the acting tier carries run in-process before `git commit --no-verify`.**
    Whether the gate runs follows the acting invocation context's declared tier:
    a tier carrying project subscriptions, or whose material participates in
@@ -256,6 +257,26 @@ The pathspec commit is built internally from `workspace scope plus
    participates in documentation and carries no project subscriptions is gated,
    runs the guardrails lane, and requires no native toolchain contract at its
    root.
+<!-- change:global-telec-runs-main-checkout -->
+4. **The gates the acting tier carries run before `git commit --no-verify`.**
+   Whether the gate runs follows the acting invocation context's declared tier:
+   a tier carrying project subscriptions, or whose material participates in
+   documentation, is gated; a tier carrying neither is not, and nothing is
+   applied in its place. Which checks run follows what that tier carries, never
+   where its root sits: the native toolchain leg runs where the tier carries
+   `code`, and TeleClaude's guardrails lane runs wherever the gate runs. Both
+   run against `quality_paths` (the commit pathspec filtered to existing files)
+   before `git commit --no-verify`, in that order where both apply. A tier that
+   participates in documentation and carries no project subscriptions is gated,
+   runs the guardrails lane, and requires no native toolchain contract at its
+   root. The guardrails lane runs in-process when the checkout under commit is
+   the installation or is not a TeleClaude checkout. For any other TeleClaude
+   checkout it runs in that checkout's own code against a fresh scratch home, so
+   a change is graded by the rules it carries and undelivered code never runs
+   against the live home (`project/design/architecture/cli-invocation-boundary`).
+   A checkout that predates that hand-off is graded in-process, and the commit
+   says so.
+<!-- /planned-change:global-telec-runs-main-checkout -->
 Deletion-only commits
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
    thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does
