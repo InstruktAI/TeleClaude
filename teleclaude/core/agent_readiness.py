@@ -31,6 +31,17 @@ _CODEX_WORKSPACE_PATH_PREFIX = "~/"
 _DEEPSEEK_COMPOSER_EXPAND_AFFORDANCE = "⛶"
 
 
+class _CodexFooterRowToken(StrEnum):
+    """Closed vocabulary of tokens recognized in Codex footer chrome rows."""
+
+    SHIFT_TAB_HINT = "shift + tab"
+    ESC_DISMISS_HINT = "esc dismiss"
+    MODEL_NAME_PREFIX = "gpt-"
+    FIELD_SEPARATOR = "·"
+    SHORTCUTS_HINT = "? for shortcuts"
+    WARNING_DETAIL_HINT = "f2 to view"
+
+
 class ReadinessSignal(StrEnum):
     """Which detector opened the readiness gate."""
 
@@ -358,7 +369,11 @@ def _extract_complete_codex_live_input_block(lines: list[str]) -> str | None:
     previous_was_blank = False
     for idx, line in enumerate(lines):
         normalized = strip_ansi_codes(line).strip()
-        if idx > 0 and _is_codex_composer_chrome_line(line) and _has_only_blank_trailing_lines(lines[idx + 1 :]):
+        if (
+            idx > 0
+            and _is_codex_composer_chrome_line(line)
+            and _has_only_blank_or_codex_hint_trailing_lines(lines[idx + 1 :])
+        ):
             input_lines.append(line)
             return "\n".join(input_lines)
         if idx > 0 and previous_was_blank and _is_complete_codex_passive_workspace_footer(line, lines[idx + 1 :]):
@@ -376,13 +391,24 @@ def _is_complete_codex_passive_workspace_footer(line: str, trailing_lines: list[
     return (
         _ANSI_ESCAPE_PREFIX in line
         and strip_ansi_codes(line).startswith(_CODEX_FOOTER_INDENTATION + _CODEX_WORKSPACE_PATH_PREFIX)
-        and _has_only_blank_trailing_lines(trailing_lines)
+        and _has_only_blank_or_codex_hint_trailing_lines(trailing_lines)
     )
 
 
-def _has_only_blank_trailing_lines(lines: list[str]) -> bool:
-    """Return whether no unclassified content follows a terminal chrome row."""
-    return all(not strip_ansi_codes(line).strip() for line in lines)
+def _has_only_blank_or_codex_hint_trailing_lines(lines: list[str]) -> bool:
+    """Return whether every line after a terminal Codex chrome row is blank or a hint-row affordance.
+
+    Codex 0.157.0 renders an additional chrome row of key-hint affordances
+    (`? for shortcuts`, `f2 to view`) beneath its terminal footer row; such a
+    row carries no composer input and does not unsettle the boundary.
+    """
+    return all(not strip_ansi_codes(line).strip() or _is_codex_footer_hint_row(line) for line in lines)
+
+
+def _is_codex_footer_hint_row(line: str) -> bool:
+    """Return whether a trailing row carries a Codex key-hint affordance rather than input."""
+    normalized = _fold_prompt_whitespace(strip_ansi_codes(line)).lower()
+    return _CodexFooterRowToken.SHORTCUTS_HINT in normalized or _CodexFooterRowToken.WARNING_DETAIL_HINT in normalized
 
 
 def _extract_complete_deepseek_live_region(lines: list[str]) -> str | None:
@@ -473,8 +499,11 @@ def _is_prompt_chrome_line(raw_line: str, agent: AgentName) -> bool:
 
 def _is_codex_composer_chrome_line(line: str) -> bool:
     normalized = _fold_prompt_whitespace(line).lower()
-    return ("shift + tab" in normalized and "esc dismiss" in normalized) or (
-        normalized.startswith("gpt-") and "·" in normalized
+    return (
+        _CodexFooterRowToken.SHIFT_TAB_HINT in normalized and _CodexFooterRowToken.ESC_DISMISS_HINT in normalized
+    ) or (
+        normalized.startswith(_CodexFooterRowToken.MODEL_NAME_PREFIX)
+        and _CodexFooterRowToken.FIELD_SEPARATOR in normalized
     )
 
 
