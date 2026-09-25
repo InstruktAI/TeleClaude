@@ -47,6 +47,7 @@ def handle_lint(args: list[str]) -> None:
         scoped_files,
         scoped_files is not None,
         None,
+        request_subject_checkout_grading=True,
     )
     if result.exit_code != 0:
         if result.failure_reason:
