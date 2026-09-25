@@ -161,6 +161,7 @@ And the service resolves the removed slug from that project rather than the daem
 #### UC-WM32: Listing reads the caller's project through the workflow service
 
 ```
+<!-- planned-change:cli-reads-resolve-in-process -->
 Given an operator or agent is inside a project worktree
 When they run "telec todo list" or "telec bugs list"
 Then the CLI sends the invocation working directory to the workflow service
@@ -169,16 +170,35 @@ And the answer honors the caller's section and delivery-cutoff filters
 And each listed bug fix's progress is the one its lifecycle state determines
 And the CLI renders the service's answer without reading the todo store itself
 ```
+<!-- change:cli-reads-resolve-in-process -->
+Given an operator or agent is inside a project worktree
+When they run "telec todo list" or "telec bugs list"
+Then the CLI hands the invocation working directory to the workflow service
+And the service answers from that project's todo list
+And the answer honors the caller's section and delivery-cutoff filters
+And each listed bug fix's progress is the one its lifecycle state determines
+And the CLI renders the service's answer without reading the todo store itself
+```
+<!-- /planned-change:cli-reads-resolve-in-process -->
 
 #### UC-WM33: Todo and bug reads refuse a caller the platform cannot identify
 
 ```
+<!-- planned-change:cli-reads-resolve-in-process -->
 Given a process with no resolved person or principal — no terminal login, no usable session identity, or a verified session whose record holds only an operational role
 When it runs "telec todo list", "telec todo show", "telec todo artifacts list", "telec todo artifacts read", "telec todo artifacts diff", or "telec bugs list"
 Then the workflow service refuses the request before any todo is read
 And no todo, artifact, or bug content is printed
 And the refusal names how to establish an identity
 ```
+<!-- change:cli-reads-resolve-in-process -->
+Given a process with no resolved person or principal — no terminal login, no usable session identity, or a session whose record holds only an operational role
+When it runs "telec todo list", "telec todo show", "telec todo artifacts list", "telec todo artifacts read", "telec todo artifacts diff", or "telec bugs list"
+Then the request is refused before any todo is read
+And no todo, artifact, or bug content is printed
+And the refusal says why: at a terminal, how to establish an identity; inside a session, that the session carries no usable identity
+```
+<!-- /planned-change:cli-reads-resolve-in-process -->
 
 ```
 Given active todos [ready-a, prep-b]

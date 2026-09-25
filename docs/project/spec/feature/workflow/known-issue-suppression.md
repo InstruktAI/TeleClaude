@@ -36,6 +36,14 @@ registration.
 A suppression's creation provenance is the principal the platform resolves for
 the registering caller. A caller the platform cannot identify registers nothing.
 
+<!-- planned:cli-reads-resolve-in-process -->
+Listing the ledger is a governed read: `telec bugs suppressions` is cleared
+against its verb band in the process that runs it
+(`project/spec/feature/identity/command-clearance`, Local read clearance). A
+job-runner session is admitted, so the log bug hunter reads the ledger it
+subtracts before filing. A caller the platform cannot identify lists nothing.
+<!-- /planned:cli-reads-resolve-in-process -->
+
 ## Canonical fields
 
 ### Use cases
@@ -101,6 +109,20 @@ When it runs telec bugs suppress
 Then no entry is written to the ledger
 And the refusal names how to establish an identity
 ```
+
+<!-- planned:cli-reads-resolve-in-process -->
+#### UC-KIS8: The bug hunter lists the ledger and an unidentified caller does not
+
+```
+Given a project whose ledger holds active suppressions
+When the log bug hunter, running as a job-runner session, runs telec bugs suppressions for that project
+Then every active entry is listed
+Given a process the platform cannot identify
+When it runs telec bugs suppressions
+Then no entry is listed
+And the refusal says why the caller is not identified
+```
+<!-- /planned:cli-reads-resolve-in-process -->
 
 ### Cross-context references
 

@@ -11,6 +11,7 @@ description: A record the platform writes on a caller's behalf takes who made it
 
 ## What it is
 
+<!-- planned-change:cli-reads-resolve-in-process -->
 When a command records who made something, it takes the answer from caller
 verification, never from a terminal login or session identity document the
 invoking process reads for itself. A content inbox entry's author and a
@@ -20,6 +21,21 @@ carries that principal or a terminal login names them, and the carried system
 principal for work with no human origin. A sealed commit takes its author from
 the caller verification resolved, under the rules
 `project/spec/feature/agent_runtime/sealed-commit` owns.
+<!-- change:cli-reads-resolve-in-process -->
+When a command records who made something, it takes the answer from the platform's
+resolution of its caller (`project/spec/identity-and-auth` §6): inside a session, the
+session record its identity document names; outside any session, the person the
+terminal's login names. It never takes a principal copied into the identity document,
+and never a terminal login from inside a session. A content inbox entry's author and a
+known-issue suppression's creation provenance name the resolved principal:
+`human:<email>` for a registered person, whether a session carries that principal or a
+terminal login names them, and the carried system principal for work with no human
+origin. A known-issue suppression and a sealed commit resolve their caller in the CLI
+process; a content inbox entry takes its author from caller verification. A sealed
+commit takes its author under the rules `project/spec/feature/agent_runtime/sealed-commit`
+owns.
+<!-- /planned-change:cli-reads-resolve-in-process -->
+
 
 A caller that caller verification cannot identify has nothing recorded under a
 borrowed name: a command that would have to attribute a record to it refuses
@@ -70,6 +86,13 @@ And no identity lookup decides the author
 
 ## Known caveats
 
+<!-- planned-change:cli-reads-resolve-in-process -->
 - Attribution needs the platform's local service. When it is unreachable, a
   command that would attribute a record fails rather than recording a name the
   invoking process chose.
+<!-- change:cli-reads-resolve-in-process -->
+- Content inbox attribution needs the platform's local service. When it is
+  unreachable, a content dump that would attribute its entry fails rather than
+  recording a name the invoking process chose.
+<!-- /planned-change:cli-reads-resolve-in-process -->
+

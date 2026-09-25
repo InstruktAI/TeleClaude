@@ -16,6 +16,7 @@ full session identifier. The lookup matches that identifier exactly; a
 shortened value is refused rather than resolved. Optional
 computer scoping narrows the lookup when callers supply a host name.
 
+<!-- planned-change:cli-reads-resolve-in-process -->
 A local `telec history show` is answered by the session_mirrors service's
 history detail capability for the caller the platform verifies. That capability
 resolves the identifier — a TeleClaude id through the session registry, a native
@@ -26,6 +27,22 @@ count, coverage, whether the session is running, and the conversation body. The
 CLI reads no mirror, session record, or transcript itself; it renders that answer
 as a human-readable header — title, project, computer, start timestamp, both
 identifiers and which source answered — followed by the conversation body in full.
+<!-- change:cli-reads-resolve-in-process -->
+A local `telec history show` is answered in the CLI process by the
+session_mirrors service's history detail capability, for the caller the
+platform's shared caller resolution yields (`project/spec/identity-and-auth` §6)
+and after that caller clears the verb
+(`project/spec/feature/identity/command-clearance`, Local read clearance). That
+capability resolves the identifier — a TeleClaude id through the session
+registry, a native id directly — applies the caller's history scope, and returns
+the same structured answer `telec history show --json` prints: both identifiers
+and which of them was supplied, which source answered, title, project, computer,
+timestamps, message count, coverage, whether the session is running, and the
+conversation body. The CLI reads mirrors only through that capability; it renders
+the answer as a human-readable header — title, project, computer, start
+timestamp, both identifiers and which source answered — followed by the
+conversation body in full.
+<!-- /planned-change:cli-reads-resolve-in-process -->
 
 The detail capability of the session_mirrors service returns one stored mirror
 by exact identifier as a structured payload with session_id, identity, title,

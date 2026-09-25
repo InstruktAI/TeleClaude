@@ -612,6 +612,7 @@ Then the commit fails loudly with a diagnostic
 And no commit is produced attributing the change to whichever identity git's ambient config happens to name
 ```
 
+<!-- planned-change:cli-reads-resolve-in-process -->
 #### UC-CGIP-46 — Commit attribution waits for the platform's answer
 
 ```
@@ -620,6 +621,18 @@ When telec code commit is invoked
 Then the commit fails loudly, naming how to check and restore the service
 And no commit is produced from an identity the invoking process decided for itself
 ```
+<!-- change:cli-reads-resolve-in-process -->
+#### UC-CGIP-47 — Commit attribution resolves from the carried identity
+
+```
+Given an agent session whose record names its active agent
+And the platform's local service is not reachable from the invoking process
+When telec code commit --approved is invoked from that session
+Then the commit's git author is that agent's verified bot identity, resolved from the session record
+And no request is sent to the platform's local service to resolve the author
+And a principal copied into the session identity document never decides the author
+```
+<!-- /planned-change:cli-reads-resolve-in-process -->
 
 #### UC-CGIP-16 — Human-Involved is a per-commit declaration, never derived from the todo record
 
