@@ -98,7 +98,9 @@ Derivation rules:
   which for a slug worktree is the owning checkout's; brought to its current
   shape by the configuration migration list
   (`project/spec/feature/config/document-migration`); and its tier and each
-  capability block read with the runtime's own models. The two readers therefore
+  capability block read the way the runtime's loader reads them — environment
+  references resolved from the declaration's sibling `.env` — and validated with
+  the runtime's own models. The two readers therefore
   answer alike for every tier and every capability block, and a declaration that
   loads in the runtime never blocks git. The plumbing reads only what it decides
   on: the declaration's tier and, for a project declaration, the capability
@@ -110,9 +112,10 @@ Derivation rules:
   file: overlay validation belongs to the runtime. The plumbing keeps the answer
   for a declaration it has resolved and serves repeated reads from it without
   starting an interpreter. The kept answer is a cache of the runtime's answer,
-  never a source: a change to the document or a configuration migration run
-  discards it, so it never answers for a document state or a migration list it
-  was not resolved from. A global or person declaration carries no capability
+  never a source: a change to the document, a change to the environment file its
+  capability blocks reference, or a configuration migration run discards it, so
+  it never answers for an input state or a migration list it was not resolved
+  from. A global or person declaration carries no capability
   blocks; what the plumbing decides at such a repository root is the seal, per
   `project/design/code-commit`. Because the declaration is a file the project
   tracks, a clone carries the project's real capability state before any
@@ -481,6 +484,15 @@ When an agent session invokes git inside that worktree
 Then the installed plumbing decides from the owning checkout's declaration
 And it decides as the runtime's gates decide for an invocation from that worktree
 ```
+
+#### UC-CFG-CAP-33: A capability resolved from the project's environment file resolves alike on both readers
+
+```
+Given a project whose code capability block takes its enabled value from a variable in the declaration's sibling .env
+When the capabilities are resolved by the runtime or by the installed plumbing
+Then both readers resolve the code capability to the value the .env holds
+And after that value changes in the .env, the next git invocation decides from the new value
+```
 <!-- /planned:config-first-version-migrations -->
 
 
@@ -514,8 +526,8 @@ And it decides as the runtime's gates decide for an invocation from that worktre
   only the tier and the capability blocks and claims nothing about the rest of
   the file. Git keeps working in a repository whose declaration fails
   validation elsewhere.
-- The first read of a declaration after it changes, or after a configuration
-  migration run, pays one start of the installation's interpreter; every later
+- The first read of a declaration after it or its referenced environment file
+  changes, or after a configuration migration run, pays one start of the installation's interpreter; every later
   read is served without one.
 <!-- /planned-change:config-first-version-migrations -->
 
