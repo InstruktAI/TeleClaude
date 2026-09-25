@@ -64,18 +64,30 @@ for tmux callers.
 
 **Caller paths:**
 
+<!-- planned-change:config-first-version-migrations -->
 A commit reaches git through one of four contexts in this repository: the human
 shell outside tmux, an autonomous agent inside tmux within a telec-registered
 project, an agent inside tmux within a repository whose own root is a declared
 invocation context that is not a project, and an agent inside tmux operating in a
 repository whose own root carries no declaration.
+<!-- change:config-first-version-migrations -->
+A commit reaches git through one of four contexts in this repository: the human
+shell outside tmux, an autonomous agent inside tmux within a telec-registered
+project, an agent inside tmux within a repository whose own root is a declared
+invocation context that is not a project, and an agent inside tmux operating in a
+repository for which the runtime finds no declaration.
+<!-- /planned-change:config-first-version-migrations -->
 
 | Caller context                                  | Command                            | Why telec is or isn't involved                                                                                                                     |
 | ----------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Outside tmux (human shell)                      | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec.                                    |
 | Inside tmux, autonomous agent (registered)      | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                                                                 |
 | Inside tmux, repository root a declared context | `telec code commit --approved ...` | Sealed on the repository's own declaration rather than on project subscriptions; an invocation beneath it resolving to no context root is refused. |
+<!-- planned-change:config-first-version-migrations -->
 | Inside tmux, repository root undeclared         | `git commit ...`                   | The repository's own root carries no declaration → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux.            |
+<!-- change:config-first-version-migrations -->
+| Inside tmux, repository root undeclared         | `git commit ...`                   | The runtime finds no declaration for the repository's root → the wrapper enforces nothing and execs real git unmodified, as it does outside tmux. |
+<!-- /planned-change:config-first-version-migrations -->
 
 Inside tmux there is **no env-var bypass on `git commit`**. The wrapper
 redirects every `git commit` invocation to `telec code commit` with no
@@ -97,10 +109,19 @@ whose own root is a declared non-project invocation context is also one, and
 there the seal covers the whole repository: an invocation beneath it resolving to
 no context root is refused rather than passed through. A project root's seal
 follows its subscriptions alone — a project subscribing neither capability keeps
+<!-- planned-change:config-first-version-migrations -->
 ordinary git exactly as stated below, whatever else its tier answers. When the project subscribes neither, or the
 repository's own root carries no declaration at all, the wrapper decides nothing
 from this matrix: it execs the real git binary unmodified, the same transparent
 passthrough it applies outside tmux.
+<!-- change:config-first-version-migrations -->
+ordinary git exactly as stated below, whatever else its tier answers. When the project subscribes neither, or the
+runtime finds no declaration for the repository's root — neither the root's own
+nor, for a slug worktree, its owning checkout's — the wrapper decides nothing
+from this matrix: it execs the real git binary unmodified, the same transparent
+passthrough it applies outside tmux. The wrapper itself interprets no repository
+layout; whether a root answers to a declaration is the runtime's answer.
+<!-- /planned-change:config-first-version-migrations -->
 
 <!-- planned-change:config-first-version-migrations -->
 The wrapper reads capability state from the repository root's `teleclaude.yml`

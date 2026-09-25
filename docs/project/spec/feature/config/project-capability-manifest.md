@@ -142,9 +142,20 @@ Derivation rules:
   `project/spec/feature/reconciliation/project-plumbing-convergence`. Neither path
   ever rewrites a project-tracked file.
 
+<!-- planned-change:config-first-version-migrations -->
 - A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
   non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
   or reads anything for it, and it is left byte-for-byte untouched. The sole
+<!-- change:config-first-version-migrations -->
+- A repository carrying no `teleclaude.yml` is not a TeleClaude target: no
+  non-adopting path — a sync, the checkpoint engine, the git wrapper — installs
+  or reads any plumbing for it, and it is left byte-for-byte untouched. The git
+  wrapper's one act for it is asking the runtime whether its root answers to a
+  declaration; the runtime answers that it does not, and the plumbing keeps that
+  answer in the machine home like any other. A slug worktree carrying no copy of
+  its own is not such a repository: it answers to its owning checkout's
+  declaration. The sole
+<!-- /planned-change:config-first-version-migrations -->
 <!-- planned-change:align-config-cli-ownership -->
   exception is explicit adoption: `telec projects onboard` (and `init`) creates
   the `teleclaude.yml` and its inferred declaration — that is the sanctioned act
