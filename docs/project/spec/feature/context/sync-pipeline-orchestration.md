@@ -38,22 +38,21 @@ The publication pipeline is:
    outputs from those snapshots.
 <!-- change:stale-sync-retry-regresses-global-publication -->
 2. **Build indexes** — derive indexes from the triggering project's recorded
-   snapshot for publication. Write portable derived indexes to its canonical
-   checkout only while the recorded tip is current: no canonical-main change
-   after it changes a source the recorded tip's own declaration publishes.
-   Recheck currency after installation and retain the prior local catalog if
-   such a change landed during the write.
+   snapshot for publication and write portable derived indexes to its
+   canonical checkout.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
-   outputs from those snapshots.
+   outputs from those snapshots, then record the recorded tip as the canonical
+   checkout's published generation.
 
-A publication decides currency once it holds publication serialization. A
-recorded tip that is superseded at that point — a later canonical-main change
-alters a source its own declaration publishes — runs no index or distribution
-phase. It leaves the canonical checkout's indexes and every deployed runtime
-output unchanged and reports a superseded outcome; the later change's own
-publication action (`project/spec/feature/integration/post-commit-maintenance`)
-carries the newer source. A change landing while a current publication runs
-publishes after it, under that change's own action.
+A canonical checkout's published generation is the recorded tip of its latest
+successful publication. Publication compares against it once it holds
+publication serialization. A recorded tip that is a strict ancestor of the
+published generation is superseded: its publication runs no index or
+distribution phase, leaves the canonical checkout's indexes and every deployed
+runtime output unchanged, and reports a superseded outcome. Any other recorded
+tip publishes and becomes the published generation, so a replay of a range
+whose later successors have not yet published advances deployment rather than
+waiting on them.
 <!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
 
@@ -144,7 +143,7 @@ And the replay reports its terminal outcome for that original range
 
 ```gherkin
 Given publication failed for a recorded commit range
-And a later commit owing no publication, or a working-tree edit, exists
+And no later commit's source has been published, while a later commit or working-tree edit exists
 When an agent replays the publication action for the failed range
 Then an agent retrieving the deployed documentation reads the original committed input
 And the later source does not replace it
@@ -157,10 +156,9 @@ And the replaying agent receives the terminal outcome for that original range
 
 ```gherkin
 Given publication failed for a recorded commit range
-And a later canonical-main commit alters a source that range's declaration publishes
-And the later commit's source is published
+And a later canonical-main commit's source has since been published
 When an agent replays the publication action for the failed range
-Then an agent retrieving documentation or agent artifacts reads the later published source
+Then an agent retrieving documentation, commands, or skills reads the later published source
 And an agent's local documentation retrieval still lists the later published catalog
 And the replaying agent receives a superseded terminal outcome for the original range
 And the failed action no longer awaits the agent's recovery
@@ -299,17 +297,14 @@ And its absence before first deployment is not a finding
 - Publication is idempotent at the authored-source layer: it builds indexes
   from the recorded snapshot and places published domain bundles inside the
   deployed generation. It writes gitignored `index.yaml` files with canonical
-  checkout paths only while the recorded tip is current, so a tip followed only
-  by commits that alter no source its declaration publishes still installs its
-  catalog. The host
+  checkout paths whenever its recorded tip becomes the published generation,
+  including after later commits that owe no publication. The host
   documentation lease covers the checkout write and every publication action,
-  including maintenance from a person's direct Git commit or merge. Git may
-  advance its ref while a publication holds that lease, so the writer rechecks
-  currency and retains the prior local catalog if a publication-owing change
-  landed; that change's maintenance writes its own catalog when its action
-  succeeds. Replaying a superseded range changes neither the local index nor
-  runtime output. Publication never mutates authored source snippets or uses
-  uncommitted files.
+  including maintenance from a person's direct Git commit or merge, so a later
+  commit's publication runs after an earlier one releases it and writes its
+  own catalog when that action succeeds. Replaying a superseded range changes
+  neither the local index nor runtime output. Publication never mutates
+  authored source snippets or uses uncommitted files.
 <!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
 
