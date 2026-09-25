@@ -208,14 +208,6 @@ is no TTL and no timeout. Session close is the single lifecycle boundary.
 <!-- /planned-change:cli-actions-authorize-in-process -->
 
 **`telec auth whoami`:**
-<!-- planned-change:cli-reads-resolve-in-process -->
-Inside a session and at a terminal alike, `whoami` asks the daemon's `GET /auth/whoami`
-endpoint and prints its answer. The answer is what caller verification resolved: the
-principal (`human:<email>` for a person, whether a session carries it or a terminal
-login names them), the role, the person's email, and the session id when the caller is
-a session. A process whose session identity document is unusable is told so and asks
-nothing. The CLI resolves no identity itself.
-<!-- change:cli-reads-resolve-in-process -->
 Inside a session and at a terminal alike, `whoami` resolves its caller in the CLI process
 through the shared caller resolution in §6 and prints the answer; it sends no request to
 the daemon. The answer is the principal (`human:<email>` for a person, whether a session
@@ -223,7 +215,6 @@ carries it or a terminal login names them) and the role that authorizes the call
 the person's email and terminal at a terminal. A process whose session identity document
 identifies no open session on this computer is told so and is given no terminal identity.
 The daemon's `GET /auth/whoami` endpoint answers the same question for clients of its API.
-<!-- /planned-change:cli-reads-resolve-in-process -->
 
 **Principal types:**
 

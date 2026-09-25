@@ -134,18 +134,11 @@ This table's system-role columns predate Integrator and System (see the code's `
 | `telec bugs report` | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Workers CAN report bugs (explicitly stated). Anyone on the team can report. Customers should use escalate instead. |
 | `telec bugs list`   | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Listing bugs is a read operation. Workers can see bug status. Customers should not see internal bug tracking.      |
 
-<!-- planned-change:cli-reads-resolve-in-process -->
-Job-runner sessions, which have no column here, are admitted to `telec todo list`,
-`telec todo artifacts read`, and `telec bugs list`: a scheduled job that files bugs reads
-the todo and bug landscape before filing, so it does not file a defect that is already
-reported or being fixed.
-<!-- change:cli-reads-resolve-in-process -->
 Job-runner sessions, which have no column here, are admitted to `telec todo list`,
 `telec todo artifacts read`, `telec bugs list`, and `telec bugs suppressions`: a scheduled
 job that files bugs reads the todo and bug landscape, and the known-issue ledger it
 subtracts, before filing, so it does not file a defect that is already reported, being
 fixed, or triaged as known.
-<!-- /planned-change:cli-reads-resolve-in-process -->
 
 
 ### Content Pipeline

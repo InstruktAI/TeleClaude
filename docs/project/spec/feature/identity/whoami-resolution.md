@@ -12,36 +12,40 @@ visibility: 'public'
 
 ## What it is
 
-`telec auth whoami` is the operator-facing question "who does the system think I am?". Inside a session and at a terminal alike, the CLI queries the identity context's whoami capability and prints what caller verification resolved for the identity signals it sends. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role its session resolves to, whether it presents a session token or its session id, and never reads the terminal login; a document that is present but unusable is reported and nothing is asked. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path; the CLI resolves no Role itself. The whoami capability is gated by caller verification, so every invocation exercises the full caller-verification path. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
+`telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI answers it in its own process from the identity context's shared caller resolution (`project/spec/identity-and-auth` §6) — the same resolution every caller-dependent command applies — and sends no request to the daemon. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role the session's record resolves to, and never reads the terminal login; a document that is present but identifies no open session on this computer is reported as carrying no usable identity. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path. The Role is the one that authorizes the caller: a person's role from the people registry, or a system caller's system role as caller verification derives it. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
 
+The identity context's whoami capability answers the same question for clients of the daemon's API. It is gated by caller verification, and its answer for a caller agrees with the CLI's.
 
 ## Canonical fields
 
 ### Use cases
 
+#### UC-WHO1: A system session reports its principal and system role
+
 ```
-Given an agent session whose TMPDIR identity file contains `session_token: 8f3c1a7d-2b94-4e6c-9f0e-2a8d7b6c4e5f`
+Given an agent session whose record resolves to the principal `system:daemon` and whose derived system role is `worker`
 When the operator runs `telec auth whoami`
-Then the CLI reads the token via the session-token reader and invokes the identity context's whoami capability over the local transport
-And the capability resolves the caller through caller verification (token-path)
-And the capability returns `{"principal": "system:c3f1d8a2-7b94-4e6c-9f0e-2a8d7b6c4e5f", "role": "worker"}`
-And the CLI prints two lines: `Principal: system:c3f1d8a2-7b94-4e6c-9f0e-2a8d7b6c4e5f` and `Role: worker`
+Then it prints two lines: `Principal: system:daemon` and `Role: worker`
 ```
+
+#### UC-WHO2: A terminal reports the person its login names
 
 ```
 Given a terminal outside any session — no session identity document — whose login document names `ada@example.com`
 And the `people` registry holds `ada@example.com` with the `admin` Role
 When the operator runs `telec auth whoami`
-Then the CLI sends that login as its identity signal to the identity context's whoami capability
-And it prints `Email: ada@example.com` and `Role: admin` from the capability's answer, then `TTY: <pts/N>` and `Session auth file: <path>`
-And the CLI resolves no Role itself
+Then it prints `Email: ada@example.com` and `Role: admin`, then `TTY: <pts/N>` and `Session auth file: <path>`
 ```
 
+#### UC-WHO3: An unidentified terminal is told how to log in
+
 ```
-Given a terminal outside any session that caller verification cannot identify — no login document on a host with more than one registered person, or a login naming no registered person
+Given a terminal outside any session that the platform cannot identify — no login document on a host with more than one registered person, or a login naming no registered person
 When the operator runs `telec auth whoami`
-Then the CLI prints that no identity is established for the current TTY, with the refusal's instruction to log in, and exits with success
+Then the CLI prints that no identity is established for the current TTY, with the instruction to log in, and exits with success
 ```
+
+#### UC-WHO4: No terminal and no session is an error
 
 ```
 Given an environment outside any session with no detectable TTY
@@ -52,65 +56,74 @@ Then the CLI prints `Error: no terminal session detected (TTY unavailable).` and
 #### UC-WHO-SESSION-CARRIED: Inside a session, whoami reports the identity the session carries
 
 ```
-Given a process inside a session whose identity document holds no session token — a session whose lineage roots at a person
+Given a process inside a session whose lineage roots at a person
 And the pane it runs on carries a live login document for someone else
 When the operator runs `telec auth whoami`
-Then the CLI invokes the identity context's whoami capability over the local transport
-And it prints the Principal and Role the session resolves to
+Then it prints the Principal and Role the session's record resolves to
 And the terminal's login is not printed
 ```
 
 #### UC-WHO-SESSION-UNUSABLE: A session identity document that identifies nothing is reported, not replaced
 
 ```
-Given a process whose session identity document is present but malformed, or carries no session id
+Given a process whose session identity document is present but malformed, carries no session id, or names a session with no open record on this computer
 When the operator runs `telec auth whoami`
 Then the CLI reports that the session carries no usable identity and exits with a failure status
 And no terminal login is consulted or printed
+```
+
+#### UC-WHO6: Whoami answers while the daemon is not running
+
+```
+Given the daemon's local service is not reachable
+And a process inside a session whose lineage roots at the registered person `ada@example.com`
+When the operator runs `telec auth whoami`
+Then it prints `Principal: human:ada@example.com` and the Role the `people` registry holds for her
+And no request is sent to the daemon's local service
 ```
 
 #### UC-WHO-CAPABILITY-SESSION: The capability answers a session caller with its principal and session
 
 ```
 Given an agent in a session whose carried principal is `system:daemon` and whose system role is `orchestrator`
-When the identity context's whoami capability runs for that caller
-Then it returns the principal `system:daemon`, the role `orchestrator`, no email, and the id of the session it verified
+When a client of the daemon's API asks who that caller is
+Then the answer carries the principal `system:daemon`, the role `orchestrator`, no email, and the id of the caller's session
+And the role is the one `telec auth whoami` prints for that caller, also when the session inherited its principal
 ```
 
 #### UC-WHO-CAPABILITY-PERSON: The capability answers a person with a principal named for them
 
 ```
 Given a caller the platform resolves as the registered person `ada@example.com`, whose registered role is `member` — at a terminal, or through a session whose lineage roots at them
-When the identity context's whoami capability runs for that caller
-Then it returns the principal `human:ada@example.com`, the role `member`, and the email `ada@example.com`
-And it returns a session id only when the caller is a session
+When a client of the daemon's API asks who that caller is
+Then the answer carries the principal `human:ada@example.com`, the role `member`, and the email `ada@example.com`
+And it carries a session id only when the caller is a session
 ```
 
 #### UC-WHO-CAPABILITY-NOBODY: The capability attributes nothing it cannot attribute
 
 ```
-Given a verified session caller that resolves to no person and carries no principal
-When the identity context's whoami capability runs for that caller
-Then it returns no principal, no role, and no email
+Given a session caller that resolves to no person and carries no principal
+When a client of the daemon's API asks who that caller is
+Then the answer carries no principal, no role, and no email
 ```
 
+#### UC-WHO5: The conversational alias answers as whoami
+
 ```
-Given an operator types `telec auth who am i`
-When the auth subcommand dispatcher parses the args
-Then the conversational pattern matches and the call is rewritten to `telec auth whoami`
-And the standard whoami flow runs
+Given an operator in any context where `telec auth whoami` answers
+When the operator runs `telec auth who am i`
+Then the output and exit status are those `telec auth whoami` produces in that context
 ```
 
 ### Cross-context references
 
-- The token path reaches transitively into `agent_runtime.sessions` — caller verification loads the session record bound to the token and rejects the call if the session is closed/closing.
-- Every path reaches the identity context: the person and role printed at a terminal are the ones caller verification resolves, from the `people` registry, for the login the terminal presents. The CLI resolves no role itself.
-- The whoami capability is itself gated by caller verification, so it is the simplest live exercise of token Resolution end-to-end.
+- Inside a session the CLI reads the session record in `agent_runtime.sessions` that the identity document's session id names; the record, never the document's copied fields, supplies the principal (`feature/identity/session-identity-file`).
+- The person and role printed at a terminal come from the `people` registry for the login the terminal presents, through the same resolution the identity context applies.
 - In v2 this is the same capability spelled as a method on the identity service (`identity.who_am_i(principal)`) returning a typed `Principal` (or Anonymous).
 
 ## Known caveats
 
 - The conversational alias is strict: it matches exactly the three tokens `who`, `am`, `i` (the third with optional trailing `?`). Punctuation or different ordering misses and falls through to the unknown-subcommand branch.
-- Every whoami requires the identity context to be reachable. If it is down, whoami fails with an API error — there is no local fallback, at a terminal or inside a session.
-- A token whose session has been closed will fail at caller verification with "session no longer active" BEFORE the whoami capability runs. The CLI surfaces this as a generic error, not as a friendly "logged out" message.
-- The token path prints only `Principal` and `Role`. The terminal path prints `Email`, `Role`, `TTY`, and `Session auth file`. The two outputs are intentionally different shapes because they answer different questions about Resolution.
+- A session whose record is closed, absent, or recorded for another computer is reported as carrying no usable identity, not as a friendly "logged out" message.
+- The session path prints only `Principal` and `Role`. The terminal path prints `Email`, `Role`, `TTY`, and `Session auth file`. The two outputs are intentionally different shapes because they answer different questions about Resolution.

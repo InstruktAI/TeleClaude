@@ -291,7 +291,6 @@ When the clearance gate runs
 Then the gate rejects the caller with a not-permitted authorization failure naming the role and verb
 ```
 
-<!-- planned:cli-reads-resolve-in-process -->
 ### Local read clearance
 
 The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`project/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the system-role derivation caller verification applies (`feature/identity/caller-verification`), and its person role is the role the people registry holds for its principal, so a local gate admits and refuses what the daemon's gate admits and refuses. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
@@ -333,7 +332,6 @@ When it runs that command
 Then the command is refused with the not-permitted failure naming the role and the verb
 And no content is printed
 ```
-<!-- /planned:cli-reads-resolve-in-process -->
 
 <!-- planned:cli-actions-authorize-in-process -->
 ### Clearance of commands that ask the daemon to act
