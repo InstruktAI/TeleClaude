@@ -45,9 +45,7 @@ maintenance-only appliance surface, not the replacement reconciliation design.
 
 - **project-plumbing-convergence** — `docs/project/spec/feature/reconciliation/project-plumbing-convergence.md` — converging a project's installed git hooks and docs filter driver to its declared capabilities
 - **home-template-materialization** — `docs/project/spec/feature/reconciliation/home-template-materialization.md` — materializing repository-owned regular-file templates into the TeleClaude home before activation
-<!-- planned:installable-template-trees -->
 - **template-installation** — `docs/project/spec/feature/reconciliation/template-installation.md` — rendering and naming every repository-owned template TeleClaude installs onto a machine or into a project
-<!-- /planned:installable-template-trees -->
 - **config-schema-publication** — `docs/project/spec/feature/reconciliation/config-schema-publication.md` — publishing every configuration schema once per machine into the TeleClaude home
 
 

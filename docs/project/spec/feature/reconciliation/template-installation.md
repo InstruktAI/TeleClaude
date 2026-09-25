@@ -1,7 +1,8 @@
 ---
-description: Every repository-owned template TeleClaude installs onto a machine or into a project is rendered and named by one contract — double-brace placeholders resolved from supplied values then the environment, unresolved placeholders failing the installation, and dot_-marked path segments installed as dot-prefixed names.
-delivered_by:
-  - installable-template-trees
+description: Every repository-owned template TeleClaude installs onto a machine or
+  into a project is rendered and named by one contract — double-brace placeholders
+  resolved from supplied values then the environment, unresolved placeholders failing
+  the installation, and dot_-marked path segments installed as dot-prefixed names.
 ---
 
 # Template Installation — Spec
