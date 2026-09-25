@@ -31,7 +31,7 @@ delivered_by: [config-migration-chain]
   Where the value's final owner is another bounded context, the destination is a
   config-owned hand-off that owner imports from; a migration never writes
   another context's store.
-- **A step may retire config-owned records the list has made obsolete.** A retirement
+- **A step may retire config-owned records the list declares obsolete.** A retirement
   effect removes config-owned records that no current code reads. It is idempotent, never touches a configuration document, and runs on every
   migration run whatever any document's version, so an installation whose documents are
   already current still loses those records on its first run.
