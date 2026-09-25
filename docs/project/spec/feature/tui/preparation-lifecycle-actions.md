@@ -53,6 +53,19 @@ Then the operator is notified at error severity
 And the notification carries the outcome the operation reported
 ```
 
+<!-- planned:fix-tui-closed-session-reflection -->
+#### UC-PLA-3: Opening a trashed todo's artifact shows that removed todo's own content, read-only
+
+```gherkin
+Given a soft-removed todo inside its retention window holds stored artifacts
+And a live todo in the same project holds the same slug and an artifact of the same name with different content
+And the operator has revealed the project's Trashed section and expanded the removed todo
+When the operator opens one of the removed todo's artifacts from the Trashed section
+Then the viewer shows the content stored for that removed todo's artifact
+And the viewer is read-only, so nothing done in it changes either todo's artifacts
+```
+<!-- /planned:fix-tui-closed-session-reflection -->
+
 ## See Also
 
 - docs/project/design/architecture/tui-state-layout.md — the Preparation view's
