@@ -491,7 +491,6 @@ Then a checkpoint decision is produced naming those paths
 And its required actions are the ones their categories carry
 ```
 
-
 ### Cross-context references
 
 - Belongs to `agent_runtime` in the v2 fold; inventoried in v1 alongside
