@@ -103,16 +103,16 @@ it is the absence of evidence wearing evidence's shape.
 
 ### Evidence states
 
-| State                       | Meaning                                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `armed`                     | Independent review confirmed the promised instrumentation correctly placed. Delivery may proceed.                                          |
-| `armed_unobserved`          | No qualifying opportunity has occurred yet, and the opportunity record is reachable. No defect is inferred.                                |
-| `unobservable`              | The opportunity record cannot fire while the delivered change is in force. Silence carries no information; a finding, never a clean state. |
-| `observed`                  | A qualifying opportunity and conforming outcome records were correlated within the bound.                                                  |
-| `contradicted`              | Records occurred but violated fields, order, cardinality, or a forbidden-outcome rule.                                                     |
-| `missing_after_opportunity` | An opportunity occurred; the required outcome did not arrive within its bound.                                                             |
-| `telemetry_unavailable`     | Level, retention, runtime identity, or ingestion continuity prevents judgment. Never reported as a product defect.                         |
-| `superseded`                | A later delivery or predicate change replaced this watch.                                                                                  |
+| State                       | Meaning                                                                                                                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `armed`                     | Independent review confirmed the promised instrumentation correctly placed. Delivery may proceed.                                                                                               |
+| `armed_unobserved`          | No qualifying opportunity has occurred yet — or, for an entry whose precondition no record carries, none has been established — and the opportunity record is reachable. No defect is inferred. |
+| `unobservable`              | The opportunity record cannot fire while the delivered change is in force. Silence carries no information; a finding, never a clean state.                                                      |
+| `observed`                  | A qualifying opportunity and conforming outcome records were correlated within the bound.                                                                                                       |
+| `contradicted`              | Records occurred but violated fields, order, cardinality, or a forbidden-outcome rule.                                                                                                          |
+| `missing_after_opportunity` | An opportunity occurred; the required outcome did not arrive within its bound.                                                                                                                  |
+| `telemetry_unavailable`     | Level, retention, runtime identity, or ingestion continuity prevents judgment. Never reported as a product defect.                                                                              |
+| `superseded`                | A later delivery or predicate change replaced this watch.                                                                                                                                       |
 
 A watch stays active until superseded or retired — never expired by the age of
 its delivery. A rare path may honestly remain `armed_unobserved` indefinitely;
@@ -163,9 +163,7 @@ record the changed behavior itself produces. No instrumentation is owed for it
   that opportunity violates the use case whenever the precondition held. It
   carries no required outcome that depends on the unrecorded precondition;
 - reaches `contradicted` when a forbidden outcome appears, and otherwise stays
-  `armed_unobserved`. It never reaches `observed`, because a conforming
-  occurrence cannot be told apart from one in which the precondition did not
-  hold.
+  `armed_unobserved`; it never reaches `observed`.
 
 Plan review verifies that the declared gap is genuine, meaning no existing record
 upstream of the change carries the precondition. It also verifies that, under the
