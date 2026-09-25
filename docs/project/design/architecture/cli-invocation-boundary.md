@@ -56,8 +56,11 @@ design owns only the path that connects them.
    allowlists, schemas and the rendered command surface that judge a worktree's change
    come from that worktree, while `telec code` itself runs installed code. The
    worktree's grading code runs against a fresh scratch home seeded the same way and
-   discarded when grading ends, never against the live home. Bookkeeping commands run
-   installed code and read and write the live home as usual.
+   discarded when grading ends, never against the live home. It runs exactly the checks
+   the acting invocation context selects (`project/design/code-commit`), no more and no
+   fewer. A worktree that cannot run the selected checks in its own code is refused,
+   never graded by installed rules instead. Bookkeeping commands run installed code and
+   read and write the live home as usual.
 4. **Only the auth gate precedes dispatch.** Before a handler runs, the CLI reads the
    command surface to identify the command and passes the caller through one gate.
    Nothing else runs, loads, or validates first.
@@ -116,10 +119,15 @@ verified after delivery (`project/policy/test-moratorium`).
 ### Grading a change
 
 `telec code lint` or `telec code commit` from a worktree runs installed code for its
-own orchestration and hands the lint gate — its native leg and guardrail lane — to
-the worktree's own `telec code lint`, run against a fresh scratch home, so a change
-that edits a guardrail allowlist or a schema is judged by the edited version. A checkout that is the installation, or that is not a TeleClaude
-checkout, is graded by installed code as before.
+own orchestration and hands the checks its acting context selects to the worktree's
+own code, run against a fresh scratch home, so a change that edits a guardrail
+allowlist or a schema is judged by the edited version. A selection carrying the native
+leg and the guardrail lane goes to the worktree's own `telec code lint`, which every
+TeleClaude checkout carries. A selection carrying the guardrail lane alone — a context
+that participates in documentation without subscribing `code` — goes to the worktree's
+own guardrail entry, which runs that lane and nothing else; a worktree that carries no
+such entry is refused with a message naming it. A checkout that is the installation,
+or that is not a TeleClaude checkout, is graded by installed code as before.
 
 ## Failure modes
 

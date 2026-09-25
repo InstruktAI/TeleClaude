@@ -51,7 +51,7 @@ Given a slug worktree whose code differs from the installed canonical checkout
 And a home location that resolves somewhere other than the live home
 When an agent invokes the worktree's own telec wrapper with that home, from any directory
 Then the command runs the worktree's code against that home
-And nothing in the live home changes
+And the worktree's code writes nothing into the live home
 ```
 
 #### UC-CCS3: A worktree's own wrapper aimed at the live home is refused
@@ -80,6 +80,7 @@ And the live machine configuration is unchanged
 Given a slug worktree whose change edits a rule the lint gate applies
 When an agent lints or commits that change with the global telec from the worktree
 Then the lint gate judges the change by the worktree's version of the rule
+And only the checks the acting context selects run
 And the grading leaves the live home unchanged
 ```
 
