@@ -120,9 +120,15 @@ hooks:
 channel_subscriptions: list[ChannelSubscription]
 ```
 
+<!-- planned-change:stateless-config-advancement -->
 The project also declares which platform capabilities it subscribes to. Each block
 is optional and defaults to subscribed, so a project config written before the
 manifest existed keeps its current behavior:
+<!-- change:stateless-config-advancement -->
+The project also declares which platform capabilities it subscribes to. A block
+that is omitted, or that carries no `enabled` value, is unsubscribed; every
+project config the platform writes declares all three:
+<!-- /planned-change:stateless-config-advancement -->
 
 ```yaml
 code:
