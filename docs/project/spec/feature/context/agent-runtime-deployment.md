@@ -448,6 +448,7 @@ And the merged index carries every entry of that tier's catalog under its tier-q
 And the tier's own catalog is deployed beside its material, whether or not it has entries
 And the staged generation replaces the deployed root atomically, tier material included
 And discovery is served from the deployed corpus, never from the tier's authoring home
+And retrieving a tier snippet returns its published body after the source publication built it from is gone
 ```
 
 #### UC-ARD36: An undeclared tier-shaped folder publishes nothing

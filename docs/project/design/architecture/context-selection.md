@@ -249,8 +249,18 @@ catalog's existence answers participation; its entries answer content.
 Tier catalogs and sources are published like every other publisher's: they
 enter the staged documentation generation and the merged index, and each tier's
 own catalog is deployed beside its material whether or not it has entries.
-Discovery reads the deployed corpus for every tier; a snippet body resolves
-through the same source-tree resolver every other tier uses.
+Discovery reads the deployed corpus for every tier, and a tier snippet's body is
+read from its deployed copy, as a global snippet's is. Every tier catalog — the
+one deployed beside its material and the tier's entries in the merged index —
+records paths rooted at the deployed corpus, never at the committed snapshot it
+was built from. That snapshot is discarded when publication ends, and no reader
+follows a path into it or into the tier's authoring home, so an uncommitted edit
+there is never read.
+
+Deployed tier material shares the deployed corpus with global material, so
+location inside it never decides depth: a tier snippet is read at the depth its
+tier resolves to for the caller, and is never admitted as global material because
+of where its copy lives.
 
 The platform home declares no project, yet its recorded-commit publication is a
 target for one contribution: the participating tiers it holds. That activation
