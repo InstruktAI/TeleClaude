@@ -468,10 +468,8 @@ async def _project_user_reflection(
     if not user_text.strip():
         return session, True, False
     transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
-    entry_id: str | None = None
-    if session.native_session_id:
-        entry = entries[turn.entry_index]
-        entry_id = native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=user_text)
+    entry_id = native_entry_id(entries[turn.entry_index], agent_name) if session.native_session_id else None
+    if entry_id is not None:
         await db.create_output_generation(
             generation_id=f"{_GENERATION_ID_PREFIX}{agent_name.value}:{session.native_session_id}:{entry_id}",
             session_id=session.session_id,

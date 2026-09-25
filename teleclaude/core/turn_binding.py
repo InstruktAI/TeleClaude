@@ -22,7 +22,6 @@ from teleclaude.core.models import MessageAuthor, MessageAuthorKind
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
     extract_real_user_text_from_entry,
-    is_real_user_turn_entry,
     native_entry_id,
 )
 
@@ -119,6 +118,15 @@ def _bound_parts(
     return sorted(parts, key=lambda part: part.span_start)
 
 
+def _keyed_caller_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
+    """Return the caller-identity envelopes in an entry that carry an occurrence key."""
+    return [
+        envelope
+        for envelope in scan_injected_envelopes(text)
+        if envelope.kind is TranscriptEntryKind.IDENTITY_CONTENT and caller_occurrence_key(envelope.opening) is not None
+    ]
+
+
 async def bind_pending_native_turns(session: Session) -> None:
     """Persist keyed caller-envelope correlations before projection advances its watermark."""
     if not session.native_log_file or not session.active_agent or not session.native_session_id:
@@ -136,20 +144,15 @@ async def bind_pending_native_turns(session: Session) -> None:
     entries = await asyncio.to_thread(_get_entries_for_agent, session.native_log_file, agent_name)
     local_author = _local_author(session)
     for entry in entries:
-        if not is_real_user_turn_entry(entry, agent_name):
-            continue
         text = extract_real_user_text_from_entry(entry, agent_name)
         if text is None:
             continue
-        keyed_envelopes = [
-            envelope
-            for envelope in scan_injected_envelopes(text)
-            if envelope.kind is TranscriptEntryKind.IDENTITY_CONTENT
-            and caller_occurrence_key(envelope.opening) is not None
-        ]
+        keyed_envelopes = _keyed_caller_envelopes(text)
         if not keyed_envelopes:
             continue
-        entry_id = native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=text)
+        entry_id = native_entry_id(entry, agent_name)
+        if entry_id is None:
+            continue
         if len(keyed_envelopes) != 1:
             for envelope in keyed_envelopes:
                 key = caller_occurrence_key(envelope.opening)
