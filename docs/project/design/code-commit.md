@@ -138,8 +138,9 @@ document is brought to its current shape by the configuration migration list,
 environment references in its capability blocks are resolved from the
 declaration's sibling `.env`, and its tier and capability blocks are read with
 the runtime's own models. The wrapper keeps that answer until a file it was
-read from changes or the installation's code advances, so only the first read
-after either starts an interpreter (`project/spec/feature/config/project-capability-manifest`). A
+read from changes or the installation's code advances, so a read after either
+starts an interpreter and later reads reuse the kept answer; the whole-second
+limit on keeping an answer is stated with the contract (`project/spec/feature/config/project-capability-manifest`). A
 project declaration carries the capability blocks: a block that is absent, or
 present without an `enabled` value, leaves that capability unsubscribed. A
 global or person declaration carries no subscriptions: the repository is sealed
