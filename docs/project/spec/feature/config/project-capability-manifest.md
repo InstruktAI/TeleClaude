@@ -110,11 +110,11 @@ Derivation rules:
   a declaration it cannot read (UC-CFG-CAP-3). The plumbing never falls open and
   never falls closed on such a block, and it claims nothing about the rest of the
   file: overlay validation belongs to the runtime. The plumbing keeps the answer
-  for a declaration it has resolved and serves repeated reads from it without
-  starting an interpreter. The kept answer is a cache of the runtime's answer,
-  never a source: a change to the document, a change to the environment file its
-  capability blocks reference, or a configuration migration run discards it, so
-  it never answers for an input state or a migration list it was not resolved
+  for a declaration it has resolved, together with every file that answer was
+  read from, and serves repeated reads from it without starting an interpreter.
+  The kept answer is a cache of the runtime's answer, never a source: a change to
+  any of those files, or an advance of the installation's code, discards it, so
+  it never answers for an input state or an installation it was not resolved
   from. A global or person declaration carries no capability
   blocks; what the plumbing decides at such a repository root is the seal, per
   `project/design/code-commit`. Because the declaration is a file the project
@@ -327,8 +327,8 @@ And it spawns no interpreter to read them
 #### UC-CFG-CAP-16: The installed plumbing answers a repeated read without an interpreter
 
 ```
-Given a project whose declaration the installed plumbing has resolved
-And since then neither the declaration, nor an environment file its capability blocks reference, has changed, and no configuration migration run has executed
+Given the installed plumbing has kept its answer for a project's declaration
+And since then no file that answer was read from has changed and the installation's code has not advanced
 When the git wrapper runs on a git invocation
 Then it decides from the capability subscriptions the runtime resolves for that declaration
 And it spawns no interpreter to read them
@@ -468,18 +468,18 @@ Then the code capability keeps its declared value
 And the docs and agents capabilities are declared with values inferred from the repository's shape
 ```
 
-#### UC-CFG-CAP-31: A configuration migration run makes the plumbing resolve again
+#### UC-CFG-CAP-31: An installation advance makes the plumbing resolve again
 
 ```
-Given the installed plumbing holds a resolved answer for a project's declaration
-When a configuration migration run executes
+Given the installed plumbing has kept its answer for a project's declaration
+When canonical main advances with a change to the installation's code, or installation runs
 Then the next git invocation in that project resolves the declaration through the runtime
 ```
 
 #### UC-CFG-CAP-32: A slug worktree answers from its owning checkout's declaration
 
 ```
-Given a slug worktree whose branch copy of teleclaude.yml declares capability subscriptions that differ from the owning checkout's
+Given a slug worktree whose branch copy of teleclaude.yml declares capability subscriptions that differ from the owning checkout's, or that carries no copy at all
 When an agent session invokes git inside that worktree
 Then the installed plumbing decides from the owning checkout's declaration
 And it decides as the runtime's gates decide for an invocation from that worktree
@@ -526,10 +526,12 @@ And after that value changes in the .env, the next git invocation decides from t
   only the tier and the capability blocks and claims nothing about the rest of
   the file. Git keeps working in a repository whose declaration fails
   validation elsewhere.
-- The first read of a declaration after it or its referenced environment file
-  changes, or after a configuration migration run, pays one start of the installation's interpreter; every later
-  read is served without one. A shell that cannot compare sub-second modification
-  times keeps no answer, and on it every read resolves through the runtime.
+- The first read after a file a kept answer was read from changes, or after the
+  installation's code advances, pays one start of the installation's interpreter;
+  every later read is served without one. An answer resolved in the same whole
+  second as a change to one of its files is returned but not kept, because
+  whole-second modification times cannot tell a later change within that second
+  apart; the next read resolves again.
 <!-- /planned-change:config-first-version-migrations -->
 
 

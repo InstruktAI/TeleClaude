@@ -132,14 +132,14 @@ by the wrapper, which reads only the tier and the capability blocks
 <!-- change:config-first-version-migrations -->
 The wrapper reads capability state from the repository root's `teleclaude.yml`
 the way the runtime's own gates read it — for a slug worktree, from the owning
-checkout's declaration — deriving `code ∨ docs` for commit interception and
+checkout's declaration, whether or not the worktree carries a copy — deriving `code ∨ docs` for commit interception and
 `code` for worktree and branch discipline. The runtime answers the read: the
 document is brought to its current shape by the configuration migration list,
 environment references in its capability blocks are resolved from the
 declaration's sibling `.env`, and its tier and capability blocks are read with
-the runtime's own models. The wrapper keeps that answer until the document or
-that environment file changes or a configuration migration run executes, so
-only the first read after any of them starts an interpreter (`project/spec/feature/config/project-capability-manifest`). A
+the runtime's own models. The wrapper keeps that answer until a file it was
+read from changes or the installation's code advances, so only the first read
+after either starts an interpreter (`project/spec/feature/config/project-capability-manifest`). A
 project declaration carries the capability blocks: a block that is absent, or
 present without an `enabled` value, leaves that capability unsubscribed. A
 global or person declaration carries no subscriptions: the repository is sealed
