@@ -1,7 +1,5 @@
 """Evidence checking, blast-radius, and companion presence."""
 
-import re
-from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.checkpoint_model import scope_matches
@@ -33,9 +31,7 @@ __all__ = [
     "_has_commit_evidence_after_last_mutation",
     "_has_evidence",
     "_has_evidence_after_index",
-    "_has_post_ready_log_check_evidence",
     "_has_review_dispatch_evidence",
-    "_integrator_judgment_log_window",
     "_iter_shell_command_records",
     "_last_git_file_mutation_index",
     "_last_scope_mutation_index",
@@ -153,61 +149,6 @@ _MUTATOR_TOOLS = {
 }
 _SHELL_TOOLS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
 _TELEC_RELOAD_EVIDENCE = "telec reload"
-_SINCE_FLAG = "--since"
-_WINDOW_PATTERN = re.compile(r"(\d+)([smhd])")
-_WINDOW_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-_INTEGRATOR_WINDOW_MARGIN_MINUTES = 2
-_MINUTE_SECONDS = 60
-_ROUNDING_SECONDS = 59
-_WINDOW_MINUTES_SUFFIX = "m"
-
-
-def _has_post_ready_log_check_evidence(
-    timeline: TurnTimeline,
-    evidence_markers: tuple[str, ...],
-    earliest_activated_at: str,
-    ready_at: str,
-) -> bool:
-    """Require a post-readiness log command whose since-window covers activation."""
-    earliest = datetime.fromisoformat(earliest_activated_at)
-    ready = datetime.fromisoformat(ready_at)
-    for _index, record, command in _iter_shell_command_records(timeline):
-        if record.had_error or not record.result_observed or record.timestamp is None:
-            continue
-        call_time = record.timestamp
-        if call_time.tzinfo is None:
-            call_time = call_time.replace(tzinfo=UTC)
-        if call_time <= ready or not _command_has_evidence(command, list(evidence_markers)):
-            continue
-        since_seconds = _log_since_seconds(command, evidence_markers)
-        if since_seconds is not None and since_seconds >= (call_time - earliest).total_seconds():
-            return True
-    return False
-
-
-def _log_since_seconds(command: str, evidence_markers: tuple[str, ...]) -> int | None:
-    """Read the documented --since duration from the matching command segment."""
-    for segment in _split_shell_segments(command):
-        if not any(_segment_matches_evidence(segment, marker) for marker in evidence_markers):
-            continue
-        tokens = executable_command_tokens(segment)
-        if _SINCE_FLAG not in tokens:
-            continue
-        flag_index = tokens.index(_SINCE_FLAG)
-        if flag_index + 1 >= len(tokens):
-            continue
-        match = _WINDOW_PATTERN.fullmatch(tokens[flag_index + 1])
-        if match is None:
-            continue
-        return int(match.group(1)) * _WINDOW_UNIT_SECONDS[match.group(2)]
-    return None
-
-
-def _integrator_judgment_log_window(earliest_activated_at: str, now: datetime) -> str:
-    """Build a rounded-up activation window with margin for the command to run."""
-    earliest = datetime.fromisoformat(earliest_activated_at)
-    elapsed = max(0, int(((now - earliest).total_seconds() + _ROUNDING_SECONDS) // _MINUTE_SECONDS))
-    return f"{elapsed + _INTEGRATOR_WINDOW_MARGIN_MINUTES}{_WINDOW_MINUTES_SUFFIX}"
 
 
 def _record_touched_paths(

@@ -6,7 +6,6 @@ turn-local file attribution, and TurnTimeline for transcript-based signals.
 All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
-from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -19,13 +18,12 @@ from teleclaude.checkpoint_model import (
     triggered_action_ids,
 )
 from teleclaude.constants import (
-    LOG_CHECK_ACTION_ID,
     CheckpointAction,
     CheckpointModel,
-    JudgmentOwner,
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.injected_text import checkpoint_text
+from teleclaude.hooks.checkpoint._directives import _ESCAPE_HATCH, _RESPONSE_POLICY, _surface_run
 from teleclaude.hooks.checkpoint._evidence import (
     _check_blast_radius,
     _check_companion_drift,
@@ -36,9 +34,7 @@ from teleclaude.hooks.checkpoint._evidence import (
     _has_commit_evidence_after_last_mutation,
     _has_evidence,
     _has_evidence_after_index,
-    _has_post_ready_log_check_evidence,
     _has_review_dispatch_evidence,
-    _integrator_judgment_log_window,
     _iter_shell_command_records,
     _last_scope_mutation_index,
     _segment_matches_evidence,
@@ -60,6 +56,10 @@ from teleclaude.hooks.checkpoint._git import (
     _transcript_observability,
     _worktree_status,
 )
+from teleclaude.hooks.checkpoint._integrator import (
+    _defers_to_integrator,
+    _integrator_judgment_checkpoint,
+)
 from teleclaude.hooks.checkpoint._models import (
     CheckpointActionDecision,
     CheckpointActionOutcome,
@@ -73,27 +73,13 @@ from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
     has_authored_main_commit_flag,
 )
-from teleclaude.hooks.integrator_judgment_marker import (
-    discharge_integrator_judgment,
-    read_integrator_judgment_marker,
-)
 from teleclaude.project_root import declaration_root
 from teleclaude.session_scoping import ScopedPathsResult, WorkspaceKind, live_declarations, resolve_workspace
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
 logger = get_logger(__name__)
 
-_INTEGRATOR_MAINTENANCE_ACTION_LINE = "{index}. {action}"
-_INTEGRATOR_MAINTENANCE_ACTIONS_LABEL = "Outstanding actions: {actions}"
-_INTEGRATOR_LOG_JUDGMENT_TITLE = "Integrator post-merge log judgment"
-_INTEGRATOR_LOG_JUDGMENT_REQUIRED_ACTIONS = (
-    "Required actions (log judgment after delivery — complete before next integration):"
-)
 _CHECKPOINT_BUILD_FAILED_MESSAGE = "Checkpoint content build failed; no checkpoint emitted"
-_INTEGRATOR_ROLE = "integrator"
-_INTEGRATOR_JUDGMENT_NOT_READY_EVENT = "integrator_judgment_not_ready"
-_INTEGRATOR_JUDGMENT_FORCE_FIRE_EVENT = "Checkpoint payload computed (integrator maintenance force-fire)"
-_INTEGRATOR_LOG_JUDGMENT_MODE = "integrator_log_judgment"
 
 __all__ = [
     "CheckpointContext",
@@ -230,7 +216,7 @@ def run_heuristics(
                 )
             )
             continue
-        if action.judged_by is JudgmentOwner.INTEGRATOR and context.system_role != _INTEGRATOR_ROLE:
+        if _defers_to_integrator(action, context.system_role):
             integrator_owned_ids.add(action_id)
             decisions.append(
                 CheckpointActionDecision(
@@ -292,11 +278,6 @@ def run_heuristics(
     return result
 
 
-def _surface_run(action: CheckpointAction, log_since_window: str) -> str:
-    """Render an action's surfaced instruction, filling the {window} placeholder."""
-    return action.run.replace("{window}", log_since_window)
-
-
 def _action_has_evidence(
     timeline: TurnTimeline,
     action: CheckpointAction,
@@ -318,19 +299,6 @@ def _action_has_evidence(
 # ---------------------------------------------------------------------------
 # Message composition (R9)
 # ---------------------------------------------------------------------------
-
-_RESPONSE_POLICY = (
-    "Response policy: complete ALL required actions first. "
-    "Do not compose the debrief until every action is done. "
-    "Then end with a short user-relevant debrief about actual task outcome, blocker, or decision needed. "
-    "Do not mention checkpoint chores."
-)
-_ESCAPE_HATCH = (
-    "Escape hatch (last resort only, and only when there is no actionable information left): "
-    'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to skip checkpoints for this turn; '
-    "it clears at the next user prompt. If the same checkpoint recurs across turns, "
-    "surface it as a bug instead of clearing it again."
-)
 
 
 def build_checkpoint_message(
@@ -433,55 +401,6 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 
 
 # ---------------------------------------------------------------------------
-# Integrator maintenance path
-# ---------------------------------------------------------------------------
-
-
-def _build_integrator_log_judgment_checkpoint(
-    action_ids: list[str],
-    model: CheckpointModel,
-    window: str,
-) -> str | None:
-    """Build a checkpoint message from outstanding post-merge log actions.
-
-    Surfaces only main-only judgment actions recorded by integration. No review,
-    commit reminder, test, or maintenance action appears here.
-    """
-    judgment_actions = [
-        model.actions[action_id]
-        for action_id in action_ids
-        if action_id in model.actions and model.actions[action_id].main_only
-    ]
-    if not judgment_actions:
-        return None
-
-    category_names = [action.id for action in sorted(judgment_actions, key=lambda a: (a.precedence, a.id))]
-    lines: list[str] = [
-        _INTEGRATOR_LOG_JUDGMENT_TITLE,
-        "",
-        _INTEGRATOR_MAINTENANCE_ACTIONS_LABEL.format(actions=", ".join(category_names)),
-        "",
-        _INTEGRATOR_LOG_JUDGMENT_REQUIRED_ACTIONS,
-    ]
-    for i, action in enumerate(sorted(judgment_actions, key=lambda a: (a.precedence, a.id)), 1):
-        lines.append(
-            _INTEGRATOR_MAINTENANCE_ACTION_LINE.format(
-                index=i,
-                action=_surface_run(action, window),
-            )
-        )
-    lines.extend(
-        [
-            "",
-            _RESPONSE_POLICY,
-            "",
-            _ESCAPE_HATCH,
-        ]
-    )
-    return checkpoint_text("\n".join(lines))
-
-
-# ---------------------------------------------------------------------------
 # Top-level entry point
 # ---------------------------------------------------------------------------
 
@@ -541,50 +460,16 @@ def get_checkpoint_content(
             scope="checkpoint",
         )
 
-        if system_role == _INTEGRATOR_ROLE:
-            marker = read_integrator_judgment_marker(project_path)
-            if marker is not None and marker.ready_at is None:
-                logger.info(
-                    _INTEGRATOR_JUDGMENT_NOT_READY_EVENT,
-                    activation_ids=[activation.after_sha for activation in marker.activations],
-                )
-            elif marker is not None:
-                action_ids = [
-                    action_id
-                    for action_id in marker.action_ids
-                    if action_id == LOG_CHECK_ACTION_ID and action_id in model.actions
-                ]
-                if action_ids:
-                    action = model.actions[LOG_CHECK_ACTION_ID]
-                    earliest_activation = min(
-                        marker.activations,
-                        key=lambda activation: activation.activated_at,
-                    ).activated_at
-                    if _has_post_ready_log_check_evidence(
-                        timeline,
-                        action.effective_evidence(),
-                        earliest_activation,
-                        marker.ready_at,
-                    ):
-                        discharge_integrator_judgment(project_path, marker)
-                    else:
-                        window = _integrator_judgment_log_window(earliest_activation, datetime.now(UTC))
-                        log_judgment_message = _build_integrator_log_judgment_checkpoint(
-                            action_ids,
-                            model,
-                            window,
-                        )
-                        if log_judgment_message:
-                            logger.info(
-                                _INTEGRATOR_JUDGMENT_FORCE_FIRE_EVENT,
-                                receiver_ingress_id=receiver_ingress_id,
-                                session_id=session_id,
-                                project_path=project_path,
-                                mode=_INTEGRATOR_LOG_JUDGMENT_MODE,
-                                actions=len(action_ids),
-                                message_len=len(log_judgment_message),
-                            )
-                            return log_judgment_message
+        integrator_checkpoint = _integrator_judgment_checkpoint(
+            system_role=system_role,
+            project_path=project_path,
+            timeline=timeline,
+            model=model,
+            session_id=session_id,
+            receiver_ingress_id=receiver_ingress_id,
+        )
+        if integrator_checkpoint is not None:
+            return integrator_checkpoint
 
         workspace = resolve_workspace(project_path)
         declared_paths = {declaration.path for declaration in live_declarations(session_id)}
