@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from collections.abc import Sequence
 
-from pydantic import TypeAdapter
-
-from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
+from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance
+from teleclaude.config import config
 from teleclaude.core.agents import AgentName
+from teleclaude.core.command_dispatch import is_remote_target
 from teleclaude.core.dates import format_utc_datetime, parse_iso_datetime
 from teleclaude.history.remote_detail import get_remote_detail, resolve_remote_detail_base
 from teleclaude.history.service import (
@@ -20,16 +21,12 @@ from teleclaude.history.service import (
     _detail_json_payload,
     _remote_coverage_state,
     _remote_shrink_refused_at,
+    build_history_detail_payload,
 )
-from teleclaude.mirrors.store import MirrorCoverageState, MirrorRecord
+from teleclaude.mirrors.store import MirrorCoverageState, MirrorRecord, history_access_for_caller
 
 __all__ = ["show_transcript"]
 
-_GET_METHOD = "GET"
-_HISTORY_DETAIL_PATH_TEMPLATE = "/history/show/{session_id}"
-_AGENT_PARAMETER = "agent"
-_THINKING_PARAMETER = "thinking"
-_RAW_PARAMETER = "raw"
 _REMOTE_RAW_MIRROR_PATH_TEMPLATE = "/api/mirrors/{session_id}/transcript"
 _REMOTE_MIRROR_PATH_TEMPLATE = "/api/mirrors/{session_id}"
 _TRANSCRIPT_NOT_FOUND = "No transcript found for session '{session_id}'"
@@ -106,7 +103,10 @@ def show_transcript(
     json_output: bool = False,
 ) -> None:
     """Fetch and render one history detail for a local or remote computer."""
-    if computers:
+    if computers and len(computers) != 1:
+        print(_HISTORY_SHOW_ONE_COMPUTER_ERROR)
+        raise SystemExit(1)
+    if computers and is_remote_target(computers[0], config.computer.name):
         _show_remote_detail(
             session_id,
             computer=computers[0],
@@ -116,26 +116,21 @@ def show_transcript(
         )
         return
 
-    try:
-        result = tool_api_request(
-            _GET_METHOD,
-            _HISTORY_DETAIL_PATH_TEMPLATE.format(session_id=session_id),
-            params={
-                _AGENT_PARAMETER: ",".join(agent.value for agent in agents),
-                _THINKING_PARAMETER: include_thinking,
-                _RAW_PARAMETER: raw,
-            },
-        )
-    except ToolAPIError as exc:
-        if exc.status_code == 404:
-            print(_TRANSCRIPT_NOT_FOUND.format(session_id=session_id))
-        else:
-            print(exc.message)
-        raise SystemExit(1) from exc
-    if not isinstance(result, dict):
-        print(str(result))
+    identity = require_cli_clearance("telec history show")
+    access = history_access_for_caller(identity.caller)
+    if access is None:
+        print(f"Error: {no_identity_refusal(identity)}", file=sys.stderr)
         raise SystemExit(1)
-    detail = TypeAdapter(HistoryDetailPayload).validate_python(result)
+    detail = build_history_detail_payload(
+        session_id,
+        access=access,
+        agents=agents,
+        include_thinking=include_thinking,
+        raw=raw,
+    )
+    if detail is None:
+        print(_TRANSCRIPT_NOT_FOUND.format(session_id=session_id))
+        raise SystemExit(1)
     render_history_detail(detail, json_output=json_output)
 
 

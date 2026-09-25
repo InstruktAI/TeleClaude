@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from teleclaude.api_models_identity import WhoAmIDTO
-from teleclaude.cli.session_auth import read_current_session_email
+from teleclaude.cli.session_auth import ResolvedCliIdentity, read_current_session_email
 from teleclaude.core.agents import AgentName
+from teleclaude.core.identity import NoIdentityCliCaller, PersonCliCaller, human_principal_for_email
 from teleclaude.session_identity import get_session_id
 from teleclaude.todo_scaffold import get_session_active_agent
 
@@ -30,7 +30,6 @@ _ERR_UNKNOWN_AGENT = "agent session {session_id!r} resolved to unknown agent {ac
 _ERR_NO_GIT_IDENTITY = "agent session {session_id!r} resolved to agent {active_agent!r} with no configured git identity"
 _ERR_NO_ATTRIBUTABLE_PARTY = "no agent session and no terminal login identity"
 _ERR_NO_CALLER_PRINCIPAL = "no verified caller principal"
-_HUMAN_PRINCIPAL_PREFIX = "human:"
 
 
 class CommitIdentityUnresolvable(RuntimeError):
@@ -87,11 +86,17 @@ def _resolve_agent_session_commit_identity(session_id: str) -> tuple[str, str]:
     return git_identity, session_id
 
 
-def resolve_commit_identity_from_caller(answer: WhoAmIDTO) -> tuple[str | None, str | None]:
-    """Map the daemon-verified caller answer to the sealed commit author."""
-    if answer.session_id:
-        return _resolve_agent_session_commit_identity(answer.session_id)
-    if answer.principal and answer.principal.startswith(_HUMAN_PRINCIPAL_PREFIX):
+def resolve_commit_identity_from_caller(identity: ResolvedCliIdentity) -> tuple[str | None, str | None]:
+    """Map the resolved local caller to the sealed commit author."""
+    if isinstance(identity.caller, NoIdentityCliCaller) or identity.principal is None:
+        raise CommitIdentityUnresolvable(_ERR_NO_CALLER_PRINCIPAL)
+    if identity.session_id:
+        return _resolve_agent_session_commit_identity(identity.session_id)
+    if (
+        isinstance(identity.caller, PersonCliCaller)
+        and identity.caller.email is not None
+        and identity.principal == human_principal_for_email(identity.caller.email)
+    ):
         return None, None
     raise CommitIdentityUnresolvable(_ERR_NO_CALLER_PRINCIPAL)
 

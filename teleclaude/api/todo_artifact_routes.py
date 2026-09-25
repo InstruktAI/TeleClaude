@@ -7,7 +7,6 @@ same ``/todos`` prefix.
 
 from __future__ import annotations
 
-import re
 import uuid
 from typing import TYPE_CHECKING, Annotated
 
@@ -44,7 +43,7 @@ from teleclaude.constants import (
 from teleclaude.core.next_machine.provenance import clear_artifact_provenance
 from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.core.todos_db import HolderWriteRefused
+from teleclaude.core.todos_db import HolderWriteRefused, malformed_digest_detail
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -52,13 +51,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/todos", tags=["todos"])
-
-_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
-_DIGEST_PARAMETER_NAMES = ("old", "new")
-_MALFORMED_DIGEST_DETAIL = (
-    "Invalid {0} digest: expected 64 lowercase hexadecimal characters; received {1!r} (length {2})."
-)
-
 
 # ── Response models ─────────────────────────────────────────────────────────
 
@@ -284,12 +276,9 @@ async def diff_artifact(
     _identity: CallerIdentity = Depends(clearance_todos_artifacts_diff),
 ) -> _ArtifactDiffResponse:
     """Return a unified diff between two artifact versions identified by digest."""
-    for parameter, digest in zip(_DIGEST_PARAMETER_NAMES, (old, new), strict=True):
-        if not _DIGEST_RE.fullmatch(digest):
-            raise HTTPException(
-                status_code=422,
-                detail=_MALFORMED_DIGEST_DETAIL.format(parameter, digest, len(digest)),
-            )
+    malformed_detail = malformed_digest_detail(old, new)
+    if malformed_detail is not None:
+        raise HTTPException(status_code=422, detail=malformed_detail)
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     try:

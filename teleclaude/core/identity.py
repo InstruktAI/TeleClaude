@@ -12,7 +12,16 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config, normalize_person_config_key
 from teleclaude.config.schema import PersonChipColor, PersonEntry
-from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
+from teleclaude.constants import (
+    HUMAN_ROLE_CUSTOMER,
+    HUMAN_ROLES,
+    ROLE_INTEGRATOR,
+    ROLE_JOB_RUNNER,
+    ROLE_ORCHESTRATOR,
+    ROLE_SYSTEM,
+    ROLE_TASKER,
+    ROLE_WORKER,
+)
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import SessionIdentityError, resolve_session_principal
 from teleclaude.core.models import MessageAuthorKind, Session
@@ -66,6 +75,17 @@ class NoIdentityCliCaller:
 
 
 type CliCaller = PersonCliCaller | SystemCliCaller | NoIdentityCliCaller
+
+
+@dataclass(frozen=True)
+class SessionIdentity:
+    """Resolved principal, roles, and caller for one session record."""
+
+    principal: str | None
+    principal_role: str | None
+    system_role: str | None
+    caller: CliCaller
+
 
 _DISCORD_AVATAR_BINDING_EVENT = "discord_avatar_binding_lifecycle"
 _PERSON_CONTEXT_BINDING_REGISTRY_UNAVAILABLE = "Person registry is unavailable for context binding"
@@ -591,11 +611,61 @@ def caller_from_principal(principal: str | None) -> CliCaller:
 
 def caller_for_session(session: Session) -> CliCaller:
     """Resolve a session record into its current local CLI caller."""
+    return identity_for_session(session).caller
+
+
+def derive_session_system_role(session: Session) -> str | None:
+    """Derive system role from daemon-owned session state.
+
+    Priority:
+    1. Explicit ``session.system_role`` if present and valid.
+    2. Worker heuristic: sessions with a ``working_slug`` are worker sessions.
+    3. Otherwise unknown (treated as non-worker for system-role restrictions).
+    """
+    if session.system_role:
+        normalized = session.system_role.strip().lower()
+        if normalized in {
+            ROLE_WORKER,
+            ROLE_SYSTEM,
+            ROLE_INTEGRATOR,
+            ROLE_ORCHESTRATOR,
+            ROLE_TASKER,
+            ROLE_JOB_RUNNER,
+        }:
+            return normalized
+
+    if session.working_slug:
+        return ROLE_WORKER
+    return None
+
+
+def identity_for_session(session: Session) -> SessionIdentity:
+    """Resolve a session record into all identity facts used at local edges."""
+    caller: CliCaller
     try:
-        principal, _role = resolve_session_principal(session)
+        principal, principal_role = resolve_session_principal(session)
     except SessionIdentityError:
-        return NoIdentityCliCaller()
-    return caller_from_principal(principal)
+        principal, principal_role = None, None
+        caller = NoIdentityCliCaller()
+    else:
+        caller = caller_from_principal(principal)
+        if isinstance(caller, NoIdentityCliCaller):
+            principal, principal_role = None, None
+    return SessionIdentity(
+        principal=principal,
+        principal_role=principal_role,
+        system_role=derive_session_system_role(session),
+        caller=caller,
+    )
+
+
+def authorizing_role(caller: CliCaller, system_role: str | None) -> str | None:
+    """Return the role that authorizes a caller at a CLI or API edge."""
+    if isinstance(caller, PersonCliCaller):
+        return caller.human_role
+    if isinstance(caller, SystemCliCaller):
+        return system_role
+    return None
 
 
 def human_principal_for_email(email: str) -> str:

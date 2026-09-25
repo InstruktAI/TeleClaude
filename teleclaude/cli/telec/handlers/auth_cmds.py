@@ -8,11 +8,13 @@ from typing import Any
 from teleclaude.cli.session_auth import (
     clear_current_session_email,
     get_current_session_context,
+    no_identity_refusal,
+    resolve_cli_identity,
     write_current_session_email,
 )
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.tool_client import ToolAPIError, get_resolved_caller
 from teleclaude.constants import MarkerState
+from teleclaude.core.identity import NoIdentityCliCaller, PersonCliCaller, authorizing_role
 from teleclaude.session_identity import inspect_session_identity_marker
 
 _UNUSABLE_SESSION_IDENTITY_MESSAGE = "The current session carries no usable identity."
@@ -119,15 +121,15 @@ def _handle_whoami(args: list[str]) -> None:
             print(_UNUSABLE_SESSION_IDENTITY_MESSAGE)
             raise SystemExit(1)
 
-        try:
-            caller = get_resolved_caller()
-            if caller.principal:
-                print(f"Principal: {caller.principal}")
-            if caller.role:
-                print(f"Role: {caller.role}")
-        except ToolAPIError as exc:
-            print(f"Error resolving principal: {exc}")
-            raise SystemExit(1) from exc
+        identity = resolve_cli_identity()
+        if isinstance(identity.caller, NoIdentityCliCaller):
+            print(no_identity_refusal(identity))
+            raise SystemExit(1)
+        if identity.principal:
+            print(f"Principal: {identity.principal}")
+        role = authorizing_role(identity.caller, identity.system_role)
+        if role:
+            print(f"Role: {role}")
         return
 
     context = get_current_session_context()
@@ -135,17 +137,15 @@ def _handle_whoami(args: list[str]) -> None:
         print("Error: no terminal session detected (TTY unavailable).")
         raise SystemExit(1)
 
-    try:
-        caller = get_resolved_caller()
-    except ToolAPIError as exc:
-        if exc.status_code == 401:
-            print(_NO_IDENTITY_FOR_TTY_MESSAGE.format(tty=context.tty, detail=exc.message))
-            return
-        print(f"Error resolving identity: {exc.message}")
-        raise SystemExit(1) from exc
+    identity = resolve_cli_identity()
+    if isinstance(identity.caller, NoIdentityCliCaller):
+        print(_NO_IDENTITY_FOR_TTY_MESSAGE.format(tty=context.tty, detail=no_identity_refusal(identity)))
+        return
 
-    print(f"Email: {caller.email}")
-    print(f"Role: {caller.role or _UNRESOLVED_ROLE}")
+    caller = identity.caller
+    email = caller.email if isinstance(caller, PersonCliCaller) else None
+    print(f"Email: {email}")
+    print(f"Role: {authorizing_role(caller, identity.system_role) or _UNRESOLVED_ROLE}")
     print(f"TTY: {context.tty}")
     print(f"Session auth file: {context.auth_path}")
 

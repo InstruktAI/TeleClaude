@@ -8,17 +8,19 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import TypeAdapter
-
 from teleclaude.api_models import BugListEntryDTO, TodoDumpRequest
+from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance, resolve_cli_identity
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._creation_gate import CREATION_VALIDITY_GATE_ITEM
+from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import BUGS_LIST, BUGS_REPORT, BUGS_SUPPRESS, BUGS_SUPPRESSIONS, BUGS_UNSUPPRESS
-from teleclaude.cli.tool_client import ToolAPIError, get_resolved_caller, tool_api_request
+from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.config import config
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.core.identity import NoIdentityCliCaller
+from teleclaude.core.todos_db import TodosDb
+from teleclaude.project_root import resolve_invocation_cwd, resolve_project_root
 from teleclaude.services.log_bug_hunter_suppressions import (
     Disposition,
     MatchMode,
@@ -31,6 +33,7 @@ from teleclaude.services.log_bug_hunter_suppressions import (
     suppressions_path_for,
 )
 from teleclaude.services.project_catalog.loaders import load_project_node
+from teleclaude.services.work import get_work_service
 from teleclaude.slug import normalize_slug
 from teleclaude.types.todo_kind import TODO_KIND_BUG
 
@@ -50,10 +53,6 @@ __all__ = [
 # output, usage line, or generated docs. The literal appears exactly once,
 # here; every other reference in this module reads this constant.
 _FILING_ACK_FLAG = "--approved"
-_GET_METHOD = "GET"
-_BUGS_LIST_PATH = "/todos/bugs"
-_CWD_PARAMETER = "cwd"
-
 _BUG_FILING_GATE = (
     "Nothing was filed. Face these before this bug enters the pipeline (bug-kind\n"
     "todos autostart their prepare lane, so filing is pipeline entry):\n"
@@ -78,7 +77,6 @@ _BUG_FILING_GATE = (
     f"  telec bugs report {_FILING_ACK_FLAG} '<description>' [--slug <slug>] "
     "[--body <text>] [--project <name>] [--human-involved]\n"
 )
-_CALLER_PRINCIPAL_REQUIRED_DETAIL = "The daemon did not resolve a caller principal."
 
 
 def _resolve_project_by_name(name: str) -> Path:
@@ -212,24 +210,17 @@ def _handle_bugs_report(args: list[str]) -> None:
 
 def _handle_bugs_list(args: list[str]) -> None:
     """Handle telec bugs list."""
-    project_root = resolve_invocation_cwd()
-
     parsed = parse_command_args(BUGS_LIST, args)
     if parsed.positionals:
         print(f"Unexpected argument: {parsed.positionals[0]}")
         print(_usage("bugs", "list"))
         raise SystemExit(1)
 
-    try:
-        result = tool_api_request(
-            _GET_METHOD,
-            _BUGS_LIST_PATH,
-            params={_CWD_PARAMETER: str(project_root)},
-        )
-        bugs = TypeAdapter(list[BugListEntryDTO]).validate_python(result)
-    except ToolAPIError as exc:
-        print(f"Error: {exc.message}", file=sys.stderr)
-        raise SystemExit(1) from exc
+    async def read_bugs(_todos_db: TodosDb) -> list[BugListEntryDTO]:
+        project_root = resolve_project_root(resolve_invocation_cwd())
+        return get_work_service(str(project_root)).todo.bug_entries()
+
+    bugs = run_todo_read("telec bugs list", read_bugs)
 
     if not bugs:
         print("No bugs found")
@@ -298,13 +289,10 @@ def _handle_bugs_suppress(args: list[str]) -> None:
 
     expires_at = _parse_expires(expires_raw) if expires_raw else None
     slug = _resolve_project_slug(project_name)
-    try:
-        principal = get_resolved_caller().principal
-    except ToolAPIError as exc:
-        print(exc.message)
-        raise SystemExit(1) from exc
-    if not principal:
-        print(_CALLER_PRINCIPAL_REQUIRED_DETAIL)
+    identity = resolve_cli_identity()
+    principal = identity.principal
+    if isinstance(identity.caller, NoIdentityCliCaller) or not principal:
+        print(no_identity_refusal(identity))
         raise SystemExit(1)
 
     entry = Suppression(
@@ -324,6 +312,7 @@ def _handle_bugs_suppress(args: list[str]) -> None:
 
 def _handle_bugs_suppressions(args: list[str]) -> None:
     """Handle telec bugs suppressions [--project <name>] — list the ledger."""
+    require_cli_clearance("telec bugs suppressions")
     parsed = parse_command_args(BUGS_SUPPRESSIONS, args)
     if parsed.positionals:
         print(f"Unknown option: {parsed.positionals[0]}")

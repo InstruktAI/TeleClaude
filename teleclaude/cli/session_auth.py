@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import psutil
 
 from teleclaude.config import config
-from teleclaude.constants import MarkerState
+from teleclaude.constants import LOGIN_REQUIRED_DETAIL, MarkerState
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
 from teleclaude.session_identity import inspect_session_identity_marker
@@ -47,6 +47,17 @@ class TerminalAuthState:
 
     email: str
     context: TerminalSessionContext
+
+
+@dataclass(frozen=True)
+class ResolvedCliIdentity:
+    """Identity facts resolved once for a local CLI invocation."""
+
+    caller: CliCaller
+    principal: str | None
+    system_role: str | None
+    session_id: str | None
+    in_session: bool
 
 
 def _detect_ancestor_tty() -> str | None:
@@ -216,34 +227,88 @@ def read_current_session_email() -> str | None:
 
 def resolve_cli_caller() -> CliCaller:
     """Resolve the local caller from its carried principal or edge identity."""
+    return resolve_cli_identity().caller
+
+
+def resolve_cli_identity() -> ResolvedCliIdentity:
+    """Resolve the local caller and all carried identity facts once."""
     from teleclaude.core.identity import (  # noqa: PLC0415 - keep config-loading identity code out of every CLI start
         NoIdentityCliCaller,
         PersonCliCaller,
-        caller_for_session,
         get_identity_resolver,
+        human_principal_for_email,
+        identity_for_session,
     )
 
     marker_state, session_id = inspect_session_identity_marker()
     if marker_state is MarkerState.ABSENT:
         email = read_current_session_email()
         if not email:
-            return NoIdentityCliCaller()
+            return ResolvedCliIdentity(NoIdentityCliCaller(), None, None, None, False)
         identity_resolver = get_identity_resolver()
         person = identity_resolver.resolve_by_email(email)
         if not person.person_email:
-            return NoIdentityCliCaller()
-        return PersonCliCaller(
+            return ResolvedCliIdentity(NoIdentityCliCaller(), None, None, None, False)
+        caller = PersonCliCaller(
             email=person.person_email,
             person_slug=person.person_slug,
             human_role=person.person_role,
         )
+        return ResolvedCliIdentity(
+            caller=caller,
+            principal=human_principal_for_email(person.person_email),
+            system_role=None,
+            session_id=None,
+            in_session=False,
+        )
     if marker_state is MarkerState.INVALID:
-        return NoIdentityCliCaller()
+        return ResolvedCliIdentity(NoIdentityCliCaller(), None, None, None, True)
 
     session = _admitted_session_record(_load_session_record(session_id))
     if session is None:
-        return NoIdentityCliCaller()
-    return caller_for_session(session)
+        return ResolvedCliIdentity(NoIdentityCliCaller(), None, None, None, True)
+    resolved = identity_for_session(session)
+    return ResolvedCliIdentity(
+        caller=resolved.caller,
+        principal=resolved.principal,
+        system_role=resolved.system_role,
+        session_id=session.session_id,
+        in_session=True,
+    )
+
+
+def no_identity_refusal(identity: ResolvedCliIdentity) -> str:
+    """Return the refusal detail for an unresolved session or terminal caller."""
+    if identity.in_session:
+        return "The current session carries no usable identity."
+    return f"{LOGIN_REQUIRED_DETAIL}. Run: telec auth login <email>"
+
+
+def require_cli_clearance(command_path: str) -> ResolvedCliIdentity:
+    """Resolve and authorize a local caller for one command path."""
+    from teleclaude.core.identity import (  # noqa: PLC0415 - keep config-loading identity code out of every CLI start
+        NoIdentityCliCaller,
+    )
+
+    identity = resolve_cli_identity()
+    if isinstance(identity.caller, NoIdentityCliCaller):
+        print(f"Error: {no_identity_refusal(identity)}", file=sys.stderr)
+        raise SystemExit(1)
+
+    # Deferred because importing the CLI package at module scope cycles through
+    # its startup module, which imports this authentication module.
+    from teleclaude.cli.telec.auth import (  # noqa: PLC0415 - importing telec at module load cycles through this module
+        is_command_allowed,
+    )
+
+    if not is_command_allowed(command_path, identity.system_role, identity.caller.human_role):
+        role = identity.system_role or identity.caller.human_role or "unauthorized"
+        print(
+            f"Error: permission denied — role '{role}' is not permitted to call {command_path}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return identity
 
 
 def resolve_cli_system_role() -> str | None:

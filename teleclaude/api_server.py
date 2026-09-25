@@ -85,7 +85,7 @@ from teleclaude.core.events import (
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
-from teleclaude.core.identity import PersonCliCaller
+from teleclaude.core.identity import PersonCliCaller, authorizing_role
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.operations.service import all_outcome_events
 from teleclaude.core.origins import InputOrigin
@@ -487,7 +487,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         ) -> WhoAmIDTO:
             """Return the resolved identity, role, email, and session of the caller."""
             caller = caller_from_verified_identity(identity)
-            role = caller.human_role if isinstance(caller, PersonCliCaller) else identity.principal_role
+            role = authorizing_role(caller, identity.system_role)
             email = caller.email if isinstance(caller, PersonCliCaller) else None
             return WhoAmIDTO(
                 principal=principal_for_verified_caller(identity),

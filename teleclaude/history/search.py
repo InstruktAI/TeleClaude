@@ -8,8 +8,12 @@ import sys
 from collections.abc import Sequence
 
 from teleclaude.cli.api_client import TelecAPIClient
+from teleclaude.cli.session_auth import no_identity_refusal, require_cli_clearance
+from teleclaude.config import config
 from teleclaude.core.agents import AgentName
-from teleclaude.history.service import HistorySearchPayload, HistorySearchRow
+from teleclaude.core.command_dispatch import is_remote_target
+from teleclaude.history.service import HistorySearchPayload, HistorySearchRow, build_history_search_payload
+from teleclaude.mirrors.store import history_access_for_caller
 
 
 def _print_results(
@@ -93,20 +97,50 @@ def display_combined_history(
 ) -> None:
     """Display session history using local mirrors or remote daemon search."""
     targets: Sequence[str | None] = computers if computers else [None]
-    responses = asyncio.run(
-        _search_through_daemon(
-            computers=targets,
-            search_term=search_term,
-            agents=agents,
-            limit=limit,
-            include_workers=include_workers,
-            identity=identity,
-            project=project,
-        )
-    )
-    results: list[HistorySearchRow] = []
+    local_targets = [computer for computer in targets if not is_remote_target(computer, config.computer.name)]
+    remote_targets = [computer for computer in targets if is_remote_target(computer, config.computer.name)]
+    responses: list[tuple[HistorySearchPayload | BaseException, str | None]] = []
     excluded_workers = 0
-    for response, computer in zip(responses, targets, strict=True):
+
+    if local_targets:
+        resolved_caller = require_cli_clearance("telec history search")
+        access = history_access_for_caller(resolved_caller.caller)
+        if access is None:
+            print(f"Error: {no_identity_refusal(resolved_caller)}", file=sys.stderr)
+            raise SystemExit(1)
+        responses.extend(
+            (
+                build_history_search_payload(
+                    computer=config.computer.name,
+                    query=search_term,
+                    agents=agents,
+                    limit=limit,
+                    access=access,
+                    include_workers=include_workers,
+                    identity=identity,
+                    project=project,
+                ),
+                local_target,
+            )
+            for local_target in local_targets
+        )
+
+    if remote_targets:
+        remote_responses = asyncio.run(
+            _search_through_daemon(
+                computers=remote_targets,
+                search_term=search_term,
+                agents=agents,
+                limit=limit,
+                include_workers=include_workers,
+                identity=identity,
+                project=project,
+            )
+        )
+        responses.extend(zip(remote_responses, remote_targets, strict=True))
+
+    results: list[HistorySearchRow] = []
+    for response, computer in responses:
         if isinstance(response, BaseException):
             target = computer or "local"
             print(f"[{target}] History search failed: {response}", file=sys.stderr)

@@ -24,9 +24,6 @@ from teleclaude.cli.telec import is_command_allowed
 from teleclaude.config import config
 from teleclaude.constants import (
     LOGIN_REQUIRED_DETAIL,
-    ROLE_INTEGRATOR,
-    ROLE_JOB_RUNNER,
-    ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
     ROLE_TASKER,
     ROLE_WORKER,
@@ -41,6 +38,7 @@ from teleclaude.core.identity import (
     NoIdentityCliCaller,
     PersonCliCaller,
     caller_from_principal,
+    derive_session_system_role,
     get_identity_resolver,
     human_principal_for_email,
 )
@@ -142,24 +140,6 @@ def _resolve_terminal_role(email_header: str | None) -> str | None:
     if not email:
         return None
     return get_identity_resolver().resolve_by_email(email).person_role
-
-
-def _derive_session_system_role(session: Session) -> str | None:
-    """Derive system role from daemon-owned session state.
-
-    Priority:
-    1. Explicit `session.system_role` if present and valid.
-    2. Worker heuristic: sessions with a `working_slug` are worker sessions.
-    3. Otherwise unknown (treated as non-worker for system-role restrictions).
-    """
-    if session.system_role:
-        normalized = session.system_role.strip().lower()
-        if normalized in {ROLE_WORKER, ROLE_SYSTEM, ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_TASKER, ROLE_JOB_RUNNER}:
-            return normalized
-
-    if session.working_slug:
-        return ROLE_WORKER
-    return None
 
 
 @dataclass(frozen=True)
@@ -264,7 +244,7 @@ async def _verify_token_identity(x_session_token: str) -> CallerIdentity:
         raise HTTPException(status_code=401, detail=LOGIN_REQUIRED_DETAIL) from exc
     return CallerIdentity(
         session_id=token_record.session_id,
-        system_role=_derive_session_system_role(session),
+        system_role=derive_session_system_role(session),
         human_role=session.human_role,
         tmux_session_name=session.tmux_session_name,
         principal=principal,
@@ -368,7 +348,7 @@ async def _verify_session_identity(
         resolved_email = _normalize_email(getattr(session, "human_email", None)) or _normalize_email(x_telec_email)
     return CallerIdentity(
         session_id=caller_session_id,
-        system_role=_derive_session_system_role(session),
+        system_role=derive_session_system_role(session),
         human_role=_resolve_human_role(session, x_telec_email, principal),
         tmux_session_name=session.tmux_session_name,
         email=resolved_email,

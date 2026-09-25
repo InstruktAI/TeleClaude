@@ -898,7 +898,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="List the active known-issue suppressions for a project",
                 args="[--project <name>]",
                 flags=[F.FLAG_HELP, F.FLAG_PROJECT_TRUSTED],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                auth=CommandAuth(system=_SYS_ALL_PLUS_JOB_RUNNER, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "unsuppress": CommandDef(
                 desc="Remove a known-issue suppression by id so its signal is eligible for filing again",

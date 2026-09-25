@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
@@ -31,6 +32,20 @@ from teleclaude.core.todos_db._rows import (
 from teleclaude.utils.transcript_discovery import as_session_id
 
 logger = get_logger(__name__)
+
+_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+_DIGEST_PARAMETER_NAMES = ("old", "new")
+_MALFORMED_DIGEST_DETAIL = (
+    "Invalid {0} digest: expected 64 lowercase hexadecimal characters; received {1!r} (length {2})."
+)
+
+
+def malformed_digest_detail(old: str, new: str) -> str | None:
+    """Describe the first malformed artifact-version digest, if any."""
+    for parameter, digest in zip(_DIGEST_PARAMETER_NAMES, (old, new), strict=True):
+        if not _DIGEST_RE.fullmatch(digest):
+            return _MALFORMED_DIGEST_DETAIL.format(parameter, digest, len(digest))
+    return None
 
 
 def _sha256(content: str) -> str:

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from teleclaude.core.todos_db_path import todos_db_path
 
-from ._artifacts import TodosDbArtifactsMixin
+from ._artifacts import TodosDbArtifactsMixin, malformed_digest_detail
 from ._base import TodosDbBase
 from ._errors import HolderReconciliationRefused, HolderTransitionRefused, HolderWriteRefused
 from ._rows import ArtifactMetadataRow, ArtifactVersionRow, ArtifactWritersRow, TodoRow
@@ -93,6 +93,7 @@ __all__ = [
     "close_todos_db_instances",
     "get_todos_db",
     "get_todos_db_sync",
+    "malformed_digest_detail",
     "set_todos_mutation_hook",
     "todos_db_path",
 ]

@@ -7,25 +7,20 @@ import sys
 from pathlib import Path
 from typing import TypedDict
 
-from pydantic import TypeAdapter
-
 from teleclaude.api_models import TodoDTO
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import TODO_LIST
-from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.constants import TodoStatus
 from teleclaude.core.todo import parse_since_to_cutoff
 from teleclaude.core.todo_tree import TodoNode, build_todo_sections, flatten
+from teleclaude.core.todos_db import TodosDb
 from teleclaude.project_root import resolve_invocation_project_root
+from teleclaude.services.work import get_work_service
 
 __all__ = ["_handle_todo_list", "_resolve_project_root_or_exit"]
-
-_GET_METHOD = "GET"
-_TODO_LIST_PATH = "/todos/list"
-_CWD_PARAMETER = "cwd"
-_SINCE_PARAMETER = "since"
 
 
 def _resolve_project_root_or_exit() -> Path:
@@ -61,15 +56,16 @@ def _handle_todo_list(args: list[str]) -> None:
     show_icebox = parsed["include_icebox"] or parsed["icebox_only"]
     show_removed = parsed["include_removed"] or parsed["removed_only"]
 
-    params = {_CWD_PARAMETER: str(Path.cwd())}
-    if since_cutoff:
-        params[_SINCE_PARAMETER] = since_cutoff
-    try:
-        result = tool_api_request(_GET_METHOD, _TODO_LIST_PATH, params=params)
-        todos = TypeAdapter(list[TodoDTO]).validate_python(result)
-    except ToolAPIError as exc:
-        print(f"Error: {exc.message}", file=sys.stderr)
-        raise SystemExit(1) from exc
+    async def read_entries(_todos_db: TodosDb) -> list[TodoDTO]:
+        project_root = _resolve_project_root_or_exit()
+        return get_work_service(str(project_root)).todo.entries(
+            include_icebox=True,
+            include_delivered=True,
+            include_removed=True,
+            delivered_since=since_cutoff or None,
+        )
+
+    todos = run_todo_read("telec todo list", read_entries)
 
     if not todos:
         if parsed["json_output"]:

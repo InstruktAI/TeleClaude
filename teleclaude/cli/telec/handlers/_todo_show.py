@@ -6,9 +6,11 @@ import json as _json
 
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
+from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.surface import TODO_SHOW
-from teleclaude.cli.tool_client import tool_api_request
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.constants import SLUG_NOT_FOUND_DETAIL
+from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._show import ShowPayload, assemble_show_payload
 
 __all__ = ["_handle_todo_show"]
 
@@ -26,17 +28,17 @@ def _handle_todo_show(args: list[str]) -> None:
     include_artifact_content = parsed.has(F.FLAG_TODO_SHOW_INCLUDE_ARTIFACT_CONTENT)
     include_removed = parsed.has(F.FLAG_TODO_SHOW_INCLUDE_REMOVED)
 
-    params: dict[str, str] = {"cwd": str(resolve_invocation_cwd())}
-    if include_artifact_content:
-        params["include_artifact_content"] = "true"
-    if include_removed:
-        params["include_removed"] = "true"
-    result = tool_api_request("GET", f"/todos/{slug}/show", params=params)
+    async def read_show(todos_db: TodosDb) -> ShowPayload | None:
+        return await assemble_show_payload(
+            todos_db,
+            slug,
+            include_removed=include_removed,
+            include_artifact_content=include_artifact_content,
+        )
 
-    if isinstance(result, dict) and "slug" in result:
+    result = run_todo_read("telec todo show", read_show)
+    if result is not None:
         print(_json.dumps(result, indent=2))
-    elif isinstance(result, dict) and result.get("detail"):
-        print(f"Error: {result['detail']}")
-        raise SystemExit(1)
     else:
-        print(result)
+        print(f"Error: {SLUG_NOT_FOUND_DETAIL.format(slug=slug)}")
+        raise SystemExit(1)

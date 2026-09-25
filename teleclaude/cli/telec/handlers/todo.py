@@ -13,6 +13,7 @@ from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.handlers._creation_gate import render_todo_creation_gate
+from teleclaude.cli.telec.handlers._todo_read import run_todo_read
 from teleclaude.cli.telec.handlers._todo_show import _handle_todo_show
 from teleclaude.cli.telec.handlers._todo_stamp import _handle_todo_stamp
 from teleclaude.cli.telec.handlers.todo_list import _handle_todo_list, _resolve_project_root_or_exit
@@ -40,7 +41,7 @@ from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.next_machine.git_ops import get_head_commit
 from teleclaude.core.next_machine.marker_reconciliation import MarkerMoment, reconcile_lifecycle_markers
 from teleclaude.core.todo_dependency_warnings import freeze_dependent_warnings, unfreeze_frozen_dep_warnings
-from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db import ArtifactWritersRow, TodosDb, malformed_digest_detail
 from teleclaude.core.todos_db._errors import DeliveryProvenanceRefused
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import validate_slug
@@ -589,23 +590,19 @@ def _handle_artifacts_list(args: list[str]) -> None:
         raise SystemExit(1)
 
     slug = args[0]
-    result = tool_api_request(
-        "GET",
-        f"/todos/artifacts/{slug}",
-        params={"cwd": str(resolve_invocation_cwd())},
-    )
-    if isinstance(result, dict):
-        artifacts = result.get("artifacts", [])
-        if not artifacts:
-            print(f"No artifacts for {slug}")
-        else:
-            for entry in artifacts:
-                print(f"  {entry['name']}")
-                writers = entry.get("writers") or []
-                if writers:
-                    print(f"    writers: {', '.join(writers)}")
+
+    async def read_artifacts(todos_db: TodosDb) -> list[ArtifactWritersRow]:
+        return await todos_db.list_artifacts_with_writers(slug)
+
+    artifacts = run_todo_read("telec todo artifacts list", read_artifacts)
+    if not artifacts:
+        print(f"No artifacts for {slug}")
     else:
-        print(result)
+        for entry in artifacts:
+            print(f"  {entry['name']}")
+            writers = entry.get("writers") or []
+            if writers:
+                print(f"    writers: {', '.join(writers)}")
 
 
 def _handle_artifacts_read(args: list[str]) -> None:
@@ -616,15 +613,11 @@ def _handle_artifacts_read(args: list[str]) -> None:
 
     slug, name = args[0], args[1]
     _validate_artifact_name(name)
-    result = tool_api_request(
-        "GET",
-        f"/todos/artifacts/{slug}/{name}",
-        params={"cwd": str(resolve_invocation_cwd())},
-    )
-    if isinstance(result, dict):
-        print(result.get("content", ""))
-    else:
-        print(result)
+
+    async def read_artifact(todos_db: TodosDb) -> str:
+        return await todos_db.read_artifact(slug, name)
+
+    print(run_todo_read("telec todo artifacts read", read_artifact))
 
 
 def _handle_artifacts_diff(args: list[str]) -> None:
@@ -635,16 +628,19 @@ def _handle_artifacts_diff(args: list[str]) -> None:
 
     slug, name, old_digest, new_digest = args[0], args[1], args[2], args[3]
     _validate_artifact_name(name)
-    result = tool_api_request(
-        "GET",
-        f"/todos/artifacts/{slug}/{name}/diff",
-        params={"old": old_digest, "new": new_digest, "cwd": str(resolve_invocation_cwd())},
-    )
-    if isinstance(result, dict):
-        print(result.get("diff", ""))
-    else:
-        print(result)
+    malformed_detail = malformed_digest_detail(old_digest, new_digest)
+    if malformed_detail is not None:
+        print(f"Error: {malformed_detail}", file=sys.stderr)
         raise SystemExit(1)
+
+    async def read_diff(todos_db: TodosDb) -> str:
+        return await todos_db.artifacts_diff(slug, name, old_digest, new_digest)
+
+    try:
+        print(run_todo_read("telec todo artifacts diff", read_diff))
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 def _handle_artifacts_remove(args: list[str]) -> None:
