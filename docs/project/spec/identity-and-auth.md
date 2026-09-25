@@ -183,7 +183,8 @@ claim the caller supplies:
 - a caller outside any session resolves from its terminal login,
 - the daemon's protected routes (`verify_caller` + `require_clearance`) and the
   CLI's local gates resolve a session's principal through the same
-  principal-resolution capability, so both give one session the same answer,
+  principal-resolution capability; a local gate grants a session no role its
+  principal does not resolve to,
 - on a protected route, unknown/missing identity returns 401 and insufficient
   role returns 403; a local gate treats an unidentified caller as holding no role.
 <!-- /planned-change:prepare-kickback-project-doc-access -->
