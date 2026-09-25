@@ -30,16 +30,19 @@ from teleclaude.core.next_machine._types import (
 from teleclaude.core.next_machine.artifacts import read_artifact_write_timestamps
 from teleclaude.core.next_machine.build_gates import run_build_gates
 from teleclaude.core.next_machine.git_ops import (
+    TodoChangeSinceReview,
     get_head_commit,
     get_ref_commit,
     get_remote_branch_head,
     has_uncommitted_changes,
+    todo_change_since,
 )
 from teleclaude.core.next_machine.kinds import KIND_BUG, KIND_FEATURE, PLAN_ONLY_PREPARE_KINDS
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     _clear_build_review,
     apply_authoritative_signal,
+    build_review_binding_current,
     is_ready_for_work,
 )
 from teleclaude.core.next_machine.output_formatting import (
@@ -65,6 +68,7 @@ from teleclaude.core.next_machine.review_evidence import (
     BUILD_REVIEW_PHASE,
     BuildReviewVerdict,
     ReviewEvidenceOutcome,
+    ReviewEvidenceReason,
 )
 from teleclaude.core.next_machine.review_rounds import (
     admit_build_review,
@@ -103,6 +107,12 @@ _BUILD_RECONCILE_DIGEST_MISMATCH = "plan_digest_mismatch"
 _BUILD_RECONCILE_DIGEST_MATCH = "plan_digest_match"
 _BUILD_RECONCILE_NO_DIGEST = "no_build_plan_digest"
 _EMPTY_TEXT = ""
+_REVIEW_EVIDENCE_UNDETERMINED_CODE = "REVIEW_EVIDENCE_UNDETERMINED"
+_REVIEW_EVIDENCE_UNDETERMINED_MESSAGE = (
+    "Git could not determine whether the todo's own change is unchanged since the reviewed head. "
+    "No review evidence was consumed or revoked."
+)
+_REVIEW_EVIDENCE_RETRY_COMMAND_TEMPLATE = "telec todo work {slug}"
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +351,7 @@ async def _consume_build_review_verdict(
     worktree_cwd: str,
     state: dict[str, StateValue],
     stale_returns_to_review: bool,
-) -> bool:
+) -> tuple[bool, str | None]:
     """Fire the lifecycle signal for a stamped build_review verdict.
 
     Stamps record facts; the machine derives the phase from them. Runs from
@@ -351,31 +361,36 @@ async def _consume_build_review_verdict(
     diff. Returns True when the caller must re-derive the phase.
 
     ``stale_returns_to_review`` governs a binding that no longer matches the
-    current target and report. Where the todo is waiting to move forward on the
-    strength of a review, the stale binding is discarded and the todo returns
-    to BUILD_COMPLETE for a fresh one, so nothing advances on a review of code
-    that has since changed. REVIEW_CHANGES_REQUESTED passes False: the builder
-    invalidates the binding by committing fixes, which is the loop working, and
-    that step re-enters review through its own build_complete claim.
+    todo's own change or the current report. An undetermined Git check returns
+    an error instruction without mutating review evidence or lifecycle state.
     """
     writer = StateWriter(state)
     br_writer = writer.state.build_review
     if br_writer.verdict not in BuildReviewVerdict:
-        return False
+        return False, None
 
     current_head = await asyncio.to_thread(get_head_commit, worktree_cwd)
     current_report_digest = await todos_db.artifact_digest(slug, ARTIFACT_REVIEW_FINDINGS)
-    is_current = (
-        bool(br_writer.reviewed_target_digest)
-        and bool(br_writer.review_report_digest)
-        and br_writer.reviewed_target_digest == current_head
-        and br_writer.review_report_digest == current_report_digest
+    reason = await asyncio.to_thread(
+        build_review_binding_current,
+        br_writer,
+        worktree_cwd,
+        current_report_digest,
+    )
+    is_current = reason in (ReviewEvidenceReason.EXACT_TARGET, ReviewEvidenceReason.CLEAN_UPSTREAM_MERGES)
+    outcome = (
+        ReviewEvidenceOutcome.CURRENT
+        if is_current
+        else ReviewEvidenceOutcome.UNDETERMINED
+        if reason == ReviewEvidenceReason.UNDETERMINED
+        else ReviewEvidenceOutcome.STALE
     )
     logger.info(
         "workflow.review_evidence_evaluated",
         slug=slug,
         phase=BUILD_REVIEW_PHASE,
-        outcome=ReviewEvidenceOutcome.CURRENT if is_current else ReviewEvidenceOutcome.STALE,
+        outcome=outcome,
+        reason=reason,
         bound_target_digest=br_writer.reviewed_target_digest,
         current_target_digest=current_head,
         bound_report_digest=br_writer.review_report_digest,
@@ -383,9 +398,15 @@ async def _consume_build_review_verdict(
         caller_session_id=br_writer.caller_session_id,
         reviewed_at=br_writer.reviewed_at,
     )
+    if reason == ReviewEvidenceReason.UNDETERMINED:
+        return False, format_error(
+            _REVIEW_EVIDENCE_UNDETERMINED_CODE,
+            _REVIEW_EVIDENCE_UNDETERMINED_MESSAGE,
+            next_call=_REVIEW_EVIDENCE_RETRY_COMMAND_TEMPLATE.format(slug=slug),
+        )
     if not is_current:
         if not stale_returns_to_review:
-            return False
+            return False, None
         artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)
         _clear_build_review(writer.state)
         # A settled approval must not stay finalization-eligible on a binding
@@ -398,7 +419,7 @@ async def _consume_build_review_verdict(
             artifact_write_timestamps=artifact_write_timestamps,
         )
         await _commit_writer(writer, todos_db, slug, state)
-        return True
+        return True, None
 
     if not br_writer.baseline_commit:
         br_writer.baseline_commit = current_head
@@ -408,9 +429,9 @@ async def _consume_build_review_verdict(
         writer.state, "verdict", phase=BUILD_REVIEW_PHASE, artifact_write_timestamps=artifact_write_timestamps
     )
     if writer.state.lifecycle_phase == before_phase:
-        return False
+        return False, None
     await _commit_writer(writer, todos_db, slug, state)
-    return True
+    return True, None
 
 
 async def _work_step_build_complete(
@@ -421,7 +442,6 @@ async def _work_step_build_complete(
     cwd: str,
     worktree_cwd: str,
     state: dict[str, StateValue],
-    head_before_merge: str,
     head_after_merge: str,
 ) -> tuple[bool, str]:
     """BUILD_COMPLETE: dispatch a reviewer, or relay a re-review to the live one.
@@ -430,13 +450,15 @@ async def _work_step_build_complete(
     detects ground shifts from merge, tracks dispatch HEAD, and reuses active
     reviewer sessions across rounds.
     """
-    consumed = await _consume_build_review_verdict(
+    consumed, evidence_error = await _consume_build_review_verdict(
         todos_db=todos_db,
         slug=slug,
         worktree_cwd=worktree_cwd,
         state=state,
         stale_returns_to_review=True,
     )
+    if evidence_error is not None:
+        return False, evidence_error
     if consumed:
         return True, ""
 
@@ -448,7 +470,6 @@ async def _work_step_build_complete(
     resolution = await resolve_pending_review_state(
         ReviewDispatchContext(db=db, todos_db=todos_db, worktree_cwd=worktree_cwd, slug=slug),
         state,
-        head_before_merge=head_before_merge,
         head_after_merge=head_after_merge,
     )
     if resolution.instruction is not None:
@@ -527,6 +548,13 @@ async def _work_step_review_changes_requested(
     dispatch_head_raw = build_review.get("dispatch_head", "")
     reviewed_head = dispatch_head_raw if isinstance(dispatch_head_raw, str) and dispatch_head_raw else baseline
     head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
+    change_since_review = await asyncio.to_thread(todo_change_since, worktree_cwd, reviewed_head)
+    if change_since_review == TodoChangeSinceReview.UNDETERMINED:
+        return False, format_error(
+            _REVIEW_EVIDENCE_UNDETERMINED_CODE,
+            _REVIEW_EVIDENCE_UNDETERMINED_MESSAGE,
+            next_call=_REVIEW_EVIDENCE_RETRY_COMMAND_TEMPLATE.format(slug=slug),
+        )
 
     # Fix not yet committed: relay findings to live builder.
     builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.BUILD.value}")
@@ -583,7 +611,7 @@ async def _work_step_review_changes_requested(
     )
     quoted_reviewer_message = shlex.quote(reviewer_message)
 
-    if reviewed_head and head_sha and head_sha != reviewed_head:
+    if change_since_review == TodoChangeSinceReview.CHANGED:
         return False, (
             f"FIX WORK NOT STAMPED: {slug}\n\n"
             f"Builder session {builder_id} has commits after reviewed head {reviewed_head} "
@@ -777,7 +805,6 @@ async def _work_dispatch(
     worktree_cwd: str,
     phase: WorkPhase,
     state: dict[str, StateValue],
-    head_before_merge: str,
     head_after_merge: str,
 ) -> tuple[bool, str]:
     """Dispatch to the appropriate work phase handler.
@@ -794,20 +821,21 @@ async def _work_dispatch(
             cwd=cwd,
             worktree_cwd=worktree_cwd,
             state=state,
-            head_before_merge=head_before_merge,
             head_after_merge=head_after_merge,
         )
 
     if phase in (WorkPhase.REVIEW_APPROVED, WorkPhase.REVIEW_CHANGES_REQUESTED):
         # A settled review phase still consumes a newer verdict: a reviewer may
         # reverse itself before finalization, and the phase follows the verdict.
-        rederived = await _consume_build_review_verdict(
+        rederived, evidence_error = await _consume_build_review_verdict(
             todos_db=todos_db,
             slug=slug,
             worktree_cwd=worktree_cwd,
             state=state,
             stale_returns_to_review=phase == WorkPhase.REVIEW_APPROVED,
         )
+        if evidence_error is not None:
+            return False, evidence_error
         if rederived:
             return True, ""
 

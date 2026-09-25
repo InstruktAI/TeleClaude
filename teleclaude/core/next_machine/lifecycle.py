@@ -48,7 +48,13 @@ from teleclaude.core.next_machine.kinds import (
     PLAN_ONLY_PREPARE_KINDS,
 )
 from teleclaude.core.next_machine.provenance import read_dependency_artifact_snapshot
-from teleclaude.core.next_machine.review_evidence import REVIEW_EVIDENCE_ARTIFACTS
+from teleclaude.core.next_machine.review_evidence import (
+    REVIEW_EVIDENCE_ARTIFACTS,
+    ReviewEvidenceReason,
+)
+from teleclaude.core.next_machine.review_evidence import (
+    build_review_binding_current as _build_review_binding_current,
+)
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.session_identity import get_session_id
 from teleclaude.types.lifecycle import (
@@ -59,7 +65,7 @@ from teleclaude.types.lifecycle import (
     DriftClass,
     LifecyclePhase,
 )
-from teleclaude.types.todos import ApprovalStamp, ArtifactEntry, ReviewVerdictState, TodoState
+from teleclaude.types.todos import ApprovalStamp, ArtifactEntry, BuildReviewState, ReviewVerdictState, TodoState
 
 __all__ = [
     "LIFECYCLE_PHASE_ORDER",
@@ -73,6 +79,7 @@ __all__ = [
     "LifecyclePhase",
     "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
+    "build_review_binding_current",
     "coerce_lifecycle_phase",
     "collapse_drift",
     "derive_lifecycle_drift",
@@ -459,6 +466,15 @@ def _review_current(review: ReviewVerdictState, current_target_digest: str, curr
         and review.reviewed_target_digest == current_target_digest
         and review.review_report_digest == current_report_digest
     )
+
+
+def build_review_binding_current(
+    build_review: BuildReviewState,
+    worktree_cwd: str,
+    current_report_digest: str,
+) -> ReviewEvidenceReason:
+    """Classify whether a build-review verdict still binds todo work and its report."""
+    return _build_review_binding_current(build_review, worktree_cwd, current_report_digest)
 
 
 def plan_review_current(state: TodoState | Mapping[str, object]) -> bool:
@@ -948,14 +964,13 @@ def phase_is_complete(
     if phase == LifecyclePhase.BUILD_STARTED:
         return bool(model.build_completed_at)
     if phase == LifecyclePhase.BUILD_COMPLETE:
-        current_head = get_head_commit(worktree_cwd or "")
         current_report_digest = _current_report_digest("build_review", report_digests)
-        return (
-            model.build_review.verdict in ("approve", "changes_requested")
-            and bool(model.build_review.reviewed_target_digest)
-            and bool(model.build_review.review_report_digest)
-            and model.build_review.reviewed_target_digest == current_head
-            and model.build_review.review_report_digest == current_report_digest
+        binding_reason = build_review_binding_current(
+            model.build_review, worktree_cwd or _EMPTY_TEXT, current_report_digest
+        )
+        return model.build_review.verdict in ("approve", "changes_requested") and binding_reason in (
+            ReviewEvidenceReason.EXACT_TARGET,
+            ReviewEvidenceReason.CLEAN_UPSTREAM_MERGES,
         )
     if phase == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
         return False

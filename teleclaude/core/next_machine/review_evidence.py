@@ -14,6 +14,8 @@ from teleclaude.constants import (
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_PRD,
 )
+from teleclaude.core.next_machine.git_ops import TodoChangeSinceReview, get_head_commit, todo_change_since
+from teleclaude.types.todos import BuildReviewState
 
 
 class ReviewEvidenceOutcome(StrEnum):
@@ -21,6 +23,18 @@ class ReviewEvidenceOutcome(StrEnum):
 
     CURRENT = "current"
     STALE = "stale"
+    UNDETERMINED = "undetermined"
+
+
+class ReviewEvidenceReason(StrEnum):
+    """Why a stamped build-review binding is current, stale, or unresolved."""
+
+    EXACT_TARGET = "exact_target"
+    CLEAN_UPSTREAM_MERGES = "clean_upstream_merges"
+    TODO_CHANGED = "todo_changed"
+    REPORT_CHANGED = "report_changed"
+    UNBOUND = "unbound"
+    UNDETERMINED = "undetermined"
 
 
 class BuildReviewVerdict(StrEnum):
@@ -49,3 +63,28 @@ PREPARE_REVIEW_PHASES = tuple(
     phase for phase, artifacts in REVIEW_EVIDENCE_ARTIFACTS.items() if artifacts.target_artifact_key
 )
 BUILD_REVIEW_PHASE = "build_review"
+
+
+def build_review_binding_current(
+    build_review: BuildReviewState,
+    worktree_cwd: str,
+    current_report_digest: str,
+) -> ReviewEvidenceReason:
+    """Classify whether a build-review verdict still binds todo work and its report."""
+    if not build_review.reviewed_target_digest or not build_review.review_report_digest:
+        return ReviewEvidenceReason.UNBOUND
+    if build_review.review_report_digest != current_report_digest:
+        return ReviewEvidenceReason.REPORT_CHANGED
+
+    current_head = get_head_commit(worktree_cwd)
+    if not current_head:
+        return ReviewEvidenceReason.UNDETERMINED
+    if build_review.reviewed_target_digest == current_head:
+        return ReviewEvidenceReason.EXACT_TARGET
+
+    change = todo_change_since(worktree_cwd, build_review.reviewed_target_digest)
+    if change == TodoChangeSinceReview.UNDETERMINED:
+        return ReviewEvidenceReason.UNDETERMINED
+    if change == TodoChangeSinceReview.CHANGED:
+        return ReviewEvidenceReason.TODO_CHANGED
+    return ReviewEvidenceReason.CLEAN_UPSTREAM_MERGES

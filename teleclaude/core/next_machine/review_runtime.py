@@ -13,16 +13,9 @@ from typing import TYPE_CHECKING
 from teleclaude.constants import SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import PhaseStatus, StateValue
-from teleclaude.core.next_machine.git_ops import get_head_commit, review_surface_overlap_files
+from teleclaude.core.next_machine.git_ops import get_head_commit
 from teleclaude.core.next_machine.output_formatting import format_error
-from teleclaude.core.next_machine.review_rounds import (
-    admit_build_review,
-    build_review_admission,
-)
-from teleclaude.core.next_machine.runtime.scripts import (
-    format_review_ground_shift_script,
-    format_review_in_progress_script,
-)
+from teleclaude.core.next_machine.runtime.scripts import format_review_in_progress_script
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_with_status_for_slug
 
 if TYPE_CHECKING:
@@ -84,46 +77,11 @@ async def _resolve_live_review(
     dispatch_head: str,
     reviewer_id: str,
     current_head: str,
-    head_before_merge: str,
 ) -> ReviewResolution:
     """Handle review that is still owned by an active reviewer session."""
     needs_initial_baseline = review_round == 0 and not baseline_commit and bool(current_head)
     needs_head_refresh = bool(current_head and dispatch_head != current_head)
 
-    if head_before_merge and current_head and head_before_merge != current_head:
-        overlapping_files = await asyncio.to_thread(
-            review_surface_overlap_files,
-            context.worktree_cwd,
-            head_before_merge,
-            current_head,
-        )
-        if overlapping_files:
-            admission = build_review_admission(state)
-            await admit_build_review(context.todos_db, context.slug, state, admission)
-            if needs_initial_baseline or needs_head_refresh:
-                await _persist_review_dispatch_metadata(
-                    context.todos_db,
-                    context.slug,
-                    state,
-                    baseline_commit=current_head if needs_initial_baseline else None,
-                    dispatch_head=current_head if current_head else None,
-                )
-            # The threshold report, if any, is composed once by the caller in
-            # work_steps.py, which prefixes it onto every instruction this
-            # function can return — including this one. Composing it here too
-            # would state it twice on the one pass where both are non-empty.
-            return ReviewResolution(
-                state=state,
-                status=PhaseStatus.PENDING.value,
-                instruction=format_review_ground_shift_script(
-                    context.slug,
-                    reviewer_id,
-                    head_before_merge,
-                    current_head,
-                    overlapping_files,
-                    next_step=f"telec todo work {context.slug}",
-                ),
-            )
     if needs_initial_baseline or needs_head_refresh:
         await _persist_review_dispatch_metadata(
             context.todos_db,
@@ -185,7 +143,6 @@ async def resolve_pending_review_state(
     context: ReviewDispatchContext,
     state: dict[str, StateValue],
     *,
-    head_before_merge: str,
     head_after_merge: str,
 ) -> ReviewResolution:
     """Reconcile live-review progress before deciding whether to dispatch a reviewer."""
@@ -212,7 +169,6 @@ async def resolve_pending_review_state(
             dispatch_head=dispatch_head,
             reviewer_id=reviewer_id,
             current_head=current_head,
-            head_before_merge=head_before_merge,
         )
 
     finished = await _reconcile_finished_review(
