@@ -165,11 +165,7 @@ Then the output and exit status are those `telec auth whoami` produces in that c
 ## Known caveats
 
 - The conversational alias is strict: it matches exactly the three tokens `who`, `am`, `i` (the third with optional trailing `?`). Punctuation or different ordering misses and falls through to the unknown-subcommand branch.
-<!-- planned-change:fix-cli-startup-loads-machine-config -->
-- A session whose record is closed, absent, or recorded for another computer is reported as carrying no usable identity, not as a friendly "logged out" message.
-<!-- change:fix-cli-startup-loads-machine-config -->
 - A session whose record is closed or absent is reported as carrying no usable identity, not as a friendly "logged out" message. An open record the identity document names is admitted on that naming alone; resolving it never reads the machine configuration.
-<!-- /planned-change:fix-cli-startup-loads-machine-config -->
 
 <!-- planned-change:procedure-event-activation -->
 - The session path prints only `Principal` and `Role`. The terminal path prints `Email`, `Role`, `TTY`, and `Session auth file`. The two outputs are intentionally different shapes because they answer different questions about Resolution.

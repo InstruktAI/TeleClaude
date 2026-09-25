@@ -88,21 +88,6 @@ And the command exits non-zero when validation fails
 And no configuration mutation occurs
 ```
 
-<!-- planned-change:fix-cli-startup-loads-machine-config -->
-#### UC-CFG-CLI-7: Repair commands remain reachable when current configuration is invalid
-
-```gherkin
-Given the committed machine configuration contains an undeclared key and violates the typed schema
-When an agent invokes the machine-config validation or guided-repair surface
-Then the command surface starts without requiring a valid effective runtime configuration
-And reports the invalid state through the config context
-When the agent patches the configuration with an explicit removal of the reported dotted key path
-Then the config context removes that key from the latest raw document
-And validates the complete candidate before persisting it through the machine-config writer
-And subsequent validation succeeds
-And direct file editing is not required
-```
-<!-- change:fix-cli-startup-loads-machine-config -->
 #### UC-CFG-CLI-7: Repair commands remain reachable when current configuration is invalid
 
 ```gherkin
@@ -116,7 +101,6 @@ And validates the complete candidate before persisting it through the machine-co
 And subsequent validation succeeds
 And direct file editing is not required
 ```
-<!-- /planned-change:fix-cli-startup-loads-machine-config -->
 
 #### UC-CFG-CLI-8: Agents never mutate the backing file directly
 
