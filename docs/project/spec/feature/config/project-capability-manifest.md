@@ -152,10 +152,8 @@ Derivation rules:
   or reads any plumbing for it, and it is left byte-for-byte untouched. The git
   wrapper's one act for it is asking the runtime whether its root answers to a
   declaration; the runtime answers that it does not, and the plumbing keeps that
-  answer in the machine home like any other. A slug worktree answers only to its
-  owning checkout's declaration, whether or not it carries a copy of its own; a
-  branch copy never stands in for the owner's, so a slug worktree whose owning
-  checkout carries no declaration is not a target either. The sole
+  answer in the machine home like any other. Which declaration a slug worktree
+  answers to is UC-CFG-CAP-32. The sole
 <!-- /planned-change:config-first-version-migrations -->
 <!-- planned-change:align-config-cli-ownership -->
   exception is explicit adoption: `telec projects onboard` (and `init`) creates
@@ -495,6 +493,12 @@ Given a slug worktree whose branch copy of teleclaude.yml declares capability su
 When an agent session invokes git inside that worktree
 Then the installed plumbing decides from the owning checkout's declaration
 And it decides as the runtime's gates decide for an invocation from that worktree
+
+Given a slug worktree whose branch copy of teleclaude.yml declares capability subscriptions
+And whose owning checkout carries no declaration
+When an agent session invokes git inside that worktree
+Then the installed plumbing treats the worktree as carrying no declaration
+And the git wrapper execs the real git binary without intercepting the invocation
 ```
 
 #### UC-CFG-CAP-33: A capability resolved from the project's environment file resolves alike on both readers
