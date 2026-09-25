@@ -45,8 +45,9 @@ The publication pipeline is:
    published generation and clear the unfinished publication.
 
 A canonical checkout's published generation is the recorded tip of its latest
-completed publication; its unfinished publication is a tip that validated and
-began writing output without completing. Publication compares against both once
+completed publication; its unfinished publication is a validated tip claimed
+for output, recorded before any output write and cleared when that publication
+completes. Publication compares against both once
 it holds publication serialization:
 
 - A recorded tip that is a strict ancestor of the published generation is
