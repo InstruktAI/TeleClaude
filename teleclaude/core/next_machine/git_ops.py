@@ -10,6 +10,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
@@ -37,10 +38,6 @@ from teleclaude.git import (
     Repo,
     no_autostash_env,
 )
-from teleclaude.project_root import (
-    forbidden_slug_worktree_agent_artifact_paths,
-    forbidden_slug_worktree_doc_paths,
-)
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import ArtifactEntry, DependencyEntry, DriftReviewedStamp, TodoState
 
@@ -52,27 +49,30 @@ DRIFT_PENDING: ArtifactDriftStatus = "pending"
 DRIFT_COSMETIC: ArtifactDriftStatus = "cosmetic"
 DRIFT_SUBSTANTIVE: ArtifactDriftStatus = "substantive"
 
-_PRE_MERGE_SYNC_SUBJECT_TEMPLATE = "chore(todo): pre-merge worktree sync for {slug}"
-_GIT_FLAG_MESSAGE = "-m"
-_GIT_FLAG_NO_VERIFY = "--no-verify"
-_GIT_FLAG_AUTHOR = "--author"
-_PRE_MERGE_DOC_LAYER_ERROR_TEMPLATE = (
-    "ERROR: doc-layer paths cannot be committed from a slug worktree:\n"
-    "{paths}\n\n"
-    "The doc layer is authored at prepare on main and folded at integration; "
-    "the work phase executes a frozen contract. If a doc need surfaced mid-build, "
-    "kick back instead of editing docs/** here:\n"
-    '  telec todo stamp <slug> --kickback --reason "<why the plan cannot be built>"'
+_GIT_HEAD_REF = "HEAD"
+_GIT_ORIGIN_MAIN_REF = "origin/main"
+_GIT_FETCH_ORIGIN = "origin"
+_GIT_FETCH_MAIN = "main"
+_GIT_MERGE_NO_EDIT = "--no-edit"
+_GIT_MERGE_NO_AUTOSTASH = "--no-autostash"
+_GIT_MERGE_NO_OVERWRITE_IGNORE = "--no-overwrite-ignore"
+_GIT_FIRST_PARENT_FLAG = "--first-parent"
+_GIT_WRITE_TREE_FLAG = "--write-tree"
+_GIT_RANGE_SEPARATOR = ".."
+_GIT_OUTPUT_LINE_SEPARATOR = "\n"
+_GIT_SUCCESS_STATUS = 0
+_GIT_MERGE_CONFLICT_STATUS = 1
+_EMPTY_SHA = ""
+_TODO_CHANGE_UNDETERMINED_MESSAGE = "todo_change_since_undetermined"
+_WORKTREE_REPOSITORY_UNAVAILABLE_MESSAGE = "Worktree repository is unavailable."
+_WORKTREE_FETCH_UNAVAILABLE_MESSAGE = "Unable to fetch origin/main."
+_INVALID_WORKTREE_REPOSITORY_LOG_MESSAGE = "Invalid git repository at %s"
+_SKIPPING_ORIGIN_MAIN_MERGE_LOG_TEMPLATE = "Skipping origin/main merge for %s — fetch failed: %s"
+_ORIGIN_MAIN_MERGED_LOG_TEMPLATE = "Merged origin/main into worktree %s"
+_WORKTREE_MERGE_FAILURE_TEMPLATE = (
+    "Merge origin/main into worktree {slug} failed with conflicts. "
+    "The merge was aborted. Resolve manually or rebase.\n{details}"
 )
-_PRE_MERGE_DOC_LAYER_PATH_TEMPLATE = "  {path}"
-_PRE_MERGE_DOC_LAYER_PATH_SEPARATOR = "\n"
-_PRE_MERGE_AGENT_ARTIFACT_ERROR_TEMPLATE = (
-    "ERROR: agent-artifact source paths cannot be committed from a slug worktree:\n"
-    "{paths}\n\n"
-    "Agent-artifact sources are authored on main in the session where their intent was decided; "
-    "remove these paths from the worktree commit and route the artifact change to that session."
-)
-_PRE_MERGE_FROZEN_PATH_ERROR_SEPARATOR = "\n\n"
 
 _ARTIFACT_TO_STATE_KEY: dict[str, str] = {
     STATE_KEY_INPUT: STATE_KEY_INPUT,
@@ -723,154 +723,157 @@ def has_git_stash_entries(cwd: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
-    """Fetch and merge origin/main into the worktree branch.
+class WorktreeMergeOutcome(StrEnum):
+    """The result of synchronizing a todo worktree with origin/main."""
 
-    Returns empty string on success (including when fetch is unavailable),
-    or an error message only when merge conflicts occur.
-    """
+    MERGED = "merged"
+    UP_TO_DATE = "up_to_date"
+    DEFERRED_UNCOMMITTED = "deferred_uncommitted"
+    DEFERRED_FINALIZE_CLAIM = "deferred_finalize_claim"
+    FETCH_UNAVAILABLE = "fetch_unavailable"
+    CONFLICT = "conflict"
+
+
+@dataclass(frozen=True)
+class WorktreeMergeResult:
+    """Outcome and Git evidence for one worktree merge attempt."""
+
+    outcome: WorktreeMergeOutcome
+    head_before: str
+    head_after: str
+    message: str
+
+
+def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> WorktreeMergeResult:
+    """Fetch and merge origin/main without mutating uncommitted work."""
     try:
         repo = Repo(worktree_cwd)
-    except (InvalidGitRepositoryError, NoSuchPathError):
-        logger.warning("Invalid git repository at %s", worktree_cwd)
-        return ""
-
-    # Defense-in-depth: commit any pending changes before merging.
-    # Workers commit their own changes, so this should be a no-op. If it
-    # isn't, something upstream failed to commit — surface the anomaly.
-    dirty_paths = _dirty_paths(repo)
-    if dirty_paths:
-        forbidden_doc_paths = forbidden_slug_worktree_doc_paths(Path(worktree_cwd), dirty_paths)
-        forbidden_agent_artifact_paths = forbidden_slug_worktree_agent_artifact_paths(Path(worktree_cwd), dirty_paths)
-        refusal_messages: list[str] = []
-        if forbidden_doc_paths:
-            formatted_paths = _PRE_MERGE_DOC_LAYER_PATH_SEPARATOR.join(
-                _PRE_MERGE_DOC_LAYER_PATH_TEMPLATE.format(path=path) for path in forbidden_doc_paths
-            )
-            refusal_messages.append(_PRE_MERGE_DOC_LAYER_ERROR_TEMPLATE.format(paths=formatted_paths))
-        if forbidden_agent_artifact_paths:
-            formatted_paths = _PRE_MERGE_DOC_LAYER_PATH_SEPARATOR.join(
-                _PRE_MERGE_DOC_LAYER_PATH_TEMPLATE.format(path=path) for path in forbidden_agent_artifact_paths
-            )
-            refusal_messages.append(_PRE_MERGE_AGENT_ARTIFACT_ERROR_TEMPLATE.format(paths=formatted_paths))
-        if refusal_messages:
-            return _PRE_MERGE_FROZEN_PATH_ERROR_SEPARATOR.join(refusal_messages)
-        repo.git.add("-A")
-        # Deferred: teleclaude.commit_identity pulls in todo_scaffold ->
-        # hooks.receiver -> core.todos_db -> core.next_machine.lifecycle ->
-        # core.next_machine.git_ops (this module) at module load time — a
-        # module-level import here would be circular.
-        from teleclaude.commit_identity import (  # noqa: PLC0415 - deferred: breaks a circular import through todo_scaffold -> hooks.receiver -> core.todos_db -> core.next_machine.lifecycle -> this module
-            compose_commit_footer,
-            resolve_commit_identity,
+        head_before = repo.git.rev_parse(_GIT_HEAD_REF).strip()
+    except (InvalidGitRepositoryError, NoSuchPathError, GitCommandError, OSError) as exc:
+        logger.warning(_INVALID_WORKTREE_REPOSITORY_LOG_MESSAGE, worktree_cwd)
+        return WorktreeMergeResult(
+            WorktreeMergeOutcome.FETCH_UNAVAILABLE,
+            _EMPTY_SHA,
+            _EMPTY_SHA,
+            str(exc) or _WORKTREE_REPOSITORY_UNAVAILABLE_MESSAGE,
         )
 
-        # human_involved is False — no agent declares involvement at this call
-        # site. A resolution failure propagates unhandled, matching
-        # GitCommandError's existing propagation for merge conflicts below.
-        git_identity, session_id = resolve_commit_identity()
-        commit_message = compose_commit_footer(
-            _PRE_MERGE_SYNC_SUBJECT_TEMPLATE.format(slug=slug), session_id=session_id, human_involved=False
+    if _dirty_paths(repo):
+        return WorktreeMergeResult(
+            WorktreeMergeOutcome.DEFERRED_UNCOMMITTED,
+            head_before,
+            head_before,
+            _EMPTY_SHA,
         )
-        commit_args: tuple[str, ...] = (_GIT_FLAG_MESSAGE, commit_message, _GIT_FLAG_NO_VERIFY)
-        if git_identity is not None:
-            commit_args = (_GIT_FLAG_AUTHOR, git_identity, *commit_args)
-        repo.git.commit(*commit_args)
-        logger.warning("Pre-merge found dirty worktree for %s — committed pending changes", slug)
 
     try:
-        repo.git.fetch("origin", "main")
+        repo.git.fetch(_GIT_FETCH_ORIGIN, _GIT_FETCH_MAIN)
     except GitCommandError as exc:
-        # Fetch failure is non-fatal (no remote, offline, test env)
-        logger.info("Skipping origin/main merge for %s — fetch failed: %s", slug, str(exc).strip())
-        return ""
+        logger.info(_SKIPPING_ORIGIN_MAIN_MERGE_LOG_TEMPLATE, slug, str(exc).strip())
+        return WorktreeMergeResult(
+            WorktreeMergeOutcome.FETCH_UNAVAILABLE,
+            head_before,
+            head_before,
+            _WORKTREE_FETCH_UNAVAILABLE_MESSAGE,
+        )
 
     try:
-        repo.git.merge("origin/main", "--no-edit", "--no-autostash", env=no_autostash_env())
+        repo.git.merge(
+            _GIT_ORIGIN_MAIN_REF,
+            _GIT_MERGE_NO_EDIT,
+            _GIT_MERGE_NO_AUTOSTASH,
+            _GIT_MERGE_NO_OVERWRITE_IGNORE,
+            env=no_autostash_env(),
+        )
     except GitCommandError as exc:
         # Abort the failed merge so the worktree stays clean
         try:
             repo.git.merge("--abort")
         except GitCommandError:
             pass
-        return (
-            f"Merge origin/main into worktree {slug} failed with conflicts. "
-            f"The merge was aborted. Resolve manually or rebase.\n{(exc.stderr or '').strip()}"
+        head_after = get_head_commit(worktree_cwd)
+        return WorktreeMergeResult(
+            WorktreeMergeOutcome.CONFLICT,
+            head_before,
+            head_after,
+            _WORKTREE_MERGE_FAILURE_TEMPLATE.format(slug=slug, details=(exc.stderr or "").strip()),
         )
 
-    logger.info("Merged origin/main into worktree %s", slug)
-    return ""
+    logger.info(_ORIGIN_MAIN_MERGED_LOG_TEMPLATE, slug)
+    head_after = get_head_commit(worktree_cwd)
+    outcome = WorktreeMergeOutcome.MERGED if head_after != head_before else WorktreeMergeOutcome.UP_TO_DATE
+    return WorktreeMergeResult(outcome, head_before, head_after, _EMPTY_SHA)
 
 
-def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
-    """Return True if non-infrastructure commits exist between baseline and head.
+class TodoChangeSinceReview(StrEnum):
+    """Whether todo-authored changes followed the reviewed commit."""
 
-    Filters out:
-    - Files under .teleclaude/
-    - Files changed exclusively by merge commits
+    UNCHANGED = "unchanged"
+    CHANGED = "changed"
+    UNDETERMINED = "undetermined"
 
-    Computes files changed by non-merge commits directly (via --no-merges) rather than
-    subtracting merge-commit files from the total diff. This avoids the over-subtraction
-    bug where a file touched by both a merge commit and a regular commit would be
-    incorrectly excluded, producing a false negative and allowing a stale approval through.
 
-    Returns True on git errors (fail-safe: assume meaningful diff, invalidate).
-    """
-    infra_prefixes = (".teleclaude/",)
+def todo_change_since(worktree_cwd: str, reviewed_head: str) -> TodoChangeSinceReview:
+    """Classify whether the todo added changes after a reviewed commit."""
+    full_reviewed_head = reviewed_head
+    current_head = _EMPTY_SHA
+    origin_main = _EMPTY_SHA
     try:
-        repo = Repo(cwd)
-        log_output = repo.git.log(
-            "--no-merges",
-            "--name-only",
-            "--pretty=format:",
-            f"{baseline}..{head}",
-        )
-        meaningful_files = {
-            f for f in log_output.splitlines() if f.strip() and not any(f.startswith(p) for p in infra_prefixes)
-        }
-        return bool(meaningful_files)
-    except (GitCommandError, OSError) as exc:
+        repo = Repo(worktree_cwd)
+        current_head = repo.git.rev_parse(_GIT_HEAD_REF).strip()
+        if not reviewed_head:
+            raise ValueError(_TODO_CHANGE_UNDETERMINED_MESSAGE)
+        full_reviewed_head = repo.git.rev_parse(reviewed_head).strip()
+        if full_reviewed_head == current_head:
+            return TodoChangeSinceReview.UNCHANGED
+
+        origin_main = repo.git.rev_parse(_GIT_ORIGIN_MAIN_REF).strip()
+        merge_base = repo.git.merge_base(full_reviewed_head, current_head).strip()
+        if merge_base != full_reviewed_head:
+            return TodoChangeSinceReview.CHANGED
+
+        commits = repo.git.rev_list(
+            _GIT_FIRST_PARENT_FLAG,
+            full_reviewed_head + _GIT_RANGE_SEPARATOR + current_head,
+        ).splitlines()
+        for commit_sha in commits:
+            commit = repo.commit(commit_sha)
+            if len(commit.parents) != 2:
+                return TodoChangeSinceReview.CHANGED
+
+            first_parent_sha = commit.parents[0].hexsha
+            second_parent_sha = commit.parents[1].hexsha
+            second_parent_base = repo.git.merge_base(second_parent_sha, origin_main).strip()
+            if second_parent_base != second_parent_sha:
+                return TodoChangeSinceReview.CHANGED
+
+            merge_tree_status, merge_tree_output, _ = repo.git.merge_tree(
+                _GIT_WRITE_TREE_FLAG,
+                first_parent_sha,
+                second_parent_sha,
+                with_extended_output=True,
+                with_exceptions=False,
+            )
+            if merge_tree_status == _GIT_MERGE_CONFLICT_STATUS:
+                return TodoChangeSinceReview.CHANGED
+            if merge_tree_status != _GIT_SUCCESS_STATUS:
+                raise ValueError(_TODO_CHANGE_UNDETERMINED_MESSAGE)
+            merge_tree = merge_tree_output.split(_GIT_OUTPUT_LINE_SEPARATOR, 1)[0].strip()
+            if not merge_tree:
+                raise ValueError(_TODO_CHANGE_UNDETERMINED_MESSAGE)
+            if commit.tree.hexsha != merge_tree:
+                return TodoChangeSinceReview.CHANGED
+
+        return TodoChangeSinceReview.UNCHANGED
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError) as exc:
         logger.warning(
-            "has_meaningful_diff: git error; assuming meaningful diff (fail-safe)",
-            extra={"cwd": cwd, "baseline": baseline, "head": head, "error": str(exc)},
+            _TODO_CHANGE_UNDETERMINED_MESSAGE,
+            reviewed_head=full_reviewed_head,
+            current_head=current_head,
+            origin_main=origin_main,
+            error=str(exc),
         )
-        return True  # Fail-safe: assume meaningful diff, invalidate approval
-
-
-def review_surface_overlap_files(cwd: str, previous_head: str, current_head: str) -> list[str]:
-    """Return overlapping meaningful files between newly merged commits and the current review surface."""
-    infra_prefixes = (".teleclaude/",)
-    try:
-        repo = Repo(cwd)
-        landed_output = repo.git.log(
-            "--no-merges",
-            "--name-only",
-            "--pretty=format:",
-            f"{previous_head}..{current_head}",
-        )
-        landed_files = {
-            path
-            for path in landed_output.splitlines()
-            if path.strip() and not any(path.startswith(prefix) for prefix in infra_prefixes)
-        }
-        if not landed_files:
-            return []
-
-        surface_output = repo.git.diff("--name-only", "origin/main...HEAD")
-        surface_files = {
-            path
-            for path in surface_output.splitlines()
-            if path.strip() and not any(path.startswith(prefix) for prefix in infra_prefixes)
-        }
-        if not surface_files:
-            return []
-        return sorted(landed_files & surface_files)
-    except (GitCommandError, OSError) as exc:
-        logger.warning(
-            "review_surface_overlap_files failed",
-            extra={"cwd": cwd, "previous_head": previous_head, "current_head": current_head, "error": str(exc)},
-        )
-        return []
+        return TodoChangeSinceReview.UNDETERMINED
 
 
 __all__ = [
@@ -882,7 +885,9 @@ __all__ = [
     "ArtifactDriftStatus",
     "DependencyArtifactSnapshot",
     "DependencyArtifactSnapshots",
-    "_has_meaningful_diff",
+    "TodoChangeSinceReview",
+    "WorktreeMergeOutcome",
+    "WorktreeMergeResult",
     "_merge_origin_main_into_worktree",
     "build_dependency_artifact_snapshot",
     "build_git_hook_env",
@@ -899,5 +904,6 @@ __all__ = [
     "has_git_stash_entries",
     "has_uncommitted_changes",
     "read_text_async",
+    "todo_change_since",
     "write_text_async",
 ]

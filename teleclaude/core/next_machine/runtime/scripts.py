@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from teleclaude.core.next_machine.output_formatting import (
     format_orchestration_watch_instruction,
-    format_send_command,
 )
 
 
@@ -33,41 +32,6 @@ def format_review_in_progress_script(slug: str, reviewer_id: str, *, next_step: 
         f"REVIEW IN PROGRESS: {slug}\n\n"
         f"Execute in order:\n\n"
         f"Do not dispatch a new reviewer. Reuse live reviewer session {reviewer_id}.\n"
-        f"{format_orchestration_watch_instruction(slug=slug, restart_cadence=True)}\n"
-        f"Wait for reviewer session {reviewer_id} to report idle.\n"
-        f"When the signal arrives, call {next_step}."
-    )
-
-
-def _truncate_file_list(paths: list[str], limit: int = 6) -> str:
-    """Render a compact comma-separated path list for reviewer follow-up messages."""
-    if len(paths) <= limit:
-        return ", ".join(paths)
-    shown = ", ".join(paths[:limit])
-    return f"{shown}, and {len(paths) - limit} more"
-
-
-def format_review_ground_shift_script(
-    slug: str,
-    reviewer_id: str,
-    previous_head: str,
-    current_head: str,
-    overlapping_files: list[str],
-    *,
-    next_step: str,
-) -> str:
-    """Script for nudging an existing reviewer when merged code overlaps reviewed files."""
-    file_list = _truncate_file_list(overlapping_files)
-    message = (
-        f"Ground shifted for {slug}: origin/main merge advanced the review target from {previous_head} to "
-        f"{current_head}. Keep focus on this todo only. Re-check only the overlapping reviewed files "
-        f"({file_list}) and continue the same review session. If the merged changes are irrelevant to your "
-        "existing findings, keep your current scope and verdict logic unchanged."
-    )
-    return (
-        f"REVIEW GROUND SHIFTED: {slug}\n\n"
-        f"Execute in order:\n\n"
-        f"{format_send_command(reviewer_id, message)}\n\n"
         f"{format_orchestration_watch_instruction(slug=slug, restart_cadence=True)}\n"
         f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call {next_step}."

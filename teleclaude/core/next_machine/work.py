@@ -12,6 +12,8 @@ context-destroying churn."
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import os
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING
@@ -33,6 +35,8 @@ from teleclaude.core.next_machine.git_ops import (
     DRIFT_PENDING,
     DRIFT_SUBSTANTIVE,
     ArtifactDriftStatus,
+    WorktreeMergeOutcome,
+    WorktreeMergeResult,
     _merge_origin_main_into_worktree,
     get_head_commit,
     get_stash_entries,
@@ -78,6 +82,7 @@ if TYPE_CHECKING:
 
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.todos_db import get_todos_db
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 logger = get_logger(__name__)
 
@@ -93,6 +98,19 @@ _KICKBACK_REASON = "kickback"
 _SUBSTANTIVE_DRIFT_REASON = "substantive_drift"
 _RESOURCE_ACTION_PRESERVE = "preserve"
 _EMPTY_TEXT = ""
+_WORK_ENTRY_MERGE_DECIDED_EVENT = "todo_work_entry_merge_decided"
+_WORK_ENTRY_MERGE_DECIDED_MESSAGE = "todo work entry merge decided"
+_GIT_STATUS_PORCELAIN = "--porcelain"
+_GIT_STATUS_NUL_TERMINATED = "-z"
+_GIT_STATUS_UNTRACKED_ALL = "--untracked-files=all"
+_GIT_HEAD_REF = "HEAD"
+_GIT_STATUS_ENTRY_SEPARATOR = b"\0"
+_FINGERPRINT_SEPARATOR = b"\0"
+_FINGERPRINT_UNTRACKED_PREFIX = b"?? "
+_FINGERPRINT_FILE_KIND = b"file\0"
+_FINGERPRINT_SYMLINK_KIND = b"symlink\0"
+_FINALIZE_CLAIM_READY_STATUS = "ready"
+_WORKTREE_FINGERPRINT_FAILED_MESSAGE = "Unable to fingerprint worktree at %s: %s"
 
 
 async def _get_slug_single_flight_lock(cwd: str, slug: str) -> asyncio.Lock:
@@ -124,6 +142,46 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         emit_operation_progress(phase, decision, reason)
     except Exception:
         logger.debug("Operation progress emission skipped", exc_info=True)
+
+
+def _worktree_fingerprint(worktree_cwd: str) -> str | None:
+    """Hash tracked changes and non-ignored untracked contents for merge observation."""
+    try:
+        repo = Repo(worktree_cwd)
+        status = repo.git.status(
+            _GIT_STATUS_PORCELAIN,
+            _GIT_STATUS_NUL_TERMINATED,
+            _GIT_STATUS_UNTRACKED_ALL,
+            stdout_as_string=False,
+        )
+        if not status:
+            return _EMPTY_TEXT
+        diff = repo.git.diff(_GIT_HEAD_REF, stdout_as_string=False)
+        fingerprint = hashlib.sha256()
+        fingerprint.update(status)
+        fingerprint.update(_FINGERPRINT_SEPARATOR)
+        fingerprint.update(diff)
+        untracked_paths = sorted(
+            entry[3:]
+            for entry in status.split(_GIT_STATUS_ENTRY_SEPARATOR)
+            if entry.startswith(_FINGERPRINT_UNTRACKED_PREFIX)
+        )
+        for path_bytes in untracked_paths:
+            path = Path(worktree_cwd, os.fsdecode(path_bytes))
+            if path.is_symlink():
+                content = os.fsencode(os.readlink(path))
+                kind = _FINGERPRINT_SYMLINK_KIND
+            else:
+                content = path.read_bytes()
+                kind = _FINGERPRINT_FILE_KIND
+            fingerprint.update(path_bytes)
+            fingerprint.update(_FINGERPRINT_SEPARATOR)
+            fingerprint.update(kind)
+            fingerprint.update(hashlib.sha256(content).digest())
+        return fingerprint.hexdigest()
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError) as exc:
+        logger.warning(_WORKTREE_FINGERPRINT_FAILED_MESSAGE, worktree_cwd, str(exc))
+        return None
 
 
 def _format_holder_work_commands(holder_slug: str, child_slugs: tuple[str, ...]) -> str:
@@ -191,19 +249,52 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if ensure_error is not None:
         return ensure_error
 
-    # Merge origin/main into the worktree once before the loop so the worktree
-    # baseline stays consistent with integrated main.
+    # Preserve a published finalize candidate; otherwise sync before dispatch.
     merge_started = perf_counter()
-    head_before_merge = await asyncio.to_thread(get_head_commit, worktree_cwd)
-    merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
-    if merge_err:
+    merge_state = await todos_db.read_state(resolved_slug)
+    finalize_raw = merge_state.get("finalize") if merge_state is not None else None
+    finalize_state = finalize_raw if isinstance(finalize_raw, dict) else {}
+    finalize_status = finalize_state.get("status")
+    lifecycle_phase = merge_state.get("lifecycle_phase") if merge_state is not None else None
+    finalize_claimed = (
+        finalize_status == _FINALIZE_CLAIM_READY_STATUS or lifecycle_phase == LifecyclePhase.FINALIZE_READY.value
+    )
+    worktree_fingerprint_before = await asyncio.to_thread(_worktree_fingerprint, worktree_cwd)
+    if finalize_claimed:
+        head_before = await asyncio.to_thread(get_head_commit, worktree_cwd)
+        merge_result = WorktreeMergeResult(
+            WorktreeMergeOutcome.DEFERRED_FINALIZE_CLAIM,
+            head_before,
+            head_before,
+            _EMPTY_TEXT,
+        )
+    else:
+        merge_result = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
+    worktree_fingerprint_after = await asyncio.to_thread(_worktree_fingerprint, worktree_cwd)
+    logger.info(
+        _WORK_ENTRY_MERGE_DECIDED_MESSAGE,
+        event=_WORK_ENTRY_MERGE_DECIDED_EVENT,
+        slug=resolved_slug,
+        outcome=merge_result.outcome,
+        head_before=merge_result.head_before,
+        head_after=merge_result.head_after,
+        caller_session_id=get_session_id() or _EMPTY_TEXT,
+        worktree_fingerprint_before=worktree_fingerprint_before,
+        worktree_fingerprint_after=worktree_fingerprint_after,
+    )
+    if merge_result.outcome == WorktreeMergeOutcome.CONFLICT:
         _log_next_work_phase(phase_slug, "merge_main", merge_started, "error", "merge_main_failed")
         state = await todos_db.read_state(resolved_slug)
         phase_raw = state.get("lifecycle_phase") if state is not None else ""
         lifecycle_phase = phase_raw if isinstance(phase_raw, str) else ""
-        return await _format_merge_main_recovery(db, resolved_slug, merge_err, lifecycle_phase=lifecycle_phase)
-    head_after_merge = await asyncio.to_thread(get_head_commit, worktree_cwd)
-    _log_next_work_phase(phase_slug, "merge_main", merge_started, "run", "merge_main_applied")
+        return await _format_merge_main_recovery(
+            db,
+            resolved_slug,
+            merge_result.message,
+            lifecycle_phase=lifecycle_phase,
+        )
+    head_after_merge = merge_result.head_after
+    _log_next_work_phase(phase_slug, "merge_main", merge_started, "run", merge_result.outcome.value)
 
     # Ensure item phase is IN_PROGRESS on first work entry.
     current_phase = await _get_item_phase_db(todos_db, resolved_slug)
@@ -258,7 +349,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             worktree_cwd=worktree_cwd,
             phase=WorkPhase(phase.value),
             state=state,
-            head_before_merge=head_before_merge,
             head_after_merge=head_after_merge,
         )
         _log_next_work_phase(
