@@ -79,33 +79,13 @@ And the command's exit status and output are git's own
 
 <!-- planned:foreign-session-carried-identity -->
 
-#### UC-GWR-1 — Role-independent wrapper rows apply to every caller, identified or not
+#### UC-GWR-1 — The integrator rows follow the role the caller's session record resolves to
 
 ```
-Given a process in a tmux pane working in a sealed repository
-And the process carries no session identity document — an agent TeleClaude did not start, or a process whose identity resolves to no one
-When it invokes a git operation whose wrapper row does not depend on role, such as `git mv`, `git status` or `git diff`
-Then the wrapper applies that row exactly as it does for an identified non-integrator
-And no session-identity refusal is printed
-```
-
-#### UC-GWR-2 — The integrator rows follow the role the caller's session record resolves to
-
-```
-Given a process in a tmux pane on `main` of a sealed repository
+Given an agent session in its host pane on `main` of a sealed repository
 When it pushes to `origin main`, or runs a merge, rebase or cherry-pick that produces a commit on main
-Then the wrapper admits it only when the caller resolves to the integrator system role through the shared caller resolution
-And a caller that resolves to another role, or to no identity, is refused with the integrator-only message
-And no role copied into the session identity document decides it
-```
-
-#### UC-GWR-3 — The role override applies only to a person with no system role
-
-```
-Given a caller in a tmux pane that sets `TELECLAUDE_SYSTEM_ROLE`
-When the wrapper decides a row that depends on role
-Then it takes the override only when the caller resolves to a person and carries no system role
-And a caller whose session carries a system role keeps that system role
+Then the wrapper admits it only when the session's record resolves to the integrator system role
+And any other role is refused with the integrator-only message
 ```
 
 <!-- /planned:foreign-session-carried-identity -->
@@ -656,20 +636,6 @@ Then the commit's git author is that agent's verified bot identity, resolved fro
 And no request is sent to the platform's local service to resolve the author
 And a principal copied into the session identity document never decides the author
 ```
-
-<!-- planned:foreign-session-carried-identity -->
-
-#### UC-CGIP-48 — An agent TeleClaude did not start commits as that agent
-
-```
-Given an agent CLI started outside TeleClaude's launch path whose hooks recorded its session
-When it runs telec code commit --approved from a process that carries its harness session id and no session identity document
-Then the commit's git author is that agent's verified bot identity
-And the message carries a Session: trailer naming the recorded session
-And the commit is not attributed to the person whose terminal started the agent
-```
-
-<!-- /planned:foreign-session-carried-identity -->
 
 #### UC-CGIP-16 — Human-Involved is a per-commit declaration, never derived from the todo record
 

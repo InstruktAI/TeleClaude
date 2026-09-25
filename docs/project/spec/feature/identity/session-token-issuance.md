@@ -1,5 +1,5 @@
 ---
-description: "Issue a v1 session token at bootstrap for system-principal sessions and write it into the session's TMPDIR identity file."
+description: "Issue a v1 session token at bootstrap for system-principal sessions."
 visibility: 'public'
 ---
 
@@ -27,14 +27,22 @@ Given a session whose resolved principal is "system:daemon"
 When the session is bootstrapped
 Then session-token issuance generates a UUID4
 And a ledger entry binding (token, session_id, principal, role) is recorded
+<!-- planned-change:foreign-session-carried-identity -->
 And the plaintext token is written into the session's TMPDIR identity file
 ```
+<!-- change:foreign-session-carried-identity -->
+And the plaintext token is not written into the session's identity file
+```
+<!-- /planned-change:foreign-session-carried-identity -->
 
 ```
 Given a session whose resolved principal is "human:<email>"
 When the session is bootstrapped
 Then no ledger entry is created
+<!-- planned-change:foreign-session-carried-identity -->
 And the identity file is written with session_token=None
+<!-- change:foreign-session-carried-identity -->
+<!-- /planned-change:foreign-session-carried-identity -->
 <!-- planned-change:cli-actions-authorize-in-process -->
 And the session must authenticate via the terminal-email and caller-session-id signals
 <!-- change:cli-actions-authorize-in-process -->
@@ -71,7 +79,11 @@ And lives until token revocation is invoked at session close
 
 ## Known caveats
 
+<!-- planned-change:foreign-session-carried-identity -->
 - The plaintext token is returned from the issuance capability exactly once and immediately written to disk in the session's TMPDIR. There is no secondary retrieval path — losing the identity file orphans the session from its own credential until the next bootstrap.
+<!-- change:foreign-session-carried-identity -->
+- The plaintext token is returned from the issuance capability exactly once and is not written to the session's identity file (`feature/identity/session-identity-file`).
+<!-- /planned-change:foreign-session-carried-identity -->
 <!-- planned-change:cli-actions-authorize-in-process -->
 - The `role` value on a ledger entry reflects the role returned by principal resolution, which for an inherited `system:` principal is the fallback `customer` band unless the child carries an explicit `human_role`. Token-path validation re-derives the authoritative system role from the live session record rather than trusting the ledger's `role` value for clearance decisions.
 <!-- change:cli-actions-authorize-in-process -->

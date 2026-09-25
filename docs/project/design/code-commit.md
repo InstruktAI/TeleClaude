@@ -130,15 +130,12 @@ by the wrapper, which reads only the tier and the capability blocks
 (`project/spec/feature/config/project-capability-manifest`).
 
 <!-- planned:foreign-session-carried-identity -->
-The role the matrix reads is the one the shared caller resolution answers for the
-calling process (`project/spec/identity-and-auth` §6), from the session record
-its identity names, never from a copy in the session identity document. The
-wrapper asks for it only where a row depends on role — a push to main, and a
-replay that produces a commit on main — so every other row costs no resolution.
-Those rows apply to every caller alike, identified or not; a caller that
-resolves to no identity is gated as a non-integrator. `TELECLAUDE_SYSTEM_ROLE`
-substitutes a role only for a caller that resolves to a person and carries no
-system role.
+The role the matrix reads is resolved from the caller's session record through the
+shared caller resolution (`project/spec/identity-and-auth` §6), never from the
+session identity document, which carries only the session id
+(`project/spec/feature/identity/session-identity-file`). The wrapper resolves it
+only where a row depends on role: a push to main, and a replay that produces a
+commit on main.
 <!-- /planned:foreign-session-carried-identity -->
 
 The full matrix of wrapper-gated operations, by role and by execution
