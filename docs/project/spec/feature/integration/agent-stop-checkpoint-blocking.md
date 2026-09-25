@@ -61,11 +61,23 @@ The action and evidence ledger — what needs doing and what was done since
 the turn started — is time-anchored to the turn window and is
 wholesale-cleared at user-prompt-submit.
 
+<!-- planned-change:fix-stop-hook-forces-an-approved-commit-and -->
 On a shared branch, version control is consulted only as the category oracle
 (which file maps to which category), never as the arbiter of what is in-scope
 or done; declarations answer that. In a todo worktree there is nothing to
 arbitrate — the checkout is one todo's task scope with a single writer — so the
 dirty tree is itself the scope and declarations are not consulted.
+<!-- change:fix-stop-hook-forces-an-approved-commit-and -->
+On a shared branch, version control is consulted only as the category oracle
+(which file maps to which category), never as the arbiter of what is in-scope
+or done; declarations answer that. In a todo worktree the checkout is one
+todo's task scope with a single writer, so for that writer the dirty tree is
+itself the scope and declarations are not consulted. A reviewer session in the
+same worktree is not its writer — a reviewer makes no source change
+(`sdlc/procedure/lifecycle/work/review-build`) and commit authority stays with
+the authoring context (`sdlc/policy/commits`) — so a reviewer's scope is its
+own declarations intersected with the dirty tree, as on a shared branch.
+<!-- /planned-change:fix-stop-hook-forces-an-approved-commit-and -->
 
 ## Canonical fields
 
@@ -481,6 +493,7 @@ Then no obligation is raised for those paths
 And any decision produced for another reason names none of them
 ```
 
+<!-- planned-change:fix-stop-hook-forces-an-approved-commit-and -->
 #### UC-CP34: A worktree's obligation is its dirty tree, not its declarations
 
 ```gherkin
@@ -490,6 +503,34 @@ When checkpoint evaluation completes
 Then a checkpoint decision is produced naming those paths
 And its required actions are the ones their categories carry
 ```
+<!-- change:fix-stop-hook-forces-an-approved-commit-and -->
+#### UC-CP34: A worktree's obligation is its dirty tree, not its declarations
+
+```gherkin
+Given an agent session other than a reviewer is working from a non-main todo worktree
+And that worktree holds dirty paths the session has declared none of
+When checkpoint evaluation completes
+Then a checkpoint decision is produced naming those paths
+And its required actions are the ones their categories carry
+```
+<!-- /planned-change:fix-stop-hook-forces-an-approved-commit-and -->
+
+<!-- planned:fix-stop-hook-forces-an-approved-commit-and -->
+#### UC-CP35: A worktree checkpoint neither forces an approved commit nor hands a reviewer the writer's work
+
+```gherkin
+Given a reviewer session is working from a non-main todo worktree
+And that worktree holds dirty paths another session wrote and the reviewer has declared none of
+When checkpoint evaluation completes at the reviewer's agent-stop boundary
+Then no checkpoint directs the reviewer to commit those paths
+
+Given the worktree's writer session reaches its agent-stop boundary with uncommitted changes
+And the cycle contains no commit evidence after the last recorded edit
+When checkpoint evaluation completes
+Then the checkpoint requires the no-flags commit step
+And no checkpoint directs an approved commit
+```
+<!-- /planned:fix-stop-hook-forces-an-approved-commit-and -->
 
 ### Cross-context references
 
