@@ -151,11 +151,11 @@ fails validation elsewhere in the overlay is refused by the runtime and honoured
 by the wrapper, which reads only the tier and the capability blocks
 (`project/spec/feature/config/project-capability-manifest`).
 <!-- change:config-first-version-migrations -->
-The wrapper reads capability state from the repository root's `teleclaude.yml`
-the way the runtime's own gates read it — for a slug worktree, from the owning
+The wrapper takes capability state from the runtime's answer for the repository
+root, the answer the runtime's own gates use — for a slug worktree, the owning
 checkout's declaration, whether or not the worktree carries a copy — deriving `code ∨ docs` for commit interception and
-`code` for worktree and branch discipline. The runtime answers the read: the
-document is brought to its current shape by the configuration migration list,
+`code` for worktree and branch discipline. The wrapper reads no declaration
+itself. The runtime answers: the document is brought to its current shape by the configuration migration list,
 environment references in its capability blocks are resolved from the
 declaration's sibling `.env`, and its tier and capability blocks are read with
 the runtime's own models. The wrapper keeps that answer until a file it was
