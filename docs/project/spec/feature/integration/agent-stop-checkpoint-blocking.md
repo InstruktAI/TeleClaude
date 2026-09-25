@@ -73,10 +73,9 @@ On a shared branch, version control is consulted only as the category oracle
 or done; declarations answer that. In a todo worktree the checkout is one
 todo's task scope with a single writer, so for that writer the dirty tree is
 itself the scope and declarations are not consulted. A reviewer session in the
-same worktree is not its writer — a reviewer makes no source change
-(`sdlc/procedure/lifecycle/work/review-build`) and commit authority stays with
-the authoring context (`sdlc/policy/commits`) — so a reviewer's scope is its
-own declarations intersected with the dirty tree, as on a shared branch.
+same worktree is not its writer; its scope is its own declarations intersected
+with the dirty tree, as on a shared branch (`sdlc/policy/commits`,
+`sdlc/procedure/lifecycle/work/review-build`).
 <!-- /planned-change:fix-stop-hook-forces-an-approved-commit-and -->
 
 ## Canonical fields
