@@ -43,7 +43,7 @@ from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionLaunchKind, SessionSnapshot
 from teleclaude.core.reconciliation import DEFAULT_FEATURE_ID_REGISTRY
-from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
+from teleclaude.core.session_cleanup import host_pane_name, terminate_session
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_startup_message import prepare_startup_message, resolve_command_input
 from teleclaude.core.session_title import compose_command_session_title
@@ -349,7 +349,7 @@ async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
 
     computer_name = config.computer.name
     session_id = cmd.session_id or str(uuid.uuid4())
-    tmux_name = "" if cmd.headless else f"{TMUX_SESSION_PREFIX}{session_id}"
+    tmux_name = "" if cmd.headless else host_pane_name(session_id)
     subfolder = cmd.subdir
     working_slug: str | None = resolve_working_slug_from_subdir(subfolder) or cmd.working_slug
     initiator_session_id = cmd.initiator_session_id
