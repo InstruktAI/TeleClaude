@@ -129,6 +129,18 @@ fails validation elsewhere in the overlay is refused by the runtime and honoured
 by the wrapper, which reads only the tier and the capability blocks
 (`project/spec/feature/config/project-capability-manifest`).
 
+<!-- planned:foreign-session-carried-identity -->
+The role the matrix reads is the one the shared caller resolution answers for the
+calling process (`project/spec/identity-and-auth` §6), from the session record
+its identity names, never from a copy in the session identity document. The
+wrapper asks for it only where a row depends on role — a push to main, and a
+replay that produces a commit on main — so every other row costs no resolution.
+Those rows apply to every caller alike, identified or not; a caller that
+resolves to no identity is gated as a non-integrator. `TELECLAUDE_SYSTEM_ROLE`
+substitutes a role only for a caller that resolves to a person and carries no
+system role.
+<!-- /planned:foreign-session-carried-identity -->
+
 The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the
 op wins.
@@ -271,11 +283,10 @@ The pathspec commit is built internally from `workspace scope plus
    runs the guardrails lane, and requires no native toolchain contract at its
    root. The guardrails lane runs in-process when the checkout under commit is
    the installation or is not a TeleClaude checkout. For any other TeleClaude
-   checkout it runs in that checkout's own code against a fresh scratch home, so
-   a change is graded by the rules it carries and undelivered code never runs
+   checkout the lint step is that checkout's own lint gate — its native leg and
+   guardrails lane — run in its own code against a fresh scratch home, so a
+   change is graded by the rules it carries and undelivered code never runs
    against the live home (`project/design/architecture/cli-invocation-boundary`).
-   A checkout that predates that hand-off is graded in-process, and the commit
-   says so.
 <!-- /planned-change:global-telec-runs-main-checkout -->
 Deletion-only commits
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The

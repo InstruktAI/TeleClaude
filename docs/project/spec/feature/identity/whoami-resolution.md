@@ -80,6 +80,20 @@ Then the CLI reports that the session carries no usable identity and exits with 
 And no terminal login is consulted or printed
 ```
 
+<!-- planned:foreign-session-carried-identity -->
+
+#### UC-WHO-FOREIGN: An agent TeleClaude did not start reports the session its hooks recorded
+
+```
+Given an agent CLI started by hand from a terminal whose login names `ada@example.com`
+And the agent's hooks have recorded its session
+When the agent runs `telec auth whoami`, carrying its harness session id and no session identity document
+Then it prints `Principal: human:ada@example.com` and the Role that authorizes that session
+And no `Email:`, `TTY:` or `Session auth file:` line is printed
+```
+
+<!-- /planned:foreign-session-carried-identity -->
+
 #### UC-WHO6: Whoami answers while the daemon is not running
 
 ```

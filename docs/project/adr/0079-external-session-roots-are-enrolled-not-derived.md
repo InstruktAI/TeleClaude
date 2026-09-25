@@ -94,6 +94,10 @@ kernel-attested properties are matched against registration entries that a
 trusted act created, rather than inferred from the attested properties
 themselves.
 
+## Status
+
+Superseded by ADR-0103
+
 ## See Also
 
 - docs/project/design/architecture/local-caller-attestation.md

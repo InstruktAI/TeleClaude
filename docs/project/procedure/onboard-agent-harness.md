@@ -118,15 +118,31 @@ defect discovered live.
     the harness's own plugin location is installed from there, so the repository
     carries only the installer wiring, never a vendored copy.
 
+<!-- planned:foreign-session-carried-identity -->
+**Session identity**
+
+20. The environment variable, if any, through which the harness gives every
+    process it starts — tool shells and subagents — its own session id, and
+    whether that value equals the session id its hook payloads carry. Only an
+    equal value lets those processes reach the session the hooks recorded.
+<!-- /planned:foreign-session-carried-identity -->
+
 Record the answers. They are the input to every step below, and they are what
 the next onboarding will want to diff against.
 
 ### 2. Registry and identity
 
 
+<!-- planned-change:foreign-session-carried-identity -->
 1. Add one complete entry to the canonical leaf agent registry. The entry owns
    the agent key, execution contract, attribution, readiness, presentation,
    dispatch position, and launcher metadata.
+<!-- change:foreign-session-carried-identity -->
+1. Add one complete entry to the canonical leaf agent registry. The entry owns
+   the agent key, execution contract, attribution, readiness, presentation,
+   dispatch position, launcher metadata, and the environment variable that
+   carries the harness's session id when fact 20 establishes one.
+<!-- /planned-change:foreign-session-carried-identity -->
 2. Consume the registry's typed projections for backend validation, receiver
    arguments, history search, configuration inventory, and agent-specific
    runtime decisions. Do not introduce another enum, tuple, set, or map whose
