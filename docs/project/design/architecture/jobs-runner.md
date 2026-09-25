@@ -52,12 +52,17 @@ host trigger (launchd StartInterval 300s / systemd timer, every 5 min)
 scripts/cron_runner.py          CLI entry point
   │
   ▼
+<!-- planned-change:job-name-identity -->
 teleclaude/cron/runner.py       Engine: config → discover → schedule check → execute
   │  ├── _load_job_schedules()  Read schedule config from teleclaude.yml
   │  ├── discover_jobs()        Read configured script jobs from teleclaude.yml
+<!-- change:job-name-identity -->
+teleclaude/cron/runner.py       Engine: effective jobs → schedule check → execute
+  │  ├── config.jobs.load_effective_jobs()  Compose each project's jobs
+<!-- /planned-change:job-name-identity -->
   │  ├── _dispatch_agent_job()  Open a run and fire-and-forget the agent session
   │  ├── _run_script_job()      Import the job module and invoke JOB.run() in-process
-  │  ├── _sweep_open_runs()     Close agent runs from reported outcomes; stall the rest
+  │  ├── _run_pre_dispatch_sweeps()  Close reported runs; stall timed-out runs
   │  └── run_due_jobs()         Main loop: config → is_due() → open → run/sweep → close
   │
   ▼
@@ -127,7 +132,11 @@ that project, so a later run cannot overwrite a notification that has not yet be
 | Component      | Path                                | Role                                                                             |
 | -------------- | ----------------------------------- | -------------------------------------------------------------------------------- |
 | CLI entry      | `scripts/cron_runner.py`            | Argument parsing, logging setup, invokes engine                                  |
+<!-- planned-change:job-name-identity -->
 | Engine         | `teleclaude/cron/runner.py`         | Config loading, discovery, schedule evaluation, run open/close/stall, event emit |
+<!-- change:job-name-identity -->
+| Engine         | `teleclaude/cron/runner.py`         | Effective-set loading, schedule evaluation, run open/close/stall, event emit     |
+<!-- /planned-change:job-name-identity -->
 | State          | `teleclaude/cron/state.py`          | JSON persistence of the per-job run lifecycle                                    |
 | Event schemas  | `teleclaude/events/schemas/jobs.py` | The `job.run.succeeded` / `job.run.failed` / `job.run.stalled` catalog entries   |
 | Report wrapper | `telec jobs report`                 | The single structured-outcome channel an agent job uses to close its run         |
@@ -148,7 +157,11 @@ and the walk continues.
 **Inputs:**
 
 - the global `~/.teleclaude/teleclaude.yml` registry and every registered project's `teleclaude.yml` — published jobs, subscriptions, and local declarations
+<!-- planned-change:job-name-identity -->
 - `jobs/*.py` — job modules discovered at runtime, each exposing a module-level `JOB`
+<!-- change:job-name-identity -->
+- `jobs/*.py` — script-pointer targets imported for effective script jobs, each exposing a module-level `JOB`
+<!-- /planned-change:job-name-identity -->
 - `~/.teleclaude/state/cron_state.json` — the run lifecycle, per project and job
 
 **Outputs:**
@@ -156,7 +169,11 @@ and the walk continues.
 - Job execution (side effects defined by each job)
 - A `JobResult` outcome for every run, script and agent alike
 - `job.run.*` events on close/stall, projected to a human when actionable
-- Run reports at `~/.teleclaude/jobs/{project_slug}/{job_id}/runs/{YYMMDD-HHMMSS}.md` (human-readable audit)
+<!-- planned-change:job-name-identity -->
+- Run reports under `JOBS_DIR`, keyed by project and pointer-derived job identity (human-readable audit)
+<!-- change:job-name-identity -->
+- Run reports under `JOBS_DIR`, keyed by project and declared job name (human-readable audit)
+<!-- /planned-change:job-name-identity -->
 - Updated run lifecycle in `~/.teleclaude/state/cron_state.json`, per project and job
 
 - Structured logs to `~/.local/state/instrukt-ai/teleclaude/cron.log`
@@ -249,7 +266,11 @@ Discovery (`teleclaude/cron/discovery.py`) scans both for subscribers of a given
 4. Sweep open runs: close each agent run whose structured outcome has arrived (emit
    `job.run.succeeded`/`job.run.failed`); stall any open run past its `timeout` (emit
    `job.run.stalled`); re-attempt any closed-but-unnotified emission.
+<!-- planned-change:job-name-identity -->
 5. Load schedule config and discover configured script jobs.
+<!-- change:job-name-identity -->
+5. Compose each registered project's effective job set through `load_effective_jobs`, including its local declarations and subscribed global jobs.
+<!-- /planned-change:job-name-identity -->
 6. For each due job not already open: open a run. A script job runs `JOB.run()` in-process
    on a daemon thread joined with `timeout`; if it times out, the runner records the failed
    outcome and aborts the rest of the pass so no later job starts. An agent job creates its
@@ -260,8 +281,13 @@ Discovery (`teleclaude/cron/discovery.py`) scans both for subscribers of a given
 
 ### Force run (CLI)
 
+<!-- planned-change:job-name-identity -->
 `cron_runner.py --force` bypasses schedule checks. Every discovered job runs regardless of
 config or last run time, flowing the same open/close lifecycle.
+<!-- change:job-name-identity -->
+`cron_runner.py --force` bypasses schedule checks for the selected project's effective
+jobs, while retaining the same open/close lifecycle and active-run safeguards.
+<!-- /planned-change:job-name-identity -->
 
 ### Manual run (API)
 
