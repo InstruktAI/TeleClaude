@@ -1,8 +1,9 @@
 ---
-description: Which checkout's code a telec invocation runs — the installed canonical checkout for the global command, a checkout's own code only through its own wrapper and, from a slug worktree, only against a scratch home — and how a worktree's change is still graded by its own rules.
+description: Which checkout's code a telec invocation runs — the installed canonical
+  checkout for the global command, a checkout's own code only through its own wrapper
+  and, from a slug worktree, only against a scratch home — and how a worktree's change
+  is still graded by its own rules.
 visibility: internal
-delivered_by:
-  - global-telec-runs-main-checkout
 ---
 
 # Checkout Code Selection — Spec

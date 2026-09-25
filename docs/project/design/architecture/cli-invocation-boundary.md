@@ -4,8 +4,7 @@ description: The path from a shell to a telec command handler — which checkout
   its own change without reaching live state.
 visibility: internal
 delivered_by:
-  - global-telec-runs-main-checkout
-  - telec-startup-does-only-auth
+- telec-startup-does-only-auth
 ---
 
 # CLI Invocation Boundary — Design
