@@ -26,11 +26,7 @@ The contract resolves four classes of file state at commit time:
 4. **Unmerged-index** files (post-conflict, pre-resolution-stage) in the pathspec are staged internally so the integrator's conflict-resolution flow runs through the same sealed path.
 
 
-<!-- planned-change:config-worktree-write-guard -->
 On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. In a linked worktree, which has a single writer, the declaration term does not apply and the scope is drawn from the worktree's dirty paths within the acting context root. `telec code add <path>...` is the declaration surface: a successful invocation writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and the entry stays live until the commit that carries it lands. A path named only by arbitrary shell-command text contributes no evidence, and no transcript is read to establish a declaration.
-<!-- change:config-worktree-write-guard -->
-On a shared branch the scope itself is strictly `(live session declarations) ∩ (currently dirty paths) ∩ (the invocation context root's own material) ∩ (the repository's retained set, where its owner publishes one)`. In a linked worktree, which has a single writer, the declaration term does not apply and the scope is drawn from the worktree's dirty paths within the acting context root. `telec code add <path>...` is the declaration surface on a shared branch: a successful invocation writes each accepted path, with the instant it was declared, to the declaring session's own declaration record, and the entry stays live until the commit that carries it lands. In a linked worktree the same invocation stages what it stages and writes no declaration record. A path named only by arbitrary shell-command text contributes no evidence, and no transcript is read to establish a declaration.
-<!-- /planned-change:config-worktree-write-guard -->
 
 A context root's **own material** is what lies under it minus what belongs to another owner. Ownership is the test, not whether TeleClaude resolves a nested root as a context: a nested root belongs to another owner when it declares a different tier, when it anchors a context of its own, or when it holds a repository of its own, and any one of those is enough. So a person's material and a company's material are both foreign to the global context that encloses them, a person-owned project is foreign to the person context that encloses it, and an unrelated checkout nested anywhere is foreign to every context above it — including the cases that anchor no context at all.
 
@@ -352,17 +348,6 @@ And no shell operator, redirection target, or neighbouring command name is a dec
 And the session's effective scope is the same as for a bare invocation of the same paths
 ```
 
-<!-- planned:config-worktree-write-guard -->
-#### UC-CGIP-48 — Sealed add in a linked worktree records no declaration
-
-```gherkin
-Given an agent session works in a linked worktree
-When the agent invokes the sealed add surface for a new file and for a modified tracked file
-Then the new file is staged and both paths are in the session's effective scope through the worktree's dirty paths
-And no declaration record for that session is written or changed
-And dirty-path ownership on the owning checkout attributes neither path to that session
-```
-<!-- /planned:config-worktree-write-guard -->
 
 ### Use cases
 

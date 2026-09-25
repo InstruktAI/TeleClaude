@@ -118,14 +118,6 @@ TeleClaudeNext.
   supply strictness as a validation argument. The behavioral contract is
   `project/spec/feature/config/unknown-key-warning`.
 
-<!-- planned:config-worktree-write-guard -->
-- **Also owns:** which code may persist configuration to the live home. Only
-  code delivered to the canonical checkout changes it; a write from code running
-  in a todo's slug worktree is refused before the document changes, and the
-  refusal names a scratch home as the door. Where the running code lives decides
-  this, never the invocation directory. The behavioral contract is
-  `project/spec/feature/config/live-home-isolation`.
-<!-- /planned:config-worktree-write-guard -->
 
 <!-- planned:procedure-event-activation -->
 - **Also owns:** an inbound event source's company declaration — the registered
@@ -141,9 +133,6 @@ TeleClaudeNext.
 #### Use cases (index of feature specs)
 
 - **project-registry** — `docs/project/spec/feature/config/project-registry.md` — which checkout is recorded for an adopted project, and which paths never write the registry
-<!-- planned:config-worktree-write-guard -->
-- **live-home-isolation** — `docs/project/spec/feature/config/live-home-isolation.md` — which code may change the live configuration home, and the scratch-home door for code that may not
-<!-- /planned:config-worktree-write-guard -->
 
 
 ### Personal MCP secret store
