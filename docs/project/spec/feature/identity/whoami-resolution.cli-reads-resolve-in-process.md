@@ -23,16 +23,14 @@ The identity context's whoami capability answers the same question for clients o
 ```
 Given an agent session whose record resolves to the principal `system:daemon` and whose derived system role is `worker`
 When the operator runs `telec auth whoami`
-Then the CLI resolves the session from its record in its own process
-And it prints two lines: `Principal: system:daemon` and `Role: worker`
+Then it prints two lines: `Principal: system:daemon` and `Role: worker`
 ```
 
 ```
 Given a terminal outside any session — no session identity document — whose login document names `ada@example.com`
 And the `people` registry holds `ada@example.com` with the `admin` Role
 When the operator runs `telec auth whoami`
-Then the CLI resolves that login against the `people` registry
-And it prints `Email: ada@example.com` and `Role: admin`, then `TTY: <pts/N>` and `Session auth file: <path>`
+Then it prints `Email: ada@example.com` and `Role: admin`, then `TTY: <pts/N>` and `Session auth file: <path>`
 ```
 
 ```
@@ -80,32 +78,31 @@ And no request is sent to the daemon's local service
 
 ```
 Given an agent in a session whose carried principal is `system:daemon` and whose system role is `orchestrator`
-When the identity context's whoami capability runs for that caller
-Then it returns the principal `system:daemon`, the role `orchestrator`, no email, and the id of the session it verified
+When a client of the daemon's API asks who that caller is
+Then the answer carries the principal `system:daemon`, the role `orchestrator`, no email, and the id of the caller's session
 ```
 
 #### UC-WHO-CAPABILITY-PERSON: The capability answers a person with a principal named for them
 
 ```
 Given a caller the platform resolves as the registered person `ada@example.com`, whose registered role is `member` — at a terminal, or through a session whose lineage roots at them
-When the identity context's whoami capability runs for that caller
-Then it returns the principal `human:ada@example.com`, the role `member`, and the email `ada@example.com`
-And it returns a session id only when the caller is a session
+When a client of the daemon's API asks who that caller is
+Then the answer carries the principal `human:ada@example.com`, the role `member`, and the email `ada@example.com`
+And it carries a session id only when the caller is a session
 ```
 
 #### UC-WHO-CAPABILITY-NOBODY: The capability attributes nothing it cannot attribute
 
 ```
-Given a verified session caller that resolves to no person and carries no principal
-When the identity context's whoami capability runs for that caller
-Then it returns no principal, no role, and no email
+Given a session caller that resolves to no person and carries no principal
+When a client of the daemon's API asks who that caller is
+Then the answer carries no principal, no role, and no email
 ```
 
 ```
-Given an operator types `telec auth who am i`
-When the auth subcommand dispatcher parses the args
-Then the conversational pattern matches and the call is rewritten to `telec auth whoami`
-And the standard whoami flow runs
+Given an operator in any context where `telec auth whoami` answers
+When the operator runs `telec auth who am i`
+Then the output and exit status are those `telec auth whoami` produces in that context
 ```
 
 ### Cross-context references

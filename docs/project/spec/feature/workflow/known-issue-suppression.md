@@ -111,14 +111,20 @@ And the refusal names how to establish an identity
 ```
 
 <!-- planned:cli-reads-resolve-in-process -->
-#### UC-KIS8: The bug hunter lists the ledger and an unidentified caller does not
+#### UC-KIS8: The log bug hunter lists the ledger it subtracts
 
 ```
 Given a project whose ledger holds active suppressions
 When the log bug hunter, running as a job-runner session, runs telec bugs suppressions for that project
 Then every active entry is listed
-Given a process the platform cannot identify
-When it runs telec bugs suppressions
+```
+
+#### UC-KIS9: A caller the platform cannot identify lists no suppression
+
+```
+Given a project whose ledger holds active suppressions
+And a process the platform cannot identify
+When it runs telec bugs suppressions for that project
 Then no entry is listed
 And the refusal says why the caller is not identified
 ```
