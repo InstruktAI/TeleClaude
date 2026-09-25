@@ -8,12 +8,21 @@ visibility: internal
 
 ## What it is
 
+<!-- planned-change:config-migration-chain -->
 The project registry is the machine's durable list of adopted project roots. It
 is what every consumer enumerates to answer "which projects exist here" —
 documentation publisher resolution, the valid-domain set, global skill
 composition, configuration advancement, and the project catalog. Its shape and
 location are config's, stated in
 `project/spec/teleclaude-config`.
+<!-- change:config-migration-chain -->
+The project registry is the machine's durable list of adopted project roots. It
+is what every consumer enumerates to answer "which projects exist here" —
+documentation publisher resolution, the valid-domain set, global skill
+composition, configuration migration, and the project catalog. Its shape and
+location are config's, stated in
+`project/spec/teleclaude-config`.
+<!-- /planned-change:config-migration-chain -->
 
 Adoption is what writes it. A project is recorded when it is initialized or
 onboarded, and by nothing else: no deployment or synchronization path adds,

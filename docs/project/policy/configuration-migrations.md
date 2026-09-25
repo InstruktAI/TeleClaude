@@ -1,0 +1,91 @@
+---
+description: How a configuration migration is written — one numbered step in one ordered list, a pure transform usable both in memory and when persisted, idempotent against whatever shape it finds, and never carrying a value out of a document before its destination holds it.
+delivered_by: [config-migration-chain]
+---
+
+# Configuration Migrations — Policy
+
+## Rules
+
+- **One ordered list defines every configuration version.** A configuration
+  migration is one numbered step in the single list that covers every
+  configuration document kind. The step's number is the version it produces.
+  Nothing else — no state file, no epoch, no completion record, no load-time
+  repair, no startup step — records or performs configuration migration.
+- **A delivered migration is immutable.** Once a numbered step has shipped, its
+  number and its effect never change. A correction is a new step.
+- **A migration is a pure transform of one document and its subject.** It reads
+  only the document and what the registries say the document is, performs no
+  I/O, and returns the next document. The same transform runs in memory when a
+  document is read and when a migration run persists it, so the two can never
+  disagree.
+- **A migration is idempotent and assumes nothing about the shape it finds.** A
+  document may reach a step already carrying some or all of its result — created
+  at a newer version and edited by hand, or written by a newer installation. The
+  step converges on its target whether or not the target is already present.
+- **A migration that moves a value out of a document declares the move as a
+  persisted effect.** The migration run delivers the value to its config-owned
+  destination, idempotently, before the transform drops it from the document.
+  A destination that already holds a different value is a conflict: the
+  document keeps the value and its version, and the run reports the conflict.
+  Where the value's final owner is another bounded context, the destination is a
+  config-owned hand-off that owner imports from; a migration never writes
+  another context's store.
+- **A migration that needs to know what a document is reads its subject.** The
+  subject comes from the tier registries. A migration never derives a document's
+  kind or instance from its path, and a document the registries do not name has
+  no subject to supply.
+- **A shape change ships with its migration.** A change to what a configuration
+  document may carry changes the owning model, the platform's generation of new
+  documents, and the migration list together. A new document is written at the
+  current version; a migration alone leaves new documents wrong, and a model
+  change alone leaves stored documents unreadable.
+- **A shape no machine still carries gets no migration.** Its keys fail as
+  unknown wherever they reappear.
+
+## Rationale
+
+A document reaches the current shape along two paths — in memory on every read,
+and on disk when a migration run or a writer persists it — and only a pure,
+idempotent transform gives both paths the same answer. A transform with I/O
+would make reading write, and a read path that writes lets every process that
+reads configuration — including one running undelivered code — change the live
+documents every other process depends on.
+
+Idempotency is what makes stamping and replay safe together. Newly created
+documents skip history while stored documents replay it, and hand edits or a
+newer installation can put any part of a step's result in place first. A step
+that asserts the shape it was written against fails on exactly the documents
+that took the other path, and only when they are next migrated.
+
+Moving a value before dropping it keeps a migration from being a deletion. The
+in-memory read cannot write the destination, so the value survives in the
+stored document until a run delivers it; a conflict keeps both copies because
+neither can be chosen without judgment.
+
+One ordered list with the version in the document is what makes migration
+progress a property of the data rather than of a machine. A copied, cloned, or
+restored document carries its own position, and no separate record can drift
+from it.
+
+## Scope
+
+Every configuration document the platform owns and every step in the
+configuration migration list under `teleclaude/config/migrations/`.
+
+## Enforcement
+
+Reviewers apply these rules to every change that touches the configuration
+migration list, a configuration model, or the generation of new configuration
+documents.
+
+## Exceptions
+
+- None. A migration that cannot be made pure and idempotent is a migration whose
+  target shape is wrong.
+
+## See Also
+
+- docs/project/spec/feature/config/document-migration.md — how documents reach the current shape and what a migration run reports.
+- docs/project/policy/schema-and-migrations.md — the same discipline for the daemon database.
+- ~/.teleclaude/docs/sdlc/policy/backward-compatibility-hygiene.md — why owned data migrates forward instead of branching.

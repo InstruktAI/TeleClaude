@@ -26,6 +26,7 @@ Rejection is immediate and actionable. The validation failure identifies the
 configuration file and the dotted path of every offending key so an operator can
 repair the source instead of discovering later that a typo was ignored.
 
+<!-- planned-change:config-migration-chain -->
 Recognized legacy fields in stored local configuration are migrated to their
 declared destinations before validation. A migration preserves the represented
 value, unrelated content, comments, and identity claims. A conflicting or
@@ -36,6 +37,17 @@ whose canonical destination is another local configuration file.
 Migration is a stored-file operation. Newly submitted configuration candidates
 are validated against the current accepted vocabulary without legacy-key
 repair. Neither path accepts arbitrary unknown fields.
+<!-- change:config-migration-chain -->
+Recognized older shapes in stored local configuration are brought to the
+current shape by the configuration migration list before validation
+(`project/spec/feature/config/document-migration`). A read applies them in
+memory and never writes; a migration run or a writer persists them, preserving
+the represented value, unrelated content, comments, and identity claims.
+
+Newly submitted configuration candidates are validated against the current
+accepted vocabulary without migration. Neither path accepts arbitrary unknown
+fields.
+<!-- /planned-change:config-migration-chain -->
 
 ## Canonical fields
 
@@ -107,6 +119,7 @@ Then the input is accepted
 And the parser maps it into the typed runtime configuration aggregate
 ```
 
+<!-- planned-change:config-migration-chain -->
 #### UC-CFG-UNKNOWN-8: Recognized stored configuration migrates before consumption
 
 ```gherkin
@@ -151,6 +164,15 @@ Then each migration checks the destination state protected from concurrent mutat
 And both non-conflicting updates remain available after the loads complete
 And neither process removes a source whose destination write did not succeed
 ```
+<!-- change:config-migration-chain -->
+#### UC-CFG-UNKNOWN-8: Recognized stored configuration migrates before consumption
+
+#### UC-CFG-UNKNOWN-9: Conflicting migration preserves the source and fails explicitly
+
+#### UC-CFG-UNKNOWN-10: An interrupted move remains safely retryable
+
+#### UC-CFG-UNKNOWN-11: Concurrent migrations preserve each other's updates
+<!-- /planned-change:config-migration-chain -->
 
 
 #### UC-CFG-UNKNOWN-12: A key placed in the wrong checkpoint registry names the registry it belongs to

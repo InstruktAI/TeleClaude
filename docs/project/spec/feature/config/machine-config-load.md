@@ -206,6 +206,7 @@ And the daemon process remains running without a restart
 
 ## Known caveats
 
+<!-- planned-change:config-migration-chain -->
 - **Stored-file migration and candidate validation are distinct.** Legacy
   content owned by the config context is migrated and persisted before the
   file reaches raw input validation, on initial load and reload. A retired
@@ -217,6 +218,17 @@ And the daemon process remains running without a restart
   current-schema validation without either migration path. The local
   config-owned migration contract is specified by
   `project/spec/feature/config/unknown-key-warning`.
+<!-- change:config-migration-chain -->
+- **Stored-file migration and candidate validation are distinct.** On initial
+  load and reload, the stored document is brought to the current shape in
+  memory by the configuration migration list before it reaches raw input
+  validation, and the load never writes it
+  (`project/spec/feature/config/document-migration`). A retired field whose
+  destination belongs to another bounded context leaves the view the same way;
+  a migration run stores the document only after delivering that value to its
+  config-owned hand-off, from which the destination owner imports it. Raw edit
+  candidates receive current-schema validation without migration.
+<!-- /planned-change:config-migration-chain -->
 
 - **Process-start side effects.** The load runs once at process start with no
   opt-out. The initialisation reads files from disk, may fail with a missing

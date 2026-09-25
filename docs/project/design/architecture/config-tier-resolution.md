@@ -45,11 +45,19 @@ and how existing installations reach the declared state.
   (`sdlc/policy/domain-ownership`). Consumers cross each
   boundary through the owning contract, and no consumer walks the ancestor
   chain, reads a tier declaration, or interprets git metadata itself.
+<!-- planned-change:config-migration-chain -->
 - **Resolution carries no location logic.** No resolver, loader, or consumer
   derives a tier from where a file sits. Consulting a location belongs to
   advancement alone, and there it is a lookup in the tier registries rather than
   a match against a path pattern: a path the registries do not name is not
   advanced.
+<!-- change:config-migration-chain -->
+- **Resolution carries no location logic.** No resolver, loader, or consumer
+  derives a tier from where a file sits. Consulting a location belongs to the
+  declaring configuration migration alone, and there it is a lookup in the tier
+  registries rather than a match against a path pattern: a path the registries
+  do not name is given no tier.
+<!-- /planned-change:config-migration-chain -->
 - **The context walk consults declarations only.** The nearest ancestor
   directory carrying a same-named configuration file wins, and that file's
   declared tier is the answer. An anchoring tier — global, project, or person —
@@ -177,6 +185,7 @@ names the home's schema directory relative to its designated location. Every con
 published its schemas, with no network fetch and no path that means something
 different on another machine.
 
+<!-- planned-change:config-migration-chain -->
 **Advancing stored files.** A same-named configuration file is advanced before
 it is loaded. Advancement supplies what the file lacks — its tier declaration,
 its schema association, or both — and each is an independent idempotent repair,
@@ -246,9 +255,56 @@ declared and associated.
 
 Advancement never overwrites a declaration that is present: an unknown or
 model-inconsistent value fails rather than being replaced.
+<!-- change:config-migration-chain -->
+**Migrating stored files.** A same-named configuration file reaches its
+declared state through the configuration migration list, the one mechanism that
+moves every configuration document's stored shape forward
+(`project/spec/feature/config/document-migration`). The declaring migration
+supplies what an older file lacks — its tier declaration — and every stored
+write supplies the schema association, so a file carrying a valid declaration
+and no association gains the association the next time it is stored and a file
+carrying both is untouched.
+
+The declaring migration obtains an absent tier by asking the tier registries the
+model already defines — the designated locations for the home's own
+configuration, person, and company files, and the project registry for project
+roots. A path the registries do not name is given no tier, so it reaches loading
+undeclared and fails there.
+
+Whether a file may still be declared is settled by the file's own version and
+nothing else. A file that has not passed the declaring migration is declared
+from the registries: in memory whenever it is read, on disk when a migration
+run or a writer stores it. A file past the declaring migration is strict: a
+missing or misdeclared tier fails whatever else the file does or does not
+carry, on whichever machine reads it. Deleting a declaration and moving the
+repository therefore restores nothing anywhere, because the version that makes
+the file strict travels with the file.
+
+The schema association carries no evidential weight. It serves the editor, it
+is written with every stored write, and its absence never makes a file eligible
+for a declaration again.
+
+Reading never writes. A migration run persists the declaration together with
+every other pending migration: commit-boundary maintenance runs one over every
+registered root when the migration list changes, and registration and
+installation run one for the roots they bring in. Nothing about one file's
+migration affects another's.
+
+Writing a schema association does not depend on the schema being present on
+the writing machine. The association is a fixed function of the tier, so every
+write of a declared file writes it. Gating it on local presence would make a
+committed file's content depend on the machine that wrote it.
+
+A newly created global, person, company, or project configuration is written
+declared and associated, at the current version.
+
+No migration overwrites a declaration that is present: an unknown or
+model-inconsistent value fails rather than being replaced.
+<!-- /planned-change:config-migration-chain -->
 
 ## Failure modes
 
+<!-- planned-change:config-migration-chain -->
 - **A same-named configuration file carries no declaration.** Loading fails
   naming the file and the missing declaration, wherever the file sits. Three
   files reach this by construction: one at a root the tier registries do not
@@ -267,6 +323,21 @@ model-inconsistent value fails rather than being replaced.
   which captured it as eligible whether or not it could be reached. No
   completion is recorded for it and nothing else is blocked; it is advanced when
   it returns and is next read.
+<!-- change:config-migration-chain -->
+- **A same-named configuration file carries no declaration.** Loading fails
+  naming the file and the missing declaration, wherever the file sits, unless
+  the tier registries name it and it has not passed the declaring migration.
+  Two files reach this by construction: one at a root the tier registries do not
+  name, and one already stored past the declaring migration. The remedy for both
+  is to declare the file.
+- **A migration run cannot write a file the registries name.** Reading it is
+  unaffected: the file loads in its current shape without being written. The run
+  reports that file as failed and migrates every other document.
+- **A registered project root is unavailable.** Reads of every other root are
+  unaffected, and the migration run migrates every document it can reach. The
+  root's file is stored at the current version by the next run that reaches it,
+  by registration, or by the next writer; until then any read upcasts it.
+<!-- /planned-change:config-migration-chain -->
 - **A schema association is absent, stale, or unresolvable.** Not an error: the
   association serves the editor, and loading reads the declaration alone.
 - **A declaration names an unknown tier, or a tier the model does not accept.**
