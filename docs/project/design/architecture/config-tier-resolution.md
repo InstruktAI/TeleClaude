@@ -177,7 +177,6 @@ names the home's schema directory relative to its designated location. Every con
 published its schemas, with no network fetch and no path that means something
 different on another machine.
 
-<!-- planned-change:stateless-config-advancement -->
 **Advancing stored files.** A same-named configuration file is advanced before
 it is loaded. Advancement supplies what the file lacks — its tier declaration,
 its schema association, or both — and each is an independent idempotent repair,
@@ -247,57 +246,9 @@ declared and associated.
 
 Advancement never overwrites a declaration that is present: an unknown or
 model-inconsistent value fails rather than being replaced.
-<!-- change:stateless-config-advancement -->
-**Advancing stored files.** Advancement brings a same-named configuration file
-to the current configuration contract. It is an ordered set of steps owned by
-config, each recognizing one legacy shape in a file and transforming it: an
-absent tier declaration, an absent or non-canonical schema association, a key
-the contract has retired, and, in a project declaration, a capability left
-without a value (`project/spec/feature/config/project-capability-manifest`).
-The steps are the only record of what current means, and the file shows which
-shape it is in: advancement keeps no durable state of its own, so a root
-adopted at any time is advanced exactly like every other. A file that matches
-no step is not written, so running advancement again changes nothing.
-
-Advancement obtains an absent tier by asking the tier registries the model
-already defines — the designated locations for the home's own configuration,
-person, and company files, and the project manifest for project roots. A path
-the registries do not name is not advanced, so it reaches loading undeclared and
-fails there. A declaration that is present is never overwritten: one that names
-an unknown tier or contradicts the registries is reported for its root, the file
-is left as stored, and its load fails naming the declaration.
-
-A file that matches a step is written once per run, atomically, under the
-configuration file lock, and only when the result differs from what is stored.
-The write preserves the file's comments and the order of the keys it keeps,
-including a comment that sits above a key a step removes. A key no step
-recognizes is never touched; the loader's strictness names it.
-
-Advancement runs at exactly two boundaries, because a file leaves the current
-shape only when the contract changes or when it enters the registries. Adoption
-advances the adopted root before anything reads its declaration. Post-commit
-maintenance advances every root the registries name when canonical main
-advances with a change to the configuration contract or its steps
-(`project/spec/feature/integration/post-commit-maintenance`). Loading, context
-resolution, and daemon start never advance.
-
-An unavailable root, an unreadable file, or a file advancement cannot write is
-reported for its root and skipped. Nothing about one root's advancement affects
-another's, and the next advancement run reaches the skipped root again.
-
-Writing a schema association does not depend on the schema being present on
-the writing machine. The association is a fixed function of the tier, so
-advancement writes it together with the declaration, and every later write of a
-declared file writes it again. Gating it on local presence would make a
-committed file's content depend on the machine that wrote it.
-
-A newly created global, person, company, or project configuration is written
-declared and associated.
-<!-- /planned-change:stateless-config-advancement -->
 
 ## Failure modes
 
-<!-- planned-change:stateless-config-advancement -->
 - **A same-named configuration file carries no declaration.** Loading fails
   naming the file and the missing declaration, wherever the file sits. Three
   files reach this by construction: one at a root the tier registries do not
@@ -316,19 +267,6 @@ declared and associated.
   which captured it as eligible whether or not it could be reached. No
   completion is recorded for it and nothing else is blocked; it is advanced when
   it returns and is next read.
-<!-- change:stateless-config-advancement -->
-- **A same-named configuration file carries no declaration.** Loading fails
-  naming the file and the missing declaration, wherever the file sits, and the
-  load writes nothing. At a root the tier registries name, the next advancement
-  run declares the file; anywhere else the remedy is to adopt the root or
-  declare the file.
-- **Advancement cannot write a file the registries name.** Advancement reports
-  that root, naming the file and the declaration it needs, and continues with
-  every other root. The file stays as stored, so its load fails naming it.
-- **A registered project root is unavailable.** Advancement reports it
-  unavailable and continues; nothing is recorded for it, and the next
-  advancement run that reaches it advances it.
-<!-- /planned-change:stateless-config-advancement -->
 - **A schema association is absent, stale, or unresolvable.** Not an error: the
   association serves the editor, and loading reads the declaration alone.
 - **A declaration names an unknown tier, or a tier the model does not accept.**

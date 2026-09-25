@@ -74,16 +74,10 @@ Derivation rules:
   side holds no copy that can go stale or go missing. There is no projection, no
   sentinel, and no marker directory, and therefore no legacy state to
   disambiguate. The plumbing reads only what it decides on: the declaration's
-<!-- planned-change:stateless-config-advancement -->
   tier and, for a project declaration, the capability blocks. A capability block
   that is absent, or present without an `enabled` value, resolves to subscribed,
   which is the same default the typed overlay applies, so a project onboarded
   before the manifest keeps today's behavior with no migration. A block whose
-<!-- change:stateless-config-advancement -->
-  tier and, for a project declaration, the capability blocks. A capability block
-  that is absent, or present without an `enabled` value, resolves to
-  unsubscribed, which is the same default the typed overlay applies. A block whose
-<!-- /planned-change:stateless-config-advancement -->
   `enabled` value is an unquoted boolean in a spelling the runtime's YAML parser
   accepts is honoured as written, in block form or inline form alike. A block
   whose value the plumbing cannot read as a boolean is refused: the git
@@ -134,27 +128,12 @@ Derivation rules:
   as a failure rather than resolving to any capability state.
 - The project's `teleclaude.yml`, `.env`, and equivalent native files are
   project-owned and are never removed, superseded, or displaced.
-<!-- planned-change:stateless-config-advancement -->
 - Each `enabled` defaults to `true` for an already-onboarded project so
   existing repos keep today's behavior; analyze writes explicit values on the
   next assessment.
-<!-- change:stateless-config-advancement -->
-- No capability is claimed without a declaration: an omitted capability, or one
-  declared without an `enabled` value, resolves to unsubscribed. Adoption's
-  structural inference and assessment write the values they establish, and every
-  project declaration the platform writes — at adoption, by assessment, through
-  advancement, or through a typed save — declares all three capabilities.
-- A project declaration that leaves a capability without a value is therefore
-  a legacy shape, and that shape means subscribed. Advancement
-  (`project/spec/feature/config/tier-declaration`) records each such capability
-  of a registered project explicitly as subscribed and leaves every declared
-  value as it stands, so no registered project loses a capability it resolves
-  today.
-<!-- /planned-change:stateless-config-advancement -->
 
 ### Use cases
 
-<!-- planned-change:stateless-config-advancement -->
 #### UC-CFG-CAP-1: Omitted capability blocks default to subscribed
 
 ```
@@ -172,24 +151,6 @@ When the project configuration is loaded
 Then the code capability resolves to disabled
 And the docs and agents capabilities resolve to enabled
 ```
-<!-- change:stateless-config-advancement -->
-#### UC-CFG-CAP-1: Omitted capability blocks resolve to unsubscribed
-
-```
-Given a project overlay that declares no capability blocks
-When the project configuration is loaded by the runtime or by the installed plumbing
-Then the code, docs, and agents capabilities each resolve to unsubscribed on both readers
-```
-
-#### UC-CFG-CAP-2: An explicitly disabled capability is honored
-
-```
-Given a project overlay declaring the code capability disabled and the docs and agents capabilities enabled
-When the project configuration is loaded
-Then the code capability resolves to disabled
-And the docs and agents capabilities resolve to enabled
-```
-<!-- /planned-change:stateless-config-advancement -->
 
 #### UC-CFG-CAP-3: An unreadable declaration on an adopted project surfaces the failure
 
@@ -351,7 +312,6 @@ And no capability state is substituted for the unreadable block
 And no interpreter is spawned to reach that decision
 ```
 
-<!-- planned-change:stateless-config-advancement -->
 #### UC-CFG-CAP-25: A capability block without an enabled value resolves to subscribed
 
 ```
@@ -359,36 +319,6 @@ Given a project whose teleclaude.yml carries a code capability block that declar
 When the capabilities are resolved by the runtime or by the installed plumbing
 Then the code capability resolves to subscribed on both readers
 ```
-<!-- change:stateless-config-advancement -->
-#### UC-CFG-CAP-25: A capability block without an enabled value resolves to unsubscribed
-
-```
-Given a project whose teleclaude.yml carries a code capability block that declares no enabled value
-When the capabilities are resolved by the runtime or by the installed plumbing
-Then the code capability resolves to unsubscribed on both readers
-```
-<!-- /planned-change:stateless-config-advancement -->
-
-<!-- planned:stateless-config-advancement -->
-#### UC-CFG-CAP-26: Advancement keeps a registered project's capabilities by declaring them
-
-```
-Given a registered project whose teleclaude.yml omits the docs capability and declares the code capability without an enabled value
-And declares the agents capability disabled
-When advancement runs over that project
-Then its teleclaude.yml declares the code and docs capabilities enabled
-And the agents capability is still declared disabled
-And advancing it again leaves teleclaude.yml byte-identical
-```
-
-#### UC-CFG-CAP-27: A typed save keeps every capability declaration
-
-```
-Given a project whose teleclaude.yml declares every capability, one of them disabled
-When an agent's configuration operation saves that project's typed configuration
-Then the saved teleclaude.yml still declares all three capabilities with their values
-```
-<!-- /planned:stateless-config-advancement -->
 
 ## Known caveats
 
