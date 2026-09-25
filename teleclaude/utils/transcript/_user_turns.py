@@ -52,6 +52,18 @@ _NON_CODEX_COMPATIBILITY_SPANS = (
 )
 _SERIALIZED_CONTENT_RE = re.compile(r"^\s*\[\s*\{.*['\"]text['\"]\s*:", re.DOTALL)
 _CLAUDE_COMPACT_SUMMARY_FIELD = "isCompactSummary"
+_CLAUDE_META_FIELD = "isMeta"
+_CLAUDE_ORIGIN_FIELD = "origin"
+_CLAUDE_ORIGIN_KIND_FIELD = "kind"
+_CLAUDE_ATTACHMENT_FIELD = "attachment"
+_CLAUDE_ATTACHMENT_TYPE_FIELD = "type"
+_CLAUDE_COMMAND_MODE_FIELD = "commandMode"
+_CLAUDE_TASK_NOTIFICATION = "task-notification"
+_CLAUDE_HOOK_BLOCKING_ERROR = "hook_blocking_error"
+_CLAUDE_PERMISSION_MODE_FIELD = "permissionMode"
+_CLAUDE_BYPASS_PERMISSIONS = "bypassPermissions"
+_MESSAGE_CONTENT_FIELD = "content"
+_AUTHORED_TEXT_SEPARATOR = "\n\n"
 _CLAUDE_ENTRY_ID_FIELD = "uuid"
 _CLAUDE_PARENT_ENTRY_ID_FIELD = "parentUuid"
 _MESSAGE_ROLE_FIELD = "role"
@@ -486,7 +498,7 @@ def classify_user_content_blocks(
     agent = _runtime_agent(agent_name)
     is_codex = agent is AgentName.CODEX
     entry_is_runtime = agent is not None and _ENTRY_MARKERS[agent](entry)
-    content = message.get("content")
+    content = message.get(_MESSAGE_CONTENT_FIELD)
     if isinstance(content, str):
         text = content if content.strip() else None
         recognition = _codex_structural_recognition(content) if is_codex else None
@@ -610,29 +622,28 @@ def _claude_entry_is_runtime(entry: Mapping[str, object]) -> bool:
     """Recognize a Claude Code entry the CLI itself injected, by its native markers."""
     if entry.get(_CLAUDE_COMPACT_SUMMARY_FIELD) is True:
         return True
-    if entry.get("isMeta") is True:
+    if entry.get(_CLAUDE_META_FIELD) is True:
         return True
 
-    origin = entry.get("origin")
-    if isinstance(origin, Mapping) and origin.get("kind") == "task-notification":
+    origin = entry.get(_CLAUDE_ORIGIN_FIELD)
+    if isinstance(origin, Mapping) and origin.get(_CLAUDE_ORIGIN_KIND_FIELD) == _CLAUDE_TASK_NOTIFICATION:
         return True
 
-    attachment = entry.get("attachment")
+    attachment = entry.get(_CLAUDE_ATTACHMENT_FIELD)
     if isinstance(attachment, Mapping):
-        if attachment.get("type") == "hook_blocking_error":
+        if attachment.get(_CLAUDE_ATTACHMENT_TYPE_FIELD) == _CLAUDE_HOOK_BLOCKING_ERROR:
             return True
-        if attachment.get("commandMode") == "task-notification":
+        if attachment.get(_CLAUDE_COMMAND_MODE_FIELD) == _CLAUDE_TASK_NOTIFICATION:
             return True
 
     # Older Claude task-notification transcript entries did not always include
     # origin metadata. The XML wrapper is a Claude CLI envelope, not user prose.
     message = normalize_transcript_entry_message(entry)
-    text = (
-        extract_text_from_message_content(message.get("content"), _USER_ROLE) if isinstance(message, Mapping) else None
-    )
+    content = message.get(_MESSAGE_CONTENT_FIELD) if isinstance(message, Mapping) else None
+    text = extract_text_from_message_content(content, _USER_ROLE)
     return (
         text is not None
-        and entry.get("permissionMode") == "bypassPermissions"
+        and entry.get(_CLAUDE_PERMISSION_MODE_FIELD) == _CLAUDE_BYPASS_PERMISSIONS
         and _CLAUDE_TASK_NOTIFICATION_RE.match(text) is not None
     )
 
@@ -715,7 +726,7 @@ def extract_authored_user_text(entry: Mapping[str, object], agent_name: AgentNam
         for position in _textual_positions(entry, agent_name)
         if position.origin is UserContentOrigin.CANDIDATE_HUMAN and position.text is not None
     ]
-    return "\n\n".join(texts) if texts else None
+    return _AUTHORED_TEXT_SEPARATOR.join(texts) if texts else None
 
 
 def is_authored_user_entry(entry: Mapping[str, object], agent_name: AgentName | str | None = None) -> bool:
