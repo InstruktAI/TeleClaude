@@ -93,7 +93,6 @@ __all__ = [
     "is_work_lifecycle_phase",
     "lifecycle_phase_index",
     "pending_approval_gate",
-    "phase_is_complete",
     "plan_review_current",
     "prd_approval_current",
     "prepare_blockers",
@@ -916,66 +915,3 @@ def apply_authoritative_signal(
         return _move_to(model, LifecyclePhase.FINALIZE_READY)
 
     return current
-
-
-def phase_is_complete(
-    model: TodoState,
-    phase: LifecyclePhase,
-    *,
-    worktree_cwd: str | None = None,
-    report_digests: Mapping[str, str],
-) -> bool:
-    """Return True when authoritative state says ``phase`` is complete."""
-    _ = worktree_cwd
-    if phase in (LifecyclePhase.DRAFT, LifecyclePhase.PREPARED, LifecyclePhase.BLOCKED):
-        return False
-    if phase == LifecyclePhase.PRD_DRAFTING:
-        return _intent_artifact_exists(model)
-    if phase == LifecyclePhase.PRD_REVIEW:
-        return _review_current(
-            model.prd_review,
-            _artifact_digest(model, STATE_KEY_PRD),
-            _current_report_digest("prd_review", report_digests),
-        )
-    if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
-        return prd_approval_current(model)
-    if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:
-        return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
-    if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
-        return _review_current(
-            model.architecture_review,
-            _artifact_digest(model, STATE_KEY_ARCHITECTURE),
-            _current_report_digest("architecture_review", report_digests),
-        )
-    if phase == LifecyclePhase.DIAGNOSE:
-        return diagnosis_settled_current(
-            model.approvals.diagnosis_settled, _artifact_digest(model, STATE_KEY_DIAGNOSIS)
-        )
-    if phase == LifecyclePhase.PLAN_DRAFTING:
-        return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
-    if phase == LifecyclePhase.PLAN_REVIEW:
-        return _review_current(
-            model.plan_review,
-            _artifact_digest(model, STATE_KEY_IMPLEMENTATION_PLAN),
-            _current_report_digest("plan_review", report_digests),
-        )
-    if phase == LifecyclePhase.TASK_PLAN_DRAFTING:
-        return _artifact_exists(model, STATE_KEY_TASK_PLAN)
-    if phase == LifecyclePhase.BUILD_STARTED:
-        return bool(model.build_completed_at)
-    if phase == LifecyclePhase.BUILD_COMPLETE:
-        current_report_digest = _current_report_digest("build_review", report_digests)
-        binding_reason = build_review_binding_current(
-            model.build_review, worktree_cwd or _EMPTY_TEXT, current_report_digest
-        )
-        return model.build_review.verdict in ("approve", "changes_requested") and binding_reason in (
-            ReviewEvidenceReason.EXACT_TARGET,
-            ReviewEvidenceReason.CLEAN_UPSTREAM_MERGES,
-        )
-    if phase == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
-        return False
-    if phase == LifecyclePhase.REVIEW_APPROVED:
-        return model.finalize.status == "ready"
-    if phase == LifecyclePhase.FINALIZE_READY:
-        return False
-    return False
