@@ -135,8 +135,8 @@ already admits. Reusing a surface is not inheriting the boundary it advertises.
 **Roster writes are gated by the target they change.** A roster changes only
 through a patch of its company's configuration resource, and configuration
 target clearance admits that patch only for a caller with platform-administrator
-standing, decided by the daemon for the verified caller before the config owner
-validates anything (`project/spec/feature/identity/configuration-target-clearance`).
+standing, decided for the resolved caller before the config owner validates
+anything (`project/spec/feature/identity/configuration-target-clearance`).
 An agent's system role narrows that standing and never supplies it.
 <!-- /planned-change:align-config-cli-ownership -->
 

@@ -14,11 +14,12 @@ cannot grant access to every instance of a kind. An agent acting for a human
 carries that human's verified principal; its system role can narrow the
 operation set but cannot grant an operation the principal lacks.
 
-The decision runs where the caller is verified. The daemon verifies the caller,
-applies the verb's role band, and then applies this target decision, before it
-reads governed configuration or persists a change
-(`project/spec/identity-and-auth` §6). The CLI sends identity signals and
-renders the daemon's answer.
+The decision runs in the process that performs the configuration operation,
+before it reads governed configuration or persists a change. That process
+resolves the caller through the shared principal-resolution capability
+(`project/spec/identity-and-auth` §6), applies the verb's role band, and then
+applies this target decision. An unidentified caller holds no role and is
+refused before any configuration is read.
 
 A person may read and change settings in their own person overlay, directly or
 through an agent. Person-registry identity fields, including platform role,
@@ -32,12 +33,11 @@ A caller whose principal is a system principal carries no person
 (`project/spec/identity-and-auth` §8). It holds no standing that belongs to a
 person or to a platform administrator, whatever its system role permits.
 
-Computer configuration is the daemon's own startup input and must stay
-repairable while it is invalid
-(`project/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7). The
-computer operation therefore executes in the CLI process after the daemon's
-decision. When no daemon is listening, the operation proceeds and records that
-no authority was available; a refusal from a running daemon is final.
+Computer configuration is the daemon's own startup input and stays repairable
+while it is invalid
+(`project/spec/feature/config/machine-config-cli-surface` UC-CFG-CLI-7).
+Deciding its clearance needs no running daemon, and resolving the caller does
+not depend on the machine configuration being valid.
 
 The clearance decision receives the same subject and affected-field set that the
 config owner mutates. A refusal names the target and the standing needed to
@@ -129,16 +129,16 @@ Then the change is refused before persistence
 And the refusal names the standing the target requires
 ```
 
-#### UC-CTC8: Computer configuration stays repairable without a running daemon
+#### UC-CTC8: Computer configuration stays repairable while it is invalid
 
 ```gherkin
-Given no daemon is listening
-And the committed machine configuration is invalid
-When an agent patches the computer configuration to correct it
-Then the config owner validates and persists the corrected candidate
-And the operation records that no authority was available to decide it
-When a daemon is running and refuses the same caller
-Then the operation stops without a change
+Given the committed machine configuration is invalid
+And no daemon is listening
+When an agent acting for a platform administrator patches the computer configuration to correct it
+Then the caller's clearance is decided without the daemon
+And the config owner validates and persists the corrected candidate
+When an agent whose principal lacks platform administrator standing submits the same patch
+Then the operation is refused and the machine configuration is unchanged
 ```
 
 ### Cross-context references
@@ -156,9 +156,10 @@ Then the operation stops without a change
 
 - This contract applies to configuration resources. Other CLI object families
   retain their own authorization contracts until those owners change them.
-- A computer operation performed while no daemon is listening is authorized by
-  the operating-system account that runs it, the same account that can start
-  the daemon.
+- Every agent runs as the same operating-system account, which can edit
+  configuration files directly. Clearance directs agents through the
+  configuration surface; it is not a boundary against that account's own file
+  access.
 
 ## See Also
 
