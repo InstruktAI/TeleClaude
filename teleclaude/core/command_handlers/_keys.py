@@ -12,7 +12,7 @@ from teleclaude.core.agent_dispatch import resolve_launch_model
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, Session
-from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
+from teleclaude.core.session_cleanup import host_pane_name
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_status import SessionLifecycleStatus
@@ -66,7 +66,7 @@ async def _ensure_tmux_for_headless(
 
     tmux_name = session.tmux_session_name
     if not tmux_name:
-        tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id}"
+        tmux_name = host_pane_name(session.session_id)
 
     project_path = session.project_path
     subdir = session.subdir

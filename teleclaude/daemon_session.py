@@ -296,7 +296,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             platform_env=get_voice_env_vars(voice) if voice else {},
         )
         working_dir = resolve_working_dir(session.project_path, session.subdir)
-        tmux_name = session.tmux_session_name or session_cleanup.TMUX_SESSION_PREFIX + session_id
+        tmux_name = session.tmux_session_name or session_cleanup.host_pane_name(session_id)
 
         success = await ensure_tmux_with_identity(
             session,

@@ -28,7 +28,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import Session
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
-from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
+from teleclaude.core.session_cleanup import host_pane_name
 from teleclaude.core.session_environment import build_agent_session_environment
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_status import SessionLifecycleStatus
@@ -114,7 +114,7 @@ async def _revive_headless_and_send(
     """
     tmux_name = session.tmux_session_name
     if not tmux_name:
-        tmux_name = f"{TMUX_SESSION_PREFIX}{session.session_id}"
+        tmux_name = host_pane_name(session.session_id)
 
     voice = await db.get_voice(session.session_id)
     env_vars = build_agent_session_environment(

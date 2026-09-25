@@ -46,6 +46,12 @@ logger = get_logger(__name__)
 TMUX_SESSION_PREFIX = "tc_"
 TMUX_TUI_SESSION_NAME = "tc_tui"
 
+
+def host_pane_name(session_id: str) -> str:
+    """Return the TeleClaude-prefixed tmux host-pane name for a session id."""
+    return f"{TMUX_SESSION_PREFIX}{session_id}"
+
+
 # Lookback window for replaying cleanup for closed sessions from an earlier process instance.
 # Only sessions with unresolved channel references (e.g. topic_id still set) are replayed.
 # One minute covers the restart window without replaying hours of old sessions.
@@ -592,6 +598,11 @@ async def cleanup_orphan_tmux_sessions() -> int:
 
     Only kills sessions with the tc_ prefix (TeleClaude-owned).
 
+    The known set a row owns is either its recorded tmux_session_name, or,
+    for a row that is still creating its first host pane (lifecycle status
+    initializing with no recorded name yet), the host pane its creation path
+    will bind — sparing that pane from being reaped mid-bootstrap.
+
     Returns:
         Number of orphan tmux sessions killed
     """
@@ -609,6 +620,11 @@ async def cleanup_orphan_tmux_sessions() -> int:
     # Get all known tmux session names from DB
     all_sessions = await db.get_all_sessions()
     known_tmux_names = {s.tmux_session_name for s in all_sessions}
+    known_tmux_names.update(
+        host_pane_name(s.session_id)
+        for s in all_sessions
+        if not s.tmux_session_name and s.lifecycle_status == SessionLifecycleStatus.INITIALIZING
+    )
 
     killed_count = 0
     for tmux_name in tc_sessions:
