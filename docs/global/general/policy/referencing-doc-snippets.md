@@ -23,6 +23,13 @@ visibility: 'public'
   publisher source tree. The merged index and every published domain's baseline bundle are the
   artifacts this covers; every authored global snippet resolves to the project that owns it.
 - Project doc references must use `@docs/...` (repo‑relative to the project root).
+<!-- planned:docs-tier-layering -->
+- Person and company doc references use the absolute-home form of the tier's
+  published address: `@<HOME>/.teleclaude/docs/companies/<slug>/...` or
+  `@<HOME>/.teleclaude/docs/people/<slug>/...`. An authored tier snippet
+  resolves to its source in that tier's documentation home. A tier snippet's
+  Required reads name only its own tier and global documentation.
+<!-- /planned:docs-tier-layering -->
 - Third-party sources must appear under **See also** only (soft references).
   They must not appear in Required reads.
 
@@ -49,6 +56,12 @@ visibility: 'public'
   repos. The validator expands `Path.home()` per-machine, so refs
   remain machine-local but consistent within one operator's environment.
 - Repo‑relative `@docs/...` keeps project docs portable and consistent.
+<!-- planned:docs-tier-layering -->
+- A tier's published address carries its owner slug, so one form stays
+  unambiguous when several companies are read together. A Required read into
+  another person's or company's tier would demand reach the reader may not hold,
+  so the dependency could not be honoured for every reader of the snippet.
+<!-- /planned:docs-tier-layering -->
 - Soft references prevent third-party docs from being auto-included in agent context.
 - A rule stated in two snippets is two rules to a reader: each wording is read
   as possibly distinct, and the copies drift until they contradict. The gist
