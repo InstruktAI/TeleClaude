@@ -177,21 +177,17 @@ And the folded repository-root head is published and confirmed before delivery i
 ```
 
 <!-- planned:deliver-reverse-folds-live-spec-and-self-blocks -->
-#### UC-LMR11: A recorded reconciliation commit is neither undone nor refused as the reconciliation's own writes
+#### UC-LMR11: A recorded reconciliation commit stands when its commit command reports failure
 
 ```gherkin
 Given a lifecycle movement requires pending documentation reconciliation
 And the reconciliation commit is recorded in the repository
 But the command that created it reports failure after recording it
+And the repository can still be read to confirm that commit
 When the agent driving that lifecycle movement attempts it
 Then that agent receives a succeeding reconciliation outcome identifying the recorded commit
 And the affected sources in the working tree match the recorded commit
 And the lifecycle movement proceeds as after any successful reconciliation
-But when the repository cannot confirm that commit during the attempt
-Then that agent receives a fault stating that the commit outcome is unresolved
-And the lifecycle movement does not proceed on that attempt
-And the next attempt recognizes the recorded commit instead of refusing the reconciliation's own writes
-And the movement then proceeds with the affected sources matching the recorded commit
 And a repeated reconciliation for the same slug makes no further change
 ```
 <!-- /planned:deliver-reverse-folds-live-spec-and-self-blocks -->
