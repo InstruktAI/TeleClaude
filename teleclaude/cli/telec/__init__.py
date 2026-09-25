@@ -14,12 +14,11 @@ from teleclaude.cli.session_auth import TUI_CARRIED_IDENTITY_ENV_KEY, read_curre
 # Re-export TUI runners
 from teleclaude.cli.telec._run_tui import _run_tui, _run_tui_config_mode
 
-# Re-export shared config proxy and constants
+# Re-export shared config accessor and constants
 from teleclaude.cli.telec._shared import (
     TMUX_ENV_KEY,
     TUI_ENV_KEY,
     TUI_SESSION_NAME,
-    _ConfigProxy,
     config,
 )
 
@@ -79,7 +78,6 @@ __all__ = [
     "CommandDef",
     "Flag",
     "TelecCommand",
-    "_ConfigProxy",
     "_complete_flags",
     "_complete_subcmd",
     "_flag_matches",

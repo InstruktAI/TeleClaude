@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 import psutil
 
-from teleclaude.config import config
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL, MarkerState
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
@@ -332,8 +331,6 @@ def _load_session_record(session_id: str | None) -> Session | None:
 
 def _admitted_session_record(session: Session | None) -> Session | None:
     if session is None or session.closed_at is not None:
-        return None
-    if session.computer_name != config.computer.name:
         return None
     return session
 

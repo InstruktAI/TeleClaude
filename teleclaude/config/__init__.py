@@ -1,6 +1,6 @@
 """Global configuration management.
 
-Config is loaded at module import time and available globally via:
+Runtime configuration is loaded on first attribute access and available via:
     from teleclaude.config import config
 """
 
@@ -10,7 +10,7 @@ import socket
 from collections.abc import Mapping
 from dataclasses import fields
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import yaml
@@ -800,11 +800,22 @@ def _runtime_config() -> TeleclaudeConfig:
     return _config
 
 
-def __getattr__(name: str) -> TeleclaudeConfig:
-    """Expose the lazy runtime aggregate through the established package surface."""
-    if name == "config":
-        return _runtime_config()
-    raise AttributeError(name)
+class _RuntimeConfigAccessor:
+    """Delegate runtime configuration attribute access to the lazy aggregate."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_runtime_config(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(_runtime_config(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        delattr(_runtime_config(), name)
+
+
+# Keep the established import surface and aggregate type for consumers. Importing
+# this binding is cheap; using an aggregate attribute is the resolution boundary.
+config = cast(TeleclaudeConfig, _RuntimeConfigAccessor())
 
 
 def reload_config() -> list[str]:
