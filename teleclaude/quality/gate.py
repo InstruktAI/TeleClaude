@@ -41,6 +41,13 @@ class LintGateOutcome(StrEnum):
     FAILED = "failed"
 
 
+class QualityGateLeg(StrEnum):
+    """Independently selectable quality checks for a sealed commit."""
+
+    NATIVE = "native"
+    GUARDRAILS = "guardrails"
+
+
 @dataclass(frozen=True)
 class LintGateResult:
     """The subject and independent exit statuses observed by one lint gate."""
@@ -78,6 +85,7 @@ def run_lint_gate(
     files: list[str] | None,
     format_scoped: bool,
     child_env: Mapping[str, str] | None,
+    selection: frozenset[QualityGateLeg] = frozenset(QualityGateLeg),
 ) -> LintGateResult:
     """Run native lint and guardrails against the exact committed subject."""
     execution_head = read_head_sha(execution_root)
@@ -91,17 +99,27 @@ def run_lint_gate(
             failure_reason=_SUBJECT_MISMATCH_TEMPLATE.format(subject_sha=subject_sha, execution_head=execution_head),
         )
 
-    if format_scoped and files is not None:
+    run_native = QualityGateLeg.NATIVE in selection
+    run_guardrails = QualityGateLeg.GUARDRAILS in selection
+    if run_native and format_scoped and files is not None:
         run_make_target(_MAKE_FORMAT_TARGET, execution_root, files=files, child_env=child_env)
 
-    native_exit_code = run_make_target(_MAKE_LINT_TARGET, execution_root, files=files, child_env=child_env)
-    guardrails_exit_code = 0
-    try:
-        LintRunner(project_root=execution_root).run(files=files, run_all=files is None)
-    except SystemExit as exc:
-        guardrails_exit_code = _system_exit_code(exc)
+    native_exit_code = (
+        run_make_target(_MAKE_LINT_TARGET, execution_root, files=files, child_env=child_env) if run_native else None
+    )
+    guardrails_exit_code: int | None = None
+    if run_guardrails:
+        guardrails_exit_code = 0
+        try:
+            LintRunner(project_root=execution_root).run(files=files, run_all=files is None)
+        except SystemExit as exc:
+            guardrails_exit_code = _system_exit_code(exc)
 
-    outcome = LintGateOutcome.PASSED if native_exit_code == 0 and guardrails_exit_code == 0 else LintGateOutcome.FAILED
+    outcome = (
+        LintGateOutcome.PASSED
+        if native_exit_code in (None, 0) and guardrails_exit_code in (None, 0)
+        else LintGateOutcome.FAILED
+    )
     failure_reason = _lint_failure_reason(native_exit_code, guardrails_exit_code)
     return LintGateResult(
         outcome=outcome,
@@ -147,14 +165,21 @@ def _system_exit_code(exc: SystemExit) -> int:
     return exc.code if isinstance(exc.code, int) else _DEFAULT_FAILURE_EXIT_CODE
 
 
-def _lint_failure_reason(native_exit_code: int, guardrails_exit_code: int) -> str | None:
+def _lint_failure_reason(native_exit_code: int | None, guardrails_exit_code: int | None) -> str | None:
     """Describe every failing lint leg with its terminal status."""
     reasons: list[str] = []
-    if native_exit_code != 0:
+    if native_exit_code not in (None, 0):
         reasons.append(_NATIVE_LINT_FAILURE_TEMPLATE.format(exit_code=native_exit_code))
-    if guardrails_exit_code != 0:
+    if guardrails_exit_code not in (None, 0):
         reasons.append(_GUARDRAILS_FAILURE_TEMPLATE.format(exit_code=guardrails_exit_code))
     return _FAILURE_REASON_SEPARATOR.join(reasons) or None
 
 
-__all__ = ["LintGateOutcome", "LintGateResult", "read_head_sha", "run_lint_gate", "run_make_target"]
+__all__ = [
+    "LintGateOutcome",
+    "LintGateResult",
+    "QualityGateLeg",
+    "read_head_sha",
+    "run_lint_gate",
+    "run_make_target",
+]

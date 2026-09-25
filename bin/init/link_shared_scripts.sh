@@ -21,14 +21,6 @@ link_shared_scripts() {
     mkdir -p "$base_dir"
     ln -sfn "$INSTALL_DIR/scripts" "$target_dir"
 
-    # Deploy VS Code workspace settings (hide symlinked dirs, prevent symlink traversal)
-    local vscode_dir="$base_dir/.vscode"
-    local vscode_src="$INSTALL_DIR/teleclaude/install/settings/teleclaude-vscode.json"
-    if [ -f "$vscode_src" ]; then
-        mkdir -p "$vscode_dir"
-        cp "$vscode_src" "$vscode_dir/settings.json"
-    fi
-
     print_success "Shared scripts linked"
 }
 

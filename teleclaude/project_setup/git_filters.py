@@ -38,6 +38,7 @@ _FILTER_SECTION = "filter.teleclaude-docs"
 _REMOVE_SECTION_ARGUMENT = "--remove-section"
 _FILTER_REMOVED_MESSAGE = "git_filters: docs filter driver removed."
 _FILTER_SECTION_ABSENT_MESSAGE = "no such section"
+_CONFIG_VALUE_ABSENT_STATUS = 1
 
 
 class GitFilterDisposition(StrEnum):
@@ -236,5 +237,13 @@ def _modified_files(repo: Repo) -> set[str]:
 
 
 def _run_git_config(repo: Repo, key: str, value: str) -> None:
-    """Run git config command."""
-    repo.git.config(key, value)
+    """Converge a local config key without rewriting an identical value."""
+    try:
+        existing = repo.git.config("--local", "--get-all", key)
+    except GitCommandError as error:
+        if error.status != _CONFIG_VALUE_ABSENT_STATUS:
+            raise
+        existing = ""
+    if tuple(existing.splitlines()) == (value,):
+        return
+    repo.git.config("--local", "--replace-all", key, value)
