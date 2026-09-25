@@ -173,15 +173,6 @@ session close.
   answering for that terminal. One person authenticating never unbinds another
   person's open terminals; only the terminal's own disappearance does.
 
-<!-- planned-change:prepare-kickback-project-doc-access -->
-### 6) Server-side authorization
-
-Role clearance is daemon-side only (`verify_caller` + `require_clearance`):
-
-- no client-side role claim is trusted,
-- unknown/missing identity returns 401,
-- insufficient role returns 403.
-<!-- change:prepare-kickback-project-doc-access -->
 ### 6) Authorization
 
 Role clearance resolves the caller from the identity it carries, never from a
@@ -197,7 +188,6 @@ claim the caller supplies:
   principal does not resolve to,
 - on a protected route, unknown/missing identity returns 401 and insufficient
   role returns 403; a local gate treats an unidentified caller as holding no role.
-<!-- /planned-change:prepare-kickback-project-doc-access -->
 
 ### 7) Session lineage invariant (child sessions)
 
