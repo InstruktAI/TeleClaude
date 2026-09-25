@@ -95,7 +95,7 @@ And no configuration mutation occurs
 
 ```gherkin
 Given the committed machine configuration violates its typed schema
-When an agent invokes configuration validation or guided repair
+When an agent invokes machine-config validation
 Then the command surface starts without requiring a valid runtime aggregate
 And reports the invalid state through the config context
 When an authorized agent removes the offending field through a computer patch
