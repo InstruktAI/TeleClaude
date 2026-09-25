@@ -152,9 +152,10 @@ Derivation rules:
   or reads any plumbing for it, and it is left byte-for-byte untouched. The git
   wrapper's one act for it is asking the runtime whether its root answers to a
   declaration; the runtime answers that it does not, and the plumbing keeps that
-  answer in the machine home like any other. A slug worktree carrying no copy of
-  its own is not such a repository: it answers to its owning checkout's
-  declaration. The sole
+  answer in the machine home like any other. A slug worktree answers only to its
+  owning checkout's declaration, whether or not it carries a copy of its own; a
+  branch copy never stands in for the owner's, so a slug worktree whose owning
+  checkout carries no declaration is not a target either. The sole
 <!-- /planned-change:config-first-version-migrations -->
 <!-- planned-change:align-config-cli-ownership -->
   exception is explicit adoption: `telec projects onboard` (and `init`) creates
