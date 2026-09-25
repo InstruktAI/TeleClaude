@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import cast
@@ -27,7 +27,6 @@ from ._user_turns import (
     extract_text_from_message_content,
     find_last_turn_start,
     find_turn_start_idx,
-    is_turn_start_entry,
 )
 from ._utils import (
     _apply_tail_limit,
@@ -36,12 +35,26 @@ from ._utils import (
     _parse_timestamp,
 )
 
+_MESSAGE_ROLE_FIELD = "role"
+_MESSAGE_CONTENT_FIELD = "content"
+_ASSISTANT_ROLE = "assistant"
+
+
+def _assistant_messages(entries: Sequence[JsonDict]) -> list[JsonDict]:
+    """Return the normalized assistant messages among transcript entries, in order."""
+    messages: list[JsonDict] = []
+    for entry in entries:
+        message = normalize_transcript_entry_message(entry)
+        if isinstance(message, dict) and message.get(_MESSAGE_ROLE_FIELD) == _ASSISTANT_ROLE:
+            messages.append(cast(JsonDict, message))
+    return messages
+
 
 def get_assistant_messages_since(
     transcript_path: str,
     agent_name: AgentName,
     since_timestamp: datetime | None = None,
-) -> list[dict[str, object]]:  # guard: loose-dict - External transcript messages
+) -> list[JsonDict]:
     """Retrieve assistant message objects from transcript since a timestamp.
 
     Args:
@@ -71,13 +84,7 @@ def get_assistant_messages_since(
     else:
         start_idx = find_turn_start_idx(entries, full_session=False, agent_name=agent_name)
 
-    assistant_messages = []
-    for entry in entries[start_idx:]:
-        msg = normalize_transcript_entry_message(entry)
-        if isinstance(msg, dict) and msg.get("role") == "assistant":
-            assistant_messages.append(msg)
-
-    return assistant_messages
+    return _assistant_messages(entries[start_idx:])
 
 
 def count_renderable_assistant_blocks(
@@ -110,83 +117,6 @@ def count_renderable_assistant_blocks(
             elif block_type == "tool_result" and include_tool_results:
                 block_count += 1
     return block_count
-
-
-def _extract_text_from_content(content: object, role: str) -> str | None:
-    """Extract text from message content based on role.
-
-    User-turn filtering needs the full transcript entry and agent-specific
-    envelope. Call ``extract_authored_user_text`` for user messages
-    when turn semantics matter.
-    """
-    return extract_text_from_message_content(content, role)
-
-
-def _extract_last_message_by_role(
-    transcript_path: str,
-    agent_name: AgentName,
-    target_role: str,
-    count: int = 1,
-) -> str | None:
-    """Extract the last N messages with the specified role from the transcript.
-
-    guard: allow-string-compare
-
-    Args:
-        transcript_path: Path to transcript file
-        agent_name: Agent type for entry iterator selection
-        target_role: Role to search for ("user" or "assistant")
-        count: Number of messages to extract (default 1)
-
-    Returns:
-        Concatenated text of last N messages, or None if not found
-    """
-    try:
-        entries = _get_entries_for_agent(transcript_path, agent_name)
-        if entries is None:
-            return None
-
-        collected: list[str] = []
-        for entry in reversed(entries):
-            message = normalize_transcript_entry_message(entry)
-
-            if not isinstance(message, dict):
-                continue
-            role = message.get("role")
-            if not isinstance(role, str) or role != target_role:
-                continue
-            if target_role == "user":
-                text = extract_authored_user_text(entry, agent_name)
-            else:
-                text = _extract_text_from_content(message.get("content"), target_role)
-            if text is not None:
-                collected.append(text)
-                if len(collected) >= count:
-                    break
-
-        if not collected:
-            return None
-        # Reverse to get chronological order
-        collected.reverse()
-        return "\n\n".join(collected)
-    except Exception:
-        return None
-
-
-def extract_last_user_message(
-    transcript_path: str,
-    agent_name: AgentName,
-) -> str | None:
-    """Extract the last user message from the transcript.
-
-    Args:
-        transcript_path: Path to transcript file
-        agent_name: Agent type for entry iterator selection
-
-    Returns:
-        Last user message text or None if not found
-    """
-    return _extract_last_message_by_role(transcript_path, agent_name, "user")
 
 
 def extract_last_user_message_with_timestamp(
@@ -244,26 +174,6 @@ def extract_last_turn_boundary_timestamp(
     return turn.timestamp if turn is not None else None
 
 
-def extract_last_agent_message(
-    transcript_path: str,
-    agent_name: AgentName,
-    count: int = 1,
-) -> str | None:
-    """Extract the last N assistant/agent text messages from the transcript.
-
-    Only extracts actual text content, skipping pre_tool_use and thinking blocks.
-
-    Args:
-        transcript_path: Path to transcript file
-        agent_name: Agent type for entry iterator selection
-        count: Number of messages to extract (default 1)
-
-    Returns:
-        Concatenated text of last N assistant messages, or None if not found
-    """
-    return _extract_last_message_by_role(transcript_path, agent_name, "assistant", count)
-
-
 def _observed_assistant_text(message: Mapping[str, object]) -> tuple[bool, str | None]:
     """Return whether one normalized assistant message explicitly carries text."""
     content = message.get("content")
@@ -289,14 +199,7 @@ def _current_turn_assistant_messages(entries: list[JsonDict], agent_name: AgentN
     turn = find_last_turn_start(entries, agent_name)
     if turn is None:
         return None
-    messages: list[JsonDict] = []
-    for entry in entries[turn.next_index :]:
-        if is_turn_start_entry(entry, agent_name):
-            break
-        message = normalize_transcript_entry_message(entry)
-        if isinstance(message, dict) and message.get("role") == "assistant":
-            messages.append(cast(JsonDict, message))
-    return messages
+    return _assistant_messages(entries[turn.next_index :])
 
 
 def _extract_observed_stop_text(messages: Iterable[Mapping[str, object]]) -> tuple[bool, str | None]:
@@ -355,7 +258,7 @@ def collect_transcript_messages(
         if role == "user":
             text = extract_authored_user_text(entry, agent_name)
         else:
-            text = _extract_text_from_content(message.get("content"), role)
+            text = extract_text_from_message_content(message.get(_MESSAGE_CONTENT_FIELD), role)
         if text:
             messages.append((role, text))
     return messages

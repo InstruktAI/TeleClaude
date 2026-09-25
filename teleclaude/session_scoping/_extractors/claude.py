@@ -5,9 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from teleclaude.core.agents import AgentName
-from teleclaude.utils.transcript import extract_effective_tool_calls
+from teleclaude.utils.transcript import extract_effective_tool_calls, find_turn_start_idx
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
-from teleclaude.utils.transcript._tool_calls import _find_turn_start_idx
 
 from .._types import ScopeMode
 from ._common import (
@@ -57,7 +56,7 @@ def collect_claude_paths(
         return set(), "claude_structured_fallback"
 
     entries = _get_entries_for_agent(transcript_path, AgentName.CLAUDE) or []
-    turn_start_idx = _find_turn_start_idx(entries, scope_mode == "session_dirty", AgentName.CLAUDE)
+    turn_start_idx = find_turn_start_idx(entries, scope_mode == "session_dirty", AgentName.CLAUDE)
 
     previous_snapshot_paths: set[str] = set()
     current_snapshot_paths: set[str] = set()

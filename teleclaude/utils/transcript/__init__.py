@@ -22,14 +22,10 @@ from teleclaude.utils.transcript._checkpoint_anchors import (
     is_checkpoint_anchor_entry,
 )
 from teleclaude.utils.transcript._extraction import (
-    _extract_last_message_by_role,
-    _extract_text_from_content,
     _find_workdir_in_obj,
     collect_transcript_messages,
     count_renderable_assistant_blocks,
-    extract_last_agent_message,
     extract_last_turn_boundary_timestamp,
-    extract_last_user_message,
     extract_last_user_message_with_timestamp,
     extract_recent_transcript_turns,
     extract_stop_agent_message,
@@ -143,8 +139,6 @@ __all__ = [
     # _parsers
     "_extract_codex_reasoning_text",
     # _extraction
-    "_extract_last_message_by_role",
-    "_extract_text_from_content",
     # _block_renderers
     "_extract_tool_subject",
     "_find_workdir_in_obj",
@@ -177,9 +171,7 @@ __all__ = [
     "count_renderable_assistant_blocks",
     "extract_authored_user_text",
     "extract_effective_tool_calls",
-    "extract_last_agent_message",
     "extract_last_turn_boundary_timestamp",
-    "extract_last_user_message",
     "extract_last_user_message_with_timestamp",
     "extract_messages_from_chain",
     "extract_recent_transcript_turns",

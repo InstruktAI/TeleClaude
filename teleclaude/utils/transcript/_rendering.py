@@ -180,11 +180,6 @@ def parse_deepseek_transcript(
         return f"Error parsing transcript: {e}"
 
 
-def _last_user_boundary_start(entries: list[JsonDict], agent_name: AgentName | None = None) -> int:
-    """Return the index after the last user message."""
-    return find_turn_start_idx(entries, full_session=False, agent_name=agent_name)
-
-
 def _resolve_render_start_index(
     entries: list[JsonDict],
     transcript_path: str,
@@ -195,7 +190,7 @@ def _resolve_render_start_index(
 ) -> int | None:
     """Resolve the starting entry index for incremental rendering."""
     if since_timestamp is None:
-        return _last_user_boundary_start(entries, agent_name)
+        return find_turn_start_idx(entries, full_session=False, agent_name=agent_name)
     return _start_index_after_timestamp_or_rotation(
         entries,
         since_timestamp,

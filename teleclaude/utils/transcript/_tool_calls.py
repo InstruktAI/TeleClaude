@@ -34,7 +34,7 @@ from ._codex_custom_exec import (
 )
 from ._iterators import _get_checkpoint_entries_for_agent, _get_entries_for_agent
 from ._parsers import normalize_transcript_entry_message
-from ._user_turns import find_turn_start_idx as _find_real_user_turn_start_idx
+from ._user_turns import find_turn_start_idx
 from ._user_turns import is_user_tool_result_only_message as _is_user_tool_result_only_message
 from ._utils import CHECKPOINT_JSONL_TAIL_ENTRIES, _parse_timestamp
 
@@ -143,15 +143,6 @@ def _tool_call_tail_entries(agent_name: AgentName, full_session: bool) -> int | 
     if agent_name in (AgentName.CLAUDE, AgentName.CODEX):
         return CHECKPOINT_JSONL_TAIL_ENTRIES
     return None
-
-
-def _find_turn_start_idx(
-    entries: list[JsonDict],
-    full_session: bool,
-    agent_name: AgentName | None = None,
-) -> int:
-    """Find the first entry to inspect for the current turn."""
-    return _find_real_user_turn_start_idx(entries, full_session, agent_name)
 
 
 def _find_checkpoint_start_idx(
@@ -501,7 +492,7 @@ def _extract_tool_calls_for_scope(
         if boundary == "checkpoint":
             turn_start_idx = _find_checkpoint_start_idx(entries, full_session, agent_name)
         else:
-            turn_start_idx = _find_turn_start_idx(entries, full_session, agent_name)
+            turn_start_idx = find_turn_start_idx(entries, full_session, agent_name)
         turn_start_at = _resolve_turn_start_timestamp(entries, turn_start_idx, full_session)
 
         state = _ToolCallExtractionState()
