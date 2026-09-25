@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -15,7 +16,7 @@ from teleclaude.core.reconciliation.home_retained_set import (
     home_retained_set_digest,
     home_retained_set_path,
 )
-from teleclaude.core.reconciliation.home_templates import materialize_home_templates
+from teleclaude.core.reconciliation.template_installation import materialize_template_tree
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import (
     BIN_DIR,
@@ -113,7 +114,7 @@ _PATH_CLASSES_FIELD = "path_classes"
 def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResult:
     """Establish or converge the local-only history rooted at ``home``."""
     home.mkdir(parents=True, exist_ok=True)
-    materialize_home_templates(home)
+    materialize_template_tree(values={}, environ=os.environ, target_root=home)  # fmt: skip  # guard: direct-env-read - allowed: configuration loading or interpolation
     repository, created_repository = _repository_at_home(home)
     _remove_remotes(repository)
     candidates = _activation_candidates(repository, home=home)

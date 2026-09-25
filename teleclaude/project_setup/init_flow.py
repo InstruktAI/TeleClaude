@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from teleclaude.config.advancement import advance_reachable_roots
 from teleclaude.config.declaration import write_declared_config
 from teleclaude.config.machine_config_mutation import inspect_machine_config, set_deployment
 from teleclaude.config.schema import ConfigKind
+from teleclaude.core.reconciliation.template_installation import materialize_template_tree
 from teleclaude.docs_index import ensure_project_config
 from teleclaude.git import Repo
 from teleclaude.paths import GLOBAL_CONFIG_PATH, ConfigFileName
@@ -332,9 +334,21 @@ def _bootstrap_help_desk(project_root: Path) -> None:
 
     logger.info("help_desk_bootstrap_start", path=str(help_desk_dir))
 
-    shutil.copytree(template_dir, help_desk_dir)
+    help_desk_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        help_desk_dir.mkdir()
+    except FileExistsError:
+        logger.info("help_desk_exists", path=str(help_desk_dir))
+        return
 
     try:
+        materialize_template_tree(
+            template_dir,
+            help_desk_dir,
+            values={},
+            # guard: direct-env-read - allowed: configuration loading or interpolation
+            environ=os.environ,
+        )
         repo = Repo.init(help_desk_dir)
         init_project(help_desk_dir)
         repo.git.add(".")

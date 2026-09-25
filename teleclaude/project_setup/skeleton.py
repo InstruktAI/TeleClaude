@@ -8,17 +8,20 @@ from __future__ import annotations
 
 import difflib
 import logging
+import os
 import sys
 from pathlib import Path
 
 import yaml
 
+from teleclaude.core.reconciliation.template_installation import render_template
 from teleclaude.paths import ConfigFileName
 from teleclaude.quality.scope import get_project_languages
 
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "quality"
+_PROJECT_NAME_VALUE = "project_name"
 
 _LIFECYCLE_FILES: list[tuple[str, str]] = [("Makefile.template", "Makefile")]
 
@@ -140,8 +143,13 @@ def _deploy_files(
             logger.warning("Template %s not found at %s", template_name, template_path)
             continue
 
-        content = template_path.read_text(encoding="utf-8")
-        content = content.replace("{{project_name}}", project_name)
+        content = render_template(
+            template_path.read_text(encoding="utf-8"),
+            template=template_path,
+            values={_PROJECT_NAME_VALUE: project_name},
+            # guard: direct-env-read - allowed: configuration loading or interpolation
+            environ=os.environ,
+        )
 
         target_path.parent.mkdir(parents=True, exist_ok=True)
         if not target_path.exists():

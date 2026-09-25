@@ -8,6 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from teleclaude.core.reconciliation.template_installation import render_template
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.paths import HOME_RETAINED_SET_PATH, REPO_ROOT, TELECLAUDE_HOME
 
@@ -45,7 +46,14 @@ _GIT_SUBMODULE_MODE = "160000"
 
 def home_retained_set_digest() -> str:
     """Return the stable digest that identifies the active declaration."""
-    return hashlib.sha256(_HOME_RETAINED_SET_TEMPLATE.read_bytes()).hexdigest()
+    rendered = render_template(
+        _HOME_RETAINED_SET_TEMPLATE.read_text(encoding="utf-8"),
+        template=_HOME_RETAINED_SET_TEMPLATE,
+        values={},
+        # guard: direct-env-read - allowed: configuration loading or interpolation
+        environ=os.environ,
+    )
+    return hashlib.sha256(rendered.encode("utf-8")).hexdigest()
 
 
 def home_retained_set_path(home: Path = TELECLAUDE_HOME) -> Path:
@@ -154,7 +162,14 @@ def _declaration_membership(relative_path: Path) -> HomeMembership:
     with TemporaryDirectory() as scratch:
         scratch_path = Path(scratch)
         declaration_path = scratch_path / _DECLARATION_FILENAME
-        declaration_path.write_bytes(_HOME_RETAINED_SET_TEMPLATE.read_bytes())
+        rendered = render_template(
+            _HOME_RETAINED_SET_TEMPLATE.read_text(encoding="utf-8"),
+            template=_HOME_RETAINED_SET_TEMPLATE,
+            values={},
+            # guard: direct-env-read - allowed: configuration loading or interpolation
+            environ=os.environ,
+        )
+        declaration_path.write_text(rendered, encoding="utf-8")
         repository = Repo.init(scratch_path)
         try:
             repository.git.check_ignore(
