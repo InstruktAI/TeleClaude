@@ -759,6 +759,7 @@ def _run_commit_quality_gate(
         False,
         None,
         selection=quality_gate_legs,
+        request_subject_checkout_grading=True,
     )
     if result.exit_code != 0:
         if result.failure_reason:

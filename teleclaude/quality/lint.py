@@ -312,16 +312,10 @@ class GuardrailsLane:
 # Module-level run_pipeline — called by LintRunner, mockable by tests
 # ---------------------------------------------------------------------------
 
-_pipeline_ctx: list[Path | None] = [None]  # mutable container for active project root
 
-
-def run_pipeline(targets: list[str], *, run_all: bool = False) -> None:
-    """Run the guardrails lane against the given targets.
-
-    Uses the project root set by the active LintRunner, falling back to cwd.
-    """
-    root = _pipeline_ctx[0] or Path.cwd()
-    pipeline = GuardrailsLane(project_root=root, run_all=run_all)
+def run_pipeline(targets: list[str], *, project_root: Path, run_all: bool = False) -> None:
+    """Run the guardrails lane against the given targets, rooted at ``project_root``."""
+    pipeline = GuardrailsLane(project_root=project_root, run_all=run_all)
     for step in pipeline.steps:
         step.run(targets)
 
@@ -352,7 +346,6 @@ class LintRunner:
             run_all: When True, skip scoping and run against all source
                      directories (equivalent to Makefile invocation).
         """
-        _pipeline_ctx[0] = self._project_root
         file_scoped = False
 
         if files is not None:
@@ -374,7 +367,7 @@ class LintRunner:
             if self._is_file_scoped_resolution(scope_resolution):
                 file_scoped = True
 
-        run_pipeline(targets, run_all=not file_scoped)
+        run_pipeline(targets, project_root=self._project_root, run_all=not file_scoped)
 
     def _resolve_workspace_scope_resolution(self) -> WorkspaceScopeResolution:
         try:
