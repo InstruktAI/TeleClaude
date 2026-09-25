@@ -1,7 +1,6 @@
 ---
-description: Machine installation materializes repository-owned regular-file templates into the TeleClaude home before the retained history is activated.
-delivered_by:
-  - home-tier-commit-maintenance
+description: Machine installation materializes repository-owned regular-file templates
+  into the TeleClaude home before the retained history is activated.
 ---
 
 # Home Template Materialization — Spec

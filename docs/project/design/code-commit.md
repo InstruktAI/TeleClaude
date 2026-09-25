@@ -37,13 +37,6 @@ The staging model is asymmetric and follows git's data model:
   are staged internally via `_stage_files` so the integrator's conflict
   resolution flow runs through the same sealed path.
 
-<!-- planned-change:home-tier-commit-maintenance -->
-`telec code commit` runs the gates carried by the acting invocation context's
-declared tier. Where that tier carries project subscriptions, it runs format then
-lint in-process against `quality_paths` (the commit pathspec filtered to existing
-files) before `git commit --no-verify`; where it carries none, neither runs and
-nothing is applied in their place.
-<!-- change:home-tier-commit-maintenance -->
 `telec code commit` runs the gates carried by the acting invocation context's
 declared tier, in-process against `quality_paths` (the commit pathspec filtered
 to existing files) before `git commit --no-verify`.
@@ -61,7 +54,6 @@ The platform home, and the person and company homes inside it, participate in
 documentation and carry no project subscriptions. They are gated, they run the
 guardrails lane, and they require no native toolchain contract at their root —
 by no separate mechanism.
-<!-- /planned-change:home-tier-commit-maintenance -->
 No framework stash, no working-tree reset
 outside the pathspec. The installed `.git/hooks/pre-commit` is a thin telec-owned
 guard that performs only a partial-staging check as a backstop for raw
@@ -252,14 +244,6 @@ The pathspec commit is built internally from `workspace scope plus
    "foreign-staged" check; the pathspec alone enforces the boundary. Agents
    must not unstage foreign files they see in the index.
 
-<!-- planned-change:home-tier-commit-maintenance -->
-4. **The gates the acting tier carries run in-process before `git commit --no-verify`.**
-   Where the acting invocation context's declared tier carries project
-   subscriptions, `telec code commit` runs `handle_format` then `handle_lint`
-   against `quality_paths` (the commit pathspec filtered to existing files)
-   before invoking `git commit --no-verify`. Where that tier carries none,
-   neither runs and nothing is applied in their place.
-<!-- change:home-tier-commit-maintenance -->
 4. **The gates the acting tier carries run in-process before `git commit --no-verify`.**
    Whether the gate runs follows the acting invocation context's declared tier:
    a tier carrying project subscriptions, or whose material participates in
@@ -272,7 +256,6 @@ The pathspec commit is built internally from `workspace scope plus
    participates in documentation and carries no project subscriptions is gated,
    runs the guardrails lane, and requires no native toolchain contract at its
    root.
-<!-- /planned-change:home-tier-commit-maintenance -->
 Deletion-only commits
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
    thin `.git/hooks/pre-commit` performs only a partial-staging backstop; it does

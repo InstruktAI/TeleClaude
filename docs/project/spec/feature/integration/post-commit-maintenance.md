@@ -216,7 +216,6 @@ And changed-file resolution includes the complete root-commit tree
 And an agent reading the structured records observes that same normalized activation range on every action command and outcome
 ```
 
-<!-- planned:home-tier-commit-maintenance -->
 #### UC-PCM10: A tier-documentation commit in the platform home owes publication
 
 ```gherkin
@@ -227,7 +226,6 @@ Then committed-state publication is included in the maintenance owed by that act
 And an agent reading the structured records observes the immutable range and the publication action's terminal outcome
 But the same path shape in an ordinary project does not acquire a home-only maintenance binding
 ```
-<!-- /planned:home-tier-commit-maintenance -->
 
 <!-- planned:nonblocking-commit-maintenance -->
 #### UC-PCM11: A commit returns while maintenance continues
