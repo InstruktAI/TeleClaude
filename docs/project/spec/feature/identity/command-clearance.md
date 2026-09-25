@@ -293,7 +293,11 @@ Then the gate rejects the caller with a not-permitted authorization failure nami
 
 ### Local read clearance
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`project/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the system-role derivation caller verification applies (`feature/identity/caller-verification`), and its person role is the role the people registry holds for its principal, so a local gate admits and refuses what the daemon's gate admits and refuses. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
+<!-- change:cli-actions-authorize-in-process -->
+The read commands `telec todo list`, `telec todo show`, `telec todo artifacts list`, `telec todo artifacts read`, `telec todo artifacts diff`, `telec bugs list`, and `telec bugs suppressions`, and a `telec history search` or `telec history show` that reads this computer's mirrors, are cleared in the process that runs them, against the same verb allowlist. The caller is the one the identity context's shared caller resolution yields (`project/spec/identity-and-auth` §6): inside a session, the session record its identity document names; outside any session, the person the terminal's login names. The caller's system role is derived from that record by the identity context's system-role derivation, and its person role is the role the people registry holds for its principal when the command runs. A caller that resolves to no person and no system principal is refused before any content is read. A role outside the verb's band is refused with the not-permitted failure naming the role and verb. The gate sends no request to the daemon, so these reads answer while the daemon is not running.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 #### UC-CCL1: A read is cleared and answered without the daemon
 
@@ -315,7 +319,11 @@ And the refusal states that the session carries no usable identity
 And no todo, artifact, bug, suppression, or conversation content is printed
 ```
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 #### UC-CCL3: A session is cleared by the role caller verification derives for it
+<!-- change:cli-actions-authorize-in-process -->
+#### UC-CCL3: A session is cleared by the role derived from its record
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 ```
 Given a session record that carries a working slug and no explicit system role

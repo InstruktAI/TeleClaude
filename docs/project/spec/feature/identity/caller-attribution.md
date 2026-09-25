@@ -19,10 +19,17 @@ and never a terminal login from inside a session. A content inbox entry's author
 known-issue suppression's creation provenance name the resolved principal:
 `human:<email>` for a registered person, whether a session carries that principal or a
 terminal login names them, and the carried system principal for work with no human
+<!-- planned-change:cli-actions-authorize-in-process -->
 origin. A known-issue suppression and a sealed commit resolve their caller in the CLI
 process; a content inbox entry takes its author from caller verification. A sealed
 commit takes its author under the rules `project/spec/feature/agent_runtime/sealed-commit`
 owns.
+<!-- change:cli-actions-authorize-in-process -->
+origin. A known-issue suppression, a sealed commit and a content inbox entry resolve their
+caller in the CLI process. A sealed
+commit takes its author under the rules `project/spec/feature/agent_runtime/sealed-commit`
+owns.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 
 <!-- planned-change:cli-actions-authorize-in-process -->

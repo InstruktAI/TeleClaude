@@ -12,9 +12,17 @@ visibility: 'public'
 
 ## What it is
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 `telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI answers it in its own process from the identity context's shared caller resolution (`project/spec/identity-and-auth` §6) — the same resolution every caller-dependent command applies — and sends no request to the daemon. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role the session's record resolves to, and never reads the terminal login; a document that is present but identifies no open session on this computer is reported as carrying no usable identity. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path. The Role is the one that authorizes the caller: a person's role from the people registry, or a system caller's system role as caller verification derives it. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
+<!-- change:cli-actions-authorize-in-process -->
+`telec auth whoami` is the operator-facing question "who does the system think I am?". The CLI answers it in its own process from the identity context's shared caller resolution (`project/spec/identity-and-auth` §6) — the same resolution every caller-dependent command applies — and sends no request to the daemon. Inside a session — one whose TMPDIR holds a session identity document — it prints the Principal and Role the session's record resolves to, and never reads the terminal login; a document that is present but identifies no open session on this computer is reported as carrying no usable identity. Outside any session it prints the Email and Role of the person the terminal's login names, followed by the TTY and the login document's path. The Role is the one that authorizes the caller: a person's role from the people registry, or a system caller's system role as derived from its session record. The CLI accepts a conversational alias — `telec auth who am i` — that rewrites to `telec auth whoami`.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 The identity context's whoami capability answers the same question for clients of the daemon's API. It is gated by caller verification, and its answer for a caller agrees with the CLI's.
+<!-- change:cli-actions-authorize-in-process -->
+The identity context's whoami capability answers the same question for clients of the daemon's API. It answers from the identity the request carries, so its answer for a caller agrees with the CLI's.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 ## Canonical fields
 
