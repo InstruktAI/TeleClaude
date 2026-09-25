@@ -20,11 +20,15 @@ The identity context's whoami capability answers the same question for clients o
 
 ### Use cases
 
+#### UC-WHO-SESSION-SYSTEM: A system session reports its principal and system role
+
 ```
 Given an agent session whose record resolves to the principal `system:daemon` and whose derived system role is `worker`
 When the operator runs `telec auth whoami`
 Then it prints two lines: `Principal: system:daemon` and `Role: worker`
 ```
+
+#### UC-WHO-TERMINAL-PERSON: A terminal reports the person its login names
 
 ```
 Given a terminal outside any session — no session identity document — whose login document names `ada@example.com`
@@ -33,11 +37,15 @@ When the operator runs `telec auth whoami`
 Then it prints `Email: ada@example.com` and `Role: admin`, then `TTY: <pts/N>` and `Session auth file: <path>`
 ```
 
+#### UC-WHO-TERMINAL-NOBODY: An unidentified terminal is told how to log in
+
 ```
 Given a terminal outside any session that the platform cannot identify — no login document on a host with more than one registered person, or a login naming no registered person
 When the operator runs `telec auth whoami`
 Then the CLI prints that no identity is established for the current TTY, with the instruction to log in, and exits with success
 ```
+
+#### UC-WHO-NO-TTY: No terminal and no session is an error
 
 ```
 Given an environment outside any session with no detectable TTY
@@ -80,6 +88,7 @@ And no request is sent to the daemon's local service
 Given an agent in a session whose carried principal is `system:daemon` and whose system role is `orchestrator`
 When a client of the daemon's API asks who that caller is
 Then the answer carries the principal `system:daemon`, the role `orchestrator`, no email, and the id of the caller's session
+And the role is the one `telec auth whoami` prints for that caller, also when the session inherited its principal
 ```
 
 #### UC-WHO-CAPABILITY-PERSON: The capability answers a person with a principal named for them
@@ -98,6 +107,8 @@ Given a session caller that resolves to no person and carries no principal
 When a client of the daemon's API asks who that caller is
 Then the answer carries no principal, no role, and no email
 ```
+
+#### UC-WHO-ALIAS: The conversational alias answers as whoami
 
 ```
 Given an operator in any context where `telec auth whoami` answers
