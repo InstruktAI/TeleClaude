@@ -18,11 +18,7 @@ visibility: 'public'
 - Return a filtered index (frontmatter only) when no IDs are provided.
 - Accept selected snippet IDs from the caller and report the required reads their
   bodies reference.
-<!-- planned-change:docs-tier-layering -->
-- Order by scope priority (global -> domain -> project).
-<!-- change:docs-tier-layering -->
 - Order by scope priority across the four tiers.
-<!-- /planned-change:docs-tier-layering -->
 - Persist selected IDs per session to avoid repeated context churn.
 
 ```mermaid
@@ -57,11 +53,7 @@ flowchart TB
 - **Phase 2**: Full snippet content. The default form also reports required-read
   IDs not loaded; the explicit activation form includes the eligible transitive
   dependency bodies and names them as included.
-<!-- planned-change:docs-tier-layering -->
-- Ordered by scope priority: global → domain → project
-<!-- change:docs-tier-layering -->
 - Ordered by scope priority across the four tiers
-<!-- /planned-change:docs-tier-layering -->
 
 ## Invariants
 
@@ -70,11 +62,7 @@ flowchart TB
 - **Required-read expansion is explicit**: the default response names dependency
   IDs for a follow-up; only the activation form explicitly requesting closure
   includes eligible transitive dependency bodies in the same response.
-<!-- planned-change:docs-tier-layering -->
-- **Scope Ordering**: Global snippets before domain before project; stable deterministic order.
-<!-- change:docs-tier-layering -->
 - **Scope Ordering**: one deterministic order across the four tiers, given by the scope priority table.
-<!-- /planned-change:docs-tier-layering -->
 - **Duplicate Prevention**: Each snippet ID appears exactly once in output even if required multiple times.
 
 ## Primary flows
@@ -134,13 +122,6 @@ header. In both forms, the caller chooses whether closure expansion occurs.
 
 ### 4. Scope Priority Ordering
 
-<!-- planned-change:docs-tier-layering -->
-| Scope   | Priority | Rationale                                   |
-| ------- | -------- | ------------------------------------------- |
-| global  | 1        | Foundational policies apply universally     |
-| domain  | 2        | Domain-specific rules constrain projects    |
-| project | 3        | Project details reference global foundation |
-<!-- change:docs-tier-layering -->
 | Scope   | Priority |
 | ------- | -------- |
 | global  | 1        |
@@ -150,9 +131,7 @@ header. In both forms, the caller chooses whether closure expansion occurs.
 
 Within the global tier, `domain` is the secondary key. It is metadata on a global
 snippet, not a scope of its own, and the ordering never treats it as one.
-<!-- /planned-change:docs-tier-layering -->
 
-<!-- planned:docs-tier-layering -->
 ### 5. Caller-Scope Resolution
 
 Source assembly is preceded by resolving the caller. The stage takes the
@@ -272,7 +251,6 @@ publisher retains the tier contribution unchanged.
 Discovery names every tier in the caller's read set with the entries it
 contributes, so a participating tier that holds nothing is visible as a tier
 with zero entries to a caller who may see it, and invisible to one who may not.
-<!-- /planned:docs-tier-layering -->
 
 
 ## Failure modes
@@ -284,7 +262,6 @@ with zero entries to a caller who may see it, and invisible to one who may not.
 - **Context Too Large**: Expanded content exceeds AI context window. No automatic truncation. Client must reduce selection.
 - **Session Context Loss**: Persisted IDs not found in index after regeneration. Falls back to phase 1 discovery.
 
-<!-- planned:docs-tier-layering -->
 - **Unresolvable Caller**: The call carries no identity that resolves to a
   person or a system principal. No relationship-derived source enters scope at
   all — no person tier, no company, no assigned project — and what remains is
@@ -297,5 +274,4 @@ with zero entries to a caller who may see it, and invisible to one who may not.
 - **Scope read from location**: Deriving reach from the working directory
   produces an authorization answer that changes when someone changes directory,
   which is not an authorization answer at all.
-<!-- /planned:docs-tier-layering -->
 

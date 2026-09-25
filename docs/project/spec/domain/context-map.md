@@ -53,14 +53,12 @@ contracts and never creates shared ownership.
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
 
-<!-- planned:docs-tier-layering -->
 - `context` resolves a caller's documentation reach from `identity`'s resolved
   person and resolved organizational membership, and from `config`'s project-tier
   declaration of an owning company. `identity` owns what those facts mean;
   `config` owns the declarations behind them; `context` owns only what a given
   set of relationships permits a caller to read, and never infers a relationship
   the resolved facts do not state.
-<!-- /planned:docs-tier-layering -->
 
 - The sealed commit surface (`agent_runtime`) reads tier answers from `config`
   at two coordinates — the repository root's declared tier, and the acting

@@ -120,7 +120,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
 <!-- /planned:cross-tier-native-emission -->
 
 
-<!-- planned:docs-tier-layering -->
 - **Belonging is binary for reading a company.** A company role carries business
   authority; it does not grade documentation access. Anyone with a declared
   relationship to a company — member, contributor, whatever the role — reads that
@@ -153,7 +152,6 @@ one index entry, listed on demand — rather than autoloaded into every session.
   itself public or internal, and that declaration is the only gate an outsider
   meets. Public material is readable by anyone with a legitimate reason to reach
   it; internal material is not readable without belonging.
-<!-- /planned:docs-tier-layering -->
 
 ## Primary flows
 
@@ -163,22 +161,13 @@ project roots from the manifest. That set is the whole configuration surface;
 there is no fifth place to look.
 
 
-<!-- planned-change:docs-tier-layering -->
-**Reading documentation.** Sources are aggregated into an index and the caller
-sees the portion their clearance permits. Global and project documentation load
-for the invocation's project. A project's owning company contributes that
-company's documentation, drawn from the project's own declaration of which
-company owns it — the declaration doing exactly its job.
-<!-- change:docs-tier-layering -->
 **Reading documentation.** Sources are aggregated into an index and the caller
 sees the portion their relationships permit. Global documentation loads for
 every caller. A project's owning company brings that company's documentation
 into scope, drawn from the project's own declaration of which company owns it —
 the declaration doing exactly its job — and the caller's own relationship to that
 company decides how deeply it is read.
-<!-- /planned-change:docs-tier-layering -->
 
-<!-- planned:docs-tier-layering -->
 **Deriving scope from the caller.** A caller's own person tier and the
 documentation of every company they belong to are in scope wherever they are
 working, independently of the directory they are in, together with the project
@@ -191,7 +180,6 @@ people who do not belong to it. Explicit selectors naming a person, a company, o
 a project narrow the read to that tier and never widen it: the named tier is read
 at the depth the caller's relationship grants, and a platform admin reads any
 named tier in full.
-<!-- /planned:docs-tier-layering -->
 
 ## Failure modes
 

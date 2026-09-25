@@ -11,15 +11,6 @@ visibility: 'public'
 
 ## What it is
 
-<!-- planned-change:docs-tier-layering -->
-The Selection policy is the single pure-function composition point for every
-filter that narrows the Index down to the snippets a caller actually wants.
-Visibility (role gating), taxonomy areas, business domains, scope (global vs.
-project), baseline-manifest anchoring, and target-slug filtering all flow
-through one place. Given the same Index and the same inputs, the policy
-produces a byte-identical set of snippet IDs every time. This determinism is
-what lets the retrieval flow be cached, replayed, and reasoned about.
-<!-- change:docs-tier-layering -->
 The Selection policy is the single pure-function composition point for every
 filter that narrows the Index down to the snippets a caller actually wants.
 Visibility, taxonomy areas, business domains, scope across the four tiers,
@@ -31,20 +22,11 @@ public-or-internal declaration is the only gate. Given the same Index and the
 same inputs, the policy produces a byte-identical set of snippet IDs every
 time. This determinism is what lets the retrieval flow be cached, replayed, and
 reasoned about.
-<!-- /planned-change:docs-tier-layering -->
 
 ## Canonical fields
 
 ### Use cases
 
-<!-- planned-change:docs-tier-layering -->
-```
-Given a caller with a non-admin role
-When the Selection policy resolves visibility
-Then only snippets with visibility: public are included
-And visibility: internal snippets are excluded
-```
-<!-- change:docs-tier-layering -->
 #### UC-DSP6: Without a relationship, the snippet's own declaration is the gate
 
 ```
@@ -54,7 +36,6 @@ When the Selection policy resolves visibility for that tier
 Then only snippets declaring themselves public are included
 And snippets declaring themselves internal are excluded
 ```
-<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP20: A platform administrator reads every visibility
 
@@ -74,13 +55,6 @@ Then snippets of every visibility (public and internal) are included
 ```
 
 
-<!-- planned-change:docs-tier-layering -->
-```
-Given an anonymous caller with no resolved identity
-When the Selection policy resolves visibility
-Then the caller is treated as non-admin and only public snippets are returned
-```
-<!-- change:docs-tier-layering -->
 #### UC-DSP7: An agent session with no resolvable identity receives the outsider's view
 
 ```
@@ -90,7 +64,6 @@ Then no relationship-derived tier enters scope
 And what the invocation itself offers is read at public-only depth
 And the absent identity never widens the read
 ```
-<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP21: A project-prefixed identity in the global tree is excluded
 
@@ -135,7 +108,6 @@ Then only snippets whose delivered_by includes <slug> are returned
 And third-party snippets are silenced
 ```
 
-<!-- planned:docs-tier-layering -->
 #### UC-DSP19: Retrieving a discovered identity stays open to its discoverer
 
 ```
@@ -145,16 +117,7 @@ When the session retrieves that identity
 Then the snippet content is returned
 And no tier authorization is required
 ```
-<!-- /planned:docs-tier-layering -->
 
-<!-- planned-change:docs-tier-layering -->
-```
-Given a snippet ID whose prefix matches a known project slug in the cross-project catalog
-When the caller references that ID without --projects
-Then the cross-project Source is loaded
-And visibility gating still applies
-```
-<!-- change:docs-tier-layering -->
 #### UC-DSP18: Reaching a tier by snippet identity meets the selector rule
 
 ```
@@ -163,7 +126,6 @@ When the caller references that ID without a selector
 Then that tier's Source is loaded
 And visibility gating applies at the depth the caller's relationship to that tier grants
 ```
-<!-- /planned-change:docs-tier-layering -->
 
 #### UC-DSP1: Scope filter keeps only global snippets
 
@@ -203,15 +165,6 @@ Then no snippets are returned
 
 #### UC-DSP5: Domains filter keeps only snippets in the requested published domains
 
-<!-- planned-change:docs-tier-layering -->
-```
-Given --domains <domain> passed by the caller
-When the Selection policy applies the domains filter
-Then only snippets whose domain is in the requested set are returned
-And snippets in other domains, including structural scopes general and project, are excluded
-And third-party entries are silenced
-```
-<!-- change:docs-tier-layering -->
 ```
 Given --domains <domain> passed by the caller
 When the Selection policy applies the domains filter
@@ -219,9 +172,7 @@ Then only snippets whose domain is in the requested set are returned
 And snippets carrying a structural marker — general, project, person, or company — are excluded
 And third-party entries are silenced
 ```
-<!-- /planned-change:docs-tier-layering -->
 
-<!-- planned:docs-tier-layering -->
 #### UC-DSP8: Read scope follows the caller, not the working directory
 
 ```
@@ -349,19 +300,9 @@ When the Selection policy applies the scope filter
 Then only snippets in the company tier are returned
 And snippets of every other tier are excluded
 ```
-<!-- /planned:docs-tier-layering -->
 
 ### Cross-context references
 
-<!-- planned-change:docs-tier-layering -->
-- **identity** — the caller is resolved upstream by the CLI and passed in; the
-  predicate composition reads its platform role, or its standing as a system
-  principal, to filter visibility.
-- **config** — supplies the registered publishers' `business.publishes`
-  declarations (their union is the valid-domain set used for cross-project ID
-  classification), the project catalog of known project slugs, and the
-  `project_slug` that determines which IDs are "own" vs. "cross-project".
-<!-- change:docs-tier-layering -->
 - **identity** — the resolved caller: a person with their platform role and
   the company relationships and project reach that resolution reports, a system
   principal, or no identity, received from the command edge. Read depth is
@@ -374,22 +315,14 @@ And snippets of every other tier are excluded
   project's own declaration of its owning company, and each tier's declared
   participation in the documentation surface. Declarations only; a caller's
   resolved relationships come from identity.
-<!-- /planned-change:docs-tier-layering -->
 
 ## Known caveats
 
-<!-- planned-change:docs-tier-layering -->
-- Snippet visibility defaults to `internal` when frontmatter omits the field.
-  Public exposure is an explicit opt-in, not the default — so a freshly
-  authored snippet without `visibility: public` is invisible to non-admin
-  callers until the field is added.
-<!-- change:docs-tier-layering -->
 - Snippet visibility defaults to `internal` when frontmatter omits the field.
   Public exposure is an explicit opt-in, not the default — so a freshly
   authored snippet without `visibility: public` is invisible to callers holding
   no relationship to its tier until the field is added. Callers who do hold a
   relationship read the tier in full and are unaffected by the default.
-<!-- /planned-change:docs-tier-layering -->
 - Every published global domain is universally visible to every project; there
   is no per-project global-domain gate. The set of valid domains is the union of
   the registered publishers' `business.publishes`. The `--domains` flag still

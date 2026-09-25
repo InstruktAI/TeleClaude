@@ -15,18 +15,12 @@ The Index is the authoritative pre-computed catalog of every Source snippet in
 a scope.
 
 
-<!-- planned-change:docs-tier-layering -->
-Index construction derives `id`/`type`/`scope`/`domain` from
-each Source's path, renders portable paths, and writes per-scope `index.yaml`
-files — one for the project, one for global baseline, one for third-party.
-<!-- change:docs-tier-layering -->
 Index construction derives `id`/`type`/`scope`/`domain` from
 each Source's path, renders portable paths, and writes one `index.yaml` per
 catalog: the project, the global baseline, third-party, and one for every person
 and company tier whose declaration says its material participates in
 documentation. Construction covers every participating tier rather than a fixed
 list.
-<!-- /planned-change:docs-tier-layering -->
 
 
 The
@@ -151,7 +145,6 @@ When telec docs index renders the parent line
 Then the line includes " (superseded by: <slugs>)"
 ```
 
-<!-- planned:docs-tier-layering -->
 #### UC-DIB3: A doc-capable person tier gets its catalog built
 
 ```
@@ -205,7 +198,6 @@ Then the tier's documentation home is among the roots validation walks
 And the source is validated under the same structural and classification rules as a project's or the global tree's
 And the source beneath the undeclared sibling is not walked
 ```
-<!-- /planned:docs-tier-layering -->
 
 #### UC-DIB16: An older publication replay preserves the checkout catalog
 

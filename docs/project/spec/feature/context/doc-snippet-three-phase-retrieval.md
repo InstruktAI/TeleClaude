@@ -31,14 +31,9 @@ retrieval flow:
    declaration names. Ordinary retrieval keeps the caller in deliberate control
    of its context budget and never exposes or activates the hidden form.
 
-<!-- planned-change:docs-tier-layering -->
-Visibility gating runs at phases 1 and 2 against the caller's resolved
-identity; the same gate applies to any phase-3 follow-up fetch.
-<!-- change:docs-tier-layering -->
 Read depth is resolved at phases 1 and 2 from the caller's resolved identity
 and relationships, per the Selection policy; the same depth applies to any
 phase-3 follow-up fetch.
-<!-- /planned-change:docs-tier-layering -->
 
 
 ## Canonical fields
@@ -111,14 +106,6 @@ Then no snippets match and the listing (or fetch) returns empty
 And the command does not hard-fail — an unknown slug yields an empty result, not an error
 ```
 
-<!-- planned-change:docs-tier-layering -->
-```
-Given a snippet whose visibility excludes the caller's role
-When the caller runs telec docs get on that ID
-Then the snippet is surfaced in the output with an "Insufficient role" / "access: denied" notice
-And the content body is withheld
-```
-<!-- change:docs-tier-layering -->
 #### UC-3PR11: A snippet the caller's depth does not admit is withheld
 
 ```
@@ -127,7 +114,6 @@ When the caller runs telec docs get on that ID
 Then the snippet is surfaced in the output with a withheld notice
 And the content body is withheld
 ```
-<!-- /planned-change:docs-tier-layering -->
 
 #### UC-3PR5: Unknown --domains value fails loud
 
@@ -207,18 +193,11 @@ And the eligible global documentation and documentation published by registered 
 
 ### Cross-context references
 
-<!-- planned-change:docs-tier-layering -->
-- **identity** — the caller is resolved from a managed session's carried
-  principal, or outside a managed session from the terminal login. A platform
-  administrator or a system principal sees every visibility; every other caller
-  sees public material only, in both phases.
-<!-- change:docs-tier-layering -->
 - **identity** — the resolved caller: a person with their platform role and the
   company relationships and project reach resolution reports, a system
   principal, or no identity. Both verbs obtain it once through identity's caller
   query at the command edge and resolve nothing further; the Selection policy
   derives read depth from it.
-<!-- /planned-change:docs-tier-layering -->
 - **selection** — both verbs delegate filter composition (areas, domains,
   baseline, scope, project, target) to the Selection policy.
 
@@ -235,18 +214,11 @@ And the eligible global documentation and documentation published by registered 
   invoke on its own judgment, while a job procedure is executed by the runner. Third-party IDs stay outside Required-reads resolution; a dependency
   whose visibility excludes the caller's role or whose pending state excludes it
   from the current contract is absent from the included closure.
-<!-- planned-change:docs-tier-layering -->
-- Denied IDs are surfaced rather than hidden. An anonymous caller can confirm
-  the existence of an `internal` snippet even though they cannot read it. This
-  leaks identity information by design (so callers know to request a role
-  lift) but is a real disclosure surface.
-<!-- change:docs-tier-layering -->
 - Withheld IDs are surfaced rather than hidden. A caller whose depth on a tier
   does not admit an `internal` snippet can still confirm that the identity
   exists. This is a deliberate disclosure surface for direct identities — the
   caller learns that a relationship to that tier would open it — and is
   confined to identities the caller names; the tier selectors disclose nothing.
-<!-- /planned-change:docs-tier-layering -->
 - Phase 1 third-party output ignores `--baseline-only` and `--target` (third-party
   renders on a separate track), but `--scope` and `--project` do apply to it:
   `--scope` keeps only third-party entries of that scope, and `--project <slug>`

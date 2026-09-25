@@ -15,25 +15,17 @@ Classification (`id`, `type`, `scope`, `domain`) is **derived from the file path
 
 - `id` — unique snippet identifier. **Derived** from the snippet's path below the docs root.
 - `type` — taxonomy type (see table below). **Derived** from the taxonomy directory path and checked against the H1 type-suffix by validation.
-<!-- planned-change:docs-tier-layering -->
-- `domain` — knowledge domain (`general`, `<domain>` such as `sdlc`, or `project`). **Derived** as the first path segment of the id.
-<!-- change:docs-tier-layering -->
 - `domain` — **Derived** as the first path segment of the id. It holds either a
   published knowledge domain (`sdlc` and its peers) or a
   structural marker: `general`, `project`, `person`, or `company`. The last two
   are the tier markers that person and company identities begin with; a
   structural marker is never a published domain.
-<!-- /planned-change:docs-tier-layering -->
-<!-- planned-change:docs-tier-layering -->
-- `scope` — `global` or `project`. **Derived** from the path (`docs/global/**` → `global`, `docs/project/**` → `project`).
-<!-- change:docs-tier-layering -->
 - `scope` — the tier the snippet belongs to: `global`, `project`, `person`, or
   `company`. **Derived** from the path. Snippets under a person's or a company's
   documentation tree carry that tier and an identity that names which person or
   which company, because more than one tier of the same kind can be assembled
   into a single index at once and an unqualified identity would be ambiguous
   between them.
-<!-- /planned-change:docs-tier-layering -->
 
 Frontmatter (required, authored):
 
@@ -41,15 +33,11 @@ Frontmatter (required, authored):
 
 Frontmatter (optional, authored):
 
-<!-- planned-change:docs-tier-layering -->
-- `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
-<!-- change:docs-tier-layering -->
 - `visibility` — access classification: `public` or `internal`. Defaults to
   `internal` when omitted. It gates a caller who holds no declared relationship
   to the snippet's tier: such a caller sees only `public` snippets. A caller who
   holds a relationship to that tier reads it in full, and a platform admin reads
   every tier in full.
-<!-- /planned-change:docs-tier-layering -->
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 <!-- planned:procedure-event-activation -->
 - `subscriptions` — procedures only. A non-empty list of event type names, each the type a verified event carries as its own source names it — no registration in the platform event catalog is required — whose arrival activates the procedure through the platform's procedure-activation contract. A procedure declares `subscriptions` or `activation_trigger`, never both, because each names who is responsible for starting the work; a procedure used only as supporting knowledge declares neither. A procedure declaring `subscriptions` is excluded from the "Activatable Procedures" section and listed as a configured responsibility instead. Validation rejects this field on non-procedure snippet types, on a procedure published in a tier the procedure-activation contract does not route, and on a procedure declaring both activation fields.
@@ -109,14 +97,12 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/global/{domain}/{taxonomy}/` — domain-specific (e.g., `sdlc`).
 - `docs/project/{taxonomy}/` — project-scoped documentation.
 
-<!-- planned:docs-tier-layering -->
 - `~/.teleclaude/people/{person}/docs/{taxonomy}/` — a person's own documentation.
   Path-derived identity carries the tier and the person: `person/{person}/{taxonomy}/{rest}`.
 - `~/.teleclaude/companies/{company}/docs/{taxonomy}/` — a company's documentation.
   Path-derived identity carries the tier and the company: `company/{company}/{taxonomy}/{rest}`.
   Several tiers of one kind can be assembled into a single index at once, so both
   tiers name whose material they are.
-<!-- /planned:docs-tier-layering -->
 - `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
 - `{scope}/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `sdlc/principle/documentation-first-development`), under the scope whose bounded context owns the behavior; `docs/project/` is the common one, not the only one. Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
 - `docs/project/design/architecture/<topic>/overview.md` — canonical design snippet for a composite architecture topic. Named sibling design snippets carry independently useful facets; topic-owned non-Markdown companions may sit beside them.
@@ -152,11 +138,7 @@ do not accumulate by default.
 ## Allowed values
 
 - `type`: principle, concept, policy, procedure, design, spec, adr (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
-<!-- planned-change:docs-tier-layering -->
-- `scope`: global, project.
-<!-- change:docs-tier-layering -->
 - `scope`: global, project, person, company.
-<!-- /planned-change:docs-tier-layering -->
 - `visibility`: public, internal. Default: `internal`.
 
 ## Known caveats

@@ -436,7 +436,6 @@ Scenario: UC-ARD32 Every artifact source path is classified by one registry boun
 ```
 
 
-<!-- planned:docs-tier-layering -->
 #### UC-ARD35: Participating tier documentation is materialized into the deployed snapshot
 
 ```
@@ -461,7 +460,6 @@ When committed-state publication activates that recorded source
 Then the declared tier's material enters the staged generation and merged index
 And nothing from the undeclared sibling enters either output
 ```
-<!-- /planned:docs-tier-layering -->
 
 <!-- planned:tier-command-corpus -->
 

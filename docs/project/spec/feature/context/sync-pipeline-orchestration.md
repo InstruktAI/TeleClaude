@@ -160,7 +160,6 @@ Scenario: UC-SPO4 A slug-worktree commit publishes nothing
   And no documentation or agent-artifact runtime output changes
 ```
 
-<!-- planned:docs-tier-layering -->
 #### UC-SPO17: A deployment composes every participating tier's documentation
 
 ```
@@ -169,7 +168,6 @@ When committed-state publication activates the platform home's recorded source
 Then that tier's documentation is composed into the published snapshot exactly as a registered project's is
 And no global agent-artifact publication path opens from the tier's home
 ```
-<!-- /planned:docs-tier-layering -->
 
 #### UC-SPO21: A commit under a participating tier's home republishes the snapshot
 
