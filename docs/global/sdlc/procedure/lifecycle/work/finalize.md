@@ -29,10 +29,10 @@ workflow state reaches `finalize_ready`.
 
    ```bash
    git fetch origin main
-   git merge origin/main --no-edit
+   git merge origin/main --no-edit --no-overwrite-ignore
    ```
 
-3. Resolve conflicts in the worktree where code context is available. `origin/main` is the leading baseline: preserve accepted main behavior, reapply the reviewed branch intent on top, run the relevant tests and quality gates, and commit the resolution.
+3. Resolve conflicts in the worktree where code context is available. `origin/main` is the leading baseline: preserve accepted main behavior, reapply the reviewed branch intent on top, run the relevant tests and quality gates, and commit the resolution. If Git refuses to overwrite an ignored local file, leave that file intact and report the failed merge to the orchestrator for builder recovery (`sdlc/policy/version-control-safety`).
 4. Publish the finalized branch:
 
    ```bash
