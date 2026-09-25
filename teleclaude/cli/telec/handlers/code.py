@@ -52,6 +52,7 @@ from teleclaude.project_root import (
     forbidden_slug_worktree_agent_artifact_paths,
     forbidden_slug_worktree_doc_paths,
 )
+from teleclaude.quality.gate import QualityGateLeg, read_head_sha, run_lint_gate
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -424,7 +425,7 @@ def handle_code_commit(args: list[str]) -> None:
             includes=includes,
             project_root=project_root,
             context_root=state.context_root,
-            run_quality_gates=state.capabilities.commit_enabled,
+            quality_gate_legs=state.quality_gate_legs,
             enforce_context_bound=state.is_non_project_invocation_context,
             system_role=system_role,
             only=only or None,
@@ -475,7 +476,7 @@ def _commit_under_lock(
     includes: list[str],
     project_root: Path,
     context_root: Path | None,
-    run_quality_gates: bool,
+    quality_gate_legs: frozenset[QualityGateLeg],
     enforce_context_bound: bool,
     system_role: str | None,
     only: list[str] | None = None,
@@ -496,7 +497,7 @@ def _commit_under_lock(
             message,
             project_root=project_root,
             context_root=context_root,
-            run_quality_gates=run_quality_gates,
+            quality_gate_legs=quality_gate_legs,
             enforce_context_bound=enforce_context_bound,
             human_involved=human_involved,
         )
@@ -607,9 +608,8 @@ def _commit_under_lock(
         raise SystemExit(1)
 
     quality_paths = [path for path in pathspec if (project_root / path).exists()]
-    if run_quality_gates and quality_paths:
-        handle_format(quality_paths)
-        handle_lint(quality_paths)
+    if quality_gate_legs and quality_paths:
+        _run_commit_quality_gate(project_root, quality_paths, quality_gate_legs)
 
     # Use a message file for the mandated footer without shell argument splitting.
     stdout, stderr = _commit_repo_with_message(
@@ -693,7 +693,7 @@ def _commit_active_merge(
     *,
     project_root: Path,
     context_root: Path | None,
-    run_quality_gates: bool,
+    quality_gate_legs: frozenset[QualityGateLeg],
     enforce_context_bound: bool,
     human_involved: bool = False,
 ) -> None:
@@ -717,9 +717,8 @@ def _commit_active_merge(
             raise SystemExit(1)
 
     quality_paths = _merge_quality_paths(repo, project_root)
-    if run_quality_gates and quality_paths:
-        handle_format(quality_paths)
-        handle_lint(quality_paths)
+    if quality_gate_legs and quality_paths:
+        _run_commit_quality_gate(project_root, quality_paths, quality_gate_legs)
 
     stdout, stderr = _commit_repo_with_message(
         repo,
@@ -736,6 +735,33 @@ def _commit_active_merge(
     except GitCommandError:
         committed_files = quality_paths
     _record_commit_checkpoint_markers(project_root, committed_files)
+
+
+def _run_commit_quality_gate(
+    project_root: Path,
+    quality_paths: list[str],
+    quality_gate_legs: frozenset[QualityGateLeg],
+) -> None:
+    """Run the acting tier's selected checks against the commit pathspec."""
+    if QualityGateLeg.NATIVE in quality_gate_legs:
+        handle_format(quality_paths)
+    subject_sha = read_head_sha(project_root)
+    if subject_sha is None:
+        print("ERROR: unable to resolve the quality-gate subject from the invocation checkout", file=sys.stderr)
+        raise SystemExit(1)
+    result = run_lint_gate(
+        project_root,
+        project_root,
+        subject_sha,
+        quality_paths,
+        False,
+        None,
+        selection=quality_gate_legs,
+    )
+    if result.exit_code != 0:
+        if result.failure_reason:
+            print(f"ERROR: {result.failure_reason}", file=sys.stderr)
+        raise SystemExit(result.exit_code)
 
 
 def _commit_repo_with_message(

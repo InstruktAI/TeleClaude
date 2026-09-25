@@ -1342,11 +1342,7 @@ configure_agent_cli() {
 }
 
 activate_home_repository() {
-    if PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/bin/init/activate_home_repository.py"; then
-        print_success "Home repository activated"
-    else
-        print_warning "Home repository activation needs operator attention"
-    fi
+    PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/bin/init/activate_home_repository.py"
 }
 
 # Load modular install steps

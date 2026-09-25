@@ -22,6 +22,7 @@ from teleclaude.constants import (
     CHECKPOINT_BASE_CODE_BINDING,
     CHECKPOINT_BASE_DOCS_BINDING,
     CHECKPOINT_BASE_MAINTENANCE,
+    CHECKPOINT_HOME_DOCS_BINDING,
     CheckpointAction,
     CheckpointBinding,
     CheckpointModel,
@@ -29,6 +30,7 @@ from teleclaude.constants import (
     MaintenanceAction,
     _compile_glob,
 )
+from teleclaude.paths import TELECLAUDE_HOME
 
 logger = get_logger(__name__)
 
@@ -288,7 +290,8 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
     declaration at all) has no project overlay to merge and returns the base
     model directly. Fail-open applies only to a genuinely unreadable or
     malformed declaration, which degrades to base-only with the slug derived
-    from the directory name, never raising.
+    from the directory name. Filesystem errors while resolving the root remain
+    visible because the home-specific maintenance binding depends on that result.
     """
     root = Path(project_path) if project_path else Path(_DEFAULT_PROJECT_PATH)
     fallback_slug = root.name or _DEFAULT_PROJECT_SLUG
@@ -300,10 +303,30 @@ def load_checkpoint_model(project_path: str) -> CheckpointModel:
             extra={"project_path": project_path or ""},
             exc_info=True,
         )
-        return base_checkpoint_model(fallback_slug)
+        config = None
     if config is None:
-        return base_checkpoint_model(fallback_slug)
-    return checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
+        model = base_checkpoint_model(fallback_slug)
+    else:
+        model = checkpoint_model_from_project_config(project_path, config, capabilities_from_project_config(config))
+    if _is_teleclaude_home(root):
+        model = _append_home_docs_binding(model)
+    return model
+
+
+def _is_teleclaude_home(root: Path) -> bool:
+    """Return whether ``root`` resolves to the machine's platform home."""
+    return root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
+
+
+def _append_home_docs_binding(model: CheckpointModel) -> CheckpointModel:
+    """Attach the platform-home tier documentation trigger once."""
+    if CHECKPOINT_HOME_DOCS_BINDING in model.bindings:
+        return model
+    return CheckpointModel(
+        actions=model.actions,
+        maintenance=model.maintenance,
+        bindings=(*model.bindings, CHECKPOINT_HOME_DOCS_BINDING),
+    )
 
 
 def checkpoint_model_from_project_config(

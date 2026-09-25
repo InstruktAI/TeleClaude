@@ -9,13 +9,13 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.reconciliation.home_retained_set import (
-    HOME_RETAINED_SET_DECLARATION,
     HomeMembership,
     historical_home_membership,
     home_membership,
     home_retained_set_digest,
     home_retained_set_path,
 )
+from teleclaude.core.reconciliation.home_templates import materialize_home_templates
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import (
     BIN_DIR,
@@ -32,6 +32,8 @@ from teleclaude.paths import (
     TELECLAUDE_HOME,
     TMP_SESSIONS_DIR,
 )
+from teleclaude.project_setup.git_filters import ensure_git_filters
+from teleclaude.project_setup.hooks import install_code_hooks
 
 
 class HomeActivationStatus(StrEnum):
@@ -74,7 +76,6 @@ class HomeActivationResult:
 
 
 _LOGGER = get_logger("teleclaude.reconciliation.home_repository")
-_RETAINED_SET_ENCODING = "utf-8"
 _NUL = "\0"
 _LS_FILES_OTHERS_OPTION = "--others"
 _LS_FILES_EXCLUDE_STANDARD_OPTION = "--exclude-standard"
@@ -112,9 +113,9 @@ _PATH_CLASSES_FIELD = "path_classes"
 def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResult:
     """Establish or converge the local-only history rooted at ``home``."""
     home.mkdir(parents=True, exist_ok=True)
+    materialize_home_templates(home)
     repository, created_repository = _repository_at_home(home)
     _remove_remotes(repository)
-    _write_declaration(home)
     candidates = _activation_candidates(repository, home=home)
     refused_paths = _unretained_paths(candidates, home=home)
     if refused_paths:
@@ -130,6 +131,8 @@ def activate_home_repository(home: Path = TELECLAUDE_HOME) -> HomeActivationResu
         repository.index.add([candidate.as_posix() for candidate in candidates])
         if _index_requires_commit(repository):
             repository.index.commit(_ACTIVATION_COMMIT_MESSAGE)
+    install_code_hooks(home)
+    ensure_git_filters(home, enabled=True)
     breach_paths = _recorded_breaches(repository, home=home)
     _log_completion(candidates, breach_paths, home=home)
     return HomeActivationResult(
@@ -168,10 +171,6 @@ def _publication_destination_settings(repository: Repo) -> tuple[str, ...]:
             return ()
         raise
     return tuple(dict.fromkeys(output.splitlines()))
-
-
-def _write_declaration(home: Path) -> None:
-    home_retained_set_path(home).write_text(HOME_RETAINED_SET_DECLARATION, encoding=_RETAINED_SET_ENCODING)
 
 
 def _activation_candidates(repository: Repo, *, home: Path) -> tuple[Path, ...]:

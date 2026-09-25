@@ -9,6 +9,9 @@ people/*
 people/*/*
 !people/*/teleclaude.yml
 !people/*/AGENTS.master.md
+!people/*/docs/
+people/*/docs/*
+!people/*/docs/**
 !companies/
 companies/*
 !companies/*/
@@ -16,3 +19,6 @@ companies/*/*
 !companies/*/teleclaude.yml
 !companies/*/meta.yaml
 !companies/*/erpnext.json
+!companies/*/docs/
+companies/*/docs/*
+!companies/*/docs/**

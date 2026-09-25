@@ -9,7 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from teleclaude.git import GitCommandError, Repo
-from teleclaude.paths import HOME_RETAINED_SET_PATH, TELECLAUDE_HOME
+from teleclaude.paths import HOME_RETAINED_SET_PATH, REPO_ROOT, TELECLAUDE_HOME
 
 
 class HomeMembership(StrEnum):
@@ -38,37 +38,14 @@ _EMPTY_EXCLUDES_PATH = os.devnull
 _CHECK_IGNORE_OPTION = "--no-index"
 _PATH_ARGUMENT_SEPARATOR = "--"
 _CHECK_IGNORE_NOT_IGNORED_STATUS = 1
-_RETAINED_SET_ENCODING = "utf-8"
+_HOME_RETAINED_SET_TEMPLATE = REPO_ROOT / "templates" / "home" / "dot_gitignore"
 _GIT_SYMBOLIC_LINK_MODE = "120000"
 _GIT_SUBMODULE_MODE = "160000"
-
-# The declaration begins closed and names only material that has an established,
-# authored role in the home. Each retained directory is reopened one level at a
-# time so a new file inside it is not admitted merely by proximity.
-HOME_RETAINED_SET_DECLARATION = """*
-!.gitignore
-!teleclaude.yml
-!config.yml
-!projects.yaml
-!people/
-people/*
-!people/*/
-people/*/*
-!people/*/teleclaude.yml
-!people/*/AGENTS.master.md
-!companies/
-companies/*
-!companies/*/
-companies/*/*
-!companies/*/teleclaude.yml
-!companies/*/meta.yaml
-!companies/*/erpnext.json
-"""
 
 
 def home_retained_set_digest() -> str:
     """Return the stable digest that identifies the active declaration."""
-    return hashlib.sha256(HOME_RETAINED_SET_DECLARATION.encode(_RETAINED_SET_ENCODING)).hexdigest()
+    return hashlib.sha256(_HOME_RETAINED_SET_TEMPLATE.read_bytes()).hexdigest()
 
 
 def home_retained_set_path(home: Path = TELECLAUDE_HOME) -> Path:
@@ -177,7 +154,7 @@ def _declaration_membership(relative_path: Path) -> HomeMembership:
     with TemporaryDirectory() as scratch:
         scratch_path = Path(scratch)
         declaration_path = scratch_path / _DECLARATION_FILENAME
-        declaration_path.write_text(HOME_RETAINED_SET_DECLARATION, encoding=_RETAINED_SET_ENCODING)
+        declaration_path.write_bytes(_HOME_RETAINED_SET_TEMPLATE.read_bytes())
         repository = Repo.init(scratch_path)
         try:
             repository.git.check_ignore(
