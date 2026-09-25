@@ -23,8 +23,7 @@ from teleclaude.constants import (
     STATE_KEY_PRD,
     STATE_KEY_TASK_PLAN,
 )
-from teleclaude.core.db import SessionIdentityError, get_session_field_sync, resolve_session_principal
-from teleclaude.core.models import Session
+from teleclaude.core.db import SessionIdentityError, get_session_identity_sync, resolve_session_principal
 from teleclaude.core.next_machine.git_ops import (
     DRIFT_COSMETIC,
     DRIFT_FRESH,
@@ -372,26 +371,14 @@ def _intent_artifact_present(
 def _session_principal(session_id: str) -> str:
     if session_id.startswith("human:"):
         return session_id
-    session = Session(
-        session_id=session_id,
-        computer_name="",
-        tmux_session_name="",
-        title="",
-        principal=_string_session_field(session_id, "principal"),
-        human_email=_string_session_field(session_id, "human_email"),
-        human_role=_string_session_field(session_id, "human_role"),
-        system_role=_string_session_field(session_id, "system_role"),
-    )
+    session = get_session_identity_sync(str(MAIN_DB_PATH), session_id)
+    if session is None:
+        return ""
     try:
         principal, _role = resolve_session_principal(session)
     except SessionIdentityError:
         return ""
     return principal
-
-
-def _string_session_field(session_id: str, field: str) -> str | None:
-    value = get_session_field_sync(str(MAIN_DB_PATH), session_id, field)
-    return value if isinstance(value, str) and value else None
 
 
 def _approval_is_human(stamp: ApprovalStamp) -> bool:

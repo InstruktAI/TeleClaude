@@ -12,12 +12,11 @@ from typing import TYPE_CHECKING
 
 import psutil
 
+from teleclaude.config import config
 from teleclaude.constants import MarkerState
+from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.paths import SESSION_AUTH_DIR as _PATHS_SESSION_AUTH_DIR
-from teleclaude.session_identity import (
-    get_principal,
-    inspect_session_identity_marker,
-)
+from teleclaude.session_identity import inspect_session_identity_marker
 
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_SESSION_ENV_KEY = "TELEC_TUI_SESSION"
@@ -30,6 +29,7 @@ _CTIME_ALLOCATION_PREFIX = "ctime:"
 
 if TYPE_CHECKING:
     from teleclaude.core.identity import CliCaller
+    from teleclaude.core.models import Session
 
 
 @dataclass(frozen=True)
@@ -219,11 +219,11 @@ def resolve_cli_caller() -> CliCaller:
     from teleclaude.core.identity import (  # noqa: PLC0415 - keep config-loading identity code out of every CLI start
         NoIdentityCliCaller,
         PersonCliCaller,
-        caller_from_principal,
+        caller_for_session,
         get_identity_resolver,
     )
 
-    marker_state, _session_id = inspect_session_identity_marker()
+    marker_state, session_id = inspect_session_identity_marker()
     if marker_state is MarkerState.ABSENT:
         email = read_current_session_email()
         if not email:
@@ -240,7 +240,37 @@ def resolve_cli_caller() -> CliCaller:
     if marker_state is MarkerState.INVALID:
         return NoIdentityCliCaller()
 
-    return caller_from_principal(get_principal())
+    session = _admitted_session_record(_load_session_record(session_id))
+    if session is None:
+        return NoIdentityCliCaller()
+    return caller_for_session(session)
+
+
+def resolve_cli_system_role() -> str | None:
+    """Resolve the current session's system role from its admitted record."""
+    marker_state, session_id = inspect_session_identity_marker()
+    if marker_state is not MarkerState.VALID:
+        return None
+    session = _admitted_session_record(_load_session_record(session_id))
+    if session is None or session.system_role is None:
+        return None
+    return session.system_role.strip().lower()
+
+
+def _load_session_record(session_id: str | None) -> Session | None:
+    if session_id is None:
+        return None
+    from teleclaude.core import db  # noqa: PLC0415 - deferred: core.db reaches this CLI module during startup
+
+    return db.get_session_identity_sync(str(MAIN_DB_PATH), session_id)
+
+
+def _admitted_session_record(session: Session | None) -> Session | None:
+    if session is None or session.closed_at is not None:
+        return None
+    if session.computer_name != config.computer.name:
+        return None
+    return session
 
 
 def effective_caller_role() -> str | None:
