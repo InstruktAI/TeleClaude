@@ -151,9 +151,9 @@ def extract_last_user_message_with_timestamp(
     """Extract the last authored input and its transcript timestamp."""
     try:
         entries = _get_entries_for_agent(transcript_path, agent_name)
-        found = _last_authored_entry(entries, agent_name) if entries else None
-    except Exception:
+    except OSError:
         return None
+    found = _last_authored_entry(entries, agent_name) if entries else None
     if found is None:
         return None
     index, text = found
@@ -164,9 +164,9 @@ def extract_last_authored_exchange(transcript_path: str, agent_name: AgentName) 
     """Extract the last authored input and the non-empty assistant text written after it."""
     try:
         entries = _get_entries_for_agent(transcript_path, agent_name)
-        found = _last_authored_entry(entries, agent_name) if entries else None
-    except Exception:
+    except OSError:
         return None
+    found = _last_authored_entry(entries, agent_name) if entries else None
     if found is None:
         return None
     index, text = found
