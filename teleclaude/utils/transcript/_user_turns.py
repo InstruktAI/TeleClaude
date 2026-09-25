@@ -88,11 +88,6 @@ _CODEX_AGENTS_INSTRUCTIONS_PATTERN = re.compile(
     r"(?m)^# AGENTS\.md instructions(?: for .*)?[ \t]*(?:\r?\n.*?<INSTRUCTIONS>.*?</INSTRUCTIONS\s*>)?",
     re.DOTALL,
 )
-_TELECLAUDE_COMMAND_LOADER_PATTERN = re.compile(
-    r"\ATELECLAUDE COMMAND: [^\r\n]+\r?\n\r?\n(?:[A-Z][A-Z ]*: [^\r\n]+\r?\n\r?\n)*"
-    r"Read [^\r\n]+ verbatim and follow it exactly as the active instruction set for this session\.\r?\n\r?\n"
-    r"Treat the following as provided inputs to that instruction set:\r?\n[\s\S]*\Z"
-)
 
 
 class ClaudeTurnCommitmentOutcome(StrEnum):
@@ -328,6 +323,12 @@ def _is_platform_control_text(text: str) -> bool:
     return len(segments) == 1 and segments[0].kind is TranscriptEntryKind.PLATFORM_CONTROL
 
 
+def _is_command_loader_text(text: str) -> bool:
+    """Recognize the platform dispatch loader through the one transcript cutter."""
+    segments = cut_transcript_entry(text, is_user_entry=True)
+    return len(segments) == 1 and segments[0].kind is TranscriptEntryKind.COMMAND_LOADER
+
+
 def _codex_structural_recognition(text: str) -> CodexStructuralRecognition:
     """Recognize registered Codex fragments without interpreting their bodies."""
     spans: list[CodexStructuralSpan] = []
@@ -428,7 +429,7 @@ def classify_user_content_blocks(
         recognition = _codex_structural_recognition(content) if agent == AgentName.CODEX.value else None
         is_runtime = (
             _is_platform_control_text(content)
-            or bool(_TELECLAUDE_COMMAND_LOADER_PATTERN.fullmatch(content))
+            or _is_command_loader_text(content)
             or (recognition is not None and _codex_legacy_recognition_is_valid(content, recognition))
         )
         return (
@@ -450,9 +451,7 @@ def classify_user_content_blocks(
         block_type, text = _user_block_text(block)
         recognition = _codex_structural_recognition(text) if agent == AgentName.CODEX.value and text else None
         raw_kind = kinds[index] if kinds is not None else None
-        is_control = text is not None and (
-            _is_platform_control_text(text) or bool(_TELECLAUDE_COMMAND_LOADER_PATTERN.fullmatch(text))
-        )
+        is_control = text is not None and (_is_platform_control_text(text) or _is_command_loader_text(text))
         if is_control:
             origin = UserContentOrigin.RUNTIME
         elif kinds is not None:
@@ -491,7 +490,7 @@ def is_runtime_artifact_text(agent_name: AgentName | str | None, text: str) -> b
     """Recognize complete runtime-owned prompt text without generic XML guessing."""
     if _is_platform_control_text(text):
         return True
-    if _TELECLAUDE_COMMAND_LOADER_PATTERN.fullmatch(text):
+    if _is_command_loader_text(text):
         return True
     agent = _agent_value(agent_name)
     stripped = text.lstrip()

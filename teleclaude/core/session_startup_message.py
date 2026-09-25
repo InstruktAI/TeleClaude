@@ -15,23 +15,17 @@ from teleclaude.core.command_input import (
     ResolvedCommandInput,
     normalize_command_input_token,
 )
+from teleclaude.core.injected_text import render_command_loader
 from teleclaude.paths import COMMANDS_DIR
 
 _COMMAND_PREFIX = "/"
 _COMMAND_FILE_SUFFIX = ".md"
 _COMMANDS_ROOT = COMMANDS_DIR.resolve()
-_COMMAND_MARKER_TEMPLATE = "TELECLAUDE COMMAND: {command}{args}"
-_MARKER_ARGUMENT_PREFIX = " "
 _LOADER_SECTION_SEPARATOR = "\n\n"
 _LINE_SEPARATOR = "\n"
 _COMMAND_ARGUMENT_SEPARATOR = " "
 _QUALIFIED_NAME_SEPARATOR = "/"
 _TRAVERSAL_SEGMENTS = frozenset({".", ".."})
-_LOADER_MESSAGE_TEMPLATE = (
-    "Read {prompt_path} verbatim and follow it exactly as the active instruction set for this session.\n\n"
-    "Treat the following as provided inputs to that instruction set:\n"
-    "{args}"
-)
 _UNKNOWN_COMMAND_MESSAGE_TEMPLATE = "/{command} resolves to no installed command document"
 _AMBIGUOUS_COMMAND_MESSAGE_TEMPLATE = "/{command} matches more than one global domain: {candidates}"
 
@@ -150,15 +144,7 @@ def compose_command_loader(
     resolved = resolve_command_document(command_name)
     if resolved is None:
         raise StartupMessageError(_UNKNOWN_COMMAND_MESSAGE_TEMPLATE.format(command=command_name))
-    marker_args = f"{_MARKER_ARGUMENT_PREFIX}{args}" if args else ""
-    return _LOADER_SECTION_SEPARATOR.join(
-        section
-        for section in (
-            _COMMAND_MARKER_TEMPLATE.format(command=resolved.canonical_name, args=marker_args),
-            _LOADER_MESSAGE_TEMPLATE.format(prompt_path=resolved.document, args=args),
-        )
-        if section
-    )
+    return render_command_loader(resolved.canonical_name, str(resolved.document), args)
 
 
 def resolve_command_input(message: str | None, mode: CommandInputMode) -> CommandInputResult:

@@ -20,7 +20,7 @@ from teleclaude.output_projection.conversation_projector import project_conversa
 from teleclaude.output_projection.models import VisibilityPolicy
 from teleclaude.output_projection.serializers import to_structured_message
 
-from .derivation import DERIVATION_VERSION, derive_human_title, is_exact_loader_envelope
+from .derivation import DERIVATION_VERSION, derive_human_title
 from .store import (
     ALL_MIRROR_ACCESS,
     JsonValue,
@@ -106,17 +106,6 @@ def _generate_session_summary(conversation_text: str) -> str | None:
         return None
 
 
-def _drop_exact_loader_envelope(messages: list[StructuredMessage]) -> list[StructuredMessage]:
-    """Drop only the first projected user block when it is a generated loader envelope."""
-    for index, message in enumerate(messages):
-        if message.role != "user":
-            continue
-        if is_exact_loader_envelope(message.text):
-            return [*messages[:index], *messages[index + 1 :]]
-        break
-    return messages
-
-
 def generate_mirror_sync(
     session_id: str,
     source_identity: str,
@@ -151,7 +140,7 @@ def generate_mirror_sync(
     )
     structured = [to_structured_message(block) for block in projected_blocks]
     is_worker = system_role == ROLE_WORKER
-    conversation_messages = _drop_exact_loader_envelope(_normalize_conversation_messages(structured))
+    conversation_messages = _normalize_conversation_messages(structured)
     existing = get_mirror(source_identity=source_identity, access=ALL_MIRROR_ACCESS, db=db)
 
     if not conversation_messages:

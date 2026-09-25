@@ -60,10 +60,14 @@ one typed kind, from a closed set that is wider than the platform's own headers:
 - **platform control** — a `[TeleClaude …]` envelope;
 - **identity content** — a peer or caller-origin envelope;
 - **reminder** — a reminder envelope;
-- **runtime artifact** — a complete entry emitted by the agent CLI or a
-  platform-generated command loader, recognized from its declared structural
-  vocabulary: never human-authored content and never eligible as a human-input
-  recency signal;
+- **command loader** — the platform-generated dispatch text that makes a
+  command document the session's instruction set, recognized as one complete
+  text from the grammar the registry module owns alongside its renderer. It is
+  never human-authored content, never eligible as a human-input recency
+  signal, and never reaches a human-facing surface;
+- **runtime artifact** — a complete entry emitted by the agent CLI, recognized
+  from that runtime's declared structural vocabulary: never human-authored
+  content and never eligible as a human-input recency signal;
 - **ordinary** — a user entry, or a span within one lying outside every envelope:
   prompt input typed into the session. An assistant entry is the agent's own
   output and is not classified by this taxonomy.
@@ -87,14 +91,14 @@ occupies it, and that reservation is what makes control recognition sound: a
 control test can never match authored content, and content can never be mistaken
 for machine text.
 
-| Header                                                 | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
-| ------------------------------------------------------ | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
-| `[TeleClaude Notification]`                            | legacy notification entries   | control  | paired      | no               | no                         |
-| `[TeleClaude Wake]`                                    | control-delivery idle wake    | control  | auto-closed | no               | no                         |
-| `[TeleClaude Restart Continuation]`                    | historical restart entries    | control  | paired      | no               | no                         |
-| `[TeleClaude Handoff]`                                 | agent handoff continuation     | control  | paired      | no               | no                         |
-| `[TeleClaude Checkpoint]`                              | checkpoint surface            | control  | paired      | no               | no                         |
-| `[Peer (session · author-token · utc-minute)]`         | peer segment header           | identity | paired      | yes              | yes                        |
+| Header                                                                  | Producer                      | Kind     | Closure     | Authored content | Reflects to human surfaces |
+| ----------------------------------------------------------------------- | ----------------------------- | -------- | ----------- | ---------------- | -------------------------- |
+| `[TeleClaude Notification]`                                             | legacy notification entries   | control  | paired      | no               | no                         |
+| `[TeleClaude Wake]`                                                     | control-delivery idle wake    | control  | auto-closed | no               | no                         |
+| `[TeleClaude Restart Continuation]`                                     | historical restart entries    | control  | paired      | no               | no                         |
+| `[TeleClaude Handoff]`                                                  | agent handoff continuation    | control  | paired      | no               | no                         |
+| `[TeleClaude Checkpoint]`                                               | checkpoint surface            | control  | paired      | no               | no                         |
+| `[Peer (session · author-token · utc-minute)]`                          | peer segment header           | identity | paired      | yes              | yes                        |
 | `[Orchestrator (session) on computer · utc-minute · occurrence-key]`    | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[Integrator (session) on computer · utc-minute · occurrence-key]`      | caller-origin identity header | identity | paired      | yes              | yes                        |
 | `[System (session) on computer · utc-minute · occurrence-key]`          | caller-origin identity header | identity | paired      | yes              | yes                        |

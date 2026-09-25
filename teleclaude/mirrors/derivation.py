@@ -1,10 +1,10 @@
-"""Loader-envelope stripping and first-message title derivation for mirrors.
+"""First-message title derivation for mirrors.
 
 Classification, command, slug, and title come from the session record
 (``teleclaude.mirrors.session_context.get_session_context``); this module owns what the
-record cannot supply: recognizing the generated loader-envelope block so it
-never appears as a conversation turn, and deriving a first-message title for
-a transcript that carries no session record at all.
+record cannot supply: a first-message title for a transcript that carries no
+session record at all. The dispatch loader never reaches a mirror as a
+conversation turn: canonical projection classifies it as platform text.
 
 Bumping :data:`DERIVATION_VERSION` forces a fleet-wide re-derivation through
 the reconciliation loop.
@@ -12,7 +12,6 @@ the reconciliation loop.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 
 from teleclaude.utils.transcript import StructuredMessage
@@ -23,16 +22,6 @@ from teleclaude.utils.transcript import StructuredMessage
 DERIVATION_VERSION = 3
 
 _TITLE_MAX_CHARS = 120
-
-_LOADER_ENVELOPE_RE = re.compile(
-    r"\ARead\s+\S*?commands/[\w-]+\.md\s+verbatim and follow it exactly as the active instruction set for this session\.\s*"
-    r"Treat the following as provided inputs to that instruction set:\s*\n+\s*\S+(?:\s*\n+ADDITIONAL CONTEXT:\s*\n[\s\S]*)?\s*\Z"
-)
-
-
-def is_exact_loader_envelope(text: str) -> bool:
-    """Return whether one projected user block is the generated loader envelope."""
-    return _LOADER_ENVELOPE_RE.fullmatch(text) is not None
 
 
 def _truncate_title(text: str) -> str:

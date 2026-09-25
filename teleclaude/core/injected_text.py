@@ -16,6 +16,7 @@ class TranscriptEntryKind(StrEnum):
     PLATFORM_CONTROL = "platform_control"
     IDENTITY_CONTENT = "identity_content"
     REMINDER = "reminder"
+    COMMAND_LOADER = "command_loader"
     ORDINARY = "ordinary"
 
 
@@ -331,6 +332,28 @@ class TranscriptCutSegment:
 
 _SECTION_SEPARATOR = "\n\n"
 _EMPTY_TEXT = ""
+_COMMAND_LOADER_MARKER_PREFIX = "TELECLAUDE COMMAND: "
+_COMMAND_LOADER_ARGUMENT_PREFIX = " "
+_COMMAND_LOADER_READ_PREFIX = "Read "
+_COMMAND_LOADER_READ_SUFFIX = " verbatim and follow it exactly as the active instruction set for this session."
+_COMMAND_LOADER_INPUTS_HEADING = "Treat the following as provided inputs to that instruction set:"
+_COMMAND_LOADER_INPUTS_SEPARATOR = "\n"
+_HISTORICAL_DISPATCH_DOOR_PREFIX = "DISPATCH DOOR: "
+_COMMAND_LOADER_RE = re.compile(
+    r"\A"
+    + re.escape(_COMMAND_LOADER_MARKER_PREFIX)
+    + r"[^\r\n]+\r?\n\r?\n"
+    # Transcripts written before the dispatch door retired carry its line.
+    + r"(?:"
+    + re.escape(_HISTORICAL_DISPATCH_DOOR_PREFIX)
+    + r"[^\r\n]+\r?\n\r?\n)?"
+    + re.escape(_COMMAND_LOADER_READ_PREFIX)
+    + r"[^\r\n]+"
+    + re.escape(_COMMAND_LOADER_READ_SUFFIX)
+    + r"\r?\n\r?\n"
+    + re.escape(_COMMAND_LOADER_INPUTS_HEADING)
+    + r"\r?\n[\s\S]*\Z"
+)
 _CHECKPOINT_BODY = (
     "Continue or validate your work if needed. Perform checkpoint housekeeping silently, then send a short "
     "user-relevant debrief without mentioning checkpoint chores. If everything that is expected of you is done, do not respond."
@@ -515,10 +538,37 @@ def scan_injected_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
     return candidates
 
 
+def render_command_loader(command: str, document: str, args: str) -> str:
+    """Render the dispatch loader that makes a command document a session's instruction set.
+
+    The loader is platform-authored text addressed to the agent: a person never
+    wrote it, yet the agent's turn answers it. Its grammar is owned here so the
+    renderer and every recognizer read one declaration.
+    """
+    marker_args = f"{_COMMAND_LOADER_ARGUMENT_PREFIX}{args}" if args else _EMPTY_TEXT
+    marker = f"{_COMMAND_LOADER_MARKER_PREFIX}{command}{marker_args}"
+    instruction = (
+        f"{_COMMAND_LOADER_READ_PREFIX}{document}{_COMMAND_LOADER_READ_SUFFIX}{_SECTION_SEPARATOR}"
+        f"{_COMMAND_LOADER_INPUTS_HEADING}{_COMMAND_LOADER_INPUTS_SEPARATOR}{args}"
+    )
+    return _SECTION_SEPARATOR.join((marker, instruction))
+
+
+def _is_command_loader(text: str) -> bool:
+    """Recognize a complete dispatch loader occupying the whole text."""
+    return _COMMAND_LOADER_RE.fullmatch(text) is not None
+
+
 def cut_transcript_entry(text: str, *, is_user_entry: bool) -> tuple[TranscriptCutSegment, ...]:
-    """Cut an entry into ordered opaque envelopes and ordinary user-text gaps."""
+    """Cut an entry into ordered opaque envelopes and ordinary user-text gaps.
+
+    A complete dispatch loader is one opaque segment: its provided inputs are
+    part of the platform-composed text, never envelopes or prompt input.
+    """
     if not is_user_entry:
         return (TranscriptCutSegment(None, (0, len(text)), None, text),)
+    if _is_command_loader(text):
+        return (TranscriptCutSegment(TranscriptEntryKind.COMMAND_LOADER, (0, len(text)), None, text),)
     segments: list[TranscriptCutSegment] = []
     cursor = 0
     for envelope in scan_injected_envelopes(text):
@@ -555,7 +605,7 @@ def cut_transcript_entry(text: str, *, is_user_entry: bool) -> tuple[TranscriptC
 
 
 UNSEEN_ENTRY_KINDS: frozenset[TranscriptEntryKind] = frozenset(
-    {TranscriptEntryKind.PLATFORM_CONTROL, TranscriptEntryKind.REMINDER}
+    {TranscriptEntryKind.PLATFORM_CONTROL, TranscriptEntryKind.REMINDER, TranscriptEntryKind.COMMAND_LOADER}
 )
 """Kinds that carry nothing a person sent: platform text addressed to the agent's own loop."""
 
@@ -716,6 +766,8 @@ def classify_transcript_text(
             if accepted_kind is TranscriptEntryKind.PLATFORM_CONTROL
             else None,
         )
+    if _is_command_loader(text):
+        return TranscriptTextClassification(TranscriptEntryKind.COMMAND_LOADER)
     label = _platform_control_label(text)
     if label is not None:
         return TranscriptTextClassification(TranscriptEntryKind.PLATFORM_CONTROL, label)
@@ -746,6 +798,7 @@ __all__ = [
     "platform_control_envelope",
     "platform_control_text",
     "reminder_envelope",
+    "render_command_loader",
     "scan_injected_envelopes",
     "visible_input_preview",
     "visible_input_update",
