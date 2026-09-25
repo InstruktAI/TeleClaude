@@ -253,7 +253,7 @@ And only a current changes_requested advances to review_changes_requested and re
 Given a build reviewer writes `review-findings` and stamps approve or changes_requested against worktree HEAD H and report digest R
 When the work orchestrator re-enters `telec todo work my-feature`
 Then the machine consumes the verdict only when the current `review-findings` digest is R and the todo's own change is unchanged since H
-And the todo's own change is unchanged since H when H is an ancestor of the current worktree HEAD and every commit the todo branch gained on its own line since H is a merge of origin/main whose content is exactly the automatic merge of its parents
+And the todo's own change is unchanged since H when H is an ancestor of the current worktree HEAD and every commit the todo branch gained on its own line since H is a conflict-free automatic merge of origin/main whose content is exactly the automatic merge of its parents
 And an absent binding, missing report, later report rewrite, or any other commit the todo branch gained since H leaves the build review pending for re-review
 And when the machine cannot determine whether the todo's own change is unchanged since H, it reports that to the orchestrator and neither consumes nor revokes the verdict
 And only a current approve advances to review_approved
@@ -355,10 +355,10 @@ And the dispatch request handed to agent runtime carries that same value
 #### UC-WSM15: A successful origin/main merge preserves all work in the todo worktree
 
 ```gherkin
-Given a work orchestrator agent drives a Todo whose worktree carries any of uncommitted builder edits, build commits, a build-complete claim, a stamped build-review verdict, a live review, admitted review rounds, or a finalize-ready claim
-When origin/main advances without conflicting with that worktree and the work orchestrator agent re-enters "telec todo work my-feature"
+Given a work orchestrator agent or finalizer agent operates a Todo worktree carrying any of uncommitted builder edits, build commits, a build-complete claim, a stamped build-review verdict, a live review, admitted review rounds, or a finalize-ready claim
+When origin/main is merged into that worktree without conflicts during work entry or finalization
 Then every uncommitted edit, build commit, build-complete fact, review verdict, admitted review-round count, and finalize-ready claim remains in force
-And the orchestrator agent receives no reviewer dispatch, no follow-up for its live reviewer agent, no attribution of a merge commit to its builder agent, and no request for its finalizer agent to push or re-stamp
+And the work orchestrator agent receives no reviewer dispatch, no follow-up for its live reviewer agent, no attribution of a merge commit to its builder agent, and no request for its finalizer agent to push or re-stamp solely because of that merge
 ```
 
 #### UC-WSM16:
