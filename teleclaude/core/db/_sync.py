@@ -21,11 +21,15 @@ from teleclaude.core.agent_availability import (
     is_launchable,
 )
 from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.core.models import Session as SessionRecord
 
 from .. import db_models
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
+
+_NO_SUCH_TABLE_ERROR = "no such table"
+_EMPTY_SESSION_TEXT = ""
 
 
 def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | None:
@@ -60,7 +64,7 @@ def _fetch_session_id_sync(db_path: str, field: str, value: object) -> str | Non
             try:
                 row = session.exec(stmt).first()
             except OperationalError as exc:
-                if "no such table" in str(exc).lower():
+                if _NO_SUCH_TABLE_ERROR in str(exc).lower():
                     return None
                 raise
             return str(row) if row else None
@@ -100,9 +104,43 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
             try:
                 return session.exec(stmt).first()
             except OperationalError as exc:
-                if "no such table" in str(exc).lower():
+                if _NO_SUCH_TABLE_ERROR in str(exc).lower():
                     return None
                 raise
+    finally:
+        engine.dispose()
+
+
+def get_session_identity_sync(db_path: str, session_id: str) -> SessionRecord | None:
+    """Load one session's identity-bearing fields from the session record."""
+    engine = create_sync_db_engine(db_path)
+    try:
+        with SqlSession(engine) as session:
+            stmt = select(
+                db_models.Session.session_id,
+                db_models.Session.computer_name,
+                db_models.Session.principal,
+                db_models.Session.human_email,
+                db_models.Session.human_role,
+                db_models.Session.system_role,
+                db_models.Session.working_slug,
+                db_models.Session.closed_at,
+            ).where(db_models.Session.session_id == session_id)
+            row = session.exec(stmt).first()
+            if row is None:
+                return None
+            return SessionRecord(
+                session_id=str(row[0]),
+                computer_name=str(row[1]),
+                tmux_session_name=_EMPTY_SESSION_TEXT,
+                title=_EMPTY_SESSION_TEXT,
+                principal=row[2],
+                human_email=row[3],
+                human_role=row[4],
+                system_role=row[5],
+                working_slug=row[6],
+                closed_at=row[7],
+            )
     finally:
         engine.dispose()
 

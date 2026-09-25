@@ -14,7 +14,8 @@ from teleclaude.config.loader import load_global_config, load_person_config, nor
 from teleclaude.config.schema import PersonChipColor, PersonEntry
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HUMAN_ROLES
 from teleclaude.core.agents import AgentName
-from teleclaude.core.models import MessageAuthorKind
+from teleclaude.core.db import SessionIdentityError, resolve_session_principal
+from teleclaude.core.models import MessageAuthorKind, Session
 from teleclaude.paths import GLOBAL_CONFIG_PATH, PEOPLE_DIR, ConfigFileName
 
 if TYPE_CHECKING:
@@ -586,6 +587,15 @@ def caller_from_principal(principal: str | None) -> CliCaller:
     if principal.startswith(_SYSTEM_PRINCIPAL_PREFIX) and principal.removeprefix(_SYSTEM_PRINCIPAL_PREFIX):
         return SystemCliCaller()
     return NoIdentityCliCaller()
+
+
+def caller_for_session(session: Session) -> CliCaller:
+    """Resolve a session record into its current local CLI caller."""
+    try:
+        principal, _role = resolve_session_principal(session)
+    except SessionIdentityError:
+        return NoIdentityCliCaller()
+    return caller_from_principal(principal)
 
 
 def human_principal_for_email(email: str) -> str:

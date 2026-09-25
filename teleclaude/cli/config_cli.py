@@ -32,7 +32,7 @@ from teleclaude.cli.config_handlers import (
     set_invite_token,
     validate_all,
 )
-from teleclaude.cli.session_auth import effective_caller_role, read_current_session_email
+from teleclaude.cli.session_auth import effective_caller_role, read_current_session_email, resolve_cli_system_role
 from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.auth import is_command_allowed
 from teleclaude.cli.telec.handlers._arg_parsing import ParsedArgs, parse_command_args
@@ -65,7 +65,6 @@ from teleclaude.invite import (
     send_invite_email,
 )
 from teleclaude.paths import PEOPLE_DIR, PROJECT_ENV_PATH
-from teleclaude.session_identity import get_system_role
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 logger = get_logger(__name__)
@@ -121,7 +120,7 @@ def _check_customer_guard() -> None:
 
 def _require_roster_admin(command_path: str) -> None:
     """Require the declared agent band or an effective human administrator role."""
-    system_role = get_system_role()
+    system_role = resolve_cli_system_role()
     if system_role is not None:
         allowed = is_command_allowed(command_path, system_role, None)
     else:

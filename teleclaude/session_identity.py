@@ -98,11 +98,6 @@ def get_human_role() -> str | None:
     return _read_field("human_role")
 
 
-def get_principal() -> str | None:
-    """Principal carried by this session's identity document."""
-    return _read_field(_PRINCIPAL_FIELD)
-
-
 def _atomic_write_identity(path: Path, data: dict[str, str | None]) -> None:
     """Atomic write of identity JSON to the given path."""
     tmp_path = path.with_suffix(".tmp")
