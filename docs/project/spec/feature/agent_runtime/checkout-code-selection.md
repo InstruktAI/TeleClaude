@@ -22,7 +22,7 @@ A checkout's own `bin/telec` runs that checkout's code. That is how an agent exe
 its own change by hand. From a slug worktree the wrapper runs only against a scratch
 home, one that resolves somewhere other than the live home; aimed at the live home it
 is refused before any of the worktree's code runs. A scratch home that holds no machine
-configuration starts from a copy of the live one, because every CLI start reads it.
+configuration starts from a copy of the live one.
 
 Grading stays self-referential: `telec code lint` and `telec code commit` called from a
 worktree hand their guardrail lane to that worktree's code, run against a fresh scratch

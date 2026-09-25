@@ -49,8 +49,7 @@ design owns only the path that connects them.
    the scratch-home form of the call. The home is resolved once — every spelling,
    symlink and `..` followed — and the interpreter receives exactly the location that
    was checked. A scratch home that holds no machine configuration receives a copy of
-   the live one before the worktree's code starts, because every CLI start reads it;
-   nothing else is copied. The integration worktree is not a slug worktree.
+   the live one before the worktree's code starts; nothing else is copied. The integration worktree is not a slug worktree.
 3. **`telec code` grades a change with the change's own code.** Lint lanes, guardrail
    allowlists, schemas and the rendered command surface that judge a worktree's change
    come from that worktree, while `telec code` itself runs installed code. The
