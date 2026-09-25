@@ -125,7 +125,7 @@ def _stage_catalog(contributions: list[GlobalSkillContribution]) -> Path:
 def compose_global_skill_catalog(
     mother_root: Path,
     render_catalog: CatalogRenderer,
-) -> None:
+) -> list[Path]:
     """Materialize global skills, render the Mother catalog, and publish it as one unit."""
     catalog_master = global_skill_source_root(mother_root) / _CATALOG_MASTER_FILENAME
     if not catalog_master.is_file():
@@ -155,3 +155,4 @@ def compose_global_skill_catalog(
         raise
     _remove_path(previous)
     print(_COMPOSED_MESSAGE.format(target=GLOBAL_SKILLS_DIR, count=len(contributions)))
+    return [source_catalog, source_claude]

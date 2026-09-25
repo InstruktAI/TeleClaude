@@ -7,11 +7,13 @@ import re
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from scripts.distribute import distribute_committed
 from teleclaude.capabilities import Capabilities, resolve_capabilities
-from teleclaude.docs_index import build_all_indexes
+from teleclaude.docs_index import build_all_indexes, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root, publisher_resolution
 from teleclaude.resource_validation import (
@@ -33,9 +35,9 @@ _COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 _SNAPSHOT_DIRECTORY_PREFIX = "teleclaude-publication-"
 _SNAPSHOT_SOURCE_DIRECTORY = "source"
 _INVALID_COMMIT_ID = "Publication rejected an invalid recorded commit id."
-_LOCAL_INDEX_SKIPPED = "Local index update skipped: recorded tip is not canonical HEAD."
-_LOCAL_INDEX_RESTORED = "Local indexes restored: canonical HEAD advanced during publication."
-_LOCAL_INDEX_WRITTEN = "Canonical local indexes updated from the recorded commit."
+_CANONICAL_OUTPUTS_SKIPPED = "Canonical checkout outputs skipped: recorded tip is not canonical HEAD."
+_CANONICAL_OUTPUTS_RESTORED = "Canonical checkout outputs restored: canonical HEAD advanced during publication."
+_CANONICAL_OUTPUTS_WRITTEN = "Canonical checkout outputs updated from the recorded commit."
 _PUBLICATION_NEXT_SUFFIX = ".publication-next"
 _PUBLICATION_RESTORE_SUFFIX = ".publication-restore"
 
@@ -62,42 +64,70 @@ def publish_recorded_commit(project_root: Path, after_sha: str) -> bool:
         return False
     try:
         with docs_lease(DocsLockOperation.SYNCHRONIZATION):
-            with tempfile.TemporaryDirectory(prefix=_SNAPSHOT_DIRECTORY_PREFIX) as temp_dir:
-                snapshot_root = Path(temp_dir) / _SNAPSHOT_SOURCE_DIRECTORY
-                subprocess.run(
-                    [_GIT_EXECUTABLE, *_GIT_WORKTREE_ADD_ARGS, str(snapshot_root), after_sha],
-                    cwd=canonical_root,
-                    check=True,
-                    capture_output=True,
-                    text=True,
+            with _recorded_snapshot(canonical_root, after_sha) as snapshot_root:
+                capabilities = resolve_capabilities(snapshot_root)
+                if not capabilities.is_target:
+                    return True
+                findings = _collect_source_findings(snapshot_root, capabilities)
+                if findings:
+                    return False
+                written = build_all_indexes(snapshot_root) if capabilities.docs else []
+                index_outputs = [
+                    (
+                        source,
+                        reroot_index_document(source.read_text(encoding="utf-8"), snapshot_root, canonical_root).encode(
+                            "utf-8"
+                        )
+                        if source.is_file()
+                        else None,
+                    )
+                    for source in written
+                ]
+                _install_canonical_files(snapshot_root, canonical_root, index_outputs, after_sha)
+                distribution_outputs = distribute_committed(
+                    snapshot_root,
+                    canonical_root,
+                    agents_enabled=capabilities.agents,
+                    docs_enabled=capabilities.docs,
                 )
-                try:
-                    capabilities = resolve_capabilities(snapshot_root)
-                    if not capabilities.is_target:
-                        return True
-                    findings = _collect_source_findings(snapshot_root, capabilities)
-                    if findings:
-                        return False
-                    written = build_all_indexes(snapshot_root) if capabilities.docs else []
-                    _install_canonical_indexes(snapshot_root, canonical_root, written, after_sha)
-                    distribute_committed(
+                if distribution_outputs:
+                    _install_canonical_files(
                         snapshot_root,
                         canonical_root,
-                        agents_enabled=capabilities.agents,
-                        docs_enabled=capabilities.docs,
+                        [(source, source.read_bytes()) for source in distribution_outputs],
+                        after_sha,
                     )
-                    return True
-                finally:
-                    subprocess.run(
-                        [_GIT_EXECUTABLE, *_GIT_WORKTREE_REMOVE_ARGS, str(snapshot_root)],
-                        cwd=canonical_root,
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                    )
+                return True
     except (DocsLeaseTimeoutError, subprocess.CalledProcessError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return False
+
+
+@contextmanager
+def _recorded_snapshot(canonical_root: Path, after_sha: str) -> Iterator[Path]:
+    """Materialize a recorded source tree with access to the checkout's Python environment."""
+    with tempfile.TemporaryDirectory(prefix=_SNAPSHOT_DIRECTORY_PREFIX) as temp_dir:
+        snapshot_root = Path(temp_dir) / _SNAPSHOT_SOURCE_DIRECTORY
+        subprocess.run(
+            [_GIT_EXECUTABLE, *_GIT_WORKTREE_ADD_ARGS, str(snapshot_root), after_sha],
+            cwd=canonical_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        try:
+            canonical_venv = canonical_root / ".venv"
+            if canonical_venv.exists():
+                (snapshot_root / ".venv").symlink_to(canonical_venv, target_is_directory=True)
+            yield snapshot_root
+        finally:
+            subprocess.run(
+                [_GIT_EXECUTABLE, *_GIT_WORKTREE_REMOVE_ARGS, str(snapshot_root)],
+                cwd=canonical_root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
 
 
 def _canonical_head(canonical_root: Path) -> str | None:
@@ -112,19 +142,23 @@ def _canonical_head(canonical_root: Path) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _install_canonical_indexes(snapshot_root: Path, canonical_root: Path, written: list[Path], after_sha: str) -> None:
-    """Atomically refresh checkout-local derived indexes only for its current tip."""
+def _install_canonical_files(
+    snapshot_root: Path,
+    canonical_root: Path,
+    outputs: list[tuple[Path, bytes | None]],
+    after_sha: str,
+) -> None:
+    """Atomically install snapshot outputs only while their recorded tip is canonical."""
     if _canonical_head(canonical_root) != after_sha:
-        print(_LOCAL_INDEX_SKIPPED)
+        print(_CANONICAL_OUTPUTS_SKIPPED)
         return
     previous: dict[Path, bytes | None] = {}
     staged: list[tuple[Path, Path | None]] = []
-    for source in written:
+    for source, payload in outputs:
         destination = canonical_root / source.relative_to(snapshot_root)
         previous_payload = destination.read_bytes() if destination.is_file() else None
         previous[destination] = previous_payload
-        if source.is_file():
-            payload = source.read_bytes()
+        if payload is not None:
             if payload == previous_payload:
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -139,7 +173,7 @@ def _install_canonical_indexes(snapshot_root: Path, canonical_root: Path, writte
         else:
             os.replace(temporary, destination)
     if _canonical_head(canonical_root) == after_sha:
-        print(_LOCAL_INDEX_WRITTEN)
+        print(_CANONICAL_OUTPUTS_WRITTEN)
         return
     for destination, payload in previous.items():
         if payload is None:
@@ -148,7 +182,7 @@ def _install_canonical_indexes(snapshot_root: Path, canonical_root: Path, writte
         temporary = destination.with_name(destination.name + _PUBLICATION_RESTORE_SUFFIX)
         temporary.write_bytes(payload)
         os.replace(temporary, destination)
-    print(_LOCAL_INDEX_RESTORED)
+    print(_CANONICAL_OUTPUTS_RESTORED)
 
 
 def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[str]]]:

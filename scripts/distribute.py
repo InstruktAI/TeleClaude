@@ -144,11 +144,11 @@ def distribute_committed(
     *,
     agents_enabled: bool,
     docs_enabled: bool,
-) -> None:
+) -> list[Path]:
     """Build and deploy artifacts from a caller-materialized committed snapshot."""
     original_directory = Path.cwd()
     try:
-        main(
+        return main(
             DistributionRequest(
                 project_root=project_root,
                 deploy_root=canonical_root,
@@ -1410,7 +1410,7 @@ def _write_project_agents(
     project_root: Path,
     warn_only: bool,
     observation: DistributionObservation | None,
-) -> None:
+) -> list[Path]:
     """Generate AGENTS.md and CLAUDE.md next to a project AGENTS.master.md."""
     with publisher_resolution(project_root):
         raw = master_path.read_text(encoding="utf-8")
@@ -1439,6 +1439,7 @@ def _write_project_agents(
     agents_path.write_text(_strip_lock_sentinels(inflated), encoding="utf-8")
     claude_path = master_path.parent / "CLAUDE.md"
     claude_path.write_text("@./AGENTS.md\n", encoding="utf-8")
+    return [agents_path, claude_path]
 
 
 def _render_global_skill_catalog(
@@ -1511,7 +1512,7 @@ def _global_command_reach_findings(project_root_path: Path) -> list[str]:
     return findings
 
 
-def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
+def main(request: DistributionRequest | None = None) -> list[Path]:  # noqa: C901
     """Build agent artifacts for supported CLIs; deployment requires an internal request."""
     if request is None:
         parser = argparse.ArgumentParser(description="Validate and build agent outputs into dist/.")
@@ -1555,6 +1556,7 @@ def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
     deploy_root = os.path.abspath(os.path.expanduser(args.deploy_root)) if request is not None else project_root
     is_mother_project = git_common_root(Path(project_root)).resolve() == Path(teleclaude_root).resolve()
     project_root_path = Path(project_root)
+    checkout_local_outputs: list[Path] = []
     agents_enabled, docs_enabled = _resolve_pipeline_capabilities(
         deploy=deploy,
         agents_enabled=args.agents_enabled,
@@ -1594,11 +1596,13 @@ def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
 
     if agents_enabled and deploy:
         for master_path in _iter_project_agent_masters(project_root_path):
-            _write_project_agents(
-                master_path,
-                project_root=project_root_path,
-                warn_only=args.warn_only,
-                observation=observation,
+            checkout_local_outputs.extend(
+                _write_project_agents(
+                    master_path,
+                    project_root=project_root_path,
+                    warn_only=args.warn_only,
+                    observation=observation,
+                )
             )
 
     validate_only = args.validate_only
@@ -1779,7 +1783,7 @@ def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
         if not args.warn_only:
             raise SystemExit(1)
     if validate_only:
-        return
+        return checkout_local_outputs
 
     dist_dir = "dist"
     if agents_enabled:
@@ -1912,6 +1916,7 @@ def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
                     with open(repo_override_path, "w", encoding="utf-8") as f:
                         f.write(combined_agents_content)
                     markdown_outputs.append(repo_override_path)
+                    checkout_local_outputs.append(Path(repo_override_path))
 
             for spec in artifact_specs:
                 items = artifact_items[spec.name]
@@ -2069,13 +2074,15 @@ def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
             )
 
     if deploy and is_mother_project:
-        compose_global_skill_catalog(
-            project_root_path,
-            partial(
-                _render_global_skill_catalog,
-                mother_root=project_root_path,
-                warn_only=args.warn_only,
-                observation=observation,
+        checkout_local_outputs.extend(
+            compose_global_skill_catalog(
+                project_root_path,
+                partial(
+                    _render_global_skill_catalog,
+                    mother_root=project_root_path,
+                    warn_only=args.warn_only,
+                    observation=observation,
+                ),
             ),
         )
         if agents_enabled:
@@ -2132,6 +2139,8 @@ def main(request: DistributionRequest | None = None) -> None:  # noqa: C901
                 is_global_phase=False,
                 scope_key=project_root,
             )
+
+    return checkout_local_outputs
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final, NotRequired, TypedDict
+from typing import Final, NotRequired, TypedDict, cast
 
 import frontmatter
 import yaml
@@ -36,16 +36,56 @@ from teleclaude.snippet_validation import (
     load_domains,
 )
 
-__all__ = ["load_domains"]
+__all__ = ["load_domains", "reroot_index_document"]
 
 logger = get_logger(__name__)
 
 _EMPTY_PROJECT_CONFIG_DOCUMENT: Final[Mapping[str, object]] = {"business": {}}
+_INDEX_PROJECT_ROOT_FIELD: Final = "project_root"
+_INDEX_SNIPPETS_ROOT_FIELD: Final = "snippets_root"
+_INVALID_INDEX_DOCUMENT_MESSAGE: Final = (
+    "Index document must contain a string snippets_root field and an optional string project_root field."
+)
 
 
 def _teleclaude_root() -> str:
     """Return teleclaude root path with tilde (portable)."""
     return "~/.teleclaude"
+
+
+def _display_home_path(path: Path) -> str:
+    """Render a path below the current user's home with a portable tilde prefix."""
+    expanded_path = path.expanduser()
+    try:
+        relative_path = expanded_path.relative_to(Path.home())
+    except ValueError:
+        return str(expanded_path)
+    return f"~/{relative_path.as_posix()}" if relative_path.parts else "~"
+
+
+def reroot_index_document(index_document: str, source_root: Path, target_root: Path) -> str:
+    """Re-express index roots beneath source_root at target_root, preserving unrelated metadata."""
+    parsed: object = yaml.safe_load(index_document)
+    if (
+        not isinstance(parsed, dict)
+        or not isinstance(parsed.get(_INDEX_SNIPPETS_ROOT_FIELD), str)
+        or (_INDEX_PROJECT_ROOT_FIELD in parsed and not isinstance(parsed.get(_INDEX_PROJECT_ROOT_FIELD), str))
+    ):
+        raise ValueError(_INVALID_INDEX_DOCUMENT_MESSAGE)
+    payload = cast(IndexDocument, parsed)
+    source_path = source_root.expanduser().resolve()
+    target_path = target_root.expanduser().resolve()
+    for key in (_INDEX_PROJECT_ROOT_FIELD, _INDEX_SNIPPETS_ROOT_FIELD):
+        value = payload.get(key)
+        if not isinstance(value, str):
+            continue
+        index_path = Path(value).expanduser().resolve()
+        try:
+            relative_path = index_path.relative_to(source_path)
+        except ValueError:
+            continue
+        payload[key] = _display_home_path(target_path / relative_path)
+    return str(yaml.safe_dump(payload, sort_keys=False, allow_unicode=False))
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +131,14 @@ class ThirdPartyIndexPayload(TypedDict):
 
     snippets_root: str
     snippets: list[ThirdPartyEntry]
+
+
+class IndexDocument(TypedDict):
+    """Serialized project or third-party index with shared root fields."""
+
+    project_root: NotRequired[str]
+    snippets_root: str
+    snippets: list[SnippetEntry] | list[ThirdPartyEntry]
 
 
 def _copy_delivered_by_metadata(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:
@@ -178,10 +226,7 @@ def write_third_party_index_yaml(third_party_root: Path, scope: str) -> Path | N
         return None
 
     # Build payload
-    home = str(Path.home())
-    root_str = str(third_party_root)
-    if root_str.startswith(home):
-        root_str = root_str.replace(home, "~", 1)
+    root_str = _display_home_path(third_party_root)
 
     payload: ThirdPartyIndexPayload = {
         "snippets_root": root_str,
@@ -445,12 +490,8 @@ def build_index_payload(project_root: Path, snippets_root: Path) -> IndexPayload
             if p.startswith("docs/global/"):
                 snippet["path"] = p.replace("docs/global/", "docs/", 1)
     else:
-        home = str(Path.home())
-        project_root_str = str(project_root)
-        root = project_root_str.replace(home, "~", 1) if project_root_str.startswith(home) else project_root_str
-        snippets_root_str = str(snippets_root)
-        if snippets_root_str.startswith(home):
-            snippets_root_str = snippets_root_str.replace(home, "~", 1)
+        root = _display_home_path(project_root)
+        snippets_root_str = _display_home_path(snippets_root)
 
     return {"project_root": root, "snippets_root": snippets_root_str, "snippets": snippets}
 
