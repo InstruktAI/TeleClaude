@@ -6,6 +6,7 @@ turn-local file attribution, and TurnTimeline for transcript-based signals.
 All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -18,8 +19,10 @@ from teleclaude.checkpoint_model import (
     triggered_action_ids,
 )
 from teleclaude.constants import (
+    LOG_CHECK_ACTION_ID,
     CheckpointAction,
     CheckpointModel,
+    JudgmentOwner,
 )
 from teleclaude.core.agents import AgentName
 from teleclaude.core.injected_text import checkpoint_text
@@ -33,7 +36,9 @@ from teleclaude.hooks.checkpoint._evidence import (
     _has_commit_evidence_after_last_mutation,
     _has_evidence,
     _has_evidence_after_index,
+    _has_post_ready_log_check_evidence,
     _has_review_dispatch_evidence,
+    _integrator_judgment_log_window,
     _iter_shell_command_records,
     _last_scope_mutation_index,
     _segment_matches_evidence,
@@ -66,10 +71,11 @@ from teleclaude.hooks.checkpoint._models import (
 )
 from teleclaude.hooks.checkpoint_flags import (
     consume_authored_main_commit_flag,
-    consume_integrator_maintenance_marker,
-    discharge_integrator_maintenance_action,
     has_authored_main_commit_flag,
-    read_integrator_maintenance_marker,
+)
+from teleclaude.hooks.integrator_judgment_marker import (
+    discharge_integrator_judgment,
+    read_integrator_judgment_marker,
 )
 from teleclaude.project_root import declaration_root
 from teleclaude.session_scoping import ScopedPathsResult, WorkspaceKind, live_declarations, resolve_workspace
@@ -79,12 +85,15 @@ logger = get_logger(__name__)
 
 _INTEGRATOR_MAINTENANCE_ACTION_LINE = "{index}. {action}"
 _INTEGRATOR_MAINTENANCE_ACTIONS_LABEL = "Outstanding actions: {actions}"
-_INTEGRATOR_MAINTENANCE_LOG_WINDOW = "2m"
 _INTEGRATOR_LOG_JUDGMENT_TITLE = "Integrator post-merge log judgment"
 _INTEGRATOR_LOG_JUDGMENT_REQUIRED_ACTIONS = (
     "Required actions (log judgment after delivery — complete before next integration):"
 )
 _CHECKPOINT_BUILD_FAILED_MESSAGE = "Checkpoint content build failed; no checkpoint emitted"
+_INTEGRATOR_ROLE = "integrator"
+_INTEGRATOR_JUDGMENT_NOT_READY_EVENT = "integrator_judgment_not_ready"
+_INTEGRATOR_JUDGMENT_FORCE_FIRE_EVENT = "Checkpoint payload computed (integrator maintenance force-fire)"
+_INTEGRATOR_LOG_JUDGMENT_MODE = "integrator_log_judgment"
 
 __all__ = [
     "CheckpointContext",
@@ -208,6 +217,7 @@ def run_heuristics(
     )
     decisions: list[CheckpointActionDecision] = []
     branch_eligible_set = set(branch_eligible_ids)
+    integrator_owned_ids: set[str] = set()
     for owed_action in owed_actions:
         action_id = owed_action.action_id
         action = actions_by_id[action_id]
@@ -217,6 +227,16 @@ def run_heuristics(
                     action_id=action_id,
                     outcome=CheckpointActionOutcome.DEFERRED,
                     reason=CheckpointActionReason.OFF_MAIN_INELIGIBLE,
+                )
+            )
+            continue
+        if action.judged_by is JudgmentOwner.INTEGRATOR and context.system_role != _INTEGRATOR_ROLE:
+            integrator_owned_ids.add(action_id)
+            decisions.append(
+                CheckpointActionDecision(
+                    action_id=action_id,
+                    outcome=CheckpointActionOutcome.DEFERRED,
+                    reason=CheckpointActionReason.INTEGRATOR_OWNED,
                 )
             )
             continue
@@ -255,7 +275,7 @@ def run_heuristics(
         ],
     )
 
-    result.categories = list(branch_eligible_ids)
+    result.categories = [action_id for action_id in branch_eligible_ids if action_id not in integrator_owned_ids]
 
     # 3. Blast-radius observation
     result.observations.extend(_check_blast_radius(git_files))
@@ -420,6 +440,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 def _build_integrator_log_judgment_checkpoint(
     action_ids: list[str],
     model: CheckpointModel,
+    window: str,
 ) -> str | None:
     """Build a checkpoint message from outstanding post-merge log actions.
 
@@ -446,7 +467,7 @@ def _build_integrator_log_judgment_checkpoint(
         lines.append(
             _INTEGRATOR_MAINTENANCE_ACTION_LINE.format(
                 index=i,
-                action=_surface_run(action, _INTEGRATOR_MAINTENANCE_LOG_WINDOW),
+                action=_surface_run(action, window),
             )
         )
     lines.extend(
@@ -520,37 +541,50 @@ def get_checkpoint_content(
             scope="checkpoint",
         )
 
-        # Integrator maintenance force-fire: when role=integrator and the checkout
-        # marker is present, surface its outstanding main_only actions. Suppress
-        # review/commit/test/log.
-        if system_role == "integrator":
-            marker = read_integrator_maintenance_marker(project_path)
-            if marker is not None:
-                outstanding_actions = [
-                    model.actions[action_id]
-                    for action_id in marker.outstanding_action_ids
-                    if action_id in model.actions and model.actions[action_id].main_only
+        if system_role == _INTEGRATOR_ROLE:
+            marker = read_integrator_judgment_marker(project_path)
+            if marker is not None and marker.ready_at is None:
+                logger.info(
+                    _INTEGRATOR_JUDGMENT_NOT_READY_EVENT,
+                    activation_ids=[activation.after_sha for activation in marker.activations],
+                )
+            elif marker is not None:
+                action_ids = [
+                    action_id
+                    for action_id in marker.action_ids
+                    if action_id == LOG_CHECK_ACTION_ID and action_id in model.actions
                 ]
-                action_ids: list[str] = []
-                for action in outstanding_actions:
-                    if _action_has_evidence(timeline, action, model, project_path):
-                        discharge_integrator_maintenance_action(project_path, action.id)
+                if action_ids:
+                    action = model.actions[LOG_CHECK_ACTION_ID]
+                    earliest_activation = min(
+                        marker.activations,
+                        key=lambda activation: activation.activated_at,
+                    ).activated_at
+                    if _has_post_ready_log_check_evidence(
+                        timeline,
+                        action.effective_evidence(),
+                        earliest_activation,
+                        marker.ready_at,
+                    ):
+                        discharge_integrator_judgment(project_path, marker)
                     else:
-                        action_ids.append(action.id)
-                if not action_ids:
-                    consume_integrator_maintenance_marker(project_path)
-                log_judgment_message = _build_integrator_log_judgment_checkpoint(action_ids, model)
-                if log_judgment_message:
-                    logger.info(
-                        "Checkpoint payload computed (integrator maintenance force-fire)",
-                        extra={
-                            **base_extra,
-                            "mode": "integrator_log_judgment",
-                            "actions": len(action_ids),
-                            "message_len": len(log_judgment_message),
-                        },
-                    )
-                    return log_judgment_message
+                        window = _integrator_judgment_log_window(earliest_activation, datetime.now(UTC))
+                        log_judgment_message = _build_integrator_log_judgment_checkpoint(
+                            action_ids,
+                            model,
+                            window,
+                        )
+                        if log_judgment_message:
+                            logger.info(
+                                _INTEGRATOR_JUDGMENT_FORCE_FIRE_EVENT,
+                                receiver_ingress_id=receiver_ingress_id,
+                                session_id=session_id,
+                                project_path=project_path,
+                                mode=_INTEGRATOR_LOG_JUDGMENT_MODE,
+                                actions=len(action_ids),
+                                message_len=len(log_judgment_message),
+                            )
+                            return log_judgment_message
 
         workspace = resolve_workspace(project_path)
         declared_paths = {declaration.path for declaration in live_declarations(session_id)}

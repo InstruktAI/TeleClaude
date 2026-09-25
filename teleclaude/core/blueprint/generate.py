@@ -9,20 +9,52 @@ so a delivery is never blocked by the Blueprint.
 
 from __future__ import annotations
 
+import fcntl
 import shutil
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.blueprint._paths import GRAPH_FILENAME, blueprint_dir, graph_path, manifest_path
+from teleclaude.core.blueprint._paths import (
+    GRAPH_FILENAME,
+    blueprint_dir,
+    graph_path,
+    manifest_path,
+    refresh_lock_path,
+)
 from teleclaude.core.blueprint.affected import load_graph
 from teleclaude.core.blueprint.manifest import BlueprintManifest, BlueprintStatus, write_manifest
 
 logger = get_logger(__name__)
 
 _GRAPHIFY_OUT_DIRNAME = "graphify-out"
+_LOCK_MODE = "a+"
+_LOCK_OPEN_FLAGS = fcntl.LOCK_EX
+_LOCK_NONBLOCKING_FLAG = fcntl.LOCK_NB
+
+
+@contextmanager
+def blueprint_generation_lock(repo_root: str | Path, *, wait: bool) -> Iterator[bool]:
+    """Serialize every graph and manifest writer through the shared lock."""
+    lock_path = refresh_lock_path(repo_root)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open(_LOCK_MODE) as handle:
+        flags = _LOCK_OPEN_FLAGS if wait else _LOCK_OPEN_FLAGS | _LOCK_NONBLOCKING_FLAG
+        try:
+            fcntl.flock(handle.fileno(), flags)
+        except OSError:
+            if wait:
+                raise
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _graph_node_count(path: Path) -> int | None:
@@ -73,7 +105,7 @@ def _run_graphify_update(repo_root: Path) -> int:
 
 
 def regenerate_blueprint(repo_root: str | Path, *, baseline_sha: str) -> BlueprintManifest:
-    """Regenerate the Blueprint from ``repo_root`` and write graph + manifest.
+    """Regenerate the Blueprint while the caller holds ``blueprint_generation_lock``.
 
     Best-effort: never raises. On success the graph is copied to
     ``.teleclaude/blueprint/graph.json`` and the manifest records ``ok`` with

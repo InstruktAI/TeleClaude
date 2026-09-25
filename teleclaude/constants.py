@@ -541,6 +541,16 @@ def _glob_matches(path: str, pattern: str) -> bool:  # pyright: ignore[reportUnu
     return bool(_compile_glob(pattern).match(path))
 
 
+class JudgmentOwner(StrEnum):
+    """The role responsible for completing a checkpoint judgment."""
+
+    SESSION = "session"
+    INTEGRATOR = "integrator"
+
+
+LOG_CHECK_ACTION_ID = "log-check"
+
+
 @dataclass(frozen=True)
 class CheckpointAction:
     """A judgment action in the checkpoint registry (the verb).
@@ -560,6 +570,7 @@ class CheckpointAction:
     off_main_eligible: bool = True
     precedence: int = 0
     evidence_must_follow_last_mutation: bool = False
+    judged_by: JudgmentOwner = JudgmentOwner.SESSION
 
     def effective_evidence(self) -> tuple[str, ...]:
         """Evidence substrings proving the action ran; defaults to ``[run]``."""
@@ -615,8 +626,8 @@ CHECKPOINT_REVIEW_DISPATCH_EVIDENCE = [SlashCommand.REVIEW_COMMITS.value, "revie
 # placeholder (filled from ProjectConfig.project_slug) and the {window}
 # placeholder (filled at surface time from elapsed turn duration).
 CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
-    "log-check": CheckpointAction(
-        id="log-check",
+    LOG_CHECK_ACTION_ID: CheckpointAction(
+        id=LOG_CHECK_ACTION_ID,
         run="Check logs: `instrukt-ai-logs {slug} --since {window} --exclude git-wrapper`",
         evidence=("instrukt-ai-logs",),
         main_only=True,

@@ -16,12 +16,14 @@ from typing import Final
 from instrukt_ai_logging import get_logger
 
 from teleclaude.capabilities import resolve_capabilities
-from teleclaude.checkpoint_model import main_only_judgment_action_ids_for_files
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_REQUIREMENTS,
 )
 from teleclaude.core.blueprint import BlueprintStatus, regenerate_blueprint
+from teleclaude.core.blueprint._paths import manifest_path
+from teleclaude.core.blueprint.generate import blueprint_generation_lock
+from teleclaude.core.blueprint.manifest import read_manifest
 from teleclaude.core.integration.candidate_scan import (
     CandidateKey,
     CandidateStateReadError,
@@ -79,8 +81,6 @@ from teleclaude.core.next_machine.git_ops import build_git_hook_env
 from teleclaude.core.next_machine.marker_reconciliation import MarkerReceipt
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.git_lock import main_branch_lock
-from teleclaude.hooks.checkpoint import _git_diff_names
-from teleclaude.hooks.checkpoint_flags import record_integrator_maintenance_marker
 from teleclaude.quality.gate import LintGateOutcome, run_lint_gate
 from teleclaude.runtime.environment import resolve_runtime_environment
 
@@ -89,14 +89,13 @@ logger = get_logger(__name__)
 _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
-_GIT_RANGE_SEPARATOR = ".."
-_LOG_CHECK_ACTION_ID = "log-check"
 _GIT_DIFF_UNMERGED_ARGS = ("diff", "--name-only", "--diff-filter=U")
 _GIT_DIFF_STAGED_QUIET_ARGS = ("diff", "--cached", "--quiet")
-_INTEGRATOR_MAINTENANCE_RECORDING_FAILED = "Failed to {operation} integrator maintenance {target} for range={merge_range} — post-merge maintenance will not be surfaced to the integrator"
-_INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG = "integration.maintenance_marker.recorded"
 _REPO_ROOT_SYNC_SOURCE = "repo_root"
 _BLUEPRINT_REGENERATED_LOG = "integration.blueprint.regenerated"
+_BLUEPRINT_REGENERATED_AT_LOG = "Blueprint regenerated at baseline %s"
+_ORIGIN_MAIN_REVISION_ARGUMENTS = ("rev-parse", "origin/main")
+_BLUEPRINT_BASELINE_RESOLUTION_FAILURE = "Blueprint baseline could not be resolved from origin/main."
 _FINAL_CONTENT_GATE_FINISHED_EVENT = "integration.final_content_gate.finished"
 _QUALITY_ENV_REMOVED_KEYS = frozenset({"VIRTUAL_ENV", "PYTHONPATH", "PYTEST_ADDOPTS"})
 _VALIDATION_CHECKOUT_RESET_ARGS = ("reset", "--hard")
@@ -584,17 +583,30 @@ def _step_delivery_bookkeeping(
 
 def _regenerate_blueprint_after_delivery(*, cwd: str, baseline_sha: str, source: str) -> str | None:
     """Refresh the Blueprint after confirmed delivery without rolling it back on failure."""
-    manifest = regenerate_blueprint(cwd, baseline_sha=baseline_sha)
+    with blueprint_generation_lock(cwd, wait=True):
+        rc, stdout, _stderr = _run_git(list(_ORIGIN_MAIN_REVISION_ARGUMENTS), cwd=cwd)
+        resolved_baseline = stdout.strip() if rc == 0 else ""
+        if not resolved_baseline:
+            logger.warning(_BLUEPRINT_BASELINE_RESOLUTION_FAILURE, extra={"final_sha": baseline_sha})
+            return _BLUEPRINT_BASELINE_RESOLUTION_FAILURE
+        manifest = read_manifest(manifest_path(cwd))
+        if manifest is None or manifest.status is not BlueprintStatus.OK or manifest.baseline_sha != resolved_baseline:
+            manifest = regenerate_blueprint(cwd, baseline_sha=resolved_baseline)
     logger.info(
         _BLUEPRINT_REGENERATED_LOG,
-        extra={"source": source, "baseline_sha": baseline_sha, "status": manifest.status.value},
+        extra={
+            "source": source,
+            "baseline_sha": resolved_baseline,
+            "final_sha": baseline_sha,
+            "status": manifest.status.value,
+        },
     )
     if manifest.status is not BlueprintStatus.OK:
         return (
             f"Blueprint regeneration did not complete (status={manifest.status.value}); "
             "blast-radius falls back to manual exploration until the next integrate."
         )
-    logger.info("Blueprint regenerated at baseline %s", baseline_sha)
+    logger.info(_BLUEPRINT_REGENERATED_AT_LOG, resolved_baseline)
     return None
 
 
@@ -680,35 +692,6 @@ def _step_push_succeeded(
         conn.close()
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
     checkpoint.warnings = warnings
-    if checkpoint.pre_merge_head:
-        merge_range = f"{checkpoint.pre_merge_head}{_GIT_RANGE_SEPARATOR}{final_sha}"
-        try:
-            changed_files = _git_diff_names(cwd, merge_range)
-            actions = [
-                action_id
-                for action_id in main_only_judgment_action_ids_for_files(changed_files, Path(cwd))
-                if action_id == _LOG_CHECK_ACTION_ID
-            ]
-            if actions:
-                record_integrator_maintenance_marker(cwd, merge_range, actions)
-                logger.info(
-                    _INTEGRATOR_MAINTENANCE_MARKER_RECORDED_LOG,
-                    extra={"session_id": session_id, "merge_range": merge_range, "actions": actions},
-                )
-        except OSError:
-            msg = _INTEGRATOR_MAINTENANCE_RECORDING_FAILED.format(
-                operation="record", target="marker", merge_range=merge_range
-            )
-            logger.warning(msg, exc_info=True)
-            warnings.append(msg)
-            checkpoint.warnings = warnings
-        except Exception:
-            msg = _INTEGRATOR_MAINTENANCE_RECORDING_FAILED.format(
-                operation="resolve", target="actions", merge_range=merge_range
-            )
-            logger.warning(msg, exc_info=True)
-            warnings.append(msg)
-            checkpoint.warnings = warnings
 
     blueprint_warning = _regenerate_blueprint_after_delivery(
         cwd=cwd,

@@ -48,8 +48,10 @@ checkpoint:
       main_only: true
       precedence: 40
       command: [telec, reload]
+  integrator_judgment:
+    - log-check
   bindings:
-    # Log-check covers all daemon source. The `code` overlay block is deliberately
+    # The integrator owns log-check for all daemon source. The `code` overlay block is deliberately
     # absent: declaring it would bind `test`, which docs/project/policy/test-moratorium.md
     # forbids in this repository. Declaring the scope generically keeps log-check
     # without it.

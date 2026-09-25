@@ -1444,6 +1444,30 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[F.FLAG_HELP],
                 hidden=True,
             ),
+            "maintenance": CommandDef(
+                desc="Inspect and recover canonical-main maintenance",
+                flags=[F.FLAG_HELP],
+                hidden=True,
+                subcommands={
+                    "status": CommandDef(
+                        desc="Show outstanding maintenance records and integrator judgment",
+                        flags=[F.FLAG_HELP],
+                    ),
+                    "drain": CommandDef(
+                        desc="Resume interrupted maintenance and record readiness",
+                        flags=[F.FLAG_HELP],
+                    ),
+                    "retry": CommandDef(
+                        desc="Retry one terminally failed maintenance action",
+                        args="--after-sha <sha> --action <id> ",
+                        flags=[
+                            F.FLAG_HELP,
+                            F.FLAG_MAINTENANCE_AFTER_SHA,
+                            F.FLAG_MAINTENANCE_ACTION,
+                        ],
+                    ),
+                },
+            ),
             "publish": CommandDef(
                 desc="Publish documentation for an eligible recorded commit range",
                 flags=[F.FLAG_HELP, F.FLAG_PUBLISH_BEFORE_SHA, F.FLAG_PUBLISH_AFTER_SHA],
@@ -1537,6 +1561,9 @@ CODE_OWNERS = CLI_SURFACE["code"].subcommands["owners"]
 CODE_ADD = CLI_SURFACE["code"].subcommands["add"]
 CODE_COMMIT = CLI_SURFACE["code"].subcommands["commit"]
 CODE_PUBLISH = CLI_SURFACE["code"].subcommands["publish"]
+CODE_MAINTENANCE_STATUS = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["status"]
+CODE_MAINTENANCE_DRAIN = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["drain"]
+CODE_MAINTENANCE_RETRY = CLI_SURFACE["code"].subcommands["maintenance"].subcommands["retry"]
 
 CONFIG_TTS_DEPROVISION = CLI_SURFACE["config"].subcommands["tts"].subcommands["deprovision"]
 CONFIG_GET = CLI_SURFACE["config"].subcommands["get"]
