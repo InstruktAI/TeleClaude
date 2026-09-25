@@ -183,8 +183,8 @@ And the folded repository-root head is published and confirmed before delivery i
 Given a lifecycle movement requires pending documentation reconciliation
 And the reconciliation commit is recorded in the repository
 But the command that created it reports failure after recording it
-When the caller attempts the lifecycle movement
-Then the caller receives a succeeding reconciliation outcome identifying the recorded commit
+When the agent driving that lifecycle movement attempts it
+Then that agent receives a succeeding reconciliation outcome identifying the recorded commit
 And the affected sources in the working tree match the recorded commit
 And the lifecycle movement proceeds as after any successful reconciliation
 And a repeated reconciliation for the same slug makes no further change
