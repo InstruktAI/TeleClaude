@@ -51,9 +51,10 @@ declaration in memory and writes nothing.
 
 ```gherkin
 Given a machine configuration declaring the computer kind
-When the machine configuration loads
-Then it resolves the same runtime configuration as without the declaration
-And loading neither adds, removes, nor rewrites the declaration
+When the machine configuration is validated and read through the computer configuration
+Then it validates as it does without the declaration
+And the computer configuration view carries no kind and reports the same revision as without the declaration
+And neither loading nor any configuration change adds, removes, or rewrites the declaration
 
 Given a machine configuration declaring any kind other than computer
 When the machine configuration loads
