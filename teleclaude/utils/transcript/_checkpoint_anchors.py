@@ -12,7 +12,7 @@ from teleclaude.core.injected_text import is_checkpoint_text
 from teleclaude.core.models import JsonDict
 
 from ._parsers import normalize_transcript_entry_message
-from ._user_turns import extract_text_from_message_content, find_last_real_user_turn
+from ._user_turns import extract_text_from_message_content, find_last_turn_start
 from ._utils import _parse_timestamp
 
 _CODEX_STOP_HOOK_PROMPT_RE = re.compile(
@@ -113,7 +113,7 @@ def find_checkpoint_scope_start_idx(
     if full_session:
         return 0
     anchor = find_last_checkpoint_anchor(entries, agent_name)
-    turn = find_last_real_user_turn(entries, agent_name)
+    turn = find_last_turn_start(entries, agent_name)
     if anchor is not None and turn is not None:
         return anchor.next_index if anchor.entry_index > turn.entry_index else turn.next_index
     if anchor is not None:

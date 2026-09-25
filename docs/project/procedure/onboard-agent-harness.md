@@ -96,7 +96,8 @@ defect discovered live.
     (`user` / `assistant` / `pre_tool_use` / `tool_result`).
 15. Whether entries carry a usable wall-clock timestamp, and in what unit.
 16. Harness-injected user-shaped entries (runtime context blocks, checkpoint
-    condensations, hook feedback) that must not count as real user turns.
+    condensations, hook feedback) that must neither open an agent turn nor
+    count as authored input.
 
 **Hooks**
 
@@ -208,9 +209,11 @@ Every entry here is a place a missing branch degrades silently.
 5. `teleclaude/utils/transcript_discovery.py` — discovery, session-id
    extraction, and project recovery. **Skip the non-session artifacts** found in
    Phase 0 question 12 before their ids reach the identity invariant.
-6. `teleclaude/utils/transcript/_user_turns.py` and
-   `teleclaude/core/injected_text.py` — classify harness-injected user-shaped
-   entries so they do not register as real user turns.
+6. `teleclaude/utils/transcript/_user_turns.py` — declare the runtime's native
+   vocabularies (entry markers, transcript text, prompt text) in its dispatch
+   tables. TeleClaude's own envelopes and the command loader are classified
+   once for every runtime by `teleclaude/core/injected_text.py` and need no
+   per-runtime entry.
 7. `teleclaude/session_scoping/_extractors/<agent>.py` plus its `__init__.py`
    registration — write/edit and shell-mutator paths from the normalized tool
    timeline.

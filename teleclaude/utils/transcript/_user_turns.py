@@ -1,13 +1,14 @@
-"""Real user-turn detection for agent-native transcript entries."""
+"""User-entry classification, turn starts, and authored input for agent-native transcripts."""
 
 from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from types import MappingProxyType
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.injected_text import TranscriptEntryKind, cut_transcript_entry
@@ -116,6 +117,7 @@ class UserContentOrigin(StrEnum):
 
     CANDIDATE_HUMAN = "candidate_human"
     RUNTIME = "runtime"
+    COMMAND_LOADER = "command_loader"
 
 
 class CodexLegacyShape(StrEnum):
@@ -186,16 +188,21 @@ class _ClaudeGraphNode:
     entry_id: str | None
     parent_entry_id: str | None
     role: str | None
-    is_real_user: bool
+    is_turn_start: bool
 
 
 @dataclass(frozen=True)
-class RealUserTurn:
-    """The transcript location and content for a real user turn."""
+class TurnStart:
+    """The entry that opened the agent's current turn.
+
+    ``authored_text`` is what an author sent in that entry; it is ``None`` when
+    the turn was opened by platform text no one authored, such as the dispatch
+    loader.
+    """
 
     entry_index: int
     next_index: int
-    text: str | None
+    authored_text: str | None
     timestamp: datetime | None
 
 
@@ -220,7 +227,7 @@ class ClaudeTurnCommitmentResolver:
                 entry_id=entry_id,
                 parent_entry_id=parent_entry_id,
                 role=role,
-                is_real_user=is_real_user_turn_entry(entry, AgentName.CLAUDE),
+                is_turn_start=is_turn_start_entry(entry, AgentName.CLAUDE),
             )
             if entry_id is not None:
                 if entry_id in self._nodes_by_id:
@@ -247,7 +254,7 @@ class ClaudeTurnCommitmentResolver:
         alternatives = tuple(
             node.entry_id
             for node in sibling_nodes
-            if node.entry_id is not None and node.entry_id != candidate_entry_id and node.is_real_user
+            if node.entry_id is not None and node.entry_id != candidate_entry_id and node.is_turn_start
         )
 
         def result(
@@ -264,7 +271,7 @@ class ClaudeTurnCommitmentResolver:
 
         if candidate_entry_id in self._duplicate_entry_ids:
             return result(ClaudeTurnCommitmentOutcome.UNRESOLVED, ClaudeTurnCommitmentReason.DUPLICATE_ENTRY_ID)
-        if not candidate.is_real_user:
+        if not candidate.is_turn_start:
             return result(ClaudeTurnCommitmentOutcome.UNRESOLVED, ClaudeTurnCommitmentReason.CANDIDATE_NOT_USER)
         if parent_entry_id is not None and parent_entry_id not in self._nodes_by_id:
             return result(ClaudeTurnCommitmentOutcome.UNRESOLVED, ClaudeTurnCommitmentReason.MISSING_PARENT_ENTRY)
@@ -327,6 +334,26 @@ def _is_command_loader_text(text: str) -> bool:
     """Recognize the platform dispatch loader through the one transcript cutter."""
     segments = cut_transcript_entry(text, is_user_entry=True)
     return len(segments) == 1 and segments[0].kind is TranscriptEntryKind.COMMAND_LOADER
+
+
+def _platform_text_origin(text: str) -> UserContentOrigin | None:
+    """Classify TeleClaude-authored text once, before any runtime vocabulary applies."""
+    if _is_platform_control_text(text):
+        return UserContentOrigin.RUNTIME
+    if _is_command_loader_text(text):
+        return UserContentOrigin.COMMAND_LOADER
+    return None
+
+
+def _runtime_agent(agent_name: AgentName | str | None) -> AgentName | None:
+    if isinstance(agent_name, AgentName):
+        return agent_name
+    if isinstance(agent_name, str):
+        try:
+            return AgentName.from_str(agent_name)
+        except ValueError:
+            return None
+    return None
 
 
 def _codex_structural_recognition(text: str) -> CodexStructuralRecognition:
@@ -415,112 +442,94 @@ def _user_block_text(block: object) -> tuple[str | None, str | None]:
     return block_type, raw_text if isinstance(raw_text, str) and raw_text.strip() else None
 
 
+def _position_origin(
+    agent: AgentName | None,
+    text: str | None,
+    *,
+    entry_is_runtime: bool,
+    raw_kind: str | None,
+    has_kinds: bool,
+    recognition: CodexStructuralRecognition | None,
+) -> UserContentOrigin:
+    """Classify one user text position: native entry marker, platform text, native vocabulary."""
+    if entry_is_runtime:
+        return UserContentOrigin.RUNTIME
+    if text is not None:
+        platform_origin = _platform_text_origin(text)
+        if platform_origin is not None:
+            return platform_origin
+    if has_kinds:
+        return (
+            UserContentOrigin.CANDIDATE_HUMAN if raw_kind in _CODEX_HUMAN_CONTENT_KINDS else UserContentOrigin.RUNTIME
+        )
+    if text is None:
+        return UserContentOrigin.CANDIDATE_HUMAN
+    if recognition is not None and _codex_legacy_recognition_is_valid(text, recognition):
+        return UserContentOrigin.RUNTIME
+    if agent is not None and _TRANSCRIPT_TEXT_VOCABULARY[agent](text):
+        return UserContentOrigin.RUNTIME
+    return UserContentOrigin.CANDIDATE_HUMAN
+
+
 def classify_user_content_blocks(
     entry: Mapping[str, object], agent_name: AgentName | str | None
 ) -> tuple[UserContentBlockClassification, ...]:
-    """Classify native user content before any caller flattens it into text."""
+    """Classify every native user content position before any caller flattens it into text.
+
+    This is the one classifier for user-role transcript positions on every
+    runtime. Runtime knowledge enters only through the native vocabularies.
+    """
     message = normalize_transcript_entry_message(entry)
     if not isinstance(message, Mapping) or message.get(_MESSAGE_ROLE_FIELD) != _USER_ROLE:
         return ()
 
+    agent = _runtime_agent(agent_name)
+    is_codex = agent is AgentName.CODEX
+    entry_is_runtime = agent is not None and _ENTRY_MARKERS[agent](entry)
     content = message.get("content")
-    agent = _agent_value(agent_name)
     if isinstance(content, str):
-        recognition = _codex_structural_recognition(content) if agent == AgentName.CODEX.value else None
-        is_runtime = (
-            _is_platform_control_text(content)
-            or _is_command_loader_text(content)
-            or (recognition is not None and _codex_legacy_recognition_is_valid(content, recognition))
+        text = content if content.strip() else None
+        recognition = _codex_structural_recognition(content) if is_codex else None
+        origin = _position_origin(
+            agent, text, entry_is_runtime=entry_is_runtime, raw_kind=None, has_kinds=False, recognition=recognition
         )
-        return (
-            UserContentBlockClassification(
-                index=0,
-                block_type=_TEXT_BLOCK_TYPE,
-                text=content if content.strip() else None,
-                origin=UserContentOrigin.RUNTIME if is_runtime else UserContentOrigin.CANDIDATE_HUMAN,
-                raw_kind=None,
-                structural_recognition=recognition,
-            ),
-        )
+        return (UserContentBlockClassification(0, _TEXT_BLOCK_TYPE, text, origin, None, recognition),)
     if not isinstance(content, list):
         return ()
 
-    kinds = _codex_content_kinds(message, content) if agent == AgentName.CODEX.value else None
+    kinds = _codex_content_kinds(message, content) if is_codex else None
     classifications: list[UserContentBlockClassification] = []
     for index, block in enumerate(content):
         block_type, text = _user_block_text(block)
-        recognition = _codex_structural_recognition(text) if agent == AgentName.CODEX.value and text else None
+        recognition = _codex_structural_recognition(text) if is_codex and text else None
         raw_kind = kinds[index] if kinds is not None else None
-        is_control = text is not None and (_is_platform_control_text(text) or _is_command_loader_text(text))
-        if is_control:
-            origin = UserContentOrigin.RUNTIME
-        elif kinds is not None:
-            origin = (
-                UserContentOrigin.CANDIDATE_HUMAN
-                if raw_kind in _CODEX_HUMAN_CONTENT_KINDS
-                else UserContentOrigin.RUNTIME
-            )
-        elif recognition is not None and _codex_legacy_recognition_is_valid(text, recognition):
-            origin = UserContentOrigin.RUNTIME
-        else:
-            origin = UserContentOrigin.CANDIDATE_HUMAN
-        classifications.append(
-            UserContentBlockClassification(
-                index=index,
-                block_type=block_type,
-                text=text,
-                origin=origin,
-                raw_kind=raw_kind,
-                structural_recognition=recognition,
-            )
+        origin = _position_origin(
+            agent,
+            text,
+            entry_is_runtime=entry_is_runtime,
+            raw_kind=raw_kind,
+            has_kinds=kinds is not None,
+            recognition=recognition,
         )
+        classifications.append(UserContentBlockClassification(index, block_type, text, origin, raw_kind, recognition))
     return tuple(classifications)
 
 
-def _candidate_human_texts(entry: Mapping[str, object], agent_name: AgentName | str | None) -> tuple[str, ...]:
-    """Return ordered text whose native provenance permits human projection."""
-    return tuple(
-        classification.text
-        for classification in classify_user_content_blocks(entry, agent_name)
-        if classification.origin is UserContentOrigin.CANDIDATE_HUMAN and classification.text is not None
-    )
-
-
 def is_runtime_artifact_text(agent_name: AgentName | str | None, text: str) -> bool:
-    """Recognize complete runtime-owned prompt text without generic XML guessing."""
-    if _is_platform_control_text(text):
+    """Recognize complete runtime-owned prompt text at the prompt-hook boundary."""
+    if _platform_text_origin(text) is not None:
         return True
-    if _is_command_loader_text(text):
-        return True
-    agent = _agent_value(agent_name)
-    stripped = text.lstrip()
-    if agent == AgentName.CLAUDE.value:
-        return bool(_CLAUDE_TEXT_ARTIFACT_RE.fullmatch(text) or stripped.startswith(_CLAUDE_HOOK_PREFIXES))
-    if agent == AgentName.CODEX.value:
-        return _is_codex_hook_ingress_artifact(_codex_structural_recognition(text))
-    if agent == AgentName.DEEPSEEK.value:
-        return bool(_DEEPSEEK_TEXT_ARTIFACT_RE.fullmatch(text) or stripped.startswith(_RUNTIME_CONTEXT_PREFIXES))
-    return False
+    agent = _runtime_agent(agent_name)
+    return agent is not None and _PROMPT_TEXT_VOCABULARY[agent](text)
 
 
 def is_runtime_artifact_entry(entry: Mapping[str, object], agent_name: AgentName | str | None) -> bool:
-    """Recognize native structured runtime artifacts for one declared runtime."""
-    message = normalize_transcript_entry_message(entry)
-    text = extract_text_from_message_content(message.get("content"), "user") if isinstance(message, Mapping) else None
-    agent = _agent_value(agent_name)
-    if agent == AgentName.CLAUDE.value:
-        return _is_claude_internal_user_entry(entry, text)
-    if text is None:
-        return False
-    if agent == AgentName.CODEX.value:
-        classifications = classify_user_content_blocks(entry, agent_name)
-        textual = tuple(classification for classification in classifications if classification.text is not None)
-        return bool(textual) and all(classification.origin is UserContentOrigin.RUNTIME for classification in textual)
-    if agent == AgentName.GEMINI.value:
-        return _is_gemini_internal_user_entry(text)
-    if agent == AgentName.DEEPSEEK.value:
-        return _is_deepseek_internal_user_entry(text) or is_runtime_artifact_text(agent, text)
-    return is_runtime_artifact_text(agent, text)
+    """Return whether the runtime or platform injected every text position of an entry."""
+    agent = _runtime_agent(agent_name)
+    if agent is not None and _ENTRY_MARKERS[agent](entry):
+        return True
+    textual = [position for position in classify_user_content_blocks(entry, agent_name) if position.text is not None]
+    return bool(textual) and all(position.origin is UserContentOrigin.RUNTIME for position in textual)
 
 
 def normalize_runtime_user_text(agent_name: AgentName | str | None, text: str) -> str:
@@ -597,13 +606,8 @@ def is_user_tool_result_only_message(message: Mapping[str, object]) -> bool:
     return saw_block
 
 
-def _is_teleclaude_control_text(text: str) -> bool:
-    """Return True for exact TeleClaude-owned non-human input envelopes."""
-    return _is_platform_control_text(text)
-
-
-def _is_claude_internal_user_entry(entry: Mapping[str, object], text: str | None) -> bool:
-    """Classify Claude Code user-shaped runtime artifacts by native envelope."""
+def _claude_entry_is_runtime(entry: Mapping[str, object]) -> bool:
+    """Recognize a Claude Code entry the CLI itself injected, by its native markers."""
     if entry.get(_CLAUDE_COMPACT_SUMMARY_FIELD) is True:
         return True
     if entry.get("isMeta") is True:
@@ -620,88 +624,118 @@ def _is_claude_internal_user_entry(entry: Mapping[str, object], text: str | None
         if attachment.get("commandMode") == "task-notification":
             return True
 
-    if text is None:
-        return False
-
     # Older Claude task-notification transcript entries did not always include
     # origin metadata. The XML wrapper is a Claude CLI envelope, not user prose.
-    if entry.get("permissionMode") == "bypassPermissions" and _CLAUDE_TASK_NOTIFICATION_RE.match(text):
-        return True
-
-    return _is_teleclaude_control_text(text)
-
-
-def _is_gemini_internal_user_entry(text: str | None) -> bool:
-    """Classify Gemini user-shaped runtime artifacts.
-
-    Gemini session JSON currently stores TeleClaude hook/notification prompts
-    as plain user entries with no source metadata, so the exact TeleClaude
-    system envelope is the contract available in the native book.
-    """
-    if text is None:
-        return False
-    return _is_teleclaude_control_text(text)
-
-
-def _is_deepseek_internal_user_entry(text: str | None) -> bool:
-    """Classify DeepSeek (DSH) user-shaped runtime artifacts.
-
-    DSH transcripts carry harness-injected user entries — the workspace
-    ``<system-reminder>`` baseline, runtime-context snapshots, and TeleClaude
-    control envelopes — with no source metadata, so the shared injected-text
-    classifier is the contract available in the native book.
-    """
-    if text is None:
-        return False
-    return _is_teleclaude_control_text(text)
-
-
-def is_real_user_turn_entry(
-    entry: Mapping[str, object],
-    agent_name: AgentName | str | None = None,
-) -> bool:
-    """Return True only for transcript entries that start a real user turn."""
     message = normalize_transcript_entry_message(entry)
-    if not isinstance(message, dict) or message.get("role") != "user":
-        return False
-    if is_user_tool_result_only_message(message):
-        return False
+    text = (
+        extract_text_from_message_content(message.get("content"), _USER_ROLE) if isinstance(message, Mapping) else None
+    )
+    return (
+        text is not None
+        and entry.get("permissionMode") == "bypassPermissions"
+        and _CLAUDE_TASK_NOTIFICATION_RE.match(text) is not None
+    )
 
-    if _agent_value(agent_name) != AgentName.CODEX.value:
-        text = extract_text_from_message_content(message.get("content"), _USER_ROLE)
-        return text is not None and not is_runtime_artifact_entry(entry, agent_name)
-    return bool(_candidate_human_texts(entry, agent_name))
+
+def _claude_text_is_runtime(text: str) -> bool:
+    return bool(_CLAUDE_TEXT_ARTIFACT_RE.fullmatch(text) or text.lstrip().startswith(_CLAUDE_HOOK_PREFIXES))
 
 
-def extract_real_user_text_from_entry(
-    entry: Mapping[str, object],
-    agent_name: AgentName | str | None = None,
-) -> str | None:
-    """Return ordered native candidate-human text for one real user turn."""
-    if not is_real_user_turn_entry(entry, agent_name):
-        return None
-    if _agent_value(agent_name) != AgentName.CODEX.value:
-        message = normalize_transcript_entry_message(entry)
-        if not isinstance(message, Mapping):
-            return None
-        return extract_text_from_message_content(message.get("content"), _USER_ROLE)
-    texts = _candidate_human_texts(entry, agent_name)
+def _deepseek_text_is_runtime(text: str) -> bool:
+    return bool(_DEEPSEEK_TEXT_ARTIFACT_RE.fullmatch(text) or text.lstrip().startswith(_RUNTIME_CONTEXT_PREFIXES))
+
+
+def _codex_prompt_is_runtime(text: str) -> bool:
+    return _is_codex_hook_ingress_artifact(_codex_structural_recognition(text))
+
+
+def _no_native_text_vocabulary(_text: str) -> bool:
+    return False
+
+
+def _no_native_entry_marker(_entry: Mapping[str, object]) -> bool:
+    return False
+
+
+_ENTRY_MARKERS: Mapping[AgentName, Callable[[Mapping[str, object]], bool]] = MappingProxyType(
+    {
+        AgentName.CLAUDE: _claude_entry_is_runtime,
+        AgentName.CODEX: _no_native_entry_marker,
+        AgentName.GEMINI: _no_native_entry_marker,
+        AgentName.DEEPSEEK: _no_native_entry_marker,
+    }
+)
+"""Native markers by which a runtime flags a whole user-role entry as its own injection."""
+
+# Codex transcript positions carry native provenance (content kinds, or the
+# legacy structural recognition), so no text vocabulary applies to them.
+_TRANSCRIPT_TEXT_VOCABULARY: Mapping[AgentName, Callable[[str], bool]] = MappingProxyType(
+    {
+        AgentName.CLAUDE: _claude_text_is_runtime,
+        AgentName.CODEX: _no_native_text_vocabulary,
+        AgentName.GEMINI: _no_native_text_vocabulary,
+        AgentName.DEEPSEEK: _deepseek_text_is_runtime,
+    }
+)
+"""Complete text a runtime injects into a transcript position, recognized by its declared shapes."""
+
+# The prompt hook sees text only; Codex keeps its narrower hook-ingress contract.
+_PROMPT_TEXT_VOCABULARY: Mapping[AgentName, Callable[[str], bool]] = MappingProxyType(
+    {
+        AgentName.CLAUDE: _claude_text_is_runtime,
+        AgentName.CODEX: _codex_prompt_is_runtime,
+        AgentName.GEMINI: _no_native_text_vocabulary,
+        AgentName.DEEPSEEK: _deepseek_text_is_runtime,
+    }
+)
+"""Complete prompt text a runtime submits on its own behalf, as seen at the prompt hook."""
+
+_TURN_OPENING_ORIGINS = frozenset({UserContentOrigin.CANDIDATE_HUMAN, UserContentOrigin.COMMAND_LOADER})
+
+
+def _textual_positions(
+    entry: Mapping[str, object], agent_name: AgentName | str | None
+) -> tuple[UserContentBlockClassification, ...]:
+    """Return an entry's classified text positions, or none for a pure tool-result carrier."""
+    message = normalize_transcript_entry_message(entry)
+    if not isinstance(message, Mapping) or is_user_tool_result_only_message(message):
+        return ()
+    return tuple(position for position in classify_user_content_blocks(entry, agent_name) if position.text is not None)
+
+
+def is_turn_start_entry(entry: Mapping[str, object], agent_name: AgentName | str | None = None) -> bool:
+    """Return whether an entry opens an agent turn: authored input or the dispatch loader."""
+    return any(position.origin in _TURN_OPENING_ORIGINS for position in _textual_positions(entry, agent_name))
+
+
+def extract_authored_user_text(entry: Mapping[str, object], agent_name: AgentName | str | None = None) -> str | None:
+    """Return the text an author sent in one user entry, in native order, or ``None``."""
+    texts = [
+        position.text
+        for position in _textual_positions(entry, agent_name)
+        if position.origin is UserContentOrigin.CANDIDATE_HUMAN and position.text is not None
+    ]
     return "\n\n".join(texts) if texts else None
 
 
-def find_last_real_user_turn(
+def is_authored_user_entry(entry: Mapping[str, object], agent_name: AgentName | str | None = None) -> bool:
+    """Return whether an entry carries text an author sent."""
+    return extract_authored_user_text(entry, agent_name) is not None
+
+
+def find_last_turn_start(
     entries: Sequence[JsonDict],
     agent_name: AgentName | str | None = None,
-) -> RealUserTurn | None:
-    """Find the last real user turn in a transcript entry sequence."""
+) -> TurnStart | None:
+    """Find the entry that opened the agent's current turn."""
     for i in range(len(entries) - 1, -1, -1):
         entry = entries[i]
-        if not is_real_user_turn_entry(entry, agent_name):
+        if not is_turn_start_entry(entry, agent_name):
             continue
-        return RealUserTurn(
+        return TurnStart(
             entry_index=i,
             next_index=i + 1,
-            text=extract_real_user_text_from_entry(entry, agent_name),
+            authored_text=extract_authored_user_text(entry, agent_name),
             timestamp=_entry_timestamp(entry),
         )
     return None
@@ -715,7 +749,7 @@ def find_turn_start_idx(
     """Return the first entry index for current-turn transcript inspection."""
     if full_session:
         return 0
-    turn = find_last_real_user_turn(entries, agent_name)
+    turn = find_last_turn_start(entries, agent_name)
     return turn.next_index if turn is not None else 0
 
 
@@ -728,17 +762,18 @@ __all__ = [
     "CodexLegacyShape",
     "CodexStructuralRecognition",
     "CodexStructuralSpan",
-    "RealUserTurn",
+    "TurnStart",
     "UserContentBlockClassification",
     "UserContentOrigin",
     "classify_user_content_blocks",
-    "extract_real_user_text_from_entry",
+    "extract_authored_user_text",
     "extract_text_from_message_content",
-    "find_last_real_user_turn",
+    "find_last_turn_start",
     "find_turn_start_idx",
-    "is_real_user_turn_entry",
+    "is_authored_user_entry",
     "is_runtime_artifact_entry",
     "is_runtime_artifact_text",
+    "is_turn_start_entry",
     "is_user_tool_result_only_message",
     "normalize_runtime_user_text",
     "resolve_claude_turn_commitment",

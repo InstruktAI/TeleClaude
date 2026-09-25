@@ -23,11 +23,11 @@ from ._iterators import (
 from ._parsers import normalize_transcript_entry_message
 from ._rendering import _render_transcript_from_entries
 from ._user_turns import (
-    extract_real_user_text_from_entry,
+    extract_authored_user_text,
     extract_text_from_message_content,
-    find_last_real_user_turn,
+    find_last_turn_start,
     find_turn_start_idx,
-    is_real_user_turn_entry,
+    is_turn_start_entry,
 )
 from ._utils import (
     _apply_tail_limit,
@@ -116,7 +116,7 @@ def _extract_text_from_content(content: object, role: str) -> str | None:
     """Extract text from message content based on role.
 
     User-turn filtering needs the full transcript entry and agent-specific
-    envelope. Call ``extract_real_user_text_from_entry`` for user messages
+    envelope. Call ``extract_authored_user_text`` for user messages
     when turn semantics matter.
     """
     return extract_text_from_message_content(content, role)
@@ -156,7 +156,7 @@ def _extract_last_message_by_role(
             if not isinstance(role, str) or role != target_role:
                 continue
             if target_role == "user":
-                text = extract_real_user_text_from_entry(entry, agent_name)
+                text = extract_authored_user_text(entry, agent_name)
             else:
                 text = _extract_text_from_content(message.get("content"), target_role)
             if text is not None:
@@ -204,7 +204,7 @@ def extract_last_user_message_with_timestamp(
             return None
 
         for entry in reversed(entries):
-            text = extract_real_user_text_from_entry(entry, agent_name)
+            text = extract_authored_user_text(entry, agent_name)
             if text is None:
                 continue
 
@@ -240,7 +240,7 @@ def extract_last_turn_boundary_timestamp(
     if not entries:
         return None
 
-    turn = find_last_real_user_turn(entries, agent_name)
+    turn = find_last_turn_start(entries, agent_name)
     return turn.timestamp if turn is not None else None
 
 
@@ -285,13 +285,13 @@ def _observed_assistant_text(message: Mapping[str, object]) -> tuple[bool, str |
 
 
 def _current_turn_assistant_messages(entries: list[JsonDict], agent_name: AgentName) -> list[JsonDict] | None:
-    """Return normalized assistant messages after the current real user turn."""
-    turn = find_last_real_user_turn(entries, agent_name)
+    """Return normalized assistant messages answering the entry that opened the current turn."""
+    turn = find_last_turn_start(entries, agent_name)
     if turn is None:
         return None
     messages: list[JsonDict] = []
     for entry in entries[turn.next_index :]:
-        if is_real_user_turn_entry(entry, agent_name):
+        if is_turn_start_entry(entry, agent_name):
             break
         message = normalize_transcript_entry_message(entry)
         if isinstance(message, dict) and message.get("role") == "assistant":
@@ -353,7 +353,7 @@ def collect_transcript_messages(
         if not isinstance(role, str):
             continue
         if role == "user":
-            text = extract_real_user_text_from_entry(entry, agent_name)
+            text = extract_authored_user_text(entry, agent_name)
         else:
             text = _extract_text_from_content(message.get("content"), role)
         if text:

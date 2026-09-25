@@ -24,7 +24,7 @@ from teleclaude.events.envelope import EventVisibility
 
 from ._checkpoint_anchors import find_last_checkpoint_anchor
 from ._parsers import normalize_transcript_entry_message
-from ._user_turns import find_last_real_user_turn, is_real_user_turn_entry
+from ._user_turns import find_last_turn_start, is_turn_start_entry
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _parse_timestamp
 
 logger = get_logger(__name__)
@@ -588,7 +588,7 @@ def _is_rotation_fallback_candidate(
     for entry in entries:
         entry_dict = cast(JsonDict, entry) if isinstance(entry, dict) else {}
         role = _entry_role(entry)
-        if is_real_user_turn_entry(entry_dict, agent_name):
+        if is_turn_start_entry(entry_dict, agent_name):
             saw_user = True
         elif role == "assistant":
             saw_assistant = True
@@ -833,7 +833,7 @@ def _get_checkpoint_entries_for_agent(transcript_path: str, agent_name: AgentNam
         )
         if window.at_beginning or (
             find_last_checkpoint_anchor(entries, agent_name) is not None
-            or find_last_real_user_turn(entries, agent_name) is not None
+            or find_last_turn_start(entries, agent_name) is not None
         ):
             return entries
     return []

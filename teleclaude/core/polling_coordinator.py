@@ -42,7 +42,7 @@ from teleclaude.utils.transcript import (
     _get_entries_for_agent,
     count_renderable_assistant_blocks,
     extract_last_turn_boundary_timestamp,
-    find_last_real_user_turn,
+    find_last_turn_start,
     get_assistant_messages_since,
     native_entry_id,
     render_agent_output,
@@ -460,14 +460,10 @@ async def _project_user_reflection(
     entries = await asyncio.to_thread(_get_entries_for_agent, transcript_path, agent_name)
     if not entries:
         return session, True, False
-    turn = find_last_real_user_turn(entries, agent_name)
-    if turn is None or turn.text is None:
+    turn = find_last_turn_start(entries, agent_name)
+    if turn is None:
         return session, True, False
 
-    user_text = turn.text
-    if not user_text.strip():
-        return session, True, False
-    transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
     entry_id = native_entry_id(entries[turn.entry_index], agent_name) if session.native_session_id else None
     if entry_id is not None:
         await db.create_output_generation(
@@ -478,6 +474,12 @@ async def _project_user_reflection(
             native_entry_id=entry_id,
         )
     await bind_pending_native_turns(session)
+    # A turn opened by platform text, such as the dispatch loader, owns its
+    # output generation but carries nothing an author sent to reflect.
+    user_text = turn.authored_text
+    if user_text is None or not user_text.strip():
+        return session, True, False
+    transcript_dt = _as_utc(turn.timestamp) if isinstance(turn.timestamp, datetime) else None
     requires_binding = any(
         segment.kind is TranscriptEntryKind.IDENTITY_CONTENT and caller_occurrence_key(segment.opening) is not None
         for segment in scan_injected_envelopes(user_text)

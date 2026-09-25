@@ -119,9 +119,11 @@ flowchart LR
 
 - **Acceptance does not cut output.** Accepting another input never clears an
   output message ID, character offset, cursor, or pending adapter payload.
-- **A new real user entry cuts the turn.** The next genuine user entry creates
-  the next logical generation. Output carries its turn identity and can update
-  only that generation.
+- **A turn-opening entry cuts the turn.** The next entry that opens an agent
+  turn — authored input, or the platform's command loader — creates the next
+  logical generation. Output carries its turn identity and can update only
+  that generation. What the entry displays is a separate question: a loader
+  opens a generation and reflects nothing.
 - **Adapters acknowledge independently.** Every enabled UI adapter, Discord
   admin/reflection lane, and peer-delivery consumer has its own durable cursor
   and generation receipt. No session-wide consumed bit stands in for them.

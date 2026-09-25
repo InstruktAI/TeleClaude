@@ -21,7 +21,7 @@ from teleclaude.core.injected_text import (
 from teleclaude.core.models import MessageAuthor, MessageAuthorKind
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
-    extract_real_user_text_from_entry,
+    extract_authored_user_text,
     native_entry_id,
 )
 
@@ -144,7 +144,7 @@ async def bind_pending_native_turns(session: Session) -> None:
     entries = await asyncio.to_thread(_get_entries_for_agent, session.native_log_file, agent_name)
     local_author = _local_author(session)
     for entry in entries:
-        text = extract_real_user_text_from_entry(entry, agent_name)
+        text = extract_authored_user_text(entry, agent_name)
         if text is None:
             continue
         keyed_envelopes = _keyed_caller_envelopes(text)

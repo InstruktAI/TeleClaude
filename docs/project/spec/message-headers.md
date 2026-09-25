@@ -64,7 +64,9 @@ one typed kind, from a closed set that is wider than the platform's own headers:
   command document the session's instruction set, recognized as one complete
   text from the grammar the registry module owns alongside its renderer. It is
   never human-authored content, never eligible as a human-input recency
-  signal, and never reaches a human-facing surface;
+  signal, and never reaches a human-facing surface. It is still the prompt
+  that opens the agent's turn, so the output answering it belongs to that
+  turn like the output answering any authored input;
 - **runtime artifact** — a complete entry emitted by the agent CLI, recognized
   from that runtime's declared structural vocabulary: never human-authored
   content and never eligible as a human-input recency signal;
