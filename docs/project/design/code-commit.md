@@ -283,11 +283,10 @@ The pathspec commit is built internally from `workspace scope plus
    runs the guardrails lane, and requires no native toolchain contract at its
    root. The guardrails lane runs in-process when the checkout under commit is
    the installation or is not a TeleClaude checkout. For any other TeleClaude
-   checkout it runs in that checkout's own code against a fresh scratch home, so
-   a change is graded by the rules it carries and undelivered code never runs
+   checkout the lint step is that checkout's own lint gate — its native leg and
+   guardrails lane — run in its own code against a fresh scratch home, so a
+   change is graded by the rules it carries and undelivered code never runs
    against the live home (`project/design/architecture/cli-invocation-boundary`).
-   A checkout that predates that hand-off is graded in-process, and the commit
-   says so.
 <!-- /planned-change:global-telec-runs-main-checkout -->
 Deletion-only commits
    (empty `quality_paths`) skip both steps wherever they would otherwise run. The
