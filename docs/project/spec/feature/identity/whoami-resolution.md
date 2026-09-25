@@ -24,17 +24,29 @@ The identity context's whoami capability answers the same question for clients o
 The identity context's whoami capability answers the same question for clients of the daemon's API. It answers from the identity the request carries, so its answer for a caller agrees with the CLI's.
 <!-- /planned-change:cli-actions-authorize-in-process -->
 
+<!-- planned:procedure-event-activation -->
+Inside a session it also prints the session's company context, which is how a tool running in the session — in any language — reads it. The CLI resolves that context in its own process from the session record the identity document's session id names, together with the person's company memberships (`project/spec/feature/agent_runtime/company-scoped-session-context`); the document itself carries no company fact. The Principal line already tells human-directed work (`human:`) from system-principal work (`system:`), so the company context adds one line: the resolved company, `none` when the session has no company, or `ambiguous` with the eligible companies and how to select one. Outside a session there is no session company, and no Company line is printed.
+<!-- /planned:procedure-event-activation -->
+
 ## Canonical fields
 
 ### Use cases
 
 #### UC-WHO1: A system session reports its principal and system role
 
+<!-- planned-change:procedure-event-activation -->
 ```
 Given an agent session whose record resolves to the principal `system:daemon` and whose derived system role is `worker`
 When the operator runs `telec auth whoami`
 Then it prints two lines: `Principal: system:daemon` and `Role: worker`
 ```
+<!-- change:procedure-event-activation -->
+```
+Given an agent session whose record resolves to the principal `system:daemon` and whose derived system role is `worker`
+When the operator runs `telec auth whoami`
+Then it prints `Principal: system:daemon` and `Role: worker`, followed by the session's Company line (UC-WHO-SESSION-COMPANY)
+```
+<!-- /planned-change:procedure-event-activation -->
 
 #### UC-WHO2: A terminal reports the person its login names
 
@@ -116,6 +128,26 @@ When a client of the daemon's API asks who that caller is
 Then the answer carries no principal, no role, and no email
 ```
 
+<!-- planned:procedure-event-activation -->
+#### UC-WHO-SESSION-COMPANY: Inside a session, whoami reports the session's company context
+
+```gherkin
+Scenario Outline: The Company line follows the session record and the person's memberships
+  Given a process inside a session that <session>
+  When the operator runs `telec auth whoami`
+  Then after the Principal and Role lines it prints <company line>
+  And the session identity document still carries no company field
+
+  Examples:
+    | session                                                                         | company line                                                         |
+    | was created with the company `acme`                                             | `Company: acme`                                                      |
+    | was started from a session operating under `acme`                               | `Company: acme`                                                      |
+    | carries the lineage of a person whose only company is `acme`, with no selection | `Company: acme`                                                      |
+    | carries the lineage of a person in `acme` and `beta`, with no selection         | `Company: ambiguous (acme, beta) — select one with --company <slug>` |
+    | has no company and no person with a company membership                          | `Company: none`                                                      |
+```
+
+<!-- /planned:procedure-event-activation -->
 #### UC-WHO5: The conversational alias answers as whoami
 
 ```
@@ -139,4 +171,8 @@ Then the output and exit status are those `telec auth whoami` produces in that c
 - A session whose record is closed or absent is reported as carrying no usable identity, not as a friendly "logged out" message. An open record the identity document names is admitted on that naming alone; resolving it never reads the machine configuration.
 <!-- /planned-change:fix-cli-startup-loads-machine-config -->
 
+<!-- planned-change:procedure-event-activation -->
 - The session path prints only `Principal` and `Role`. The terminal path prints `Email`, `Role`, `TTY`, and `Session auth file`. The two outputs are intentionally different shapes because they answer different questions about Resolution.
+<!-- change:procedure-event-activation -->
+- The session path prints `Principal`, `Role`, and `Company`. The terminal path prints `Email`, `Role`, `TTY`, and `Session auth file`. The two outputs are intentionally different shapes because they answer different questions about Resolution.
+<!-- /planned-change:procedure-event-activation -->

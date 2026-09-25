@@ -24,7 +24,7 @@ rule it relies on is stated by its owner:
 | A source's company, and whether a company is configured on a computer     | `config`        | `project/spec/domain/config`                                                                                                                         |
 | Matching an event to a subscription and producing an activation           | `integration`   | `project/spec/feature/integration/procedure-subscription-routing`                                                                                    |
 | The activation runner and each session's company                          | `agent_runtime` | `project/spec/feature/agent_runtime/procedure-standing-agent`, `project/spec/feature/agent_runtime/company-scoped-session-context`                   |
-| Membership facts and the session identity document                        | `identity`      | `project/spec/domain/identity`                                                                                                                       |
+| Membership facts and the company context tools read inside a session      | `identity`      | `project/spec/domain/identity`, `project/spec/feature/identity/whoami-resolution`                                                                    |
 
 ## Inputs/Outputs
 
@@ -102,19 +102,19 @@ rule it relies on is stated by its owner:
 
 ### Reused mechanisms
 
-| Step                                   | Existing mechanism                                                                     | Relation                                                                                                     |
-| -------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Event reaches every computer           | Single-ingress relay and inbound webhook framework                                     | Reused unchanged                                                                                             |
-| Company travels with the event         | Inbound normalization at the ingress                                                   | Adapted: stamps the source's declared company                                                                |
-| Subscription becomes routable          | Contract-routing model                                                                 | Adapted: contracts are derived from the publication index, held in memory, and rebuilt rather than persisted |
-| Match reaches the activation           | Contract `handler` target                                                              | Adapted: the handler receives the matched contract, which carries the procedure's canonical ID               |
-| Start or wake crosses into the runtime | Command dispatch addressed to the receiving computer                                   | Reused unchanged                                                                                             |
-| Find or create the standing agent      | Inbound resolve-or-create seam used by WhatsApp and Discord                            | Adapted: serialized per procedure and company                                                                |
-| Start                                  | Canonical command-session dispatch, as the scheduled-job runner's generic command uses | Reused with a sibling generic command carrying procedure and company                                         |
-| Event delivery on start and wake       | Session-input delivery                                                                 | Reused unchanged                                                                                             |
-| Outcome record                         | Durable operation outcomes, receipt-first                                              | Adapted: a new operation kind with its own `agent_runtime.procedure_activation` completed/failed event pair  |
-| Company on the session                 | Session record                                                                         | Extended with the session's company                                                                          |
-| Company for tools inside the session   | Session identity document                                                              | Extended with company fields written from the session record and membership resolution                       |
+| Step                                   | Existing mechanism                                                                      | Relation                                                                                                     |
+| -------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Event reaches every computer           | Single-ingress relay and inbound webhook framework                                      | Reused unchanged                                                                                             |
+| Company travels with the event         | Inbound normalization at the ingress                                                    | Adapted: stamps the source's declared company                                                                |
+| Subscription becomes routable          | Contract-routing model                                                                  | Adapted: contracts are derived from the publication index, held in memory, and rebuilt rather than persisted |
+| Match reaches the activation           | Contract `handler` target                                                               | Adapted: the handler receives the matched contract, which carries the procedure's canonical ID               |
+| Start or wake crosses into the runtime | Command dispatch addressed to the receiving computer                                    | Reused unchanged                                                                                             |
+| Find or create the standing agent      | Inbound resolve-or-create seam used by WhatsApp and Discord                             | Adapted: serialized per procedure and company                                                                |
+| Start                                  | Canonical command-session dispatch, as the scheduled-job runner's generic command uses  | Reused with a sibling generic command carrying procedure and company                                         |
+| Event delivery on start and wake       | Session-input delivery                                                                  | Reused unchanged                                                                                             |
+| Outcome record                         | Durable operation outcomes, receipt-first                                               | Adapted: a new operation kind with its own `agent_runtime.procedure_activation` completed/failed event pair  |
+| Company on the session                 | Session record                                                                          | Extended with the session's company                                                                          |
+| Company for tools inside the session   | Caller resolution from the session identity document's session id (`telec auth whoami`) | Extended: resolves the company context from the session record that id names; the document is unchanged      |
 
 ### Activation
 
@@ -152,10 +152,14 @@ recorded on the session record and set on every session it starts. Only such a
 session carries a company profile in its startup context; standing in a
 company's project adds none.
 
-Tools inside a session read the session identity document, which `identity`
-writes from the session record: the session's company when set, otherwise a
-sole eligible company as resolved, otherwise an unresolved answer naming the
-eligible companies.
+The company lives on the session record and nowhere else. A tool inside a
+session reads it through the session id: the session identity document names
+the session, and `identity` resolves the context from the record that id names
+when the tool asks — the session's company when set, otherwise a sole eligible
+company as resolved, otherwise an unresolved answer naming the eligible
+companies — and publishes it through `telec auth whoami`, which any tool can
+run whatever its language. Nothing company-related is written into the session
+identity document.
 
 ### Catalogue
 

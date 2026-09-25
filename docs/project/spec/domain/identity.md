@@ -45,16 +45,20 @@ TeleClaudeNext.
   consumed at CLI, API, integration, and runtime boundaries.
 
 <!-- planned:procedure-event-activation -->
-- **Also owns:** the session identity document's company fields, which tools
-  running inside the session read — the company, the origin (human-directed
-  work with its human principal, or system-principal company work), and whether
-  the company is resolved, absent, or ambiguous. The company is the session
-  record's company when `agent_runtime` has set one; otherwise, for a
-  human-lineage session whose person has exactly one eligible company, that
-  company as resolved; otherwise unresolved, naming the eligible companies when
-  several remain. Identity writes the fields from the session record and its
-  own membership resolution, so they survive a restart, and interprets nothing
-  further; readers consume the published answer and never re-validate it.
+- **Also owns:** the session company context that tools running inside a
+  session read — the company, the origin (human-directed work with its human
+  principal, or system-principal company work), and whether the company is
+  resolved, absent, or ambiguous. The company is the session record's company
+  when `agent_runtime` has set one; otherwise, for a human-lineage session
+  whose person has exactly one eligible company, that company as resolved;
+  otherwise unresolved, naming the eligible companies when several remain.
+  Identity resolves it when a tool asks, from the session record that the
+  session identity document's session id names and from its own membership
+  resolution, and publishes it through `telec auth whoami`. The company lives
+  on the session record alone: identity writes none of it into the session
+  identity document, so no copy can disagree with the record, and the answer
+  survives a restart because the record does. Readers consume the published
+  answer and never re-validate it.
 <!-- /planned:procedure-event-activation -->
 
 ## See Also

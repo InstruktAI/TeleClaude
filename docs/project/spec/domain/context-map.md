@@ -98,8 +98,10 @@ contracts and never creates shared ownership.
   command addressed to its own computer and never starts, addresses, or
   inspects a session. `agent_runtime` owns the activation runner and each
   session's company, consuming `identity`'s membership resolution; `identity`
-  writes the session identity document from the session record and its own
-  membership resolution. None restates another's rule: `integration` never
+  resolves the company context a tool inside a session reads from the session
+  record that session's id names and its own membership resolution, and
+  copies none of it into the session identity document. None restates
+  another's rule: `integration` never
   decides whether an agent stands, `agent_runtime` never matches events or reads
   procedure metadata, and `identity` never chooses a session's company.
 <!-- /planned:procedure-event-activation -->

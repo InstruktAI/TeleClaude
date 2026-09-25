@@ -32,6 +32,11 @@ requester's membership where the context is resolved, and what the session
 publishes is already validated. Consumers read that answer rather than
 re-deriving it.
 
+The company is recorded on the session record and nowhere else. A tool running
+inside the session reads the context through the session it belongs to: its
+session id names the record, and the context is resolved from that record when
+the tool asks. The per-session identity document carries no company fact.
+
 Company context is business scope alone. It grants no site-administration
 standing and confers no credential privilege.
 
@@ -194,4 +199,4 @@ And no session is started
 ## See Also
 
 - docs/project/spec/feature/agent_runtime/procedure-standing-agent.md — the company is one of the two facts identifying a procedure's continuing agent.
-- docs/project/spec/feature/identity/session-identity-file.md — the incumbent per-session document read by CLI subprocesses.
+- docs/project/spec/feature/identity/whoami-resolution.md — the surface through which a tool inside a session reads this context.
