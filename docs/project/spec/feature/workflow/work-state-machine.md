@@ -235,18 +235,6 @@ Then the quality-checklist artifact exists with the standard checklist template 
 And a prepared Todo whose quality-checklist already has substantive content keeps it unchanged
 ```
 
-<!-- planned-change:successful-merge-preserves-worktree-work -->
-#### UC-WSM8: Build review consumes only a current report and worktree binding
-
-```gherkin
-Given a build reviewer writes `review-findings` and stamps approve or changes_requested against worktree HEAD H and report digest R
-When the work orchestrator re-enters `telec todo work my-feature`
-Then the machine consumes the verdict only when the current worktree HEAD is H and the current `review-findings` digest is R
-And an absent binding, missing report, later worktree commit, or later report rewrite leaves the build review pending for re-review
-And only a current approve advances to review_approved
-And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
-```
-<!-- change:successful-merge-preserves-worktree-work -->
 #### UC-WSM8: Build review consumes only a current report and an unchanged todo change
 
 ```gherkin
@@ -259,7 +247,6 @@ And when the machine cannot determine whether the todo's own change is unchanged
 And only a current approve advances to review_approved
 And only a current changes_requested advances to review_changes_requested and relays the bound report to the builder
 ```
-<!-- /planned-change:successful-merge-preserves-worktree-work -->
 
 #### UC-WSM9: Kickback work re-entry hands off to prepare in place with all working state preserved
 
@@ -299,22 +286,6 @@ And the record of which plan version the build executes against settles only whe
 And a crash-recovered session re-entering the build derives identical instructions from durable state alone
 ```
 
-<!-- planned-change:successful-merge-preserves-worktree-work -->
-#### UC-WSM12: Build review reports its crossed threshold and dispatches an assist
-
-```gherkin
-Given a Todo has admitted build-review passes up to its configured round threshold
-And no approve verdict is current for the worktree HEAD and review-findings digest
-When the orchestrator calls "telec todo work my-feature"
-Then the machine reports the phase, admitted-pass count, threshold and current review evidence, and instructs the orchestrator to dispatch an assist against the loop
-And it refuses no reviewer dispatch and emits no continuation stamp
-And it preserves the arithmetic verdict, lifecycle phase, active runner, worktree, builder, and reviewer sessions
-And a new worktree commit or review-findings rewrite does not reset the admitted-pass count
-And it reports that instruction once, on the crossing pass, and not on later passes
-And the admitted-pass count keeps rendering on later passes
-And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
-```
-<!-- change:successful-merge-preserves-worktree-work -->
 #### UC-WSM12: Build review reports its crossed threshold and dispatches an assist
 
 ```gherkin
@@ -329,7 +300,6 @@ And it reports that instruction once, on the crossing pass, and not on later pas
 And the admitted-pass count keeps rendering on later passes
 And only a decision the closed human lane assigns to the human, or a safety gate, reaches the human
 ```
-<!-- /planned-change:successful-merge-preserves-worktree-work -->
 
 #### UC-WSM13: Terminal work cleanup is caller-scoped and precedes departure
 
@@ -351,7 +321,6 @@ Then the name is that command's canonical domain-qualified value
 And the dispatch request handed to agent runtime carries that same value
 ```
 
-<!-- planned:successful-merge-preserves-worktree-work -->
 #### UC-WSM15: A successful origin/main merge preserves all work in the todo worktree
 
 ```gherkin
@@ -364,7 +333,6 @@ And the work orchestrator agent receives no reviewer dispatch, no follow-up for 
 #### UC-WSM16:
 
 #### UC-WSM17:
-<!-- /planned:successful-merge-preserves-worktree-work -->
 
 ### Cross-context references
 

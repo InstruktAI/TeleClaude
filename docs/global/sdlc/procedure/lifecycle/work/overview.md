@@ -81,21 +81,12 @@ evidence only; they do not advance the phase on their own.
 
 ### 3. Review
 
-<!-- planned-change:successful-merge-preserves-worktree-work -->
-After build completes, the state machine dispatches a reviewer via `review-build`
-and records the exact HEAD under review. While that reviewer is still alive, the state
-machine must reuse it instead of dispatching a second reviewer. On the next
-`telec todo work` call the machine first checks whether a live reviewer already owns
-the slug. If so, it either keeps waiting on that reviewer, or sends a targeted
-follow-up when merged `origin/main` changes overlap the current review surface.
-<!-- change:successful-merge-preserves-worktree-work -->
 After build completes, the state machine dispatches a reviewer via `review-build`
 and records the exact HEAD under review. While that reviewer is still alive, the state
 machine must reuse it instead of dispatching a second reviewer. On the next
 `telec todo work` call the machine first checks whether a live reviewer already owns
 the slug. If so, it keeps waiting on that reviewer; a successful merge of
 `origin/main` into the worktree gives it no follow-up.
-<!-- /planned-change:successful-merge-preserves-worktree-work -->
 
 The reviewer runs parallel review lanes (scope, code, principles, security, tests,
 errors, types, comments, docs) and writes `review-findings`. When the reviewer idles,
