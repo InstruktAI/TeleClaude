@@ -20,8 +20,6 @@ from teleclaude.config._file_migrations import (
 )
 from teleclaude.config._models import ReleaseChannel
 
-_YAML = YAML()
-_YAML.preserve_quotes = True
 _DOCUMENT_MAPPING_ERROR = "Machine configuration must be a YAML mapping."
 _MISSING_CONFIG_ERROR = "Machine configuration does not exist."
 _MISSING_FIELD_ERROR = "Machine configuration field does not exist."
@@ -38,6 +36,17 @@ _AGENTS = "agents"
 _DEFAULT = "default"
 _ENABLED = "enabled"
 _RETIRED_PROVIDER_FIELD_ERROR = "Retired Discord provider identifiers are not valid machine-config input."
+
+
+def _round_trip_yaml() -> YAML:
+    """Return a fresh quote-preserving round-trip parser for one load or dump.
+
+    A ruamel parser holds per-document scanner state, so one instance shared by
+    concurrent config loads corrupts each other's parse.
+    """
+    parser = YAML()
+    parser.preserve_quotes = True
+    return parser
 
 
 class MachineConfigOperation(StrEnum):
@@ -160,7 +169,7 @@ def _read_mapping(transaction: FileTransaction) -> dict[object, object]:
     content = transaction.read_text()
     if not content:
         raise FileNotFoundError(_MISSING_CONFIG_ERROR)
-    document = _YAML.load(content)
+    document = _round_trip_yaml().load(content)
     if not isinstance(document, dict):
         raise ValueError(_DOCUMENT_MAPPING_ERROR)
     return document
@@ -169,7 +178,7 @@ def _read_mapping(transaction: FileTransaction) -> dict[object, object]:
 def _write_mapping(transaction: FileTransaction, document: Mapping[object, object]) -> None:
     """Serialize one validated document through the active atomic transaction."""
     buffer = StringIO()
-    _YAML.dump(dict(document), buffer)
+    _round_trip_yaml().dump(dict(document), buffer)
     transaction.replace_text(buffer.getvalue())
 
 
