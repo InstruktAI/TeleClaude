@@ -45,8 +45,10 @@ if str(_REPO_ROOT) not in sys.path:
 from teleclaude import agent_artifacts
 from teleclaude.artifact_ownership import reconcile_deployed_files, retract_retired_native_artifacts
 from teleclaude.capabilities import resolve_capabilities
+from teleclaude.config.schema import ConfigKind
 from teleclaude.constants import ArtifactKind
 from teleclaude.doc_body import apply_planned_change_sections, apply_planned_sections
+from teleclaude.docs_index import reroot_index_document
 from teleclaude.docs_publication import publish_generation
 from teleclaude.docs_publishers import (
     DocsPublisherResolutionError,
@@ -65,7 +67,13 @@ from teleclaude.paths import (
 from teleclaude.project_manifest import load_roots
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import INCLUDE_DIRECTIVE_RE, resolve_ref_path, validate_artifact
-from teleclaude.snippet_validation import derive_snippet_classification, generated_domain_bundle_domain, load_domains
+from teleclaude.snippet_roots import iter_tier_snippet_roots
+from teleclaude.snippet_validation import (
+    SnippetScope,
+    derive_snippet_classification,
+    generated_domain_bundle_domain,
+    load_domains,
+)
 
 Transform = Callable[[Post], str]
 
@@ -109,6 +117,10 @@ _INDEX_PROJECT_ROOT_KEY = "project_root"
 _INDEX_SNIPPETS_ROOT_KEY = "snippets_root"
 _INDEX_SCOPE_ROOT = "~/.teleclaude"
 _INDEX_DEPLOY_ROOT = "~/.teleclaude/docs"
+_INDEX_SCOPE_KEY = "scope"
+_TIER_COMPANY_DEPLOY_DIRNAME = "companies"
+_TIER_PERSON_DEPLOY_DIRNAME = "people"
+_TIER_SCOPE_VALUES = (SnippetScope.PERSON.value, SnippetScope.COMPANY.value)
 _COMMITTED_OWNER_COLLISION = "committed publication conflicts with an already deployed snippet id: {snippet_id}"
 _DEPLOYED_INDEX_DOMAIN_FIELD = "domain"
 _DEPLOYED_INDEX_TRIGGER_FIELD = "activation_trigger"
@@ -1334,6 +1346,101 @@ def _materialize_committed_owner(
         domain: publisher for domain, publisher in owner_by_domain.items() if publisher.slug == current.slug
     }
     generate_domain_baselines(current_domains, staged_root, project_root, observation)
+
+
+def distribute_committed_tiers(platform_home_snapshot: Path, deploy_docs_root: Path = GLOBAL_DOCS_DIR) -> None:
+    """Compose every participating tier's documentation into the deployed corpus.
+
+    Invoked only from the platform-home publication branch, after
+    :func:`teleclaude.docs_index.build_tier_indexes` has installed each tier's
+    catalog at its documentation home in the canonical checkout. Replaces the
+    tier contribution as a unit inside a copy of the prior deployed generation:
+    removes the deployed ``companies/``/``people/`` subtrees and every
+    person- or company-scoped merged-index entry, then materializes each
+    declared, participating tier from ``platform_home_snapshot`` — the
+    validated commit, never the ambient home working tree — at its deploy
+    location. A tier absent from the recorded commit, including one whose
+    declaration the commit just removed, is therefore absent from the next
+    generation. Every non-tier contribution and merged-index entry carries
+    over unchanged, since the home is not a registered publisher and owns no
+    domain.
+    """
+    staged_root = Path(tempfile.mkdtemp(prefix=".docs.next-", dir=deploy_docs_root.parent))
+    try:
+        if deploy_docs_root.is_dir():
+            shutil.copytree(deploy_docs_root, staged_root, dirs_exist_ok=True, symlinks=False)
+        for stale in (staged_root / _TIER_COMPANY_DEPLOY_DIRNAME, staged_root / _TIER_PERSON_DEPLOY_DIRNAME):
+            if stale.is_dir():
+                shutil.rmtree(stale)
+
+        index_path = staged_root / _INDEX_FILE_NAME
+        existing_payload = yaml.safe_load(index_path.read_text(encoding=_UTF8)) if index_path.is_file() else {}
+        existing_entries = existing_payload.get(_INDEX_SNIPPETS_KEY, []) if isinstance(existing_payload, dict) else []
+        if not isinstance(existing_entries, list):
+            existing_entries = []
+        retained: list[object] = [
+            entry
+            for entry in existing_entries
+            if not (isinstance(entry, dict) and entry.get(_INDEX_SCOPE_KEY) in _TIER_SCOPE_VALUES)
+        ]
+
+        tier_entries: list[object] = []
+        for root, kind in iter_tier_snippet_roots(platform_home_snapshot):
+            slug = root.name
+            is_company = kind is ConfigKind.COMPANY
+            deploy_dirname = _TIER_COMPANY_DEPLOY_DIRNAME if is_company else _TIER_PERSON_DEPLOY_DIRNAME
+            # Deployed at <deploy_dirname>/<slug>/ directly — the tier's own source-side
+            # "docs" wrapper (<tier root>/docs/) is flattened away here, matching the
+            # three-segment published address form (`companies/<slug>/<taxonomy>/<rest>`)
+            # this delivery's validator and `general/policy/referencing-doc-snippets`
+            # already sanction. Recording an extra "docs" segment in the deployed path
+            # would desynchronize it from that already-reviewed reference grammar.
+            staged_tier_root = staged_root / deploy_dirname / slug
+            deployed_tier_root = deploy_docs_root / deploy_dirname / slug
+            source_docs = root / "docs"
+            if source_docs.is_dir():
+                shutil.copytree(source_docs, staged_tier_root, symlinks=False)
+            else:
+                staged_tier_root.mkdir(parents=True, exist_ok=True)
+            snapshot_index_text = (source_docs / _INDEX_FILE_NAME).read_text(encoding=_UTF8)
+            rerooted_text = reroot_index_document(snapshot_index_text, source_docs, deployed_tier_root)
+            (staged_tier_root / _INDEX_FILE_NAME).write_text(rerooted_text, encoding=_UTF8)
+            payload = yaml.safe_load(rerooted_text)
+            source_project_value = f"{'company' if is_company else 'person'}:{slug}"
+            for entry in payload["snippets"]:
+                tier_entries.append(
+                    {
+                        **entry,
+                        "path": f"docs/{deploy_dirname}/{slug}/{entry['path']}",
+                        "source_project": source_project_value,
+                    }
+                )
+
+        merged_entries: list[object] = [*retained, *tier_entries]
+        merged_entries.sort(key=_index_entry_sort_key)
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(
+            yaml.safe_dump(
+                {
+                    _INDEX_PROJECT_ROOT_KEY: _INDEX_SCOPE_ROOT,
+                    _INDEX_SNIPPETS_ROOT_KEY: _INDEX_DEPLOY_ROOT,
+                    _INDEX_SNIPPETS_KEY: merged_entries,
+                },
+                sort_keys=False,
+                width=1000,
+                allow_unicode=True,
+            ),
+            encoding=_UTF8,
+        )
+        previous_root = publish_generation(staged_root, deploy_docs_root)
+    except Exception:
+        shutil.rmtree(staged_root, ignore_errors=True)
+        raise
+    if previous_root is not None:
+        if previous_root.is_symlink():
+            previous_root.unlink()
+        else:
+            shutil.rmtree(previous_root)
 
 
 def _strip_specific_h1(content: str, title: str) -> str:

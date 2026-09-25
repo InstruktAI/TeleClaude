@@ -12,10 +12,10 @@ from typing import NamedTuple
 import yaml
 
 from teleclaude.domains import publishes_for_root
-from teleclaude.paths import GLOBAL_DOCS_DIR, REPO_ROOT, ConfigFileName
+from teleclaude.paths import COMPANIES_ROOT, GLOBAL_DOCS_DIR, PEOPLE_DIR, REPO_ROOT, ConfigFileName
 from teleclaude.project_manifest import load_roots
 from teleclaude.slug import normalize_slug
-from teleclaude.snippet_validation import is_generated_global_doc_artifact
+from teleclaude.snippet_validation import is_generated_global_doc_artifact, tier_root_kind
 
 _DOMAIN_AGNOSTIC_DIR = "general"
 _SNIPPETS_DIR = "snippets"
@@ -157,6 +157,14 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
     baseline bundle — has no single source file and remains deployed. Domain
     and Mother-owned support paths resolve directly to their publisher trees
     even before a host has published its first documentation generation.
+
+    A ``companies/<slug>/...`` or ``people/<slug>/...`` address is a tier's
+    published address (``general/policy/referencing-doc-snippets``). It resolves
+    to that tier's source — under the same platform home as ``project_root`` —
+    only when ``project_root`` is itself that same tier's own documentation
+    home; a validated tier snippet's Required reads name only its own tier.
+    Any other case, including a reference into a different tier, is left
+    unresolved so the caller's existence check reports it.
     """
     try:
         relative_path = candidate.expanduser().relative_to(GLOBAL_DOCS_DIR)
@@ -164,12 +172,16 @@ def resolve_global_doc_source(project_root: Path, candidate: Path) -> Path:
         return candidate
     if not relative_path.parts or is_generated_global_doc_artifact(relative_path):
         return candidate
+    root_name, *tail = relative_path.parts
+    if root_name in (COMPANIES_ROOT.name, PEOPLE_DIR.name):
+        if tier_root_kind(project_root) is not None and tail and tail[0] == project_root.name:
+            return project_root.parent.parent / root_name / tail[0] / "docs" / Path(*tail[1:])
+        return candidate
     registry = _PUBLISHER_REGISTRY.get()
     if registry is None:
         publishers = gather_publishers(project_root, project_root / "docs" / "global")
         mother = mother_publisher(publishers)
         registry = PublisherRegistry(domain_owners(publishers, mother=mother), mother)
-    root_name, *tail = relative_path.parts
     if root_name == _SNIPPETS_DIR:
         if registry.mother is None:
             raise DocsPublisherResolutionError("Mother publisher is unavailable for global snippets")

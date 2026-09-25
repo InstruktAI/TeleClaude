@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.schema import AppConfig
 from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 from teleclaude.core.identity import CliCaller, PersonCliCaller, SystemCliCaller
+from teleclaude.core.organization import OrganizationalMembership, resolve_organization
 from teleclaude.doc_body import (
     INLINE_REF_RE,
     apply_planned_change_sections,
@@ -37,6 +38,7 @@ from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import iter_snippet_roots
 from teleclaude.snippet_validation import (
+    RESERVED_SNIPPET_ID_PREFIXES,
     SnippetClassification,
     SnippetScope,
     companion_slug,
@@ -47,7 +49,7 @@ from teleclaude.third_party_index import ThirdPartyMeta, load_third_party_index
 
 logger = get_logger(__name__)
 
-SCOPE_ORDER = {"global": 0, "project": 1}
+SCOPE_ORDER = {"global": 0, "company": 1, "project": 2, "person": 3}
 GLOBAL_SOURCE_PROJECT = "global"
 ACTIVATION_CLOSURE_REQUEST_ERROR = (
     "ERROR: --closure requires exactly one requested snippet ID and no --scope, --project, or --target filter."
@@ -149,10 +151,13 @@ class SnippetMeta:
     superseded_by: tuple[str, ...] = ()
 
 
+_UNKNOWN_SCOPE_RANK = len(SCOPE_ORDER)
+
+
 def _scope_rank(scope: str | None) -> int:
     if not scope:
-        return 3
-    return SCOPE_ORDER.get(scope, 3)
+        return _UNKNOWN_SCOPE_RANK
+    return SCOPE_ORDER.get(scope, _UNKNOWN_SCOPE_RANK)
 
 
 _TEST_ENABLED_ENV = "TELECLAUDE_GET_CONTEXT_TESTING"
@@ -241,7 +246,7 @@ def _is_cross_project_snippet_id(snippet_id: str, *, domain_prefixes: set[str]) 
     prefix = snippet_id.split("/", 1)[0].strip().lower()
     if not prefix:
         return False
-    if prefix in {"project", "general", "third-party", "baseline"}:
+    if prefix in RESERVED_SNIPPET_ID_PREFIXES:
         return False
     if prefix in domain_prefixes:
         return False
@@ -578,12 +583,119 @@ def _load_cross_project_snippets(
     return all_loaded_ids
 
 
+class TierDepth(StrEnum):
+    """How much of an assembled tier's material a caller may read."""
+
+    FULL = "full"
+    PUBLIC_ONLY = "public_only"
+
+
+@dataclass(frozen=True)
+class TierKey:
+    """One assembled tier: its scope and, for a qualified tier, its owner slug.
+
+    ``owner`` is ``None`` for the global tier, which has no owner segment.
+    """
+
+    scope: SnippetScope
+    owner: str | None = None
+
+
+def is_platform_administrator(caller: CliCaller | None) -> bool:
+    """Return whether ``caller`` carries the platform administrator role."""
+    return isinstance(caller, PersonCliCaller) and caller.human_role == HUMAN_ROLE_ADMIN
+
+
+def resolve_caller_read_depth(
+    caller: CliCaller | None,
+    tier: TierKey,
+    *,
+    organization: OrganizationalMembership | None = None,
+) -> TierDepth:
+    """Answer the depth ``caller`` reads ``tier`` at — full or public-only.
+
+    A platform administrator and a system principal read every tier at full,
+    preserving the live UC-DSP31 contract for the system caller. Otherwise
+    depth follows the caller's own declared relationship to the named tier:
+    their own person tier, a company they belong to, or a project they reach
+    (an explicit assignment or their company's administrative coverage). A
+    caller with no resolvable identity, or a relationship-holding caller with
+    no relationship to the named tier, reads it at public-only.
+
+    ``organization`` lets a caller resolving several tiers reuse one
+    ``resolve_organization`` call; when omitted it is resolved from the
+    caller's person slug on demand. This function recomputes nothing from a
+    role — it consumes ``resolve_organization``'s answer as-is, including its
+    exclusion of stale assignments from ``assignments``.
+    """
+    if is_platform_administrator(caller) or isinstance(caller, SystemCliCaller):
+        return TierDepth.FULL
+    if not isinstance(caller, PersonCliCaller) or not caller.person_slug:
+        return TierDepth.PUBLIC_ONLY
+    if tier.scope is SnippetScope.GLOBAL:
+        return TierDepth.PUBLIC_ONLY
+    if tier.scope is SnippetScope.PERSON:
+        return TierDepth.FULL if tier.owner == caller.person_slug else TierDepth.PUBLIC_ONLY
+    membership = organization if organization is not None else resolve_organization(caller.person_slug)
+    if tier.scope is SnippetScope.COMPANY:
+        if any(entry.company_slug == tier.owner for entry in membership.memberships):
+            return TierDepth.FULL
+        return TierDepth.PUBLIC_ONLY
+    if tier.scope is SnippetScope.PROJECT:
+        reached = {ref.project_slug for ref in (*membership.assignments, *membership.covered)}
+        return TierDepth.FULL if tier.owner in reached else TierDepth.PUBLIC_ONLY
+    return TierDepth.PUBLIC_ONLY
+
+
+def resolve_default_read_set(
+    caller: CliCaller | None,
+    *,
+    current_project_slug: str | None,
+    current_project_company: str | None,
+) -> dict[TierKey, TierDepth]:
+    """Answer the tiers assembled when no tier is named, each paired with its depth.
+
+    The default read set is the caller's own person tier, every company they
+    belong to, global, and what the invocation offers — the project being
+    worked in and the company that project declares as its owner — the last
+    two at whatever depth the relationship grants. A caller with no resolvable
+    identity contributes no relationship-derived tier; what the invocation
+    offers still enters the set, read at public-only. Reach alone, without the
+    offered project being the one named or worked in, adds nothing beyond this
+    set — a caller's other reached projects are read only when a later stage
+    names them explicitly.
+    """
+    keys: list[TierKey] = [TierKey(SnippetScope.GLOBAL)]
+    organization: OrganizationalMembership | None = None
+    if isinstance(caller, PersonCliCaller) and caller.person_slug:
+        keys.append(TierKey(SnippetScope.PERSON, caller.person_slug))
+        organization = resolve_organization(caller.person_slug)
+        keys.extend(TierKey(SnippetScope.COMPANY, membership.company_slug) for membership in organization.memberships)
+    if current_project_slug is not None:
+        keys.append(TierKey(SnippetScope.PROJECT, current_project_slug))
+    if current_project_company is not None:
+        keys.append(TierKey(SnippetScope.COMPANY, current_project_company))
+    return {key: resolve_caller_read_depth(caller, key, organization=organization) for key in keys}
+
+
+#: Scopes an entry's tier-depth answer gates, ahead of every other admit rule.
+_TIER_OWNER_SCOPE_VALUES = frozenset({SnippetScope.PERSON.value, SnippetScope.COMPANY.value})
+
+
+def _tier_key_for_snippet(snippet: SnippetMeta) -> TierKey:
+    """Read a snippet's tier key from its own tier-qualified identity, not the index it arrived through."""
+    scope = SnippetScope(snippet.scope)
+    owner = snippet.snippet_id.split("/", 2)[1] if scope in (SnippetScope.PERSON, SnippetScope.COMPANY) else None
+    return TierKey(scope, owner)
+
+
 def _include_snippet_factory(
     *,
     caller: CliCaller | None,
     requested_ids: set[str],
     projects: list[str] | None,
     current_project_slug: str | None,
+    read_set: Mapping[TierKey, TierDepth],
     global_snippets_root: Path,
     project_scope_roots: set[Path],
     include_registered_projects: bool,
@@ -594,7 +706,30 @@ def _include_snippet_factory(
     )
 
     def _include(snippet: SnippetMeta) -> bool:
-        if not privileged and snippet.visibility != "public":
+        if snippet.scope in _TIER_OWNER_SCOPE_VALUES:
+            # Person and company snippets are decided by their tier's resolved
+            # depth ahead of every other rule, including the deployed-global-root
+            # shortcut below: a deployed tier copy lives under that root and
+            # would otherwise be admitted as global material.
+            tier = _tier_key_for_snippet(snippet)
+            depth = read_set.get(tier)
+            if depth is None:
+                depth = resolve_caller_read_depth(caller, tier)
+            return depth is TierDepth.FULL or snippet.visibility == "public"
+        # A project tier reads at the depth the caller's relationship to that
+        # exact project grants — the same mechanism as person/company, keyed by
+        # source_project rather than an owner segment — so naming or reaching a
+        # project opens its internal material like any other selector, and one
+        # with no relationship still sees only its public material.
+        source_project = snippet.source_project.lower() if snippet.scope == "project" else ""
+        project_full = False
+        if snippet.scope == "project" and source_project:
+            tier = TierKey(SnippetScope.PROJECT, source_project)
+            depth = read_set.get(tier)
+            if depth is None:
+                depth = resolve_caller_read_depth(caller, tier)
+            project_full = depth is TierDepth.FULL
+        if not privileged and not project_full and snippet.visibility != "public":
             return False
         if global_snippets_root in snippet.path.parents:
             # Every published domain is universally visible; there is no
@@ -602,7 +737,6 @@ def _include_snippet_factory(
             return True
         if snippet.scope != "project":
             return True
-        source_project = snippet.source_project.lower()
         is_cross_project = bool(source_project) and source_project != current_project_slug
         if requested_ids and snippet.snippet_id in requested_ids and is_cross_project:
             return True
@@ -655,11 +789,33 @@ def _apply_baseline_filter(
     return [snippet for snippet in snippets if snippet.snippet_id in baseline_ids]
 
 
+def _tier_read_set_lines(read_set: Mapping[TierKey, TierDepth], snippets: Iterable[SnippetMeta]) -> list[str]:
+    """Render one line per person/company tier in the caller's read set, with its entry count.
+
+    An empty participating tier is named with a zero count, so a reader can
+    distinguish it from a tier that does not exist; a tier outside the read
+    set is not named at all.
+    """
+    tier_keys = [key for key in read_set if key.scope in (SnippetScope.PERSON, SnippetScope.COMPANY)]
+    if not tier_keys:
+        return []
+    counts: dict[TierKey, int] = dict.fromkeys(tier_keys, 0)
+    for snippet in snippets:
+        if snippet.scope not in _TIER_OWNER_SCOPE_VALUES:
+            continue
+        key = _tier_key_for_snippet(snippet)
+        if key in counts:
+            counts[key] += 1
+    ordered_keys = sorted(tier_keys, key=lambda key: (key.scope.value, key.owner or ""))
+    return [f"# Tier {key.scope.value}/{key.owner}: {counts[key]} snippet(s)" for key in ordered_keys]
+
+
 def _build_phase1_output(
     snippets_for_selection: list[SnippetMeta],
     third_party_entries: list[ThirdPartyMeta],
     *,
     areas: list[str],
+    read_set: Mapping[TierKey, TierDepth],
     test_agent: str | None,
     test_mode: str | None,
     test_request: str | None,
@@ -669,6 +825,7 @@ def _build_phase1_output(
         "# PHASE 1: Snippet Index (IDs + descriptions)",
         "# Review the snippets below and select the IDs you need.",
         f"# Filter with --areas <{'|'.join(TAXONOMY_TYPES)}> and/or --domains <{'|'.join(sorted(valid_domains()))}> (omit for all)",
+        *_tier_read_set_lines(read_set, snippets_for_selection),
         "",
     ]
     ordered = sorted(
@@ -968,43 +1125,36 @@ def _render_phase2_taxonomy_bodies(
     return body_parts, rendered_count, rendered_dependency_ids
 
 
-def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
-    *,
-    areas: list[str],
-    project_root: Path,
-    snippet_ids: list[str] | None = None,
-    baseline_only: bool = False,
-    include_third_party: bool = False,
-    domains: list[str] | None = None,
-    list_projects: bool = False,
-    projects: list[str] | None = None,
-    caller: CliCaller | None = None,
-    config: AppConfig | None = None,
-    test_agent: str | None = None,
-    test_mode: str | None = None,
-    test_request: str | None = None,
-    test_csv_path: str | None = None,
-    target_slug: str | None = None,
-    scope: SnippetScope | None = None,
-    closure: bool = False,
-    include_registered_projects: bool = False,
-    retrieval_id: str | None = None,
-    verb: str | None = None,
-) -> str:
-    if list_projects:
-        return _build_project_catalog_output()
-    if closure:
-        _validate_activation_closure_request(
-            snippet_ids=snippet_ids,
-            scope=scope,
-            projects=projects,
-            target_slug=target_slug,
-        )
+@dataclass
+class AssembledCandidates:
+    """Snippet candidates loaded from every source scoped to one retrieval call."""
 
+    snippets: list[SnippetMeta]
+    snippets_by_path: dict[str, SnippetMeta]
+    all_loaded_ids: set[str]
+    third_party_entries: list[ThirdPartyMeta]
+    current_project_slug: str | None
+    registered_project_slugs: set[str]
+    registered_project_roots: set[Path]
+    source_reason: DocsSelectionSource
+    project_scope_roots: set[Path]
+    global_root: Path
+    current_project_company: str | None
+
+
+def _assemble_candidate_snippets(
+    *,
+    project_root: Path,
+    config: AppConfig | None,
+    projects: list[str] | None,
+    include_registered_projects: bool,
+    snippet_ids: list[str] | None,
+    include_third_party: bool,
+) -> AssembledCandidates:
+    """Load the current project's, global, owning-company's, and cross-project catalogs into one candidate list."""
     project_index = project_root / "docs" / "project" / "index.yaml"
     global_index = GLOBAL_DOCS_DIR / "index.yaml"
     global_root = GLOBAL_DOCS_DIR.parent.parent
-    global_snippets_root = GLOBAL_DOCS_DIR
 
     # Resolve project slug from config when available (avoids interior config loading).
     # The slug is the canonical cross-project identity: comparisons against
@@ -1054,19 +1204,22 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         include_registered_projects=include_registered_projects,
     )
 
-    # Company-scoped snippets: include only the active project's company tree,
-    # keyed by the company folder in the path. Other companies' indexes are never
-    # read, so cross-company isolation holds by construction — not by post-hoc
-    # filtering. A project with no company (or a foreign-project query) loads none.
+    # The active project's declared owning company is read here for
+    # ``current_project_company`` — what the invocation offers the caller-scope
+    # resolution stage. The company's snippets need no separate load: every
+    # declared, participating tier's entries already arrive through the merged
+    # global index above, alongside every other global entry, admitted or
+    # withheld by the include predicate's depth check rather than by which
+    # catalog was read. Reading a tier's catalog at its authoring home would
+    # make reach depend on location; the deployed corpus is the one tier source
+    # (`project/design/architecture/context-selection` §"Tier documentation is
+    # published like every other publisher's").
     company_slug = config.project.company if (config is not None and config.project is not None) else None
-    if not projects and company_slug:
-        company_docs_root = COMPANIES_ROOT / company_slug / "docs"
-        if not (COMPANIES_ROOT / company_slug).exists():
-            # Declared-but-unknown company: surface the misconfiguration rather than
-            # silently selecting no snippets (which is indistinguishable from a
-            # correctly no-company project). No other company's snippets are loaded.
-            logger.warning("project_company_unknown", company=company_slug, companies_root=str(COMPANIES_ROOT))
-        snippets.extend(_load_index(company_docs_root / "index.yaml", project_root=company_docs_root))
+    if not projects and company_slug and not (COMPANIES_ROOT / company_slug).exists():
+        # Declared-but-unknown company: surface the misconfiguration rather than
+        # silently resolving no relationship (indistinguishable from a correctly
+        # no-company project).
+        logger.warning("project_company_unknown", company=company_slug, companies_root=str(COMPANIES_ROOT))
 
     # Build path-to-snippet mapping for baseline resolution
     snippets_by_path = {str(s.path): s for s in snippets}
@@ -1101,36 +1254,60 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         snippets_by_path=snippets_by_path,
     )
 
-    requested_ids = {sid.strip() for sid in (snippet_ids or []) if sid.strip()}
-    include_snippet = _include_snippet_factory(
-        caller=caller,
-        requested_ids=requested_ids,
-        projects=projects,
-        current_project_slug=current_project_slug,
-        global_snippets_root=global_snippets_root,
-        project_scope_roots=project_scope_roots,
-        include_registered_projects=include_registered_projects,
-        registered_project_slugs=registered_project_slugs,
-    )
-    snippets = [snippet for snippet in snippets if include_snippet(snippet)]
-    snippets = _apply_baseline_filter(
-        snippets,
-        baseline_only=baseline_only,
-        project_root=project_root,
-        global_root=global_root,
+    return AssembledCandidates(
+        snippets=snippets,
         snippets_by_path=snippets_by_path,
-        registered_project_roots=registered_project_roots if include_registered_projects else set(),
+        all_loaded_ids=all_loaded_ids,
+        third_party_entries=third_party_entries,
+        current_project_slug=current_project_slug,
+        registered_project_slugs=registered_project_slugs,
+        registered_project_roots=registered_project_roots,
+        source_reason=source_reason,
+        project_scope_roots=project_scope_roots,
+        global_root=global_root,
+        current_project_company=company_slug,
     )
-    # Content-selection filters: narrow the assembled list by scope tier and/or
-    # queried project. Both suppress the otherwise-unconditional global include so
-    # the filter actually narrows. They apply to the single taxonomy list (feeding
-    # both phase-1 and phase-2) and to the parallel third-party track.
+
+
+def _apply_content_selection_filters(
+    snippets: list[SnippetMeta],
+    third_party_entries: list[ThirdPartyMeta],
+    *,
+    scope: SnippetScope | None,
+    projects: list[str] | None,
+    person: str | None,
+    company: str | None,
+    domains: list[str] | None,
+    snippet_ids: list[str] | None,
+    target_slug: str | None,
+) -> tuple[list[SnippetMeta], list[ThirdPartyMeta]]:
+    """Narrow the assembled list by scope tier, named tier selector, domain, and target.
+
+    Each suppresses the otherwise-unconditional global include so the filter
+    actually narrows. They apply to the single taxonomy list (feeding both
+    phase-1 and phase-2) and to the parallel third-party track.
+    """
     if scope is not None:
         snippets = [snippet for snippet in snippets if snippet.scope == scope]
         third_party_entries = [entry for entry in third_party_entries if entry.scope == scope]
-    if projects:
-        project_keys = {name.strip().lower() for name in projects if name.strip()}
-        snippets = [snippet for snippet in snippets if snippet.source_project.lower() in project_keys]
+    if projects or person is not None or company is not None:
+        # Naming a tier assembles that tier instead of the default read set: the
+        # result is the union of every named selector's own tier, never their
+        # intersection, so --person and --company together return both tiers.
+        project_keys = {name.strip().lower() for name in projects if name.strip()} if projects else set()
+
+        def _matches_named_tier(snippet: SnippetMeta) -> bool:
+            if project_keys and snippet.source_project.lower() in project_keys:
+                return True
+            if snippet.scope in _TIER_OWNER_SCOPE_VALUES:
+                tier = _tier_key_for_snippet(snippet)
+                if company is not None and tier == TierKey(SnippetScope.COMPANY, company):
+                    return True
+                if person is not None and tier == TierKey(SnippetScope.PERSON, person):
+                    return True
+            return False
+
+        snippets = [snippet for snippet in snippets if _matches_named_tier(snippet)]
         # Third-party indexes are loaded for the current project + global only and
         # are never cross-project-loaded, so none belong to a queried foreign
         # project (mirrors the target-slug branch below).
@@ -1161,6 +1338,102 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         ]
         third_party_entries = []
 
+    return snippets, third_party_entries
+
+
+def build_context_output(  # TODO: refactor to reduce complexity
+    *,
+    areas: list[str],
+    project_root: Path,
+    snippet_ids: list[str] | None = None,
+    baseline_only: bool = False,
+    include_third_party: bool = False,
+    domains: list[str] | None = None,
+    list_projects: bool = False,
+    projects: list[str] | None = None,
+    person: str | None = None,
+    company: str | None = None,
+    caller: CliCaller | None = None,
+    config: AppConfig | None = None,
+    test_agent: str | None = None,
+    test_mode: str | None = None,
+    test_request: str | None = None,
+    test_csv_path: str | None = None,
+    target_slug: str | None = None,
+    scope: SnippetScope | None = None,
+    closure: bool = False,
+    include_registered_projects: bool = False,
+    retrieval_id: str | None = None,
+    verb: str | None = None,
+) -> str:
+    if list_projects:
+        return _build_project_catalog_output()
+    if closure:
+        _validate_activation_closure_request(
+            snippet_ids=snippet_ids,
+            scope=scope,
+            projects=projects,
+            target_slug=target_slug,
+        )
+
+    global_snippets_root = GLOBAL_DOCS_DIR
+
+    assembled = _assemble_candidate_snippets(
+        project_root=project_root,
+        config=config,
+        projects=projects,
+        include_registered_projects=include_registered_projects,
+        snippet_ids=snippet_ids,
+        include_third_party=include_third_party,
+    )
+    snippets = assembled.snippets
+    snippets_by_path = assembled.snippets_by_path
+    all_loaded_ids = assembled.all_loaded_ids
+    third_party_entries = assembled.third_party_entries
+    current_project_slug = assembled.current_project_slug
+    registered_project_slugs = assembled.registered_project_slugs
+    registered_project_roots = assembled.registered_project_roots
+    source_reason = assembled.source_reason
+    project_scope_roots = assembled.project_scope_roots
+    global_root = assembled.global_root
+    current_project_company = assembled.current_project_company
+
+    requested_ids = {sid.strip() for sid in (snippet_ids or []) if sid.strip()}
+    read_set = resolve_default_read_set(
+        caller, current_project_slug=current_project_slug, current_project_company=current_project_company
+    )
+    include_snippet = _include_snippet_factory(
+        caller=caller,
+        requested_ids=requested_ids,
+        projects=projects,
+        current_project_slug=current_project_slug,
+        read_set=read_set,
+        global_snippets_root=global_snippets_root,
+        project_scope_roots=project_scope_roots,
+        include_registered_projects=include_registered_projects,
+        registered_project_slugs=registered_project_slugs,
+    )
+    snippets = [snippet for snippet in snippets if include_snippet(snippet)]
+    snippets = _apply_baseline_filter(
+        snippets,
+        baseline_only=baseline_only,
+        project_root=project_root,
+        global_root=global_root,
+        snippets_by_path=snippets_by_path,
+        registered_project_roots=registered_project_roots if include_registered_projects else set(),
+    )
+    snippets, third_party_entries = _apply_content_selection_filters(
+        snippets,
+        third_party_entries,
+        scope=scope,
+        projects=projects,
+        person=person,
+        company=company,
+        domains=domains,
+        snippet_ids=snippet_ids,
+        target_slug=target_slug,
+    )
+
     areas_set = set(areas)
     if areas_set:
         snippets_for_selection = [s for s in snippets if s.snippet_type in areas_set]
@@ -1189,6 +1462,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
             snippets_for_selection,
             third_party_entries,
             areas=areas,
+            read_set=read_set,
             test_agent=test_agent,
             test_mode=test_mode,
             test_request=test_request,

@@ -7,15 +7,16 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from scripts.distribute import distribute_committed
+from scripts.distribute import distribute_committed, distribute_committed_tiers
 from teleclaude.capabilities import Capabilities, resolve_capabilities
-from teleclaude.docs_index import build_all_indexes, reroot_index_document
+from teleclaude.docs_index import build_all_indexes, build_tier_indexes, reroot_index_document
 from teleclaude.docs_lock import DocsLeaseTimeoutError, DocsLockOperation, docs_lease
 from teleclaude.docs_publishers import DocsPublisherResolutionError, git_common_root, publisher_resolution
+from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.resource_validation import (
     _error,
     clear_errors,
@@ -67,22 +68,23 @@ def publish_recorded_commit(project_root: Path, after_sha: str) -> bool:
             with _recorded_snapshot(canonical_root, after_sha) as snapshot_root:
                 capabilities = resolve_capabilities(snapshot_root)
                 if not capabilities.is_target:
+                    if _is_platform_home(canonical_root):
+                        # This validates every participating tier's snippet sources, installs
+                        # each tier's catalog at its documentation home in the canonical home
+                        # checkout, then composes the tier contribution into the deployed corpus.
+                        tier_findings = _collect_tier_source_findings(snapshot_root)
+                        if tier_findings:
+                            return False
+                        written_tiers = build_tier_indexes(snapshot_root)
+                        tier_index_outputs = _reroot_written_outputs(written_tiers, snapshot_root, canonical_root)
+                        _install_canonical_files(snapshot_root, canonical_root, tier_index_outputs, after_sha)
+                        distribute_committed_tiers(snapshot_root)
                     return True
                 findings = _collect_source_findings(snapshot_root, capabilities)
                 if findings:
                     return False
                 written = build_all_indexes(snapshot_root) if capabilities.docs else []
-                index_outputs = [
-                    (
-                        source,
-                        reroot_index_document(source.read_text(encoding="utf-8"), snapshot_root, canonical_root).encode(
-                            "utf-8"
-                        )
-                        if source.is_file()
-                        else None,
-                    )
-                    for source in written
-                ]
+                index_outputs = _reroot_written_outputs(written, snapshot_root, canonical_root)
                 _install_canonical_files(snapshot_root, canonical_root, index_outputs, after_sha)
                 distribution_outputs = distribute_committed(
                     snapshot_root,
@@ -101,6 +103,26 @@ def publish_recorded_commit(project_root: Path, after_sha: str) -> bool:
     except (DocsLeaseTimeoutError, subprocess.CalledProcessError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return False
+
+
+def _is_platform_home(canonical_root: Path) -> bool:
+    """Return whether the published repository is the machine's platform home."""
+    return canonical_root.expanduser().resolve() == TELECLAUDE_HOME.expanduser().resolve()
+
+
+def _reroot_written_outputs(
+    written: list[Path], snapshot_root: Path, canonical_root: Path
+) -> list[tuple[Path, bytes | None]]:
+    """Pair each snapshot-written index file with its canonical-rooted bytes."""
+    return [
+        (
+            source,
+            reroot_index_document(source.read_text(encoding="utf-8"), snapshot_root, canonical_root).encode("utf-8")
+            if source.is_file()
+            else None,
+        )
+        for source in written
+    ]
 
 
 @contextmanager
@@ -198,19 +220,30 @@ def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[
     return grouped
 
 
-def _collect_source_findings(project_root: Path, capabilities: Capabilities) -> list[str]:
-    """Run the snippet, artifact, and jobs-config validators; print and return findings."""
+def _collect_findings_via(
+    project_root: Path,
+    validate_in_scope: Callable[[], list[str]],
+    *,
+    extra: Callable[[], list[str]] | None = None,
+) -> list[str]:
+    """Clear prior findings, run a validation call, print and return every finding.
+
+    ``validate_in_scope`` runs inside ``publisher_resolution`` and returns any
+    error strings it collects directly; findings routed through the
+    ``_error``/``get_errors`` mechanism are read afterward. ``extra``, when
+    given, runs outside ``publisher_resolution`` before findings are read —
+    the ordinary source validator's jobs-config check needs this; the tier
+    validator has no equivalent step.
+    """
     clear_errors()
     errors: list[str] = []
     try:
         with publisher_resolution(project_root):
-            if capabilities.docs:
-                validate_all_snippets(project_root)
-            if capabilities.agents:
-                errors.extend(validate_all_artifacts(project_root))
+            errors.extend(validate_in_scope())
     except DocsPublisherResolutionError as exc:
         _error("snippet_global_source_resolution_failed", path=str(project_root), reason=str(exc))
-    errors.extend(validate_jobs_config(project_root))
+    if extra is not None:
+        errors.extend(extra())
     findings = get_errors()
     if findings:
         _print_findings(findings, quiet=False)
@@ -218,6 +251,32 @@ def _collect_source_findings(project_root: Path, capabilities: Capabilities) -> 
     for error in errors:
         print(error)
     return errors
+
+
+def _collect_source_findings(project_root: Path, capabilities: Capabilities) -> list[str]:
+    """Run the snippet, artifact, and jobs-config validators; print and return findings."""
+
+    def validate_in_scope() -> list[str]:
+        if capabilities.docs:
+            validate_all_snippets(project_root)
+        return validate_all_artifacts(project_root) if capabilities.agents else []
+
+    return _collect_findings_via(project_root, validate_in_scope, extra=lambda: validate_jobs_config(project_root))
+
+
+def _collect_tier_source_findings(platform_home_snapshot: Path) -> list[str]:
+    """Run tier snippet-source validation against the platform-home snapshot.
+
+    The home is not a registered target and carries no project-shaped snippet
+    root of its own, so the ordinary walk this call also reaches is a no-op;
+    only the declared, participating tier roots under it are validated.
+    """
+
+    def validate_in_scope() -> list[str]:
+        validate_all_snippets(platform_home_snapshot, tier_home=platform_home_snapshot)
+        return []
+
+    return _collect_findings_via(platform_home_snapshot, validate_in_scope)
 
 
 def _format_finding(finding: dict[str, str]) -> str:

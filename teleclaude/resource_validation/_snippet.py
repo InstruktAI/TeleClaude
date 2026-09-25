@@ -39,7 +39,7 @@ from teleclaude.resource_validation._models import (
     _first_out_of_order_ref,
 )
 from teleclaude.resource_validation._todo_status import TodoStatusFact, build_todo_status_facts, is_pending_marker_stale
-from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots
+from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, iter_tier_snippet_roots
 from teleclaude.snippet_validation import (
     SnippetClassification,
     SnippetTaxonomy,
@@ -780,46 +780,112 @@ def _resolve_todo_status_facts(project_root: Path) -> dict[str, TodoStatusFact] 
     return None
 
 
-def validate_all_snippets(project_root: Path, *, paths: list[Path] | None = None) -> None:
+def _containing_tier_root(path: Path, tier_roots: list[Path]) -> Path | None:
+    """The declared tier root whose documentation home contains ``path``, or ``None``."""
+    for root in tier_roots:
+        try:
+            path.resolve().relative_to((root / "docs").resolve())
+            return root
+        except ValueError:
+            continue
+    return None
+
+
+def _validate_scoped_paths(
+    project_root: Path, paths: list[Path], *, snippet_roots: list[Path], tier_roots: list[Path], domains: set[str]
+) -> None:
+    """Validate an explicit path list, matching each against project then tier roots."""
+    for path in paths:
+        if path.name == "index.yaml" or path.suffix != ".md":
+            continue
+        if _is_third_party_doc(path, project_root):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                _error("snippet_read_failed", path=str(path), error=str(exc))
+                continue
+            validate_third_party_doc(path, text, project_root)
+            continue
+        containing_root: Path | None = None
+        for root in snippet_roots:
+            try:
+                path.resolve().relative_to(root.resolve())
+                containing_root = root
+                break
+            except ValueError:
+                continue
+        if containing_root is not None:
+            if is_excluded_snippet_path(path, containing_root):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                _error("snippet_read_failed", path=str(path), error=str(exc))
+                continue
+            validate_snippet(path, text, project_root, domains=domains)
+            continue
+        tier_root = _containing_tier_root(path, tier_roots)
+        if tier_root is None:
+            continue
+        if is_excluded_snippet_path(path, tier_root / "docs"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            _error("snippet_read_failed", path=str(path), error=str(exc))
+            continue
+        validate_snippet(path, text, tier_root, domains=domains)
+
+
+def _validate_tier_roots(
+    tier_roots: list[Path], *, domains: set[str], todo_status_facts: Mapping[str, TodoStatusFact] | None
+) -> None:
+    """Full-run validation of every declared, participating tier's documentation home."""
+    for tier_root in tier_roots:
+        tier_docs_root = tier_root / "docs"
+        if not tier_docs_root.exists():
+            continue
+        for path in sorted(tier_docs_root.rglob("*.md")):
+            if path.name == "index.yaml":
+                continue
+            if is_excluded_snippet_path(path, tier_docs_root):
+                continue
+            if "baseline" in str(path):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                _error("snippet_read_failed", path=str(path), error=str(exc))
+                continue
+            validate_snippet(path, text, tier_root, domains=domains, todo_status_facts=todo_status_facts)
+
+
+def validate_all_snippets(
+    project_root: Path, *, paths: list[Path] | None = None, tier_home: Path | None = None
+) -> None:
     """Validate all doc snippets under the project. Collects validation findings.
 
     When *paths* is provided, only those files are validated (per-file scoped mode).
     Repo-wide passes (_validate_baseline_dedup, validate_third_party_docs) are skipped
     in scoped mode — they require the full repo and stay on full runs only.
+
+    ``tier_home``, when given, additionally walks every declared,
+    documentation-participating company and person tier's own documentation
+    home under it: in scoped mode a path matching no project root is matched
+    against the tier roots next; a full run also walks every tier root
+    directly, passing that tier's own root as ``validate_snippet``'s root
+    argument so classification, marker validation, and Required-read
+    resolution dispatch to the tier the file actually belongs to. Callers pass
+    it only for the platform-home publication branch and the home's markdown
+    lint; every other repository's run passes none, so a malformed or
+    uncommitted home tier file never reaches an unrelated repository's run.
     """
     domains = load_domains(project_root)
+    tier_roots = [root for root, _kind in iter_tier_snippet_roots(tier_home)] if tier_home is not None else []
 
     if paths is not None:
         snippet_roots = _iter_snippet_roots(project_root)
-        for path in paths:
-            if path.name == "index.yaml" or path.suffix != ".md":
-                continue
-            if _is_third_party_doc(path, project_root):
-                try:
-                    text = path.read_text(encoding="utf-8")
-                except OSError as exc:
-                    _error("snippet_read_failed", path=str(path), error=str(exc))
-                    continue
-                validate_third_party_doc(path, text, project_root)
-            else:
-                containing_root: Path | None = None
-                for root in snippet_roots:
-                    try:
-                        path.resolve().relative_to(root.resolve())
-                        containing_root = root
-                        break
-                    except ValueError:
-                        continue
-                if containing_root is None:
-                    continue
-                if is_excluded_snippet_path(path, containing_root):
-                    continue
-                try:
-                    text = path.read_text(encoding="utf-8")
-                except OSError as exc:
-                    _error("snippet_read_failed", path=str(path), error=str(exc))
-                    continue
-                validate_snippet(path, text, project_root, domains=domains)
+        _validate_scoped_paths(project_root, paths, snippet_roots=snippet_roots, tier_roots=tier_roots, domains=domains)
         return
 
     todo_status_facts = _resolve_todo_status_facts(project_root)
@@ -843,5 +909,6 @@ def validate_all_snippets(project_root: Path, *, paths: list[Path] | None = None
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
             validate_snippet(path, text, project_root, domains=domains, todo_status_facts=todo_status_facts)
+    _validate_tier_roots(tier_roots, domains=domains, todo_status_facts=todo_status_facts)
     _validate_baseline_dedup(project_root)
     validate_third_party_docs(project_root)

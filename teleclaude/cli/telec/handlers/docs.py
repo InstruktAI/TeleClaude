@@ -209,6 +209,10 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
     scope = _parse_scope(scope_raw.strip(), "index") if scope_raw is not None else None
     project_raw = parsed.value(F.FLAG_DOCS_PROJECT)
     projects = [project_raw.strip().lower()] if project_raw is not None else None
+    person_raw = parsed.value(F.FLAG_DOCS_PERSON)
+    person = person_raw.strip().lower() if person_raw is not None else None
+    company_raw = parsed.value(F.FLAG_DOCS_COMPANY)
+    company = company_raw.strip().lower() if company_raw is not None else None
     target_raw = parsed.value(F.FLAG_DOCS_TARGET)
     target_slug = target_raw.strip() if target_raw is not None else None
 
@@ -236,6 +240,8 @@ def _handle_docs_index(args: list[str], context: DocsRetrievalContext) -> None:
         target_slug=target_slug,
         scope=scope,
         projects=projects,
+        person=person,
+        company=company,
         caller=caller,
         config=config,
         include_registered_projects=docs_context.include_registered_projects,
@@ -267,6 +273,10 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
     scope = _parse_scope(scope_raw.strip(), "get") if scope_raw is not None else None
     project_raw = parsed.value(F.FLAG_DOCS_PROJECT)
     projects = [project_raw.strip().lower()] if project_raw is not None else None
+    person_raw = parsed.value(F.FLAG_DOCS_PERSON)
+    person = person_raw.strip().lower() if person_raw is not None else None
+    company_raw = parsed.value(F.FLAG_DOCS_COMPANY)
+    company = company_raw.strip().lower() if company_raw is not None else None
 
     _emit_retrieval_accepted(
         context,
@@ -293,6 +303,8 @@ def _handle_docs_get(args: list[str], context: DocsRetrievalContext) -> None:
             target_slug=target_slug,
             scope=scope,
             projects=projects,
+            person=person,
+            company=company,
             closure=closure,
             caller=caller,
             config=config,
