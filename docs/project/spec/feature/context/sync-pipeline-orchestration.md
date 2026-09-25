@@ -27,6 +27,7 @@ The publication pipeline is:
 1. **Resolve activated source** — materialize the recorded tip for the
    triggering project and retain every other publisher at its previously
    activated revision.
+<!-- planned-change:stale-sync-retry-regresses-global-publication -->
 2. **Build indexes** — derive indexes from the triggering project's recorded
    snapshot for publication. Write portable derived indexes to its canonical
    checkout only while that checkout's latest commit is the recorded tip;
@@ -35,6 +36,23 @@ The publication pipeline is:
    local indexes untouched.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
    outputs from those snapshots.
+<!-- change:stale-sync-retry-regresses-global-publication -->
+2. **Build indexes** — derive indexes from the triggering project's recorded
+   snapshot for publication. Write portable derived indexes to its canonical
+   checkout only while the recorded tip is current: no canonical-main change
+   after it owes publication. Recheck currency after installation and retain
+   the prior local catalog if a publication-owing change landed during the
+   write.
+3. **Distribute** — compose and atomically deploy the capability-gated runtime
+   outputs from those snapshots.
+
+A publication whose recorded tip is superseded — a later canonical-main change
+owes publication — runs none of these phases. It leaves the canonical
+checkout's indexes and every deployed runtime output unchanged and reports a
+superseded outcome; the later change's own publication action
+(`project/spec/feature/integration/post-commit-maintenance`) carries the newer
+source.
+<!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
 
 Normal and recovery publication consume a recorded commit that already passed
@@ -108,6 +126,7 @@ And no runtime output changes
 
 
 
+<!-- planned-change:stale-sync-retry-regresses-global-publication -->
 #### UC-SPO25: Recovery publishes the original recorded range
 
 ```gherkin
@@ -118,6 +137,32 @@ Then publication resolves the original committed input
 And the later source does not replace it
 And the replay reports its terminal outcome for that original range
 ```
+<!-- change:stale-sync-retry-regresses-global-publication -->
+#### UC-SPO25: Recovery publishes the original recorded range
+
+```gherkin
+Given publication failed for a recorded commit range
+And a later commit owing no publication, or a working-tree edit, exists
+When maintenance replays the publication action for the failed range
+Then publication resolves the original committed input
+And the later source does not replace it
+And the replay reports its terminal outcome for that original range
+```
+<!-- /planned-change:stale-sync-retry-regresses-global-publication -->
+
+<!-- planned:stale-sync-retry-regresses-global-publication -->
+#### UC-SPO28: A superseded replay leaves newer published output in place
+
+```gherkin
+Given publication failed for a recorded commit range
+And a later canonical-main commit owes publication and its source is published
+When maintenance replays the publication action for the failed range
+Then the deployed documentation and agent artifacts remain those of the later published source
+And the canonical checkout's indexes remain those of the later published source
+And the replay reports a superseded terminal outcome for the original range
+And the failed action no longer awaits recovery
+```
+<!-- /planned:stale-sync-retry-regresses-global-publication -->
 
 #### UC-SPO26: The working-tree publication command is absent
 
@@ -234,6 +279,7 @@ And its absence before first deployment is not a finding
 
 ## Known caveats
 
+<!-- planned-change:stale-sync-retry-regresses-global-publication -->
 - Publication is idempotent at the authored-source layer: it builds indexes
   from the recorded snapshot and places published domain bundles inside the
   deployed generation. It writes gitignored `index.yaml` files with canonical
@@ -246,6 +292,21 @@ And its absence before first deployment is not a finding
   that action succeeds. Replaying an older range never replaces a newer local
   index; it still publishes runtime output from the original recorded range.
   Publication never mutates authored source snippets or uses uncommitted files.
+<!-- change:stale-sync-retry-regresses-global-publication -->
+- Publication is idempotent at the authored-source layer: it builds indexes
+  from the recorded snapshot and places published domain bundles inside the
+  deployed generation. It writes gitignored `index.yaml` files with canonical
+  checkout paths only while the recorded tip is current, so a tip followed only
+  by commits that owe no publication still installs its catalog. The host
+  documentation lease covers the checkout write and every publication action,
+  including maintenance from a person's direct Git commit or merge. Git may
+  advance its ref while a publication holds that lease, so the writer rechecks
+  currency and retains the prior local catalog if a publication-owing change
+  landed; that change's maintenance writes its own catalog when its action
+  succeeds. Replaying a superseded range changes neither the local index nor
+  runtime output. Publication never mutates authored source snippets or uses
+  uncommitted files.
+<!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
 
 - Deployed artifacts reflect committed state. Between a save and its commit, the
