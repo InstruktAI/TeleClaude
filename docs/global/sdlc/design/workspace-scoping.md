@@ -103,22 +103,11 @@ released when that session closes. It outlives the agent process, the host pane,
 and the machine, so a declaration stays live across an agent restart, a handoff,
 and a revival of the same session.
 
-<!-- planned-change:fix-stop-hook-forces-an-approved-commit-and -->
 Every implicit-scope consumer on a shared branch reads this same evidence.
 Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
 with the current dirty set. Worktrees remain task-scoped and do not consult
 session declarations: there the same consumers read the dirty set directly,
 because a todo checkout has one writer and nothing to attribute.
-<!-- change:fix-stop-hook-forces-an-approved-commit-and -->
-Every implicit-scope consumer on a shared branch reads this same evidence.
-Session-scoped lint, commit, and the agent-stop checkpoint each intersect it
-with the current dirty set. Worktrees remain task-scoped and do not consult
-session declarations: there the same consumers read the dirty set directly,
-because a todo checkout has one writer and nothing to attribute. The one
-exception is the agent-stop checkpoint of a reviewer session in a worktree,
-which scopes that session to its own declarations as on a shared branch
-(`sdlc/procedure/lifecycle/work/review-build`).
-<!-- /planned-change:fix-stop-hook-forces-an-approved-commit-and -->
 
 A path is **owned** when it is both declared and dirty. A declared path that is
 clean is not owned and appears in no scope. Several sessions may declare the same
