@@ -76,6 +76,7 @@ from teleclaude.utils.transcript_discovery import agent_for_transcript_path
 
 logger = get_logger(__name__)
 _RUNTIME_ARTIFACT_SKIPPED_LOG = "Skipping runtime-owned transcript entry"
+_UNAUTHORED_USER_POSITION_SKIPPED_LOG = "Skipping user content position no author sent"
 
 
 def _compaction_block(entry_ts: str | None, entry_idx: int, file_index: int) -> ProjectedBlock:
@@ -171,54 +172,28 @@ def _classify_user_text(
     return classification, visible, author
 
 
-def _project_user_text_block(
-    block: Mapping[str, object],
+def _project_classified_user_text(
+    text: str,
+    classification: UserContentBlockClassification | None,
     policy: VisibilityPolicy,
     *,
     agent_name: AgentName,
-    native_classification: UserContentBlockClassification | None,
     cleanup_runtime_user_spans: bool,
     entry_ts: str | None,
     entry_idx: int,
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
-    text = str(block.get("text", ""))
-    if native_classification is not None:
-        if native_classification.origin is UserContentOrigin.RUNTIME:
-            logger.debug("Skipping runtime-owned Codex content block", entry_index=entry_idx)
-            return
-        yield from _project_user_text(
-            text,
-            policy,
-            entry_ts=entry_ts,
-            entry_idx=entry_idx,
-            file_index=file_index,
-        )
+    """Project one user text position when an author sent it, segmenting it like every other."""
+    if classification is None or classification.origin is not UserContentOrigin.CANDIDATE_HUMAN:
+        logger.trace(_UNAUTHORED_USER_POSITION_SKIPPED_LOG, entry_index=entry_idx)
         return
-    if cleanup_runtime_user_spans:
-        cleaned_text = normalize_runtime_user_text(agent_name, text)
-        if cleaned_text:
-            yield from _project_user_text(
-                cleaned_text,
-                policy,
-                entry_ts=entry_ts,
-                entry_idx=entry_idx,
-                file_index=file_index,
-            )
-        return
-    projected_classification, visible, author = _classify_user_text(text, policy)
-    if not visible:
-        if projected_classification.kind is not TranscriptEntryKind.ORDINARY:
-            logger.debug("Sanitized side-channel user text block", entry_index=entry_idx)
-        return
-    yield ProjectedBlock(
-        block_type="text",
-        block=block,  # type: ignore[arg-type]
-        role="user",
-        timestamp=entry_ts,
-        entry_index=entry_idx,
+    projected_text = normalize_runtime_user_text(agent_name, text) if cleanup_runtime_user_spans else text
+    yield from _project_user_text(
+        projected_text,
+        policy,
+        entry_ts=entry_ts,
+        entry_idx=entry_idx,
         file_index=file_index,
-        author=author,
     )
 
 
@@ -240,11 +215,11 @@ def _project_content_block(
         if not text.strip():
             return
         if role == "user":
-            yield from _project_user_text_block(
-                block,
+            yield from _project_classified_user_text(
+                text,
+                user_classification,
                 policy,
                 agent_name=agent_name,
-                native_classification=user_classification,
                 cleanup_runtime_user_spans=cleanup_runtime_user_spans,
                 entry_ts=entry_ts,
                 entry_idx=entry_idx,
@@ -323,10 +298,12 @@ def _project_message_blocks(
         )
         return
     if role == "user" and isinstance(content, str):
-        text = normalize_runtime_user_text(agent_name, content) if cleanup_runtime_user_spans else content
-        yield from _project_user_text(
-            text,
+        yield from _project_classified_user_text(
+            content,
+            user_classifications[0] if user_classifications else None,
             policy,
+            agent_name=agent_name,
+            cleanup_runtime_user_spans=cleanup_runtime_user_spans,
             entry_ts=entry_ts,
             entry_idx=entry_idx,
             file_index=file_index,
@@ -415,9 +392,7 @@ def project_entries(
         message = normalize_transcript_entry_message(entry_map)
         if not isinstance(message, dict):
             continue
-        user_classifications = (
-            classify_user_content_blocks(entry_map, agent_name) if agent_name is AgentName.CODEX else ()
-        )
+        user_classifications = classify_user_content_blocks(entry_map, agent_name)
         yield from _project_message_blocks(
             message,  # type: ignore[arg-type]
             policy,
