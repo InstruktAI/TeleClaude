@@ -137,18 +137,6 @@ And termination is invoked with reason "stale", host-pane termination suppressed
 And it reports success
 ```
 
-<!-- planned-change:fix-tmux-pane-error -->
-#### cleanup-orphan-host-panes — host-pane-present, storage-absent
-
-```
-Given the host-pane layer is listing N host-pane sessions
-When the orphan-host-pane sweep runs
-Then the list is filtered to entries with the TeleClaude prefix, excluding the TUI host pane
-And durable storage is queried for known host-pane references
-And every TeleClaude-prefixed host pane not appearing in the known set is terminated
-And the count of terminated host panes is returned
-```
-<!-- change:fix-tmux-pane-error -->
 #### cleanup-orphan-host-panes — host-pane-present, storage-absent
 
 ```
@@ -159,9 +147,7 @@ And durable storage is queried for the host panes its session rows own: each rec
 And every TeleClaude-prefixed host pane not appearing in that owned set is terminated
 And the count of terminated host panes is returned
 ```
-<!-- /planned-change:fix-tmux-pane-error -->
 
-<!-- planned:fix-tmux-pane-error -->
 #### UC-SCR-9: A starting session's host pane survives the orphan-host-pane sweep
 
 ```
@@ -171,7 +157,6 @@ When the orphan-host-pane sweep runs
 Then the host pane named for that session is treated as owned by its row and is not terminated
 And a TeleClaude-prefixed host pane that no session row owns is still terminated
 ```
-<!-- /planned:fix-tmux-pane-error -->
 
 #### cleanup-orphan-workspaces — directory-present, storage-absent
 
