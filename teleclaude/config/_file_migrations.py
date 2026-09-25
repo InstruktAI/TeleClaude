@@ -247,7 +247,9 @@ def remove_person_voice_channel_id(path: Path) -> bool:
 def remove_matching_tmux_binary(path: Path, runtime_binary: str) -> bool:
     """Drop the retired stored binary only when runtime policy agrees."""
     with file_transaction(path) as transaction:
-        document = _load_mapping(transaction.read_text())
+        document = _load_mapping_or_none(transaction.read_text())
+        if document is None:
+            return False
         computer = document.get(_COMPUTER)
         if not isinstance(computer, dict) or _TMUX_BINARY not in computer:
             return False
@@ -261,7 +263,9 @@ def remove_matching_tmux_binary(path: Path, runtime_binary: str) -> bool:
 def remove_retired_api_tcp_port(path: Path) -> bool:
     """Drop the retired loopback TCP listener's stored port key."""
     with file_transaction(path) as transaction:
-        document = _load_mapping(transaction.read_text())
+        document = _load_mapping_or_none(transaction.read_text())
+        if document is None:
+            return False
         api = document.get(_API)
         if not isinstance(api, dict) or _TCP_PORT not in api:
             return False
@@ -295,9 +299,16 @@ def move_person_invite_token(path: Path, slug: str) -> bool:
 
 
 def _load_mapping(content: str) -> dict[object, object]:
+    document = _load_mapping_or_none(content)
+    if document is None:
+        raise ValueError(_DOCUMENT_MAPPING_ERROR)
+    return document
+
+
+def _load_mapping_or_none(content: str) -> dict[object, object] | None:
     document = _YAML.load(content) or {}
     if not isinstance(document, dict):
-        raise ValueError(_DOCUMENT_MAPPING_ERROR)
+        return None
     return document
 
 
