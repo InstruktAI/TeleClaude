@@ -40,18 +40,20 @@ The publication pipeline is:
 2. **Build indexes** — derive indexes from the triggering project's recorded
    snapshot for publication. Write portable derived indexes to its canonical
    checkout only while the recorded tip is current: no canonical-main change
-   after it owes publication. Recheck currency after installation and retain
-   the prior local catalog if a publication-owing change landed during the
-   write.
+   after it changes a source the recorded tip's own declaration publishes.
+   Recheck currency after installation and retain the prior local catalog if
+   such a change landed during the write.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
    outputs from those snapshots.
 
-A publication whose recorded tip is superseded — a later canonical-main change
-owes publication — runs none of these phases. It leaves the canonical
-checkout's indexes and every deployed runtime output unchanged and reports a
-superseded outcome; the later change's own publication action
-(`project/spec/feature/integration/post-commit-maintenance`) carries the newer
-source.
+A publication decides currency once it holds publication serialization. A
+recorded tip that is superseded at that point — a later canonical-main change
+alters a source its own declaration publishes — runs no index or distribution
+phase. It leaves the canonical checkout's indexes and every deployed runtime
+output unchanged and reports a superseded outcome; the later change's own
+publication action (`project/spec/feature/integration/post-commit-maintenance`)
+carries the newer source. A change landing while a current publication runs
+publishes after it, under that change's own action.
 <!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
 
@@ -143,10 +145,10 @@ And the replay reports its terminal outcome for that original range
 ```gherkin
 Given publication failed for a recorded commit range
 And a later commit owing no publication, or a working-tree edit, exists
-When maintenance replays the publication action for the failed range
-Then publication resolves the original committed input
+When an agent replays the publication action for the failed range
+Then an agent retrieving the deployed documentation reads the original committed input
 And the later source does not replace it
-And the replay reports its terminal outcome for that original range
+And the replaying agent receives the terminal outcome for that original range
 ```
 <!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
@@ -155,12 +157,13 @@ And the replay reports its terminal outcome for that original range
 
 ```gherkin
 Given publication failed for a recorded commit range
-And a later canonical-main commit owes publication and its source is published
-When maintenance replays the publication action for the failed range
-Then the deployed documentation and agent artifacts remain those of the later published source
-And the canonical checkout's indexes remain those of the later published source
-And the replay reports a superseded terminal outcome for the original range
-And the failed action no longer awaits recovery
+And a later canonical-main commit alters a source that range's declaration publishes
+And the later commit's source is published
+When an agent replays the publication action for the failed range
+Then an agent retrieving documentation or agent artifacts reads the later published source
+And an agent's local documentation retrieval still lists the later published catalog
+And the replaying agent receives a superseded terminal outcome for the original range
+And the failed action no longer awaits the agent's recovery
 ```
 <!-- /planned:stale-sync-retry-regresses-global-publication -->
 
@@ -297,7 +300,8 @@ And its absence before first deployment is not a finding
   from the recorded snapshot and places published domain bundles inside the
   deployed generation. It writes gitignored `index.yaml` files with canonical
   checkout paths only while the recorded tip is current, so a tip followed only
-  by commits that owe no publication still installs its catalog. The host
+  by commits that alter no source its declaration publishes still installs its
+  catalog. The host
   documentation lease covers the checkout write and every publication action,
   including maintenance from a person's direct Git commit or merge. Git may
   advance its ref while a publication holds that lease, so the writer rechecks

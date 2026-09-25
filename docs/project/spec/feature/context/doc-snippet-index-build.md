@@ -56,12 +56,12 @@ And local telec docs retrieval reads those canonical-checkout indexes
 
 ```
 Given a project with valid snippet sources under docs/
-And no canonical commit after the recorded commit owes publication for that project
+And no canonical commit after the recorded commit alters a source the recorded commit's declaration publishes
 When commit-boundary publication runs for that recorded commit
 Then the index-build phase runs
 And the project's canonical checkout receives docs/project/index.yaml with one entry per valid committed Source and paths rooted at that checkout
 And its canonical checkout receives docs/third-party/index.yaml when committed third-party sources exist
-And local telec docs retrieval reads those canonical-checkout indexes
+And an agent's local telec docs retrieval reads those canonical-checkout indexes
 ```
 <!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
