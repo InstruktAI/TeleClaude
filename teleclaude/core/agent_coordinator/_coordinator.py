@@ -737,18 +737,11 @@ class AgentCoordinator(
                     active_agent = AgentName.from_str(session.active_agent) if session.active_agent else None
                 except ValueError:
                     active_agent = None
-                native_entry_id = payload.native_turn_id
                 ready = await wait_for_transcript_ready(
                     session,
                     content_predicate=(
                         lambda entries: (
-                            transcript_has_stop_response(
-                                entries,
-                                active_agent,
-                                native_entry_id=native_entry_id,
-                            )
-                            if active_agent is not None
-                            else False
+                            transcript_has_stop_response(entries, active_agent) if active_agent is not None else False
                         )
                     ),
                 )

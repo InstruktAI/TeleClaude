@@ -149,7 +149,6 @@ class AgentStopPayload:
     prompt: str | None = None
     raw: Mapping[str, object] = field(default_factory=dict)
     source_computer: str | None = None
-    native_turn_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,6 @@ from typing import cast
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 
-from ._identity import native_entry_id as _bound_native_entry_id
 from ._iterators import (
     _get_entries_for_agent,
     _iter_claude_entries,
@@ -300,33 +299,6 @@ def _current_turn_assistant_messages(entries: list[JsonDict], agent_name: AgentN
     return messages
 
 
-def _bound_turn_assistant_messages_from_entries(
-    entries: list[JsonDict],
-    agent_name: AgentName,
-    native_entry_id: str,
-) -> list[JsonDict] | None:
-    """Return assistant messages belonging to one identified native user entry."""
-    response_started = False
-    messages: list[JsonDict] = []
-    for entry in entries:
-        if not response_started:
-            if not is_real_user_turn_entry(entry, agent_name):
-                continue
-            text = extract_real_user_text_from_entry(entry, agent_name)
-            if text is None:
-                continue
-            entry_identity = _bound_native_entry_id(entry, agent_name, timestamp=entry.get("timestamp"), text=text)
-            if entry_identity == native_entry_id:
-                response_started = True
-            continue
-        if is_real_user_turn_entry(entry, agent_name):
-            break
-        message = normalize_transcript_entry_message(entry)
-        if isinstance(message, dict) and message.get("role") == "assistant":
-            messages.append(cast(JsonDict, message))
-    return messages if response_started else None
-
-
 def _extract_observed_stop_text(messages: Iterable[Mapping[str, object]]) -> tuple[bool, str | None]:
     """Return whether the response carries text, retaining an observed empty value."""
     observed_text: str | None = None
@@ -339,12 +311,7 @@ def _extract_observed_stop_text(messages: Iterable[Mapping[str, object]]) -> tup
     return response_observed, observed_text
 
 
-def extract_stop_agent_message(
-    transcript_path: str,
-    agent_name: AgentName,
-    *,
-    native_entry_id: str | None = None,
-) -> str | None:
+def extract_stop_agent_message(transcript_path: str, agent_name: AgentName) -> str | None:
     """Extract this stop's corresponding response without replacing empty with history."""
     try:
         entries = _get_entries_for_agent(transcript_path, agent_name)
@@ -352,58 +319,20 @@ def extract_stop_agent_message(
         return None
     if not entries:
         return None
-    if native_entry_id is not None:
-        messages = extract_bound_turn_assistant_messages(
-            transcript_path,
-            runtime=agent_name.value,
-            native_entry_id=native_entry_id,
-        )
-    else:
-        messages = _current_turn_assistant_messages(entries, agent_name)
+    messages = _current_turn_assistant_messages(entries, agent_name)
     if messages is None:
         return None
     observed, text = _extract_observed_stop_text(messages)
     return text if observed else None
 
 
-def transcript_has_stop_response(
-    entries: list[JsonDict],
-    agent_name: AgentName,
-    *,
-    native_entry_id: str | None = None,
-) -> bool:
+def transcript_has_stop_response(entries: list[JsonDict], agent_name: AgentName) -> bool:
     """Return whether the current turn has an explicitly observed text response."""
-    messages = (
-        _bound_turn_assistant_messages_from_entries(entries, agent_name, native_entry_id)
-        if native_entry_id is not None
-        else _current_turn_assistant_messages(entries, agent_name)
-    )
+    messages = _current_turn_assistant_messages(entries, agent_name)
     if messages is None:
         return False
     observed, _text = _extract_observed_stop_text(messages)
     return observed
-
-
-def extract_bound_turn_assistant_messages(
-    transcript_path: str,
-    *,
-    runtime: str,
-    native_entry_id: str,
-) -> list[JsonDict] | None:
-    """Return raw assistant messages belonging to one bound inbound turn.
-
-    The native reference identifies the accepted user-turn entry. The returned
-    assistant messages are its response, stopping before the next real user turn.
-    """
-    try:
-        agent_name = AgentName.from_str(runtime)
-        entries = _get_entries_for_agent(transcript_path, agent_name)
-    except (OSError, ValueError):
-        return None
-    if not entries:
-        return None
-
-    return _bound_turn_assistant_messages_from_entries(entries, agent_name, native_entry_id)
 
 
 def collect_transcript_messages(

@@ -103,12 +103,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             logger.warning("Extract skipped (unknown agent '%s')", agent_name_value)
             return StopOutputResult(StopOutputKind.UNAVAILABLE)
 
-        native_entry_id = payload.native_turn_id
-        message = extract_stop_agent_message(
-            transcript_path,
-            agent_name,
-            native_entry_id=native_entry_id,
-        )
+        message = extract_stop_agent_message(transcript_path, agent_name)
         if message is None:
             logger.debug("Extract unavailable (no corresponding agent response)", session=session_id)
             return StopOutputResult(StopOutputKind.UNAVAILABLE)
