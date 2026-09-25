@@ -148,6 +148,32 @@ under
 `sdlc/policy/preparation-artifact-quality` (a finding carries
 no authority to enlarge the horizon).
 
+### A precondition no record carries upstream of the change
+
+A use case may turn on a precondition that no existing record carries upstream of
+the change: a state the running system never records, whose only reflection is a
+record the changed behavior itself produces. No instrumentation is owed for it
+(previous section). The entry for such a use case:
+
+- declares the precondition unrecorded, naming the state and the record that
+  would have carried it;
+- anchors its opportunity at the nearest existing record upstream of the change
+  that the use case's other conditions admit;
+- carries only forbidden outcomes: records or native output whose presence at
+  that opportunity violates the use case whenever the precondition held. It
+  carries no required outcome that depends on the unrecorded precondition;
+- reaches `contradicted` when a forbidden outcome appears, and otherwise stays
+  `armed_unobserved`. It never reaches `observed`, because a conforming
+  occurrence cannot be told apart from one in which the precondition did not
+  hold.
+
+Plan review verifies that the declared gap is genuine, meaning no existing record
+upstream of the change carries the precondition. It also verifies that, under the
+change's most plausible broken implementation, a forbidden outcome appears
+whenever the precondition holds. An entry whose forbidden outcomes would stay
+absent under that broken implementation proves nothing and is rejected like any
+vacuous entry.
+
 ### Observation records
 
 Where the changed surface emits through the project's logging framework, the
