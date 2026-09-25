@@ -201,6 +201,22 @@ deploy_or_die() {
     return "$status"
 }
 
+# render_template_or_die <template_file> <rendered_file> [NAME=VALUE ...]
+#
+# A failed render exits explicitly because the callers run under conditionals
+# that suppress `set -e`; the renderer has already reported the template error.
+render_template_or_die() {
+    local template_file="$1"
+    local rendered_file="$2"
+    shift 2
+
+    if ! PYTHONPATH="$PROJECT_ROOT" "$PROJECT_ROOT/.venv/bin/python" -m teleclaude.entrypoints.render_template \
+        "$template_file" "$rendered_file" "$@"; then
+        rm -f "$rendered_file"
+        exit 1
+    fi
+}
+
 install_systemd_service() {
     local service_name="teleclaude"
     local service_file="/etc/systemd/system/${service_name}.service"
@@ -322,12 +338,8 @@ install_systemd_cron_service() {
 
     local rendered_service
     rendered_service="$(mktemp)"
-    sed \
-        -e "s|{{COMMAND}}|$command|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{USER}}|$USER|g" \
-        -e "s|{{PATH}}|$service_path|g" \
-        "$service_template" > "$rendered_service"
+    render_template_or_die "$service_template" "$rendered_service" \
+        "COMMAND=$command" "WORKING_DIR=$PROJECT_ROOT" "PATH=$service_path"
 
     local service_deployed=false
     local timer_deployed=false
@@ -337,10 +349,14 @@ install_systemd_cron_service() {
     fi
     rm -f "$rendered_service"
 
-    # The timer template carries no markers; deploy it directly.
-    if deploy_or_die "$timer_template" "$timer_file" --sudo; then
+    local rendered_timer
+    rendered_timer="$(mktemp)"
+    render_template_or_die "$timer_template" "$rendered_timer"
+
+    if deploy_or_die "$rendered_timer" "$timer_file" --sudo; then
         timer_deployed=true
     fi
+    rm -f "$rendered_timer"
 
     if ! $service_deployed && ! $timer_deployed; then
         return 0
@@ -374,10 +390,8 @@ install_launchd_service() {
 
     local rendered_file
     rendered_file="$(mktemp)"
-    sed -e "s|{{PYTHON_PATH}}|$PROJECT_ROOT/.venv/bin/python|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        "$template_file" > "$rendered_file"
+    render_template_or_die "$template_file" "$rendered_file" \
+        "PYTHON_PATH=$PROJECT_ROOT/.venv/bin/python" "WORKING_DIR=$PROJECT_ROOT" "PATH=$launchd_path"
 
     if ! deploy_or_die "$rendered_file" "$plist_file"; then
         rm -f "$rendered_file"
@@ -421,11 +435,8 @@ install_launchd_cron_service() {
 
     local rendered_file
     rendered_file="$(mktemp)"
-    sed -e "s|{{PYTHON_PATH}}|$PROJECT_ROOT/.venv/bin/python|g" \
-        -e "s|{{WORKING_DIR}}|$PROJECT_ROOT|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        -e "s|{{HOME}}|$HOME|g" \
-        "$template_file" > "$rendered_file"
+    render_template_or_die "$template_file" "$rendered_file" \
+        "PYTHON_PATH=$PROJECT_ROOT/.venv/bin/python" "WORKING_DIR=$PROJECT_ROOT" "PATH=$launchd_path"
 
     if ! deploy_or_die "$rendered_file" "$plist_file"; then
         rm -f "$rendered_file"

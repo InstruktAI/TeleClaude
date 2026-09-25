@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from teleclaude.core.reconciliation.home_activation import HomeActivationStatus, activate_home_repository
-from teleclaude.core.reconciliation.home_templates import HomeTemplateMaterializationConflict
+from teleclaude.core.reconciliation.template_installation import HomeTemplateMaterializationConflict
 
 _ACTIVATED_MESSAGE = "TeleClaude home history activated"
 _REFUSED_MESSAGE = "TeleClaude home history was not activated; these paths are outside the retained set:"

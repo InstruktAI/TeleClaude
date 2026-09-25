@@ -1,17 +1,20 @@
-"""Materialize regular-file templates into the TeleClaude home."""
+"""Render templates and materialize regular-file template trees."""
 
 from __future__ import annotations
 
+import re
 import stat
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from os import PathLike
 from pathlib import Path
 
 from teleclaude.paths import REPO_ROOT, TELECLAUDE_HOME
 
 
 class HomeTemplateDisposition(StrEnum):
-    """Closed outcomes for one materialized home template."""
+    """Closed outcomes for one materialized template."""
 
     WRITTEN = "written"
     UNCHANGED = "unchanged"
@@ -48,29 +51,87 @@ class HomeTemplateOutcome:
     disposition: HomeTemplateDisposition
 
 
+class UnresolvedPlaceholderError(Exception):
+    """A template contains placeholders that have no supplied or environment value."""
+
+    def __init__(self, template: str, names: tuple[str, ...]) -> None:
+        self.template = template
+        self.names = names
+        super().__init__(f"{template}: unresolved placeholders: {', '.join(names)}")
+
+
+class InvalidTemplateEncodingError(Exception):
+    """A template file cannot be decoded as UTF-8."""
+
+    def __init__(self, template: Path) -> None:
+        self.template = template
+        super().__init__(f"template is not valid UTF-8: {template}")
+
+
 _HOME_TEMPLATE_ROOT = REPO_ROOT / "templates" / "home"
 _DOT_MARKER = "dot_"
 _DOT_PREFIX = "."
 _EMPTY_NAME = ""
+_PLACEHOLDER_PATTERN = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
 
 
-def materialize_home_templates(
-    home: Path = TELECLAUDE_HOME,
+def render_template(
+    text: str,
     *,
+    template: str | PathLike[str],
+    values: Mapping[str, str],
+    environ: Mapping[str, str],
+) -> str:
+    """Resolve declared placeholders once, preferring caller values to environment."""
+    unresolved: set[str] = set()
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name in values:
+            return values[name]
+        if name in environ:
+            return environ[name]
+        unresolved.add(name)
+        return match.group(0)
+
+    rendered = _PLACEHOLDER_PATTERN.sub(replace, text)
+    if unresolved:
+        raise UnresolvedPlaceholderError(str(template), tuple(sorted(unresolved)))
+    return rendered
+
+
+def materialize_template_tree(
     source_root: Path = _HOME_TEMPLATE_ROOT,
+    target_root: Path = TELECLAUDE_HOME,
+    *,
+    values: Mapping[str, str],
+    environ: Mapping[str, str],
 ) -> tuple[HomeTemplateOutcome, ...]:
-    """Copy declared regular files to ``home``, leaving identical files untouched."""
+    """Render and materialize a template tree, preserving identical targets."""
     _require_directory(source_root, HomeTemplateConflictKind.SOURCE_ROOT)
-    _require_or_create_directory(home, HomeTemplateConflictKind.TARGET_ROOT)
-    outcomes: list[HomeTemplateOutcome] = []
+    rendered_files: list[tuple[Path, Path, bytes]] = []
     for source in _source_files(source_root):
         relative_source = source.relative_to(source_root)
         relative_target = _map_target_path(relative_source, source)
         _require_regular_file(source)
-        target = home / relative_target
-        _ensure_target_parents(target.parent, home)
-        source_bytes = source.read_bytes()
-        disposition = _write_if_changed(source_bytes, target)
+        try:
+            source_text = source.read_bytes().decode("utf-8")
+        except UnicodeDecodeError:
+            raise InvalidTemplateEncodingError(source) from None
+        rendered = render_template(
+            source_text,
+            template=source,
+            values=values,
+            environ=environ,
+        )
+        rendered_files.append((source, target_root / relative_target, rendered.encode("utf-8")))
+
+    _validate_target_tree(target_root, rendered_files)
+    _require_or_create_directory(target_root, HomeTemplateConflictKind.TARGET_ROOT)
+    outcomes: list[HomeTemplateOutcome] = []
+    for source, target, content in rendered_files:
+        _ensure_target_parents(target.parent, target_root)
+        disposition = _write_if_changed(content, target)
         outcomes.append(HomeTemplateOutcome(source, target, disposition))
     return tuple(outcomes)
 
@@ -134,10 +195,9 @@ def _require_regular_file(path: Path) -> None:
         raise HomeTemplateMaterializationConflict(HomeTemplateConflictKind.SOURCE_FILE, path)
 
 
-def _ensure_target_parents(directory: Path, home: Path) -> None:
-    relative_directory = directory.relative_to(home)
-    current = home
-    for segment in relative_directory.parts:
+def _ensure_target_parents(directory: Path, root: Path) -> None:
+    current = root
+    for segment in directory.relative_to(root).parts:
         current /= segment
         try:
             mode = current.lstat().st_mode
@@ -146,6 +206,34 @@ def _ensure_target_parents(directory: Path, home: Path) -> None:
             mode = current.lstat().st_mode
         if not stat.S_ISDIR(mode):
             raise HomeTemplateMaterializationConflict(HomeTemplateConflictKind.TARGET_DIRECTORY, current)
+
+
+def _validate_target_tree(root: Path, files: list[tuple[Path, Path, bytes]]) -> None:
+    try:
+        mode = root.lstat().st_mode
+    except FileNotFoundError:
+        return
+    if not stat.S_ISDIR(mode):
+        raise HomeTemplateMaterializationConflict(HomeTemplateConflictKind.TARGET_ROOT, root)
+    for _, target, _ in files:
+        current = root
+        for segment in target.relative_to(root).parts[:-1]:
+            current /= segment
+            try:
+                mode = current.lstat().st_mode
+            except FileNotFoundError:
+                break
+            if not stat.S_ISDIR(mode):
+                raise HomeTemplateMaterializationConflict(
+                    HomeTemplateConflictKind.TARGET_DIRECTORY,
+                    current,
+                )
+        try:
+            mode = target.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(mode):
+            raise HomeTemplateMaterializationConflict(HomeTemplateConflictKind.TARGET_FILE, target)
 
 
 def _write_if_changed(content: bytes, target: Path) -> HomeTemplateDisposition:
@@ -167,5 +255,8 @@ __all__ = [
     "HomeTemplateDisposition",
     "HomeTemplateMaterializationConflict",
     "HomeTemplateOutcome",
-    "materialize_home_templates",
+    "InvalidTemplateEncodingError",
+    "UnresolvedPlaceholderError",
+    "materialize_template_tree",
+    "render_template",
 ]
