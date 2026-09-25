@@ -114,9 +114,6 @@ ensure_teleclaude_yaml() {
         cat > "$INSTALL_DIR/teleclaude.yml" <<'EOF'
 # yaml-language-server: $schema=schemas/teleclaude-global.schema.json
 kind: global
-business:
-  domains:
-    sdlc: docs
 EOF
         print_success "Created teleclaude.yml"
     else
