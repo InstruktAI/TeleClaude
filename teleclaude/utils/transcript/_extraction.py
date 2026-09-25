@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import cast
@@ -37,6 +38,7 @@ from ._utils import (
 
 _MESSAGE_ROLE_FIELD = "role"
 _MESSAGE_CONTENT_FIELD = "content"
+_ENTRY_TIMESTAMP_FIELD = "timestamp"
 _ASSISTANT_ROLE = "assistant"
 
 
@@ -119,32 +121,62 @@ def count_renderable_assistant_blocks(
     return block_count
 
 
+@dataclass(frozen=True)
+class AuthoredExchange:
+    """The last authored input in a transcript and the assistant text that followed it."""
+
+    authored_text: str
+    timestamp: datetime | None
+    assistant_texts: tuple[str, ...]
+
+
+def _last_authored_entry(entries: Sequence[JsonDict], agent_name: AgentName) -> tuple[int, str] | None:
+    """Return the position and text of the last entry carrying authored input."""
+    for index in range(len(entries) - 1, -1, -1):
+        text = extract_authored_user_text(entries[index], agent_name)
+        if text is not None:
+            return index, text
+    return None
+
+
+def _entry_time(entry: JsonDict) -> datetime | None:
+    raw = entry.get(_ENTRY_TIMESTAMP_FIELD)
+    return _parse_timestamp(raw) if isinstance(raw, str) else None
+
+
 def extract_last_user_message_with_timestamp(
     transcript_path: str,
     agent_name: AgentName,
 ) -> tuple[str, datetime | None] | None:
-    """Extract the last user message and its transcript timestamp.
-
-    Returns:
-        Tuple of (message text, parsed timestamp) when found, otherwise None.
-    """
+    """Extract the last authored input and its transcript timestamp."""
     try:
         entries = _get_entries_for_agent(transcript_path, agent_name)
-        if entries is None:
-            return None
-
-        for entry in reversed(entries):
-            text = extract_authored_user_text(entry, agent_name)
-            if text is None:
-                continue
-
-            entry_ts = entry.get("timestamp")
-            parsed_ts = _parse_timestamp(entry_ts) if isinstance(entry_ts, str) else None
-            return text, parsed_ts
+        found = _last_authored_entry(entries, agent_name) if entries else None
     except Exception:
         return None
+    if found is None:
+        return None
+    index, text = found
+    return text, _entry_time(entries[index])
 
-    return None
+
+def extract_last_authored_exchange(transcript_path: str, agent_name: AgentName) -> AuthoredExchange | None:
+    """Extract the last authored input and the non-empty assistant text written after it."""
+    try:
+        entries = _get_entries_for_agent(transcript_path, agent_name)
+        found = _last_authored_entry(entries, agent_name) if entries else None
+    except Exception:
+        return None
+    if found is None:
+        return None
+    index, text = found
+    assistant_texts = tuple(
+        reply
+        for message in _assistant_messages(entries[index + 1 :])
+        if (reply := extract_text_from_message_content(message.get(_MESSAGE_CONTENT_FIELD), _ASSISTANT_ROLE))
+        and reply.strip()
+    )
+    return AuthoredExchange(authored_text=text, timestamp=_entry_time(entries[index]), assistant_texts=assistant_texts)
 
 
 def extract_last_turn_boundary_timestamp(
@@ -236,65 +268,6 @@ def transcript_has_stop_response(entries: list[JsonDict], agent_name: AgentName)
         return False
     observed, _text = _extract_observed_stop_text(messages)
     return observed
-
-
-def collect_transcript_messages(
-    transcript_path: str,
-    agent_name: AgentName,
-) -> list[tuple[str, str]]:
-    """Collect (role, text) message pairs from a transcript."""
-    entries = _get_entries_for_agent(transcript_path, agent_name)
-    if entries is None:
-        return []
-
-    messages: list[tuple[str, str]] = []
-    for entry in entries:
-        message = normalize_transcript_entry_message(entry)
-        if not isinstance(message, dict):
-            continue
-        role = message.get("role")
-        if not isinstance(role, str):
-            continue
-        if role == "user":
-            text = extract_authored_user_text(entry, agent_name)
-        else:
-            text = extract_text_from_message_content(message.get(_MESSAGE_CONTENT_FIELD), role)
-        if text:
-            messages.append((role, text))
-    return messages
-
-
-def extract_recent_transcript_turns(
-    transcript_path: str,
-    agent_name: AgentName,
-    *,
-    max_turns_per_role: int = 3,
-) -> list[tuple[str, str]]:
-    """Return the most recent interleaved user/assistant transcript turns.
-
-    Uses the shared transcript normalization pipeline and keeps messages in their
-    original order while limiting each side to the most recent N turns.
-    """
-    if max_turns_per_role <= 0:
-        return []
-
-    messages = collect_transcript_messages(transcript_path, agent_name)
-    if not messages:
-        return []
-
-    selected_reversed: list[tuple[str, str]] = []
-    counts = {"user": 0, "assistant": 0}
-    for role, text in reversed(messages):
-        if role not in counts:
-            continue
-        if counts[role] >= max_turns_per_role:
-            continue
-        selected_reversed.append((role, text))
-        counts[role] += 1
-        if all(count >= max_turns_per_role for count in counts.values()):
-            break
-
-    return list(reversed(selected_reversed))
 
 
 def parse_session_transcript(

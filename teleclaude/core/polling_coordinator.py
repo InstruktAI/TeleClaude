@@ -27,6 +27,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.session_output import assistant_messages_are_bare_noop
 from teleclaude.core.session_title import clear_title_projection_state
+from teleclaude.core.session_transcript import session_transcript
 from teleclaude.core.turn_binding import bind_pending_native_turns, binding_id_for_native_entry
 from teleclaude.core.user_reflection_observation import (
     UserReflectionProjectionOutcome,
@@ -48,7 +49,6 @@ from teleclaude.utils.transcript import (
     render_agent_output,
     render_clean_agent_output,
 )
-from teleclaude.utils.transcript import extract_recent_transcript_turns as _extract_recent_transcript_turns
 from teleclaude.utils.transcript_discovery import TranscriptCandidate, discover_transcripts, extract_session_id
 
 if TYPE_CHECKING:
@@ -57,7 +57,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
-_INVALID_ACTIVE_AGENT_EVENT = "polling_invalid_active_agent"
 _OUTPUT_CADENCE_SUMMARY_EVENT = "polling_output_cadence_summary"
 _BACKGROUND_POLLER_CRASHED_EVENT = "polling_background_poller_crashed"
 _TRANSCRIPT_BIND_ERROR_EVENT = "polling_transcript_bind_error"
@@ -77,9 +76,6 @@ _NOTICE_VISIBILITY_DECISION_EVENT = "notice_visibility_decision"
 _NOTICE_SUPPRESSED_OUTCOME = "suppressed"
 _NOTICE_DAEMON_CONTROL_REASON = "daemon_control"
 _GENERATION_ID_PREFIX = "gen:"
-
-# Retained as a module attribute for older test patch targets.
-extract_recent_transcript_turns = _extract_recent_transcript_turns
 
 
 @dataclass
@@ -108,20 +104,10 @@ def _percentile(values: list[float], pct: float) -> float | None:
 
 def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, bool] | None:
     """Render the full cumulative transcript-backed output for one session turn."""
-    transcript_path = session.native_log_file
-    active_agent = session.active_agent
-    if not transcript_path or not active_agent:
+    transcript = session_transcript(session)
+    if transcript is None:
         return None
-
-    try:
-        agent_name = AgentName.from_str(active_agent)
-    except ValueError:
-        logger.warning(
-            _INVALID_ACTIVE_AGENT_EVENT,
-            session_id=session.session_id,
-            active_agent=active_agent,
-        )
-        return None
+    transcript_path, agent_name = transcript.path, transcript.agent
 
     turn_cursor = extract_last_turn_boundary_timestamp(transcript_path, agent_name)
     assistant_messages = get_assistant_messages_since(transcript_path, agent_name, since_timestamp=turn_cursor)
@@ -447,17 +433,12 @@ async def _project_user_reflection(
     adapter_client: "AdapterClient",
 ) -> tuple["Session", bool, bool]:
     """Project the latest authoritative user message into canonical state."""
-    transcript_path = session.native_log_file
-    active_agent = session.active_agent
-    if not transcript_path or not active_agent:
+    transcript = session_transcript(session)
+    if transcript is None:
         return session, True, False
+    agent_name = transcript.agent
 
-    try:
-        agent_name = AgentName.from_str(active_agent)
-    except ValueError:
-        return session, True, False
-
-    entries = await asyncio.to_thread(_get_entries_for_agent, transcript_path, agent_name)
+    entries = await asyncio.to_thread(_get_entries_for_agent, transcript.path, agent_name)
     if not entries:
         return session, True, False
     turn = find_last_turn_start(entries, agent_name)
@@ -473,7 +454,7 @@ async def _project_user_reflection(
             native_session_id=session.native_session_id,
             native_entry_id=entry_id,
         )
-    await bind_pending_native_turns(session)
+    await bind_pending_native_turns(session, entries, agent_name)
     # A turn opened by platform text, such as the dispatch loader, owns its
     # output generation but carries nothing an author sent to reflect.
     user_text = turn.authored_text

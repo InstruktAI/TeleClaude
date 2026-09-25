@@ -47,6 +47,7 @@ from teleclaude.core.session_listeners import NotificationKind, StopNotification
 from teleclaude.core.session_output import StopOutputKind, StopOutputResult, classify_stop_output
 from teleclaude.core.session_status import SessionLifecycleStatus
 from teleclaude.core.session_title import generate_session_title_from_transcript
+from teleclaude.core.session_transcript import session_transcript
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.events.envelope import EventVisibility
@@ -61,6 +62,7 @@ from ._slow_work import schedule as schedule_slow_work
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
     from teleclaude.core.reminders import ReminderService
 
 logger = get_logger(__name__)
@@ -482,23 +484,18 @@ class AgentCoordinator(
                 runner=lambda: self._speak_session_start(context.session_id),
             )
 
-    async def _backfill_prompt_from_transcript(self, session: object) -> str | None:
-        """Recover the last user message from the transcript.
+    async def _backfill_prompt_from_transcript(self, session: Session) -> str | None:
+        """Recover the last authored input from the transcript.
 
         Agent-agnostic: used when a CLI's hook payload omits the prompt body
         (the field name and transcript schema are resolved at the bottom of the
         stack by the per-agent extractor). Returns None when no transcript is
-        bound yet or no user text is present.
+        bound yet or no authored text is present.
         """
-        transcript_path = getattr(session, "native_log_file", None)
-        active_agent = getattr(session, "active_agent", None)
-        if not transcript_path or not active_agent:
+        transcript = session_transcript(session)
+        if transcript is None:
             return None
-        try:
-            agent_name = AgentName.from_str(active_agent)
-        except ValueError:
-            return None
-        extracted = await asyncio.to_thread(extract_last_user_message_with_timestamp, transcript_path, agent_name)
+        extracted = await asyncio.to_thread(extract_last_user_message_with_timestamp, transcript.path, transcript.agent)
         if not extracted:
             return None
         text = extracted[0]

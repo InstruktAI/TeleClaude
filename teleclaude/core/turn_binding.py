@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -18,9 +18,8 @@ from teleclaude.core.injected_text import (
     is_peer_opening,
     scan_injected_envelopes,
 )
-from teleclaude.core.models import MessageAuthor, MessageAuthorKind
+from teleclaude.core.models import JsonDict, MessageAuthor, MessageAuthorKind
 from teleclaude.utils.transcript import (
-    _get_entries_for_agent,
     extract_authored_user_text,
     native_entry_id,
 )
@@ -127,13 +126,12 @@ def _keyed_caller_envelopes(text: str) -> list[InjectedEnvelopeCandidate]:
     ]
 
 
-async def bind_pending_native_turns(session: Session) -> None:
-    """Persist keyed caller-envelope correlations before projection advances its watermark."""
-    if not session.native_log_file or not session.active_agent or not session.native_session_id:
-        return
-    try:
-        agent_name = AgentName.from_str(session.active_agent)
-    except ValueError:
+async def bind_pending_native_turns(session: Session, entries: Sequence[JsonDict], agent_name: AgentName) -> None:
+    """Persist keyed caller-envelope correlations before projection advances its watermark.
+
+    Reads the transcript entries the projection pass already loaded.
+    """
+    if not session.native_session_id:
         return
     pending_rows = await db.get_unbound_delivered_caller_inbound(session.session_id)
     rows_by_key: dict[str, list[InboundQueueRow]] = {}
@@ -141,7 +139,6 @@ async def bind_pending_native_turns(session: Session) -> None:
         occurrence_key = row["occurrence_key"]
         if isinstance(occurrence_key, str):
             rows_by_key.setdefault(occurrence_key, []).append(row)
-    entries = await asyncio.to_thread(_get_entries_for_agent, session.native_log_file, agent_name)
     local_author = _local_author(session)
     for entry in entries:
         text = extract_authored_user_text(entry, agent_name)
