@@ -77,6 +77,7 @@ And each field declared sensitive is written as its derived environment referenc
 And no field's resolved secret value is written
 ```
 
+<!-- planned-change:config-migration-chain -->
 #### UC-CFG-LOAD-11: Installation leaves an existing machine configuration alone
 
 ```
@@ -85,6 +86,16 @@ When installation runs
 Then that configuration is left byte-for-byte unchanged
 And no field is added, removed, or re-derived from the schema
 ```
+<!-- change:config-migration-chain -->
+#### UC-CFG-LOAD-11: Installation leaves an existing machine configuration alone
+
+```
+Given a host already carrying a machine configuration at <RuntimeConfig.home>/config.yml
+When installation runs
+Then no setting in that configuration is added, removed, or re-derived from the schema
+And the only change installation makes to it is bringing it to the current configuration version
+```
+<!-- /planned-change:config-migration-chain -->
 
 #### UC-CFG-LOAD-13: Installation can load generation before runtime configuration exists
 

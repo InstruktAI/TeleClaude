@@ -61,6 +61,16 @@ network fetch and no machine-local path. The modeline serves the editor only:
 loading reads `kind` alone, and a file whose modeline does not resolve loads
 identically.
 
+<!-- planned:config-migration-chain -->
+Every configuration document — each of the four tier files and the machine
+`config.yml` — also carries a top-level `schema_version` integer: the document's
+position in the configuration migration list. It is a declared internal field of
+each tier's model and of the machine configuration's input vocabulary, removed
+before the machine aggregate is built, and never an operator setting. How a
+document reaches the current version, and what reads and writes it, is
+`project/spec/feature/config/document-migration`.
+<!-- /planned:config-migration-chain -->
+
 `kind` names a file's tier. It is unrelated to the machine-config field
 exposure levels described below, which govern which `config.yml` fields reach
 the operator surface.
@@ -480,12 +490,22 @@ locally, so every consumer resolves to one declaring node.
 
 ### Daemon runtime config keys (`config.yml`)
 
+<!-- planned-change:config-migration-chain -->
 The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
 Installation produces the runtime file from the configuration schema when the host
 carries none, writing each sensitive field as its derived environment reference. A host
 that already carries a runtime file keeps it unchanged. The TUI, daemon, and installer
 read and write only the runtime
 file. `make install` writes opted-in agents' `enabled`
+<!-- change:config-migration-chain -->
+The daemon runtime config lives at `~/.teleclaude/config.yml` (under `TELECLAUDE_HOME`).
+Installation produces the runtime file from the configuration schema when the host
+carries none, writing each sensitive field as its derived environment reference. A host
+that already carries a runtime file keeps its settings; installation only brings it to
+the current configuration version (`project/spec/feature/config/document-migration`). The TUI, daemon, and installer
+read and write only the runtime
+file. `make install` writes opted-in agents' `enabled`
+<!-- /planned-change:config-migration-chain -->
 
 state into the runtime file. The runtime file's path is
 `<TELECLAUDE_HOME>/config.yml` with no override: moving the runtime tree moves
