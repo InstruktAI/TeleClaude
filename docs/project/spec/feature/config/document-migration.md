@@ -53,8 +53,8 @@ owner is another bounded context, the destination is a config-owned hand-off
 that the owner imports from; the importing owner's contract governs everything
 after the hand-off.
 
-Every migration run also removes the config-owned records the list has made obsolete — the
-bookkeeping of the mechanisms it replaced — whatever the documents' versions, so the first run
+Every migration run also removes the config-owned records the list declares obsolete,
+whatever the documents' versions, so the first run
 on an installation removes them even when every document is already current.
 
 The authoring rules every migration obeys are
@@ -187,7 +187,7 @@ And an agent reading the structured records observes each document as current
 #### UC-CFG-MIG-12: The first migration run removes retired migration records
 
 ```gherkin
-Given an installation still holding the records of a migration mechanism the list replaced
+Given an installation still holding config-owned records the migration list declares obsolete
 And every configuration document on it is already at the current version
 When a migration run completes
 Then those records no longer exist
