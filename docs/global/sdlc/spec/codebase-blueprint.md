@@ -59,14 +59,6 @@ exploration.
 Blueprint regeneration runs automatically — never by agents — from three
 disjoint triggers:
 
-<!-- planned-change:nonblocking-commit-maintenance -->
-- A **`post-merge` git hook** on the repo root runs the pinned no-LLM refresh
-  `graphify update <repo-root> --force` whenever a merge changes `HEAD`. `git pull`
-  is fetch+merge, so a manual pull of the repo root regenerates the Blueprint. The
-  hook resolves the repo root from `GRAPHIFY_REPO_ROOT`. The integrator's own git
-  operations set a suppression signal the hook honors, so the hook fires only for
-  external pulls.
-<!-- change:nonblocking-commit-maintenance -->
 - A **`post-merge` git hook** on the repo root dispatches the pinned no-LLM
   refresh for the activated commit and returns without waiting for extraction.
   `git pull` is fetch+merge, so a manual pull also triggers the refresh. The
@@ -74,7 +66,6 @@ disjoint triggers:
   operations set a suppression signal the hook honors, so this trigger remains
   for external pulls. The manifest, rather than Git command completion, reports
   whether the activated commit has been extracted.
-<!-- /planned-change:nonblocking-commit-maintenance -->
 - The **integrator regenerates directly after a confirmed delivery** — from the
   repo root when its post-delivery pull synced to `origin/main`, and from the
   integration worktree, which holds the delivered commit, when that pull diverged.

@@ -72,7 +72,6 @@ contract governs only what happens when maintenance runs.
   declaration is already owned by project plumbing convergence, and a second
   detector would make this contract a second owner of that state.
 
-<!-- planned:nonblocking-commit-maintenance -->
 - **Quick-return activation.** After resolving an immutable activation and its
   owed action set, the hook records each owed action durably, starts a one-shot
   drain contender, and returns without waiting for action completion. A later
@@ -104,7 +103,6 @@ contract governs only what happens when maintenance runs.
   the relevant runtime evidence after owed actions complete, and owns bounded
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
-<!-- /planned:nonblocking-commit-maintenance -->
 
 ### Use cases
 
@@ -159,18 +157,6 @@ And the documentation and artifact pipeline is not run from that worktree
 And an agent reading the structured records observes that maintenance was skipped, and the location that made it ineligible
 ```
 
-<!-- planned-change:nonblocking-commit-maintenance -->
-#### UC-PCM6: An integration merge or fast-forward performs maintenance
-
-```gherkin
-Given integration advances canonical main by merge or fast-forward
-And the advanced range resolves deterministic maintenance actions
-When the canonical-root advancement completes
-Then the actions execute from the canonical checkout without an agent instruction
-And the structured records contain a terminal outcome for every action
-But the integration worktree performs no maintenance action
-```
-<!-- change:nonblocking-commit-maintenance -->
 #### UC-PCM6: An integration merge or fast-forward performs maintenance
 
 ```gherkin
@@ -182,7 +168,6 @@ And the Git operation returns before long-running maintenance finishes
 And each action eventually has a structured terminal outcome
 But the integration worktree performs no maintenance action
 ```
-<!-- /planned-change:nonblocking-commit-maintenance -->
 
 #### UC-PCM7: Publication uses the recorded commit, not later working-tree state
 
@@ -227,7 +212,6 @@ And an agent reading the structured records observes the immutable range and the
 But the same path shape in an ordinary project does not acquire a home-only maintenance binding
 ```
 
-<!-- planned:nonblocking-commit-maintenance -->
 #### UC-PCM11: A commit returns while maintenance continues
 
 ```gherkin
@@ -298,13 +282,10 @@ Then the live-runtime judgment for that change remains outstanding
 And after every owed action succeeds, a log read whose window covers the activation and completed maintenance may close it
 But a read whose window misses that interval does not close it
 ```
-<!-- /planned:nonblocking-commit-maintenance -->
 
 ## See Also
 
 - docs/project/adr/0087-mechanical-maintenance-executes-in-a-hook.md — the decision this contract realizes.
-<!-- planned:nonblocking-commit-maintenance -->
 - docs/project/adr/0100-commit-maintenance-drains-after-hook-return.md — why maintenance execution no longer holds Git open.
-<!-- /planned:nonblocking-commit-maintenance -->
 - docs/project/design/architecture/checkpoint-system.md — the matcher and registry this surface consumes.
 - docs/project/spec/feature/reconciliation/project-plumbing-convergence.md — which hooks a project has installed, and when.

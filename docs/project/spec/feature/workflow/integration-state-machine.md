@@ -76,18 +76,6 @@ content-gate rejection; it routes to the logical-conflict path (UC-WISM5), never
 rebase recovery. Every other rejection is treated as a fast-forward race, recoverable
 by the rebase-and-re-push instruction above.
 
-<!-- planned-change:nonblocking-commit-maintenance -->
-#### UC-WISM1: Integrator-maintenance marker emission at delivery
-
-```gherkin
-Given integration advances repository-root main through a fast-forward or finalization commit
-When that canonical-root advancement completes
-Then deterministic maintenance executes once from the canonical checkout for the advanced range
-And the canonical-main commit boundary records a checkout-scoped marker only when the range owes a live-runtime log check
-And the marker carries the advanced range but no mechanical action id
-And the agent-stop checkpoint consumes it to surface only the log-check judgment
-```
-<!-- change:nonblocking-commit-maintenance -->
 #### UC-WISM1: Integrator-maintenance marker emission at delivery
 
 ```gherkin
@@ -100,7 +88,6 @@ And the marker carries the advanced range and activation time but no mechanical 
 And the standing integrator retains the marker until every owed maintenance action succeeds and the latest maintenance-ready time is recorded
 And its runtime log judgment discharges the marker only from evidence read after that time, covering the earliest activation through completed maintenance
 ```
-<!-- /planned-change:nonblocking-commit-maintenance -->
 
 #### UC-WISM2: Push rejection withholds delivery
 
@@ -261,16 +248,6 @@ When "telec todo integrate" is invoked with that candidate's explicit slug
 Then the candidate is excluded from integration — no candidate is dequeued, the checkpoint stays IDLE with items_processed zero, and its branch is never squash-merged
 ```
 
-<!-- planned-change:nonblocking-commit-maintenance -->
-#### UC-WISM8: Integrator-maintenance marker accumulates ranges across multiple deliveries
-
-```gherkin
-Given several canonical-root advancements owe log judgment before that judgment completes
-When each advancement records its range
-Then the checkout-scoped marker accumulates the ranges rather than overwriting an earlier range
-And deterministic maintenance still executes exactly once for each advancement
-```
-<!-- change:nonblocking-commit-maintenance -->
 #### UC-WISM8: Integrator-maintenance marker accumulates ranges across multiple deliveries
 
 ```gherkin
@@ -279,7 +256,6 @@ When each advancement records its committed change
 Then the checkout-scoped marker accumulates the ranges rather than overwriting an earlier range
 And each advancement retains its own owed maintenance until every action reaches a terminal outcome
 ```
-<!-- /planned-change:nonblocking-commit-maintenance -->
 
 #### UC-WISM9: The pre-push quality gate remains authoritative and blocking
 
@@ -496,6 +472,4 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 - docs/project/adr/0091-published-candidate-finalization-blocks-the-drain.md — why parking ends once candidate publication is confirmed.
 - docs/project/adr/0082-candidate-span-ownership-inspection-is-withdrawn.md — why span-ownership inspection was removed rather than corrected.
 - docs/project/adr/0076-integrator-parks-blockers-and-keeps-quality-gating.md — the park-and-drain decision, whose conflict and content-gate paths are unchanged.
-<!-- planned:nonblocking-commit-maintenance -->
 - docs/project/adr/0100-commit-maintenance-drains-after-hook-return.md — why the integrator records owed maintenance without waiting for every action.
-<!-- /planned:nonblocking-commit-maintenance -->

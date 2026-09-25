@@ -60,7 +60,6 @@ each decision point until the queue is drained.
 1. Call `telec todo integrate [slug]` to enter the state machine.
 2. Read the returned instruction block and execute it verbatim.
 3. After executing, call `telec todo integrate` again to advance.
-<!-- planned:nonblocking-commit-maintenance -->
 3a. After a canonical-main advancement, inspect the maintenance actions recorded
     for that activation. Treat pending actions as pending, judge terminal
     failures and recover within the integration lane, and keep outstanding
@@ -72,7 +71,6 @@ each decision point until the queue is drained.
     retry` replays that action for its original activation; `telec code
     maintenance drain` resumes interrupted work and records maintenance
     readiness when no owed action remains.
-<!-- /planned:nonblocking-commit-maintenance -->
 4. Repeat until a terminal instruction is returned (COMPLETE or LEASE_BUSY).
 5. Before any push, run repo-wide verification:
    - `telec code lint --all`
@@ -255,12 +253,6 @@ escalation for that set. The next move belongs to the human.
 - **Recurrence:** recurring while the integrator remains parked on an empty
   queue.
 - **Arm condition:** set from the queue-empty outcome before yielding.
-<!-- planned-change:nonblocking-commit-maintenance -->
-- **Intent:** `Recheck the integration queue from current source truth. If a candidate is ready, cancel this queue watch and continue the drain; otherwise remain parked under the integration procedure.`
-- **Firing behavior:** invoke the integration state machine once. If it dequeues
-  a candidate, cancel this watcher before continuing; if the queue remains
-  empty, leave it live and execute the returned instruction verbatim.
-<!-- change:nonblocking-commit-maintenance -->
 - **Intent:** `Recheck the integration queue and outstanding canonical-main maintenance from current source truth. Judge completed maintenance and recover failures within the integration lane; if a candidate is ready, continue the drain, otherwise remain parked.`
 - **Firing behavior:** inspect checkout-scoped integrator judgment markers,
   outstanding maintenance records, and structured terminal outcomes for
@@ -275,7 +267,6 @@ escalation for that set. The next move belongs to the human.
   invoke the integration state machine once. If it dequeues a candidate,
   cancel this watcher before continuing; if the queue remains empty, leave it
   live and execute the returned instruction verbatim.
-<!-- /planned-change:nonblocking-commit-maintenance -->
 - **Cancellation:** cancel when a candidate is dequeued, the integrator cedes
   its singleton role, the session is directed to end, or the watch is
   superseded.
