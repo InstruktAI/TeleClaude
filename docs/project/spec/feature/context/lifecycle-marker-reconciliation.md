@@ -176,6 +176,21 @@ And unrelated pending material remains unchanged
 And the folded repository-root head is published and confirmed before delivery is recorded
 ```
 
+<!-- planned:deliver-reverse-folds-live-spec-and-self-blocks -->
+#### UC-LMR11: A recorded reconciliation commit stands when its commit command reports failure
+
+```gherkin
+Given a lifecycle movement requires pending documentation reconciliation
+And the reconciliation commit is recorded in the repository
+But the command that created it reports failure after recording it
+When the caller attempts the lifecycle movement
+Then the caller receives a succeeding reconciliation outcome identifying the recorded commit
+And the affected sources in the working tree match the recorded commit
+And the lifecycle movement proceeds as after any successful reconciliation
+And a repeated reconciliation for the same slug makes no further change
+```
+<!-- /planned:deliver-reverse-folds-live-spec-and-self-blocks -->
+
 ### Cross-context references
 
 - workflow — owns todo fate, identity, and reversal transitions and invokes
