@@ -44,10 +44,19 @@ child-process or remote-request construction.
 
 ## Invariants
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 - Identity is resolved once at the protected API edge. Downstream components
   receive a typed invocation context carrying either a canonical person slug or
   explicit absence; headers, client session files, and tool arguments never
   select the person.
+<!-- change:cli-actions-authorize-in-process -->
+- Identity is resolved once, in the client that serves the caller, and carried
+  on the request (`project/spec/identity-and-auth` §6). The protected API edge
+  turns the carried identity into a typed invocation context carrying either a
+  canonical person slug or explicit absence; downstream components receive only
+  that context, and client session files and tool arguments never select the
+  person.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 - Config is the sole owner of personal secret-file paths, safety checks,
   inventory, reads, and mutation. Runtime and TUI consumers use its published
   operations and never parse the store directly.

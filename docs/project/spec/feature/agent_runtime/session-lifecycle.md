@@ -52,7 +52,11 @@ And a session creation without any resolved human_role AND no system role is rej
 Given the daemon is in single-user mode
 And the request carries no explicit human_role
 When a terminal caller POSTs to /sessions
+<!-- planned-change:cli-actions-authorize-in-process -->
 Then the session record's human_role is admin, resolved by the auth layer (verify_caller), not by a model default
+<!-- change:cli-actions-authorize-in-process -->
+Then the session record's human_role is admin, taken from the caller identity the request carries, not by a model default
+<!-- /planned-change:cli-actions-authorize-in-process -->
 ```
 
 #### UC-SL21: Restricted role is jailed to the help-desk

@@ -37,7 +37,11 @@ owns.
 <!-- /planned-change:cli-reads-resolve-in-process -->
 
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 A caller that caller verification cannot identify has nothing recorded under a
+<!-- change:cli-actions-authorize-in-process -->
+A caller the platform cannot identify has nothing recorded under a
+<!-- /planned-change:cli-actions-authorize-in-process -->
 borrowed name: a command that would have to attribute a record to it refuses
 instead, naming how to establish an identity. A name the operator states
 explicitly for the record — a content author credited by `--author` — is authored

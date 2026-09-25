@@ -17,7 +17,14 @@ TeleClaude uses one identity model across API, TUI, and adapters:
 
 - person identity comes from global `people` config,
 - session identity comes from daemon-owned session records,
+<!-- planned-change:cli-actions-authorize-in-process -->
 - authorization is enforced server-side on every protected route.
+<!-- change:cli-actions-authorize-in-process -->
+- authorization is decided in the client process that serves the caller — the CLI
+  for a `telec` command, the TUI for its own actions — before any request reaches
+  the daemon; the daemon performs what it is asked and records who asked from the
+  identity the request carries.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 ## Canonical fields
 
@@ -33,6 +40,7 @@ People are defined in global `~/.teleclaude/teleclaude.yml` under `people`.
 
 ### 2) Runtime identity headers
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 Protected local API routes use these headers:
 
 - `x-caller-session-id`: TeleClaude session identity (daemon-owned, for lineage and role derivation).
@@ -61,8 +69,53 @@ terminal-email signal — the daemon and every process it spawns included. Resol
 identity from ambient state deep inside the platform attributes work to whoever
 last authenticated on the host rather than to whoever it belongs to, and in a
 multi-person installation that is one identity standing in for all of them.
+<!-- change:cli-actions-authorize-in-process -->
+A client that asks the daemon to act carries, on every request, the identity it
+resolved for its caller (§6):
+
+- `x-caller-session-id`: the caller's TeleClaude session, when the caller is a
+  session. Lineage, initiator linkage, and every act scoped to the caller's own
+  session key on it.
+- `x-caller-principal`: the caller's principal — `human:<email>` or the carried
+  system principal.
+- `x-caller-system-role`: the system role the caller's session resolves to, when
+  it has one.
+- `x-caller-human-role`: the person role that authorizes the caller, when the
+  caller is a person.
+- `x-caller-email`: the person's email, when the caller is a person.
+- `x-caller-entry-point`: the door the request came through — an agent session,
+  the CLI at a terminal, or the TUI.
+- `x-teleclaude-daemon-token`: the daemon's own credential for the calls it makes
+  into its request surface. Its value is generated once per daemon process, held
+  only in that process's memory, and never persisted or exported, so no other
+  process can produce a value that resolves. A caller presenting it resolves to
+  the daemon's system principal with no human identity attached, and is subject
+  to the same dispatch privilege as any other system-role caller.
+
+The daemon takes the carried identity as given. It performs no lookup to confirm
+it, resolves no terminal signal, compares no tmux session, and applies no role
+clearance to it; a request that carries none reaches the daemon as a caller with
+no identity. Work the daemon runs for a caller after accepting its
+request carries that caller's identity on the requests the work makes.
+
+Identity is established once, at the boundary a human crosses to reach the platform,
+and carried by everything inside it. A person running a `telec` command from a shell,
+or launching the TUI, has no session to identify them, so their terminal login
+answers who they are; the TUI then holds that resolved identity for as long as it
+runs. Everything already inside carries identity instead of resolving it: an agent
+session is identified by its session record, work dispatched for a todo takes its
+human root from that todo's creation record, and a standing role resolves to its own
+system principal.
+
+A process that is not a human arriving from outside therefore resolves no terminal
+login — the daemon and every process it spawns included. Resolving identity from
+ambient state deep inside the platform attributes work to whoever last
+authenticated on the host rather than to whoever it belongs to, and in a
+multi-person installation that is one identity standing in for all of them.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 ### 3) Agent session token auth
 
 Token-based auth exists exclusively for daemon-spawned agent sessions — sessions
@@ -115,6 +168,44 @@ boundary.
 
 - `x-session-token`: daemon-issued credential for system sessions only
   (takes priority over `x-caller-session-id` when present).
+<!-- change:cli-actions-authorize-in-process -->
+### 3) Agent session tokens
+
+The daemon issues a session token at bootstrap to every session whose principal is
+a system principal, writes it into the session's identity document, and exports it
+into the session's tmux environment. Human-rooted sessions receive none. No request
+surface presents or validates a token: a caller inside a session is identified by
+its session record, resolved in the client (§6), and the daemon consumes the
+identity the request carries (§2).
+
+**Who gets a token:**
+
+| Principal type                | Token issued?                  |
+| ----------------------------- | ------------------------------ |
+| `human:<email>`               | **No**                         |
+| `system:daemon`               | **Yes**                        |
+| Inherited `session.principal` | **Yes** (if system-originated) |
+
+**Token lifecycle:**
+
+Each token is bound to exactly one `session_id`. Tokens have no time-based expiry.
+A token lives exactly as long as its session. The only event that invalidates a
+token is session close, which calls `db.revoke_session_tokens(session_id)`. There
+is no TTL and no timeout. Session close is the single lifecycle boundary.
+
+**Issuance (system-principal sessions only):**
+
+1. Daemon calls `resolve_session_principal(session)` at bootstrap to derive a principal:
+   - `human:<email>` when `session.human_email` is set → **no token issued**.
+   - `system:daemon` for every session with no human origin — the platform's own principal,
+     shared by those sessions and told apart by session id → **token issued**.
+   - Inherited `session.principal` is reused directly for child sessions so the full
+     agent chain shares one stable identity.
+2. For system principals only: daemon issues a token via
+   `db.issue_session_token(session_id, principal, role)` → UUID.
+3. Token is injected into the tmux environment as `TELEC_SESSION_TOKEN`.
+4. On session close, `db.revoke_session_tokens(session_id)` removes the session's tokens.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 **`telec auth whoami`:**
 <!-- planned-change:cli-reads-resolve-in-process -->
@@ -165,7 +256,12 @@ session close.
     signal, so a person opening a fresh terminal authenticates on it before any
     identity-bearing command succeeds,
   - TUI launch requires prior `telec auth login`,
+<!-- planned-change:cli-actions-authorize-in-process -->
   - daemon rejects tmux callers that have no `x-caller-session-id` and no resolvable `x-telec-email`.
+<!-- change:cli-actions-authorize-in-process -->
+  - a client refuses a caller that has neither a session identity nor a terminal
+    login naming a registered person, before it sends any request.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 - If `people` has zero/one person, the legacy fallback role is still allowed for
   tmux callers without session identity, and with exactly one person that person
   answers a terminal that has no document of its own.
@@ -175,6 +271,7 @@ session close.
 
 ### 6) Authorization
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 Role clearance resolves the caller from the identity it carries, never from a
 claim the caller supplies:
 
@@ -188,12 +285,42 @@ claim the caller supplies:
   principal does not resolve to,
 - on a protected route, unknown/missing identity returns 401 and insufficient
   role returns 403; a local gate treats an unidentified caller as holding no role.
+<!-- change:cli-actions-authorize-in-process -->
+Authorization happens once, in the client process that serves the caller, before
+the client sends any request:
+
+- the caller resolves from the identity it carries, never from a claim it
+  supplies: a caller inside a session resolves from its session record, reached
+  through the session id its identity document names, and a principal copied into
+  that document is never trusted; a caller outside any session resolves from its
+  terminal login, and the TUI from the identity it was launched with,
+- a session's principal resolves through the principal-resolution capability, and
+  a gate grants a session no role its principal does not resolve to,
+- a `telec` command is cleared against its own verb band
+  (`project/design/cli-authorization-matrix`) in the process that runs it, before
+  its first request; the TUI clears each action it performs against the verb band
+  of the command that action performs,
+- a caller that resolves to no person and no system principal is refused before
+  any request is sent; a role outside the band is refused with the not-permitted
+  failure naming the role and the verb,
+- the client carries the identity it resolved on every request (§2); the daemon
+  verifies no caller and applies no verb band of its own,
+- the daemon applies the rules that scope an act to its objects — a session acts
+  on no session above it, a reminder belongs to its session, a session's result,
+  file, and escalation act for that session, a claimed todo is written only by its
+  claiming group, a person-bound service acts only for its person — against the
+  identity the request carries.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 ### 7) Session lineage invariant (child sessions)
 
 Child worker sessions should be linked to parent orchestrator session identity when a caller session exists.
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 - `/sessions/run` accepts terminal/TUI callers whose identity is resolved by `verify_caller` even when `x-caller-session-id` is empty.
+<!-- change:cli-actions-authorize-in-process -->
+- `/sessions/run` accepts a terminal or TUI caller, whose carried identity names no session.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 - When a caller session identity is present, `initiator_session_id` is written for child-session linkage.
 - Requests without caller session identity remain valid, but they create unlinked sessions because terminal/TUI callers do not have a parent TeleClaude session.
 - A lifecycle session the runner auto-dispatches for a todo whose `created_by_principal` is a `human:<email>` establishes that human as its root identity: the session row carries the owning human's `principal`/`human_email`, so its resolved principal is `human:<email>` rather than `system:daemon`, and the rest of the chain inherits it through `initiator_session_id`. The session's `system_role` is left untouched, so the attribution does not change what the session is authorized to do.
@@ -201,7 +328,11 @@ Child worker sessions should be linked to parent orchestrator session identity w
 
 ### 8) Person-bound service identity
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 Person-bound service access is authorized from the same verified caller identity used by protected API routes:
+<!-- change:cli-actions-authorize-in-process -->
+Person-bound service access selects its person from the identity the request carries (§2), which the client resolved for its caller (§6):
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 - A managed human-rooted session resolves from its daemon-owned session record and inherited `human:<email>` principal.
 - A terminal or trusted TUI caller resolves from authenticated terminal email and the global person registry.
@@ -215,3 +346,13 @@ The protected edge translates `CallerIdentity` into a typed service invocation c
 
 - Headless/native hook identity follows `session-identity-truth`; it is distinct from terminal login.
 - TUI login bridge is read-only runtime context, not a replacement for `telec auth login`.
+<!-- planned:cli-actions-authorize-in-process -->
+- The daemon's request surface is not an isolation boundary between local
+  processes. Every agent runs as the same operating-system user as the daemon, and
+  a process that writes to the local socket directly is performed as whatever
+  identity it carries.
+
+## See Also
+
+- docs/project/adr/0101-clients-authorize-and-the-daemon-trusts-carried-identity.md — why clients authorize and the daemon trusts the identity a request carries.
+<!-- /planned:cli-actions-authorize-in-process -->

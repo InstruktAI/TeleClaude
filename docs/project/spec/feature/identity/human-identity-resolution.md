@@ -149,7 +149,11 @@ Then the resolved identity includes the stored Discord avatar URL for downstream
 
 - Reads from the `config` bounded context: the `people` list in global config and per-person config files together form the operator's source of truth for who exists in the system.
 - Consumed by `agent_runtime`'s session-creation pipeline to stamp `sessions.human_email` and `sessions.human_role` at creation time. Those stamped columns then feed `feature/identity/session-access-visibility` and `feature/identity/principal-resolution`.
+<!-- planned-change:cli-actions-authorize-in-process -->
 - Consumed by `feature/identity/caller-verification` via the terminal-identity path — the verifier calls the resolver to map the inbound terminal-email signal onto a human role.
+<!-- change:cli-actions-authorize-in-process -->
+- Consumed by the client-side caller resolution (`project/spec/identity-and-auth` §6) — a caller at a terminal or in the TUI resolves to a person and role through the resolver.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 - The `customer`-role fallback for unknown Discord / WhatsApp users is the mechanism that lets the help-desk forum and customer-routing flows in the Discord adapter accept inbound messages from people who are not yet on the operator's `people` list. Without it those messages would be silently dropped.
 - v2 replaces this resolver with a `Principal` aggregate materialized from the same config sources but with explicit `identity.principal.created` events on first observation; the v2 domain spec captures the upgrade.
 

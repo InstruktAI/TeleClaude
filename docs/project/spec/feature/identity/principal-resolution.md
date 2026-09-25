@@ -56,12 +56,25 @@ And every session with no human origin shares that one principal, distinguished 
 ### Cross-context references
 
 - Consumer: `agent_runtime` session bootstrap calls this capability to decide whether to issue a session token (system-principal sessions only).
+<!-- planned-change:cli-actions-authorize-in-process -->
 - The returned `principal` value is stamped into the session-token ledger entry at issuance, and read back by caller verification on the token path — see `feature/identity/session-token-issuance` and `feature/identity/caller-verification`.
+<!-- change:cli-actions-authorize-in-process -->
+- The returned `principal` value is stamped into the session-token ledger entry at issuance — see `feature/identity/session-token-issuance`.
+- Consumer: the client-side caller resolution (`project/spec/identity-and-auth` §6) resolves a session caller's principal through this capability.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 - No domain events are emitted by this capability directly. In v2 it corresponds to the materialization of a `Principal` aggregate, which DOES emit `identity.principal.created` on first issuance.
 
 ## Known caveats
 
 - The capability returns `role`, but the contract notes it is "informational only — system sessions get their authoritative role from session.system_role, not from this capability." In practice the returned role is only used as the token's `role` value at issuance time; the v2 model collapses this ambiguity.
+<!-- planned-change:cli-actions-authorize-in-process -->
 - The inherited-principal branch returns `HUMAN_ROLE_CUSTOMER` when `human_role` is missing even for `"system:"` inherited principals. Downstream resolution (system-role derivation in caller verification) re-derives the system role from the live session record and the `working_slug` heuristic; the inherited token's role value is not used for clearance on a child session.
+<!-- change:cli-actions-authorize-in-process -->
+- The inherited-principal branch returns `HUMAN_ROLE_CUSTOMER` when `human_role` is missing even for `"system:"` inherited principals. The client-side caller resolution derives the system role from the live session record and the `working_slug` heuristic; the returned role value is not used for clearance on a child session.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 - The fallback role for `human:` principals without an explicit `human_role` is the lowest band (`customer`). This is intentional fail-closed behavior — a session lacking role metadata cannot escalate.
+<!-- planned-change:cli-actions-authorize-in-process -->
 - The error type is a session-identity error. The identity context's caller-verification surface catches it and emits authentication-required; lower layers may surface it as an uncaught exception if they bypass verification.
+<!-- change:cli-actions-authorize-in-process -->
+- The error type is a session-identity error. The client-side caller resolution catches it and treats the caller as holding no identity; lower layers may surface it as an uncaught exception if they call the capability directly.
+<!-- /planned-change:cli-actions-authorize-in-process -->

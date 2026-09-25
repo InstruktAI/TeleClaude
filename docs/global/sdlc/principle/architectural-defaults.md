@@ -82,7 +82,11 @@ API endpoints, frontend pages, CLI commands all use the platform's chosen scaffo
 
 ### 8. Identity and session via documented contract
 
+<!-- planned-change:cli-actions-authorize-in-process -->
 Auth, session, identity-resolution flow through the platform's identity contract (PersonDTO, the session-identity-truth spec, the verify_caller path). No bespoke auth schemes. No invented session models. Identity propagates through documented headers / additional-context, not through ad-hoc state fields.
+<!-- change:cli-actions-authorize-in-process -->
+Auth, session, identity-resolution flow through the platform's identity contract (PersonDTO, the session-identity-truth spec, the shared caller resolution and the identity it carries on requests). No bespoke auth schemes. No invented session models. Identity propagates through documented headers / additional-context, not through ad-hoc state fields.
+<!-- /planned-change:cli-actions-authorize-in-process -->
 
 ### 9. Observability as default
 
