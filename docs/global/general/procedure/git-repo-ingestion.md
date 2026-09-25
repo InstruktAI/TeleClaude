@@ -19,6 +19,9 @@ Ingest a Git repository and produce durable artifacts that answer the current ob
 ## Preconditions
 
 - `~/.teleclaude/scripts/helpers/git_repo_helper.py` is available.
+<!-- planned:align-scripts-runtime-boundary-delivery -->
+- The caller has a resolved TeleClaude identity through an agent session or terminal login, so the helper can read global configuration through `telec config global get`.
+<!-- /planned:align-scripts-runtime-boundary-delivery -->
 - Repo reference provided as host + owner + repo (preferred) or a full URL.
 - An objective describing what to learn or extract from the repo.
 
@@ -57,7 +60,11 @@ Ingest a Git repository and produce durable artifacts that answer the current ob
 
 ## Outputs
 
+<!-- planned-change:align-scripts-runtime-boundary-delivery -->
 - Repo checkout: `~/Workspace/public-repos/<host>/<owner>/<repo>/` by default (override via `teleclaude.yml` → `git.checkout_root`).
+<!-- change:align-scripts-runtime-boundary-delivery -->
+- Repo checkout: the helper's `DEFAULT_CHECKOUT_ROOT` by default, with a global `checkout_root` override read through Config's published `telec config global get` surface.
+<!-- /planned-change:align-scripts-runtime-boundary-delivery -->
 - Repo artifacts: `~/.teleclaude/git/<host>/<owner>/<repo>/index.md` and `history.md`.
 - Answer delivered to the user.
 
