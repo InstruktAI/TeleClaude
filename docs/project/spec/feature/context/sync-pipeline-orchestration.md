@@ -38,28 +38,32 @@ The publication pipeline is:
    outputs from those snapshots.
 <!-- change:stale-sync-retry-regresses-global-publication -->
 2. **Build indexes** — once the recorded snapshot validates, record its tip
-   as the canonical checkout's published generation, then derive indexes from
+   as the canonical checkout's unfinished publication, then derive indexes from
    that snapshot and write portable derived indexes to its canonical checkout.
 3. **Distribute** — compose and atomically deploy the capability-gated runtime
-   outputs from those snapshots.
+   outputs from those snapshots, then record the tip as the checkout's
+   published generation and clear the unfinished publication.
 
-A canonical checkout's published generation is the newest recorded tip whose
-publication validated and began writing output, so it never trails what is
-deployed. Publication compares against it once it holds publication
-serialization:
+A canonical checkout's published generation is the recorded tip of its latest
+completed publication; its unfinished publication is a tip that validated and
+began writing output without completing. Publication compares against both once
+it holds publication serialization:
 
 - A recorded tip that is a strict ancestor of the published generation is
   superseded: its publication runs no index or distribution phase, leaves the
   canonical checkout's indexes and every deployed runtime output unchanged, and
   reports a superseded outcome.
+- A recorded tip that is a strict ancestor of an unfinished publication newer
+  than the published generation fails without changing output and names that
+  unfinished tip; its action remains recoverable until that tip, or a
+  descendant, completes.
 - With no published generation recorded, only a recorded tip equal to the
-  canonical checkout's latest commit publishes; any other replay fails without
-  changing output, and its action remains recoverable.
-- Any other recorded tip publishes and becomes the published generation, so a
-  replay of a range whose later successors have not yet published advances
-  deployment rather than waiting on them. A publication that fails after
-  becoming the published generation keeps that standing; replaying its own
-  range publishes it again.
+  canonical checkout's latest commit, or to its unfinished publication,
+  publishes; any other replay fails without changing output, and its action
+  remains recoverable.
+- Any other recorded tip publishes, so a replay of a range whose later
+  successors have not yet published advances deployment rather than waiting on
+  them.
 <!-- /planned-change:stale-sync-retry-regresses-global-publication -->
 
 
@@ -150,7 +154,7 @@ And the replay reports its terminal outcome for that original range
 
 ```gherkin
 Given publication failed for a recorded commit range
-And the checkout records a published generation that does not descend from that range's tip
+And the checkout records a published generation, and neither it nor an unfinished publication descends from that range's tip
 And a later commit or working-tree edit exists
 When an agent replays the publication action for the failed range
 Then an agent retrieving the deployed documentation reads the original committed input
@@ -305,8 +309,8 @@ And its absence before first deployment is not a finding
 - Publication is idempotent at the authored-source layer: it builds indexes
   from the recorded snapshot and places published domain bundles inside the
   deployed generation. It writes gitignored `index.yaml` files with canonical
-  checkout paths whenever its recorded tip becomes the published generation,
-  including after later commits that owe no publication. The host
+  checkout paths whenever its recorded tip publishes, including after later
+  commits that owe no publication. The host
   documentation lease covers the checkout write and every publication action,
   including maintenance from a person's direct Git commit or merge, so a later
   commit's publication runs after an earlier one releases it and writes its
