@@ -17,12 +17,11 @@ current caller authentication or session enrollment behavior.
 ## Invariants
 
 - No implementation or authorization decision is derived from this anchor.
-- No pending delivery owns this anchor.
 
 ## Primary flows
 
-A reader uses ADR-0079 for the recorded enrollment decision and Git history
-for the proposal previously published at this path.
+A reader uses ADR-0079 for the enrollment decision and consults Git history
+only when the withdrawn proposal itself is needed.
 
 ## Failure modes
 
