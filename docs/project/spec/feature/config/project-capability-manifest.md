@@ -328,7 +328,7 @@ And it spawns no interpreter to read them
 
 ```
 Given a project whose declaration the installed plumbing has resolved
-And neither the declaration nor the configuration migration list has changed since
+And since then neither the declaration, nor an environment file its capability blocks reference, has changed, and no configuration migration run has executed
 When the git wrapper runs on a git invocation
 Then it decides from the capability subscriptions the runtime resolves for that declaration
 And it spawns no interpreter to read them
