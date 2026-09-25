@@ -6,14 +6,14 @@ description: The computer-kind CLI addresses the runtime machine configuration t
 
 ## What it is
 
-The machine configuration declares `kind: computer` and is addressed through
-`telec config computer`. It is a singleton with a distinct filename and runtime
-loader, not an overlay tier. The command uses the same `init`, `list`, `get`, and
+The machine configuration is addressed through `telec config computer` by its
+fixed location in the machine home. It is a singleton with a distinct filename
+and runtime loader, not an overlay tier. The command uses the same `init`, `list`, `get`, and
 `patch` vocabulary as other configuration kinds while keeping machine-specific
 validation and persistence in the config context. The working directory never
 selects another machine file.
 
-`init` creates a missing machine declaration or adds missing required
+`init` creates a missing machine configuration or adds missing required
 structure to an existing file without changing operator values. `get` reports
 the declared machine view, its resolved source, and an opaque revision. `patch`
 submits semantic changes with that revision to the config owner. The owner

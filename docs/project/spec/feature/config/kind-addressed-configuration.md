@@ -10,10 +10,11 @@ delivered_by:
 
 `telec config <kind> init|list|get|patch` is the agent-facing resource surface
 for configuration. The singular kind is `computer`, `global`, `person`,
-`company`, or `project`; it matches the subject's declared `kind`. `computer`
-identifies the machine configuration and does not become an overlay tier or a
-context root. `computer` and `global` are singletons. A person, company, or
-project is addressed by its stable slug, except that project initialization
+`company`, or `project`; an overlay subject's kind matches its declared
+`kind`. `computer` identifies the machine configuration by its fixed location
+in the machine home and does not become an overlay tier or a context root.
+`computer` and `global` are singletons. A person, company, or project is
+addressed by its stable slug, except that project initialization
 may establish the project rooted at the caller's current directory.
 
 The operation names describe the result, regardless of the subject's storage
@@ -67,7 +68,7 @@ not change a kind or instance by implication.
 #### UC-KAC1: An agent addresses every configuration subject by kind
 
 ```gherkin
-Given each registered configuration subject declares its kind
+Given configuration subjects of every kind exist
 When an agent lists, reads, or changes one subject through the configuration CLI
 Then the command names that kind and the subject's stable instance when needed
 And an unqualified read or patch is refused without selecting a default subject
@@ -154,7 +155,7 @@ But a patch to the platform role, another person's settings, or a company roster
 #### UC-KAC10: Machine configuration is explicit without joining overlay resolution
 
 ```gherkin
-Given an existing machine configuration is advanced to declare its kind
+Given a machine configuration exists in the machine home
 When an agent addresses computer configuration through the kind-based CLI
 Then the machine configuration the runtime loads is selected
 And the working directory selects no alternate machine file
@@ -175,7 +176,8 @@ And overlay-tier resolution still recognizes only the overlay kinds
 ## Known caveats
 
 - `computer` has a different filename and runtime loader from the overlays.
-  Its declared kind is an address, not participation in overlay composition.
+  Its kind follows from its location, not from participation in overlay
+  composition.
 - A person view crosses the global registry, a person overlay, and company
   rosters. Only the declared fields of the addressed subject are writable;
   read-only projections grant no parallel write path.

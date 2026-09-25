@@ -27,11 +27,11 @@ valid. This is the machine-level inventory layer; it is distinct from the
 global/project/person settings.
 
 <!-- planned:align-config-cli-ownership -->
-The machine configuration declares `kind: computer`. That declaration makes
-the file addressable through the same kind-based operator surface as the
-overlays. It does not make the machine file an overlay tier or a context root.
-Existing machine files are advanced to the declaration before strict loading;
-other operator values are preserved.
+A machine configuration may declare `kind: computer`. The declaration is an
+address, not a setting: the loader accepts it, removes it before typed
+construction, and refuses a machine configuration declaring any other kind.
+It does not make the machine file an overlay tier or a context root, and a
+machine configuration without the declaration loads unchanged.
 <!-- /planned:align-config-cli-ownership -->
 
 ## Canonical fields
@@ -39,14 +39,17 @@ other operator values are preserved.
 ### Use cases
 
 <!-- planned:align-config-cli-ownership -->
-#### UC-CFG-LOAD-15: Existing machine configuration gains its declared kind
+#### UC-CFG-LOAD-16: A declared computer kind is an address, not a setting
 
 ```gherkin
-Given a machine configuration authored before computer-kind declarations
-When the configuration is advanced and loaded
-Then it declares the computer kind
-And its existing operator values are preserved
-And the runtime resolves the same machine configuration source
+Given a machine configuration declaring the computer kind
+When the machine configuration loads
+Then it resolves the same runtime configuration as without the declaration
+And loading neither adds, removes, nor rewrites the declaration
+
+Given a machine configuration declaring any kind other than computer
+When the machine configuration loads
+Then the load fails naming the file and the declared kind
 ```
 <!-- /planned:align-config-cli-ownership -->
 
