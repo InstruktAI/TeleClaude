@@ -64,6 +64,7 @@ class PrescribedReminderSlug(StrEnum):
     """Reserved reminder slugs with registered formatters."""
 
     GOAL_DRIVE = "goal-drive"
+    HALT_TO_RESPOND = "halt-to-respond"
     SESSION_DEPARTURE = "session-departure"
     ORCHESTRATION_WATCH = "orchestration-watch"
     COORDINATOR_SWEEP = "coordinator-sweep"
