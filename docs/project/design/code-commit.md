@@ -163,14 +163,14 @@ both; loading the full overlay still refuses it
 (`project/spec/feature/config/project-capability-manifest`).
 <!-- /planned-change:fix-subject-checkout-grading-canonical-config -->
 
-<!-- planned:foreign-session-carried-identity -->
+<!-- planned:telec-startup-does-only-auth -->
 The role the matrix reads is resolved from the caller's session record through the
 shared caller resolution (`project/spec/identity-and-auth` §6), never from the
 session identity document, which carries only the session id
 (`project/spec/feature/identity/session-identity-file`). The wrapper resolves it
 only where a row depends on role: a push to main, and a replay that produces a
 commit on main.
-<!-- /planned:foreign-session-carried-identity -->
+<!-- /planned:telec-startup-does-only-auth -->
 
 The full matrix of wrapper-gated operations, by role and by execution
 context. Read columns left-to-right; the first column that decides the
@@ -193,7 +193,11 @@ op wins.
 | `git checkout -- <path>` (no ref) | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Working-tree revert to HEAD; same gating as `git restore <path>`. |
 | `git checkout <ref> -- <path>` | ✅ allowed | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Foreign-ref content into working tree. |
 | `git checkout <branch>` / `git switch` | ❌ blocked | ❌ blocked | ❌ blocked | Branch switching loses workspace; not how agents change branches. |
+<!-- planned-change:integrator-stranded-dirt-by-asking -->
 | `git stash*` | ❌ blocked (absolute, no role override) | ❌ blocked | ❌ blocked | Stash captures every dirty file in the worktree it runs in — no pathspec granularity. In a multi-agent repo, a stash lifts other agents' WIP; the pop either silently re-stages foreign content or conflicts with no clean recovery. The integrator's recovery when repo-root sync finds dirty files is to halt and surface to the human (per the integration procedure), never to stash. |
+<!-- change:integrator-stranded-dirt-by-asking -->
+| `git stash*` | ❌ blocked (absolute, no role override) | ❌ blocked | ❌ blocked | Stash captures every dirty file in the worktree it runs in — no pathspec granularity. In a multi-agent repo, a stash lifts other agents' WIP; the pop either silently re-stages foreign content or conflicts with no clean recovery. The integrator resolves dirty files that block repo-root sync path by path under the integration procedure — it asks the sessions that can have written each path and commits a quiet, unclaimed path as-is — and never stashes. |
+<!-- /planned-change:integrator-stranded-dirt-by-asking -->
 | `git clean` | ❌ blocked | ❌ blocked | ❌ blocked | Deletes untracked files; rarely the right answer for agents. |
 | `git revert <commit>` | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | ⚠️ `--confirmed` required | Multi-agent commits often span scopes; inspection precedes revert. |
 | `git merge`/`rebase`/`cherry-pick` on main | ❌ unless integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` | ✅ allowed | (n/a) | Replays produce commits via paths that bypass `telec code commit`'s sealed commit gate. |

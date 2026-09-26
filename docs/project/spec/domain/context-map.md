@@ -45,11 +45,20 @@ contracts and never creates shared ownership.
   queueing, or processing semantics.
 - `integration` supplies authenticated caller signals to `identity`; identity
   owns their interpretation and returns the resolved principal.
+<!-- planned-change:integrator-stranded-dirt-by-asking -->
 - `workflow` requests session dispatch, observes session lifecycle, and consumes
   ephemeral dirty-path claimant evidence through `agent_runtime` contracts.
   `agent_runtime` owns the single-snapshot live-session attribution query;
   `workflow` owns coordination, custodianship, and resulting repository actions.
   Neither context implements the other's decisions or state transitions.
+<!-- change:integrator-stranded-dirt-by-asking -->
+- `workflow` requests session dispatch, observes session lifecycle, and messages
+  live sessions through `agent_runtime` contracts. `workflow` owns the
+  integrator's coordination and resulting repository actions, including the
+  resolution of dirty repository-root paths. Neither context implements the
+  other's decisions or state transitions.
+<!-- /planned-change:integrator-stranded-dirt-by-asking -->
+
 - `agent_runtime` publishes transcript and lifecycle facts consumed by
   `session_mirrors`; the mirror context never mutates live session truth.
 

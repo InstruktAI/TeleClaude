@@ -550,57 +550,14 @@ flowchart LR
 
 ### Repo root sync recovery
 
-After pushing to origin/main, `_step_push_succeeded` syncs local main via `git pull --ff-only origin main`. When dirty local files conflict with incoming changes, the pull fails.
-
-**Why it happens:** Other agents may have in-progress work on local main (dirty working tree). The `--ff-only` pull cannot proceed with uncommitted changes that conflict with incoming files.
-
-**Recovery flow:**
-
-1. The machine advances the checkpoint to CLEANUP (delivery is already safe on origin).
-2. Returns a `REPO ROOT SYNC BLOCKED` instruction to the agent.
-3. The agent informs the user and waits for confirmation (other agent sessions may be active).
-4. After confirmation, the agent runs:
-   ```bash
-   git stash
-   git pull --ff-only origin main
-   git stash pop
-   ```
-5. If stash pop succeeds, the agent calls `telec todo integrate` — the machine resumes at CLEANUP.
-6. If stash pop produces conflicts, the agent resolves them (files deleted by delivery with local edits are obsolete), then calls `telec todo integrate`.
-
-**System role permissions:** Integrator sessions have `TELECLAUDE_SYSTEM_ROLE=integrator` set by the daemon from `session_metadata.system_role`. Stash operations are permitted for integrators during push rejection recovery.
-
-```mermaid
-sequenceDiagram
-    participant Agent as Integrator Agent
-    participant SM as Integration Machine
-    participant Root as Repo Root (local main)
-    participant Origin as origin/main
-
-    SM->>Origin: git push origin HEAD:main (from worktree)
-    Note over Origin: Push succeeds
-
-    SM->>Root: git pull --ff-only origin main
-    Root-->>SM: FAILED (dirty files conflict)
-
-    SM->>SM: Advance checkpoint to CLEANUP
-    SM-->>Agent: REPO ROOT SYNC BLOCKED
-
-    Note over Agent: Agent informs user,<br/>waits for confirmation
-
-    Agent->>Root: git stash
-    Agent->>Root: git pull --ff-only origin main
-    Note over Root: Pull succeeds
-    Agent->>Root: git stash pop
-
-    alt Clean pop
-        Agent->>SM: telec todo integrate
-        SM->>SM: Resume at CLEANUP → COMPLETED
-    else Conflicts
-        Note over Agent: Resolve conflicts<br/>(obsolete files = accept delivered)
-        Agent->>Root: git add resolved files
-        Agent->>Root: git stash drop
-        Agent->>SM: telec todo integrate
-        SM->>SM: Resume at CLEANUP → COMPLETED
-    end
-```
+After the candidate push is confirmed, the machine synchronizes repository-root
+`main` by classifying it against `origin/main`, and fast-forwards it only when no
+uncommitted path overlaps the incoming change
+(`project/spec/feature/workflow/integration-state-machine`, UC-WISM27 and
+UC-WISM28). Split history, a blocking dirty path, or a Git operation failure
+returns a typed decision instead of mutating the working tree,
+and the confirmed candidate stays current until repository-root finalization
+succeeds. The integrator resolves the decision under
+`sdlc/procedure/lifecycle/integrate` (**REPO ROOT SYNC REQUIRED**) and re-enters
+`telec todo integrate`. The Git wrapper blocks `git stash` for every role
+(`project/design/code-commit`), so no recovery path stashes.
