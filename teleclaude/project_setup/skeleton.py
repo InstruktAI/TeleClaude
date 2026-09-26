@@ -27,7 +27,6 @@ _LIFECYCLE_FILES: list[tuple[str, str]] = [("Makefile.template", "Makefile")]
 
 _PYTHON_FILES: list[tuple[str, str]] = [
     ("pyproject.toml.template", "pyproject.toml"),
-    ("pre-commit-config.yaml", ".pre-commit-config.yaml"),
 ]
 
 _TYPESCRIPT_FILES: list[tuple[str, str]] = [
