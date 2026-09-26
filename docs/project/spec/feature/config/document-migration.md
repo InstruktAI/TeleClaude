@@ -18,12 +18,15 @@ no other record of migration progress exists anywhere.
 A document created by the platform is written at the current version. It is
 stamped, never replayed.
 
-Reading never writes. Every configuration loader brings an older document to
-the current shape in memory by applying the migrations it has not yet passed,
-then validates it. The tier registries supply a subject when they name the
-document. Otherwise a valid tier declaration supplies a read-only subject:
-tier-wide migrations still apply, while a step requiring registration or a
-person or company instance waits until the registries supply that fact. A
+Reading never writes. Every configuration loader visits the same ordered list
+in memory before validation. The tier registries supply a subject when they
+name the document, so every pending step for that subject brings it to the
+current shape. Otherwise a valid tier declaration supplies a read-only
+subject: tier-wide shape changes still apply, while a step whose result
+depends on registration or an instance waits only when the resulting view is
+valid under the current model. A declared unregistered project therefore
+loads with recognized retired fields removed and omitted capabilities
+unsubscribed; it receives no registered project's grandfathered values. A
 document with neither a registry subject nor a valid tier declaration fails
 loading. An unsupported key in the resulting view fails the load. A document
 stating a version newer than the installation knows fails the load naming both
@@ -96,6 +99,7 @@ The authoring rules every migration obeys are
 
 ```gherkin
 Given a configuration document at an older version carrying a shape a later migration retires
+And the tier registries name that document
 When an agent's operation loads that document
 Then the operation receives the document in its current shape
 And the stored document is byte-identical before and after the load
@@ -233,6 +237,17 @@ And no tier registry names it
 When an agent's operation attempts to change a setting in that document
 Then the operation refuses the change and names registration as the way to bring the document forward
 And the document and any migration destination are unchanged
+```
+
+#### UC-CFG-MIG-15: A declared unregistered project loads with tier-wide migrations
+
+```gherkin
+Given an older project configuration with a valid tier declaration that no registry names
+And it carries a recognized retired field and omits capability declarations
+When an agent's operation loads that configuration
+Then the loaded view no longer carries the retired field
+And the omitted capabilities remain unsubscribed
+And the stored document is unchanged
 ```
 
 ### Cross-context references

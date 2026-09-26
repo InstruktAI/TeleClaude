@@ -50,8 +50,10 @@ delivered_by: [config-migration-chain]
   step whose result depends on registration or an instance. On a read, a valid
   tier declaration can supply the kind when no registry names the document;
   that subject has no registry standing or inferred instance. A step that
-  requires either skips that read, and a migration never derives a document's
-  kind or instance from its path.
+  requires either skips that read only for a registry-specific outcome whose
+  absence remains valid under the current model. Tier-wide shape changes
+  still run, and a migration never derives a document's kind or instance from
+  its path.
 - **A read never grants registry standing from a declaration.** The read runs
   the ordered migrations that apply to its subject in memory. A document with
   neither a registry subject nor a valid declaration still fails at its tier
@@ -79,7 +81,8 @@ The declaration gives a read enough information for tier-wide shape changes,
 even when its project is not registered. It gives no evidence that the project
 held a subscription before the capability default changed, or which person an
 unclaimed person document represents. A registry-dependent step therefore
-waits for that evidence. Stamping an older document from a declaration-only
+waits for that evidence only when the missing outcome is still valid under the
+current model. Stamping an older document from a declaration-only
 read would skip the waiting step permanently; refusing that write preserves
 the migration for registration to perform.
 
