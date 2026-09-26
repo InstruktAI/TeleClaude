@@ -477,7 +477,7 @@ And an empty queue leaves the watcher live until an explicit lifecycle condition
 ```gherkin
 Given an agent session working in the integration worktree, where candidate-commit publication to origin/main is admitted
 When the session pushes a deletion of the main branch to origin
-Then the push is refused as a main-guard block, never as a content-gate rejection
+Then the push is refused, and the refusal is never reported as a content-gate failure
 And origin/main is unchanged
 ```
 <!-- /planned:fix-pre-push-hook-s-integration-worktree-exc -->
