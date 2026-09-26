@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import re
 import sys
@@ -45,7 +44,6 @@ from teleclaude.commit_identity import (
     resolve_commit_identity_from_caller,
 )
 from teleclaude.core.db import get_db
-from teleclaude.core.dirty_path_owners import resolve_dirty_path_owners
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock, wait_for_index_lock_clear
 from teleclaude.hooks.checkpoint_flags import record_authored_main_commit
@@ -74,9 +72,6 @@ _COMMIT_MESSAGE_RE = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|r
 _CODE_NAMESPACE = "code"
 _CODE_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code capability"
 _COMMIT_CAPABILITY_REQUIRED = "ERROR: telec code {command} requires the code or docs capability"
-_OWNERS_USAGE = "Usage: telec code owners <path> [<path> ...]"
-_OWNERS_UNKNOWN_FLAG = "ERROR: unknown flag: {flag}"
-_OWNERS_ERROR = "ERROR: {error}"
 _DOC_LAYER_WORKTREE_ERROR = "ERROR: doc-layer paths cannot be committed from a slug worktree:"
 _DOC_LAYER_WORKTREE_GUIDANCE = (
     "\nThe doc layer is authored at prepare on main and folded at integration; "
@@ -102,7 +97,6 @@ class CodeSubcommand(StrEnum):
     COMMIT = "commit"
     ADD = "add"
     BLUEPRINT = "blueprint"
-    OWNERS = "owners"
     POST_COMMIT = "post-commit"
     POST_MERGE = "post-merge"
     PRE_COMMIT = "pre-commit"
@@ -117,7 +111,6 @@ _CODE_CAPABILITY_SUBCOMMANDS = frozenset(
         CodeSubcommand.FORMAT,
         CodeSubcommand.INSTALL,
         CodeSubcommand.BLUEPRINT,
-        CodeSubcommand.OWNERS,
         CodeSubcommand.MAINTENANCE,
     }
 )
@@ -164,8 +157,6 @@ def handle_code(args: list[str]) -> None:
         from teleclaude.cli.telec.handlers.blueprint import handle_code_blueprint  # noqa: PLC0415
 
         handle_code_blueprint(rest)
-    elif sub is CodeSubcommand.OWNERS:
-        handle_code_owners(rest)
     elif sub is CodeSubcommand.MAINTENANCE:
         handle_code_maintenance(rest)
 
@@ -181,26 +172,6 @@ def _require_code_capability(command: CodeSubcommand) -> None:
     ):
         print(_COMMIT_CAPABILITY_REQUIRED.format(command=command.value), file=sys.stderr)
         raise SystemExit(1)
-
-
-def handle_code_owners(args: list[str]) -> None:
-    """Print the strict live-session ownership view for supplied dirty paths."""
-    if not args:
-        print(_OWNERS_USAGE, file=sys.stderr)
-        raise SystemExit(2)
-    for argument in args:
-        if argument.startswith("-"):
-            print(_OWNERS_UNKNOWN_FLAG.format(flag=argument), file=sys.stderr)
-            print(_OWNERS_USAGE, file=sys.stderr)
-            raise SystemExit(2)
-    state = resolve_invocation_state()
-    project_root = state.project_root
-    try:
-        result = asyncio.run(resolve_dirty_path_owners(project_root, args))
-    except Exception as exc:
-        print(_OWNERS_ERROR.format(error=exc), file=sys.stderr)
-        raise SystemExit(1) from exc
-    print(json.dumps(result.as_json()))
 
 
 def handle_code_add(args: list[str]) -> None:

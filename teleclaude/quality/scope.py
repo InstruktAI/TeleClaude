@@ -249,11 +249,6 @@ def _resolve_context_path(path: Path, resolution_mode: ContextPathResolutionMode
     return path.resolve()
 
 
-def resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
-    """Return the current porcelain dirty set for an explicit caller."""
-    return _resolve_dirty_paths(project_root)
-
-
 def _resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
     repo = Repo(str(project_root))
     try:

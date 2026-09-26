@@ -28,9 +28,9 @@ _COORDINATOR_SWEEP_INTENT = (
     "record only material findings, and carry only human-owned need."
 )
 _INTEGRATOR_MAIN_CLEARANCE_INTENT = (
-    "Recheck whether repo-root main is clear without touching another session's work. "
-    "If clear, resume integration. While waiting, keep this reminder; on escalating to a human, "
-    "cancel it and hold as a beacon — the next move is theirs."
+    "Recheck whether repo-root main is clear. If clear, resume integration. Otherwise resolve each "
+    "dirty path under the integration procedure and keep this reminder; when every remaining dirty "
+    "path is escalated to a human, cancel it and hold as a beacon — the next move is theirs."
 )
 _INTEGRATOR_CANDIDATE_SETTLEDNESS_INTENT = (
     "Recheck the integration queue after its caller-owned settledness interval. "

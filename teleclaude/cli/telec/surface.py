@@ -1373,7 +1373,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "code": CommandDef(
         desc="Code quality and commit tools",
         notes=[
-            "lint, test, format, install, blueprint, and owners require the code capability.",
+            "lint, test, format, install, and blueprint require the code capability.",
             "add and commit remain available when either code or docs is subscribed.",
         ],
         subcommands={
@@ -1425,17 +1425,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Run native make install",
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
-            ),
-            "owners": CommandDef(
-                desc="Resolve live-session ownership for supplied dirty paths",
-                args="<path> [<path> ...]",
-                flags=[F.FLAG_HELP],
-                notes=[
-                    "Accepts the complete already-aged dirty blocking set; the command performs no age logic.",
-                    "Prints one path-keyed JSON object; each value is the list of every live session that "
-                    "declared that path (no tiebreak), or null when no live session declared it.",
-                ],
-                auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
             ),
             "add": CommandDef(
                 desc="Declare files for the next commit (stages NEW, unmerged, or partial-staged tracked)",
@@ -1610,7 +1599,6 @@ CODE_LINT = CLI_SURFACE["code"].subcommands["lint"]
 CODE_TEST = CLI_SURFACE["code"].subcommands["test"]
 CODE_FORMAT = CLI_SURFACE["code"].subcommands["format"]
 CODE_INSTALL = CLI_SURFACE["code"].subcommands["install"]
-CODE_OWNERS = CLI_SURFACE["code"].subcommands["owners"]
 CODE_ADD = CLI_SURFACE["code"].subcommands["add"]
 CODE_COMMIT = CLI_SURFACE["code"].subcommands["commit"]
 CODE_PUBLISH = CLI_SURFACE["code"].subcommands["publish"]

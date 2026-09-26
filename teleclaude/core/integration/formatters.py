@@ -10,8 +10,6 @@ directory.
 
 from __future__ import annotations
 
-import shlex
-
 from teleclaude.core.integration.checkpoint import ParkedCandidate
 from teleclaude.core.integration.git_ops import RepoRootSyncOutcome, RepoRootSyncResult
 
@@ -28,6 +26,17 @@ _REPO_ROOT_PATH_LINE_SEPARATOR = "\n"
 _REPO_ROOT_NO_PATHS = "  (none)"
 _REPO_ROOT_PATH_INDENT = "  - "
 _REPO_ROOT_READY_RESULT = "Cannot render a synchronization instruction for a ready repo-root result"
+_REPO_ROOT_DIRTY_PATH_INSTRUCTION = (
+    "Never stash, overwrite, rebase across, merge across, or discard the blocking paths. "
+    "Load the current integration procedure with `telec docs get "
+    "sdlc/procedure/lifecycle/integrate` before following **Resolving a dirty path**; "
+    "then keep `integrator-main-clearance` live and resolve each blocking path on its own. "
+    "Run each stranded-path commit with the tool working directory set to `{project_root}` "
+    "and the exact-path `--only <path>` selection specified by that procedure; never use "
+    "additive workspace-scope `--include`. On each clearance beat, re-enter "
+    "`telec todo integrate`, which re-runs synchronization and returns the current decision; "
+    "take that beat's blocking set as the decision identifies it."
+)
 _REPO_ROOT_SPLIT_HISTORY_TEMPLATE = """INTEGRATION DECISION: REPO ROOT SPLIT HISTORY
 
 Repo-root main has expected split history with origin/main.
@@ -43,9 +52,14 @@ Dirty overlap:
 
 All git commands targeting repo root must use: `git -C {project_root}`
 
-If the working tree is clean, merge origin/main into local main and resolve any
+Read `git -C {project_root} status --short` to determine whether the working tree
+is clean. If it reports nothing, merge origin/main into local main and resolve any
 conflicts. Never rebase repo-root main, and never let the state machine merge it
-for you. If the merge cannot be resolved, stop and ask the human.
+for you. If the merge cannot be resolved, stop and ask the human. If it reports
+paths, every reported path blocks the merge and is resolved as in the dirty-overlap
+decision.
+
+{dirty_path_instruction}
 
 NEXT: Reconcile repo-root split history, then call telec todo integrate"""
 _REPO_ROOT_DIRTY_OVERLAP_TEMPLATE = """INTEGRATION DECISION: REPO ROOT DIRTY OVERLAP
@@ -55,36 +69,10 @@ Incoming origin/main changes overlap uncommitted repo-root work:
 
 All git commands targeting repo root must use: `git -C {project_root}`
 
-Do not stash, overwrite, rebase, merge across, or mutate these paths while a
-live owner or attribution uncertainty protects them. Keep the prescribed
-clearance reminder active through the quiet window.
+The listed paths block synchronization.
 
-After the quiet window, run this read-only ownership query for the complete
-blocking set exactly as listed above, with the tool invocation working directory
-set to `{project_root}`:
-
-`telec code owners {dirty_overlap_command_paths}`
-
-On every later clearance-reminder beat while the same complete set remains
-dirty, run a fresh ownership query. For each newly observed owner, send one
-coordination message containing that owner's complete attributed subset; never
-send another message to an owner already coordinated for this blocking set.
-When a prior owner disappears, take the now-null path into inspection custody.
-
-For a latest result with no live owner and zero undetermined sessions, inspect
-the null-owned path and preserve discernible intent in a sanctioned path-scoped
-commit or revert abandoned residue. A positive undetermined-session count blocks
-revert authority for that query result; do not treat its null paths as abandoned.
-
-Count later reminder beats for each unchanged live-owner/path group and for a
-positive undetermined-session count. If either remains for three consecutive
-later beats after first observation, escalate once with the complete current
-owner groups, paths, and privacy-safe undetermined count; cancel
-`integrator-main-clearance`, remain alive as the non-mutating blocker beacon,
-and do not repeat coordination or escalation for that blocking set.
-
-NEXT: Wait through the quiet window, then resolve the complete blocking set with
-telec code owners and follow the ownership/custodianship flow above."""
+{dirty_path_instruction}
+"""
 _REPO_ROOT_FAILURE_TEMPLATE = """INTEGRATION ERROR: REPO ROOT SYNC {outcome}
 
 Repo-root synchronization stopped while running `{operation}`.
@@ -331,15 +319,16 @@ def _format_repo_root_split_history(result: RepoRootSyncResult, project_root: st
         incoming_paths=_format_repo_root_paths(result.incoming_paths),
         dirty_overlap_paths=_format_repo_root_paths(result.dirty_overlap_paths),
         project_root=project_root,
+        dirty_path_instruction=_REPO_ROOT_DIRTY_PATH_INSTRUCTION.format(project_root=project_root),
     )
 
 
 def _format_repo_root_dirty_overlap(result: RepoRootSyncResult, project_root: str) -> str:
-    """Render the non-destructive foreign-work wait instruction."""
+    """Render the per-path repo-root synchronization instruction."""
     return _REPO_ROOT_DIRTY_OVERLAP_TEMPLATE.format(
         dirty_overlap_paths=_format_repo_root_paths(result.dirty_overlap_paths),
-        dirty_overlap_command_paths=shlex.join(result.dirty_overlap_paths),
         project_root=project_root,
+        dirty_path_instruction=_REPO_ROOT_DIRTY_PATH_INSTRUCTION.format(project_root=project_root),
     )
 
 
