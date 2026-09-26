@@ -287,7 +287,8 @@ And it states no consequence attaching to the `NOOP` sentinel
 Given a live reminder is armed for a session
 And that session completes a turn whose entire authored output is `NOOP`
 When the platform settles that turn
-Then the reminder remains armed on its existing schedule
+Then the sentinel neither cancels nor consumes the reminder, which keeps its existing schedule
+And a reminder anchored on the agent stop that ends that turn fires on that stop as on any other matching stop
 And the service evaluates no answer against the turn
 ```
 
