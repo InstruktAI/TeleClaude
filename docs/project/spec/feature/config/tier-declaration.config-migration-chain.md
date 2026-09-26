@@ -47,7 +47,7 @@ configuration migration list (`project/spec/feature/config/document-migration`).
 A document that has not passed the declaring migration obtains an absent tier
 from the registries that define the tiers — the designated locations for the
 home's own configuration, person, and company files, and the project registry
-for project roots. A read supplies that tier in memory; a migration run or a
+for project roots and the linked worktrees of those roots. A read supplies that tier in memory; a migration run or a
 writer stores it. A file those registries do not name is never given a tier. A
 file the platform creates is written declared. A file that reaches loading
 without a valid declaration fails wherever it sits, and a declaration naming an

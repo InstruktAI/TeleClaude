@@ -42,8 +42,15 @@ declaring another tier fails validation rather than loading as that tier.
 Resolution reads this key; it never infers a tier from where the file sits. The
 resolution contract is `project/spec/feature/config/tier-declaration`.
 
+<!-- planned-change:config-migration-chain -->
 The machine runtime `config.yml` is outside this: it carries a different
 filename and takes no part in tier resolution.
+<!-- change:config-migration-chain -->
+The machine runtime `config.yml` is outside this: it carries a different
+filename and takes no part in tier resolution. It declares `kind: computer`,
+which addresses the file and is never a tier
+(`project/spec/feature/config/machine-config-load`).
+<!-- /planned-change:config-migration-chain -->
 
 One JSON Schema per tier is generated from the same models the runtime
 validates against and published, with the MCP registry schema, into the
@@ -130,9 +137,16 @@ hooks:
 channel_subscriptions: list[ChannelSubscription]
 ```
 
+<!-- planned-change:config-migration-chain -->
 The project also declares which platform capabilities it subscribes to. Each block
 is optional and defaults to subscribed, so a project config written before the
 manifest existed keeps its current behavior:
+<!-- change:config-migration-chain -->
+The project also declares which platform capabilities it subscribes to. Each block
+is optional, and an omitted block or one without an `enabled` value is
+unsubscribed, so only an explicit value claims a capability
+(`project/spec/feature/config/project-capability-manifest`):
+<!-- /planned-change:config-migration-chain -->
 
 ```yaml
 code:

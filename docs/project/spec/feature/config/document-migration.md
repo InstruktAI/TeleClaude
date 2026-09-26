@@ -67,8 +67,9 @@ The authoring rules every migration obeys are
   number of the last migration in the list.
 - **Subject.** What the registries say a document is: its kind (computer,
   global, person, company, or project) and, for a person or company, its
-  instance. A migration that needs to know what a document is reads the subject,
-  never the document's location.
+  instance. The document at the root of a linked worktree of a registered
+  project root has that project's subject. A migration that needs to know what a
+  document is reads the subject, never the document's location.
 - **Migration run outcome.** One structured record per document naming the
   document, its subject, the version found, the version reached, and one
   outcome: current, migrated and committed, migrated and left uncommitted,
